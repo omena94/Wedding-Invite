@@ -102,8 +102,8 @@ export default function RsvpForm() {
             <div className="detail-icon"><Clock size={16} /></div>
             <div className="detail-content"><strong>時間：</strong>12:00</div>
           </div>
-          <div className="detail-item">
-            <div className="detail-icon"><MapPin size={16} /></div>
+          <div className="detail-item" style={{ alignItems: "flex-start" }}>
+            <div className="detail-icon" style={{ marginTop: -4 }}><MapPin size={16} /></div>
             <div className="detail-content">
               <strong>地點：</strong>
               <span style={{ display: "inline-block", verticalAlign: "top" }}>
