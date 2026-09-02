@@ -194,7 +194,7 @@ function Dashboard({ onLogout }) {
                     {rows.map((r, i) => (
                       <tr key={r.id}>
                         <td className="muted-cell">{i + 1}</td>
-                        <td><strong>{r.name}</strong></td>
+                        <td style={{ whiteSpace: "nowrap" }}><strong>{r.name}</strong></td>
                         <td><span className={`pill ${r.side === "bride" ? "pill-bride" : "pill-groom"}`}>{SIDE_LABEL[r.side] || r.side}</span></td>
                         <td><span className={`pill ${r.attending ? "pill-yes" : "pill-no"}`}>{r.attending ? "出席" : "不克"}</span></td>
                         <td>{r.attending ? r.adult_count : "—"}</td>
