@@ -67,7 +67,8 @@ export default function RsvpForm() {
           最愛的家人與好友們~~<br />
           宣文與孟庭要結婚啦<br />
           目前正在悄悄籌備中，先調查大家的出席意願來安排舒服的場地<br />
-          敲定後一定馬上把詳細資訊雙手奉上，期待與你們見面喔!!!
+          待日期場地敲定後，會再將詳細資訊雙手奉上<br />
+          期待與你們見面喔!!!
         </p>
 
         <div className="event-details-card">
