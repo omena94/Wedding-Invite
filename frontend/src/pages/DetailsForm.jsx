@@ -83,6 +83,9 @@ export default function DetailsForm() {
     if (mainTotal > form.adult_count) {
       return setError(`主餐總份數（${mainTotal}）超過大人人數（${form.adult_count}），請調整主餐選擇`);
     }
+    if (form.kids_meal_count > form.child_count) {
+      return setError(`兒童餐點份數（${form.kids_meal_count}）超過小孩人數（${form.child_count}），請調整`);
+    }
     setBusy(true);
     try {
       const c = contact.trim();
@@ -213,8 +216,10 @@ export default function DetailsForm() {
             <div className="form-group">
               <label>兒童餐點</label>
               <Select value={form.kids_meal_count} onChange={(v) => set("kids_meal_count", v)}
-                options={range(0, 10, (n) => (n === 0 ? "不需要兒童餐點" : `需要 ${n} 份兒童餐點`))} />
-              <div className="helper-text">如有小孩需要另外準備的兒童餐點，請在此填寫份數</div>
+                options={range(0, Math.min(10, Math.max(form.kids_meal_count || 0, form.child_count)), (n) => (n === 0 ? "不需要兒童餐點" : `需要 ${n} 份兒童餐點`))} />
+              <div className="helper-text">
+                依小孩人數填寫，最多 {form.child_count} 份；若無需求也沒關係，現場自助吧的餐點小孩皆可享用
+              </div>
             </div>
           </section>
 
