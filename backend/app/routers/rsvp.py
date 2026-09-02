@@ -108,8 +108,10 @@ def submit_phase2(payload: Phase2Details, db: Session = Depends(get_db)):
     # 再次確認人數
     record.adult_count = payload.adult_count
     record.child_count = payload.child_count
-    # 主餐份數（只保留有填的）
+    # 主餐份數（只保留有填的；總數不可超過大人人數）
     mains = {k: int(v) for k, v in payload.main_course.items() if v and int(v) > 0}
+    if sum(mains.values()) > payload.adult_count:
+        raise HTTPException(400, "主餐總份數不可超過大人人數，請調整後再送出")
     record.main_course_json = json.dumps(mains, ensure_ascii=False)
     record.kids_meal_count = payload.kids_meal_count
     record.baby_chair_count = payload.baby_chair_count

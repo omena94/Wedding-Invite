@@ -37,6 +37,7 @@ export default function DetailsForm() {
     setForm((f) => ({ ...f, main_course: { ...f.main_course, [dish]: v } }));
 
   const mainTotal = Object.values(form.main_course).reduce((a, b) => a + (b || 0), 0);
+  const mainRemaining = Math.max(0, form.adult_count - mainTotal); // 主餐剩餘可選份數
 
   const doLookup = async (e) => {
     e.preventDefault();
@@ -78,6 +79,9 @@ export default function DetailsForm() {
   const doSubmit = async (e) => {
     e.preventDefault();
     setError("");
+    if (mainTotal > form.adult_count) {
+      return setError(`主餐總份數（${mainTotal}）超過大人人數（${form.adult_count}），請調整主餐選擇`);
+    }
     setBusy(true);
     try {
       const c = contact.trim();
@@ -181,15 +185,23 @@ export default function DetailsForm() {
               <div className="section-header-en">Main Course</div>
             </div>
             <p className="helper-text" style={{ marginBottom: 14 }}>
-              請依大人人數，填寫每種主餐各要幾份。（目前共 {mainTotal} 份 / 大人 {form.adult_count} 位）
+              請依大人人數，填寫每種主餐各要幾份。（已選 {mainTotal} / {form.adult_count} 份
+              {mainRemaining > 0
+                ? `，還可選 ${mainRemaining} 份`
+                : "，已選滿；若要更換請先減少原本選定的餐點"}）
             </p>
-            {MAIN_DISHES.map((dish) => (
-              <div className="form-group grid-2" key={dish} style={{ alignItems: "center", marginBottom: 12 }}>
-                <label style={{ margin: 0 }}>{dish}</label>
-                <Select value={form.main_course[dish]} onChange={(v) => setMain(dish, v)}
-                  options={range(0, 10, (n) => `${n} 份`)} />
-              </div>
-            ))}
+            {MAIN_DISHES.map((dish) => {
+              const cur = form.main_course[dish] || 0;
+              // 已選滿時只能維持或減少；有剩餘額度才能往上加
+              const maxSel = Math.min(10, Math.max(cur, cur + mainRemaining));
+              return (
+                <div className="form-group grid-2" key={dish} style={{ alignItems: "center", marginBottom: 12 }}>
+                  <label style={{ margin: 0 }}>{dish}</label>
+                  <Select value={cur} onChange={(v) => setMain(dish, v)}
+                    options={range(0, maxSel, (n) => `${n} 份`)} />
+                </div>
+              );
+            })}
             <div className="form-group">
               <label>兒童餐點</label>
               <Select value={form.kids_meal_count} onChange={(v) => set("kids_meal_count", v)}
