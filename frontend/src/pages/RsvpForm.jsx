@@ -70,7 +70,7 @@ export default function RsvpForm() {
         <div className="event-details-card">
           <div className="detail-item">
             <div className="detail-icon"><Calendar size={16} /></div>
-            <div className="detail-content"><strong>日期：</strong>預計 2027.03.06（週六） 或 2027.03.13（週六）</div>
+            <div className="detail-content"><strong>日期：</strong>2027.03.06（週六） 或 2027.03.13（週六）</div>
           </div>
           <div className="detail-item">
             <div className="detail-icon"><Clock size={16} /></div>
