@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { User, CalendarCheck, Mail, Users, MessageCircle, Calendar, MapPin, Send, Heart, CalendarX } from "lucide-react";
+import { User, CalendarCheck, Mail, Users, MessageCircle, Calendar, MapPin, Send, Heart, CalendarX, Mars, Venus } from "lucide-react";
 import Select, { range } from "../components/Select.jsx";
 import { fetchConfig, submitPhase1 } from "../api.js";
 
@@ -106,11 +106,11 @@ export default function RsvpForm() {
             <div className="radio-grid">
               <div className="radio-card">
                 <input type="radio" name="side" checked={form.side === "groom"} onChange={() => set("side", "groom")} />
-                <div className="radio-box"><User size={16} /><span>男方親友</span></div>
+                <div className="radio-box"><Mars size={16} /><span>男方親友</span></div>
               </div>
               <div className="radio-card">
                 <input type="radio" name="side" checked={form.side === "bride"} onChange={() => set("side", "bride")} />
-                <div className="radio-box"><User size={16} /><span>女方親友</span></div>
+                <div className="radio-box"><Venus size={16} /><span>女方親友</span></div>
               </div>
             </div>
           </div>
