@@ -216,8 +216,8 @@ function Dashboard({ onLogout }) {
                             ? <button className="btn btn-ghost btn-sm" title="查看想說的話" onClick={() => setViewMsg({ name: r.name, text: r.message, kind: "想說的話" })}><MessageCircle size={14} /></button>
                             : <span className="muted-cell">—</span>}
                         </td>
-                        <td>
-                          <select className="inline-input" value={r.manage_status} onChange={(e) => patch(r.id, { manage_status: e.target.value })}>
+                        <td style={{ whiteSpace: "nowrap" }}>
+                          <select className="inline-input" style={{ minWidth: 86 }} value={r.manage_status} onChange={(e) => patch(r.id, { manage_status: e.target.value })}>
                             {Object.entries(STATUS_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                           </select>
                         </td>
