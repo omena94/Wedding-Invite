@@ -174,7 +174,11 @@ body::after {
   padding: 5px 16px; border-radius: 30px; border: 1px solid var(--border-soft);
   margin-bottom: 18px; letter-spacing: 1px;
 }
-.invitation-quote { font-size: 14px; color: var(--text-body); line-height: 1.8; margin-bottom: 24px; font-weight: 300; }
+.invitation-quote {
+  font-size: 14px; color: var(--text-body); line-height: 1.8;
+  margin-bottom: 24px; font-weight: 300;
+  display: inline-block; text-align: left; /* 區塊置中、行首字對齊 */
+}
 .event-details-card {
   background: var(--bg-card-subtle); border-radius: 18px; padding: 18px 20px;
   border: 1px solid var(--border-soft); text-align: left;
