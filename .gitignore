@@ -1,0 +1,23 @@
+# Python
+backend/.venv/
+__pycache__/
+*.pyc
+
+# Node
+frontend/node_modules/
+frontend/dist/
+
+# 機密設定（含資料庫密碼、SECRET_KEY，絕不能上 Git）
+backend/.env
+*.pem
+*.key
+
+# 本機雜項
+.playwright-mcp/
+*.png.tmp
+Thumbs.db
+desktop.ini
+
+# 本機測試截圖
+form-mobile.png
+preview-form.png
