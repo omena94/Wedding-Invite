@@ -80,6 +80,15 @@ body::after {
 .hero-image { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform 0.3s ease; }
 .hero-image:hover { transform: scale(1.03); }
 
+/* 主圖滑過切換：預設線條插畫，hover 淡入照片 */
+.hero-swap { position: relative; }
+.hero-swap .hero-swap-back {
+  position: absolute; inset: 0;
+  opacity: 0; transition: opacity 0.5s ease;
+}
+.hero-swap:hover .hero-swap-back,
+.hero-swap:active .hero-swap-back { opacity: 1; }
+
 /* ============ 自訂下拉選單 ============ */
 .ui-select { position: relative; width: 100%; }
 .ui-select-trigger {
