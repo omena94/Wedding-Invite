@@ -74,7 +74,7 @@ export default function RsvpForm() {
           </div>
           <div className="detail-item">
             <div className="detail-icon"><Clock size={16} /></div>
-            <div className="detail-content"><strong>時間：</strong>中午</div>
+            <div className="detail-content"><strong>時間：</strong>12:00</div>
           </div>
           <div className="detail-item">
             <div className="detail-icon"><MapPin size={16} /></div>
