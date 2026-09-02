@@ -12,7 +12,6 @@ import {
 } from "../api.js";
 
 const SIDE_LABEL = { groom: "男方", bride: "女方" };
-const STATUS_LABEL = { new: "待處理", contacted: "已聯絡", seated: "已排桌" };
 
 export default function Admin() {
   const [authed, setAuthed] = useState(!!getToken());
@@ -187,7 +186,7 @@ function Dashboard({ onLogout }) {
                       <th>#</th><th>姓名</th><th>親友</th><th>出席</th>
                       <th>大人</th><th>幼童</th><th>詳細</th><th>主餐</th><th>兒童餐</th>
                       <th>座椅</th><th>素食</th><th>飲食備註</th><th>備註</th><th>電話</th><th>想說的話</th>
-                      <th>狀態</th><th>桌號</th><th>內部備註</th><th>時間</th><th></th>
+                      <th>桌號</th><th>內部備註</th><th>時間</th><th></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -215,11 +214,6 @@ function Dashboard({ onLogout }) {
                           {r.message
                             ? <button className="btn btn-ghost btn-sm" title="查看想說的話" onClick={() => setViewMsg({ name: r.name, text: r.message, kind: "想說的話" })}><MessageCircle size={14} /></button>
                             : <span className="muted-cell">—</span>}
-                        </td>
-                        <td style={{ whiteSpace: "nowrap" }}>
-                          <select className="inline-input" style={{ minWidth: 86 }} value={r.manage_status} onChange={(e) => patch(r.id, { manage_status: e.target.value })}>
-                            {Object.entries(STATUS_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-                          </select>
                         </td>
                         <td>
                           <input
@@ -319,7 +313,6 @@ function EditModal({ row, onClose, onSaved }) {
         veg_type: f.veg_type || "無",
         dietary_note: f.dietary_note || "",
         remark: f.remark || "",
-        manage_status: f.manage_status,
         table_no: f.table_no === "" ? null : parseInt(f.table_no, 10),
         admin_note: f.admin_note || "",
       });

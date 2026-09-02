@@ -189,10 +189,9 @@ def export_csv(db: Session = Depends(get_db)):
         "姓名", "親友方", "出席", "日期偏好", "大人", "幼童",
         "詳細已填", "主餐", "兒童餐點", "兒童座椅", "素食人數", "素食類型",
         "飲食備註", "賓客備註", "電話", "Email", "想說的話",
-        "狀態", "桌號", "內部備註", "填表時間",
+        "桌號", "內部備註", "填表時間",
     ])
     side_map = {"groom": "男方", "bride": "女方"}
-    status_map = {"new": "待處理", "contacted": "已聯絡", "seated": "已排桌"}
     date_map = {"both": "兩天都可以", "0306": "2027.03.06（週六）", "0313": "2027.03.13（週六）"}
     for r in rows:
         main_str = "、".join(f"{k}x{v}" for k, v in r.main_course.items()) if r.details_completed else ""
@@ -205,7 +204,6 @@ def export_csv(db: Session = Depends(get_db)):
             main_str, r.kids_meal_count,
             r.baby_chair_count, r.veg_count, r.veg_type, r.dietary_note,
             r.remark, r.phone, r.email, r.message,
-            status_map.get(r.manage_status, r.manage_status),
             r.table_no if r.table_no is not None else "",
             r.admin_note,
             r.created_at.strftime("%Y-%m-%d %H:%M") if r.created_at else "",
