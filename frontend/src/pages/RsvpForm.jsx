@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { User, CalendarCheck, Mail, Users, MessageCircle, Calendar, MapPin, Send, Heart, CalendarX, Mars, Venus } from "lucide-react";
+import { User, CalendarCheck, Mail, Users, MessageCircle, Calendar, MapPin, Send, Heart, CalendarX, Mars, Venus, Clock } from "lucide-react";
 import Select, { range } from "../components/Select.jsx";
 import { fetchConfig, submitPhase1 } from "../api.js";
 
@@ -71,6 +71,10 @@ export default function RsvpForm() {
           <div className="detail-item">
             <div className="detail-icon"><Calendar size={16} /></div>
             <div className="detail-content"><strong>日期：</strong>預計 2027.03.06（週六） 或 2027.03.13（週六）</div>
+          </div>
+          <div className="detail-item">
+            <div className="detail-icon"><Clock size={16} /></div>
+            <div className="detail-content"><strong>時間：</strong>中午</div>
           </div>
           <div className="detail-item">
             <div className="detail-icon"><MapPin size={16} /></div>
