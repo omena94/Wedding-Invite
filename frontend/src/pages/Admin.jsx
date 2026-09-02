@@ -146,7 +146,6 @@ function Dashboard({ onLogout }) {
         <>
           <StatsCards stats={stats} />
           <DeadlinePanel />
-          <DatePrefPanel stats={stats} />
           <Breakdown stats={stats} />
 
           <div className="panel">
@@ -511,34 +510,6 @@ function DeadlinePanel() {
         <button className="btn btn-primary" onClick={save} disabled={saving}>{saving ? "儲存中…" : "儲存設定"}</button>
         <button className="btn btn-ghost" onClick={() => { setP1(""); setP2(""); }}>清空（不設限）</button>
         {msg && <span style={{ fontSize: 13, color: msg === "已儲存" ? "var(--sage-accent)" : "var(--rose-accent)" }}>{msg}</span>}
-      </div>
-    </div>
-  );
-}
-
-/* Phase 1 重點：日期偏好分佈 */
-function DatePrefPanel({ stats }) {
-  if (!stats) return null;
-  const resp = stats.date_pref_responses || {};
-  const ppl = stats.date_pref_people || {};
-  const items = [
-    { key: "d0306", label: "2027.03.06（週六）", r: resp.d0306, p: ppl.d0306 },
-    { key: "d0313", label: "2027.03.13（週六）", r: resp.d0313, p: ppl.d0313 },
-    { key: "both", label: "兩天都可以", r: resp.both, p: ppl.both },
-  ];
-  const maxP = Math.max(...items.map((i) => i.p || 0), 1);
-  return (
-    <div className="panel">
-      <div className="panel-head"><div className="panel-title"><Calendar size={18} /> 日期偏好分佈</div></div>
-      <div className="mini-grid">
-        {items.map((it) => (
-          <div className="mini" key={it.key}>
-            <div className="m-label">{it.label}</div>
-            <div className="m-value">{it.p || 0} <small style={{ fontSize: 13, color: "var(--text-muted)" }}>人</small></div>
-            <div className="bar-track"><div className="bar-fill" style={{ width: `${((it.p || 0) / maxP) * 100}%` }} /></div>
-            <div className="footnote" style={{ textAlign: "left", marginTop: 6 }}>{it.r || 0} 組回覆</div>
-          </div>
-        ))}
       </div>
     </div>
   );
