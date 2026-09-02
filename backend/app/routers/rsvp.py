@@ -53,6 +53,19 @@ def create_phase1(payload: Phase1Create, db: Session = Depends(get_db)):
     if not is_open(get_setting(db, PHASE1_KEY)):
         raise HTTPException(403, "出席意願調查已截止，若需回覆或修改請直接聯繫我們")
     data = payload.model_dump()
+
+    # 防重複填寫：同一 Email 或電話只能填一次
+    email = (data.get("email") or "").strip()
+    phone = (data.get("phone") or "").strip()
+    conds = []
+    if email:
+        conds.append(func.lower(Rsvp.email) == email.lower())
+    if phone:
+        conds.append(Rsvp.phone == phone)
+    if conds and db.scalars(select(Rsvp).where(or_(*conds))).first():
+        raise HTTPException(
+            409, "這個 Email／電話已經填寫過出席意願囉！若需要修改內容，請直接聯繫新人"
+        )
     if not data["attending"]:
         # 不出席：人數歸零、日期偏好無意義
         data.update(adult_count=0, child_count=0, date_preference="both")
