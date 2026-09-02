@@ -4,6 +4,7 @@ import {
   ClipboardList, Download, Trash2, Armchair, Salad, CalendarClock,
 } from "lucide-react";
 import Select from "../components/Select.jsx";
+import DatePicker from "../components/DatePicker.jsx";
 import {
   adminLogin, setToken, clearToken, getToken,
   fetchStats, fetchRsvps, updateRsvp, deleteRsvp, exportCsvUrl,
@@ -314,11 +315,11 @@ function DeadlinePanel() {
       <div className="mini-grid" style={{ marginBottom: 14 }}>
         <div className="mini">
           <div className="m-label">意願調查（首頁）截止日 {cfg && statusPill(cfg.phase1_open)}</div>
-          <input type="date" value={p1} onChange={(e) => setP1(e.target.value)} style={{ marginTop: 8 }} />
+          <div style={{ marginTop: 8 }}><DatePicker value={p1} onChange={setP1} /></div>
         </div>
         <div className="mini">
           <div className="m-label">飲食調查（/details）截止日 {cfg && statusPill(cfg.phase2_open)}</div>
-          <input type="date" value={p2} onChange={(e) => setP2(e.target.value)} style={{ marginTop: 8 }} />
+          <div style={{ marginTop: 8 }}><DatePicker value={p2} onChange={setP2} /></div>
         </div>
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
