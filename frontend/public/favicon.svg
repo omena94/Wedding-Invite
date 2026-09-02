@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- 奶茶色圓底 -->
+  <circle cx="32" cy="32" r="30" fill="#F7F3EE" stroke="#DFCEBC" stroke-width="2"/>
+  <!-- 純線條愛心（milk-tea-700） -->
+  <path d="M32 46 C 21 37.5, 15 30.5, 15 23.8 C 15 18.4, 19 14.5, 23.9 14.5 C 27.3 14.5, 30.3 16.6, 32 19.8 C 33.7 16.6, 36.7 14.5, 40.1 14.5 C 45 14.5, 49 18.4, 49 23.8 C 49 30.5, 43 37.5, 32 46 Z"
+        fill="none" stroke="#7E6047" stroke-width="3.2" stroke-linejoin="round" stroke-linecap="round"/>
+</svg>
