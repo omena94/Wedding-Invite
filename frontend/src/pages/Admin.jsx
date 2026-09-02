@@ -205,11 +205,15 @@ function Dashboard({ onLogout }) {
                         <td>{r.details_completed ? r.baby_chair_count : "—"}</td>
                         <td>{r.details_completed && r.veg_count > 0 ? `${r.veg_count}（${r.veg_type}）` : "—"}</td>
                         <td className="muted-cell">{r.dietary_note || "—"}</td>
-                        <td className="blessing-cell muted-cell">{r.remark || "—"}</td>
+                        <td>
+                          {r.remark
+                            ? <button className="btn btn-ghost btn-sm" title="查看備註" onClick={() => setViewMsg({ name: r.name, text: r.remark, kind: "備註" })}><MessageCircle size={14} /></button>
+                            : <span className="muted-cell">—</span>}
+                        </td>
                         <td>{r.phone || "—"}</td>
                         <td>
                           {r.message
-                            ? <button className="btn btn-ghost btn-sm" title="查看想說的話" onClick={() => setViewMsg({ name: r.name, text: r.message })}><MessageCircle size={14} /></button>
+                            ? <button className="btn btn-ghost btn-sm" title="查看想說的話" onClick={() => setViewMsg({ name: r.name, text: r.message, kind: "想說的話" })}><MessageCircle size={14} /></button>
                             : <span className="muted-cell">—</span>}
                         </td>
                         <td>
@@ -256,7 +260,7 @@ function Dashboard({ onLogout }) {
             <div className="modal-overlay" onClick={() => setViewMsg(null)}>
               <div className="modal-card" onClick={(e) => e.stopPropagation()}>
                 <div className="modal-icon"><MessageCircle size={26} /></div>
-                <h3 className="modal-title">{viewMsg.name} 想說的話</h3>
+                <h3 className="modal-title">{viewMsg.name}・{viewMsg.kind}</h3>
                 <p className="modal-desc" style={{ whiteSpace: "pre-wrap", textAlign: "left" }}>{viewMsg.text}</p>
                 <button className="modal-btn" onClick={() => setViewMsg(null)}>關閉</button>
               </div>
