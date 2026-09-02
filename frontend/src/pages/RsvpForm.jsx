@@ -91,7 +91,7 @@ export default function RsvpForm() {
                 rel="noopener noreferrer"
                 style={{ color: "var(--milk-tea-700)", fontWeight: 500, textDecoration: "underline", textUnderlineOffset: 3 }}
               >
-                台北美福大飯店（台北市中山區樂群二路55號）
+                台北美福大飯店<br />（台北市中山區樂群二路55號）
               </a>
             </div>
           </div>
