@@ -89,7 +89,7 @@ export default function RsvpForm() {
                 href="https://maps.app.goo.gl/oLUTYpC5Czfo5SZD6"
                 target="_blank"
                 rel="noopener noreferrer"
-                style={{ color: "var(--milk-tea-700)", fontWeight: 500, textDecoration: "underline", textUnderlineOffset: 3 }}
+                style={{ color: "var(--milk-tea-700)", fontWeight: 500, textDecoration: "underline", textUnderlineOffset: 3, display: "inline-block", verticalAlign: "top" }}
               >
                 台北美福大飯店<br />（台北市中山區樂群二路55號）
               </a>
