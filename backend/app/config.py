@@ -21,6 +21,9 @@ class Settings(BaseSettings):
     admin_password: str = "change-me"
     secret_key: str = "change-me-to-a-long-random-string"
     port: int = 8000
+    # Telegram 通知（留空 = 不啟用）
+    telegram_bot_token: str = ""
+    telegram_chat_id: str = ""
 
 
 settings = Settings()

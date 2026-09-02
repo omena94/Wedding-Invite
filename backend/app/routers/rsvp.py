@@ -8,8 +8,22 @@ from sqlalchemy.orm import Session
 from .. import cache
 from ..database import get_db
 from ..models import Rsvp
+from ..notify import phase1_message, phase2_message, send_telegram
 from ..phase_config import PHASE1_KEY, PHASE2_KEY, build_config, get_setting, is_open
 from ..schemas import LookupIn, LookupOut, Phase1Create, Phase2Details, RsvpOut
+
+
+def _attending_totals(db: Session) -> tuple[int, int]:
+    """回傳（出席組數, 出席總人數）給通知訊息用。"""
+    groups = db.scalar(
+        select(func.count()).select_from(Rsvp).where(Rsvp.attending.is_(True))
+    ) or 0
+    guests = db.scalar(
+        select(func.coalesce(func.sum(Rsvp.adult_count + Rsvp.child_count), 0)).where(
+            Rsvp.attending.is_(True)
+        )
+    ) or 0
+    return groups, guests
 
 router = APIRouter(prefix="/api", tags=["rsvp"])
 
@@ -49,6 +63,9 @@ def create_phase1(payload: Phase1Create, db: Session = Depends(get_db)):
     db.refresh(record)
 
     cache.invalidate_stats()
+
+    groups, guests = _attending_totals(db)
+    send_telegram(phase1_message(record, groups, guests))
     return record
 
 
@@ -107,4 +124,12 @@ def submit_phase2(payload: Phase2Details, db: Session = Depends(get_db)):
     db.refresh(record)
 
     cache.invalidate_stats()
+
+    groups, _ = _attending_totals(db)
+    done = db.scalar(
+        select(func.count()).select_from(Rsvp).where(
+            Rsvp.attending.is_(True), Rsvp.details_completed.is_(True)
+        )
+    ) or 0
+    send_telegram(phase2_message(record, done, groups))
     return record
