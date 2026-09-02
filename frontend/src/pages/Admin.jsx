@@ -1,12 +1,13 @@
 import { useEffect, useState, useCallback } from "react";
 import {
   Lock, LogIn, Users, Utensils, Baby, Mail, Calendar, PieChart,
-  ClipboardList, Download, Trash2, Armchair, Salad,
+  ClipboardList, Download, Trash2, Armchair, Salad, CalendarClock,
 } from "lucide-react";
 import Select from "../components/Select.jsx";
 import {
   adminLogin, setToken, clearToken, getToken,
   fetchStats, fetchRsvps, updateRsvp, deleteRsvp, exportCsvUrl,
+  fetchConfig, saveDeadlines,
 } from "../api.js";
 
 const SIDE_LABEL = { groom: "男方", bride: "女方" };
@@ -142,6 +143,7 @@ function Dashboard({ onLogout }) {
       ) : (
         <>
           <StatsCards stats={stats} />
+          <DeadlinePanel />
           <DatePrefPanel stats={stats} />
           <Breakdown stats={stats} />
 
@@ -265,6 +267,65 @@ function StatsCards({ stats }) {
           <div className="label">{c.label}</div>
         </div>
       ))}
+    </div>
+  );
+}
+
+/* 各階段截止日期設定 */
+function DeadlinePanel() {
+  const [cfg, setCfg] = useState(null);
+  const [p1, setP1] = useState("");
+  const [p2, setP2] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState("");
+
+  useEffect(() => {
+    fetchConfig().then((c) => {
+      setCfg(c);
+      setP1(c.phase1_deadline || "");
+      setP2(c.phase2_deadline || "");
+    }).catch(() => {});
+  }, []);
+
+  const save = async () => {
+    setSaving(true); setMsg("");
+    try {
+      const c = await saveDeadlines({ phase1_deadline: p1, phase2_deadline: p2 });
+      setCfg(c);
+      setMsg("已儲存");
+      setTimeout(() => setMsg(""), 2500);
+    } catch (e) {
+      setMsg(e.message || "儲存失敗");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const statusPill = (open) => (
+    <span className={`pill ${open ? "pill-yes" : "pill-no"}`}>{open ? "開放中" : "已截止"}</span>
+  );
+
+  return (
+    <div className="panel">
+      <div className="panel-head">
+        <div className="panel-title"><CalendarClock size={18} /> 各階段截止日期</div>
+        <div style={{ fontSize: 12.5, color: "var(--text-muted)" }}>截止日「當天」仍可填寫，隔天起自動關閉（台灣時間）</div>
+      </div>
+      <div className="mini-grid" style={{ marginBottom: 14 }}>
+        <div className="mini">
+          <div className="m-label">意願調查（首頁）截止日 {cfg && statusPill(cfg.phase1_open)}</div>
+          <input type="date" value={p1} onChange={(e) => setP1(e.target.value)} style={{ marginTop: 8 }} />
+        </div>
+        <div className="mini">
+          <div className="m-label">飲食調查（/details）截止日 {cfg && statusPill(cfg.phase2_open)}</div>
+          <input type="date" value={p2} onChange={(e) => setP2(e.target.value)} style={{ marginTop: 8 }} />
+        </div>
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <button className="btn btn-primary" onClick={save} disabled={saving}>{saving ? "儲存中…" : "儲存設定"}</button>
+        <button className="btn btn-ghost" onClick={() => { setP1(""); setP2(""); }}>清空（不設限）</button>
+        {msg && <span style={{ fontSize: 13, color: msg === "已儲存" ? "var(--sage-accent)" : "var(--rose-accent)" }}>{msg}</span>}
+      </div>
     </div>
   );
 }

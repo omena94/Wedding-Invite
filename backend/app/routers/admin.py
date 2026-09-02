@@ -7,11 +7,15 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
+from datetime import date
+
 from .. import cache
 from ..database import get_db
 from ..models import Rsvp
+from ..phase_config import PHASE1_KEY, PHASE2_KEY, build_config, set_setting
 from ..schemas import (
     DatePref,
+    DeadlinesIn,
     LoginIn,
     LoginOut,
     RsvpAdminUpdate,
@@ -30,6 +34,21 @@ def login(payload: LoginIn):
     if not verify_password(payload.password):
         raise HTTPException(401, "密碼錯誤")
     return LoginOut(token=create_token())
+
+
+# ===== 截止日期設定 =====
+@router.put("/deadlines", dependencies=[AdminRequired])
+def save_deadlines(payload: DeadlinesIn, db: Session = Depends(get_db)):
+    for value in (payload.phase1_deadline, payload.phase2_deadline):
+        if value:
+            try:
+                date.fromisoformat(value)
+            except ValueError:
+                raise HTTPException(400, f"日期格式錯誤：{value}（請用 YYYY-MM-DD）")
+    set_setting(db, PHASE1_KEY, payload.phase1_deadline)
+    set_setting(db, PHASE2_KEY, payload.phase2_deadline)
+    db.commit()
+    return build_config(db)
 
 
 # ===== 名單（可搜尋/篩選）=====

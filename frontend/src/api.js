@@ -37,6 +37,9 @@ async function request(path, { method = "GET", body, auth = false } = {}) {
   return res.json();
 }
 
+// ===== 公開設定（各階段開放狀態）=====
+export const fetchConfig = () => request("/api/config");
+
 // ===== 賓客端 =====
 // Phase 1：意願調查
 export const submitPhase1 = (data) => request("/api/rsvp", { method: "POST", body: data });
@@ -56,4 +59,6 @@ export const updateRsvp = (id, data) =>
   request(`/api/admin/rsvps/${id}`, { method: "PATCH", body: data, auth: true });
 export const deleteRsvp = (id) =>
   request(`/api/admin/rsvps/${id}`, { method: "DELETE", auth: true });
+export const saveDeadlines = (data) =>
+  request("/api/admin/deadlines", { method: "PUT", body: data, auth: true });
 export const exportCsvUrl = "/api/admin/export.csv";

@@ -1,7 +1,7 @@
-import { useState } from "react";
-import { User, CalendarCheck, Mail, Users, MessageCircle, Calendar, MapPin, Send, Heart } from "lucide-react";
+import { useEffect, useState } from "react";
+import { User, CalendarCheck, Mail, Users, MessageCircle, Calendar, MapPin, Send, Heart, CalendarX } from "lucide-react";
 import Select, { range } from "../components/Select.jsx";
-import { submitPhase1 } from "../api.js";
+import { fetchConfig, submitPhase1 } from "../api.js";
 
 const initial = {
   name: "",
@@ -20,6 +20,13 @@ export default function RsvpForm() {
   const [submitting, setSubmitting] = useState(false);
   const [modal, setModal] = useState(null); // null | "yes" | "no"
   const [error, setError] = useState("");
+  const [closed, setClosed] = useState(false); // 是否已過截止日
+
+  useEffect(() => {
+    fetchConfig()
+      .then((c) => setClosed(!c.phase1_open))
+      .catch(() => {}); // 查不到設定時照常開放
+  }, []);
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -72,6 +79,15 @@ export default function RsvpForm() {
         </div>
       </header>
 
+      {closed ? (
+        <section className="section-card" style={{ textAlign: "center", padding: "40px 24px" }}>
+          <div className="modal-icon" style={{ margin: "0 auto 16px" }}><CalendarX size={26} /></div>
+          <h3 className="modal-title">出席意願調查已截止</h3>
+          <p className="modal-desc" style={{ marginBottom: 0 }}>
+            感謝大家的熱情回覆！<br />若仍需填寫或修改資料，請直接與我們聯繫。
+          </p>
+        </section>
+      ) : (
       <form onSubmit={onSubmit}>
         {/* 基本資料 */}
         <section className="section-card">
@@ -195,6 +211,7 @@ export default function RsvpForm() {
           {submitting ? "傳送中…" : <><Send size={17} /> 送出出席意願</>}
         </button>
       </form>
+      )}
 
       {modal && (
         <div className="modal-overlay" onClick={() => setModal(null)}>

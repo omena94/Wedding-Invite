@@ -8,9 +8,16 @@ from sqlalchemy.orm import Session
 from .. import cache
 from ..database import get_db
 from ..models import Rsvp
+from ..phase_config import PHASE1_KEY, PHASE2_KEY, build_config, get_setting, is_open
 from ..schemas import LookupIn, LookupOut, Phase1Create, Phase2Details, RsvpOut
 
 router = APIRouter(prefix="/api", tags=["rsvp"])
+
+
+# ===== 公開設定：各階段是否開放（前端載入時查詢）=====
+@router.get("/config")
+def get_config(db: Session = Depends(get_db)):
+    return build_config(db)
 
 
 def _find_by_contact(db: Session, contact: str) -> Rsvp | None:
@@ -29,6 +36,8 @@ def _find_by_contact(db: Session, contact: str) -> Rsvp | None:
 # ===== Phase 1：送出意願調查 =====
 @router.post("/rsvp", response_model=RsvpOut, status_code=201)
 def create_phase1(payload: Phase1Create, db: Session = Depends(get_db)):
+    if not is_open(get_setting(db, PHASE1_KEY)):
+        raise HTTPException(403, "出席意願調查已截止，若需回覆或修改請直接聯繫我們")
     data = payload.model_dump()
     if not data["attending"]:
         # 不出席：人數歸零、日期偏好無意義
@@ -69,6 +78,8 @@ def lookup(payload: LookupIn, db: Session = Depends(get_db)):
 # ===== Phase 2：送出詳細調查（補到同一筆）=====
 @router.post("/rsvp/details", response_model=RsvpOut)
 def submit_phase2(payload: Phase2Details, db: Session = Depends(get_db)):
+    if not is_open(get_setting(db, PHASE2_KEY)):
+        raise HTTPException(403, "詳細資料調查已截止，若需回覆或修改請直接聯繫我們")
     record = _find_by_contact(db, payload.contact)
     if not record:
         raise HTTPException(

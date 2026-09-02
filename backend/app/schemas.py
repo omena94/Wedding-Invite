@@ -91,6 +91,12 @@ class RsvpOut(BaseModel):
     details_updated_at: datetime | None
 
 
+# ===== 截止日期設定 =====
+class DeadlinesIn(BaseModel):
+    phase1_deadline: str = Field(default="", max_length=10)  # "YYYY-MM-DD" 或空字串=不設限
+    phase2_deadline: str = Field(default="", max_length=10)
+
+
 # ===== 登入 =====
 class LoginIn(BaseModel):
     password: str
