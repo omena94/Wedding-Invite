@@ -64,7 +64,7 @@ def create_phase1(payload: Phase1Create, db: Session = Depends(get_db)):
         conds.append(Rsvp.phone == phone)
     if conds and db.scalars(select(Rsvp).where(or_(*conds))).first():
         raise HTTPException(
-            409, "這個 Email／電話已經填寫過出席意願囉！若需要修改內容，請直接聯繫新人"
+            409, "您已經填過囉！如果需要修改內容，請直接聯繫宣文或孟庭"
         )
     if not data["attending"]:
         # 不出席：人數歸零、日期偏好無意義

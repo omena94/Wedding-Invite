@@ -31,7 +31,9 @@ async function request(path, { method = "GET", body, auth = false } = {}) {
       const data = await res.json();
       msg = data.detail || msg;
     } catch {}
-    throw new Error(msg);
+    const err = new Error(msg);
+    err.status = res.status; // 讓前端可依狀態碼做不同處理（如 409 重複填寫）
+    throw err;
   }
   if (res.status === 204) return null;
   return res.json();

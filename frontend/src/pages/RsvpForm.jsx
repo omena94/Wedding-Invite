@@ -67,7 +67,11 @@ export default function RsvpForm() {
       setModal(form.attending ? "yes" : "no");
       setForm(initial);
     } catch (err) {
-      setError(err.message || "送出失敗，請稍後再試");
+      if (err.status === 409) {
+        setModal("dup"); // 重複填寫 → 跳彈窗提示
+      } else {
+        setError(err.message || "送出失敗，請稍後再試");
+      }
     } finally {
       setSubmitting(false);
     }
@@ -282,9 +286,11 @@ export default function RsvpForm() {
         <div className="modal-overlay" onClick={() => setModal(null)}>
           <div className="modal-card" onClick={(e) => e.stopPropagation()}>
             <div className="modal-icon"><Heart size={28} /></div>
-            <h3 className="modal-title">感謝您的回覆！</h3>
+            <h3 className="modal-title">{modal === "dup" ? "您已經填過囉！" : "感謝您的回覆！"}</h3>
             <p className="modal-desc">
-              {modal === "no"
+              {modal === "dup"
+                ? "如果需要修改內容，請直接聯繫宣文或孟庭"
+                : modal === "no"
                 ? "感謝您的暖心祝福！雖然這次無法前來，這份心意我們都好好收下囉"
                 : "我們已收到您的出席意願！待最終日期敲定後，我們會再寄送詳細資訊給您。"}
             </p>
