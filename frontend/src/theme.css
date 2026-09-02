@@ -178,6 +178,7 @@ body::after {
   font-size: 14px; color: var(--text-body); line-height: 1.8;
   margin-bottom: 24px; font-weight: 300;
   display: inline-block; text-align: left; /* 區塊置中、行首字對齊 */
+  position: relative; left: 16px; /* 整段微調往右 */
 }
 .event-details-card {
   background: var(--bg-card-subtle); border-radius: 18px; padding: 18px 20px;
