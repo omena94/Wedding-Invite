@@ -69,7 +69,7 @@ export default function RsvpForm() {
         <p className="announce-title">宣文與孟庭 要結婚啦</p>
         <p className="invitation-quote">
           先調查大家的出席意願來安排舒服的場地<br />
-          待日期場地敲定後，會再將詳細資訊雙手奉上<br />
+          待場地敲定後，會再將詳細資訊雙手奉上<br />
           期待與你們見面喔!!!
         </p>
 
