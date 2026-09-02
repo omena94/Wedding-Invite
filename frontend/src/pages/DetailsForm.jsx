@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Search, Users, Utensils, Baby, Salad, PenLine, Send, PartyPopper, CalendarX } from "lucide-react";
 import Select, { range } from "../components/Select.jsx";
+import EmailInput from "../components/EmailInput.jsx";
 import { fetchConfig, lookupRsvp, submitPhase2 } from "../api.js";
 
 // 主餐選項（要改直接改這裡）
@@ -118,7 +119,7 @@ export default function DetailsForm() {
             </div>
             <div className="form-group">
               <label className="required">請輸入第一階段填寫的 Email 或 電話</label>
-              <input type="text" value={contact} onChange={(e) => setContact(e.target.value)} placeholder="例如 you@email.com 或 0912345678" />
+              <EmailInput type="text" requireAt value={contact} onChange={setContact} placeholder="例如 you@email.com 或 0912345678" />
               <div className="helper-text">我們會用它找到您先前填寫的意願紀錄</div>
             </div>
             {error && <p style={{ color: "var(--rose-accent)", fontSize: 13.5, marginTop: 8 }}>{error}</p>}

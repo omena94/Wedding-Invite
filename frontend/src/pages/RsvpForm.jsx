@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { User, CalendarCheck, Mail, Users, MessageCircle, Calendar, MapPin, Send, Heart, CalendarX, Mars, Venus, Clock, SquareParking } from "lucide-react";
 import Select, { range } from "../components/Select.jsx";
+import EmailInput from "../components/EmailInput.jsx";
 import { fetchConfig, submitPhase1 } from "../api.js";
 
 const initial = {
@@ -176,7 +177,7 @@ export default function RsvpForm() {
               <div className="form-group grid-2">
                 <div>
                   <label className="required">聯絡 Email</label>
-                  <input type="email" value={form.email} onChange={(e) => set("email", e.target.value)} />
+                  <EmailInput value={form.email} onChange={(v) => set("email", v)} />
                   <div className="helper-text">詳細資料將寄送至此</div>
                 </div>
                 <div>

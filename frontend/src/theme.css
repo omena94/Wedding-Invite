@@ -117,6 +117,9 @@ body::after {
 .ui-select.compact { width: auto; min-width: 132px; }
 .ui-select.compact .ui-select-trigger { padding: 10px 12px; font-size: 13.5px; }
 
+/* Email 網域建議 */
+.ui-email { position: relative; width: 100%; }
+
 /* ============ 自訂日期選擇器 ============ */
 .ui-datepicker { position: relative; width: 100%; }
 .ui-datepicker-pop {
