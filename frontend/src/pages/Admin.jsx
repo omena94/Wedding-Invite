@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import {
   Lock, LogIn, Users, Utensils, Baby, Mail, Calendar, PieChart,
-  ClipboardList, Download, Trash2, Armchair, Salad, CalendarClock, Pencil,
+  ClipboardList, Download, Trash2, Armchair, Salad, CalendarClock, Pencil, MessageCircle,
 } from "lucide-react";
 import Select from "../components/Select.jsx";
 import DatePicker from "../components/DatePicker.jsx";
@@ -71,6 +71,7 @@ function Dashboard({ onLogout }) {
   const [attending, setAttending] = useState("");
   const [details, setDetails] = useState("");
   const [editing, setEditing] = useState(null); // 正在編輯的賓客資料
+  const [viewMsg, setViewMsg] = useState(null); // 查看「想說的話」{name, text}
 
   const load = useCallback(async () => {
     setErr("");
@@ -206,7 +207,11 @@ function Dashboard({ onLogout }) {
                         <td className="muted-cell">{r.dietary_note || "—"}</td>
                         <td className="blessing-cell muted-cell">{r.remark || "—"}</td>
                         <td>{r.phone || "—"}</td>
-                        <td className="blessing-cell muted-cell">{r.message || "—"}</td>
+                        <td>
+                          {r.message
+                            ? <button className="btn btn-ghost btn-sm" title="查看想說的話" onClick={() => setViewMsg({ name: r.name, text: r.message })}><MessageCircle size={14} /></button>
+                            : <span className="muted-cell">—</span>}
+                        </td>
                         <td>
                           <select className="inline-input" value={r.manage_status} onChange={(e) => patch(r.id, { manage_status: e.target.value })}>
                             {Object.entries(STATUS_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
@@ -246,6 +251,17 @@ function Dashboard({ onLogout }) {
             <span className="status-dot" />資料即時來自後端資料庫 · 共 {rows.length} 筆
             <br />統計數字有 Redis 快取（若未安裝 Redis 仍可正常運作）。
           </div>
+
+          {viewMsg && (
+            <div className="modal-overlay" onClick={() => setViewMsg(null)}>
+              <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+                <div className="modal-icon"><MessageCircle size={26} /></div>
+                <h3 className="modal-title">{viewMsg.name} 想說的話</h3>
+                <p className="modal-desc" style={{ whiteSpace: "pre-wrap", textAlign: "left" }}>{viewMsg.text}</p>
+                <button className="modal-btn" onClick={() => setViewMsg(null)}>關閉</button>
+              </div>
+            </div>
+          )}
 
           {editing && (
             <EditModal
