@@ -95,7 +95,7 @@ export default function RsvpForm() {
                 >
                   台北美福大飯店
                 </a>
-                <br />（台北市中山區樂群二路55號）
+                <span style={{ display: "block", marginLeft: "-0.5em" }}>（台北市中山區樂群二路55號）</span>
               </span>
             </div>
           </div>
