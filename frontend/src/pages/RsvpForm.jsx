@@ -78,7 +78,17 @@ export default function RsvpForm() {
           </div>
           <div className="detail-item">
             <div className="detail-icon"><MapPin size={16} /></div>
-            <div className="detail-content"><strong>地點：</strong>台北美福大飯店（台北市中山區樂群二路55號）</div>
+            <div className="detail-content">
+              <strong>地點：</strong>
+              <a
+                href="https://maps.app.goo.gl/oLUTYpC5Czfo5SZD6"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ color: "var(--milk-tea-700)", fontWeight: 500, textDecoration: "underline", textUnderlineOffset: 3 }}
+              >
+                台北美福大飯店（台北市中山區樂群二路55號）
+              </a>
+            </div>
           </div>
         </div>
       </header>
