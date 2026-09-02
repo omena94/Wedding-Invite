@@ -185,7 +185,7 @@ function Dashboard({ onLogout }) {
                   <thead>
                     <tr>
                       <th>#</th><th>姓名</th><th>親友</th><th>出席</th><th>日期偏好</th>
-                      <th>大人</th><th>小孩</th><th>詳細</th><th>主餐</th><th>兒童餐</th>
+                      <th>大人</th><th>幼童</th><th>詳細</th><th>主餐</th><th>兒童餐</th>
                       <th>座椅</th><th>素食</th><th>飲食備註</th><th>備註</th><th>電話</th><th>想說的話</th>
                       <th>狀態</th><th>桌號</th><th>內部備註</th><th>時間</th><th></th>
                     </tr>
@@ -254,9 +254,9 @@ function Dashboard({ onLogout }) {
 function StatsCards({ stats }) {
   if (!stats) return null;
   const cards = [
-    { v: stats.total_guests, u: "位", label: "確認出席總人數（大人+小孩）", icon: <Users size={20} /> },
+    { v: stats.total_guests, u: "位", label: "確認出席總人數（大人+幼童）", icon: <Users size={20} /> },
     { v: stats.total_adults, u: "位", label: "大人 · 佔位人數（排桌用）", icon: <Utensils size={20} /> },
-    { v: stats.total_children, u: "位", label: "小孩人數", icon: <Baby size={20} /> },
+    { v: stats.total_children, u: "位", label: "幼童人數", icon: <Baby size={20} /> },
     { v: stats.total_responses, u: "筆", label: `總回覆 · 出席 ${stats.attending_responses} / 不克 ${stats.declined_responses}`, icon: <Mail size={20} /> },
   ];
   return (
