@@ -3,6 +3,7 @@ import {
   Lock, LogIn, Users, Utensils, Baby, Mail, Calendar, PieChart,
   ClipboardList, Download, Trash2, Armchair, Salad,
 } from "lucide-react";
+import Select from "../components/Select.jsx";
 import {
   adminLogin, setToken, clearToken, getToken,
   fetchStats, fetchRsvps, updateRsvp, deleteRsvp, exportCsvUrl,
@@ -151,21 +152,24 @@ function Dashboard({ onLogout }) {
                 <div className="search-box">
                   <input type="text" placeholder="搜尋姓名 / 電話 / Email…" value={search} onChange={(e) => setSearch(e.target.value)} />
                 </div>
-                <select className="filter" value={side} onChange={(e) => setSide(e.target.value)}>
-                  <option value="">全部親友</option>
-                  <option value="groom">男方親友</option>
-                  <option value="bride">女方親友</option>
-                </select>
-                <select className="filter" value={attending} onChange={(e) => setAttending(e.target.value)}>
-                  <option value="">全部出席狀態</option>
-                  <option value="yes">確認出席</option>
-                  <option value="no">無法出席</option>
-                </select>
-                <select className="filter" value={details} onChange={(e) => setDetails(e.target.value)}>
-                  <option value="">全部階段</option>
-                  <option value="done">已填詳細</option>
-                  <option value="pending">待填詳細</option>
-                </select>
+                <Select compact value={side} onChange={setSide}
+                  options={[
+                    { value: "", label: "全部親友" },
+                    { value: "groom", label: "男方親友" },
+                    { value: "bride", label: "女方親友" },
+                  ]} />
+                <Select compact value={attending} onChange={setAttending}
+                  options={[
+                    { value: "", label: "全部出席狀態" },
+                    { value: "yes", label: "確認出席" },
+                    { value: "no", label: "無法出席" },
+                  ]} />
+                <Select compact value={details} onChange={setDetails}
+                  options={[
+                    { value: "", label: "全部階段" },
+                    { value: "done", label: "已填詳細" },
+                    { value: "pending", label: "待填詳細" },
+                  ]} />
                 <button className="btn btn-primary" onClick={downloadCsv}><Download size={15} /> 匯出 Excel/CSV</button>
               </div>
             </div>

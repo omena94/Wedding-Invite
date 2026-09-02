@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { User, CalendarCheck, Mail, Users, MessageCircle, Calendar, MapPin, Send, Heart } from "lucide-react";
+import Select, { range } from "../components/Select.jsx";
 import { submitPhase1 } from "../api.js";
 
 const initial = {
@@ -21,7 +22,6 @@ export default function RsvpForm() {
   const [error, setError] = useState("");
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
-  const num = (k, v) => set(k, parseInt(v, 10));
 
   const onSubmit = async (e) => {
     e.preventDefault();
@@ -151,29 +151,27 @@ export default function RsvpForm() {
 
               <div className="form-group">
                 <label className="required">目前規劃的日期，哪一天比較方便？</label>
-                <select value={form.date_preference} onChange={(e) => set("date_preference", e.target.value)}>
-                  <option value="both">2027.03.06（週六） 與 2027.03.13（週六） 都可以</option>
-                  <option value="0306">2027.03.06（週六）</option>
-                  <option value="0313">2027.03.13（週六）</option>
-                </select>
+                <Select
+                  value={form.date_preference}
+                  onChange={(v) => set("date_preference", v)}
+                  options={[
+                    { value: "both", label: "2027.03.06（週六） 與 2027.03.13（週六） 都可以" },
+                    { value: "0306", label: "2027.03.06（週六）" },
+                    { value: "0313", label: "2027.03.13（週六）" },
+                  ]}
+                />
               </div>
 
               <div className="form-group grid-2">
                 <div>
                   <label className="required">大人人數（含自己）</label>
-                  <select value={form.adult_count} onChange={(e) => num("adult_count", e.target.value)}>
-                    {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
-                      <option key={n} value={n}>{n} 位</option>
-                    ))}
-                  </select>
+                  <Select value={form.adult_count} onChange={(v) => set("adult_count", v)}
+                    options={range(1, 10, (n) => `${n} 位`)} />
                 </div>
                 <div>
                   <label>幼童人數</label>
-                  <select value={form.child_count} onChange={(e) => num("child_count", e.target.value)}>
-                    {Array.from({ length: 11 }, (_, i) => i).map((n) => (
-                      <option key={n} value={n}>{n === 0 ? "0 位" : `${n} 位幼童`}</option>
-                    ))}
-                  </select>
+                  <Select value={form.child_count} onChange={(v) => set("child_count", v)}
+                    options={range(0, 10, (n) => (n === 0 ? "0 位" : `${n} 位幼童`))} />
                 </div>
               </div>
             </section>

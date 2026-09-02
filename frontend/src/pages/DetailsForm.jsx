@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Search, Users, Utensils, Baby, Salad, PenLine, Send, PartyPopper } from "lucide-react";
+import Select, { range } from "../components/Select.jsx";
 import { lookupRsvp, submitPhase2 } from "../api.js";
 
 // 主餐選項（要改直接改這裡）
@@ -23,9 +24,8 @@ export default function DetailsForm() {
     remark: "",
   });
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
-  const num = (k, v) => set(k, parseInt(v, 10));
   const setMain = (dish, v) =>
-    setForm((f) => ({ ...f, main_course: { ...f.main_course, [dish]: parseInt(v, 10) } }));
+    setForm((f) => ({ ...f, main_course: { ...f.main_course, [dish]: v } }));
 
   const mainTotal = Object.values(form.main_course).reduce((a, b) => a + (b || 0), 0);
 
@@ -133,19 +133,13 @@ export default function DetailsForm() {
             <div className="form-group grid-2">
               <div>
                 <label className="required">大人人數（含自己）</label>
-                <select value={form.adult_count} onChange={(e) => num("adult_count", e.target.value)}>
-                  {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
-                    <option key={n} value={n}>{n} 位</option>
-                  ))}
-                </select>
+                <Select value={form.adult_count} onChange={(v) => set("adult_count", v)}
+                  options={range(1, 10, (n) => `${n} 位`)} />
               </div>
               <div>
                 <label>幼童人數</label>
-                <select value={form.child_count} onChange={(e) => num("child_count", e.target.value)}>
-                  {Array.from({ length: 11 }, (_, i) => i).map((n) => (
-                    <option key={n} value={n}>{n === 0 ? "0 位" : `${n} 位幼童`}</option>
-                  ))}
-                </select>
+                <Select value={form.child_count} onChange={(v) => set("child_count", v)}
+                  options={range(0, 10, (n) => (n === 0 ? "0 位" : `${n} 位幼童`))} />
               </div>
             </div>
           </section>
@@ -162,20 +156,14 @@ export default function DetailsForm() {
             {MAIN_DISHES.map((dish) => (
               <div className="form-group grid-2" key={dish} style={{ alignItems: "center", marginBottom: 12 }}>
                 <label style={{ margin: 0 }}>{dish}</label>
-                <select value={form.main_course[dish]} onChange={(e) => setMain(dish, e.target.value)}>
-                  {Array.from({ length: 11 }, (_, i) => i).map((n) => (
-                    <option key={n} value={n}>{n} 份</option>
-                  ))}
-                </select>
+                <Select value={form.main_course[dish]} onChange={(v) => setMain(dish, v)}
+                  options={range(0, 10, (n) => `${n} 份`)} />
               </div>
             ))}
             <div className="form-group">
               <label>兒童餐點</label>
-              <select value={form.kids_meal_count} onChange={(e) => num("kids_meal_count", e.target.value)}>
-                {Array.from({ length: 11 }, (_, i) => i).map((n) => (
-                  <option key={n} value={n}>{n === 0 ? "不需要兒童餐點" : `需要 ${n} 份兒童餐點`}</option>
-                ))}
-              </select>
+              <Select value={form.kids_meal_count} onChange={(v) => set("kids_meal_count", v)}
+                options={range(0, 10, (n) => (n === 0 ? "不需要兒童餐點" : `需要 ${n} 份兒童餐點`))} />
               <div className="helper-text">如有幼童需要另外準備的兒童餐點，請在此填寫份數</div>
             </div>
           </section>
@@ -188,11 +176,8 @@ export default function DetailsForm() {
             </div>
             <div className="form-group">
               <label>兒童座椅需求</label>
-              <select value={form.baby_chair_count} onChange={(e) => num("baby_chair_count", e.target.value)}>
-                {[0, 1, 2, 3].map((n) => (
-                  <option key={n} value={n}>{n === 0 ? "不需要兒童座椅" : n === 3 ? "需要 3 張以上" : `需要 ${n} 張兒童座椅`}</option>
-                ))}
-              </select>
+              <Select value={form.baby_chair_count} onChange={(v) => set("baby_chair_count", v)}
+                options={range(0, 3, (n) => (n === 0 ? "不需要兒童座椅" : n === 3 ? "需要 3 張以上" : `需要 ${n} 張兒童座椅`))} />
             </div>
           </section>
 
@@ -204,12 +189,13 @@ export default function DetailsForm() {
             </div>
             <div className="form-group">
               <label>素食類型（若有選素食主餐）</label>
-              <select value={form.veg_type} onChange={(e) => set("veg_type", e.target.value)}>
-                <option value="無">無</option>
-                <option value="蛋奶素">蛋奶素 (Lacto-Ovo)</option>
-                <option value="全素/純素">全素 / 純素 (Vegan)</option>
-                <option value="鍋邊素">鍋邊素</option>
-              </select>
+              <Select value={form.veg_type} onChange={(v) => set("veg_type", v)}
+                options={[
+                  { value: "無", label: "無" },
+                  { value: "蛋奶素", label: "蛋奶素 (Lacto-Ovo)" },
+                  { value: "全素/純素", label: "全素 / 純素 (Vegan)" },
+                  { value: "鍋邊素", label: "鍋邊素" },
+                ]} />
             </div>
             <div className="form-group">
               <label>食物過敏提醒</label>

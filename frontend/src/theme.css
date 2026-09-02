@@ -80,6 +80,43 @@ body::after {
 .hero-image { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform 0.3s ease; }
 .hero-image:hover { transform: scale(1.03); }
 
+/* ============ 自訂下拉選單 ============ */
+.ui-select { position: relative; width: 100%; }
+.ui-select-trigger {
+  width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 13px 16px; border: 1.5px solid var(--border-highlight); border-radius: var(--radius-input);
+  font-size: 14px; color: var(--text-dark); background: #fffcfa; cursor: pointer;
+  font-family: inherit; text-align: left; transition: all 0.25s ease; outline: none;
+}
+.ui-select-trigger:hover { border-color: var(--milk-tea-300); }
+.ui-select.open .ui-select-trigger,
+.ui-select-trigger:focus-visible {
+  border-color: var(--milk-tea-500); background: #fff;
+  box-shadow: 0 0 0 4px rgba(178, 143, 112, 0.12);
+}
+.ui-select-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ui-select-chev { color: var(--text-muted); flex-shrink: 0; transition: transform 0.2s ease; }
+.ui-select.open .ui-select-chev { transform: rotate(180deg); color: var(--milk-tea-700); }
+.ui-select-menu {
+  position: absolute; z-index: 60; top: calc(100% + 6px); left: 0; right: 0;
+  background: #fff; border: 1px solid var(--border-soft); border-radius: 14px;
+  box-shadow: 0 14px 34px rgba(126, 96, 71, 0.16); padding: 6px; margin: 0; list-style: none;
+  max-height: 264px; overflow-y: auto;
+  animation: selectPop 0.16s cubic-bezier(0.4, 0, 0.2, 1);
+}
+@keyframes selectPop { 0% { opacity: 0; transform: translateY(-5px); } 100% { opacity: 1; transform: translateY(0); } }
+.ui-select-option {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 10px 12px; border-radius: 10px; font-size: 14px; color: var(--text-body);
+  cursor: pointer; transition: background 0.15s ease;
+}
+.ui-select-option:hover { background: var(--milk-tea-50); color: var(--milk-tea-900); }
+.ui-select-option.selected { background: var(--milk-tea-100); color: var(--milk-tea-900); font-weight: 600; }
+.ui-select-option svg { color: var(--milk-tea-700); flex-shrink: 0; }
+/* 後台篩選列的小尺寸 */
+.ui-select.compact { width: auto; min-width: 132px; }
+.ui-select.compact .ui-select-trigger { padding: 10px 12px; font-size: 13.5px; }
+
 /* Lucide 線條圖示統一樣式 */
 .section-header-title svg,
 .panel-title svg,
