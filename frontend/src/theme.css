@@ -132,6 +132,30 @@ body::after {
 /* Email 網域建議 */
 .ui-email { position: relative; width: 100%; }
 
+/* SweetAlert2 奶茶主題 */
+.swal2-popup {
+  font-family: "Plus Jakarta Sans", "Noto Serif TC", serif, sans-serif !important;
+  border-radius: 24px !important;
+  border: 1px solid var(--border-soft);
+}
+.swal2-title {
+  font-family: "Noto Serif TC", serif !important;
+  color: var(--milk-tea-900) !important;
+  font-size: 21px !important;
+}
+.swal2-html-container {
+  font-size: 14px !important;
+  color: var(--text-body) !important;
+  line-height: 1.7 !important;
+}
+.swal2-confirm {
+  border-radius: 14px !important;
+  font-weight: 600 !important;
+  letter-spacing: 1px !important;
+  padding: 10px 28px !important;
+  box-shadow: 0 6px 18px rgba(178, 143, 112, 0.28) !important;
+}
+
 /* 欄位驗證錯誤 */
 input.input-error, textarea.input-error {
   border-color: var(--rose-accent) !important;

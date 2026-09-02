@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { User, CalendarCheck, Mail, Users, MessageCircle, Calendar, MapPin, Send, Heart, CalendarX, Mars, Venus, Clock, SquareParking } from "lucide-react";
+import Swal from "sweetalert2";
+import { User, CalendarCheck, Mail, Users, MessageCircle, Calendar, MapPin, Send, CalendarX, Mars, Venus, Clock, SquareParking } from "lucide-react";
 import Select, { range } from "../components/Select.jsx";
 import EmailInput from "../components/EmailInput.jsx";
 import { fetchConfig, submitPhase1 } from "../api.js";
@@ -21,7 +22,6 @@ const initial = {
 export default function RsvpForm() {
   const [form, setForm] = useState(initial);
   const [submitting, setSubmitting] = useState(false);
-  const [modal, setModal] = useState(null); // null | "yes" | "no"
   const [error, setError] = useState("");
   const [fieldErrors, setFieldErrors] = useState({}); // 各欄位驗證錯誤
   const [closed, setClosed] = useState(false); // 是否已過截止日
@@ -64,11 +64,26 @@ export default function RsvpForm() {
         phone: normalizePhone(form.phone),
       };
       await submitPhase1(payload);
-      setModal(form.attending ? "yes" : "no");
+      Swal.fire({
+        icon: "success",
+        title: "感謝您的回覆！",
+        text: form.attending
+          ? "我們已收到您的出席意願！待統計完畢會再另行通知詳細資訊。"
+          : "感謝您的暖心祝福！雖然這次無法前來，這份心意我們都好好收下囉",
+        confirmButtonText: "好的",
+        confirmButtonColor: "#B28F70",
+      });
       setForm(initial);
     } catch (err) {
       if (err.status === 409) {
-        setModal("dup"); // 重複填寫 → 跳彈窗提示
+        // 重複填寫 → SweetAlert 提示
+        Swal.fire({
+          icon: "warning",
+          title: "您已經填過囉！",
+          text: "如果需要修改內容，請直接聯繫宣文或孟庭",
+          confirmButtonText: "好的",
+          confirmButtonColor: "#B28F70",
+        });
       } else {
         setError(err.message || "送出失敗，請稍後再試");
       }
@@ -282,22 +297,6 @@ export default function RsvpForm() {
       </form>
       )}
 
-      {modal && (
-        <div className="modal-overlay" onClick={() => setModal(null)}>
-          <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-icon"><Heart size={28} /></div>
-            <h3 className="modal-title">{modal === "dup" ? "您已經填過囉！" : "感謝您的回覆！"}</h3>
-            <p className="modal-desc">
-              {modal === "dup"
-                ? "如果需要修改內容，請直接聯繫宣文或孟庭"
-                : modal === "no"
-                ? "感謝您的暖心祝福！雖然這次無法前來，這份心意我們都好好收下囉"
-                : "我們已收到您的出席意願！待統計完畢會再另行通知詳細資訊。"}
-            </p>
-            <button className="modal-btn" onClick={() => setModal(null)}>好的</button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import Swal from "sweetalert2";
 import { Search, Users, Utensils, Baby, Salad, PenLine, Send, PartyPopper, CalendarX } from "lucide-react";
 import Select, { range } from "../components/Select.jsx";
 import EmailInput from "../components/EmailInput.jsx";
@@ -86,6 +87,13 @@ export default function DetailsForm() {
     try {
       const c = contact.trim();
       await submitPhase2({ contact: isValidPhone(c) ? normalizePhone(c) : c, ...form });
+      Swal.fire({
+        icon: "success",
+        title: "已收到，感謝您！",
+        text: "您的座位與餐飲細節我們已經記錄下來，期待與您相聚",
+        confirmButtonText: "好的",
+        confirmButtonColor: "#B28F70",
+      });
       setStep("done");
     } catch (err) {
       setError(err.message);
