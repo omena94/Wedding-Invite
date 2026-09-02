@@ -10,7 +10,7 @@ const DOMAINS = ["gmail.com", "yahoo.com.tw", "yahoo.com", "icloud.com", "hotmai
  *  - type: input 類型（預設 email）
  *  - requireAt: true 時要打出 @ 才顯示建議（給「Email 或電話」混用欄位，避免打電話號碼時跳建議）
  */
-export default function EmailInput({ value, onChange, type = "email", placeholder, requireAt = false }) {
+export default function EmailInput({ value, onChange, type = "email", placeholder, requireAt = false, invalid = false }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
 
@@ -51,6 +51,7 @@ export default function EmailInput({ value, onChange, type = "email", placeholde
         value={value}
         placeholder={placeholder}
         autoComplete="off"
+        className={invalid ? "input-error" : undefined}
         onChange={(e) => {
           onChange(e.target.value);
           setOpen(true);

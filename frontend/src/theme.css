@@ -132,6 +132,13 @@ body::after {
 /* Email 網域建議 */
 .ui-email { position: relative; width: 100%; }
 
+/* 欄位驗證錯誤 */
+input.input-error, textarea.input-error {
+  border-color: var(--rose-accent) !important;
+  box-shadow: 0 0 0 4px rgba(195, 139, 124, 0.12) !important;
+}
+.field-error { font-size: 12px; color: var(--rose-accent); margin-top: 5px; line-height: 1.5; }
+
 /* ============ 自訂日期選擇器 ============ */
 .ui-datepicker { position: relative; width: 100%; }
 .ui-datepicker-pop {

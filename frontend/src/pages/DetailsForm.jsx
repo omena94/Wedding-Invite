@@ -3,6 +3,7 @@ import { Search, Users, Utensils, Baby, Salad, PenLine, Send, PartyPopper, Calen
 import Select, { range } from "../components/Select.jsx";
 import EmailInput from "../components/EmailInput.jsx";
 import { fetchConfig, lookupRsvp, submitPhase2 } from "../api.js";
+import { isValidEmail, isValidPhone, normalizePhone } from "../validators.js";
 
 // 主餐選項（要改直接改這裡）
 const MAIN_DISHES = ["牛排", "雞腿排", "鮭魚排", "素食"];
@@ -40,10 +41,13 @@ export default function DetailsForm() {
   const doLookup = async (e) => {
     e.preventDefault();
     setError("");
-    if (!contact.trim()) return setError("請輸入您第一階段填寫的 Email 或電話");
+    const c = contact.trim();
+    if (!c) return setError("請輸入您第一階段填寫的 Email 或電話");
+    if (!isValidEmail(c) && !isValidPhone(c))
+      return setError("格式不正確，請輸入有效的 Email 或 09 開頭的 10 碼手機號碼");
     setBusy(true);
     try {
-      const r = await lookupRsvp(contact.trim());
+      const r = await lookupRsvp(isValidPhone(c) ? normalizePhone(c) : c);
       if (!r.found) {
         setError("找不到您的意願調查紀錄。請確認 Email／電話與第一階段相同，或先完成第一階段。");
       } else if (!r.attending) {
@@ -76,7 +80,8 @@ export default function DetailsForm() {
     setError("");
     setBusy(true);
     try {
-      await submitPhase2({ contact: contact.trim(), ...form });
+      const c = contact.trim();
+      await submitPhase2({ contact: isValidPhone(c) ? normalizePhone(c) : c, ...form });
       setStep("done");
     } catch (err) {
       setError(err.message);
@@ -119,7 +124,14 @@ export default function DetailsForm() {
             </div>
             <div className="form-group">
               <label className="required">請輸入第一階段填寫的 Email 或 電話</label>
-              <EmailInput type="text" requireAt value={contact} onChange={setContact} placeholder="例如 you@email.com 或 0912345678" />
+              <EmailInput
+                type="text"
+                requireAt
+                value={contact}
+                onChange={(v) => { setContact(v); setError(""); }}
+                placeholder="例如 you@email.com 或 0912345678"
+                invalid={!!error}
+              />
               <div className="helper-text">我們會用它找到您先前填寫的意願紀錄</div>
             </div>
             {error && <p style={{ color: "var(--rose-accent)", fontSize: 13.5, marginTop: 8 }}>{error}</p>}

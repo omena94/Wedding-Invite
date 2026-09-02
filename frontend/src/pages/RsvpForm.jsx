@@ -3,6 +3,7 @@ import { User, CalendarCheck, Mail, Users, MessageCircle, Calendar, MapPin, Send
 import Select, { range } from "../components/Select.jsx";
 import EmailInput from "../components/EmailInput.jsx";
 import { fetchConfig, submitPhase1 } from "../api.js";
+import { nameError, emailError, phoneError, normalizePhone } from "../validators.js";
 
 const initial = {
   name: "",
@@ -22,6 +23,7 @@ export default function RsvpForm() {
   const [submitting, setSubmitting] = useState(false);
   const [modal, setModal] = useState(null); // null | "yes" | "no"
   const [error, setError] = useState("");
+  const [fieldErrors, setFieldErrors] = useState({}); // 各欄位驗證錯誤
   const [closed, setClosed] = useState(false); // 是否已過截止日
 
   useEffect(() => {
@@ -30,19 +32,37 @@ export default function RsvpForm() {
       .catch(() => {}); // 查不到設定時照常開放
   }, []);
 
-  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+  const set = (k, v) => {
+    setForm((f) => ({ ...f, [k]: v }));
+    // 使用者修改欄位時，清掉該欄位的錯誤提示
+    setFieldErrors((fe) => (fe[k] ? { ...fe, [k]: "" } : fe));
+  };
 
   const onSubmit = async (e) => {
     e.preventDefault();
     setError("");
-    if (!form.name.trim()) return setError("請填寫您的姓名");
-    if (form.attending && (!form.email.trim() || !form.phone.trim()))
-      return setError("出席者請留下 Email 與電話，方便後續寄送詳細通知");
+
+    // 逐欄驗證（Email/電話僅在「出席」時必填）
+    const errs = {
+      name: nameError(form.name),
+      email: form.attending ? emailError(form.email) : (form.email.trim() ? emailError(form.email, false) : ""),
+      phone: form.attending ? phoneError(form.phone) : (form.phone.trim() ? phoneError(form.phone, false) : ""),
+    };
+    if (errs.name || errs.email || errs.phone) {
+      setFieldErrors(errs);
+      setError("請檢查紅框欄位的內容");
+      return;
+    }
+    setFieldErrors({});
 
     setSubmitting(true);
     try {
-      const payload = { ...form, name: form.name.trim(), email: form.email.trim(), phone: form.phone.trim() };
-      if (!form.attending) { payload.email = form.email.trim(); payload.phone = form.phone.trim(); }
+      const payload = {
+        ...form,
+        name: form.name.trim(),
+        email: form.email.trim().toLowerCase(),
+        phone: normalizePhone(form.phone),
+      };
       await submitPhase1(payload);
       setModal(form.attending ? "yes" : "no");
       setForm(initial);
@@ -135,7 +155,14 @@ export default function RsvpForm() {
 
           <div className="form-group">
             <label className="required">您的姓名</label>
-            <input type="text" value={form.name} onChange={(e) => set("name", e.target.value)} required />
+            <input
+              type="text"
+              value={form.name}
+              onChange={(e) => set("name", e.target.value)}
+              className={fieldErrors.name ? "input-error" : undefined}
+              required
+            />
+            {fieldErrors.name && <div className="field-error">{fieldErrors.name}</div>}
           </div>
 
           <div className="form-group">
@@ -185,12 +212,22 @@ export default function RsvpForm() {
               <div className="form-group grid-2">
                 <div>
                   <label className="required">聯絡 Email</label>
-                  <EmailInput value={form.email} onChange={(v) => set("email", v)} />
-                  <div className="helper-text">詳細資料將寄送至此</div>
+                  <EmailInput value={form.email} onChange={(v) => set("email", v)} invalid={!!fieldErrors.email} />
+                  {fieldErrors.email
+                    ? <div className="field-error">{fieldErrors.email}</div>
+                    : <div className="helper-text">詳細資料將寄送至此</div>}
                 </div>
                 <div>
                   <label className="required">聯絡電話</label>
-                  <input type="tel" value={form.phone} onChange={(e) => set("phone", e.target.value)} />
+                  <input
+                    type="tel"
+                    inputMode="tel"
+                    placeholder="0912345678"
+                    value={form.phone}
+                    onChange={(e) => set("phone", e.target.value)}
+                    className={fieldErrors.phone ? "input-error" : undefined}
+                  />
+                  {fieldErrors.phone && <div className="field-error">{fieldErrors.phone}</div>}
                 </div>
               </div>
             </section>
