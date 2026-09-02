@@ -133,7 +133,7 @@ function Dashboard({ onLogout }) {
 
       <div className="page-head">
         <p className="script-title">Guest Dashboard</p>
-        <p className="english-sub">Alan &amp; Omena · 2027 春</p>
+        <p className="english-sub">Alan &amp; Omena · 2027 March</p>
         <h1>婚禮出席統計後台</h1>
       </div>
 
