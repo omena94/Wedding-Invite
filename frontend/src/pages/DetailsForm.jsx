@@ -156,7 +156,7 @@ export default function DetailsForm() {
               <div>
                 <label>小孩人數</label>
                 <Select value={form.child_count} onChange={(v) => set("child_count", v)}
-                  options={range(0, 10, (n) => (n === 0 ? "0 位" : `${n} 位小孩`))} />
+                  options={range(0, 10, (n) => `${n} 位`)} />
               </div>
             </div>
           </section>
