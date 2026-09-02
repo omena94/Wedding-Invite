@@ -13,7 +13,6 @@ import {
 
 const SIDE_LABEL = { groom: "男方", bride: "女方" };
 const STATUS_LABEL = { new: "待處理", contacted: "已聯絡", seated: "已排桌" };
-const DATE_LABEL = { both: "都可以", "0306": "2027.03.06（週六）", "0313": "2027.03.13（週六）" };
 
 export default function Admin() {
   const [authed, setAuthed] = useState(!!getToken());
@@ -184,7 +183,7 @@ function Dashboard({ onLogout }) {
                 <table>
                   <thead>
                     <tr>
-                      <th>#</th><th>姓名</th><th>親友</th><th>出席</th><th>日期偏好</th>
+                      <th>#</th><th>姓名</th><th>親友</th><th>出席</th>
                       <th>大人</th><th>幼童</th><th>詳細</th><th>主餐</th><th>兒童餐</th>
                       <th>座椅</th><th>素食</th><th>飲食備註</th><th>備註</th><th>電話</th><th>想說的話</th>
                       <th>狀態</th><th>桌號</th><th>內部備註</th><th>時間</th><th></th>
@@ -197,7 +196,6 @@ function Dashboard({ onLogout }) {
                         <td><strong>{r.name}</strong></td>
                         <td><span className={`pill ${r.side === "bride" ? "pill-bride" : "pill-groom"}`}>{SIDE_LABEL[r.side] || r.side}</span></td>
                         <td><span className={`pill ${r.attending ? "pill-yes" : "pill-no"}`}>{r.attending ? "出席" : "不克"}</span></td>
-                        <td className="muted-cell">{r.attending ? (DATE_LABEL[r.date_preference] || "—") : "—"}</td>
                         <td>{r.attending ? r.adult_count : "—"}</td>
                         <td>{r.attending ? r.child_count : "—"}</td>
                         <td>{r.attending ? <span className={`pill ${r.details_completed ? "pill-yes" : "pill-no"}`}>{r.details_completed ? "已填" : "待填"}</span> : "—"}</td>
