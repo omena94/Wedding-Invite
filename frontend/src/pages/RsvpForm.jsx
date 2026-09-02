@@ -292,7 +292,7 @@ export default function RsvpForm() {
                 ? "如果需要修改內容，請直接聯繫宣文或孟庭"
                 : modal === "no"
                 ? "感謝您的暖心祝福！雖然這次無法前來，這份心意我們都好好收下囉"
-                : "我們已收到您的出席意願！待最終日期敲定後，我們會再寄送詳細資訊給您。"}
+                : "我們已收到您的出席意願！待統計完畢會再另行通知詳細資訊。"}
             </p>
             <button className="modal-btn" onClick={() => setModal(null)}>好的</button>
           </div>
