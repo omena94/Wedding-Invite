@@ -78,7 +78,7 @@ export default function RsvpForm() {
           </div>
           <div className="detail-item">
             <div className="detail-icon"><MapPin size={16} /></div>
-            <div className="detail-content"><strong>地點：</strong>台北美福大飯店</div>
+            <div className="detail-content"><strong>地點：</strong>台北美福大飯店（台北市中山區樂群二路55號）</div>
           </div>
         </div>
       </header>
