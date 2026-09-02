@@ -159,11 +159,11 @@ export default function RsvpForm() {
             <div className="radio-grid">
               <div className="radio-card">
                 <input type="radio" name="attending" checked={form.attending === true} onChange={() => set("attending", true)} />
-                <div className="radio-box"><span>Yes 期待出席</span></div>
+                <div className="radio-box"><span>Yes　期待出席</span></div>
               </div>
               <div className="radio-card">
                 <input type="radio" name="attending" checked={form.attending === false} onChange={() => set("attending", false)} />
-                <div className="radio-box"><span>No 無法出席</span></div>
+                <div className="radio-box"><span>No　不克前往</span></div>
               </div>
             </div>
           </div>
