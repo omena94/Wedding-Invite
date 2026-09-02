@@ -154,9 +154,9 @@ export default function DetailsForm() {
                   options={range(1, 10, (n) => `${n} 位`)} />
               </div>
               <div>
-                <label>幼童人數</label>
+                <label>小孩人數</label>
                 <Select value={form.child_count} onChange={(v) => set("child_count", v)}
-                  options={range(0, 10, (n) => (n === 0 ? "0 位" : `${n} 位幼童`))} />
+                  options={range(0, 10, (n) => (n === 0 ? "0 位" : `${n} 位小孩`))} />
               </div>
             </div>
           </section>
@@ -181,7 +181,7 @@ export default function DetailsForm() {
               <label>兒童餐點</label>
               <Select value={form.kids_meal_count} onChange={(v) => set("kids_meal_count", v)}
                 options={range(0, 10, (n) => (n === 0 ? "不需要兒童餐點" : `需要 ${n} 份兒童餐點`))} />
-              <div className="helper-text">如有幼童需要另外準備的兒童餐點，請在此填寫份數</div>
+              <div className="helper-text">如有小孩需要另外準備的兒童餐點，請在此填寫份數</div>
             </div>
           </section>
 

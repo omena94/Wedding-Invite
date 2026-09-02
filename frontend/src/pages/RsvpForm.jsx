@@ -185,9 +185,9 @@ export default function RsvpForm() {
                     options={range(1, 10, (n) => `${n} 位`)} />
                 </div>
                 <div>
-                  <label>幼童人數</label>
+                  <label>小孩人數</label>
                   <Select value={form.child_count} onChange={(v) => set("child_count", v)}
-                    options={range(0, 10, (n) => (n === 0 ? "0 位" : `${n} 位幼童`))} />
+                    options={range(0, 10, (n) => (n === 0 ? "0 位" : `${n} 位小孩`))} />
                 </div>
               </div>
             </section>
