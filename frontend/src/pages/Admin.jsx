@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import {
   Lock, LogIn, Users, Utensils, Baby, Mail, Calendar, PieChart,
-  ClipboardList, Download, Trash2, Armchair, Salad, CalendarClock,
+  ClipboardList, Download, Trash2, Armchair, Salad, CalendarClock, Pencil,
 } from "lucide-react";
 import Select from "../components/Select.jsx";
 import DatePicker from "../components/DatePicker.jsx";
@@ -71,6 +71,7 @@ function Dashboard({ onLogout }) {
   const [side, setSide] = useState("");
   const [attending, setAttending] = useState("");
   const [details, setDetails] = useState("");
+  const [editing, setEditing] = useState(null); // 正在編輯的賓客資料
 
   const load = useCallback(async () => {
     setErr("");
@@ -232,7 +233,10 @@ function Dashboard({ onLogout }) {
                           />
                         </td>
                         <td className="muted-cell" style={{ whiteSpace: "nowrap" }}>{fmtTime(r.created_at)}</td>
-                        <td><button className="btn btn-ghost btn-sm" onClick={() => remove(r.id, r.name)}><Trash2 size={14} /></button></td>
+                        <td style={{ whiteSpace: "nowrap" }}>
+                          <button className="btn btn-ghost btn-sm" title="編輯資料" onClick={() => setEditing(r)}><Pencil size={14} /></button>{" "}
+                          <button className="btn btn-ghost btn-sm" title="刪除" onClick={() => remove(r.id, r.name)}><Trash2 size={14} /></button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -245,8 +249,189 @@ function Dashboard({ onLogout }) {
             <span className="status-dot" />資料即時來自後端資料庫 · 共 {rows.length} 筆
             <br />統計數字有 Redis 快取（若未安裝 Redis 仍可正常運作）。
           </div>
+
+          {editing && (
+            <EditModal
+              row={editing}
+              onClose={() => setEditing(null)}
+              onSaved={(updated) => {
+                setRows((rs) => rs.map((r) => (r.id === updated.id ? updated : r)));
+                fetchStats().then(setStats).catch(() => {});
+                setEditing(null);
+              }}
+            />
+          )}
         </>
       )}
+    </div>
+  );
+}
+
+/* ---------- 編輯賓客資料視窗 ---------- */
+const EDIT_DISHES = ["牛排", "雞腿排", "鮭魚排", "素食"];
+const numOpts = (from, to, unit = "") =>
+  Array.from({ length: to - from + 1 }, (_, i) => ({ value: from + i, label: `${from + i}${unit}` }));
+
+function EditModal({ row, onClose, onSaved }) {
+  const [f, setF] = useState({
+    ...row,
+    table_no: row.table_no ?? "",
+    main_course: { ...Object.fromEntries(EDIT_DISHES.map((d) => [d, 0])), ...(row.main_course || {}) },
+  });
+  const [busy, setBusy] = useState(false);
+  const set = (k, v) => setF((x) => ({ ...x, [k]: v }));
+  const setMain = (d, v) => setF((x) => ({ ...x, main_course: { ...x.main_course, [d]: v } }));
+
+  const save = async () => {
+    if (!String(f.name).trim()) return alert("姓名不能空白");
+    setBusy(true);
+    try {
+      const updated = await updateRsvp(row.id, {
+        name: String(f.name).trim(),
+        side: f.side,
+        attending: f.attending,
+        email: f.email || "",
+        phone: f.phone || "",
+        adult_count: f.adult_count,
+        child_count: f.child_count,
+        message: f.message || "",
+        details_completed: f.details_completed,
+        main_course: f.main_course,
+        kids_meal_count: f.kids_meal_count,
+        baby_chair_count: f.baby_chair_count,
+        veg_type: f.veg_type || "無",
+        dietary_note: f.dietary_note || "",
+        remark: f.remark || "",
+        manage_status: f.manage_status,
+        table_no: f.table_no === "" ? null : parseInt(f.table_no, 10),
+        admin_note: f.admin_note || "",
+      });
+      onSaved(updated);
+    } catch (e) {
+      alert(e.message || "儲存失敗");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-card wide" onClick={(e) => e.stopPropagation()}>
+        <div className="edit-modal-title"><Pencil size={17} /> 編輯賓客資料 — {row.name}</div>
+
+        <div className="form-group grid-2">
+          <div>
+            <label>姓名</label>
+            <input type="text" value={f.name} onChange={(e) => set("name", e.target.value)} />
+          </div>
+          <div>
+            <label>親友方</label>
+            <Select value={f.side} onChange={(v) => set("side", v)}
+              options={[{ value: "groom", label: "男方親友" }, { value: "bride", label: "女方親友" }]} />
+          </div>
+        </div>
+
+        <div className="form-group grid-2">
+          <div>
+            <label>Email</label>
+            <input type="text" value={f.email} onChange={(e) => set("email", e.target.value)} />
+          </div>
+          <div>
+            <label>電話</label>
+            <input type="text" value={f.phone} onChange={(e) => set("phone", e.target.value)} />
+          </div>
+        </div>
+
+        <div className="form-group grid-2">
+          <div>
+            <label>出席狀態</label>
+            <Select value={f.attending} onChange={(v) => set("attending", v === true || v === "true")}
+              options={[{ value: true, label: "出席" }, { value: false, label: "不克前往" }]} />
+          </div>
+          <div>
+            <label>詳細資料</label>
+            <Select value={f.details_completed} onChange={(v) => set("details_completed", v === true || v === "true")}
+              options={[{ value: false, label: "未填" }, { value: true, label: "已填" }]} />
+          </div>
+        </div>
+
+        <div className="form-group grid-2">
+          <div>
+            <label>大人人數</label>
+            <Select value={f.adult_count} onChange={(v) => set("adult_count", v)} options={numOpts(0, 15, " 位")} />
+          </div>
+          <div>
+            <label>小孩人數</label>
+            <Select value={f.child_count} onChange={(v) => set("child_count", v)} options={numOpts(0, 15, " 位")} />
+          </div>
+        </div>
+
+        <div className="form-group">
+          <label>主餐份數</label>
+          <div className="grid-2">
+            {EDIT_DISHES.map((d) => (
+              <div key={d} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 13, minWidth: 48 }}>{d}</span>
+                <Select value={f.main_course[d]} onChange={(v) => setMain(d, v)} options={numOpts(0, 15, " 份")} />
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="form-group grid-2">
+          <div>
+            <label>兒童餐點</label>
+            <Select value={f.kids_meal_count} onChange={(v) => set("kids_meal_count", v)} options={numOpts(0, 15, " 份")} />
+          </div>
+          <div>
+            <label>兒童座椅</label>
+            <Select value={f.baby_chair_count} onChange={(v) => set("baby_chair_count", v)} options={numOpts(0, 15, " 張")} />
+          </div>
+        </div>
+
+        <div className="form-group grid-2">
+          <div>
+            <label>素食類型</label>
+            <Select value={f.veg_type} onChange={(v) => set("veg_type", v)}
+              options={[
+                { value: "無", label: "無" },
+                { value: "蛋奶素", label: "蛋奶素" },
+                { value: "全素/純素", label: "全素/純素" },
+                { value: "鍋邊素", label: "鍋邊素" },
+              ]} />
+          </div>
+          <div>
+            <label>飲食備註 / 過敏</label>
+            <input type="text" value={f.dietary_note} onChange={(e) => set("dietary_note", e.target.value)} />
+          </div>
+        </div>
+
+        <div className="form-group">
+          <label>賓客備註</label>
+          <input type="text" value={f.remark} onChange={(e) => set("remark", e.target.value)} />
+        </div>
+
+        <div className="form-group">
+          <label>想說的話</label>
+          <textarea rows={2} value={f.message} onChange={(e) => set("message", e.target.value)} />
+        </div>
+
+        <div className="form-group grid-2">
+          <div>
+            <label>桌號</label>
+            <input type="number" min="0" value={f.table_no} onChange={(e) => set("table_no", e.target.value)} />
+          </div>
+          <div>
+            <label>內部備註</label>
+            <input type="text" value={f.admin_note} onChange={(e) => set("admin_note", e.target.value)} />
+          </div>
+        </div>
+
+        <div className="edit-modal-actions">
+          <button className="btn btn-ghost" onClick={onClose} disabled={busy}>取消</button>
+          <button className="btn btn-primary" onClick={save} disabled={busy}>{busy ? "儲存中…" : "儲存變更"}</button>
+        </div>
+      </div>
     </div>
   );
 }

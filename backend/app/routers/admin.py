@@ -1,6 +1,7 @@
 """後台 API：登入、名單、統計、更新、匯出（需登入）。"""
 import csv
 import io
+import json
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
@@ -141,16 +142,27 @@ def get_stats(db: Session = Depends(get_db)):
     return stats
 
 
-# ===== 更新（排桌/狀態/備註）=====
+# ===== 更新（可修正賓客資料 / 排桌 / 狀態 / 備註）=====
 @router.patch("/rsvps/{rsvp_id}", response_model=RsvpOut, dependencies=[AdminRequired])
 def update_rsvp(rsvp_id: int, payload: RsvpAdminUpdate, db: Session = Depends(get_db)):
     record = db.get(Rsvp, rsvp_id)
     if not record:
         raise HTTPException(404, "找不到這筆資料")
-    for field, value in payload.model_dump(exclude_unset=True).items():
+
+    data = payload.model_dump(exclude_unset=True)
+    # 主餐要序列化存入，並同步素食人數
+    mains = data.pop("main_course", None)
+    if mains is not None:
+        clean = {k: int(v) for k, v in mains.items() if v and int(v) > 0}
+        record.main_course_json = json.dumps(clean, ensure_ascii=False)
+        record.veg_count = clean.get("素食", 0)
+
+    for field, value in data.items():
         setattr(record, field, value)
+
     db.commit()
     db.refresh(record)
+    cache.invalidate_stats()  # 人數/主餐可能被改，統計快取重算
     return record
 
 

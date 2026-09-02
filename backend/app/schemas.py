@@ -53,8 +53,26 @@ class Phase2Details(BaseModel):
     remark: str = Field(default="", max_length=500)
 
 
-# ===== 後台更新（排桌 / 狀態 / 備註）=====
+# ===== 後台更新（可修正賓客填錯的任何欄位）=====
 class RsvpAdminUpdate(BaseModel):
+    # 基本資料
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    side: Literal["groom", "bride"] | None = None
+    email: str | None = Field(default=None, max_length=200)
+    phone: str | None = Field(default=None, max_length=50)
+    attending: bool | None = None
+    adult_count: int | None = Field(default=None, ge=0, le=50)
+    child_count: int | None = Field(default=None, ge=0, le=50)
+    message: str | None = Field(default=None, max_length=2000)
+    # 詳細調查
+    details_completed: bool | None = None
+    main_course: dict[str, int] | None = None
+    kids_meal_count: int | None = Field(default=None, ge=0, le=50)
+    baby_chair_count: int | None = Field(default=None, ge=0, le=50)
+    veg_type: str | None = Field(default=None, max_length=30)
+    dietary_note: str | None = Field(default=None, max_length=300)
+    remark: str | None = Field(default=None, max_length=500)
+    # 後台管理
     manage_status: Literal["new", "contacted", "seated"] | None = None
     table_no: int | None = Field(default=None, ge=0, le=999)
     admin_note: str | None = Field(default=None, max_length=300)

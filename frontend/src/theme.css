@@ -287,6 +287,22 @@ textarea { resize: vertical; }
 .modal-btn { width: 100%; padding: 13px; background: var(--milk-tea-700); color: #fff; border: none; border-radius: var(--radius-input); font-size: 14.5px; font-weight: 600; cursor: pointer; letter-spacing: 1px; transition: background 0.2s; }
 .modal-btn:hover { background: var(--milk-tea-900); }
 
+/* 後台編輯視窗（較寬、表單靠左、可捲動） */
+.modal-card.wide {
+  max-width: 620px; text-align: left;
+  max-height: 88vh; overflow-y: auto;
+  padding: 28px 26px 24px;
+}
+.modal-card.wide .form-group { margin-bottom: 14px; }
+.edit-modal-title {
+  font-family: "Noto Serif TC", serif; font-size: 18px; font-weight: 600;
+  color: var(--milk-tea-900); margin-bottom: 16px; padding-bottom: 10px;
+  border-bottom: 1px solid var(--milk-tea-100);
+  display: flex; align-items: center; gap: 8px;
+}
+.edit-modal-actions { display: flex; gap: 10px; margin-top: 18px; }
+.edit-modal-actions .btn { flex: 1; justify-content: center; }
+
 /* ============ 後台 Admin ============ */
 .page-head { text-align: center; margin-bottom: 28px; }
 .page-head h1 { font-family: "Noto Serif TC", serif; font-size: 22px; font-weight: 600; color: var(--milk-tea-900); letter-spacing: 2px; margin-top: 10px; }
