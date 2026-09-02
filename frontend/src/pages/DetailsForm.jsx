@@ -108,7 +108,7 @@ export default function DetailsForm() {
   return (
     <div className="container">
       <header className="hero-arch-card">
-        <p className="script-title">Almost There</p>
+        <p className="script-title">See You at the Table</p>
         <p className="english-sub">Alan &amp; Omena</p>
         <div className="illustration-art-wrapper">
           <img src="/hero.png" alt="Alan & Omena" className="hero-image" />
