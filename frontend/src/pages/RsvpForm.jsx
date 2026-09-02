@@ -10,7 +10,8 @@ const initial = {
   attending: true,
   email: "",
   phone: "",
-  date_preference: "both",
+  date_preference: "0313", // 日期已定案 2027.03.13
+
   adult_count: 1,
   child_count: 0,
   message: "",
@@ -75,7 +76,7 @@ export default function RsvpForm() {
         <div className="event-details-card">
           <div className="detail-item">
             <div className="detail-icon"><Calendar size={16} /></div>
-            <div className="detail-content"><strong>日期：</strong>2027.03.06（週六） 或　2027.03.13（週六）</div>
+            <div className="detail-content"><strong>日期：</strong>2027.03.13（週六）</div>
           </div>
           <div className="detail-item">
             <div className="detail-icon"><Clock size={16} /></div>
@@ -197,22 +198,13 @@ export default function RsvpForm() {
             {/* 日期與人數 */}
             <section className="section-card">
               <div className="section-header">
-                <div className="section-header-title"><Users size={18} /> 日期與人數</div>
-                <div className="section-header-en">Date &amp; Party Size</div>
+                <div className="section-header-title"><Users size={18} /> 出席人數</div>
+                <div className="section-header-en">Party Size</div>
               </div>
 
-              <div className="form-group">
-                <label className="required">目前規劃的日期，哪一天比較方便？</label>
-                <Select
-                  value={form.date_preference}
-                  onChange={(v) => set("date_preference", v)}
-                  options={[
-                    { value: "both", label: "2027.03.06（週六） 與 2027.03.13（週六） 都可以" },
-                    { value: "0306", label: "2027.03.06（週六）" },
-                    { value: "0313", label: "2027.03.13（週六）" },
-                  ]}
-                />
-              </div>
+              <p className="helper-text" style={{ marginTop: -6, marginBottom: 16 }}>
+                此階段人數只是先預估，待統計好會再與您進行最後的確認
+              </p>
 
               <div className="form-group grid-2">
                 <div>
