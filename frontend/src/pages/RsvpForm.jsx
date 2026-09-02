@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { User, CalendarCheck, Mail, Users, MessageCircle, Calendar, MapPin, Send, Heart, CalendarX, Mars, Venus, Clock } from "lucide-react";
+import { User, CalendarCheck, Mail, Users, MessageCircle, Calendar, MapPin, Send, Heart, CalendarX, Mars, Venus, Clock, SquareParking } from "lucide-react";
 import Select, { range } from "../components/Select.jsx";
 import { fetchConfig, submitPhase1 } from "../api.js";
 
@@ -87,6 +87,20 @@ export default function RsvpForm() {
                 style={{ color: "var(--milk-tea-700)", fontWeight: 500, textDecoration: "underline", textUnderlineOffset: 3 }}
               >
                 台北美福大飯店（台北市中山區樂群二路55號）
+              </a>
+            </div>
+          </div>
+          <div className="detail-item">
+            <div className="detail-icon"><SquareParking size={16} /></div>
+            <div className="detail-content">
+              <strong>停車：</strong>
+              <a
+                href="https://maps.app.goo.gl/JdHCL5tFBmSuWxeJ9"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ color: "var(--milk-tea-700)", fontWeight: 500, textDecoration: "underline", textUnderlineOffset: 3 }}
+              >
+                停車場資訊
               </a>
             </div>
           </div>
