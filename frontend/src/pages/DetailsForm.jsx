@@ -113,10 +113,11 @@ export default function DetailsForm() {
         <div className="illustration-art-wrapper">
           <img src="/hero.png" alt="Alan & Omena" className="hero-image" />
         </div>
-        <h1 className="main-title">婚宴出席確認與飲食調查</h1>
+        <h1 className="main-title">來跟我們一起吃飯！出席與主餐調查</h1>
         <p className="invitation-quote">
-          日期已確定，感謝您的出席！<br />
-          請填寫以下細節，方便我們為您安排座位與餐點。
+          耶！一切終於搞定囉，準備好來跟我們大吃一頓了嗎？<br />
+          請幫我們確認最終出席人數、挑選你的專屬主餐<br />
+          如果有不吃的食材也一定要跟我們說唷，我們當天見！
         </p>
       </header>
 
