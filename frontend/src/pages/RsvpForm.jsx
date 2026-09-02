@@ -64,7 +64,8 @@ export default function RsvpForm() {
 
         <h1 className="main-title">出席意願調查</h1>
         <p className="invitation-quote">
-          最愛的家人與好友們~~宣文與孟庭要結婚啦<br />
+          最愛的家人與好友們~~<br />
+          宣文與孟庭要結婚啦<br />
           目前正在悄悄籌備中，先調查大家的出席意願來安排舒服的場地，<br />
           敲定後一定馬上把詳細資訊雙手奉上，期待與你們見面喔!!!
         </p>
