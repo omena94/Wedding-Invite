@@ -27,17 +27,28 @@ def smtp_ready() -> bool:
     return bool(settings.smtp_user and settings.smtp_password)
 
 
-def _build_message(to: str, subject: str, body: str, attachments: Attachments | None = None) -> str:
+def _wrap_html(content: str) -> str:
+    """把編輯器輸出的 HTML 片段包上基本樣式，各家信箱顯示一致不跑版。"""
+    return (
+        '<div style="font-family:\'Microsoft JhengHei\',\'PingFang TC\',Arial,sans-serif;'
+        "font-size:15px;line-height:1.9;color:#3d2d20;max-width:600px;margin:0 auto;"
+        'padding:8px 4px;">'
+        f"{content}</div>"
+    )
+
+
+def _build_message(to: str, subject: str, body_html: str, attachments: Attachments | None = None) -> str:
+    html_part = MIMEText(_wrap_html(body_html), "html", "utf-8")
     if attachments:
         msg = MIMEMultipart()
-        msg.attach(MIMEText(body, "plain", "utf-8"))
+        msg.attach(html_part)
         for filename, data in attachments:
             part = MIMEApplication(data)
             # 檔名用 RFC 2231 編碼，中文檔名也能正確顯示
             part.add_header("Content-Disposition", "attachment", filename=("utf-8", "", filename))
             msg.attach(part)
     else:
-        msg = MIMEText(body, "plain", "utf-8")
+        msg = html_part
     msg["Subject"] = str(Header(subject, "utf-8"))
     msg["From"] = formataddr((settings.smtp_from_name, settings.smtp_user))
     msg["To"] = to

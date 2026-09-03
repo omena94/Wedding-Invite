@@ -15,14 +15,6 @@ def _uuid() -> str:
     return uuid.uuid4().hex
 
 
-class Setting(Base):
-    """系統設定（key-value），目前存各階段截止日期。"""
-    __tablename__ = "settings"
-
-    key: Mapped[str] = mapped_column(String(50), primary_key=True)
-    value: Mapped[str] = mapped_column(String(200), default="")
-
-
 class Rsvp(Base):
     __tablename__ = "rsvps"
 

@@ -1,9 +1,9 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import Swal from "sweetalert2";
-import { Search, Users, Utensils, Baby, Salad, PenLine, Send, PartyPopper, CalendarX } from "lucide-react";
+import { Search, Users, Utensils, Baby, Salad, PenLine, Send, PartyPopper } from "lucide-react";
 import Select, { range } from "../components/Select.jsx";
 import EmailInput from "../components/EmailInput.jsx";
-import { fetchConfig, lookupRsvp, submitPhase2 } from "../api.js";
+import { lookupRsvp, submitPhase2 } from "../api.js";
 import { isValidEmail, isValidPhone, normalizePhone } from "../validators.js";
 
 // 主餐選項（要改直接改這裡）
@@ -15,13 +15,6 @@ export default function DetailsForm() {
   const [guest, setGuest] = useState(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const [closed, setClosed] = useState(false); // 是否已過截止日
-
-  useEffect(() => {
-    fetchConfig()
-      .then((c) => setClosed(!c.phase2_open))
-      .catch(() => {});
-  }, []);
 
   const [form, setForm] = useState({
     adult_count: 1,
@@ -136,16 +129,6 @@ export default function DetailsForm() {
         )}
       </header>
 
-      {closed ? (
-        <section className="section-card" style={{ textAlign: "center", padding: "40px 24px" }}>
-          <div className="modal-icon" style={{ margin: "0 auto 16px" }}><CalendarX size={26} /></div>
-          <h3 className="modal-title">婚宴出席確認與飲食調查已截止</h3>
-          <p className="modal-desc" style={{ marginBottom: 0 }}>
-            感謝大家的熱情回覆！<br />若仍需填寫或修改資料，請直接與我們聯繫。
-          </p>
-        </section>
-      ) : (
-      <>
       {step === "lookup" && (
         <form onSubmit={doLookup}>
           <section className="section-card">
@@ -300,8 +283,6 @@ export default function DetailsForm() {
             您的座位與餐飲細節我們已經記錄下來，期待與您相聚
           </p>
         </section>
-      )}
-      </>
       )}
     </div>
   );

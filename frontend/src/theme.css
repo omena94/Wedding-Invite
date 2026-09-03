@@ -132,6 +132,19 @@ body::after {
 /* Email 網域建議 */
 .ui-email { position: relative; width: 100%; }
 
+/* Quill 編輯器奶茶主題 */
+.ql-toolbar.ql-snow {
+  border: 1.5px solid var(--border-highlight); border-bottom: 1px solid var(--border-soft);
+  border-radius: var(--radius-input) var(--radius-input) 0 0; background: var(--milk-tea-50);
+}
+.ql-container.ql-snow {
+  border: 1.5px solid var(--border-highlight); border-top: none;
+  border-radius: 0 0 var(--radius-input) var(--radius-input);
+  background: #fffcfa; font-family: inherit; font-size: 14px; min-height: 180px;
+}
+.ql-editor { min-height: 180px; line-height: 1.8; color: var(--text-dark); }
+.ql-snow a { color: var(--milk-tea-700); }
+
 /* SweetAlert2 奶茶主題 */
 .swal2-popup {
   font-family: "Plus Jakarta Sans", "Noto Serif TC", serif, sans-serif !important;

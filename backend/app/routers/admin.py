@@ -9,16 +9,12 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
-from datetime import date
-
 from .. import cache
 from ..database import get_db
 from ..mailer import broadcast, send_one, smtp_ready
 from ..models import Rsvp
-from ..phase_config import PHASE1_KEY, PHASE2_KEY, build_config, set_setting
 from ..schemas import (
     DatePref,
-    DeadlinesIn,
     LoginIn,
     LoginOut,
     RsvpAdminUpdate,
@@ -39,21 +35,6 @@ def login(payload: LoginIn):
     return LoginOut(token=create_token())
 
 
-# ===== 截止日期設定 =====
-@router.put("/deadlines", dependencies=[AdminRequired])
-def save_deadlines(payload: DeadlinesIn, db: Session = Depends(get_db)):
-    for value in (payload.phase1_deadline, payload.phase2_deadline):
-        if value:
-            try:
-                date.fromisoformat(value)
-            except ValueError:
-                raise HTTPException(400, f"日期格式錯誤：{value}（請用 YYYY-MM-DD）")
-    set_setting(db, PHASE1_KEY, payload.phase1_deadline)
-    set_setting(db, PHASE2_KEY, payload.phase2_deadline)
-    db.commit()
-    return build_config(db)
-
-
 # ===== 群發通知（Email，multipart 以支援附件）=====
 ALLOWED_ATTACH_EXT = {".pdf", ".jpg", ".jpeg", ".png"}
 MAX_ATTACH_TOTAL = 10 * 1024 * 1024  # 10MB
@@ -63,7 +44,7 @@ MAX_ATTACH_COUNT = 3
 @router.post("/broadcast", dependencies=[AdminRequired])
 async def send_broadcast(
     subject: str = Form(..., max_length=200),
-    body: str = Form(..., max_length=5000),
+    body: str = Form(..., max_length=30000),  # HTML 內容，放寬長度
     target: str = Form("pending"),
     test_to: str = Form(""),
     files: list[UploadFile] = File(default=[]),

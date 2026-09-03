@@ -1,16 +1,17 @@
 import { useEffect, useState, useCallback } from "react";
 import Swal from "sweetalert2";
 import {
-  Lock, LogIn, Users, Utensils, Baby, Mail, Calendar, PieChart,
-  ClipboardList, Download, Trash2, Armchair, Salad, CalendarClock, Pencil, MessageCircle,
+  Lock, LogIn, Users, Utensils, Baby, Mail, PieChart,
+  ClipboardList, Download, Trash2, Armchair, Salad, Pencil, MessageCircle,
   Megaphone, Send, ChevronDown,
 } from "lucide-react";
+import ReactQuill from "react-quill";
+import "react-quill/dist/quill.snow.css";
 import Select from "../components/Select.jsx";
-import DatePicker from "../components/DatePicker.jsx";
 import {
   adminLogin, setToken, clearToken, getToken,
   fetchStats, fetchRsvps, updateRsvp, deleteRsvp, exportCsvUrl,
-  fetchConfig, saveDeadlines, sendBroadcast,
+  sendBroadcast,
 } from "../api.js";
 
 const SIDE_LABEL = { groom: "男方", bride: "女方" };
@@ -139,7 +140,6 @@ function Dashboard({ onLogout }) {
       ) : (
         <>
           <StatsCards stats={stats} />
-          <DeadlinePanel />
           <BroadcastPanel stats={stats} />
           <Breakdown stats={stats} />
 
@@ -478,18 +478,18 @@ function StatsCards({ stats }) {
 
 /* 群發 Email 通知 */
 const DEFAULT_SUBJECT = "宣文 & 孟庭 婚宴｜請幫我們確認出席與主餐 🍽";
-const DEFAULT_BODY = `{name} 你好：
+const DEFAULT_BODY = `<p>{name} 你好：</p><p>謝謝你先前回覆出席我們的婚宴！<br>日期已確定為 <strong>2027.03.13（週六）中午 12:00</strong>，<br>地點在<strong>台北美福大飯店</strong>（台北市中山區樂群二路55號）。</p><p>接下來想請你幫我們確認最終出席人數、挑選你的專屬主餐：<br><a href="https://wedding.example.com/details">https://wedding.example.com/details</a><br>（進入後輸入你當初留的 Email 或電話即可）</p><p>期待與你相見！<br>宣文 &amp; 孟庭</p>`;
 
-謝謝你先前回覆出席我們的婚宴！
-日期已確定為 2027.03.13（週六）中午 12:00，
-地點在台北美福大飯店（台北市中山區樂群二路55號）。
-
-接下來想請你幫我們確認最終出席人數、挑選你的專屬主餐：
-https://wedding.example.com/details
-（進入後輸入你當初留的 Email 或電話即可）
-
-期待與你相見！
-宣文 & 孟庭`;
+const QUILL_MODULES = {
+  toolbar: [
+    ["bold", "italic", "underline"],
+    [{ color: [] }, { background: [] }],
+    [{ size: ["small", false, "large"] }],
+    [{ list: "ordered" }, { list: "bullet" }, { align: [] }],
+    ["link"],
+    ["clean"],
+  ],
+};
 
 function BroadcastPanel({ stats }) {
   const [open, setOpen] = useState(false); // 預設摺疊
@@ -589,8 +589,8 @@ function BroadcastPanel({ stats }) {
       </div>
 
       <div className="form-group">
-        <label>信件內文</label>
-        <textarea rows={9} value={body} onChange={(e) => setBody(e.target.value)} style={{ fontSize: 13.5, lineHeight: 1.7 }} />
+        <label>信件內文（所見即所得，寄出即為此排版）</label>
+        <ReactQuill theme="snow" value={body} onChange={setBody} modules={QUILL_MODULES} />
       </div>
 
       <div className="form-group">
@@ -625,84 +625,6 @@ function BroadcastPanel({ stats }) {
         />
         <button className="btn btn-ghost" onClick={sendTest} disabled={busy}><Mail size={15} /> 寄測試信</button>
         <button className="btn btn-primary" onClick={sendAll} disabled={busy}><Send size={15} /> {busy ? "處理中…" : "開始群發"}</button>
-      </div>
-      </>
-      )}
-    </div>
-  );
-}
-
-/* 各階段截止日期設定 */
-function DeadlinePanel() {
-  const [open, setOpen] = useState(false); // 預設摺疊
-  const [cfg, setCfg] = useState(null);
-  const [p1, setP1] = useState("");
-  const [p2, setP2] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [msg, setMsg] = useState("");
-
-  useEffect(() => {
-    fetchConfig().then((c) => {
-      setCfg(c);
-      setP1(c.phase1_deadline || "");
-      setP2(c.phase2_deadline || "");
-    }).catch(() => {});
-  }, []);
-
-  const save = async () => {
-    setSaving(true); setMsg("");
-    try {
-      const c = await saveDeadlines({ phase1_deadline: p1, phase2_deadline: p2 });
-      setCfg(c);
-      setMsg("已儲存");
-      setTimeout(() => setMsg(""), 2500);
-    } catch (e) {
-      setMsg(e.message || "儲存失敗");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const statusPill = (open) => (
-    <span className={`pill ${open ? "pill-yes" : "pill-no"}`}>{open ? "開放中" : "已截止"}</span>
-  );
-
-  return (
-    <div className="panel">
-      <div
-        className="panel-head"
-        style={{ cursor: "pointer", marginBottom: open ? undefined : 0, paddingBottom: open ? undefined : 0, borderBottom: open ? undefined : "none" }}
-        onClick={() => setOpen((o) => !o)}
-      >
-        <div className="panel-title">
-          <CalendarClock size={18} /> 各階段截止日期
-          {!open && cfg && (
-            <span style={{ display: "inline-flex", gap: 6, marginLeft: 4 }}>
-              <span style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 400 }}>意願</span>{statusPill(cfg.phase1_open)}
-              <span style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 400 }}>飲食</span>{statusPill(cfg.phase2_open)}
-            </span>
-          )}
-        </div>
-        <ChevronDown size={17} style={{ color: "var(--milk-tea-700)", transition: "transform 0.2s", transform: open ? "rotate(180deg)" : "none" }} />
-      </div>
-
-      {open && (
-      <>
-      <div style={{ fontSize: 12.5, color: "var(--text-muted)", marginBottom: 14 }}>截止日「當天」仍可填寫，隔天起自動關閉（台灣時間）</div>
-      <div className="mini-grid" style={{ marginBottom: 14 }}>
-        <div className="mini">
-          <div className="m-label">意願調查（首頁）截止日 {cfg && statusPill(cfg.phase1_open)}</div>
-          <div style={{ marginTop: 8 }}><DatePicker value={p1} onChange={setP1} /></div>
-        </div>
-        <div className="mini">
-          <div className="m-label">飲食調查（/details）截止日 {cfg && statusPill(cfg.phase2_open)}</div>
-          <div style={{ marginTop: 8 }}><DatePicker value={p2} onChange={setP2} /></div>
-        </div>
-      </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-        <button className="btn btn-primary" onClick={save} disabled={saving}>{saving ? "儲存中…" : "儲存設定"}</button>
-        <button className="btn btn-ghost" onClick={() => { setP1(""); setP2(""); }}>清空（不設限）</button>
-        {msg && <span style={{ fontSize: 13, color: msg === "已儲存" ? "var(--sage-accent)" : "var(--rose-accent)" }}>{msg}</span>}
       </div>
       </>
       )}

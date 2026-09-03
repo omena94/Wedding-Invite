@@ -9,7 +9,6 @@ from .. import cache
 from ..database import get_db
 from ..models import Rsvp
 from ..notify import phase1_message, phase2_message, send_telegram
-from ..phase_config import PHASE1_KEY, PHASE2_KEY, build_config, get_setting, is_open
 from ..schemas import LookupIn, LookupOut, Phase1Create, Phase2Details, RsvpOut
 
 
@@ -30,12 +29,6 @@ def _attending_totals(db: Session) -> tuple[int, int]:
 router = APIRouter(prefix="/api", tags=["rsvp"])
 
 
-# ===== 公開設定：各階段是否開放（前端載入時查詢）=====
-@router.get("/config")
-def get_config(db: Session = Depends(get_db)):
-    return build_config(db)
-
-
 def _find_by_contact(db: Session, contact: str) -> Rsvp | None:
     """用 Email 或 電話找到 Phase 1 的紀錄（不分大小寫；取最新一筆）。"""
     c = contact.strip()
@@ -52,8 +45,6 @@ def _find_by_contact(db: Session, contact: str) -> Rsvp | None:
 # ===== Phase 1：送出意願調查 =====
 @router.post("/rsvp", response_model=RsvpOut, status_code=201)
 def create_phase1(payload: Phase1Create, db: Session = Depends(get_db)):
-    if not is_open(get_setting(db, PHASE1_KEY)):
-        raise HTTPException(403, "出席意願調查已截止，若需回覆或修改請直接聯繫我們")
     data = payload.model_dump()
 
     # 防重複填寫：同一 Email 或電話只能填一次
@@ -110,8 +101,6 @@ def lookup(payload: LookupIn, db: Session = Depends(get_db)):
 # ===== Phase 2：送出詳細調查（補到同一筆）=====
 @router.post("/rsvp/details", response_model=RsvpOut)
 def submit_phase2(payload: Phase2Details, db: Session = Depends(get_db)):
-    if not is_open(get_setting(db, PHASE2_KEY)):
-        raise HTTPException(403, "詳細資料調查已截止，若需回覆或修改請直接聯繫我們")
     record = _find_by_contact(db, payload.contact)
     if not record:
         raise HTTPException(
