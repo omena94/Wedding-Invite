@@ -110,8 +110,9 @@ export default function DetailsForm() {
       <header className="hero-arch-card">
         <p className="script-title">See You at the Table</p>
         <p className="english-sub">Alan &amp; Omena</p>
-        <div className="illustration-art-wrapper">
-          <img src="/hero.png" alt="Alan & Omena" className="hero-image" />
+        <div className="illustration-art-wrapper hero-swap">
+          <img src="/hero-line.png" alt="Alan & Omena" className="hero-image" />
+          <img src="/hero.png" alt="Alan & Omena" className="hero-image hero-swap-back" />
         </div>
         <h1 className="main-title">來跟我們一起吃飯！出席與主餐調查</h1>
         <p className="invitation-quote">
