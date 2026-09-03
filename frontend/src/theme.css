@@ -217,6 +217,10 @@ input.input-error, textarea.input-error {
   padding: 5px 16px; border-radius: 30px; border: 1px solid var(--border-soft);
   margin-bottom: 18px; letter-spacing: 1px;
 }
+.main-subtitle {
+  font-family: "Noto Serif TC", serif; font-size: 18px; font-weight: 600;
+  color: var(--milk-tea-700); letter-spacing: 2.5px; margin-bottom: 10px;
+}
 .announce-lead { font-size: 13.5px; color: var(--text-muted); margin-bottom: 6px; letter-spacing: 0.5px; }
 .announce-title {
   font-family: "Noto Serif TC", serif; font-size: 21px; font-weight: 600;
