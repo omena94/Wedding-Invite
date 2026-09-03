@@ -129,7 +129,7 @@ export default function DetailsForm() {
             <p className="invitation-quote" style={{ marginBottom: 12 }}>
               請協助確認出席人數與您的主餐偏好，<br />
               若有過敏食材亦請告知，讓我們為您貼心準備。<br />
-              期待當天與您悠閒相伴，好好吃飯、溫暖暢聊。
+              期待當天與您相見~~ !
             </p>
             <p className="announce-title">我們一起來吃飯聊天吧!!</p>
           </>
