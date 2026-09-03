@@ -3,7 +3,7 @@ import Swal from "sweetalert2";
 import {
   Lock, LogIn, Users, Utensils, Baby, Mail, Calendar, PieChart,
   ClipboardList, Download, Trash2, Armchair, Salad, CalendarClock, Pencil, MessageCircle,
-  Megaphone, Send,
+  Megaphone, Send, ChevronDown,
 } from "lucide-react";
 import Select from "../components/Select.jsx";
 import DatePicker from "../components/DatePicker.jsx";
@@ -492,6 +492,7 @@ https://wedding.example.com/details
 宣文 & 孟庭`;
 
 function BroadcastPanel({ stats }) {
+  const [open, setOpen] = useState(false); // 預設摺疊
   const [target, setTarget] = useState("pending");
   const [subject, setSubject] = useState(DEFAULT_SUBJECT);
   const [body, setBody] = useState(DEFAULT_BODY);
@@ -541,10 +542,23 @@ function BroadcastPanel({ stats }) {
 
   return (
     <div className="panel">
-      <div className="panel-head">
-        <div className="panel-title"><Megaphone size={18} /> 群發 Email 通知</div>
-        <div style={{ fontSize: 12.5, color: "var(--text-muted)" }}>內文的 {"{name}"} 會自動帶入每位賓客的姓名</div>
+      <div
+        className="panel-head"
+        style={{ cursor: "pointer", marginBottom: open ? undefined : 0, paddingBottom: open ? undefined : 0, borderBottom: open ? undefined : "none" }}
+        onClick={() => setOpen((o) => !o)}
+      >
+        <div className="panel-title">
+          <Megaphone size={18} /> 群發 Email 通知
+          <span style={{ fontSize: 12, color: "var(--text-muted)", fontFamily: "inherit", fontWeight: 400 }}>
+            {open ? "" : "（點擊展開）"}
+          </span>
+        </div>
+        <ChevronDown size={17} style={{ color: "var(--milk-tea-700)", transition: "transform 0.2s", transform: open ? "rotate(180deg)" : "none" }} />
       </div>
+
+      {open && (
+      <>
+      <div style={{ fontSize: 12.5, color: "var(--text-muted)", marginBottom: 14 }}>內文的 {"{name}"} 會自動帶入每位賓客的姓名</div>
 
       <div className="form-group grid-2">
         <div>
@@ -575,6 +589,8 @@ function BroadcastPanel({ stats }) {
         <button className="btn btn-ghost" onClick={sendTest} disabled={busy}><Mail size={15} /> 寄測試信</button>
         <button className="btn btn-primary" onClick={sendAll} disabled={busy}><Send size={15} /> {busy ? "處理中…" : "開始群發"}</button>
       </div>
+      </>
+      )}
     </div>
   );
 }
