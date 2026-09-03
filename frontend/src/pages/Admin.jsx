@@ -597,6 +597,7 @@ function BroadcastPanel({ stats }) {
 
 /* 各階段截止日期設定 */
 function DeadlinePanel() {
+  const [open, setOpen] = useState(false); // 預設摺疊
   const [cfg, setCfg] = useState(null);
   const [p1, setP1] = useState("");
   const [p2, setP2] = useState("");
@@ -631,10 +632,26 @@ function DeadlinePanel() {
 
   return (
     <div className="panel">
-      <div className="panel-head">
-        <div className="panel-title"><CalendarClock size={18} /> 各階段截止日期</div>
-        <div style={{ fontSize: 12.5, color: "var(--text-muted)" }}>截止日「當天」仍可填寫，隔天起自動關閉（台灣時間）</div>
+      <div
+        className="panel-head"
+        style={{ cursor: "pointer", marginBottom: open ? undefined : 0, paddingBottom: open ? undefined : 0, borderBottom: open ? undefined : "none" }}
+        onClick={() => setOpen((o) => !o)}
+      >
+        <div className="panel-title">
+          <CalendarClock size={18} /> 各階段截止日期
+          {!open && cfg && (
+            <span style={{ display: "inline-flex", gap: 6, marginLeft: 4 }}>
+              <span style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 400 }}>意願</span>{statusPill(cfg.phase1_open)}
+              <span style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 400 }}>飲食</span>{statusPill(cfg.phase2_open)}
+            </span>
+          )}
+        </div>
+        <ChevronDown size={17} style={{ color: "var(--milk-tea-700)", transition: "transform 0.2s", transform: open ? "rotate(180deg)" : "none" }} />
       </div>
+
+      {open && (
+      <>
+      <div style={{ fontSize: 12.5, color: "var(--text-muted)", marginBottom: 14 }}>截止日「當天」仍可填寫，隔天起自動關閉（台灣時間）</div>
       <div className="mini-grid" style={{ marginBottom: 14 }}>
         <div className="mini">
           <div className="m-label">意願調查（首頁）截止日 {cfg && statusPill(cfg.phase1_open)}</div>
@@ -650,6 +667,8 @@ function DeadlinePanel() {
         <button className="btn btn-ghost" onClick={() => { setP1(""); setP2(""); }}>清空（不設限）</button>
         {msg && <span style={{ fontSize: 13, color: msg === "已儲存" ? "var(--sage-accent)" : "var(--rose-accent)" }}>{msg}</span>}
       </div>
+      </>
+      )}
     </div>
   );
 }
