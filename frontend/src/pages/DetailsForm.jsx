@@ -116,23 +116,26 @@ export default function DetailsForm() {
         </div>
         <h1 className="main-title">來跟我們一起吃飯！</h1>
         <p className="main-subtitle">出席與主餐調查</p>
-        <p className="invitation-quote" style={{ marginBottom: 12 }}>
-          {step === "done" ? (
-            <>
+        {step === "done" ? (
+          <>
+            <p className="invitation-quote" style={{ marginBottom: 12 }}>
               都收到囉！謝謝你的回覆<br />
               你的主餐與細節我們都記下來了<br />
               期待與你一起大吃一頓
-            </>
-          ) : (
-            <>
-              準備好了嗎?<br />
-              請幫我們確認最終出席人數、挑選你的專屬主餐<br />
-              如果有過敏的食材也一定要跟我們說唷<br />
-              我們3/13見！
-            </>
-          )}
-        </p>
-        <p className="announce-title">我們一起來吃飯聊天吧!!</p>
+            </p>
+            <p className="announce-title">我們一起來吃飯聊天吧!!</p>
+          </>
+        ) : (
+          <>
+            <p className="announce-title">準備好開啟這場美味聚會了嗎？</p>
+            <p className="invitation-quote" style={{ marginBottom: 12 }}>
+              請協助確認出席人數與您的主餐偏好，<br />
+              若有過敏食材亦請告知，讓我們為您貼心準備。<br />
+              期待當天與您悠閒相伴，好好吃飯、溫暖暢聊。
+            </p>
+            <p className="announce-title">我們一起來吃飯聊天吧!!</p>
+          </>
+        )}
       </header>
 
       {closed ? (
