@@ -117,7 +117,7 @@ export default function DetailsForm() {
         <p className="invitation-quote">
           耶！一切終於搞定囉，準備好來跟我們大吃一頓了嗎？<br />
           請幫我們確認最終出席人數、挑選你的專屬主餐<br />
-          如果有不吃的食材也一定要跟我們說唷，我們當天見！
+          如果有過敏的食材也一定要跟我們說唷，我們當天見！
         </p>
       </header>
 
