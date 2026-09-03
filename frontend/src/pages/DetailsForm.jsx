@@ -268,7 +268,7 @@ export default function DetailsForm() {
             </div>
             <div className="form-group">
               <label>其他想告訴我們的事</label>
-              <textarea rows={3} value={form.remark} onChange={(e) => set("remark", e.target.value)} placeholder="例如：需要方便輪椅的座位、想跟某桌坐在一起…" />
+              <textarea rows={3} value={form.remark} onChange={(e) => set("remark", e.target.value)} />
             </div>
           </section>
 
