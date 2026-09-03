@@ -96,13 +96,6 @@ function Dashboard({ onLogout }) {
     return () => clearTimeout(t);
   }, [load]);
 
-  const patch = async (id, data) => {
-    try {
-      const updated = await updateRsvp(id, data);
-      setRows((rs) => rs.map((r) => (r.id === id ? updated : r)));
-    } catch (e) { alert(e.message); }
-  };
-
   const remove = async (id, name) => {
     if (!confirm(`確定要刪除「${name}」這筆回覆嗎？此動作無法復原。`)) return;
     try {
@@ -184,64 +177,60 @@ function Dashboard({ onLogout }) {
                   <thead>
                     <tr>
                       <th>#</th><th>姓名</th><th>親友</th><th>出席</th>
-                      <th>大人</th><th>幼童</th><th>詳細</th><th>主餐</th><th>兒童餐</th>
-                      <th>座椅</th><th>素食</th><th>飲食備註</th><th>備註</th><th>電話</th><th>想說的話</th>
-                      <th>桌號</th><th>內部備註</th><th>時間</th><th></th>
+                      <th>人數</th><th>詳細</th><th>餐點</th><th>留言</th>
+                      <th>電話</th><th>時間</th><th></th>
                     </tr>
                   </thead>
                   <tbody>
-                    {rows.map((r, i) => (
-                      <tr key={r.id}>
-                        <td className="muted-cell">{i + 1}</td>
-                        <td style={{ whiteSpace: "nowrap" }}>
-                          <strong>{r.name}</strong>
-                          {r.is_test && <span className="pill pill-no" style={{ marginLeft: 6 }}>測試</span>}
-                        </td>
-                        <td><span className={`pill ${r.side === "bride" ? "pill-bride" : "pill-groom"}`}>{SIDE_LABEL[r.side] || r.side}</span></td>
-                        <td><span className={`pill ${r.attending ? "pill-yes" : "pill-no"}`}>{r.attending ? "出席" : "不克"}</span></td>
-                        <td>{r.attending ? r.adult_count : "—"}</td>
-                        <td>{r.attending ? r.child_count : "—"}</td>
-                        <td>{r.attending ? <span className={`pill ${r.details_completed ? "pill-yes" : "pill-no"}`}>{r.details_completed ? "已填" : "待填"}</span> : "—"}</td>
-                        <td className="muted-cell">{r.details_completed ? (fmtMains(r.main_course) || "—") : "—"}</td>
-                        <td>{r.details_completed ? r.kids_meal_count : "—"}</td>
-                        <td>{r.details_completed ? r.baby_chair_count : "—"}</td>
-                        <td>{r.details_completed && r.veg_count > 0 ? `${r.veg_count}（${r.veg_type}）` : "—"}</td>
-                        <td className="muted-cell">{r.dietary_note || "—"}</td>
-                        <td>
-                          {r.remark
-                            ? <button className="btn btn-ghost btn-sm" title="查看備註" onClick={() => setViewMsg({ name: r.name, text: r.remark, kind: "備註" })}><MessageCircle size={14} /></button>
-                            : <span className="muted-cell">—</span>}
-                        </td>
-                        <td>{r.phone || "—"}</td>
-                        <td>
-                          {r.message
-                            ? <button className="btn btn-ghost btn-sm" title="查看想說的話" onClick={() => setViewMsg({ name: r.name, text: r.message, kind: "想說的話" })}><MessageCircle size={14} /></button>
-                            : <span className="muted-cell">—</span>}
-                        </td>
-                        <td>
-                          <input
-                            className="inline-input table-no" type="number" min="0"
-                            defaultValue={r.table_no ?? ""}
-                            onBlur={(e) => {
-                              const v = e.target.value === "" ? null : parseInt(e.target.value, 10);
-                              if (v !== (r.table_no ?? null)) patch(r.id, { table_no: v });
-                            }}
-                          />
-                        </td>
-                        <td>
-                          <input
-                            className="inline-input" type="text" defaultValue={r.admin_note} placeholder="—"
-                            style={{ minWidth: 120 }}
-                            onBlur={(e) => { if (e.target.value !== r.admin_note) patch(r.id, { admin_note: e.target.value }); }}
-                          />
-                        </td>
-                        <td className="muted-cell" style={{ whiteSpace: "nowrap" }}>{fmtTime(r.created_at)}</td>
-                        <td style={{ whiteSpace: "nowrap" }}>
-                          <button className="btn btn-ghost btn-sm" title="編輯資料" onClick={() => setEditing(r)}><Pencil size={14} /></button>{" "}
-                          <button className="btn btn-ghost btn-sm" title="刪除" onClick={() => remove(r.id, r.name)}><Trash2 size={14} /></button>
-                        </td>
-                      </tr>
-                    ))}
+                    {rows.map((r, i) => {
+                      // 餐點欄第二行的補充資訊
+                      const extras = [];
+                      if (r.kids_meal_count > 0) extras.push(`兒童餐×${r.kids_meal_count}`);
+                      if (r.baby_chair_count > 0) extras.push(`座椅×${r.baby_chair_count}`);
+                      if (r.veg_count > 0) extras.push(r.veg_type !== "無" ? r.veg_type : "素食");
+                      // 留言彈窗內容（想說的話 / 備註 / 飲食過敏 合併）
+                      const notes = [
+                        r.message && { label: "想說的話", text: r.message },
+                        r.remark && { label: "備註", text: r.remark },
+                        r.dietary_note && { label: "飲食／過敏", text: r.dietary_note },
+                      ].filter(Boolean);
+                      return (
+                        <tr key={r.id}>
+                          <td className="muted-cell">{i + 1}</td>
+                          <td style={{ whiteSpace: "nowrap" }}>
+                            <strong>{r.name}</strong>
+                            {r.is_test && <span className="pill pill-no" style={{ marginLeft: 6 }}>測試</span>}
+                          </td>
+                          <td><span className={`pill ${r.side === "bride" ? "pill-bride" : "pill-groom"}`}>{SIDE_LABEL[r.side] || r.side}</span></td>
+                          <td><span className={`pill ${r.attending ? "pill-yes" : "pill-no"}`}>{r.attending ? "出席" : "不克"}</span></td>
+                          <td style={{ whiteSpace: "nowrap" }}>
+                            {r.attending ? `${r.adult_count}大${r.child_count > 0 ? ` ${r.child_count}小` : ""}` : "—"}
+                          </td>
+                          <td>{r.attending ? <span className={`pill ${r.details_completed ? "pill-yes" : "pill-no"}`}>{r.details_completed ? "已填" : "待填"}</span> : "—"}</td>
+                          <td className="muted-cell" style={{ minWidth: 130 }}>
+                            {r.details_completed ? (
+                              <>
+                                {fmtMains(r.main_course) || "—"}
+                                {extras.length > 0 && (
+                                  <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 2 }}>{extras.join("・")}</div>
+                                )}
+                              </>
+                            ) : "—"}
+                          </td>
+                          <td>
+                            {notes.length > 0
+                              ? <button className="btn btn-ghost btn-sm" title="查看留言/備註" onClick={() => setViewMsg({ name: r.name, items: notes })}><MessageCircle size={14} /></button>
+                              : <span className="muted-cell">—</span>}
+                          </td>
+                          <td style={{ whiteSpace: "nowrap" }}>{r.phone || "—"}</td>
+                          <td className="muted-cell" style={{ whiteSpace: "nowrap" }}>{fmtTime(r.created_at)}</td>
+                          <td style={{ whiteSpace: "nowrap" }}>
+                            <button className="btn btn-ghost btn-sm" title="編輯資料" onClick={() => setEditing(r)}><Pencil size={14} /></button>{" "}
+                            <button className="btn btn-ghost btn-sm" title="刪除" onClick={() => remove(r.id, r.name)}><Trash2 size={14} /></button>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -257,8 +246,15 @@ function Dashboard({ onLogout }) {
             <div className="modal-overlay" onClick={() => setViewMsg(null)}>
               <div className="modal-card" onClick={(e) => e.stopPropagation()}>
                 <div className="modal-icon"><MessageCircle size={26} /></div>
-                <h3 className="modal-title">{viewMsg.name}・{viewMsg.kind}</h3>
-                <p className="modal-desc" style={{ whiteSpace: "pre-wrap", textAlign: "left" }}>{viewMsg.text}</p>
+                <h3 className="modal-title">{viewMsg.name}</h3>
+                <div className="modal-desc" style={{ textAlign: "left" }}>
+                  {viewMsg.items.map((it) => (
+                    <p key={it.label} style={{ marginBottom: 10 }}>
+                      <strong style={{ color: "var(--milk-tea-900)" }}>{it.label}：</strong>
+                      <span style={{ whiteSpace: "pre-wrap" }}>{it.text}</span>
+                    </p>
+                  ))}
+                </div>
                 <button className="modal-btn" onClick={() => setViewMsg(null)}>關閉</button>
               </div>
             </div>
@@ -597,5 +593,5 @@ function fmtTime(iso) {
   if (!iso) return "";
   const d = new Date(iso);
   const p = (n) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}/${p(d.getMonth() + 1)}/${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+  return `${p(d.getMonth() + 1)}/${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }

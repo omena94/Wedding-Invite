@@ -365,7 +365,7 @@ select.filter { padding: 10px 14px; width: auto; cursor: pointer; }
 .btn-sm { padding: 6px 10px; font-size: 12px; }
 
 .table-wrap { overflow-x: auto; border-radius: 16px; border: 1px solid var(--border-soft); }
-table { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 940px; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 700px; }
 thead th { background: var(--milk-tea-50); color: var(--milk-tea-900); font-weight: 600; text-align: left; padding: 12px 14px; white-space: nowrap; border-bottom: 1px solid var(--border-soft); }
 tbody td { padding: 11px 14px; border-bottom: 1px solid var(--milk-tea-100); color: var(--text-body); vertical-align: top; }
 tbody tr:hover { background: var(--bg-card-subtle); }
