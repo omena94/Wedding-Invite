@@ -114,8 +114,6 @@ export default function DetailsForm() {
           <img src="/hero-line.png" alt="Alan & Omena" className="hero-image" />
           <img src="/hero.png" alt="Alan & Omena" className="hero-image hero-swap-back" />
         </div>
-        <h1 className="main-title">來跟我們一起吃飯！</h1>
-        <p className="main-subtitle">出席與主餐調查</p>
         {step === "done" ? (
           <>
             <p className="invitation-quote" style={{ marginBottom: 12 }}>
