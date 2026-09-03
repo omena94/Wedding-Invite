@@ -12,9 +12,11 @@ from datetime import date
 
 from .. import cache
 from ..database import get_db
+from ..mailer import broadcast, send_one, smtp_ready
 from ..models import Rsvp
 from ..phase_config import PHASE1_KEY, PHASE2_KEY, build_config, set_setting
 from ..schemas import (
+    BroadcastIn,
     DatePref,
     DeadlinesIn,
     LoginIn,
@@ -50,6 +52,38 @@ def save_deadlines(payload: DeadlinesIn, db: Session = Depends(get_db)):
     set_setting(db, PHASE2_KEY, payload.phase2_deadline)
     db.commit()
     return build_config(db)
+
+
+# ===== 群發通知（Email）=====
+@router.post("/broadcast", dependencies=[AdminRequired])
+def send_broadcast(payload: BroadcastIn, db: Session = Depends(get_db)):
+    if not smtp_ready():
+        raise HTTPException(400, "尚未設定寄信帳號（Gmail 應用程式密碼），請先完成設定")
+
+    # 測試信：只寄一封到指定信箱
+    if payload.test_to.strip():
+        try:
+            send_one(
+                payload.test_to.strip(),
+                payload.subject.replace("{name}", "測試"),
+                payload.body.replace("{name}", "測試"),
+            )
+        except Exception as e:
+            raise HTTPException(502, f"測試信寄送失敗：{e}")
+        return {"ok": True, "sent": 1, "test": True}
+
+    # 正式群發對象：出席、有 Email、非測試資料
+    stmt = select(Rsvp).where(
+        Rsvp.attending.is_(True), Rsvp.is_test.is_(False), Rsvp.email != ""
+    )
+    if payload.target == "pending":
+        stmt = stmt.where(Rsvp.details_completed.is_(False))
+    recipients = [(r.name, r.email) for r in db.scalars(stmt).all()]
+    if not recipients:
+        raise HTTPException(400, "沒有符合條件的收件人")
+
+    broadcast(recipients, payload.subject, payload.body)
+    return {"ok": True, "sent": len(recipients), "test": False}
 
 
 # ===== 名單（可搜尋/篩選）=====

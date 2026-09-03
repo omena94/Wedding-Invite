@@ -1,14 +1,16 @@
 import { useEffect, useState, useCallback } from "react";
+import Swal from "sweetalert2";
 import {
   Lock, LogIn, Users, Utensils, Baby, Mail, Calendar, PieChart,
   ClipboardList, Download, Trash2, Armchair, Salad, CalendarClock, Pencil, MessageCircle,
+  Megaphone, Send,
 } from "lucide-react";
 import Select from "../components/Select.jsx";
 import DatePicker from "../components/DatePicker.jsx";
 import {
   adminLogin, setToken, clearToken, getToken,
   fetchStats, fetchRsvps, updateRsvp, deleteRsvp, exportCsvUrl,
-  fetchConfig, saveDeadlines,
+  fetchConfig, saveDeadlines, sendBroadcast,
 } from "../api.js";
 
 const SIDE_LABEL = { groom: "男方", bride: "女方" };
@@ -138,6 +140,7 @@ function Dashboard({ onLogout }) {
         <>
           <StatsCards stats={stats} />
           <DeadlinePanel />
+          <BroadcastPanel stats={stats} />
           <Breakdown stats={stats} />
 
           <div className="panel">
@@ -469,6 +472,109 @@ function StatsCards({ stats }) {
           <div className="label">{c.label}</div>
         </div>
       ))}
+    </div>
+  );
+}
+
+/* 群發 Email 通知 */
+const DEFAULT_SUBJECT = "宣文 & 孟庭 婚宴｜請幫我們確認出席與主餐 🍽";
+const DEFAULT_BODY = `{name} 你好：
+
+謝謝你先前回覆出席我們的婚宴！
+日期已確定為 2027.03.13（週六）中午 12:00，
+地點在台北美福大飯店（台北市中山區樂群二路55號）。
+
+接下來想請你幫我們確認最終出席人數、挑選你的專屬主餐：
+https://wedding.example.com/details
+（進入後輸入你當初留的 Email 或電話即可）
+
+期待與你相見！
+宣文 & 孟庭`;
+
+function BroadcastPanel({ stats }) {
+  const [target, setTarget] = useState("pending");
+  const [subject, setSubject] = useState(DEFAULT_SUBJECT);
+  const [body, setBody] = useState(DEFAULT_BODY);
+  const [testTo, setTestTo] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const sendTest = async () => {
+    if (!testTo.trim()) return Swal.fire({ icon: "warning", title: "請先填測試信箱", confirmButtonColor: "#B28F70" });
+    setBusy(true);
+    try {
+      await sendBroadcast({ subject, body, target, test_to: testTo.trim() });
+      Swal.fire({ icon: "success", title: "測試信已寄出", text: `請到 ${testTo.trim()} 收信確認內容`, confirmButtonColor: "#B28F70" });
+    } catch (e) {
+      Swal.fire({ icon: "error", title: "寄送失敗", text: e.message, confirmButtonColor: "#B28F70" });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const sendAll = async () => {
+    const targetLabel = target === "pending" ? "出席且尚未填詳細的賓客" : "所有出席賓客";
+    const ask = await Swal.fire({
+      icon: "question",
+      title: "確定要群發嗎？",
+      text: `將寄給「${targetLabel}」（有留 Email 者）。建議先寄測試信確認內容。`,
+      showCancelButton: true,
+      confirmButtonText: "確定寄送",
+      cancelButtonText: "取消",
+      confirmButtonColor: "#B28F70",
+    });
+    if (!ask.isConfirmed) return;
+    setBusy(true);
+    try {
+      const r = await sendBroadcast({ subject, body, target, test_to: "" });
+      Swal.fire({
+        icon: "success",
+        title: `已開始寄送 ${r.sent} 封`,
+        text: "背景寄送中，完成後 Telegram 群組會收到成果回報",
+        confirmButtonColor: "#B28F70",
+      });
+    } catch (e) {
+      Swal.fire({ icon: "error", title: "寄送失敗", text: e.message, confirmButtonColor: "#B28F70" });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="panel">
+      <div className="panel-head">
+        <div className="panel-title"><Megaphone size={18} /> 群發 Email 通知</div>
+        <div style={{ fontSize: 12.5, color: "var(--text-muted)" }}>內文的 {"{name}"} 會自動帶入每位賓客的姓名</div>
+      </div>
+
+      <div className="form-group grid-2">
+        <div>
+          <label>寄送對象</label>
+          <Select value={target} onChange={setTarget}
+            options={[
+              { value: "pending", label: `出席且尚未填詳細（${stats ? stats.details_pending : "…"} 組）` },
+              { value: "attending_all", label: `所有出席者（${stats ? stats.attending_responses : "…"} 組）` },
+            ]} />
+        </div>
+        <div>
+          <label>主旨</label>
+          <input type="text" value={subject} onChange={(e) => setSubject(e.target.value)} />
+        </div>
+      </div>
+
+      <div className="form-group">
+        <label>信件內文</label>
+        <textarea rows={9} value={body} onChange={(e) => setBody(e.target.value)} style={{ fontSize: 13.5, lineHeight: 1.7 }} />
+      </div>
+
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+        <input
+          type="text" placeholder="測試信箱（先寄給自己看）" value={testTo}
+          onChange={(e) => setTestTo(e.target.value)}
+          style={{ flex: 1, minWidth: 200 }}
+        />
+        <button className="btn btn-ghost" onClick={sendTest} disabled={busy}><Mail size={15} /> 寄測試信</button>
+        <button className="btn btn-primary" onClick={sendAll} disabled={busy}><Send size={15} /> {busy ? "處理中…" : "開始群發"}</button>
+      </div>
     </div>
   );
 }

@@ -117,6 +117,14 @@ class DeadlinesIn(BaseModel):
     phase2_deadline: str = Field(default="", max_length=10)
 
 
+# ===== 群發通知 =====
+class BroadcastIn(BaseModel):
+    subject: str = Field(min_length=1, max_length=200)
+    body: str = Field(min_length=1, max_length=5000)
+    target: Literal["pending", "attending_all"] = "pending"  # 尚未填詳細 / 所有出席者
+    test_to: str = Field(default="", max_length=200)  # 有值 = 只寄一封測試信到此信箱
+
+
 # ===== 登入 =====
 class LoginIn(BaseModel):
     password: str

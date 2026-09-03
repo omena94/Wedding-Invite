@@ -24,6 +24,10 @@ class Settings(BaseSettings):
     # Telegram 通知（留空 = 不啟用）
     telegram_bot_token: str = ""
     telegram_chat_id: str = ""
+    # Gmail 寄信（後台群發通知用；smtp_password 是 Gmail「應用程式密碼」）
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_from_name: str = "宣文 & 孟庭"
 
 
 settings = Settings()

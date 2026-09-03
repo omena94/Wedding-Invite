@@ -63,4 +63,6 @@ export const deleteRsvp = (id) =>
   request(`/api/admin/rsvps/${id}`, { method: "DELETE", auth: true });
 export const saveDeadlines = (data) =>
   request("/api/admin/deadlines", { method: "PUT", body: data, auth: true });
+export const sendBroadcast = (data) =>
+  request("/api/admin/broadcast", { method: "POST", body: data, auth: true });
 export const exportCsvUrl = "/api/admin/export.csv";
