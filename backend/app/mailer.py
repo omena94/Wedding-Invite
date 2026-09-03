@@ -9,6 +9,8 @@ import smtplib
 import threading
 import time
 from email.header import Header
+from email.mime.application import MIMEApplication
+from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.utils import formataddr
 
@@ -17,31 +19,46 @@ from .notify import send_telegram
 
 log = logging.getLogger("mailer")
 
+# 附件格式：list[(檔名, bytes)]
+Attachments = list[tuple[str, bytes]]
+
 
 def smtp_ready() -> bool:
     return bool(settings.smtp_user and settings.smtp_password)
 
 
-def _build_message(to: str, subject: str, body: str) -> str:
-    msg = MIMEText(body, "plain", "utf-8")
+def _build_message(to: str, subject: str, body: str, attachments: Attachments | None = None) -> str:
+    if attachments:
+        msg = MIMEMultipart()
+        msg.attach(MIMEText(body, "plain", "utf-8"))
+        for filename, data in attachments:
+            part = MIMEApplication(data)
+            # 檔名用 RFC 2231 編碼，中文檔名也能正確顯示
+            part.add_header("Content-Disposition", "attachment", filename=("utf-8", "", filename))
+            msg.attach(part)
+    else:
+        msg = MIMEText(body, "plain", "utf-8")
     msg["Subject"] = str(Header(subject, "utf-8"))
     msg["From"] = formataddr((settings.smtp_from_name, settings.smtp_user))
     msg["To"] = to
     return msg.as_string()
 
 
-def send_one(to: str, subject: str, body: str) -> None:
+def send_one(to: str, subject: str, body: str, attachments: Attachments | None = None) -> None:
     """同步寄一封（測試信用），失敗會拋例外。"""
-    with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=30) as s:
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=60) as s:
         s.login(settings.smtp_user, settings.smtp_password)
-        s.sendmail(settings.smtp_user, [to], _build_message(to, subject, body))
+        s.sendmail(settings.smtp_user, [to], _build_message(to, subject, body, attachments))
 
 
-def _broadcast_worker(recipients: list[tuple[str, str]], subject: str, body: str) -> None:
+def _broadcast_worker(
+    recipients: list[tuple[str, str]], subject: str, body: str,
+    attachments: Attachments | None = None,
+) -> None:
     ok = 0
     failed: list[str] = []
     try:
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=30) as s:
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=60) as s:
             s.login(settings.smtp_user, settings.smtp_password)
             for name, email in recipients:
                 try:
@@ -52,6 +69,7 @@ def _broadcast_worker(recipients: list[tuple[str, str]], subject: str, body: str
                             email,
                             subject.replace("{name}", name),
                             body.replace("{name}", name),
+                            attachments,
                         ),
                     )
                     ok += 1
@@ -70,8 +88,11 @@ def _broadcast_worker(recipients: list[tuple[str, str]], subject: str, body: str
     send_telegram(text)
 
 
-def broadcast(recipients: list[tuple[str, str]], subject: str, body: str) -> None:
+def broadcast(
+    recipients: list[tuple[str, str]], subject: str, body: str,
+    attachments: Attachments | None = None,
+) -> None:
     """背景群發，立即返回。"""
     threading.Thread(
-        target=_broadcast_worker, args=(recipients, subject, body), daemon=True
+        target=_broadcast_worker, args=(recipients, subject, body, attachments), daemon=True
     ).start()

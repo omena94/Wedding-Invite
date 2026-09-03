@@ -497,14 +497,27 @@ function BroadcastPanel({ stats }) {
   const [subject, setSubject] = useState(DEFAULT_SUBJECT);
   const [body, setBody] = useState(DEFAULT_BODY);
   const [testTo, setTestTo] = useState("");
+  const [files, setFiles] = useState([]); // 附件 File[]
   const [busy, setBusy] = useState(false);
+
+  const addFiles = (list) => {
+    const merged = [...files, ...Array.from(list)];
+    if (merged.length > 3) {
+      return Swal.fire({ icon: "warning", title: "附件最多 3 個", confirmButtonColor: "#B28F70" });
+    }
+    const total = merged.reduce((a, f) => a + f.size, 0);
+    if (total > 10 * 1024 * 1024) {
+      return Swal.fire({ icon: "warning", title: "附件總大小超過 10MB", text: "請縮小檔案後再試", confirmButtonColor: "#B28F70" });
+    }
+    setFiles(merged);
+  };
 
   const sendTest = async () => {
     if (!testTo.trim()) return Swal.fire({ icon: "warning", title: "請先填測試信箱", confirmButtonColor: "#B28F70" });
     setBusy(true);
     try {
-      await sendBroadcast({ subject, body, target, test_to: testTo.trim() });
-      Swal.fire({ icon: "success", title: "測試信已寄出", text: `請到 ${testTo.trim()} 收信確認內容`, confirmButtonColor: "#B28F70" });
+      await sendBroadcast({ subject, body, target, test_to: testTo.trim() }, files);
+      Swal.fire({ icon: "success", title: "測試信已寄出", text: `請到 ${testTo.trim()} 收信確認內容${files.length ? "與附件" : ""}`, confirmButtonColor: "#B28F70" });
     } catch (e) {
       Swal.fire({ icon: "error", title: "寄送失敗", text: e.message, confirmButtonColor: "#B28F70" });
     } finally {
@@ -517,7 +530,7 @@ function BroadcastPanel({ stats }) {
     const ask = await Swal.fire({
       icon: "question",
       title: "確定要群發嗎？",
-      text: `將寄給「${targetLabel}」（有留 Email 者）。建議先寄測試信確認內容。`,
+      text: `將寄給「${targetLabel}」（有留 Email 者）${files.length ? `，並夾帶 ${files.length} 個附件` : ""}。建議先寄測試信確認內容。`,
       showCancelButton: true,
       confirmButtonText: "確定寄送",
       cancelButtonText: "取消",
@@ -526,7 +539,7 @@ function BroadcastPanel({ stats }) {
     if (!ask.isConfirmed) return;
     setBusy(true);
     try {
-      const r = await sendBroadcast({ subject, body, target, test_to: "" });
+      const r = await sendBroadcast({ subject, body, target, test_to: "" }, files);
       Swal.fire({
         icon: "success",
         title: `已開始寄送 ${r.sent} 封`,
@@ -578,6 +591,30 @@ function BroadcastPanel({ stats }) {
       <div className="form-group">
         <label>信件內文</label>
         <textarea rows={9} value={body} onChange={(e) => setBody(e.target.value)} style={{ fontSize: 13.5, lineHeight: 1.7 }} />
+      </div>
+
+      <div className="form-group">
+        <label>附件（PDF / JPG / PNG，最多 3 個、共 10MB）</label>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+          <label className="btn btn-ghost" style={{ cursor: "pointer" }}>
+            📎 選擇檔案
+            <input
+              type="file" multiple accept=".pdf,.jpg,.jpeg,.png" hidden
+              onChange={(e) => { addFiles(e.target.files); e.target.value = ""; }}
+            />
+          </label>
+          {files.map((f, i) => (
+            <span key={i} className="pill pill-groom" style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+              {f.name}（{(f.size / 1024 / 1024).toFixed(1)}MB）
+              <button
+                type="button"
+                onClick={() => setFiles(files.filter((_, j) => j !== i))}
+                style={{ border: "none", background: "none", cursor: "pointer", color: "var(--rose-accent)", fontWeight: 700 }}
+              >✕</button>
+            </span>
+          ))}
+          {files.length === 0 && <span style={{ fontSize: 12.5, color: "var(--text-muted)" }}>尚未選擇附件（可不夾帶）</span>}
+        </div>
       </div>
 
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>

@@ -63,6 +63,26 @@ export const deleteRsvp = (id) =>
   request(`/api/admin/rsvps/${id}`, { method: "DELETE", auth: true });
 export const saveDeadlines = (data) =>
   request("/api/admin/deadlines", { method: "PUT", body: data, auth: true });
-export const sendBroadcast = (data) =>
-  request("/api/admin/broadcast", { method: "POST", body: data, auth: true });
+// 群發（multipart，支援附件）：fields = {subject, body, target, test_to}，files = File[]
+export async function sendBroadcast(fields, files = []) {
+  const fd = new FormData();
+  Object.entries(fields).forEach(([k, v]) => fd.append(k, v));
+  files.forEach((f) => fd.append("files", f));
+  const res = await fetch("/api/admin/broadcast", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${getToken()}` },
+    body: fd, // 不設 Content-Type，讓瀏覽器自帶 multipart boundary
+  });
+  if (!res.ok) {
+    let msg = "發生錯誤";
+    try {
+      const data = await res.json();
+      if (typeof data.detail === "string") msg = data.detail;
+    } catch {}
+    const err = new Error(msg);
+    err.status = res.status;
+    throw err;
+  }
+  return res.json();
+}
 export const exportCsvUrl = "/api/admin/export.csv";

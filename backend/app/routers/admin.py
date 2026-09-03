@@ -2,8 +2,9 @@
 import csv
 import io
 import json
+import os
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import StreamingResponse
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
@@ -16,7 +17,6 @@ from ..mailer import broadcast, send_one, smtp_ready
 from ..models import Rsvp
 from ..phase_config import PHASE1_KEY, PHASE2_KEY, build_config, set_setting
 from ..schemas import (
-    BroadcastIn,
     DatePref,
     DeadlinesIn,
     LoginIn,
@@ -54,19 +54,49 @@ def save_deadlines(payload: DeadlinesIn, db: Session = Depends(get_db)):
     return build_config(db)
 
 
-# ===== 群發通知（Email）=====
+# ===== 群發通知（Email，multipart 以支援附件）=====
+ALLOWED_ATTACH_EXT = {".pdf", ".jpg", ".jpeg", ".png"}
+MAX_ATTACH_TOTAL = 10 * 1024 * 1024  # 10MB
+MAX_ATTACH_COUNT = 3
+
+
 @router.post("/broadcast", dependencies=[AdminRequired])
-def send_broadcast(payload: BroadcastIn, db: Session = Depends(get_db)):
+async def send_broadcast(
+    subject: str = Form(..., max_length=200),
+    body: str = Form(..., max_length=5000),
+    target: str = Form("pending"),
+    test_to: str = Form(""),
+    files: list[UploadFile] = File(default=[]),
+    db: Session = Depends(get_db),
+):
     if not smtp_ready():
         raise HTTPException(400, "尚未設定寄信帳號（Gmail 應用程式密碼），請先完成設定")
 
+    # 讀取並驗證附件
+    attachments = []
+    total_size = 0
+    for f in files:
+        if not f.filename:
+            continue
+        ext = os.path.splitext(f.filename)[1].lower()
+        if ext not in ALLOWED_ATTACH_EXT:
+            raise HTTPException(400, f"不支援的附件類型：{f.filename}（限 PDF / JPG / PNG）")
+        data = await f.read()
+        total_size += len(data)
+        if total_size > MAX_ATTACH_TOTAL:
+            raise HTTPException(400, "附件總大小超過 10MB，請縮小檔案")
+        attachments.append((f.filename, data))
+    if len(attachments) > MAX_ATTACH_COUNT:
+        raise HTTPException(400, f"附件最多 {MAX_ATTACH_COUNT} 個")
+
     # 測試信：只寄一封到指定信箱
-    if payload.test_to.strip():
+    if test_to.strip():
         try:
             send_one(
-                payload.test_to.strip(),
-                payload.subject.replace("{name}", "測試"),
-                payload.body.replace("{name}", "測試"),
+                test_to.strip(),
+                subject.replace("{name}", "測試"),
+                body.replace("{name}", "測試"),
+                attachments or None,
             )
         except Exception as e:
             raise HTTPException(502, f"測試信寄送失敗：{e}")
@@ -76,13 +106,13 @@ def send_broadcast(payload: BroadcastIn, db: Session = Depends(get_db)):
     stmt = select(Rsvp).where(
         Rsvp.attending.is_(True), Rsvp.is_test.is_(False), Rsvp.email != ""
     )
-    if payload.target == "pending":
+    if target == "pending":
         stmt = stmt.where(Rsvp.details_completed.is_(False))
     recipients = [(r.name, r.email) for r in db.scalars(stmt).all()]
     if not recipients:
         raise HTTPException(400, "沒有符合條件的收件人")
 
-    broadcast(recipients, payload.subject, payload.body)
+    broadcast(recipients, subject, body, attachments or None)
     return {"ok": True, "sent": len(recipients), "test": False}
 
 
