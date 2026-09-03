@@ -115,11 +115,12 @@ export default function DetailsForm() {
           <img src="/hero.png" alt="Alan & Omena" className="hero-image hero-swap-back" />
         </div>
         <h1 className="main-title">來跟我們一起吃飯！出席與主餐調查</h1>
-        <p className="invitation-quote">
+        <p className="invitation-quote" style={{ marginBottom: 12 }}>
           耶！一切終於搞定囉，準備好來跟我們大吃一頓了嗎？<br />
           請幫我們確認最終出席人數、挑選你的專屬主餐<br />
-          如果有過敏的食材也一定要跟我們說唷，我們當天見！
+          如果有過敏的食材也一定要跟我們說唷
         </p>
+        <p className="announce-title">我們3/13見！</p>
       </header>
 
       {closed ? (
