@@ -14,13 +14,15 @@ from ..schemas import LookupIn, LookupOut, Phase1Create, Phase2Details, RsvpOut
 
 
 def _attending_totals(db: Session) -> tuple[int, int]:
-    """回傳（出席組數, 出席總人數）給通知訊息用。"""
+    """回傳（出席組數, 出席總人數）給通知訊息用。測試資料不計入。"""
     groups = db.scalar(
-        select(func.count()).select_from(Rsvp).where(Rsvp.attending.is_(True))
+        select(func.count()).select_from(Rsvp).where(
+            Rsvp.attending.is_(True), Rsvp.is_test.is_(False)
+        )
     ) or 0
     guests = db.scalar(
         select(func.coalesce(func.sum(Rsvp.adult_count + Rsvp.child_count), 0)).where(
-            Rsvp.attending.is_(True)
+            Rsvp.attending.is_(True), Rsvp.is_test.is_(False)
         )
     ) or 0
     return groups, guests
@@ -145,7 +147,7 @@ def submit_phase2(payload: Phase2Details, db: Session = Depends(get_db)):
     groups, _ = _attending_totals(db)
     done = db.scalar(
         select(func.count()).select_from(Rsvp).where(
-            Rsvp.attending.is_(True), Rsvp.details_completed.is_(True)
+            Rsvp.attending.is_(True), Rsvp.details_completed.is_(True), Rsvp.is_test.is_(False)
         )
     ) or 0
     send_telegram(phase2_message(record, done, groups))

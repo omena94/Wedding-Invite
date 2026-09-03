@@ -193,7 +193,10 @@ function Dashboard({ onLogout }) {
                     {rows.map((r, i) => (
                       <tr key={r.id}>
                         <td className="muted-cell">{i + 1}</td>
-                        <td style={{ whiteSpace: "nowrap" }}><strong>{r.name}</strong></td>
+                        <td style={{ whiteSpace: "nowrap" }}>
+                          <strong>{r.name}</strong>
+                          {r.is_test && <span className="pill pill-no" style={{ marginLeft: 6 }}>測試</span>}
+                        </td>
                         <td><span className={`pill ${r.side === "bride" ? "pill-bride" : "pill-groom"}`}>{SIDE_LABEL[r.side] || r.side}</span></td>
                         <td><span className={`pill ${r.attending ? "pill-yes" : "pill-no"}`}>{r.attending ? "出席" : "不克"}</span></td>
                         <td>{r.attending ? r.adult_count : "—"}</td>
@@ -315,6 +318,7 @@ function EditModal({ row, onClose, onSaved }) {
         remark: f.remark || "",
         table_no: f.table_no === "" ? null : parseInt(f.table_no, 10),
         admin_note: f.admin_note || "",
+        is_test: f.is_test,
       });
       onSaved(updated);
     } catch (e) {
@@ -435,6 +439,12 @@ function EditModal({ row, onClose, onSaved }) {
             <label>內部備註</label>
             <input type="text" value={f.admin_note} onChange={(e) => set("admin_note", e.target.value)} />
           </div>
+        </div>
+
+        <div className="form-group">
+          <label>測試資料（不計入統計與匯出）</label>
+          <Select value={f.is_test} onChange={(v) => set("is_test", v === true || v === "true")}
+            options={[{ value: false, label: "否（正式資料）" }, { value: true, label: "是（測試用）" }]} />
         </div>
 
         <div className="edit-modal-actions">

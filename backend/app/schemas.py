@@ -76,6 +76,7 @@ class RsvpAdminUpdate(BaseModel):
     manage_status: Literal["new", "contacted", "seated"] | None = None
     table_no: int | None = Field(default=None, ge=0, le=999)
     admin_note: str | None = Field(default=None, max_length=300)
+    is_test: bool | None = None  # 標記為測試資料（不計入統計）
 
 
 # ===== 回傳給前端 =====
@@ -104,6 +105,7 @@ class RsvpOut(BaseModel):
     manage_status: str
     table_no: int | None
     admin_note: str
+    is_test: bool
     created_at: datetime
     updated_at: datetime
     details_updated_at: datetime | None

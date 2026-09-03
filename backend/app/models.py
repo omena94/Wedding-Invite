@@ -62,6 +62,7 @@ class Rsvp(Base):
     manage_status: Mapped[str] = mapped_column(String(20), default="new")  # new/contacted/seated
     table_no: Mapped[int | None] = mapped_column(Integer, nullable=True)
     admin_note: Mapped[str] = mapped_column(String(300), default="")
+    is_test: Mapped[bool] = mapped_column(Boolean, default=False)  # 測試資料，不計入統計/匯出
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(

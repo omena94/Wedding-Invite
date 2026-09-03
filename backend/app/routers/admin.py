@@ -87,7 +87,8 @@ def get_stats(db: Session = Depends(get_db)):
     if cached:
         return Stats(**cached)
 
-    rows = list(db.scalars(select(Rsvp)).all())
+    # 測試資料不計入統計
+    rows = list(db.scalars(select(Rsvp).where(Rsvp.is_test.is_(False))).all())
     attending = [r for r in rows if r.attending]
 
     def s(items, attr):
@@ -180,7 +181,12 @@ def delete_rsvp(rsvp_id: int, db: Session = Depends(get_db)):
 # ===== 匯出 CSV（Excel 可直接開）=====
 @router.get("/export.csv", dependencies=[AdminRequired])
 def export_csv(db: Session = Depends(get_db)):
-    rows = list(db.scalars(select(Rsvp).order_by(Rsvp.created_at.desc())).all())
+    # 匯出不含測試資料
+    rows = list(
+        db.scalars(
+            select(Rsvp).where(Rsvp.is_test.is_(False)).order_by(Rsvp.created_at.desc())
+        ).all()
+    )
 
     buf = io.StringIO()
     buf.write("﻿")  # BOM，讓 Excel 正確辨識 UTF-8 中文
