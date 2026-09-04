@@ -1,15 +1,9 @@
-import { Calendar, Clock, MapPin, SquareParking, CalendarCheck, Utensils, ArrowRight, Hourglass } from "lucide-react";
-
-// 婚禮日期（倒數用）。改日期只要改這一行。
-const WEDDING_DATE = "2027-03-13";
-
-function daysUntil(iso) {
-  const [y, m, d] = iso.split("-").map(Number);
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const target = new Date(y, m - 1, d);
-  return Math.round((target - today) / 86400000);
-}
+// 首頁：邀請、倒數、婚禮資訊、各表單入口。內容依「目前階段」變化（後台設定）。
+import { useEffect, useState } from "react";
+import { ArrowRight, Armchair, CalendarCheck, Hourglass, Images, Info, Utensils } from "lucide-react";
+import EventDetails from "../components/EventDetails.jsx";
+import { fetchStage } from "../api.js";
+import { WEDDING_DATE, daysUntil, fmtDateTime } from "../constants.js";
 
 function Countdown() {
   const days = daysUntil(WEDDING_DATE);
@@ -24,9 +18,43 @@ function Countdown() {
   );
 }
 
-const linkStyle = { color: "var(--milk-tea-700)", fontWeight: 500, textDecoration: "underline", textUnderlineOffset: 3 };
+function Card({ href, icon, step, title, desc, primary, disabled }) {
+  const inner = (
+    <>
+      <div className="nav-card-icon">{icon}</div>
+      <div className="nav-card-body">
+        {step && <div className="nav-card-step">{step}</div>}
+        <div className="nav-card-title">{title}</div>
+        <div className="nav-card-desc">{desc}</div>
+      </div>
+      {!disabled && <ArrowRight size={18} className="nav-card-arrow" />}
+    </>
+  );
+  const cls = `nav-card${primary ? " nav-card-primary" : ""}${disabled ? " nav-card-disabled" : ""}`;
+  if (disabled) return <div className={cls} aria-disabled="true">{inner}</div>;
+  return <a className={cls} href={href}>{inner}</a>;
+}
 
 export default function Home() {
+  const [stage, setStage] = useState(null);
+  useEffect(() => {
+    fetchStage().then(setStage).catch(() => setStage({ phase2_open: false }));
+  }, []);
+  const s = stage || {};
+  const phase2Open = !!s.phase2_open;
+
+  const phase1 = (
+    <Card key="p1" href="/rsvp" icon={<CalendarCheck size={22} />} step="第一階段" title="填寫出席意願"
+      desc="告訴我們你會不會來、大人小孩幾位" primary={!phase2Open} />
+  );
+  const phase2 = phase2Open ? (
+    <Card key="p2" href="/details" icon={<Utensils size={22} />} step="第二階段" title="確認出席與主餐"
+      desc="輸入第一階段留的 Email 或電話，確認最終人數並挑選主餐" primary />
+  ) : (
+    <Card key="p2" icon={<Utensils size={22} />} step="第二階段" title="確認出席與主餐" disabled
+      desc={s.phase2_open_at ? `預計 ${fmtDateTime(s.phase2_open_at)} 開放，收到通知後再回來填` : "尚未開放，收到我們的通知後再回來填"} />
+  );
+
   return (
     <div className="container">
       <header className="hero-arch-card">
@@ -41,61 +69,14 @@ export default function Home() {
         <p className="announce-lead">最愛的家人與好友們~~</p>
         <p className="announce-title">宣文與孟庭 要結婚啦</p>
         <Countdown />
-
-        <div className="event-details-card">
-          <div className="detail-item">
-            <div className="detail-icon"><Calendar size={16} /></div>
-            <div className="detail-content"><strong>日期：</strong>2027.03.13（週六）</div>
-          </div>
-          <div className="detail-item">
-            <div className="detail-icon"><Clock size={16} /></div>
-            <div className="detail-content"><strong>時間：</strong>12:00</div>
-          </div>
-          <div className="detail-item" style={{ alignItems: "flex-start" }}>
-            <div className="detail-icon" style={{ marginTop: -4 }}><MapPin size={16} /></div>
-            <div className="detail-content">
-              <strong>地點：</strong>
-              <span style={{ display: "inline-block", verticalAlign: "top" }}>
-                <a href="https://maps.app.goo.gl/oLUTYpC5Czfo5SZD6" target="_blank" rel="noopener noreferrer" style={linkStyle}>
-                  台北美福大飯店
-                </a>
-                <span style={{ display: "block", marginLeft: "-0.5em" }}>（台北市中山區樂群二路55號）</span>
-              </span>
-            </div>
-          </div>
-          <div className="detail-item">
-            <div className="detail-icon"><SquareParking size={16} /></div>
-            <div className="detail-content">
-              <strong>停車：</strong>
-              <a href="https://maps.app.goo.gl/JdHCL5tFBmSuWxeJ9" target="_blank" rel="noopener noreferrer" style={linkStyle}>
-                停車場資訊
-              </a>
-            </div>
-          </div>
-        </div>
+        <EventDetails />
       </header>
 
-      {/* 導覽：兩個階段的表單入口 */}
-      <nav className="nav-cards" aria-label="表單入口">
-        <a className="nav-card nav-card-primary" href="/rsvp">
-          <div className="nav-card-icon"><CalendarCheck size={22} /></div>
-          <div className="nav-card-body">
-            <div className="nav-card-step">第一階段</div>
-            <div className="nav-card-title">填寫出席意願</div>
-            <div className="nav-card-desc">告訴我們你會不會來、大人小孩幾位</div>
-          </div>
-          <ArrowRight size={18} className="nav-card-arrow" />
-        </a>
-
-        <a className="nav-card" href="/details">
-          <div className="nav-card-icon"><Utensils size={22} /></div>
-          <div className="nav-card-body">
-            <div className="nav-card-step">第二階段</div>
-            <div className="nav-card-title">確認出席與主餐</div>
-            <div className="nav-card-desc">收到我們的通知後再回來填，確認最終人數並挑選主餐</div>
-          </div>
-          <ArrowRight size={18} className="nav-card-arrow" />
-        </a>
+      <nav className="nav-cards" aria-label="頁面入口">
+        {phase2Open ? [phase2, phase1] : [phase1, phase2]}
+        <Card href="/info" icon={<Info size={22} />} title="婚禮當天資訊" desc="流程、交通、停車、服裝建議" />
+        {s.seat_open && <Card href="/seat" icon={<Armchair size={22} />} title="查詢桌次" desc="婚禮當天輸入姓名或電話，看你坐第幾桌" />}
+        {s.photos_open && <Card href="/photos" icon={<Images size={22} />} title="婚紗照" desc="我們的婚紗照，歡迎欣賞" />}
       </nav>
 
       <p className="footnote">有任何問題，歡迎直接聯繫宣文或孟庭</p>

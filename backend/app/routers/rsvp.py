@@ -10,6 +10,7 @@ from ..database import get_db
 from ..models import Rsvp
 from ..notify import phase1_message, phase2_message, send_telegram
 from ..schemas import LookupIn, LookupOut, Phase1Create, Phase2Details, RsvpOut
+from ..stage import is_phase2_open
 
 
 def _attending_totals(db: Session) -> tuple[int, int]:
@@ -78,6 +79,8 @@ def create_phase1(payload: Phase1Create, db: Session = Depends(get_db)):
 # ===== Phase 2：先用 Email/電話找到自己 =====
 @router.post("/rsvp/lookup", response_model=LookupOut)
 def lookup(payload: LookupIn, db: Session = Depends(get_db)):
+    if not is_phase2_open(db):
+        raise HTTPException(403, "第二階段尚未開放，收到我們的通知後再回來填喔")
     record = _find_by_contact(db, payload.contact)
     if not record:
         return LookupOut(found=False)
@@ -101,6 +104,8 @@ def lookup(payload: LookupIn, db: Session = Depends(get_db)):
 # ===== Phase 2：送出詳細調查（補到同一筆）=====
 @router.post("/rsvp/details", response_model=RsvpOut)
 def submit_phase2(payload: Phase2Details, db: Session = Depends(get_db)):
+    if not is_phase2_open(db):
+        raise HTTPException(403, "第二階段尚未開放，收到我們的通知後再回來填喔")
     record = _find_by_contact(db, payload.contact)
     if not record:
         raise HTTPException(

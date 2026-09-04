@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import Swal from "sweetalert2";
 import {
-  Lock, LogIn, Users, Utensils, Baby, Mail, PieChart,
+  Users, Utensils, Baby, Mail, PieChart,
   ClipboardList, Download, Trash2, Armchair, Salad, Pencil, MessageCircle,
   Megaphone, Send, ChevronDown,
 } from "lucide-react";
@@ -9,61 +9,18 @@ import ReactQuill from "react-quill";
 import "react-quill/dist/quill.snow.css";
 import Select from "../components/Select.jsx";
 import {
-  adminLogin, setToken, clearToken, getToken,
+  getToken,
   fetchStats, fetchRsvps, updateRsvp, deleteRsvp, exportCsvUrl,
   sendBroadcast,
 } from "../api.js";
+import { usePlanner } from "./context.js";
+import { PageHead } from "./ui.jsx";
 
 const SIDE_LABEL = { groom: "男方", bride: "女方" };
 
-export default function Admin() {
-  const [authed, setAuthed] = useState(!!getToken());
-  if (!authed) return <LoginGate onOk={() => setAuthed(true)} />;
-  return <Dashboard onLogout={() => { clearToken(); setAuthed(false); }} />;
-}
-
-/* ---------- 登入 ---------- */
-function LoginGate({ onOk }) {
-  const [pw, setPw] = useState("");
-  const [err, setErr] = useState("");
-  const [busy, setBusy] = useState(false);
-
-  const submit = async () => {
-    setErr(""); setBusy(true);
-    try {
-      const { token } = await adminLogin(pw);
-      setToken(token);
-      onOk();
-    } catch (e) {
-      setErr(e.message || "登入失敗");
-      setPw("");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <div className="lock-overlay">
-      <div className="lock-card">
-        <div className="ic"><Lock size={26} /></div>
-        <h2>後台管理</h2>
-        <p>Alan &amp; Omena 婚禮出席統計</p>
-        <input
-          type="password" value={pw} placeholder="請輸入後台密碼" autoFocus
-          onChange={(e) => setPw(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && submit()}
-        />
-        <div className="lock-error">{err}</div>
-        <button className="btn btn-primary" style={{ width: "100%", justifyContent: "center" }} disabled={busy} onClick={submit}>
-          {busy ? "登入中…" : <><LogIn size={16} /> 進入後台</>}
-        </button>
-      </div>
-    </div>
-  );
-}
-
-/* ---------- 後台主體 ---------- */
-function Dashboard({ onLogout }) {
+/* ---------- 賓客名單（原 /admin）---------- */
+export default function Guests() {
+  const { logout: onLogout } = usePlanner();
   const [stats, setStats] = useState(null);
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -121,17 +78,8 @@ function Dashboard({ onLogout }) {
   };
 
   return (
-    <div className="container-wide">
-      <div className="top-bar">
-        <a className="top-link" href="/">← 回首頁</a>
-        <button className="btn btn-ghost btn-sm" onClick={onLogout}>登出</button>
-      </div>
-
-      <div className="page-head">
-        <p className="script-title">Guest Dashboard</p>
-        <p className="english-sub">Alan &amp; Omena · 2027 March</p>
-        <h1>婚禮出席統計後台</h1>
-      </div>
+    <div>
+      <PageHead title="賓客名單" sub="出席統計、第二階段進度、群發通知、匯出 Excel" />
 
       {loading ? (
         <div className="loading">讀取資料中…</div>

@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Swal from "sweetalert2";
 import { Search, Users, Utensils, Baby, Salad, PenLine, Send, PartyPopper } from "lucide-react";
 import Select, { range } from "../components/Select.jsx";
 import EmailInput from "../components/EmailInput.jsx";
-import { lookupRsvp, submitPhase2 } from "../api.js";
+import { fetchStage, lookupRsvp, submitPhase2 } from "../api.js";
+import { fmtDateTime } from "../constants.js";
 import { isValidEmail, isValidPhone, normalizePhone } from "../validators.js";
 
 // 主餐選項（要改直接改這裡）
@@ -15,6 +16,10 @@ export default function DetailsForm() {
   const [guest, setGuest] = useState(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [stage, setStage] = useState(null); // 第二階段開了沒（null = 還在查）
+  useEffect(() => {
+    fetchStage().then(setStage).catch(() => setStage({ phase2_open: true }));
+  }, []);
 
   const [form, setForm] = useState({
     adult_count: 1,
@@ -129,7 +134,19 @@ export default function DetailsForm() {
         )}
       </header>
 
-      {step === "lookup" && (
+      {step === "lookup" && stage && !stage.phase2_open && (
+        <section className="section-card" style={{ textAlign: "center" }}>
+          <div className="section-header" style={{ justifyContent: "center" }}>
+            <div className="section-header-title">第二階段尚未開放</div>
+          </div>
+          <p style={{ fontSize: 14, lineHeight: 1.8 }}>
+            {stage.phase2_open_at ? <>預計 <strong>{fmtDateTime(stage.phase2_open_at)}</strong> 開放，</> : null}
+            收到我們的通知後再回來確認出席與主餐就可以囉
+          </p>
+          <p style={{ marginTop: 14 }}><a href="/" style={{ color: "var(--milk-tea-700)", fontWeight: 600 }}>← 回首頁</a></p>
+        </section>
+      )}
+      {step === "lookup" && stage && stage.phase2_open && (
         <form onSubmit={doLookup}>
           <section className="section-card">
             <div className="section-header">

@@ -22,7 +22,7 @@ from ..schemas import (
     SideBreakdown,
     Stats,
 )
-from ..security import AdminRequired, create_token, verify_password
+from ..security import AdminRequired, CoupleRequired, create_token, login_role
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -30,9 +30,10 @@ router = APIRouter(prefix="/api/admin", tags=["admin"])
 # ===== 登入 =====
 @router.post("/login", response_model=LoginOut)
 def login(payload: LoginIn):
-    if not verify_password(payload.password):
+    role = login_role(payload.password)
+    if not role:
         raise HTTPException(401, "密碼錯誤")
-    return LoginOut(token=create_token())
+    return LoginOut(token=create_token(role), role=role)
 
 
 # ===== 群發通知（Email，multipart 以支援附件）=====
@@ -41,7 +42,7 @@ MAX_ATTACH_TOTAL = 10 * 1024 * 1024  # 10MB
 MAX_ATTACH_COUNT = 3
 
 
-@router.post("/broadcast", dependencies=[AdminRequired])
+@router.post("/broadcast", dependencies=[CoupleRequired])
 async def send_broadcast(
     subject: str = Form(..., max_length=200),
     body: str = Form(..., max_length=30000),  # HTML 內容，放寬長度

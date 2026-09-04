@@ -1,5 +1,5 @@
 """Pydantic 資料驗證模型（API 進出格式）。"""
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -118,6 +118,7 @@ class LoginIn(BaseModel):
 
 class LoginOut(BaseModel):
     token: str
+    role: str = "couple"  # couple 新人 / helper 幫手
 
 
 # ===== 統計 =====
@@ -151,3 +152,145 @@ class Stats(BaseModel):
     veg_types: dict[str, int] = {}
     main_course_totals: dict[str, int] = {}   # 各主餐總份數
     total_kids_meals: int = 0                  # 兒童餐點總份數
+
+
+# ===== 賓客端：桌次查詢 =====
+class SeatLookupIn(BaseModel):
+    query: str = Field(min_length=1, max_length=100)  # 姓名或電話
+
+
+class SeatLookupOut(BaseModel):
+    found: bool
+    name: str = ""
+    table_no: int | None = None
+
+
+# =====================================================================
+# 籌備後台
+# =====================================================================
+VendorStatus = Literal["candidate", "quoted", "signed", "done", "rejected"]
+PaidBy = Literal["groom", "bride", "shared", "family"]
+Assignee = Literal["groom", "bride", "both"]
+TaskKind = Literal["task", "milestone"]
+FileKind = Literal["doc", "receipt", "photo"]
+
+
+class VendorIn(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    category: str = Field(default="其他", max_length=30)
+    contact_name: str = Field(default="", max_length=100)
+    phone: str = Field(default="", max_length=50)
+    line_id: str = Field(default="", max_length=100)
+    email: str = Field(default="", max_length=200)
+    address: str = Field(default="", max_length=300)
+    website: str = Field(default="", max_length=300)
+    status: VendorStatus = "candidate"
+    rating: int = Field(default=0, ge=0, le=5)
+    note: str = Field(default="", max_length=5000)
+
+
+class VendorPatch(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    category: str | None = Field(default=None, max_length=30)
+    contact_name: str | None = Field(default=None, max_length=100)
+    phone: str | None = Field(default=None, max_length=50)
+    line_id: str | None = Field(default=None, max_length=100)
+    email: str | None = Field(default=None, max_length=200)
+    address: str | None = Field(default=None, max_length=300)
+    website: str | None = Field(default=None, max_length=300)
+    status: VendorStatus | None = None
+    rating: int | None = Field(default=None, ge=0, le=5)
+    note: str | None = Field(default=None, max_length=5000)
+
+
+class QuoteIn(BaseModel):
+    item: str = Field(min_length=1, max_length=100)
+    price: int = Field(default=0, ge=0)
+    note: str = Field(default="", max_length=300)
+    sort_order: int = 0
+
+
+class QuotePatch(BaseModel):
+    item: str | None = Field(default=None, min_length=1, max_length=100)
+    price: int | None = Field(default=None, ge=0)
+    note: str | None = Field(default=None, max_length=300)
+    sort_order: int | None = None
+
+
+class ExpenseIn(BaseModel):
+    vendor_id: int | None = None
+    category: str = Field(default="其他", max_length=30)
+    title: str = Field(min_length=1, max_length=150)
+    budget_amount: int = Field(default=0, ge=0)
+    contract_amount: int = Field(default=0, ge=0)
+    paid_by: PaidBy = "shared"
+    note: str = Field(default="", max_length=5000)
+
+
+class ExpensePatch(BaseModel):
+    vendor_id: int | None = None
+    clear_vendor: bool = False  # 因為 None 也代表「不變」，要解除廠商連結時把這個設 true
+    category: str | None = Field(default=None, max_length=30)
+    title: str | None = Field(default=None, min_length=1, max_length=150)
+    budget_amount: int | None = Field(default=None, ge=0)
+    contract_amount: int | None = Field(default=None, ge=0)
+    paid_by: PaidBy | None = None
+    note: str | None = Field(default=None, max_length=5000)
+
+
+class PaymentIn(BaseModel):
+    title: str = Field(min_length=1, max_length=100)
+    amount: int = Field(default=0, ge=0)
+    due_date: date | None = None
+    paid_date: date | None = None
+    method: str = Field(default="", max_length=30)
+    payer: str = Field(default="", max_length=20)
+    note: str = Field(default="", max_length=300)
+    sort_order: int = 0
+
+
+class PaymentPatch(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=100)
+    amount: int | None = Field(default=None, ge=0)
+    due_date: date | None = None
+    clear_due_date: bool = False
+    paid_date: date | None = None
+    clear_paid_date: bool = False  # 標回「未付」
+    method: str | None = Field(default=None, max_length=30)
+    payer: str | None = Field(default=None, max_length=20)
+    note: str | None = Field(default=None, max_length=300)
+    sort_order: int | None = None
+
+
+class TaskIn(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+    kind: TaskKind = "task"
+    due_date: date | None = None
+    done: bool = False
+    assignee: Assignee = "both"
+    vendor_id: int | None = None
+    note: str = Field(default="", max_length=5000)
+    sort_order: int = 0
+
+
+class TaskPatch(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=200)
+    kind: TaskKind | None = None
+    due_date: date | None = None
+    clear_due_date: bool = False
+    done: bool | None = None
+    assignee: Assignee | None = None
+    vendor_id: int | None = None
+    clear_vendor: bool = False
+    note: str | None = Field(default=None, max_length=5000)
+    sort_order: int | None = None
+
+
+class FilePatch(BaseModel):
+    kind: FileKind | None = None
+    is_public: bool | None = None
+    vendor_id: int | None = None
+    expense_id: int | None = None
+    payment_id: int | None = None
+    clear_links: bool = False
+    note: str | None = Field(default=None, max_length=300)

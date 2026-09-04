@@ -1,32 +1,47 @@
-"""FastAPI 進入點：同一個 port 同時提供 API 與 React 前端。"""
+"""FastAPI 進入點：同一個 port 同時提供 API 與 React 前端。
+
+網址分兩區：
+  賓客（公開）  /  /rsvp  /details  /info  /seat  /photos
+  新人（登入）  /planner/...（單一 React 應用，前端自己處理子路由）
+"""
 import logging
 
 from fastapi import FastAPI
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
-from .config import FRONTEND_DIST
+from .config import FRONTEND_DIST, settings
 from .database import init_db
-from .routers import admin, rsvp
+from .routers import admin, planner, public, rsvp
 
 logging.basicConfig(level=logging.INFO)
 
-app = FastAPI(title="Wedding RSVP", version="1.0")
+app = FastAPI(title="Wedding RSVP", version="2.0")
 
 
 @app.on_event("startup")
 def _startup():
     init_db()  # 自動建立資料表
+    settings.upload_path  # 確保上傳目錄存在
 
 
 # ---- API 路由 ----
 app.include_router(rsvp.router)
+app.include_router(public.router)
 app.include_router(admin.router)
+app.include_router(planner.router)
 
 
 @app.get("/api/health")
 def health():
     return {"status": "ok"}
+
+
+# 舊網址：/admin → 籌備後台的賓客頁
+@app.get("/admin")
+@app.get("/admin/")
+def _admin_redirect():
+    return RedirectResponse("/planner/guests", status_code=301)
 
 
 # ---- 前端（React 打包後的靜態檔）----
@@ -40,15 +55,18 @@ if FRONTEND_DIST.exists():
         # API 路徑不在這裡處理（已被上面的路由攔截；此為保險）
         if full_path.startswith("api/"):
             return JSONResponse({"detail": "Not Found"}, status_code=404)
+        # 0) 籌備後台是單頁應用：/planner 與 /planner/* 一律回 planner.html
+        if full_path == "planner" or full_path.startswith("planner/"):
+            return FileResponse(FRONTEND_DIST / "planner.html")
         # 1) 實體檔案（圖片、.html、favicon 等）直接回傳
         candidate = FRONTEND_DIST / full_path
         if full_path and candidate.is_file():
             return FileResponse(candidate)
-        # 2) 乾淨網址：/details → details.html、/admin → admin.html
+        # 2) 乾淨網址：/rsvp → rsvp.html、/details → details.html…
         html = FRONTEND_DIST / f"{full_path}.html"
         if full_path and html.is_file():
             return FileResponse(html)
-        # 3) 其餘一律回 Phase 1 首頁
+        # 3) 其餘一律回首頁
         return FileResponse(FRONTEND_DIST / "index.html")
 else:
     @app.get("/")

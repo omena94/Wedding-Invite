@@ -1,10 +1,10 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import "./theme.css";
-import Admin from "./pages/Admin.jsx";
+import Info from "./pages/Info.jsx";
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
-    <Admin />
+    <Info />
   </React.StrictMode>
 );
