@@ -552,3 +552,46 @@ tbody tr:last-child td { border-bottom: none; }
   .pl-grid-2 { grid-template-columns: 1fr; gap: 0; }
   .pl-title { font-size: 19px; }
 }
+
+/* ============ 自訂開關 / 核取方塊 / 日期時間 / 檔案選擇 ============ */
+.ui-toggle {
+  width: 44px; height: 26px; border-radius: 13px; flex-shrink: 0; padding: 0; position: relative; cursor: pointer;
+  border: 1.5px solid var(--border-highlight); background: var(--milk-tea-100); transition: all 0.2s ease;
+}
+.ui-toggle::after {
+  content: ""; position: absolute; top: 2px; left: 2px; width: 19px; height: 19px; border-radius: 50%;
+  background: #fff; box-shadow: 0 1px 3px rgba(61, 45, 32, 0.25); transition: transform 0.2s ease;
+}
+.ui-toggle.on { background: linear-gradient(135deg, var(--milk-tea-500), var(--milk-tea-700)); border-color: var(--milk-tea-700); }
+.ui-toggle.on::after { transform: translateX(18px); }
+.ui-toggle:disabled { opacity: 0.5; cursor: default; }
+.ui-toggle:focus-visible { box-shadow: 0 0 0 4px rgba(178, 143, 112, 0.18); outline: none; }
+
+.ui-check {
+  display: inline-flex; align-items: center; gap: 8px; border: none; background: none; padding: 0;
+  font: inherit; color: var(--text-body); cursor: pointer; text-align: left;
+}
+.ui-check-box {
+  width: 20px; height: 20px; border-radius: 6px; flex-shrink: 0;
+  border: 1.5px solid var(--border-highlight); background: #fffcfa; color: #fff;
+  display: inline-flex; align-items: center; justify-content: center; transition: all 0.15s ease;
+}
+.ui-check:hover .ui-check-box { border-color: var(--milk-tea-500); }
+.ui-check.on .ui-check-box { background: linear-gradient(135deg, var(--milk-tea-700), var(--milk-tea-900)); border-color: var(--milk-tea-700); }
+.ui-check:disabled { opacity: 0.5; cursor: default; }
+.ui-check:focus-visible .ui-check-box { box-shadow: 0 0 0 4px rgba(178, 143, 112, 0.18); }
+.ui-check-label { font-size: 13.5px; }
+
+.ui-datetime { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.ui-datetime .ui-datepicker { flex: 1; min-width: 170px; }
+.ui-datetime .ui-select.compact { min-width: 88px; }
+
+.ui-file { display: flex; flex-direction: column; gap: 8px; }
+.ui-file-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.ui-file-item { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; }
+.ui-file-item button { border: none; background: none; cursor: pointer; color: var(--rose-accent); font-weight: 700; padding: 0 2px; }
+
+.pl-switch { display: flex; gap: 12px; align-items: flex-start; cursor: pointer; }
+.pl-switch .ui-toggle { margin-top: 2px; }
+.pl-task-row { display: flex; gap: 12px; align-items: flex-start; min-width: 0; }
+.pl-task-row .ui-check { margin-top: 2px; }

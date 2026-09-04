@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { Pencil, Plus, Trash2 } from "lucide-react";
 import Select from "../components/Select.jsx";
+import { Checkbox } from "../components/Toggle.jsx";
 import { deleteTask, fetchTasks, fetchVendors, updateTask } from "../api.js";
 import { ASSIGNEE, daysUntil, fmtDate } from "../constants.js";
 import { TaskModal } from "./modals.jsx";
@@ -58,8 +59,8 @@ export default function Timeline() {
                 const overdue = !t.done && d !== null && d < 0;
                 return (
                   <li key={t.id} style={{ opacity: t.done ? 0.55 : 1 }}>
-                    <label style={{ display: "flex", gap: 12, alignItems: "flex-start", cursor: "pointer", minWidth: 0 }}>
-                      <input type="checkbox" checked={t.done} onChange={() => toggle(t)} style={{ marginTop: 4 }} />
+                    <div className="pl-task-row">
+                      <Checkbox checked={t.done} onChange={() => toggle(t)} />
                       <div style={{ minWidth: 0 }}>
                         <div className="pl-list-title" style={{ textDecoration: t.done ? "line-through" : "none" }}>
                           {t.kind === "milestone" && <span className="pill pill-bride" style={{ marginRight: 6 }}>里程碑</span>}
@@ -73,7 +74,7 @@ export default function Timeline() {
                           {t.note && <div style={{ whiteSpace: "pre-wrap" }}>{t.note}</div>}
                         </div>
                       </div>
-                    </label>
+                    </div>
                     <div className="row-actions">
                       <button className="btn btn-ghost btn-sm" onClick={() => setModal({ task: t })}><Pencil size={13} /></button>{" "}
                       <button className="btn btn-ghost btn-sm" onClick={() => remove(t)}><Trash2 size={13} /></button>

@@ -1,13 +1,15 @@
 // 籌備後台共用的新增 / 編輯表單（彈窗）
 import { useState } from "react";
+import { Upload } from "lucide-react";
 import Select from "../components/Select.jsx";
+import DatePicker from "../components/DatePicker.jsx";
 import {
   createExpense, createPayment, createQuote, createTask, createVendor,
   updateExpense, updatePayment, updateQuote, updateTask, updateVendor, uploadFile,
 } from "../api.js";
 import {
   ASSIGNEE, FILE_KIND, PAID_BY, PAY_METHODS, TASK_KIND, VENDOR_CATEGORIES, VENDOR_STATUS,
-  listOptions, toOptions, todayISO,
+  fmtSize, listOptions, toOptions, todayISO,
 } from "../constants.js";
 import { Field, Modal, NumberInput, Stars, toInt, toastErr } from "./ui.jsx";
 
@@ -204,8 +206,8 @@ export function PaymentModal({ expenseId, expenseTitle, initial, onClose, onSave
         <Field label="金額（元）"><NumberInput value={f.amount} onChange={(v) => set("amount", v)} /></Field>
       </div>
       <div className="form-group grid-2">
-        <Field label="應付日期" hint="不確定可留空"><input type="date" value={f.due_date} onChange={(e) => set("due_date", e.target.value)} /></Field>
-        <Field label="實付日期" hint="留空 = 未付"><input type="date" value={f.paid_date} onChange={(e) => set("paid_date", e.target.value)} autoFocus={markPaid} /></Field>
+        <Field label="應付日期" hint="不確定可留空"><DatePicker value={f.due_date} onChange={(v) => set("due_date", v)} placeholder="未定" /></Field>
+        <Field label="實付日期" hint="留空 = 未付"><DatePicker value={f.paid_date} onChange={(v) => set("paid_date", v)} placeholder="未付" /></Field>
       </div>
       <div className="form-group grid-2">
         <Field label="付款方式"><Select value={f.method} onChange={(v) => set("method", v)} options={[{ value: "", label: "（未填）" }, ...listOptions(PAY_METHODS)]} /></Field>
@@ -248,7 +250,7 @@ export function TaskModal({ initial, vendors, onClose, onSaved }) {
       <Field label="內容" required><input type="text" value={f.title} onChange={(e) => set("title", e.target.value)} autoFocus placeholder="例如：預約禮服試穿" /></Field>
       <div className="form-group grid-2">
         <Field label="類型" hint="里程碑是固定日期的大事：拍攝日、取件、婚禮"><Select value={f.kind} onChange={(v) => set("kind", v)} options={toOptions(TASK_KIND)} /></Field>
-        <Field label="日期"><input type="date" value={f.due_date} onChange={(e) => set("due_date", e.target.value)} /></Field>
+        <Field label="日期"><DatePicker value={f.due_date} onChange={(v) => set("due_date", v)} placeholder="未定日期" /></Field>
       </div>
       <div className="form-group grid-2">
         <Field label="負責人"><Select value={f.assignee} onChange={(v) => set("assignee", v)} options={toOptions(ASSIGNEE)} /></Field>
@@ -306,9 +308,23 @@ export function UploadModal({ vendors, defaults, onClose, onSaved }) {
     <Modal title="上傳檔案" onClose={onClose}
       footer={<Footer onClose={onClose} onSave={save} busy={busy} saveLabel={progress || "上傳"} />}>
       <Field label="檔案" hint="PDF、JPG、PNG、Excel、Word；單檔上限 20MB，可一次選多個">
-        <input type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.gif,.xlsx,.xls,.csv,.docx,.doc,.txt"
-          onChange={(e) => setFiles(Array.from(e.target.files || []))} />
-        {files.length > 0 && <div className="helper-text">已選 {files.length} 個檔案</div>}
+        <div className="ui-file">
+          <label className="btn btn-ghost" style={{ cursor: "pointer", alignSelf: "flex-start" }}>
+            <Upload size={14} /> 選擇檔案
+            <input type="file" multiple hidden accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.gif,.xlsx,.xls,.csv,.docx,.doc,.txt"
+              onChange={(e) => { const picked = Array.from(e.target.files || []); setFiles((cur) => [...cur, ...picked]); e.target.value = ""; }} />
+          </label>
+          {files.length === 0 ? <span className="helper-text">尚未選擇檔案</span> : (
+            <div className="ui-file-list">
+              {files.map((f, i) => (
+                <span key={`${f.name}-${i}`} className="pill pill-groom ui-file-item">
+                  {f.name}（{fmtSize(f.size)}）
+                  <button type="button" onClick={() => setFiles(files.filter((_, j) => j !== i))} aria-label="移除">✕</button>
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
       </Field>
       <div className="form-group grid-2">
         <Field label="類型"><Select value={kind} onChange={setKind} options={toOptions(FILE_KIND)} /></Field>

@@ -14,7 +14,7 @@ import {
   sendBroadcast,
 } from "../api.js";
 import { usePlanner } from "./context.js";
-import { PageHead } from "./ui.jsx";
+import { NumberInput, PageHead, confirmDelete, toastErr } from "./ui.jsx";
 
 const SIDE_LABEL = { groom: "男方", bride: "女方" };
 
@@ -57,17 +57,17 @@ export default function Guests() {
   }, [load]);
 
   const remove = async (id, name) => {
-    if (!confirm(`確定要刪除「${name}」這筆回覆嗎？此動作無法復原。`)) return;
+    if (!(await confirmDelete(`${name} 這筆回覆`))) return;
     try {
       await deleteRsvp(id);
       setRows((rs) => rs.filter((r) => r.id !== id));
       fetchStats().then(setStats).catch(() => {});
-    } catch (e) { alert(e.message); }
+    } catch (e) { toastErr(e); }
   };
 
   const downloadCsv = async () => {
     const res = await fetch(exportCsvUrl, { headers: { Authorization: `Bearer ${getToken()}` } });
-    if (!res.ok) return alert("匯出失敗");
+    if (!res.ok) return toastErr(new Error("匯出失敗"));
     const blob = await res.blob();
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -244,7 +244,7 @@ function EditModal({ row, onClose, onSaved }) {
   const setMain = (d, v) => setF((x) => ({ ...x, main_course: { ...x.main_course, [d]: v } }));
 
   const save = async () => {
-    if (!String(f.name).trim()) return alert("姓名不能空白");
+    if (!String(f.name).trim()) return toastErr(new Error("姓名不能空白"));
     setBusy(true);
     try {
       const updated = await updateRsvp(row.id, {
@@ -269,7 +269,7 @@ function EditModal({ row, onClose, onSaved }) {
       });
       onSaved(updated);
     } catch (e) {
-      alert(e.message || "儲存失敗");
+      toastErr(e);
     } finally {
       setBusy(false);
     }
@@ -380,7 +380,7 @@ function EditModal({ row, onClose, onSaved }) {
         <div className="form-group grid-2">
           <div>
             <label>桌號</label>
-            <input type="number" min="0" value={f.table_no} onChange={(e) => set("table_no", e.target.value)} />
+            <NumberInput value={f.table_no} onChange={(v) => set("table_no", v)} placeholder="未安排" />
           </div>
           <div>
             <label>內部備註</label>

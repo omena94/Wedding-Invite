@@ -119,14 +119,19 @@ export function Stars({ value = 0, onChange }) {
   );
 }
 
-export function NumberInput({ value, onChange, ...rest }) {
+/** 數字輸入（純文字欄位＋千分位，不用原生 number 的上下箭頭）。onChange 回傳 "" 或整數 */
+export function NumberInput({ value, onChange, placeholder = "0", ...rest }) {
+  const display = value === "" || value === null || value === undefined ? "" : Number(value).toLocaleString("en-US");
   return (
     <input
-      type="number"
+      type="text"
       inputMode="numeric"
-      min="0"
-      value={value ?? ""}
-      onChange={(e) => onChange(e.target.value === "" ? "" : Number(e.target.value))}
+      value={display}
+      placeholder={placeholder}
+      onChange={(e) => {
+        const digits = e.target.value.replace(/[^\d]/g, "");
+        onChange(digits === "" ? "" : parseInt(digits, 10));
+      }}
       {...rest}
     />
   );

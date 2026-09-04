@@ -8,6 +8,7 @@ import {
   deleteExpense, deleteFile, deletePayment, deleteQuote, deleteTask, deleteVendor,
   downloadFile, fetchVendor, fetchVendors, openFile, updateTask,
 } from "../api.js";
+import { Checkbox } from "../components/Toggle.jsx";
 import { ASSIGNEE, FILE_KIND, PAID_BY, STATUS_PILL, VENDOR_STATUS, fmtDate, fmtSize, money } from "../constants.js";
 import { ExpenseModal, PaymentModal, QuoteModal, TaskModal, UploadModal, VendorModal } from "./modals.jsx";
 import { ErrorBox, Loading, PageHead, Stars, confirmDelete, toastErr, useLoader } from "./ui.jsx";
@@ -176,13 +177,13 @@ export default function VendorDetail() {
             <ul className="pl-list">
               {v.tasks.map((t) => (
                 <li key={t.id} style={{ opacity: t.done ? 0.55 : 1 }}>
-                  <label style={{ display: "flex", gap: 10, alignItems: "flex-start", cursor: "pointer" }}>
-                    <input type="checkbox" checked={t.done} onChange={() => act(() => updateTask(t.id, { done: !t.done }))} style={{ marginTop: 4 }} />
+                  <div className="pl-task-row">
+                    <Checkbox checked={t.done} onChange={() => act(() => updateTask(t.id, { done: !t.done }))} />
                     <div>
                       <div className="pl-list-title" style={{ textDecoration: t.done ? "line-through" : "none" }}>{t.kind === "milestone" && <span className="pill pill-bride" style={{ marginRight: 6 }}>里程碑</span>}{t.title}</div>
                       <div className="pl-list-sub">{ASSIGNEE[t.assignee]} · {t.due_date ? `${fmtDate(t.due_date)}${t.done ? "" : dueTag(t.due_date)}` : "未定日期"}</div>
                     </div>
-                  </label>
+                  </div>
                   <div className="row-actions">
                     <button className="btn btn-ghost btn-sm" onClick={() => setModal({ type: "task", task: t })}><Pencil size={13} /></button>{" "}
                     <button className="btn btn-ghost btn-sm" onClick={() => act(() => deleteTask(t.id), t.title)}><Trash2 size={13} /></button>

@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import Select from "../components/Select.jsx";
+import { Checkbox } from "../components/Toggle.jsx";
 import { fetchCompare, fetchVendorCategories } from "../api.js";
 import { STATUS_PILL, VENDOR_STATUS, money } from "../constants.js";
 import { Empty, ErrorBox, Loading, PageHead, Stars, useLoader } from "./ui.jsx";
@@ -49,9 +50,7 @@ export default function Compare() {
             <Select compact value={category} onChange={setCategory}
               options={(cats || []).map((c) => ({ value: c.category, label: `${c.category}（${c.count}）` }))} />
           )}
-          <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13 }}>
-            <input type="checkbox" checked={hideRejected} onChange={(e) => setHideRejected(e.target.checked)} /> 隱藏已放棄
-          </label>
+          <Checkbox checked={hideRejected} onChange={setHideRejected}>隱藏已放棄</Checkbox>
         </div>
 
         {!category ? <Empty>還沒有任何廠商。先到「廠商」新增幾家並填報價，這裡就能並排比較。</Empty>

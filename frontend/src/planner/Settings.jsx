@@ -1,6 +1,8 @@
 // 設定：第二階段開放時間、桌次查詢與婚紗照開關、婚禮資訊頁文案
 import { useEffect, useState } from "react";
 import { CalendarClock, Info, KeyRound, Save } from "lucide-react";
+import DateTimePicker from "../components/DateTimePicker.jsx";
+import Toggle from "../components/Toggle.jsx";
 import { fetchPlannerSettings, savePlannerSettings } from "../api.js";
 import { fmtDateTime, isoToLocal, localToISO } from "../constants.js";
 import { ErrorBox, Field, Loading, PageHead, toastErr, toastOk, useLoader } from "./ui.jsx";
@@ -65,7 +67,7 @@ export default function SettingsPage() {
         </div>
         <div className="form-group grid-2">
           <Field label="開放時間（台灣時間）" hint="時間到了首頁與 /details 會自動切換，不用再改任何東西；群發信可以在這之後寄">
-            <input type="datetime-local" value={isoToLocal(values.phase2_open_at)} onChange={(e) => set("phase2_open_at", e.target.value ? localToISO(e.target.value) : "")} />
+            <DateTimePicker value={isoToLocal(values.phase2_open_at)} onChange={(v) => set("phase2_open_at", v ? localToISO(v) : "")} placeholder="選擇開放日期" />
           </Field>
           <div style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap", paddingBottom: 18 }}>
             <button className="btn btn-primary" disabled={!!busy} onClick={() => save({ phase2_open_at: values.phase2_open_at || "" }, "p2")}><Save size={14} /> 儲存時間</button>
@@ -120,12 +122,12 @@ export default function SettingsPage() {
 
 function Switch({ label, desc, value, onChange, busy }) {
   return (
-    <label className="pl-switch">
-      <input type="checkbox" checked={value} disabled={busy} onChange={(e) => onChange(e.target.checked)} />
+    <div className="pl-switch" onClick={() => !busy && onChange(!value)}>
+      <Toggle checked={value} disabled={busy} onChange={onChange} label={label} />
       <div>
         <div className="pl-list-title">{label} <span className={`pill ${value ? "pill-yes" : "pill-no"}`}>{value ? "開放中" : "關閉"}</span></div>
         <div className="pl-list-sub">{desc}</div>
       </div>
-    </label>
+    </div>
   );
 }
