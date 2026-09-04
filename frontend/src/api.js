@@ -119,6 +119,14 @@ export const savePlannerSettings = (values) =>
   request(`${P}/settings`, { method: "PATCH", body: values, auth: true });
 export const fetchDashboard = () => request(`${P}/dashboard`, { auth: true });
 
+export const fetchCategories = () => request(`${P}/categories`, { auth: true });
+export const createCategory = (name) => request(`${P}/categories`, { method: "POST", body: { name }, auth: true });
+export const updateCategory = (id, data) =>
+  request(`${P}/categories/${id}`, { method: "PATCH", body: data, auth: true });
+export const deleteCategory = (id) => request(`${P}/categories/${id}`, { method: "DELETE", auth: true });
+export const reorderCategories = (ids) =>
+  request(`${P}/categories/reorder`, { method: "POST", body: { ids }, auth: true });
+
 export const fetchVendors = (params = {}) => request(`${P}/vendors${qs(params)}`, { auth: true });
 export const fetchVendorCategories = () => request(`${P}/vendors/categories`, { auth: true });
 export const fetchVendor = (id) => request(`${P}/vendors/${id}`, { auth: true });

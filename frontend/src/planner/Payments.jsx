@@ -1,7 +1,7 @@
 // 付款期程：所有廠商的分期合併成一張表，依應付日排序
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { Check, Pencil, Trash2, Undo2 } from "lucide-react";
+import { Check, Pencil, Plus, Trash2, Undo2 } from "lucide-react";
 import Select from "../components/Select.jsx";
 import { deletePayment, fetchPayments } from "../api.js";
 import { PAID_BY, daysUntil, fmtDate, money } from "../constants.js";
@@ -34,7 +34,8 @@ export default function Payments() {
 
   return (
     <div>
-      <PageHead title="付款期程" sub="定金、拍攝當日、尾款…哪天該付多少一目了然" />
+      <PageHead title="付款期程" sub="定金、拍攝當日、尾款…哪天該付多少一目了然"
+        actions={<button className="btn btn-primary" onClick={() => setModal({ create: true })}><Plus size={15} /> 新增付款</button>} />
 
       <div className="stats-grid">
         <div className="stat-card"><div className="value" style={{ fontSize: 22 }}>{money(summary.unpaid)}</div><div className="label">未付合計（目前篩選）</div></div>
@@ -92,7 +93,8 @@ export default function Payments() {
         )}
       </div>
 
-      {modal && (
+      {modal?.create && <PaymentModal onClose={close} onSaved={saved} />}
+      {modal?.payment && (
         <PaymentModal expenseId={modal.payment.expense_id} expenseTitle={modal.payment.expense_title} initial={modal.payment} markPaid={modal.markPaid} onClose={close} onSaved={saved} />
       )}
     </div>

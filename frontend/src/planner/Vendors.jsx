@@ -1,19 +1,25 @@
-// 廠商清單
+// 廠商清單：搜尋、篩選、新增、編輯、刪除；狀態可以在列上直接改；類別可管理
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { Pencil, Plus, Tags, Trash2 } from "lucide-react";
 import Select from "../components/Select.jsx";
-import { deleteVendor, fetchVendors } from "../api.js";
-import { STATUS_PILL, VENDOR_CATEGORIES, VENDOR_STATUS, listOptions, money, toOptions } from "../constants.js";
+import { deleteVendor, fetchVendors, updateVendor } from "../api.js";
+import { VENDOR_STATUS, money, toOptions } from "../constants.js";
+import CategoryManager from "./CategoryManager.jsx";
+import { useCategories } from "./categories.js";
 import { VendorModal } from "./modals.jsx";
 import { Empty, ErrorBox, Loading, PageHead, Stars, confirmDelete, toastErr, useLoader } from "./ui.jsx";
+
+const STATUS_OPTIONS = toOptions(VENDOR_STATUS);
 
 export default function Vendors() {
   const [q, setQ] = useState("");
   const [category, setCategory] = useState("");
   const [status, setStatus] = useState("");
   const [modal, setModal] = useState(null); // null | {} 新增 | vendor 編輯
-  const { data, loading, error, reload } = useLoader(() => fetchVendors({ q, category, status }), [q, category, status]);
+  const [manageCats, setManageCats] = useState(false);
+  const cats = useCategories();
+  const { data, setData, loading, error, reload } = useLoader(() => fetchVendors({ q, category, status }), [q, category, status]);
 
   const remove = async (v) => {
     if (!(await confirmDelete(v.name))) return;
@@ -24,17 +30,31 @@ export default function Vendors() {
       toastErr(e);
     }
   };
+  const changeStatus = async (v, s) => {
+    if (s === v.status) return;
+    try {
+      const saved = await updateVendor(v.id, { status: s });
+      setData((rows) => rows.map((r) => (r.id === v.id ? saved : r)));
+    } catch (e) {
+      toastErr(e);
+    }
+  };
 
   return (
     <div>
       <PageHead title="廠商" sub="攝影、禮服、場地、喜餅…所有聯絡方式、狀態與報價都在這裡"
-        actions={<button className="btn btn-primary" onClick={() => setModal({})}><Plus size={15} /> 新增廠商</button>} />
+        actions={
+          <>
+            <button className="btn btn-ghost" onClick={() => setManageCats(true)}><Tags size={15} /> 管理類別</button>
+            <button className="btn btn-primary" onClick={() => setModal({})}><Plus size={15} /> 新增廠商</button>
+          </>
+        } />
 
       <div className="panel">
         <div className="toolbar" style={{ marginBottom: 16 }}>
           <div className="search-box"><input type="text" placeholder="搜尋名稱 / 聯絡人 / 備註…" value={q} onChange={(e) => setQ(e.target.value)} /></div>
-          <Select compact value={category} onChange={setCategory} options={[{ value: "", label: "全部類別" }, ...listOptions(VENDOR_CATEGORIES)]} />
-          <Select compact value={status} onChange={setStatus} options={[{ value: "", label: "全部狀態" }, ...toOptions(VENDOR_STATUS)]} />
+          <Select compact value={category} onChange={setCategory} options={[{ value: "", label: "全部類別" }, ...cats.options]} />
+          <Select compact value={status} onChange={setStatus} options={[{ value: "", label: "全部狀態" }, ...STATUS_OPTIONS]} />
         </div>
 
         {loading ? <Loading /> : error ? <ErrorBox error={error} /> : data.length === 0 ? (
@@ -56,7 +76,7 @@ export default function Vendors() {
                       {v.rating > 0 && <div><Stars value={v.rating} /></div>}
                     </td>
                     <td>{v.category}</td>
-                    <td><span className={`pill ${STATUS_PILL[v.status]}`}>{VENDOR_STATUS[v.status]}</span></td>
+                    <td><Select compact value={v.status} onChange={(s) => changeStatus(v, s)} options={STATUS_OPTIONS} /></td>
                     <td className="muted-cell" style={{ fontSize: 12.5 }}>
                       {v.contact_name && <div>{v.contact_name}</div>}
                       {v.phone && <div>{v.phone}</div>}
@@ -81,6 +101,10 @@ export default function Vendors() {
       {modal && (
         <VendorModal initial={modal.id ? modal : null} onClose={() => setModal(null)}
           onSaved={() => { setModal(null); reload(); }} />
+      )}
+      {manageCats && (
+        <CategoryManager list={cats.list} onChange={cats.setList}
+          onClose={() => { setManageCats(false); cats.reload(); reload(); }} />
       )}
     </div>
   );

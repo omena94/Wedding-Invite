@@ -78,6 +78,15 @@ class Rsvp(Base):
 # 籌備後台（只有新人看得到）
 # =====================================================================
 
+class VendorCategory(Base):
+    """廠商／花費的類別（可在後台增刪改、排序）。廠商與花費用名稱參照，改名時一併更新。"""
+    __tablename__ = "vendor_categories"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(30), unique=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+
+
 class Vendor(Base):
     """廠商：攝影、禮服、場地、喜餅…"""
     __tablename__ = "vendors"

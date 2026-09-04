@@ -25,7 +25,7 @@ export function Modal({ title, onClose, children, wide, footer }) {
   }, [onClose]);
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className={`modal-card${wide ? " wide" : ""}`} onClick={(e) => e.stopPropagation()}>
+      <div className={`modal-card modal-form${wide ? " wide" : ""}`} onClick={(e) => e.stopPropagation()}>
         <div className="edit-modal-title" style={{ justifyContent: "space-between" }}>
           <span>{title}</span>
           <button type="button" className="btn btn-ghost btn-sm" onClick={onClose} aria-label="關閉">

@@ -5,13 +5,16 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session, selectinload
 
 from ..config import settings
 from ..database import get_db
-from ..models import Expense, FileAsset, Payment, Quote, Task, Vendor
+from ..models import Expense, FileAsset, Payment, Quote, Task, Vendor, VendorCategory
 from ..schemas import (
+    CategoryIn,
+    CategoryPatch,
+    CategoryReorder,
     ExpenseIn,
     ExpensePatch,
     FilePatch,
@@ -229,6 +232,120 @@ def dashboard(db: Session = Depends(get_db)):
 
 
 # ---------------------------------------------------------------------
+# 類別（廠商與花費共用；可增刪改、排序）
+# ---------------------------------------------------------------------
+DEFAULT_CATEGORIES = [
+    "婚宴場地", "婚紗攝影", "禮服", "新秘造型", "婚戒", "喜餅", "喜帖",
+    "婚攝婚錄", "主持", "樂團表演", "婚車", "佈置花藝", "蜜月", "其他",
+]
+OTHER_CATEGORY = "其他"
+
+
+def _category_rows(db: Session) -> list[VendorCategory]:
+    return db.scalars(
+        select(VendorCategory).order_by(VendorCategory.sort_order.asc(), VendorCategory.id.asc())
+    ).all()
+
+
+def _ensure_categories(db: Session) -> list[VendorCategory]:
+    """第一次使用時塞預設清單；廠商或花費用到但清單裡沒有的類別也補進來。"""
+    rows = _category_rows(db)
+    if not rows:
+        for i, name in enumerate(DEFAULT_CATEGORIES):
+            db.add(VendorCategory(name=name, sort_order=i))
+        db.commit()
+        rows = _category_rows(db)
+    known = {r.name for r in rows}
+    used = set(db.scalars(select(Vendor.category).distinct()).all()) | set(
+        db.scalars(select(Expense.category).distinct()).all()
+    )
+    missing = [u for u in used if u and u not in known]
+    if missing:
+        base = max((r.sort_order for r in rows), default=-1) + 1
+        for i, name in enumerate(sorted(missing)):
+            db.add(VendorCategory(name=name, sort_order=base + i))
+        db.commit()
+        rows = _category_rows(db)
+    return rows
+
+
+def _category_out(db: Session, rows: list[VendorCategory]) -> list[dict]:
+    vcount = dict(db.execute(select(Vendor.category, func.count()).group_by(Vendor.category)).all())
+    ecount = dict(db.execute(select(Expense.category, func.count()).group_by(Expense.category)).all())
+    return [
+        {
+            "id": r.id,
+            "name": r.name,
+            "sort_order": r.sort_order,
+            "vendor_count": vcount.get(r.name, 0),
+            "expense_count": ecount.get(r.name, 0),
+        }
+        for r in rows
+    ]
+
+
+@router.get("/categories")
+def list_categories(db: Session = Depends(get_db)):
+    return _category_out(db, _ensure_categories(db))
+
+
+@router.post("/categories", status_code=201)
+def create_category(payload: CategoryIn, db: Session = Depends(get_db)):
+    name = payload.name.strip()
+    rows = _ensure_categories(db)
+    if any(r.name == name for r in rows):
+        raise HTTPException(400, f"已經有「{name}」這個類別")
+    db.add(VendorCategory(name=name, sort_order=max((r.sort_order for r in rows), default=-1) + 1))
+    db.commit()
+    return _category_out(db, _category_rows(db))
+
+
+@router.post("/categories/reorder")
+def reorder_categories(payload: CategoryReorder, db: Session = Depends(get_db)):
+    rows = {r.id: r for r in _category_rows(db)}
+    order = [i for i in payload.ids if i in rows] + [i for i in rows if i not in payload.ids]
+    for pos, cid in enumerate(order):
+        rows[cid].sort_order = pos
+    db.commit()
+    return _category_out(db, _category_rows(db))
+
+
+@router.patch("/categories/{category_id}")
+def update_category(category_id: int, payload: CategoryPatch, db: Session = Depends(get_db)):
+    row = _get_or_404(db, VendorCategory, category_id, "類別")
+    data = payload.model_dump(exclude_unset=True)
+    new_name = (data.get("name") or "").strip()
+    if new_name and new_name != row.name:
+        if db.scalar(select(func.count()).select_from(VendorCategory).where(VendorCategory.name == new_name)):
+            raise HTTPException(400, f"已經有「{new_name}」這個類別")
+        # 改名：用到這個類別的廠商與花費一併更新
+        db.execute(update(Vendor).where(Vendor.category == row.name).values(category=new_name))
+        db.execute(update(Expense).where(Expense.category == row.name).values(category=new_name))
+        row.name = new_name
+    if data.get("sort_order") is not None:
+        row.sort_order = data["sort_order"]
+    db.commit()
+    return _category_out(db, _category_rows(db))
+
+
+@router.delete("/categories/{category_id}")
+def delete_category(category_id: int, db: Session = Depends(get_db)):
+    """刪除類別；原本用這個類別的廠商與花費移到「其他」。"""
+    row = _get_or_404(db, VendorCategory, category_id, "類別")
+    if row.name == OTHER_CATEGORY:
+        raise HTTPException(400, "「其他」是預設類別，不能刪除")
+    rows = _category_rows(db)
+    if not any(r.name == OTHER_CATEGORY for r in rows):
+        db.add(VendorCategory(name=OTHER_CATEGORY, sort_order=max((r.sort_order for r in rows), default=-1) + 1))
+        db.flush()
+    db.execute(update(Vendor).where(Vendor.category == row.name).values(category=OTHER_CATEGORY))
+    db.execute(update(Expense).where(Expense.category == row.name).values(category=OTHER_CATEGORY))
+    db.delete(row)
+    db.commit()
+    return _category_out(db, _category_rows(db))
+
+
+# ---------------------------------------------------------------------
 # 廠商
 # ---------------------------------------------------------------------
 @router.get("/vendors")
@@ -254,10 +371,8 @@ def list_vendors(
 
 @router.get("/vendors/categories")
 def vendor_categories(db: Session = Depends(get_db)):
-    rows = db.execute(
-        select(Vendor.category, func.count()).group_by(Vendor.category).order_by(Vendor.category)
-    ).all()
-    return [{"category": c, "count": n} for c, n in rows]
+    """比價頁用：依類別清單的順序列出每個類別有幾家廠商。"""
+    return [{"category": c["name"], "count": c["vendor_count"]} for c in _category_out(db, _ensure_categories(db))]
 
 
 @router.post("/vendors", status_code=201)

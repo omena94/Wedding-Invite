@@ -10,7 +10,7 @@ import {
 } from "../api.js";
 import { Checkbox } from "../components/Toggle.jsx";
 import { ASSIGNEE, FILE_KIND, PAID_BY, STATUS_PILL, VENDOR_STATUS, fmtDate, fmtSize, money } from "../constants.js";
-import { ExpenseModal, PaymentModal, QuoteModal, TaskModal, UploadModal, VendorModal } from "./modals.jsx";
+import { ExpenseModal, FileModal, PaymentModal, QuoteModal, TaskModal, UploadModal, VendorModal } from "./modals.jsx";
 import { ErrorBox, Loading, PageHead, Stars, confirmDelete, toastErr, useLoader } from "./ui.jsx";
 import { dueTag } from "./Dashboard.jsx";
 
@@ -159,6 +159,7 @@ export default function VendorDetail() {
                   <div className="row-actions">
                     <button className="btn btn-ghost btn-sm" title="開啟" onClick={() => openFile(f.id).catch(toastErr)}><ExternalLink size={13} /></button>{" "}
                     <button className="btn btn-ghost btn-sm" title="下載" onClick={() => downloadFile(f.id, f.filename).catch(toastErr)}><Download size={13} /></button>{" "}
+                    <button className="btn btn-ghost btn-sm" title="編輯" onClick={() => setModal({ type: "file", file: f })}><Pencil size={13} /></button>{" "}
                     <button className="btn btn-ghost btn-sm" title="刪除" onClick={() => act(() => deleteFile(f.id), f.filename)}><Trash2 size={13} /></button>
                   </div>
                 </li>
@@ -196,7 +197,8 @@ export default function VendorDetail() {
       </div>
 
       {modal?.type === "vendor" && <VendorModal initial={v} onClose={close} onSaved={saved} />}
-      {modal?.type === "quote" && <QuoteModal vendorId={v.id} initial={modal.quote} onClose={close} onSaved={saved} />}
+      {modal?.type === "quote" && <QuoteModal vendorId={v.id} category={v.category} initial={modal.quote} onClose={close} onSaved={saved} />}
+      {modal?.type === "file" && <FileModal file={modal.file} vendors={vendors || []} onClose={close} onSaved={saved} />}
       {modal?.type === "expense" && (
         <ExpenseModal vendors={vendors || []} initial={modal.expense || { vendor_id: v.id, category: v.category }} onClose={close} onSaved={saved} />
       )}

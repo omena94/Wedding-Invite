@@ -175,6 +175,19 @@ TaskKind = Literal["task", "milestone"]
 FileKind = Literal["doc", "receipt", "photo"]
 
 
+class CategoryIn(BaseModel):
+    name: str = Field(min_length=1, max_length=30)
+
+
+class CategoryPatch(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=30)
+    sort_order: int | None = None
+
+
+class CategoryReorder(BaseModel):
+    ids: list[int]
+
+
 class VendorIn(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     category: str = Field(default="其他", max_length=30)

@@ -1,11 +1,11 @@
 // 文件庫：所有上傳過的合約、報價單、收據、婚紗照
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { Download, ExternalLink, Eye, EyeOff, Trash2, Upload } from "lucide-react";
+import { Download, ExternalLink, Eye, EyeOff, Pencil, Trash2, Upload } from "lucide-react";
 import Select from "../components/Select.jsx";
 import { deleteFile, downloadFile, fetchFiles, fetchVendors, openFile, updateFile } from "../api.js";
 import { FILE_KIND, fmtDate, fmtSize, toOptions } from "../constants.js";
-import { UploadModal } from "./modals.jsx";
+import { FileModal, UploadModal } from "./modals.jsx";
 import { Empty, ErrorBox, Loading, PageHead, confirmDelete, toastErr, useLoader } from "./ui.jsx";
 
 export default function Files() {
@@ -13,6 +13,7 @@ export default function Files() {
   const { data, loading, error, reload } = useLoader(() => fetchFiles({ kind }), [kind]);
   const { data: vendors } = useLoader(() => fetchVendors(), []);
   const [upload, setUpload] = useState(false);
+  const [edit, setEdit] = useState(null);
 
   const remove = async (f) => {
     if (!(await confirmDelete(f.filename))) return;
@@ -56,6 +57,7 @@ export default function Files() {
                     <td className="row-actions">
                       <button className="btn btn-ghost btn-sm" title="開啟" onClick={() => openFile(f.id).catch(toastErr)}><ExternalLink size={13} /></button>{" "}
                       <button className="btn btn-ghost btn-sm" title="下載" onClick={() => downloadFile(f.id, f.filename).catch(toastErr)}><Download size={13} /></button>{" "}
+                      <button className="btn btn-ghost btn-sm" title="編輯" onClick={() => setEdit(f)}><Pencil size={13} /></button>{" "}
                       <button className="btn btn-ghost btn-sm" title="刪除" onClick={() => remove(f)}><Trash2 size={13} /></button>
                     </td>
                   </tr>
@@ -67,6 +69,7 @@ export default function Files() {
       </div>
 
       {upload && <UploadModal vendors={vendors || []} defaults={{ kind: kind || "doc" }} onClose={() => setUpload(false)} onSaved={() => { setUpload(false); reload(); }} />}
+      {edit && <FileModal file={edit} vendors={vendors || []} onClose={() => setEdit(null)} onSaved={() => { setEdit(null); reload(); }} />}
     </div>
   );
 }

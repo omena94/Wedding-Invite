@@ -13,13 +13,14 @@ export default function Compare() {
   const [category, setCategory] = useState(params.get("category") || "");
   const [hideRejected, setHideRejected] = useState(true);
 
-  // 沒指定類別時，預設選廠商最多的那個類別
+  // 只列有廠商的類別；沒指定時預設選廠商最多的那個
+  const usable = useMemo(() => (cats || []).filter((c) => c.count > 0), [cats]);
   useEffect(() => {
-    if (!category && cats && cats.length) {
-      const best = [...cats].sort((a, b) => b.count - a.count)[0].category;
+    if (!category && usable.length) {
+      const best = [...usable].sort((a, b) => b.count - a.count)[0].category;
       setCategory(best);
     }
-  }, [cats, category]);
+  }, [usable, category]);
   useEffect(() => {
     if (category) setParams({ category }, { replace: true });
   }, [category, setParams]);
@@ -48,7 +49,7 @@ export default function Compare() {
         <div className="toolbar" style={{ marginBottom: 16 }}>
           {catsLoading ? <span className="muted-cell">讀取類別…</span> : (
             <Select compact value={category} onChange={setCategory}
-              options={(cats || []).map((c) => ({ value: c.category, label: `${c.category}（${c.count}）` }))} />
+              options={usable.map((c) => ({ value: c.category, label: `${c.category}（${c.count}）` }))} />
           )}
           <Checkbox checked={hideRejected} onChange={setHideRejected}>隱藏已放棄</Checkbox>
         </div>

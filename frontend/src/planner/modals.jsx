@@ -1,16 +1,17 @@
 // 籌備後台共用的新增 / 編輯表單（彈窗）
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Upload } from "lucide-react";
 import Select from "../components/Select.jsx";
 import DatePicker from "../components/DatePicker.jsx";
 import {
-  createExpense, createPayment, createQuote, createTask, createVendor,
-  updateExpense, updatePayment, updateQuote, updateTask, updateVendor, uploadFile,
+  createExpense, createPayment, createQuote, createTask, createVendor, fetchCompare, fetchExpenses,
+  updateExpense, updateFile, updatePayment, updateQuote, updateTask, updateVendor, uploadFile,
 } from "../api.js";
 import {
-  ASSIGNEE, FILE_KIND, PAID_BY, PAY_METHODS, TASK_KIND, VENDOR_CATEGORIES, VENDOR_STATUS,
-  fmtSize, listOptions, toOptions, todayISO,
+  ASSIGNEE, FILE_KIND, PAID_BY, PAY_METHODS, TASK_KIND, VENDOR_STATUS,
+  fmtSize, listOptions, money, toOptions, todayISO,
 } from "../constants.js";
+import { useCategories } from "./categories.js";
 import { Field, Modal, NumberInput, Stars, toInt, toastErr } from "./ui.jsx";
 
 const vendorOptions = (vendors, allowNone = true) => [
@@ -36,6 +37,7 @@ export function VendorModal({ initial, onClose, onSaved }) {
     ...(initial || {}),
   });
   const [busy, setBusy] = useState(false);
+  const cats = useCategories();
   const set = (k, v) => setF((x) => ({ ...x, [k]: v }));
 
   const save = async () => {
@@ -61,7 +63,7 @@ export function VendorModal({ initial, onClose, onSaved }) {
       footer={<Footer onClose={onClose} onSave={save} busy={busy} />}>
       <div className="form-group grid-2">
         <Field label="廠商名稱" required><input type="text" value={f.name} onChange={(e) => set("name", e.target.value)} autoFocus /></Field>
-        <Field label="類別"><Select value={f.category} onChange={(v) => set("category", v)} options={listOptions(VENDOR_CATEGORIES)} /></Field>
+        <Field label="類別" hint="類別可在廠商頁「管理類別」增刪改"><Select value={f.category} onChange={(v) => set("category", v)} options={cats.options} /></Field>
       </div>
       <div className="form-group grid-2">
         <Field label="狀態"><Select value={f.status} onChange={(v) => set("status", v)} options={toOptions(VENDOR_STATUS)} /></Field>
@@ -85,11 +87,16 @@ export function VendorModal({ initial, onClose, onSaved }) {
 }
 
 /* ---------- 報價項目 ---------- */
-export function QuoteModal({ vendorId, initial, onClose, onSaved }) {
+export function QuoteModal({ vendorId, category, initial, onClose, onSaved }) {
   const isNew = !initial?.id;
   const [f, setF] = useState({ item: "", price: 0, note: "", sort_order: 0, ...(initial || {}) });
   const [busy, setBusy] = useState(false);
+  const [suggest, setSuggest] = useState([]); // 同類別其他廠商用過的項目名稱，方便比價對齊
   const set = (k, v) => setF((x) => ({ ...x, [k]: v }));
+  useEffect(() => {
+    if (!category) return;
+    fetchCompare(category).then((d) => setSuggest(d.items || [])).catch(() => {});
+  }, [category]);
   const save = async () => {
     if (!f.item.trim()) return toastErr(new Error("請填報價項目名稱"));
     setBusy(true);
@@ -108,6 +115,13 @@ export function QuoteModal({ vendorId, initial, onClose, onSaved }) {
       footer={<Footer onClose={onClose} onSave={save} busy={busy} />}>
       <Field label="項目" required hint="同類別廠商用一樣的名稱，比價頁才會對齊，例如「5小時方案」「宴客款」">
         <input type="text" value={f.item} onChange={(e) => set("item", e.target.value)} autoFocus />
+        {suggest.length > 0 && (
+          <div className="ui-file-list" style={{ marginTop: 8 }}>
+            {suggest.map((it) => (
+              <button type="button" key={it} className={`pill ${f.item === it ? "pill-yes" : "pill-groom"}`} style={{ cursor: "pointer", border: "none", fontFamily: "inherit" }} onClick={() => set("item", it)}>{it}</button>
+            ))}
+          </div>
+        )}
       </Field>
       <div className="form-group grid-2">
         <Field label="金額（元）"><NumberInput value={f.price} onChange={(v) => set("price", v)} /></Field>
@@ -127,6 +141,7 @@ export function ExpenseModal({ initial, vendors, onClose, onSaved }) {
     vendor_id: initial?.vendor_id ? String(initial.vendor_id) : "",
   });
   const [busy, setBusy] = useState(false);
+  const cats = useCategories();
   const set = (k, v) => setF((x) => ({ ...x, [k]: v }));
   const pickVendor = (v) => {
     const vendor = (vendors || []).find((x) => String(x.id) === v);
@@ -158,7 +173,7 @@ export function ExpenseModal({ initial, vendors, onClose, onSaved }) {
         <Field label="廠商"><Select value={f.vendor_id} onChange={pickVendor} options={vendorOptions(vendors)} /></Field>
       </div>
       <div className="form-group grid-2">
-        <Field label="類別"><Select value={f.category} onChange={(v) => set("category", v)} options={listOptions(VENDOR_CATEGORIES)} /></Field>
+        <Field label="類別"><Select value={f.category} onChange={(v) => set("category", v)} options={cats.options} /></Field>
         <Field label="由誰出"><Select value={f.paid_by} onChange={(v) => set("paid_by", v)} options={toOptions(PAID_BY)} /></Field>
       </div>
       <div className="form-group grid-2">
@@ -171,6 +186,7 @@ export function ExpenseModal({ initial, vendors, onClose, onSaved }) {
 }
 
 /* ---------- 付款 ---------- */
+// expenseId 沒給的話（例如從付款期程頁新增），會多一個「花費項目」下拉讓使用者選
 export function PaymentModal({ expenseId, expenseTitle, initial, onClose, onSaved, markPaid }) {
   const isNew = !initial?.id;
   const [f, setF] = useState({
@@ -180,9 +196,16 @@ export function PaymentModal({ expenseId, expenseTitle, initial, onClose, onSave
     paid_date: markPaid ? (initial?.paid_date || todayISO()) : (initial?.paid_date || ""),
   });
   const [busy, setBusy] = useState(false);
+  const [expId, setExpId] = useState(expenseId ? String(expenseId) : "");
+  const [expenses, setExpenses] = useState(null);
+  const needPicker = isNew && !expenseId;
+  useEffect(() => {
+    if (needPicker) fetchExpenses().then(setExpenses).catch(() => setExpenses([]));
+  }, [needPicker]);
   const set = (k, v) => setF((x) => ({ ...x, [k]: v }));
   const save = async () => {
     if (!f.title.trim()) return toastErr(new Error("請填付款名稱，例如「定金」"));
+    if (isNew && !expId) return toastErr(new Error("請選擇這筆付款屬於哪個花費項目"));
     setBusy(true);
     try {
       const body = {
@@ -190,7 +213,7 @@ export function PaymentModal({ expenseId, expenseTitle, initial, onClose, onSave
       };
       if (f.due_date) body.due_date = f.due_date; else if (!isNew) body.clear_due_date = true;
       if (f.paid_date) body.paid_date = f.paid_date; else if (!isNew) body.clear_paid_date = true;
-      const saved = isNew ? await createPayment(expenseId, body) : await updatePayment(initial.id, body);
+      const saved = isNew ? await createPayment(parseInt(expId, 10), body) : await updatePayment(initial.id, body);
       onSaved(saved);
     } catch (e) {
       toastErr(e);
@@ -201,6 +224,12 @@ export function PaymentModal({ expenseId, expenseTitle, initial, onClose, onSave
   return (
     <Modal title={markPaid ? `標記已付 — ${initial?.title || ""}` : isNew ? `新增付款${expenseTitle ? ` — ${expenseTitle}` : ""}` : `編輯付款 — ${initial.title}`}
       onClose={onClose} footer={<Footer onClose={onClose} onSave={save} busy={busy} saveLabel={markPaid ? "確認已付" : "儲存"} />}>
+      {needPicker && (
+        <Field label="花費項目" required hint={expenses && expenses.length === 0 ? "還沒有花費項目，請先到「預算花費」新增" : ""}>
+          <Select value={expId} onChange={setExpId} placeholder={expenses ? "選擇花費項目" : "讀取中…"}
+            options={(expenses || []).map((e) => ({ value: String(e.id), label: `${e.title}${e.vendor_name ? `（${e.vendor_name}）` : ""} · ${money(e.contract_amount)}` }))} />
+        </Field>
+      )}
       <div className="form-group grid-2">
         <Field label="名稱" required><input type="text" value={f.title} onChange={(e) => set("title", e.target.value)} placeholder="定金 / 拍攝當日 / 尾款" autoFocus={!markPaid} /></Field>
         <Field label="金額（元）"><NumberInput value={f.amount} onChange={(v) => set("amount", v)} /></Field>
@@ -262,6 +291,43 @@ export function TaskModal({ initial, vendors, onClose, onSaved }) {
           <Select value={f.done} onChange={(v) => set("done", v === true || v === "true")} options={[{ value: false, label: "未完成" }, { value: true, label: "已完成" }]} />
         </Field>
       )}
+    </Modal>
+  );
+}
+
+/* ---------- 編輯檔案（備註、類型、公開、所屬廠商）---------- */
+export function FileModal({ file, vendors, onClose, onSaved }) {
+  const [kind, setKind] = useState(file.kind);
+  const [isPublic, setIsPublic] = useState(!!file.is_public);
+  const [vendorId, setVendorId] = useState(file.vendor_id ? String(file.vendor_id) : "");
+  const [note, setNote] = useState(file.note || "");
+  const [busy, setBusy] = useState(false);
+  const save = async () => {
+    setBusy(true);
+    try {
+      const body = { kind, is_public: kind === "photo" && isPublic, note };
+      if (vendorId) body.vendor_id = parseInt(vendorId, 10);
+      else if (file.vendor_id) body.clear_links = true;
+      onSaved(await updateFile(file.id, body));
+    } catch (e) {
+      toastErr(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Modal title={`編輯檔案 — ${file.filename}`} onClose={onClose} footer={<Footer onClose={onClose} onSave={save} busy={busy} />}>
+      <div className="form-group grid-2">
+        <Field label="類型"><Select value={kind} onChange={setKind} options={toOptions(FILE_KIND)} /></Field>
+        <Field label="相關廠商"><Select value={vendorId} onChange={setVendorId} options={vendorOptions(vendors)} /></Field>
+      </div>
+      {kind === "photo" && (
+        <Field label="公開到婚紗照分享頁">
+          <Select value={isPublic} onChange={(v) => setIsPublic(v === true || v === "true")}
+            options={[{ value: false, label: "不公開（只有自己看）" }, { value: true, label: "公開（賓客在 /photos 看得到）" }]} />
+        </Field>
+      )}
+      <Field label="備註"><input type="text" value={note} onChange={(e) => setNote(e.target.value)} placeholder="例如：SOSi 合約第 1 頁" autoFocus /></Field>
     </Modal>
   );
 }
