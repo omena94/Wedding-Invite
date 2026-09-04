@@ -787,3 +787,26 @@ tbody tr:last-child td { border-bottom: none; }
 @keyframes routeDash { to { stroke-dashoffset: -21; } }
 .seat-entrance-mark circle { fill: #d9482b; stroke: #fff; stroke-width: 2.5; }
 .seat-entrance-mark text { fill: #d9482b; font-weight: 700; }
+
+/* ============ 查桌次：精簡卡片 + 全螢幕地圖（手機像地圖 App） ============ */
+.seat-big-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 10px; align-items: start; margin-bottom: 12px; }
+.seat-big-grid .seat-big-table { font-size: 52px; margin: 0; }
+.seat-big-grid .seat-big-seats { flex-direction: column; align-items: center; gap: 2px; margin: 0; }
+.seat-big-seat { display: inline-flex; flex-direction: column; align-items: center; line-height: 1.15; }
+.seat-big-seat strong { font-family: "Noto Serif TC", serif; font-size: 44px; color: var(--milk-tea-900); }
+.seat-big-seat small { font-size: 14px; color: var(--text-muted); }
+.seat-open-map { width: 100%; margin: 14px 0 4px; font-size: 18px; padding: 16px 18px; }
+.seat-open-map svg { margin-right: 6px; }
+/* 全螢幕地圖：上面關閉列、中間地圖吃滿、下面抽屜 */
+.seatviewer-full { position: fixed; inset: 0; z-index: 1000; display: flex; flex-direction: column; background: #fbf8f4; margin: 0; }
+.seatviewer-full .seatviewer-top { display: flex; align-items: center; gap: 10px; padding: 10px 12px; padding-top: calc(10px + env(safe-area-inset-top)); background: #fff; border-bottom: 1px solid var(--border-soft); flex: none; }
+.seatviewer-top-close { display: inline-flex; align-items: center; gap: 4px; font: inherit; font-size: 16px; font-weight: 700; color: var(--milk-tea-900); background: var(--milk-tea-100); border: none; border-radius: 999px; padding: 10px 16px; cursor: pointer; flex: none; }
+.seatviewer-top-title { flex: 1; text-align: center; font-family: "Noto Serif TC", serif; font-size: 20px; font-weight: 700; color: var(--milk-tea-900); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 8px; }
+.seatviewer-full .seatviewer-wrap { flex: 1; min-height: 0; height: auto; max-height: none; border: none; border-radius: 0; }
+.seatviewer-full .seatviewer-info { flex: none; margin: 0; border: none; border-radius: 18px 18px 0 0; background: #fff; box-shadow: 0 -6px 18px rgba(61, 45, 32, 0.10); max-height: 42vh; overflow-y: auto; padding: 10px 14px calc(14px + env(safe-area-inset-bottom)); min-height: 0; }
+.seatviewer-full .seatviewer-ctl { justify-content: flex-start; margin-bottom: 10px; }
+.seatviewer-ctl button { height: 40px; font-size: 14px; }
+.seatviewer-guide-text { font-size: 16px; line-height: 1.8; color: var(--text-body); margin: 4px 0 8px; }
+.seatviewer-full .seatviewer-info-head strong { font-size: 24px; }
+.seatviewer-full .seatviewer-info-name { font-size: 19px; }
+.seatviewer-full .seatviewer-pill { font-size: 14px; padding: 7px 14px; }

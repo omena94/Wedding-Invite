@@ -654,7 +654,7 @@ function PreviewModal({ rsvpId, name, onClose }) {
       footer={<button type="button" className="btn btn-primary" onClick={onClose}>關閉</button>}>
       <div className="helper-text" style={{ marginBottom: 10 }}>這就是他在 /seat 輸入姓名或電話後看到的內容（不受「桌次查詢」開關影響）。</div>
       <div className="phone-frame">
-        {loading ? <Loading /> : error ? <ErrorBox error={error} /> : <SeatResult result={data} mapHeight={300} />}
+        {loading ? <Loading /> : error ? <ErrorBox error={error} /> : <SeatResult result={data} embedded />}
       </div>
     </Modal>
   );
