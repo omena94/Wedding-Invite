@@ -5,9 +5,12 @@ from sqlalchemy.orm import Session, selectinload
 
 from ..database import get_db
 from ..models import Rsvp, SeatAssignment, SeatObject
+import re
+
 from ..schemas import (
     SeatAssignGroupIn,
     SeatAssignIn,
+    SeatAutoAssignIn,
     SeatCanvasIn,
     SeatObjectIn,
     SeatObjectMove,
@@ -193,6 +196,92 @@ def assign_group(payload: SeatAssignGroupIn, db: Session = Depends(get_db)):
     layout = build_layout(db)
     layout["placed"] = placed
     layout["left_over"] = len(pending) - placed
+    return layout
+
+
+def _natural_key(label: str):
+    """A2 排在 A10 前面：把數字段轉成整數比較。"""
+    return [int(p) if p.isdigit() else p.lower() for p in re.split(r"(\d+)", label or "")]
+
+
+def _pick_run(free: list[int], k: int, n: int) -> list[int]:
+    """從空位裡挑 k 個盡量相連的位子（座位是繞桌一圈，所以頭尾算相連）。"""
+    if k >= len(free):
+        return list(free)
+    fs = set(free)
+    for start in free:
+        run = [(start + j) % n for j in range(k)]
+        if all(x in fs for x in run):
+            return run
+    return list(free[:k])
+
+
+@router.post("/auto-assign")
+def auto_assign(payload: SeatAutoAssignIn, db: Session = Depends(get_db)):
+    """一鍵安排：把還沒有位子的人依序填進空位。
+    - 桌子依名稱（自然排序）再依位置排；單張椅子排最後
+    - keep_groups：整組先找放得下的桌，放不下才拆
+    - by_side：男方從第一桌往後填，女方從最後一桌往前填，兩邊自然分開
+    """
+    if payload.clear_first:
+        for o in load_objects(db):
+            for a in list(o.assignments):
+                db.delete(a)
+        db.commit()
+
+    objects = [o for o in load_objects(db) if seat_count(o) > 0]
+    tables = sorted(
+        [o for o in objects if o.kind in ("round", "rect")],
+        key=lambda o: (_natural_key(o.label), o.y, o.x),
+    ) + sorted([o for o in objects if o.kind == "chair"], key=lambda o: (o.y, o.x))
+    free = {o.id: sorted(set(range(seat_count(o))) - {a.seat_index for a in o.assignments}) for o in tables}
+    size = {o.id: seat_count(o) for o in tables}
+
+    seated = {
+        (a.rsvp_id, a.person_no)
+        for a in db.scalars(select(SeatAssignment)).all()
+    }
+    groups = []
+    for r in db.scalars(
+        select(Rsvp).where(Rsvp.attending.is_(True), Rsvp.is_test.is_(False)).order_by(Rsvp.created_at.asc())
+    ).all():
+        pending = [p for p in persons_for(r) if (r.id, p["person_no"]) not in seated]
+        if pending:
+            groups.append((r, pending))
+    # 大組先放比較容易整組同桌
+    groups.sort(key=lambda g: (-len(g[1]), g[0].id))
+
+    placed = 0
+    left_over = 0
+    for r, pending in groups:
+        order = tables if not (payload.by_side and r.side == "bride") else list(reversed(tables))
+        remaining = list(pending)
+        if payload.keep_groups:
+            fit = next((o for o in order if len(free[o.id]) >= len(remaining)), None)
+            if fit is not None:
+                run = _pick_run(free[fit.id], len(remaining), size[fit.id])
+                for p, idx in zip(remaining, run):
+                    db.add(SeatAssignment(object_id=fit.id, seat_index=idx, rsvp_id=r.id, person_no=p["person_no"]))
+                    free[fit.id].remove(idx)
+                placed += len(remaining)
+                remaining = []
+        for o in order:
+            if not remaining:
+                break
+            if not free[o.id]:
+                continue
+            take = min(len(free[o.id]), len(remaining))
+            run = _pick_run(free[o.id], take, size[o.id])
+            for p, idx in zip(remaining[:take], run):
+                db.add(SeatAssignment(object_id=o.id, seat_index=idx, rsvp_id=r.id, person_no=p["person_no"]))
+                free[o.id].remove(idx)
+            remaining = remaining[take:]
+            placed += take
+        left_over += len(remaining)
+    db.commit()
+    layout = build_layout(db)
+    layout["placed"] = placed
+    layout["left_over"] = left_over
     return layout
 
 

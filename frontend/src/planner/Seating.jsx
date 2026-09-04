@@ -3,18 +3,19 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import Swal from "sweetalert2";
 import {
-  ArrowDownToLine, ArrowUpToLine, Circle, Copy, Eraser, Grid3x3, Maximize2, Minus, Plus, Printer,
-  RectangleHorizontal, Redo2, Square, Tag, Trash2, Type, Undo2, UserRound, Users, ZoomIn, ZoomOut,
+  ArrowDownToLine, ArrowUpToLine, BoxSelect, Circle, Copy, Eraser, Eye, Grid3x3, Maximize2, Minus, Plus, Printer,
+  RectangleHorizontal, Redo2, Square, SquareDashedMousePointer, Tag, Trash2, Type, Undo2, UserRound, Users, Wand2, ZoomIn, ZoomOut,
 } from "lucide-react";
 import {
-  assignGroup, assignSeat, clearAllSeats, clearSeatObject, createSeatObject, deleteSeatObject, fetchSeating,
-  moveSeatObjects, renameAssignment, setSeatingCanvas, unassignSeat, updateSeatObject,
+  assignGroup, assignSeat, autoAssignSeats, clearAllSeats, clearSeatObject, createSeatObject, deleteSeatObject, fetchSeating,
+  fetchSeatPreview, moveSeatObjects, renameAssignment, setSeatingCanvas, unassignSeat, updateSeatObject,
 } from "../api.js";
 import { Checkbox } from "../components/Toggle.jsx";
 import { DEFAULTS, KIND_LABEL, SEAT_GAP, SEAT_R, bounds, center, defaultSides, seatPositions, sidesOf } from "../seating/geometry.js";
 import SeatingMap, { ObjectShape } from "../seating/SeatingMap.jsx";
+import SeatResult from "../seating/SeatResult.jsx";
 import { usePlanner } from "./context.js";
-import { ErrorBox, Field, Loading, Modal, NumberInput, PageHead, toInt, toastErr, toastOk } from "./ui.jsx";
+import { ErrorBox, Field, Loading, Modal, NumberInput, PageHead, toInt, toastErr, toastOk, useLoader } from "./ui.jsx";
 
 const GRID = 10;
 const SIDE_LABEL = { groom: "男方", bride: "女方" };
@@ -39,6 +40,13 @@ export default function Seating() {
   const [view, setView] = useState({ zoom: 0.55, x: 24, y: 24 });
   const [dragChip, setDragChip] = useState(null);     // {x, y, name}
   const [canvasModal, setCanvasModal] = useState(false);
+  const [preview, setPreview] = useState(null);       // 預覽某組賓客在 /seat 看到的畫面 {rsvp_id, name}
+  const [marqueeMode, setMarqueeMode] = useState(false); // 框選模式：拖背景是框選而不是平移（按住 Shift 也可）
+  const [hint, setHint] = useState(""); // 工具列上的小提示（複製／貼上用，不用彈窗，才不會擋住 Ctrl+V）
+  const hintTimer = useRef(null);
+  const flash = (msg) => { setHint(msg); clearTimeout(hintTimer.current); hintTimer.current = setTimeout(() => setHint(""), 2500); };
+  const [marquee, setMarquee] = useState(null);       // 拖曳中的框 {x, y, w, h}（畫布座標）
+  const [autoModal, setAutoModal] = useState(false);
 
   const containerRef = useRef(null);
   const drag = useRef(null);
@@ -139,18 +147,50 @@ export default function Seating() {
       toastErr(e);
     }
   };
-  const duplicate = async (o) => {
+  // ---------- 複製 / 貼上（多選也可以；桌名自動接號：桌 1～4 → 桌 5～8） ----------
+  const clipboard = useRef([]);
+  const nextLabels = (items, all) => {
+    const counters = {};
+    const parse = (label) => /^(.*?)(\d+)$/.exec(label || "");
+    return items.map((o) => {
+      const m = parse(o.label);
+      if (!m) return o.label ? `${o.label} 副本` : "";
+      const prefix = m[1];
+      if (counters[prefix] === undefined) {
+        counters[prefix] = Math.max(0, ...all.map((x) => { const mm = parse(x.label); return mm && mm[1] === prefix ? parseInt(mm[2], 10) : 0; }));
+      }
+      counters[prefix] += 1;
+      return `${prefix}${counters[prefix]}`;
+    });
+  };
+  const pasteObjects = async (items) => {
+    if (!items.length) return;
+    const labels = nextLabels(items, objects);
+    const created = [];
     try {
-      const copy = await createSeatObject({
-        kind: o.kind, label: o.label ? `${o.label} 副本` : "", x: o.x + 40, y: o.y + 40, w: o.w, h: o.h,
-        rotation: o.rotation, seats: o.seats, meta: o.meta, z_order: o.z_order, note: o.note,
-      });
-      setLayout((l) => ({ ...l, objects: [...l.objects, copy] }));
-      setSelected(new Set([copy.id]));
+      for (let i = 0; i < items.length; i++) {
+        const o = items[i];
+        created.push(await createSeatObject({
+          kind: o.kind, label: labels[i], x: o.x + 40, y: o.y + 40, w: o.w, h: o.h,
+          rotation: o.rotation, seats: o.seats, meta: o.meta, z_order: o.z_order, note: o.note,
+        }));
+      }
     } catch (e) {
       toastErr(e);
     }
+    if (created.length) {
+      setLayout((l) => ({ ...l, objects: [...l.objects, ...created].sort((a, b) => a.z_order - b.z_order || a.id - b.id), summary: { ...l.summary, seats_total: l.summary.seats_total + created.reduce((n, c) => n + c.seats, 0), tables: l.summary.tables + created.filter((c) => c.kind === "round" || c.kind === "rect").length } }));
+      setSelected(new Set(created.map((c) => c.id)));
+      setTab("object");
+      flash(`已貼上 ${created.length} 個`);
+    }
   };
+  const copySelected = () => {
+    clipboard.current = [...selected].map((id) => byId[id]).filter(Boolean).map((o) => ({ ...o }));
+    if (clipboard.current.length) flash(`已複製 ${clipboard.current.length} 個，Ctrl+V 貼上`);
+  };
+  const duplicateSelected = () => pasteObjects([...selected].map((id) => byId[id]).filter(Boolean));
+  const duplicate = (o) => pasteObjects([o]);
   const remove = async (ids) => {
     const list = [...ids].map((id) => byId[id]).filter(Boolean);
     if (!list.length) return;
@@ -174,9 +214,16 @@ export default function Seating() {
   // ---------- 拖曳（移動 / 平移 / 縮放 / 旋轉 / 拖人） ----------
   const onBgPointerDown = (e) => {
     if (e.button !== 0) return;
-    drag.current = { type: "pan", sx: e.clientX, sy: e.clientY, ox: view.x, oy: view.y, moved: false };
+    if (!readonly && (marqueeMode || e.shiftKey)) {
+      const p = toCanvas(e.clientX, e.clientY);
+      drag.current = { type: "marquee", sx: e.clientX, sy: e.clientY, start: p, add: e.shiftKey && marqueeMode, moved: false };
+      setMarquee({ x: p.x, y: p.y, w: 0, h: 0 });
+    } else {
+      drag.current = { type: "pan", sx: e.clientX, sy: e.clientY, ox: view.x, oy: view.y, moved: false };
+    }
     e.currentTarget.setPointerCapture(e.pointerId);
   };
+  const selectAll = () => setSelected(new Set(objects.map((o) => o.id)));
   const onObjPointerDown = (e, o) => {
     if (readonly) return;
     e.stopPropagation();
@@ -209,6 +256,9 @@ export default function Seating() {
     if (Math.abs(e.clientX - d.sx) > 2 || Math.abs(e.clientY - d.sy) > 2) d.moved = true;
     if (d.type === "pan") {
       setView((v) => ({ ...v, x: d.ox + (e.clientX - d.sx), y: d.oy + (e.clientY - d.sy) }));
+    } else if (d.type === "marquee") {
+      const p = toCanvas(e.clientX, e.clientY);
+      setMarquee({ x: Math.min(d.start.x, p.x), y: Math.min(d.start.y, p.y), w: Math.abs(p.x - d.start.x), h: Math.abs(p.y - d.start.y) });
     } else if (d.type === "move") {
       setLayout((l) => ({
         ...l,
@@ -242,6 +292,21 @@ export default function Seating() {
     if (!d) return;
     if (d.type === "pan") {
       if (!d.moved) { setSelected(new Set()); setSeatSel(null); }
+      return;
+    }
+    if (d.type === "marquee") {
+      const m = marquee;
+      setMarquee(null);
+      if (!m || !d.moved) { setSelected(new Set()); setSeatSel(null); return; }
+      // 外框有碰到框選範圍就算選到
+      const hit = objects.filter((o) => {
+        const { cx, cy, w, h } = center(o);
+        const r = Math.sqrt(w * w + h * h) / 2 + SEAT_GAP + SEAT_R;
+        return cx + r >= m.x && cx - r <= m.x + m.w && cy + r >= m.y && cy - r <= m.y + m.h;
+      }).map((o) => o.id);
+      setSelected((prev) => (d.add ? new Set([...prev, ...hit]) : new Set(hit)));
+      setSeatSel(null);
+      if (hit.length) setTab("object");
       return;
     }
     if (d.type === "move") {
@@ -379,6 +444,10 @@ export default function Seating() {
       if ((e.key === "Delete" || e.key === "Backspace") && selected.size) { e.preventDefault(); remove(selected); }
       if (e.key === "Escape") { setSelected(new Set()); setPicked(null); setSeatSel(null); }
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") { e.preventDefault(); e.shiftKey ? redo() : undo(); }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "a") { e.preventDefault(); selectAll(); }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "c" && selected.size) { e.preventDefault(); copySelected(); }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "v" && clipboard.current.length) { e.preventDefault(); pasteObjects(clipboard.current); }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "d" && selected.size) { e.preventDefault(); duplicateSelected(); }
       if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key) && selected.size) {
         e.preventDefault();
         const step = e.shiftKey ? GRID * 5 : GRID;
@@ -402,6 +471,22 @@ export default function Seating() {
     if (onlyUnassigned) g = g.filter((x) => x.unassigned > 0);
     return g;
   }, [layout, search, onlyUnassigned]);
+
+  // 搜尋框有字時，畫布上符合的人也一起標亮（不用再 Ctrl+F 找）
+  const searchSeats = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    const set = new Set();
+    if (!q) return set;
+    objects.forEach((o) => (o.assignments || []).forEach((a) => {
+      if ((a.display_name || "").toLowerCase().includes(q) || (a.auto_name || "").toLowerCase().includes(q)) set.add(`${o.id}:${a.seat_index}`);
+    }));
+    return set;
+  }, [objects, search]);
+  const highlightSeats = useMemo(() => {
+    const set = new Set(searchSeats);
+    if (seatSel) set.add(`${seatSel.object_id}:${seatSel.seat_index}`);
+    return set;
+  }, [searchSeats, seatSel]);
 
   if (err) return <ErrorBox error={err} />;
   if (!layout) return <Loading />;
@@ -441,6 +526,13 @@ export default function Seating() {
           <button className="btn btn-ghost btn-sm" onClick={undo} title="復原 (Ctrl+Z)"><Undo2 size={14} /></button>
           <button className="btn btn-ghost btn-sm" onClick={redo} title="重做 (Ctrl+Shift+Z)"><Redo2 size={14} /></button>
           <span className="sep" />
+          <button className={`btn btn-sm ${marqueeMode ? "btn-primary" : "btn-ghost"}`} onClick={() => setMarqueeMode((m) => !m)} title="框選模式：在畫布上拖曳框住多個桌椅（平時按住 Shift 拖曳也可以）"><SquareDashedMousePointer size={14} /> 框選</button>
+          <button className="btn btn-ghost btn-sm" onClick={selectAll} title="全選 (Ctrl+A)"><BoxSelect size={14} /> 全選</button>
+          <button className="btn btn-ghost btn-sm" onClick={duplicateSelected} disabled={!selected.size} title="複製選取的桌椅 (Ctrl+D；也可 Ctrl+C / Ctrl+V)"><Copy size={14} /> 複製{selected.size > 1 ? ` ${selected.size} 個` : ""}</button>
+          <span className="sep" />
+          <button className="btn btn-primary btn-sm" onClick={() => setAutoModal(true)} title="把還沒有位子的人自動填進空位"><Wand2 size={14} /> 一鍵安排</button>
+          {hint && <span className="se-hint">{hint}</span>}
+          <span className="sep" />
           <button className="btn btn-ghost btn-sm" onClick={() => zoomAt(1 / 1.25)}><ZoomOut size={14} /></button>
           <span className="muted-cell" style={{ fontSize: 12, minWidth: 40, textAlign: "center" }}>{Math.round(view.zoom * 100)}%</span>
           <button className="btn btn-ghost btn-sm" onClick={() => zoomAt(1.25)}><ZoomIn size={14} /></button>
@@ -468,11 +560,14 @@ export default function Seating() {
               {objects.map((o) => (
                 <g key={o.id} onPointerDown={(e) => onObjPointerDown(e, o)} style={{ cursor: readonly ? "default" : "move" }}>
                   <ObjectShape o={o} selected={selected.has(o.id)} showNames={showNames} interactive
-                    highlightSeats={seatSel ? new Set([`${seatSel.object_id}:${seatSel.seat_index}`]) : null}
+                    highlightSeats={highlightSeats}
                     onSeatPointerDown={onSeatPointerDown} onSeatPointerUp={onSeatPointerUp} />
                 </g>
               ))}
               {!readonly && selectedObj && <Handles o={selectedObj} zoom={view.zoom} onPointerDown={onHandlePointerDown} />}
+              {marquee && marquee.w > 0 && (
+                <rect x={marquee.x} y={marquee.y} width={marquee.w} height={marquee.h} className="se-marquee" strokeWidth={1.5 / view.zoom} strokeDasharray={`${6 / view.zoom} ${4 / view.zoom}`} />
+              )}
             </g>
           </svg>
           {dragChip && <div className="se-dragchip" style={{ left: dragChip.x, top: dragChip.y }}>{dragChip.name}</div>}
@@ -488,15 +583,16 @@ export default function Seating() {
               <GuestPanel guests={guests} search={search} setSearch={setSearch} onlyUnassigned={onlyUnassigned} setOnlyUnassigned={setOnlyUnassigned}
                 picked={picked} readonly={readonly} selectedObj={selectedObj} byId={byId}
                 onPersonPointerDown={onPersonPointerDown} onPersonPointerMove={onPointerMove} onPersonPointerUp={onPointerUp}
-                onSeatGroup={seatGroup} />
+                onSeatGroup={seatGroup} onPreview={(g) => setPreview({ rsvp_id: g.rsvp_id, name: g.name })} />
             ) : (
               <ObjectPanel o={selectedObj} seatSel={seatSelObj ? seatSel : null} readonly={readonly} selectedCount={selected.size}
                 onChange={(patch) => selectedObj && saveObject(selectedObj.id, patch)}
                 onImmediate={(patch) => selectedObj && saveObject(selectedObj.id, patch, true)}
-                onDuplicate={() => selectedObj && duplicate(selectedObj)}
+                onDuplicate={() => (selectedObj ? duplicate(selectedObj) : duplicateSelected())}
                 onDelete={() => remove(selected)}
                 onClear={() => selectedObj && clearTable(selectedObj)}
                 onUnseat={unseat} onRename={rename}
+                onPreview={(a) => setPreview({ rsvp_id: a.rsvp_id, name: a.display_name })}
                 onPick={(i) => selectedObj && setSeatSel({ object_id: selectedObj.id, seat_index: i })}
                 picked={picked} onPlacePicked={(i) => picked && selectedObj && place(picked, selectedObj.id, i)} />
             )}
@@ -508,7 +604,59 @@ export default function Seating() {
         <CanvasModal canvas={layout.canvas} onClose={() => setCanvasModal(false)}
           onSaved={(c) => { setCanvasModal(false); setLayout((l) => ({ ...l, canvas: c })); }} />
       )}
+      {preview && <PreviewModal rsvpId={preview.rsvp_id} name={preview.name} onClose={() => setPreview(null)} />}
+      {autoModal && (
+        <AutoAssignModal summary={s} onClose={() => setAutoModal(false)}
+          onDone={(l) => { setAutoModal(false); setLayout(l); toastOk(l.left_over ? `已安排 ${l.placed} 位，還有 ${l.left_over} 位沒位子（座位不夠）` : `已安排 ${l.placed} 位`); }} />
+      )}
     </div>
+  );
+}
+
+/* ---------- 一鍵安排 ---------- */
+function AutoAssignModal({ summary, onClose, onDone }) {
+  const [keepGroups, setKeepGroups] = useState(true);
+  const [bySide, setBySide] = useState(true);
+  const [clearFirst, setClearFirst] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const run = async () => {
+    setBusy(true);
+    try {
+      onDone(await autoAssignSeats({ keep_groups: keepGroups, by_side: bySide, clear_first: clearFirst }));
+    } catch (e) {
+      toastErr(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const toPlace = clearFirst ? summary.people_total : summary.unassigned;
+  return (
+    <Modal title="一鍵安排座位" onClose={onClose}
+      footer={<><button type="button" className="btn btn-ghost" onClick={onClose} disabled={busy}>取消</button><button type="button" className="btn btn-primary" onClick={run} disabled={busy || toPlace === 0}>{busy ? "安排中…" : `安排 ${toPlace} 位`}</button></>}>
+      <div className="helper-text" style={{ marginBottom: 12 }}>
+        會把還沒有位子的人依序填進空位；桌子依名稱排序（A1、A2…），排完可以再手動微調。目前座位 {summary.seats_total}、出席 {summary.people_total} 人。
+      </div>
+      <div className="pl-switch-list">
+        <Checkbox checked={keepGroups} onChange={setKeepGroups}>同一組盡量坐同一桌（先找放得下整組的桌子，放不下才拆）</Checkbox>
+        <Checkbox checked={bySide} onChange={setBySide}>男方從第一桌往後填、女方從最後一桌往前填（兩邊自然分開）</Checkbox>
+        <Checkbox checked={clearFirst} onChange={setClearFirst}>先清空目前所有安排再重排</Checkbox>
+      </div>
+      {summary.seats_total < summary.people_total && <div className="pill pill-no" style={{ marginTop: 12 }}>座位不夠：還差 {summary.people_total - summary.seats_total} 個，會有人排不進去</div>}
+    </Modal>
+  );
+}
+
+/* ---------- 預覽：這組賓客在 /seat 查到的畫面 ---------- */
+function PreviewModal({ rsvpId, name, onClose }) {
+  const { data, loading, error } = useLoader(() => fetchSeatPreview(rsvpId), [rsvpId]);
+  return (
+    <Modal title={`賓客看到的畫面 — ${name}`} onClose={onClose} wide
+      footer={<button type="button" className="btn btn-primary" onClick={onClose}>關閉</button>}>
+      <div className="helper-text" style={{ marginBottom: 10 }}>這就是他在 /seat 輸入姓名或電話後看到的內容（不受「桌次查詢」開關影響）。</div>
+      <div className="phone-frame">
+        {loading ? <Loading /> : error ? <ErrorBox error={error} /> : <SeatResult result={data} mapHeight={300} />}
+      </div>
+    </Modal>
   );
 }
 
@@ -541,7 +689,7 @@ function Handles({ o, zoom, onPointerDown }) {
 }
 
 /* ---------- 右側：賓客 ---------- */
-function GuestPanel({ guests, search, setSearch, onlyUnassigned, setOnlyUnassigned, picked, readonly, selectedObj, byId, onPersonPointerDown, onPersonPointerMove, onPersonPointerUp, onSeatGroup }) {
+function GuestPanel({ guests, search, setSearch, onlyUnassigned, setOnlyUnassigned, picked, readonly, selectedObj, byId, onPersonPointerDown, onPersonPointerMove, onPersonPointerUp, onSeatGroup, onPreview }) {
   const where = (p) => (p.seat ? `${p.seat.label || KIND_LABEL[byId[p.seat.object_id]?.kind] || "桌"} · ${p.seat.seat_index + 1} 號` : "未安排");
   return (
     <div>
@@ -556,7 +704,10 @@ function GuestPanel({ guests, search, setSearch, onlyUnassigned, setOnlyUnassign
         <div className="se-group" key={g.rsvp_id}>
           <div className="se-group-head">
             <span>{g.name} <span className={`pill ${g.side === "bride" ? "pill-bride" : "pill-groom"}`}>{SIDE_LABEL[g.side] || g.side}</span></span>
-            <span className="muted-cell" style={{ fontWeight: 400, fontSize: 12 }}>{g.persons.length - g.unassigned}/{g.persons.length}</span>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+              <span className="muted-cell" style={{ fontWeight: 400, fontSize: 12 }}>{g.persons.length - g.unassigned}/{g.persons.length}</span>
+              <button type="button" className="btn btn-ghost btn-sm" title="看他在 /seat 查到的畫面" onClick={() => onPreview(g)}><Eye size={13} /></button>
+            </span>
           </div>
           {g.persons.map((p) => {
             const isPicked = picked && picked.rsvp_id === g.rsvp_id && picked.person_no === p.person_no;
@@ -581,9 +732,23 @@ function GuestPanel({ guests, search, setSearch, onlyUnassigned, setOnlyUnassign
 }
 
 /* ---------- 右側：物件屬性 + 座位清單 ---------- */
-function ObjectPanel({ o, seatSel, readonly, selectedCount, onChange, onImmediate, onDuplicate, onDelete, onClear, onUnseat, onRename, onPick, picked, onPlacePicked }) {
+function ObjectPanel({ o, seatSel, readonly, selectedCount, onChange, onImmediate, onDuplicate, onDelete, onClear, onUnseat, onRename, onPreview, onPick, picked, onPlacePicked }) {
   if (!o) {
-    return <div className="empty-state" style={{ padding: 20 }}>{selectedCount > 1 ? `已選取 ${selectedCount} 個物件，可以一起拖曳或按 Delete 刪除` : "在畫布上點一個物件"}</div>;
+    if (selectedCount > 1) {
+      return (
+        <div className="empty-state" style={{ padding: 20 }}>
+          <div>已選取 {selectedCount} 個物件，可以一起拖曳、方向鍵微調</div>
+          {!readonly && (
+            <div style={{ display: "flex", gap: 8, justifyContent: "center", marginTop: 12, flexWrap: "wrap" }}>
+              <button className="btn btn-primary btn-sm" onClick={onDuplicate}><Copy size={13} /> 複製這 {selectedCount} 個</button>
+              <button className="btn btn-ghost btn-sm" onClick={onDelete} style={{ color: "var(--rose-accent)" }}><Trash2 size={13} /> 刪除</button>
+            </div>
+          )}
+          <div className="helper-text" style={{ marginTop: 10 }}>複製出來的桌名會自動接號，例如桌 1～4 會變成桌 5～8</div>
+        </div>
+      );
+    }
+    return <div className="empty-state" style={{ padding: 20 }}>在畫布上點一個物件；按住 Shift 點選或用「框選」可以一次選多個</div>;
   }
   const isTable = o.kind === "round" || o.kind === "rect";
   const sides = o.kind === "rect" ? sidesOf(o) : null;
@@ -650,10 +815,14 @@ function ObjectPanel({ o, seatSel, readonly, selectedCount, onChange, onImmediat
               return (
                 <li key={i} className={cur ? "cur" : ""} onClick={() => onPick(i)}>
                   <span><span className="muted-cell">{i + 1}.</span> {a ? <>{a.is_child ? "👶 " : ""}{a.display_name}</> : <span className="muted-cell">（空）</span>}</span>
+                  {readonly && a && (
+                    <button className="btn btn-ghost btn-sm" title="看他在 /seat 查到的畫面" onClick={(e) => { e.stopPropagation(); onPreview(a); }}><Eye size={12} /></button>
+                  )}
                   {!readonly && (
                     <span style={{ whiteSpace: "nowrap" }}>
                       {a ? (
                         <>
+                          <button className="btn btn-ghost btn-sm" title="看他在 /seat 查到的畫面" onClick={(e) => { e.stopPropagation(); onPreview(a); }}><Eye size={12} /></button>{" "}
                           <button className="btn btn-ghost btn-sm" title="改顯示名稱" onClick={(e) => { e.stopPropagation(); onRename(a); }}>改名</button>{" "}
                           <button className="btn btn-ghost btn-sm" title="移除" onClick={(e) => { e.stopPropagation(); onUnseat(a); }}><Minus size={12} /></button>
                         </>

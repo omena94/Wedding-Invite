@@ -23,7 +23,7 @@ from ..schemas import (
     Stats,
 )
 from ..security import AdminRequired, CoupleRequired, create_token, login_role
-from ..seating import build_layout
+from ..seating import build_layout, guest_seat_view
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -32,6 +32,16 @@ router = APIRouter(prefix="/api/admin", tags=["admin"])
 @router.get("/seating", dependencies=[AdminRequired])
 def seating_readonly(db: Session = Depends(get_db)):
     return build_layout(db)
+
+
+@router.get("/seating/preview/{rsvp_id}", dependencies=[AdminRequired])
+def seating_preview(rsvp_id: int, db: Session = Depends(get_db)):
+    """某組賓客在 /seat 查到的畫面內容（不受「桌次查詢」開關影響，給後台預覽用）。"""
+    row = db.get(Rsvp, rsvp_id)
+    if not row:
+        raise HTTPException(404, "找不到這組賓客")
+    view = guest_seat_view(db, row)
+    return {"found": True, "name": row.name, "table_no": row.table_no, "attending": row.attending, **view}
 
 
 # ===== 登入 =====

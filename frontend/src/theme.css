@@ -705,3 +705,22 @@ tbody tr:last-child td { border-bottom: none; }
 .photo-cell { position: relative; }
 .photo-cell-caption { position: absolute; left: 0; right: 0; bottom: 0; padding: 18px 8px 6px; font-size: 11.5px; color: #fff; text-align: left; background: linear-gradient(transparent, rgba(40, 28, 20, 0.65)); pointer-events: none; }
 .photo-lightbox-caption { color: #fff; font-size: 14px; text-align: center; max-width: 90vw; }
+
+/* ============ 查桌次結果：鄰座、同桌名單；後台預覽用的手機框 ============ */
+.seat-table-card { border: 1px solid var(--border-soft); border-radius: 16px; padding: 14px 14px 10px; margin: 12px 0; background: var(--bg-card-subtle); text-align: left; }
+.seat-table-card .seat-result-table { text-align: center; margin: 0 0 10px; }
+.seat-neighbors { margin: 8px 0 10px; font-size: 13px; }
+.seat-neighbor-row { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; margin-bottom: 4px; }
+.seat-neighbor-who { color: var(--milk-tea-900); font-weight: 600; margin-right: 4px; }
+.seat-mates-title { font-size: 12.5px; color: var(--text-muted); margin-bottom: 4px; }
+.seat-mates-list { list-style: none; display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 3px 10px; font-size: 13px; }
+.seat-mates-list li { display: flex; gap: 6px; align-items: center; padding: 3px 6px; border-radius: 8px; }
+.seat-mates-list li.mine { background: var(--milk-tea-100); color: var(--milk-tea-900); font-weight: 600; }
+.seat-mates-list li.empty { color: var(--text-muted); }
+.seat-mates-no { display: inline-flex; width: 20px; height: 20px; border-radius: 50%; background: #fff; border: 1px solid var(--border-soft); align-items: center; justify-content: center; font-size: 11px; color: var(--text-muted); flex-shrink: 0; }
+.seat-mates-list li.mine .seat-mates-no { background: var(--milk-tea-700); color: #fff; border-color: var(--milk-tea-700); }
+.phone-frame { max-width: 430px; margin: 0 auto; border: 10px solid #3d2d20; border-radius: 34px; background: var(--bg-body); padding: 14px 12px; max-height: 70vh; overflow-y: auto; }
+.phone-frame .section-card { margin-bottom: 0; }
+
+.se-marquee { fill: rgba(178, 143, 112, 0.12); stroke: var(--milk-tea-700); pointer-events: none; }
+.se-hint { font-size: 0.8rem; color: var(--milk-tea-700); background: var(--milk-tea-100); border-radius: 999px; padding: 4px 12px; animation: selectPop 0.2s; }

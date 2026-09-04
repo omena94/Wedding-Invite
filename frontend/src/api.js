@@ -168,6 +168,7 @@ export const deleteTask = (id) => request(`${P}/tasks/${id}`, { method: "DELETE"
 // ===== 座位圖 =====
 const SE = `${P}/seating`;
 export const fetchSeating = (readonly = false) => request(readonly ? "/api/admin/seating" : SE, { auth: true });
+export const fetchSeatPreview = (rsvpId) => request(`/api/admin/seating/preview/${rsvpId}`, { auth: true });
 export const setSeatingCanvas = (w, h) => request(`${SE}/canvas`, { method: "PATCH", body: { w, h }, auth: true });
 export const createSeatObject = (data) => request(`${SE}/objects`, { method: "POST", body: data, auth: true });
 export const updateSeatObject = (id, data) => request(`${SE}/objects/${id}`, { method: "PATCH", body: data, auth: true });
@@ -181,6 +182,7 @@ export const renameAssignment = (id, display_name) =>
   request(`${SE}/assign/${id}`, { method: "PATCH", body: { display_name }, auth: true });
 export const unassignSeat = (id) => request(`${SE}/assign/${id}`, { method: "DELETE", auth: true });
 export const clearAllSeats = () => request(`${SE}/assignments`, { method: "DELETE", auth: true });
+export const autoAssignSeats = (opts) => request(`${SE}/auto-assign`, { method: "POST", body: opts, auth: true });
 
 // ===== 照片相簿 =====
 export const fetchPlannerPhotos = () => request(`${P}/photos`, { auth: true });

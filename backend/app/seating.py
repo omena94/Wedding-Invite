@@ -188,5 +188,52 @@ def seats_of_rsvp(db: Session, rsvp: Rsvp) -> list[dict]:
     ]
 
 
+def guest_seat_view(db: Session, rsvp: Rsvp) -> dict:
+    """賓客在 /seat 看到的完整內容：自己的位子、每張桌的同桌名單、左右鄰座、平面圖（只有自己那幾桌有名字）。"""
+    seats = seats_of_rsvp(db, rsvp)
+    if not seats:
+        return {"seats": [], "tables": [], "map": None, "map_names": {}}
+    my_ids = {s["object_id"] for s in seats}
+    mine = {(s["object_id"], s["seat_no"] - 1) for s in seats}
+    objects = {o.id: o for o in load_objects(db)}
+    tables = []
+    map_names: dict[str, dict[str, dict]] = {}
+    for oid in my_ids:
+        o = objects.get(oid)
+        if not o:
+            continue
+        n = seat_count(o)
+        by_idx = {a.seat_index: assignment_out(a) for a in o.assignments}
+        mates = []
+        for i in range(n):
+            a = by_idx.get(i)
+            mates.append({
+                "seat_no": i + 1,
+                "name": a["display_name"] if a else "",
+                "is_child": a["is_child"] if a else False,
+                "side": a["side"] if a else "",
+                "mine": (oid, i) in mine,
+            })
+        tables.append({"object_id": oid, "label": o.label, "kind": o.kind, "seats_total": n, "mates": mates})
+        map_names[str(oid)] = {
+            str(i): {"name": m["name"], "is_child": m["is_child"], "side": m["side"], "mine": m["mine"]}
+            for i, m in enumerate(mates) if m["name"]
+        }
+    # 左右鄰座：座位順序是繞桌一圈，所以頭尾相鄰
+    for s in seats:
+        o = objects.get(s["object_id"])
+        n = seat_count(o) if o else 0
+        by_idx = {a.seat_index: assignment_out(a)["display_name"] for a in o.assignments} if o else {}
+        i = s["seat_no"] - 1
+        neighbors = []
+        if n >= 2:
+            for j in ((i - 1) % n, (i + 1) % n):
+                if j == i:
+                    continue
+                neighbors.append({"seat_no": j + 1, "name": by_idx.get(j, "")})
+        s["neighbors"] = neighbors
+    return {"seats": seats, "tables": tables, "map": public_map(db), "map_names": map_names}
+
+
 def dump_meta(meta: dict | None) -> str:
     return json.dumps(meta or {}, ensure_ascii=False)

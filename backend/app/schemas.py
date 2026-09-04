@@ -173,8 +173,10 @@ class SeatLookupOut(BaseModel):
     found: bool
     name: str = ""
     table_no: int | None = None
-    seats: list[dict] = []          # [{object_id, table_label, seat_no, display_name}]
-    map: dict | None = None         # {canvas, objects}（只有形狀與桌名，沒有人名）
+    seats: list[dict] = []          # [{object_id, table_label, seat_no, display_name, neighbors:[{seat_no,name}]}]
+    tables: list[dict] = []         # 自己坐的每張桌：[{object_id, label, seats_total, mates:[{seat_no,name,mine}]}]
+    map: dict | None = None         # {canvas, objects}（形狀與桌名）
+    map_names: dict = {}            # 只有自己那幾桌的名字 {object_id: {seat_index: {name, mine}}}
 
 
 # =====================================================================
@@ -240,6 +242,12 @@ class SeatAssignGroupIn(BaseModel):
 
 class SeatRenameIn(BaseModel):
     display_name: str = Field(default="", max_length=60)
+
+
+class SeatAutoAssignIn(BaseModel):
+    keep_groups: bool = True    # 同一組盡量坐同一桌
+    by_side: bool = True        # 男方從第一桌往後填、女方從最後一桌往前填
+    clear_first: bool = False   # 先清空目前的安排
 
 
 class SeatCanvasIn(BaseModel):
