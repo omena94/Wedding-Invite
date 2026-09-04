@@ -763,3 +763,27 @@ tbody tr:last-child td { border-bottom: none; }
 .seat-result-mine .seat-result-table strong { font-size: 40px; display: block; line-height: 1.1; }
 .seat-result-seats { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px; font-size: 13px; margin-top: 4px; }
 .phone-frame .seatviewer-wrap { height: 42vh; min-height: 220px; }
+
+/* 自己的位子：亮金色、深色粗邊、外圈呼吸光暈；寫在最後面，壓過男女方底色與點選的綠色 */
+.seat-chair.mine circle:not(.seat-halo), .seat-chair.taken.side-bride.mine circle:not(.seat-halo), .seat-chair.taken.side-groom.mine circle:not(.seat-halo), .seat-chair.taken.side-none.mine circle:not(.seat-halo) { fill: #FFC42A; stroke: #3d2d20; stroke-width: 3.5; }
+.seat-chair.mine .seat-no { fill: #3d2d20; font-weight: 700; }
+.seat-chair.mine .seat-name { fill: #3d2d20; font-weight: 700; }
+.seat-halo { fill: rgba(255, 196, 42, 0.28); stroke: #F0A500; stroke-width: 3; pointer-events: none; animation: seatPulse 1.6s ease-in-out infinite; }
+@keyframes seatPulse { 0%, 100% { stroke-opacity: 1; stroke-width: 3; fill-opacity: 1; } 50% { stroke-opacity: 0.3; stroke-width: 9; fill-opacity: 0.35; } }
+
+/* ============ 查桌次結果（長輩也看得懂）：大字桌名座號、怎麼走、入口到桌子的虛線 ============ */
+.seat-big { border: 1px solid var(--border-soft); border-radius: 18px; padding: 16px 14px 14px; margin: 12px 0; background: var(--bg-card-subtle); }
+.seat-big-label { font-size: 15px; color: var(--text-muted); letter-spacing: 2px; }
+.seat-big-table { font-family: "Noto Serif TC", serif; font-size: 64px; font-weight: 700; line-height: 1.15; color: var(--milk-tea-900); margin: 2px 0 10px; }
+.seat-big-seats { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 14px; font-size: 20px; color: var(--milk-tea-900); margin: 4px 0 14px; }
+.seat-big-seat strong { font-size: 26px; }
+.seat-guide { text-align: left; font-size: 17px; line-height: 1.9; color: var(--text-body); background: #fff; border: 1px dashed var(--milk-tea-300); border-radius: 14px; padding: 12px 14px; }
+.seat-guide-title { display: inline-block; background: var(--milk-tea-700); color: #fff; font-size: 13px; border-radius: 999px; padding: 2px 10px; margin-right: 8px; vertical-align: 2px; }
+.seat-result-hint { font-size: 15px !important; line-height: 1.8; text-align: left; margin: 14px 0 6px; }
+.seat-result-hint strong { color: var(--milk-tea-900); }
+.seatviewer-ctl button.primary { background: var(--milk-tea-700); color: #fff; border-color: var(--milk-tea-700); }
+.seat-route { stroke: #d9482b; stroke-width: 4; stroke-linecap: round; stroke-dasharray: 12 9; fill: none; pointer-events: none; animation: routeDash 1.2s linear infinite; }
+.seat-route-arrow { fill: #d9482b; }
+@keyframes routeDash { to { stroke-dashoffset: -21; } }
+.seat-entrance-mark circle { fill: #d9482b; stroke: #fff; stroke-width: 2.5; }
+.seat-entrance-mark text { fill: #d9482b; font-weight: 700; }

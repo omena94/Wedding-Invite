@@ -79,7 +79,9 @@ export function ObjectShape({ o, highlighted, highlightSeats, showNames, interac
             onPointerDown={interactive ? (e) => onSeatPointerDown?.(e, o, i, a) : undefined}
             onPointerUp={interactive ? (e) => onSeatPointerUp?.(e, o, i, a) : undefined}
             style={interactive ? { cursor: "pointer" } : undefined}>
-            <circle cx={p.x} cy={p.y} r={SEAT_R} />
+            {/* 自己的位子：外面多一圈會呼吸的光暈，縮小看整張圖時也找得到 */}
+            {a && a.mine && <circle cx={p.x} cy={p.y} r={SEAT_R + 6} className="seat-halo" />}
+            <circle cx={p.x} cy={p.y} r={a && a.mine ? SEAT_R + 1 : SEAT_R} />
             <text x={p.x} y={p.y} textAnchor="middle" dominantBaseline="middle" fontSize="8" className="seat-no">{i + 1}</text>
             {a && <title>{a.display_name}</title>}
             {showNames && label && !dimNames && (() => {
