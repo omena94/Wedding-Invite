@@ -252,7 +252,7 @@ export default function SeatViewer({ layout, names, mineIds, routes = [], guideT
     gesture.current.moved = 0;
   };
 
-  // 點到的椅子與它的左右鄰座（座位繞桌一圈，頭尾相鄰）
+  // 點到的椅子（或桌子）：直接給這一桌全部的人，簡單明瞭
   const focusInfo = useMemo(() => {
     if (!focus) return null;
     const o = byId[focus.oid];
@@ -261,25 +261,13 @@ export default function SeatViewer({ layout, names, mineIds, routes = [], guideT
     const tableNames = (names && names[String(o.id)]) || {};
     const person = (i) => tableNames[String(i)] || null;
     const label = o.label || (o.kind === "chair" ? "單椅" : "桌");
-    if (focus.idx === undefined) {
-      const list = Array.from({ length: n }, (_, i) => ({ idx: i, p: person(i) }));
-      return { o, label, n, list, filled: list.filter((s) => s.p).length };
-    }
-    const nb = [];
-    if (n >= 2) {
-      for (const j of [(focus.idx - 1 + n) % n, (focus.idx + 1) % n]) {
-        if (j !== focus.idx && !nb.some((x) => x.idx === j)) nb.push({ idx: j, p: person(j) });
-      }
-    }
-    return { o, label, n, idx: focus.idx, p: person(focus.idx), nb };
+    const list = Array.from({ length: n }, (_, i) => ({ idx: i, p: person(i) }));
+    const filled = list.filter((s) => s.p).length;
+    if (focus.idx === undefined) return { o, label, n, list, filled };
+    return { o, label, n, list, filled, idx: focus.idx, p: person(focus.idx) };
   }, [focus, byId, names]);
 
-  const seatClass = useCallback((o, i) => {
-    if (!focus || focus.oid !== o.id) return "";
-    if (focus.idx === i) return "focus";
-    if (focusInfo?.nb?.some((x) => x.idx === i)) return "nb";
-    return "";
-  }, [focus, focusInfo]);
+  const seatClass = useCallback((o, i) => (focus && focus.oid === o.id && focus.idx === i ? "focus" : ""), [focus]);
   const hiIds = useMemo(() => new Set(focus && focus.idx === undefined ? [focus.oid] : []), [focus]);
   // 名字：自己那桌、點到的那桌一定畫；放大到夠近（看得到大約 1/3 場地以內）才全部畫
   const zoomedIn = view.w < full.w / 2.8;
@@ -288,7 +276,7 @@ export default function SeatViewer({ layout, names, mineIds, routes = [], guideT
   if (!layout || !objects.length) return null;
   const vb = `${view.x} ${view.y} ${view.w} ${view.h}`;
   const pill = (idx, p, keyPrefix = "s") => (
-    <button type="button" key={`${keyPrefix}${idx}`} className={`seatviewer-pill${p?.mine ? " mine" : ""}${p ? "" : " empty"}`}
+    <button type="button" key={`${keyPrefix}${idx}`} className={`seatviewer-pill${p?.mine ? " mine" : ""}${p ? "" : " empty"}${focusInfo && focusInfo.idx === idx ? " current" : ""}`}
       onClick={() => setFocus({ oid: focusInfo.o.id, idx })}>
       {idx + 1} 號 {p ? p.name : "空位"}{p?.mine ? "（您）" : ""}
     </button>
@@ -312,12 +300,12 @@ export default function SeatViewer({ layout, names, mineIds, routes = [], guideT
       {!focusInfo && (
         <div className="seatviewer-guide">
           {guideText && <div className="seatviewer-guide-text">{guideText}</div>}
-          <div className="seatviewer-hint">金色發光的椅子是您的位子。點任何一張椅子，會顯示那是誰、旁邊坐誰；兩指可以放大縮小。</div>
+          <div className="seatviewer-hint">金色發光的椅子是您的位子。點任何一桌或椅子，就會列出這桌的人；兩指可以放大縮小。</div>
         </div>
       )}
       {focusInfo && focusInfo.idx === undefined && (
         <>
-          <div className="seatviewer-info-head"><strong>{focusInfo.label}</strong><span className="seatviewer-hint">{focusInfo.filled} / {focusInfo.n} 位</span></div>
+          <div className="seatviewer-info-head"><strong>{focusInfo.label}</strong><span className="seatviewer-hint">這桌的人（{focusInfo.filled} / {focusInfo.n} 位）</span></div>
           <div className="seatviewer-pills">{focusInfo.list.map((s) => pill(s.idx, s.p, "t"))}</div>
         </>
       )}
@@ -329,13 +317,8 @@ export default function SeatViewer({ layout, names, mineIds, routes = [], guideT
             <span className={`seatviewer-info-name${focusInfo.p ? "" : " empty"}`}>{focusInfo.p ? focusInfo.p.name : "空位"}{focusInfo.p?.mine ? "　👈 就是您" : ""}</span>
           </div>
           {focusInfo.p?.mine && guideText && <div className="seatviewer-guide-text">{guideText}</div>}
-          {focusInfo.nb.length > 0 && (
-            <>
-              <div className="seatviewer-hint" style={{ marginTop: 8 }}>旁邊坐的是</div>
-              <div className="seatviewer-pills">{focusInfo.nb.map((x) => pill(x.idx, x.p, "n"))}</div>
-            </>
-          )}
-          <button type="button" className="seatviewer-link" onClick={() => setFocus({ oid: focusInfo.o.id })}>看這桌全部的人 ›</button>
+          <div className="seatviewer-hint" style={{ marginTop: 8 }}>這桌的人（{focusInfo.filled} / {focusInfo.n} 位）</div>
+          <div className="seatviewer-pills">{focusInfo.list.map((s) => pill(s.idx, s.p, "t"))}</div>
         </>
       )}
     </div>

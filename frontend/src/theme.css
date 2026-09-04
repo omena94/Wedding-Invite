@@ -810,3 +810,4 @@ tbody tr:last-child td { border-bottom: none; }
 .seatviewer-full .seatviewer-info-head strong { font-size: 24px; }
 .seatviewer-full .seatviewer-info-name { font-size: 19px; }
 .seatviewer-full .seatviewer-pill { font-size: 14px; padding: 7px 14px; }
+.seatviewer-pill.current { outline: 2px solid var(--sage-accent); outline-offset: 1px; }
