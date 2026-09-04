@@ -52,6 +52,12 @@ if FRONTEND_DIST.exists():
     # /assets 等打包資源
     app.mount("/assets", StaticFiles(directory=FRONTEND_DIST / "assets"), name="assets")
 
+    # 網頁本身不要讓瀏覽器快取：改版後賓客一開就是新版（assets 檔名有 hash，可以久放）
+    _NO_CACHE = {"Cache-Control": "no-cache, must-revalidate"}
+
+    def _html(path):
+        return FileResponse(path, headers=_NO_CACHE)
+
     @app.get("/{full_path:path}")
     def pages(full_path: str):
         # API 路徑不在這裡處理（已被上面的路由攔截；此為保險）
@@ -59,17 +65,17 @@ if FRONTEND_DIST.exists():
             return JSONResponse({"detail": "Not Found"}, status_code=404)
         # 0) 籌備後台是單頁應用：/planner 與 /planner/* 一律回 planner.html
         if full_path == "planner" or full_path.startswith("planner/"):
-            return FileResponse(FRONTEND_DIST / "planner.html")
+            return _html(FRONTEND_DIST / "planner.html")
         # 1) 實體檔案（圖片、.html、favicon 等）直接回傳
         candidate = FRONTEND_DIST / full_path
         if full_path and candidate.is_file():
-            return FileResponse(candidate)
+            return _html(candidate) if candidate.suffix == ".html" else FileResponse(candidate)
         # 2) 乾淨網址：/rsvp → rsvp.html、/details → details.html…
         html = FRONTEND_DIST / f"{full_path}.html"
         if full_path and html.is_file():
-            return FileResponse(html)
+            return _html(html)
         # 3) 其餘一律回首頁
-        return FileResponse(FRONTEND_DIST / "index.html")
+        return _html(FRONTEND_DIST / "index.html")
 else:
     @app.get("/")
     def _no_frontend():

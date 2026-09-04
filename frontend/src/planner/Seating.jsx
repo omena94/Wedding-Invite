@@ -12,7 +12,8 @@ import {
 } from "../api.js";
 import { Checkbox } from "../components/Toggle.jsx";
 import { DEFAULTS, KIND_LABEL, SEAT_GAP, SEAT_R, bounds, center, defaultSides, seatPositions, sidesOf } from "../seating/geometry.js";
-import SeatingMap, { ObjectShape } from "../seating/SeatingMap.jsx";
+import SeatingMap, { ObjectShape, nameGetter } from "../seating/SeatingMap.jsx";
+import { planLabels } from "../seating/labels.js";
 import SeatResult from "../seating/SeatResult.jsx";
 import { usePlanner } from "./context.js";
 import { ErrorBox, Field, Loading, Modal, NumberInput, PageHead, toInt, toastErr, toastOk, useLoader } from "./ui.jsx";
@@ -67,6 +68,8 @@ export default function Seating() {
 
   const objects = layout?.objects || [];
   const byId = useMemo(() => Object.fromEntries(objects.map((o) => [o.id, o])), [objects]);
+  // 名字位置：整張圖先排一遍，桌子靠太近時名字改放椅子上下，不會疊在一起
+  const labelPlan = useMemo(() => planLabels(objects, nameGetter(null)), [objects]);
   const byIdRef = useRef(byId);   // pointerup 時一定讀到最新位置（避免拿到舊的 closure）
   byIdRef.current = byId;
   const selectedObj = selected.size === 1 ? byId[[...selected][0]] : null;
@@ -561,7 +564,7 @@ export default function Seating() {
               {grid && <rect x="0" y="0" width={layout.canvas.w} height={layout.canvas.h} fill="url(#se-grid)" style={{ pointerEvents: "none" }} />}
               {objects.map((o) => (
                 <g key={o.id} onPointerDown={(e) => onObjPointerDown(e, o)} style={{ cursor: readonly ? "default" : "move" }}>
-                  <ObjectShape o={o} selected={selected.has(o.id)} showNames={showNames} interactive
+                  <ObjectShape o={o} selected={selected.has(o.id)} showNames={showNames} interactive labelPlan={labelPlan}
                     highlightSeats={highlightSeats}
                     onSeatPointerDown={onSeatPointerDown} onSeatPointerUp={onSeatPointerUp} />
                 </g>

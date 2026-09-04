@@ -87,11 +87,14 @@ export function describeRoute(objects, table) {
   }
   const text = `${parts.join("，")}，就是您的「${label}」桌。桌上有「${label}」的桌牌，地圖上的紅色虛線就是走的方向。`;
 
-  // 線從入口中心到桌邊（不要畫進桌子裡）
+  // 線從入口框的邊緣出發（不要壓到「入口」兩個字），畫到桌邊（不要畫進桌子裡）
   const dx = t.cx - e.cx;
   const dy = t.cy - e.cy;
   const d = Math.hypot(dx, dy) || 1;
+  const rx = dx / d;
+  const ry = dy / d;
+  const tEdge = Math.min(e.w / 2 / Math.max(Math.abs(rx), 1e-6), e.h / 2 / Math.max(Math.abs(ry), 1e-6));
   const stop = Math.max(t.w, t.h) / 2 + 22;
-  const line = { x1: e.cx, y1: e.cy, x2: t.cx - (dx / d) * stop, y2: t.cy - (dy / d) * stop };
+  const line = { x1: e.cx + rx * tEdge, y1: e.cy + ry * tEdge, x2: t.cx - rx * stop, y2: t.cy - ry * stop, ux: rx, uy: ry };
   return { text, line, entrance, stage };
 }

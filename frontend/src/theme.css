@@ -627,7 +627,7 @@ tbody tr:last-child td { border-bottom: none; }
 .seat-chair circle { fill: #fff; stroke: var(--milk-tea-300); stroke-width: 1.5; }
 .seat-chair.taken circle { fill: var(--milk-tea-500); stroke: var(--milk-tea-700); }
 .seat-chair.taken.side-bride circle { fill: var(--rose-accent); stroke: #9e5a54; }
-.seat-chair.hi circle { stroke: #3d2d20; stroke-width: 3; fill: var(--gold-accent); }
+.seat-chair.hi circle { stroke: var(--milk-tea-700); stroke-width: 3; fill: var(--gold-accent); }
 .seat-chair .seat-no { fill: var(--text-muted); pointer-events: none; }
 .seat-chair.taken .seat-no, .seat-chair.hi .seat-no { fill: #fff; }
 .seat-name { fill: var(--text-body); pointer-events: none; }
@@ -754,10 +754,9 @@ tbody tr:last-child td { border-bottom: none; }
 .seatviewer-hint { font-size: 12.5px; color: var(--text-muted); line-height: 1.6; }
 .seatviewer-link { display: inline-block; margin-top: 10px; background: none; border: none; padding: 0; font: inherit; font-size: 13px; color: var(--milk-tea-700); font-weight: 600; cursor: pointer; }
 /* 自己的位子（金色）、點到的（綠色）、鄰座（虛線）要壓過男女方的底色，所以寫得比 .taken.side-* 更具體 */
-.seat-chair.hi circle, .seat-chair.taken.side-bride.hi circle, .seat-chair.taken.side-groom.hi circle, .seat-chair.taken.side-none.hi circle { stroke: #3d2d20; stroke-width: 3; fill: var(--gold-accent); }
-.seat-chair.focus circle, .seat-chair.taken.side-bride.focus circle, .seat-chair.taken.side-groom.focus circle, .seat-chair.taken.side-none.focus circle { stroke: #3d2d20; stroke-width: 3.5; fill: var(--sage-accent); }
+.seat-chair.hi circle, .seat-chair.taken.side-bride.hi circle, .seat-chair.taken.side-groom.hi circle, .seat-chair.taken.side-none.hi circle { stroke: var(--milk-tea-700); stroke-width: 3; fill: var(--gold-accent); }
+.seat-chair.focus circle, .seat-chair.taken.side-bride.focus circle, .seat-chair.taken.side-groom.focus circle, .seat-chair.taken.side-none.focus circle { stroke: #5f7a63; stroke-width: 3.5; fill: var(--sage-accent); }
 .seat-chair.focus .seat-no { fill: #fff; }
-.seat-chair.nb circle, .seat-chair.taken.side-bride.nb circle, .seat-chair.taken.side-groom.nb circle { stroke: #3d2d20; stroke-width: 2.5; stroke-dasharray: 3 2; }
 .seat-result-mine { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 20px; margin-bottom: 10px; }
 .seat-result-mine .seat-result-table { margin: 0; }
 .seat-result-mine .seat-result-table strong { font-size: 40px; display: block; line-height: 1.1; }
@@ -765,11 +764,11 @@ tbody tr:last-child td { border-bottom: none; }
 .phone-frame .seatviewer-wrap { height: 42vh; min-height: 220px; }
 
 /* 自己的位子：亮金色、深色粗邊、外圈呼吸光暈；寫在最後面，壓過男女方底色與點選的綠色 */
-.seat-chair.mine circle:not(.seat-halo), .seat-chair.taken.side-bride.mine circle:not(.seat-halo), .seat-chair.taken.side-groom.mine circle:not(.seat-halo), .seat-chair.taken.side-none.mine circle:not(.seat-halo) { fill: #FFC42A; stroke: #3d2d20; stroke-width: 3.5; }
+.seat-chair.mine circle:not(.seat-halo), .seat-chair.taken.side-bride.mine circle:not(.seat-halo), .seat-chair.taken.side-groom.mine circle:not(.seat-halo), .seat-chair.taken.side-none.mine circle:not(.seat-halo) { fill: #FFC42A; stroke: #C98A1E; stroke-width: 3; }
 .seat-chair.mine .seat-no { fill: #3d2d20; font-weight: 700; }
 .seat-chair.mine .seat-name { fill: #3d2d20; font-weight: 700; }
-.seat-halo { fill: rgba(255, 196, 42, 0.28); stroke: #F0A500; stroke-width: 3; pointer-events: none; animation: seatPulse 1.6s ease-in-out infinite; }
-@keyframes seatPulse { 0%, 100% { stroke-opacity: 1; stroke-width: 3; fill-opacity: 1; } 50% { stroke-opacity: 0.3; stroke-width: 9; fill-opacity: 0.35; } }
+.seat-halo { fill: rgba(255, 196, 42, 0.22); stroke: #F0A500; stroke-width: 3; pointer-events: none; animation: seatPulse 1.8s ease-in-out infinite; }
+@keyframes seatPulse { 0%, 100% { stroke-opacity: 0.9; stroke-width: 3; fill-opacity: 0.9; } 50% { stroke-opacity: 0.35; stroke-width: 7; fill-opacity: 0.35; } }
 
 /* ============ 查桌次結果（長輩也看得懂）：大字桌名座號、怎麼走、入口到桌子的虛線 ============ */
 .seat-big { border: 1px solid var(--border-soft); border-radius: 18px; padding: 16px 14px 14px; margin: 12px 0; background: var(--bg-card-subtle); }

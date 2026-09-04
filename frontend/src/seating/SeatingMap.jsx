@@ -1,24 +1,24 @@
 // 唯讀的座位圖（SVG）：賓客端 /seat 與列印用。後台編輯器另有互動版。
 // props: layout {canvas, objects}, highlightIds: Set<object_id>, highlightSeats: Set<"objId:idx">, showNames
+import { useMemo } from "react";
 import { SEAT_R, bounds, center, seatPositions } from "./geometry.js";
+import { LINE_H, NAME_FONT, SUB_FONT, nameLines, placement, planLabels } from "./labels.js";
 
-const NAME_FONT = 10.5; // 主名字
-const SUB_FONT = 8.5; // 「+1」「小孩1」這種副標
-
-// 名字有空格（「王小明 +1」「王小明 小孩1」）就拆成兩行，不截短
-function nameLines(name) {
-  const s = (name || "").trim();
-  if (!s) return [];
-  const i = s.indexOf(" ");
-  if (i <= 0) return [s];
-  return [s.slice(0, i), s.slice(i + 1).trim()].filter(Boolean);
+// 給 planLabels 用：這個座位叫什麼名字（賓客端用 seatNames，其他用 assignments）
+export function nameGetter(seatNames) {
+  return (o, i) => {
+    if (seatNames) return seatNames[String(o.id)]?.[String(i)]?.name || "";
+    return (o.assignments || []).find((a) => a.seat_index === i)?.display_name || "";
+  };
 }
 
 // fit=true：只畫桌椅所在的範圍（加一點邊），不然整張大畫布縮小後桌子會擠在角落
 // seatNames：{object_id: {seat_index: {name, mine}}}，給賓客端用，只顯示自己那幾桌的名字
 export default function SeatingMap({ layout, highlightIds, highlightSeats, showNames = false, maxHeight = 420, className = "", fit = true, seatNames = null }) {
+  const objects = layout?.objects || [];
+  const labelPlan = useMemo(() => planLabels(objects, nameGetter(seatNames)), [objects, seatNames]);
   if (!layout || !layout.objects) return null;
-  const { canvas, objects } = layout;
+  const { canvas } = layout;
   const hi = highlightIds || new Set();
   const hs = highlightSeats || new Set();
   const cw = canvas?.w || 1600;
@@ -35,7 +35,7 @@ export default function SeatingMap({ layout, highlightIds, highlightSeats, showN
         <rect x={vb.x} y={vb.y} width={vb.w} height={vb.h} className="seatmap-floor" />
         {objects.map((o) => (
           <ObjectShape key={o.id} o={o} highlighted={hi.has(o.id)} highlightSeats={hs}
-            showNames={showNames || (seatNames && !!seatNames[String(o.id)])}
+            showNames={showNames || (seatNames && !!seatNames[String(o.id)])} labelPlan={labelPlan}
             seatNames={seatNames ? seatNames[String(o.id)] || {} : undefined} />
         ))}
       </svg>
@@ -44,7 +44,8 @@ export default function SeatingMap({ layout, highlightIds, highlightSeats, showN
 }
 
 // seatClass(o, i)：賓客互動地圖用，替某些椅子加額外 class（點到的、鄰座）
-export function ObjectShape({ o, highlighted, highlightSeats, showNames, interactive, selected, onSeatPointerDown, onSeatPointerUp, seatNames, dimNames, seatClass }) {
+// labelPlan：planLabels 算好的名字位置（Map "oid:idx" → placement）；沒給就用預設的外側位置
+export function ObjectShape({ o, highlighted, highlightSeats, showNames, interactive, selected, onSeatPointerDown, onSeatPointerUp, seatNames, dimNames, seatClass, labelPlan }) {
   const { cx, cy, w, h } = center(o);
   const seats = seatPositions(o);
   // seatNames 給的是 {index: {name, mine, side}}；編輯器則直接用 assignments
@@ -110,19 +111,13 @@ export function ObjectShape({ o, highlighted, highlightSeats, showNames, interac
             <text x={p.x} y={p.y} textAnchor="middle" dominantBaseline="middle" fontSize="8" className="seat-no">{i + 1}</text>
             {a && <title>{a.display_name}</title>}
             {showNames && label && !dimNames && (() => {
-              // 名字放在椅子外側；兩行時往外多推一行的高度，垂直排列的（上/下）第二行接在第一行下面
-              const tx = p.x + p.ox * gap;
-              const ty = p.y + p.oy * gap;
-              const anchor = p.ox > 0.3 ? "start" : p.ox < -0.3 ? "end" : "middle";
-              const above = p.oy < -0.3;
-              const baseline = p.oy > 0.3 ? "hanging" : above ? "auto" : "middle";
-              const lineH = NAME_FONT + 2;
-              const y0 = above ? ty - lineH * (lines.length - 1) : lines.length > 1 && !(p.oy > 0.3) ? ty - lineH / 2 : ty;
-              // 第一行是名字（粗體），第二行是「+1」「小孩1」這種副標（小一點、淡一點）
+              // 名字的位置：整張圖先排過（避開別桌、別的名字），沒有的話放椅子外側
+              const pl = (labelPlan && labelPlan.get(key)) || placement(p, lines, "out", gap);
+              // 第一行是名字（粗體），第二行是「小孩」這種副標（小一點、淡一點）
               return (
-                <text x={tx} y={y0} fontSize={NAME_FONT} className="seat-name" textAnchor={anchor} dominantBaseline={baseline}>
+                <text x={pl.x} y={pl.y} fontSize={NAME_FONT} className="seat-name" textAnchor={pl.anchor} dominantBaseline={pl.baseline}>
                   {lines.map((ln, k) => (
-                    <tspan key={k} x={tx} dy={k === 0 ? 0 : lineH} className={k === 0 ? "seat-name-main" : "seat-name-sub"} fontSize={k === 0 ? NAME_FONT : SUB_FONT}>{ln}</tspan>
+                    <tspan key={k} x={pl.x} dy={k === 0 ? 0 : LINE_H} className={k === 0 ? "seat-name-main" : "seat-name-sub"} fontSize={k === 0 ? NAME_FONT : SUB_FONT}>{ln}</tspan>
                   ))}
                 </text>
               );

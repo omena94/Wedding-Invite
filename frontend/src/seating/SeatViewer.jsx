@@ -14,7 +14,8 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { LocateFixed, Maximize2, Minus, Plus, Search, X } from "lucide-react";
-import { ObjectShape } from "./SeatingMap.jsx";
+import { ObjectShape, nameGetter } from "./SeatingMap.jsx";
+import { planLabels } from "./labels.js";
 import { bounds, center, seatPositions } from "./geometry.js";
 import { findLandmarks } from "./guide.js";
 
@@ -303,6 +304,9 @@ export default function SeatViewer({ layout, names, mineIds, routes = [], guideT
   const hiIds = useMemo(() => new Set(focus && focus.idx === undefined ? [focus.oid] : []), [focus]);
   // 整個場地每一桌的名字都畫出來（大家都能看到誰坐哪；縮小時小沒關係，放大就看得到）
   const showNamesFor = (o) => !!(names && names[String(o.id)]);
+  // 名字位置先整張排好，桌子靠太近時會自動改放椅子上下，不會撞在一起
+  const mineKeys = useMemo(() => new Set(everyone.filter((p) => p.mine).map((p) => `${p.oid}:${p.idx}`)), [everyone]);
+  const labelPlan = useMemo(() => planLabels(objects, nameGetter(names || {}), mineKeys), [objects, names, mineKeys]);
 
   if (!layout || !objects.length) return null;
   const vb = `${view.x} ${view.y} ${view.w} ${view.h}`;
@@ -404,19 +408,25 @@ export default function SeatViewer({ layout, names, mineIds, routes = [], guideT
           </defs>
           <rect x={full.x - full.w * 2} y={full.y - full.h * 2} width={full.w * 5} height={full.h * 5} className="seatmap-floor" />
           {objects.map((o) => (
-            <ObjectShape key={o.id} o={o} highlighted={hiIds.has(o.id)} showNames={showNamesFor(o)}
+            <ObjectShape key={o.id} o={o} highlighted={hiIds.has(o.id)} showNames={showNamesFor(o)} labelPlan={labelPlan}
               seatNames={names ? names[String(o.id)] || {} : undefined} seatClass={seatClass} />
           ))}
           {/* 從入口走到桌子的方向（紅色虛線，會慢慢流動） */}
           {routes.map((r, i) => (
             <line key={i} x1={r.x1} y1={r.y1} x2={r.x2} y2={r.y2} className="seat-route" markerEnd="url(#seat-route-arrow)" />
           ))}
-          {ent && routes.length > 0 && (
-            <g className="seat-entrance-mark" pointerEvents="none">
-              <circle cx={ent.cx} cy={ent.cy} r="9" />
-              <text x={ent.cx} y={ent.cy - 14} textAnchor="middle" fontSize="11" className="seat-name">從這裡進來</text>
-            </g>
-          )}
+          {ent && routes.length > 0 && (() => {
+            // 紅點放在路線起點（入口框的邊緣），「從這裡進來」沿著路線方向再往外一點，不壓到「入口」兩個字
+            const r0 = routes[0];
+            const tx = r0.x1 + (r0.ux || 0) * 26;
+            const ty = r0.y1 + (r0.uy || 0) * 26;
+            return (
+              <g className="seat-entrance-mark" pointerEvents="none">
+                <circle cx={r0.x1} cy={r0.y1} r="8" />
+                <text x={tx} y={ty} textAnchor="middle" dominantBaseline="middle" fontSize="11" className="seat-name">從這裡進來</text>
+              </g>
+            );
+          })()}
         </svg>
       </div>
       {info}
