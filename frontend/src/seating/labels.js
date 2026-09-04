@@ -30,6 +30,7 @@ function textWidth(s, size) {
  * 算一個名字的位置與外框。
  * mode: "out" 椅子外側（預設）/ "below" 椅子正下方 / "above" 椅子正上方 / "far" 外側再推遠一點
  *       "below-out" / "above-out" 椅子下方／上方、文字往外側延伸（長桌兩端的椅子夾在兩桌中間時用）
+ *       "right" / "left" 椅子的右邊／左邊、跟椅子同一列（上下兩桌靠很近、上下排名字擠不下時用）
  * 回傳 {x, y, anchor, baseline, box:{x0,y0,x1,y1}}
  */
 export function placement(p, lines, mode = "out", gap = SEAT_R + 4) {
@@ -38,7 +39,12 @@ export function placement(p, lines, mode = "out", gap = SEAT_R + 4) {
   let y;
   let anchor;
   let baseline;
-  if (mode === "below" || mode === "above" || mode === "below-out" || mode === "above-out") {
+  if (mode === "right" || mode === "left") {
+    x = mode === "right" ? p.x + SEAT_R + 3 : p.x - SEAT_R - 3;
+    anchor = mode === "right" ? "start" : "end";
+    baseline = "middle";
+    y = n > 1 ? p.y - LINE_H / 2 : p.y;
+  } else if (mode === "below" || mode === "above" || mode === "below-out" || mode === "above-out") {
     if (mode.endsWith("-out")) {
       // 從椅子靠桌子那一側的邊緣開始，往外延伸，才不會蓋到自己的桌子
       const outRight = p.ox >= 0;
@@ -108,7 +114,9 @@ export function planLabels(objects, nameOf, mineKeys = null) {
   for (const it of items) {
     const gap = SEAT_R + (mineKeys && mineKeys.has(it.key) ? 9 : 4);
     const own = seatBoxes.get(it.key);
-    const modes = it.side ? ["out", "below-out", "above-out", "far", "below", "above"] : ["out", "far", "below", "above"];
+    const modes = it.side
+      ? ["out", "below-out", "above-out", "right", "left", "far", "below", "above"]
+      : ["out", "right", "left", "far", "below", "above"];
     let chosen = null;
     for (const mode of modes) {
       const pl = placement(it.p, it.lines, mode, gap);
