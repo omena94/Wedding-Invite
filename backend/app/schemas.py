@@ -163,6 +163,8 @@ class SeatLookupOut(BaseModel):
     found: bool
     name: str = ""
     table_no: int | None = None
+    seats: list[dict] = []          # [{object_id, table_label, seat_no, display_name}]
+    map: dict | None = None         # {canvas, objects}（只有形狀與桌名，沒有人名）
 
 
 # =====================================================================
@@ -173,6 +175,66 @@ PaidBy = Literal["groom", "bride", "shared", "family"]
 Assignee = Literal["groom", "bride", "both"]
 TaskKind = Literal["task", "milestone"]
 FileKind = Literal["doc", "receipt", "photo"]
+
+
+SeatKind = Literal["round", "rect", "chair", "zone", "label"]
+
+
+class SeatObjectIn(BaseModel):
+    kind: SeatKind = "round"
+    label: str = Field(default="", max_length=50)
+    x: float = 0
+    y: float = 0
+    w: float = Field(default=120, ge=10, le=4000)
+    h: float = Field(default=120, ge=10, le=4000)
+    rotation: float = 0
+    seats: int = Field(default=0, ge=0, le=60)
+    meta: dict = {}
+    z_order: int = 0
+    note: str = Field(default="", max_length=300)
+
+
+class SeatObjectPatch(BaseModel):
+    kind: SeatKind | None = None
+    label: str | None = Field(default=None, max_length=50)
+    x: float | None = None
+    y: float | None = None
+    w: float | None = Field(default=None, ge=10, le=4000)
+    h: float | None = Field(default=None, ge=10, le=4000)
+    rotation: float | None = None
+    seats: int | None = Field(default=None, ge=0, le=60)
+    meta: dict | None = None
+    z_order: int | None = None
+    note: str | None = Field(default=None, max_length=300)
+
+
+class SeatObjectMove(BaseModel):
+    id: int
+    x: float
+    y: float
+
+
+class SeatAssignIn(BaseModel):
+    object_id: int
+    seat_index: int = Field(ge=0)
+    rsvp_id: int
+    person_no: int = Field(default=1, ge=1)
+    display_name: str | None = Field(default=None, max_length=60)
+    force: bool = False  # 位子已有人時，把原本的人移走（設成未安排）
+
+
+class SeatAssignGroupIn(BaseModel):
+    object_id: int
+    rsvp_id: int
+
+
+class SeatRenameIn(BaseModel):
+    display_name: str = Field(default="", max_length=60)
+
+
+class SeatCanvasIn(BaseModel):
+    w: int = Field(ge=400, le=6000)
+    h: int = Field(ge=400, le=6000)
 
 
 class BanquetPatch(BaseModel):

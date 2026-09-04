@@ -610,3 +610,73 @@ tbody tr:last-child td { border-bottom: none; }
 .banquet-table tr.banquet-sum td { font-weight: 700; color: var(--milk-tea-900); border-bottom: none; }
 .banquet-scenarios { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 10px; font-size: 12.5px; }
 @media (max-width: 900px) { .banquet-grid { grid-template-columns: 1fr; } }
+
+/* ============ 座位圖（共用：賓客端地圖、列印、編輯器） ============ */
+.seatmap-wrap { width: 100%; overflow: hidden; border-radius: 16px; border: 1px solid var(--border-soft); background: #fbf8f4; }
+.seatmap { width: 100%; height: 100%; display: block; }
+.seatmap-floor { fill: #fbf8f4; }
+.seat-body { fill: #fff; stroke: var(--milk-tea-300); stroke-width: 2; }
+.seat-obj.hi .seat-body { stroke: var(--milk-tea-700); stroke-width: 3; fill: var(--milk-tea-100); }
+.seat-obj.selected .seat-body { stroke: var(--milk-tea-700); stroke-width: 2.5; stroke-dasharray: 6 4; }
+.seat-zone-body { fill: rgba(130, 149, 132, 0.12); stroke: var(--sage-accent); stroke-dasharray: 8 6; }
+.seat-label-body { fill: transparent; stroke: transparent; }
+.seat-obj.selected .seat-label-body { stroke: var(--milk-tea-500); stroke-dasharray: 4 3; }
+.seat-text { fill: var(--milk-tea-900); font-family: "Noto Serif TC", serif; font-weight: 600; letter-spacing: 1px; pointer-events: none; }
+.seat-text-zone { fill: var(--sage-accent); }
+.seat-text-label { fill: var(--milk-tea-700); }
+.seat-chair circle { fill: #fff; stroke: var(--milk-tea-300); stroke-width: 1.5; }
+.seat-chair.taken circle { fill: var(--milk-tea-500); stroke: var(--milk-tea-700); }
+.seat-chair.taken.side-bride circle { fill: var(--rose-accent); stroke: #9e5a54; }
+.seat-chair.hi circle { stroke: #3d2d20; stroke-width: 3; fill: var(--gold-accent); }
+.seat-chair .seat-no { fill: var(--text-muted); pointer-events: none; }
+.seat-chair.taken .seat-no, .seat-chair.hi .seat-no { fill: #fff; }
+.seat-name { fill: var(--text-body); pointer-events: none; }
+.seat-result-map { margin-top: 14px; }
+
+/* 編輯器 */
+.se-summary { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; font-size: 12.5px; color: var(--text-muted); margin-bottom: 8px; }
+.se-summary strong { color: var(--milk-tea-900); }
+.se-toolbar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 10px; }
+.se-toolbar .sep { width: 1px; height: 22px; background: var(--border-soft); margin: 0 4px; }
+.se-shell { display: grid; grid-template-columns: 1fr 330px; gap: 16px; height: calc(100vh - 230px); min-height: 520px; }
+.se-canvas { position: relative; overflow: hidden; border-radius: 16px; border: 1px solid var(--border-soft); background: #efe8df; touch-action: none; user-select: none; }
+.se-canvas svg { width: 100%; height: 100%; display: block; }
+.se-canvas .floor { fill: #fbf8f4; stroke: var(--border-highlight); }
+.se-handle { fill: #fff; stroke: var(--milk-tea-700); stroke-width: 1.5; cursor: nwse-resize; }
+.se-rotate { fill: #fff; stroke: var(--milk-tea-700); stroke-width: 1.5; cursor: grab; }
+.se-panel { background: var(--bg-card); border: 1px solid var(--border-soft); border-radius: 16px; display: flex; flex-direction: column; min-height: 0; }
+.se-tabs { display: flex; border-bottom: 1px solid var(--border-soft); }
+.se-tabs button { flex: 1; padding: 10px 6px; border: none; background: none; font: inherit; font-size: 13.5px; color: var(--text-muted); cursor: pointer; border-bottom: 2px solid transparent; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.se-tabs button.active { color: var(--milk-tea-900); font-weight: 600; border-bottom-color: var(--milk-tea-700); }
+.se-panel-body { padding: 12px; overflow-y: auto; flex: 1; min-height: 0; }
+.se-panel-body input[type="text"] { padding: 9px 12px; font-size: 13.5px; }
+.se-group { border: 1px solid var(--border-soft); border-radius: 12px; padding: 8px 10px; margin-bottom: 8px; background: var(--bg-card-subtle); }
+.se-group-head { display: flex; justify-content: space-between; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--milk-tea-900); }
+.se-person { display: flex; justify-content: space-between; align-items: center; gap: 6px; padding: 5px 8px; margin-top: 4px; border-radius: 10px; background: #fff; border: 1px solid var(--border-soft); font-size: 12.5px; cursor: grab; touch-action: none; }
+.se-person.seated { opacity: 0.7; cursor: default; }
+.se-person.picked { border-color: var(--milk-tea-700); box-shadow: 0 0 0 3px rgba(178, 143, 112, 0.18); }
+.se-person .where { color: var(--text-muted); font-size: 11.5px; white-space: nowrap; }
+.se-dragchip { position: fixed; z-index: 500; pointer-events: none; background: var(--milk-tea-900); color: #fff; padding: 4px 10px; border-radius: 20px; font-size: 12.5px; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25); }
+.se-seatlist { list-style: none; margin-top: 6px; }
+.se-seatlist li { display: flex; justify-content: space-between; align-items: center; gap: 6px; padding: 5px 4px; border-bottom: 1px solid var(--milk-tea-100); font-size: 12.5px; cursor: pointer; border-radius: 6px; }
+.se-seatlist li.cur { background: var(--milk-tea-50); }
+.se-print .seatmap-wrap { border: none; }
+.print-tables { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; }
+.print-table { border: 1px solid var(--border-soft); border-radius: 12px; padding: 10px 12px; break-inside: avoid; }
+.print-table-title { font-family: "Noto Serif TC", serif; font-weight: 600; color: var(--milk-tea-900); margin-bottom: 6px; }
+.print-table ol { padding-left: 20px; font-size: 13px; line-height: 1.7; }
+@media (max-width: 900px) {
+  .se-shell { grid-template-columns: 1fr; height: auto; }
+  .se-canvas { height: 62vh; }
+  .se-panel { max-height: 55vh; }
+}
+@media print {
+  .pl-side, .se-toolbar, .se-panel, .no-print { display: none !important; }
+  .pl-main { padding: 0 !important; }
+  .pl-shell { display: block; }
+  .print-page { page-break-after: always; }
+  body { background: #fff; }
+}
+
+/* SVG 文字不用網頁字型：大型中文網頁字型在 SVG 內渲染很慢，拖曳會卡、擷圖會逾時 */
+.seat-text, .seat-no, .seat-name { font-family: system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", "PingFang TC", "Noto Sans TC", sans-serif !important; letter-spacing: 0; text-rendering: optimizeSpeed; }

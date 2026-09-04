@@ -3,7 +3,7 @@ import { useState } from "react";
 import { BrowserRouter, NavLink, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import {
   LayoutDashboard, Users, Store, Wallet, CalendarClock, Scale, ListChecks, FolderOpen,
-  Settings as SettingsIcon, LogOut, Lock, LogIn, Home as HomeIcon,
+  Settings as SettingsIcon, LogOut, Lock, LogIn, Home as HomeIcon, Armchair,
 } from "lucide-react";
 import { adminLogin, clearToken, getRole, getToken, setRole, setToken } from "../api.js";
 import Dashboard from "./Dashboard.jsx";
@@ -16,12 +16,14 @@ import Compare from "./Compare.jsx";
 import Timeline from "./Timeline.jsx";
 import Files from "./Files.jsx";
 import SettingsPage from "./Settings.jsx";
+import Seating from "./Seating.jsx";
 
 import { PlannerContext } from "./context.js";
 
 const NAV = [
   { to: "/", label: "總覽", icon: LayoutDashboard, end: true },
   { to: "/guests", label: "賓客", icon: Users, helper: true },
+  { to: "/seating", label: "座位圖", icon: Armchair, helper: true },
   { to: "/vendors", label: "廠商", icon: Store },
   { to: "/budget", label: "預算花費", icon: Wallet },
   { to: "/payments", label: "付款期程", icon: CalendarClock },
@@ -58,6 +60,7 @@ export default function PlannerApp() {
           <Routes>
             <Route path="/" element={<CoupleOnly role={role}><Dashboard /></CoupleOnly>} />
             <Route path="/guests" element={<Guests />} />
+            <Route path="/seating" element={<Seating />} />
             <Route path="/vendors" element={<CoupleOnly role={role}><Vendors /></CoupleOnly>} />
             <Route path="/vendors/:id" element={<CoupleOnly role={role}><VendorDetail /></CoupleOnly>} />
             <Route path="/budget" element={<CoupleOnly role={role}><Budget /></CoupleOnly>} />

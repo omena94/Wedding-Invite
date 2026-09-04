@@ -23,8 +23,15 @@ from ..schemas import (
     Stats,
 )
 from ..security import AdminRequired, CoupleRequired, create_token, login_role
+from ..seating import build_layout
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
+
+
+# ===== 座位圖（唯讀；幫手當天帶位用）=====
+@router.get("/seating", dependencies=[AdminRequired])
+def seating_readonly(db: Session = Depends(get_db)):
+    return build_layout(db)
 
 
 # ===== 登入 =====

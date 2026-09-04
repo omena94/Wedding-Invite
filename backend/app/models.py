@@ -8,7 +8,7 @@ import json
 import uuid
 from datetime import date, datetime
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
@@ -198,6 +198,62 @@ class FileAsset(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     vendor: Mapped["Vendor | None"] = relationship(back_populates="files")
+
+
+# =====================================================================
+# 座位圖：桌椅物件 + 誰坐哪個位子
+# =====================================================================
+
+class SeatObject(Base):
+    """平面圖上的物件：round 圓桌 / rect 長桌 / chair 單張椅子 / zone 區域（舞台、入口…）/ label 文字。
+    座標與尺寸是畫布單位（1 = 1px @ 100%）。圓桌的 w 是直徑。
+    meta_json 放各類型的額外設定，例如長桌每邊幾張椅子 {"sides":{"top":4,"bottom":4,"left":1,"right":1}}。
+    """
+    __tablename__ = "seat_objects"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    kind: Mapped[str] = mapped_column(String(10), default="round")
+    label: Mapped[str] = mapped_column(String(50), default="")
+    x: Mapped[float] = mapped_column(Float, default=0)
+    y: Mapped[float] = mapped_column(Float, default=0)
+    w: Mapped[float] = mapped_column(Float, default=120)
+    h: Mapped[float] = mapped_column(Float, default=120)
+    rotation: Mapped[float] = mapped_column(Float, default=0)
+    seats: Mapped[int] = mapped_column(Integer, default=0)
+    meta_json: Mapped[str] = mapped_column(Text, default="{}")
+    z_order: Mapped[int] = mapped_column(Integer, default=0)
+    note: Mapped[str] = mapped_column(String(300), default="")
+
+    assignments: Mapped[list["SeatAssignment"]] = relationship(
+        back_populates="obj", cascade="all, delete-orphan"
+    )
+
+    @property
+    def meta(self) -> dict:
+        try:
+            data = json.loads(self.meta_json or "{}")
+            return data if isinstance(data, dict) else {}
+        except (ValueError, TypeError):
+            return {}
+
+
+class SeatAssignment(Base):
+    """某個物件的第 seat_index 個座位（0 起算）坐的是哪組賓客的第 person_no 位（1 = 填表人本人）。"""
+    __tablename__ = "seat_assignments"
+    __table_args__ = (
+        UniqueConstraint("object_id", "seat_index", name="uq_seat_position"),
+        UniqueConstraint("rsvp_id", "person_no", name="uq_seat_person"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    object_id: Mapped[int] = mapped_column(ForeignKey("seat_objects.id", ondelete="CASCADE"), index=True)
+    seat_index: Mapped[int] = mapped_column(Integer, default=0)
+    rsvp_id: Mapped[int] = mapped_column(ForeignKey("rsvps.id", ondelete="CASCADE"), index=True)
+    person_no: Mapped[int] = mapped_column(Integer, default=1)
+    display_name: Mapped[str] = mapped_column(String(60), default="")  # 空 = 用自動產生的名字
+
+    obj: Mapped["SeatObject"] = relationship(back_populates="assignments")
+    rsvp: Mapped["Rsvp"] = relationship()
 
 
 class Task(Base):

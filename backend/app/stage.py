@@ -37,7 +37,8 @@ BANQUET_DEFAULTS = {
     "banquet_child_mode": "half",
     "banquet_child_price": "0",
 }
-ALL_KEYS = (PHASE2_KEY, SEAT_KEY, PHOTOS_KEY, *INFO_KEYS, *BANQUET_KEYS)
+SEATING_KEYS = ("seating_canvas_w", "seating_canvas_h")  # 座位圖畫布大小
+ALL_KEYS = (PHASE2_KEY, SEAT_KEY, PHOTOS_KEY, *INFO_KEYS, *BANQUET_KEYS, *SEATING_KEYS)
 
 
 def get_setting(db: Session, key: str) -> str:

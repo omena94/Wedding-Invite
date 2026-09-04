@@ -164,6 +164,23 @@ export const updateTask = (id, data) =>
   request(`${P}/tasks/${id}`, { method: "PATCH", body: data, auth: true });
 export const deleteTask = (id) => request(`${P}/tasks/${id}`, { method: "DELETE", auth: true });
 
+// ===== 座位圖 =====
+const SE = `${P}/seating`;
+export const fetchSeating = (readonly = false) => request(readonly ? "/api/admin/seating" : SE, { auth: true });
+export const setSeatingCanvas = (w, h) => request(`${SE}/canvas`, { method: "PATCH", body: { w, h }, auth: true });
+export const createSeatObject = (data) => request(`${SE}/objects`, { method: "POST", body: data, auth: true });
+export const updateSeatObject = (id, data) => request(`${SE}/objects/${id}`, { method: "PATCH", body: data, auth: true });
+export const moveSeatObjects = (items) => request(`${SE}/objects/move`, { method: "POST", body: items, auth: true });
+export const deleteSeatObject = (id) => request(`${SE}/objects/${id}`, { method: "DELETE", auth: true });
+export const clearSeatObject = (id) => request(`${SE}/objects/${id}/assignments`, { method: "DELETE", auth: true });
+export const assignSeat = (data) => request(`${SE}/assign`, { method: "PUT", body: data, auth: true });
+export const assignGroup = (object_id, rsvp_id) =>
+  request(`${SE}/assign-group`, { method: "POST", body: { object_id, rsvp_id }, auth: true });
+export const renameAssignment = (id, display_name) =>
+  request(`${SE}/assign/${id}`, { method: "PATCH", body: { display_name }, auth: true });
+export const unassignSeat = (id) => request(`${SE}/assign/${id}`, { method: "DELETE", auth: true });
+export const clearAllSeats = () => request(`${SE}/assignments`, { method: "DELETE", auth: true });
+
 export const fetchFiles = (params = {}) => request(`${P}/files${qs(params)}`, { auth: true });
 export function uploadFile(file, fields = {}) {
   const fd = new FormData();

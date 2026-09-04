@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .config import FRONTEND_DIST, settings
 from .database import init_db
-from .routers import admin, planner, public, rsvp
+from .routers import admin, planner, public, rsvp, seating
 
 logging.basicConfig(level=logging.INFO)
 
@@ -30,6 +30,7 @@ app.include_router(rsvp.router)
 app.include_router(public.router)
 app.include_router(admin.router)
 app.include_router(planner.router)
+app.include_router(seating.router)
 
 
 @app.get("/api/health")

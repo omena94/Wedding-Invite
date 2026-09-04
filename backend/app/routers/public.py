@@ -10,6 +10,7 @@ from ..config import settings
 from ..database import get_db
 from ..models import FileAsset, Rsvp
 from ..schemas import SeatLookupIn, SeatLookupOut
+from ..seating import public_map, seats_of_rsvp
 from ..stage import INFO_KEYS, PHOTOS_KEY, SEAT_KEY, get_all, is_on, public_stage
 
 router = APIRouter(prefix="/api", tags=["public"])
@@ -47,7 +48,14 @@ def seat_lookup(payload: SeatLookupIn, db: Session = Depends(get_db)):
     row = db.scalars(stmt).first()
     if not row:
         return SeatLookupOut(found=False)
-    return SeatLookupOut(found=True, name=row.name, table_no=row.table_no)
+    seats = seats_of_rsvp(db, row)
+    return SeatLookupOut(
+        found=True,
+        name=row.name,
+        table_no=row.table_no,
+        seats=seats,
+        map=public_map(db) if seats else None,
+    )
 
 
 @router.get("/photos")
