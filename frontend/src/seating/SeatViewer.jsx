@@ -13,7 +13,7 @@
 //   fullscreen / onClose / title 全螢幕模式用
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { LocateFixed, Maximize2, Minus, Plus, X } from "lucide-react";
+import { LocateFixed, Maximize2, Minus, Plus, Search, X } from "lucide-react";
 import { ObjectShape } from "./SeatingMap.jsx";
 import { bounds, center, seatPositions } from "./geometry.js";
 import { findLandmarks } from "./guide.js";
@@ -47,6 +47,7 @@ export default function SeatViewer({ layout, names, mineIds, routes = [], guideT
   const [view, setView] = useState(full);
   const [ready, setReady] = useState(false); // 開場視角算好之前先不要畫，免得閃一下整張圖
   const [focus, setFocus] = useState(null); // {oid, idx} 點到椅子；{oid} 點到桌子
+  const [query, setQuery] = useState(""); // 找人：姓名模糊比對
   const [dragging, setDragging] = useState(false);
   const svgRef = useRef(null);
   const pointers = useRef(new Map()); // pointerId -> {x, y}
@@ -100,16 +101,20 @@ export default function SeatViewer({ layout, names, mineIds, routes = [], guideT
   }, [full]);
 
   const clampView = useCallback((v) => {
-    const maxW = full.w * MIN_ZOOM_OUT;
+    // 最多縮到「整張圖在這個容器裡剛好放得下」的 1.6 倍（寬螢幕要看高度、手機要看寬度）
+    const ratio = containerRatio();
+    const maxW = Math.max(full.w, full.h * ratio) * MIN_ZOOM_OUT;
     const minW = full.w / MAX_ZOOM_IN;
-    let { x, y, w, h } = v;
+    let { w, h } = v;
+    const cx0 = v.x + v.w / 2;
+    const cy0 = v.y + v.h / 2;
     if (w > maxW) { const r = maxW / w; w = maxW; h *= r; }
     if (w < minW) { const r = minW / w; w = minW; h *= r; }
-    // 不要拖到整張圖都看不到：畫面中心點一定要落在整張圖的範圍內（不管畫面比整張圖大還小都適用）
-    const vcx = Math.min(Math.max(x + w / 2, full.x), full.x + full.w);
-    const vcy = Math.min(Math.max(y + h / 2, full.y), full.y + full.h);
+    // 不要拖到整張圖都看不到：畫面中心點一定要落在整張圖的範圍內（改完大小也維持原本的中心）
+    const vcx = Math.min(Math.max(cx0, full.x), full.x + full.w);
+    const vcy = Math.min(Math.max(cy0, full.y), full.y + full.h);
     return { x: vcx - w / 2, y: vcy - h / 2, w, h };
-  }, [full]);
+  }, [full, containerRatio]);
 
   // ---------- 平滑動畫：大小用等比、中心用線性，縮放看起來才均勻 ----------
   const cancelAnim = useCallback(() => {
@@ -134,12 +139,13 @@ export default function SeatViewer({ layout, names, mineIds, routes = [], guideT
   }, [cancelAnim, clampView]);
   useEffect(() => cancelAnim, [cancelAnim]);
 
-  // 自己那幾桌的框（沒有就 null）
-  const mineBox = useCallback((pad = 60) => {
-    const objs = objects.filter((o) => mineIds && mineIds.has(o.id));
+  // 某幾個物件的框（符合容器比例）
+  const boxFor = useCallback((objs, pad = 60) => {
     if (!objs.length) return null;
     return clampView(matchRatio(fitBox(objs, pad), containerRatio()));
-  }, [objects, mineIds, clampView, containerRatio]);
+  }, [clampView, containerRatio]);
+  // 自己那幾桌的框（沒有就 null）
+  const mineBox = useCallback((pad = 60) => boxFor(objects.filter((o) => mineIds && mineIds.has(o.id)), pad), [objects, mineIds, boxFor]);
   const fullView = useCallback(() => matchRatio(full, containerRatio()), [full, containerRatio]);
 
   // 自己的第一個位子（開場先點著它，抽屜就會顯示旁邊坐誰）
@@ -267,11 +273,36 @@ export default function SeatViewer({ layout, names, mineIds, routes = [], guideT
     return { o, label, n, list, filled, idx: focus.idx, p: person(focus.idx) };
   }, [focus, byId, names]);
 
-  const seatClass = useCallback((o, i) => (focus && focus.oid === o.id && focus.idx === i ? "focus" : ""), [focus]);
+  // ---------- 找人：全場每個座位的名字都可以搜（忽略空白、不分大小寫） ----------
+  const everyone = useMemo(() => {
+    const out = [];
+    for (const [oid, seats] of Object.entries(names || {})) {
+      const o = byId[Number(oid)];
+      for (const [idx, p] of Object.entries(seats)) {
+        if (p && p.name) out.push({ oid: Number(oid), idx: Number(idx), name: p.name, mine: !!p.mine, label: o ? (o.label || "桌") : "桌" });
+      }
+    }
+    return out;
+  }, [names, byId]);
+  const norm = (s) => (s || "").replace(/\s+/g, "").toLowerCase();
+  const q = norm(query);
+  const matches = useMemo(() => (q ? everyone.filter((p) => norm(p.name).includes(q)).slice(0, 30) : []), [q, everyone]);
+  const foundKeys = useMemo(() => new Set(matches.map((m) => `${m.oid}:${m.idx}`)), [matches]);
+  const jumpTo = (m) => {
+    const o = byId[m.oid];
+    setFocus({ oid: m.oid, idx: m.idx });
+    if (o) animateTo(boxFor([o], 60), 700);
+  };
+
+  const seatClass = useCallback((o, i) => {
+    const cls = [];
+    if (focus && focus.oid === o.id && focus.idx === i) cls.push("focus");
+    if (foundKeys.has(`${o.id}:${i}`)) cls.push("found");
+    return cls.join(" ");
+  }, [focus, foundKeys]);
   const hiIds = useMemo(() => new Set(focus && focus.idx === undefined ? [focus.oid] : []), [focus]);
-  // 名字：自己那桌、點到的那桌一定畫；放大到夠近（看得到大約 1/3 場地以內）才全部畫
-  const zoomedIn = view.w < full.w / 2.8;
-  const showNamesFor = (o) => !!(names && names[String(o.id)]) && (zoomedIn || (mineIds && mineIds.has(o.id)) || (focus && focus.oid === o.id));
+  // 整個場地每一桌的名字都畫出來（大家都能看到誰坐哪；縮小時小沒關係，放大就看得到）
+  const showNamesFor = (o) => !!(names && names[String(o.id)]);
 
   if (!layout || !objects.length) return null;
   const vb = `${view.x} ${view.y} ${view.w} ${view.h}`;
@@ -282,6 +313,32 @@ export default function SeatViewer({ layout, names, mineIds, routes = [], guideT
     </button>
   );
   const ent = landmarks.entrance ? center(landmarks.entrance) : null;
+
+  const searchBox = (
+    <div className="seatviewer-search">
+      <Search size={16} />
+      <input type="text" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="找人：輸入姓名，看他坐哪" aria-label="找人" />
+      {query && <button type="button" className="seatviewer-search-clear" onClick={() => setQuery("")} aria-label="清除"><X size={14} /></button>}
+    </div>
+  );
+  const searchResults = q ? (
+    <div className="seatviewer-results">
+      {matches.length === 0
+        ? <div className="seatviewer-hint">找不到「{query}」，請確認是第一階段填的名字</div>
+        : (
+          <>
+            <div className="seatviewer-hint">找到 {matches.length} 位，點一下就跳到他的位子</div>
+            <div className="seatviewer-pills">
+              {matches.map((m) => (
+                <button type="button" key={`${m.oid}:${m.idx}`} className={`seatviewer-pill${m.mine ? " mine" : ""}${focus && focus.oid === m.oid && focus.idx === m.idx ? " current" : ""}`} onClick={() => jumpTo(m)}>
+                  {m.name}　<span className="seatviewer-pill-where">{m.label} · {m.idx + 1} 號</span>
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+    </div>
+  ) : null;
 
   const controls = (
     <div className="seatviewer-ctl">
@@ -297,6 +354,7 @@ export default function SeatViewer({ layout, names, mineIds, routes = [], guideT
   const info = (
     <div className="seatviewer-info">
       {fullscreen && controls}
+      {searchResults}
       {!focusInfo && (
         <div className="seatviewer-guide">
           {guideText && <div className="seatviewer-guide-text">{guideText}</div>}
@@ -329,10 +387,11 @@ export default function SeatViewer({ layout, names, mineIds, routes = [], guideT
     <div className={`seatviewer${fullscreen ? " seatviewer-full" : ""}`} role={fullscreen ? "dialog" : undefined} aria-modal={fullscreen || undefined}>
       {fullscreen && (
         <div className="seatviewer-top">
-          <button type="button" className="seatviewer-top-close" onClick={onClose}><X size={18} /> 關閉地圖</button>
-          <div className="seatviewer-top-title">{title}</div>
+          <button type="button" className="seatviewer-top-close" onClick={onClose} title={title}><X size={18} /> 關閉</button>
+          {searchBox}
         </div>
       )}
+      {!fullscreen && searchBox}
       {!fullscreen && controls}
       <div className={`seatviewer-wrap${dragging ? " dragging" : ""}`}>
         <svg ref={svgRef} viewBox={vb} preserveAspectRatio="xMidYMid meet" className="seatmap" role="img" aria-label="座位平面圖"

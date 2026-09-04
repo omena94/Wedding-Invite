@@ -64,7 +64,7 @@ def create_object(payload: SeatObjectIn, db: Session = Depends(get_db)):
     meta = data.pop("meta")
     if data["kind"] == "chair":
         data["seats"] = 1
-    elif data["kind"] in ("zone", "label"):
+    elif data["kind"] in ("zone", "label", "stage", "entrance"):
         data["seats"] = 0
     o = SeatObject(**data, meta_json=dump_meta(meta))
     db.add(o)
@@ -83,7 +83,7 @@ def update_object(object_id: int, payload: SeatObjectPatch, db: Session = Depend
             setattr(o, k, v)
     if o.kind == "chair":
         o.seats = 1
-    elif o.kind in ("zone", "label"):
+    elif o.kind in ("zone", "label", "stage", "entrance"):
         o.seats = 0
     # 座位變少：超出的指定清掉
     limit = seat_count(o)

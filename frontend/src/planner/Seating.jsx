@@ -3,8 +3,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import Swal from "sweetalert2";
 import {
-  ArrowDownToLine, ArrowUpToLine, BoxSelect, Circle, Copy, Eraser, Eye, Grid3x3, Maximize2, Minus, Plus, Printer,
-  RectangleHorizontal, Redo2, Square, SquareDashedMousePointer, Tag, Trash2, Type, Undo2, UserRound, Users, Wand2, ZoomIn, ZoomOut,
+  ArrowDownToLine, ArrowUpToLine, BoxSelect, Circle, Copy, DoorClosed, Eraser, Eye, Grid3x3, Maximize2, Minus, Plus, Printer,
+  RectangleHorizontal, Redo2, Square, SquareDashedMousePointer, Star, Tag, Trash2, Type, Undo2, UserRound, Users, Wand2, ZoomIn, ZoomOut,
 } from "lucide-react";
 import {
   assignGroup, assignSeat, autoAssignSeats, clearAllSeats, clearSeatObject, createSeatObject, deleteSeatObject, fetchSeating,
@@ -131,11 +131,11 @@ export default function Seating() {
     const d = DEFAULTS[kind];
     const c = viewportCenter();
     const tables = objects.filter((o) => o.kind === "round" || o.kind === "rect").length;
-    const label = kind === "round" || kind === "rect" ? `桌 ${tables + 1}` : kind === "zone" ? "區域" : kind === "label" ? "文字" : "";
+    const label = kind === "round" || kind === "rect" ? `桌 ${tables + 1}` : kind === "zone" ? "區域" : kind === "stage" ? "舞台" : kind === "entrance" ? "入口" : kind === "label" ? "文字" : "";
     const body = {
       kind, label, w: d.w, h: d.h, seats: d.seats,
       x: snap(c.x - d.w / 2, grid), y: snap(c.y - d.h / 2, grid),
-      z_order: kind === "zone" ? -1 : 0,
+      z_order: kind === "zone" || kind === "stage" || kind === "entrance" ? -1 : 0, // 這些墊在桌椅下面
       meta: kind === "rect" ? { sides: defaultSides(d.seats) } : {},
     };
     try {
@@ -520,6 +520,8 @@ export default function Seating() {
           <button className="btn btn-ghost btn-sm" onClick={() => addObject("round")}><Circle size={14} /> 圓桌</button>
           <button className="btn btn-ghost btn-sm" onClick={() => addObject("rect")}><RectangleHorizontal size={14} /> 長桌</button>
           <button className="btn btn-ghost btn-sm" onClick={() => addObject("chair")}><UserRound size={14} /> 椅子</button>
+          <button className="btn btn-ghost btn-sm" onClick={() => addObject("stage")} title="賓客頁用它判斷「面向舞台」的方向"><Star size={14} /> 舞台</button>
+          <button className="btn btn-ghost btn-sm" onClick={() => addObject("entrance")} title="賓客頁用它算「怎麼走」與入口到桌子的路線"><DoorClosed size={14} /> 入口</button>
           <button className="btn btn-ghost btn-sm" onClick={() => addObject("zone")}><Square size={14} /> 區域</button>
           <button className="btn btn-ghost btn-sm" onClick={() => addObject("label")}><Type size={14} /> 文字</button>
           <span className="sep" />
@@ -786,7 +788,12 @@ function ObjectPanel({ o, seatSel, readonly, selectedCount, onChange, onImmediat
               </div>
             </>
           )}
-          {(o.kind === "zone" || o.kind === "label") && (
+          {(o.kind === "stage" || o.kind === "entrance") && (
+            <div className="helper-text" style={{ marginBottom: 10 }}>
+              {o.kind === "stage" ? "賓客頁會以「從入口面向舞台」來描述方向與左右手邊。" : "賓客頁會從這裡畫一條路線到賓客的桌子，並算出第幾排、左手邊數來第幾桌。"}整張圖放一個就好。
+            </div>
+          )}
+          {(o.kind === "zone" || o.kind === "label" || o.kind === "stage" || o.kind === "entrance") && (
             <div className="form-group grid-2">
               <Field label="寬"><NumberInput value={Math.round(o.w)} onChange={(v) => onChange({ w: Math.max(20, toInt(v)) })} /></Field>
               <Field label="高"><NumberInput value={Math.round(o.h)} onChange={(v) => onChange({ h: Math.max(20, toInt(v)) })} /></Field>

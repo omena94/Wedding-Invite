@@ -3,11 +3,15 @@
 // 沒有畫入口就只能請賓客找桌牌（地圖上還是會亮自己的位子）。
 import { center } from "./geometry.js";
 
-const isEntrance = (o) => o.kind === "zone" && /入口|大門|門口|entrance|entry|door/i.test(o.label || "");
-const isStage = (o) => o.kind === "zone" && /舞台|stage|主桌|主舞台/i.test(o.label || "");
+// 正式的做法是後台放「入口」「舞台」兩種專用物件；舊圖用區域取名的也還認得
+const isEntranceZone = (o) => o.kind === "zone" && /入口|大門|門口|entrance|entry|door/i.test(o.label || "");
+const isStageZone = (o) => o.kind === "zone" && /舞台|stage|主舞台/i.test(o.label || "");
 
 export function findLandmarks(objects) {
-  return { entrance: objects.find(isEntrance) || null, stage: objects.find(isStage) || null };
+  return {
+    entrance: objects.find((o) => o.kind === "entrance") || objects.find(isEntranceZone) || null,
+    stage: objects.find((o) => o.kind === "stage") || objects.find(isStageZone) || null,
+  };
 }
 
 function median(nums) {

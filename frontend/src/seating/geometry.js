@@ -4,13 +4,15 @@
 export const SEAT_R = 11;      // 椅子半徑
 export const SEAT_GAP = 17;    // 桌緣到椅子中心的距離
 
-export const KIND_LABEL = { round: "圓桌", rect: "長桌", chair: "椅子", zone: "區域", label: "文字" };
+export const KIND_LABEL = { round: "圓桌", rect: "長桌", chair: "椅子", zone: "區域", stage: "舞台", entrance: "入口", label: "文字" };
 
 export const DEFAULTS = {
   round: { w: 120, h: 120, seats: 10 },
   rect: { w: 240, h: 90, seats: 8 },
   chair: { w: 28, h: 28, seats: 1 },
   zone: { w: 320, h: 140, seats: 0 },
+  stage: { w: 420, h: 72, seats: 0 },
+  entrance: { w: 150, h: 56, seats: 0 },
   label: { w: 160, h: 36, seats: 0 },
 };
 

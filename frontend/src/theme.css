@@ -811,3 +811,26 @@ tbody tr:last-child td { border-bottom: none; }
 .seatviewer-full .seatviewer-info-name { font-size: 19px; }
 .seatviewer-full .seatviewer-pill { font-size: 14px; padding: 7px 14px; }
 .seatviewer-pill.current { outline: 2px solid var(--sage-accent); outline-offset: 1px; }
+
+/* 舞台（深色台面＋金色台口）與入口（紅框＋雙開門）：跟一般區域長得不一樣，一眼就認得 */
+.seat-stage-body { fill: #3d2d20; stroke: var(--milk-tea-500); stroke-width: 2; }
+.seat-stage-edge { fill: var(--gold-accent); }
+.seat-text-stage { fill: #fff; letter-spacing: 6px; }
+.seat-entrance-body { fill: rgba(217, 72, 43, 0.07); stroke: #d9482b; stroke-width: 2; }
+.seat-entrance-door { fill: #fff; stroke: #d9482b; stroke-width: 1.5; }
+.seat-entrance-knob { fill: #d9482b; }
+.seat-text-entrance { fill: #d9482b; font-weight: 700; letter-spacing: 2px; }
+.seat-obj.selected .seat-stage-body, .seat-obj.selected .seat-entrance-body { stroke: var(--milk-tea-700); stroke-width: 3; stroke-dasharray: 6 4; }
+
+/* 座位圖上的名字：粗體＋白邊（畫在桌椅上也看得清楚）；「+1」「小孩1」是小字副標 */
+.seat-name { fill: #3d2d20; font-weight: 700; paint-order: stroke fill; stroke: #fbf8f4; stroke-width: 3px; stroke-linejoin: round; }
+.seat-name .seat-name-sub { font-weight: 500; fill: var(--milk-tea-700); }
+.seat-chair.found circle, .seat-chair.taken.side-bride.found circle, .seat-chair.taken.side-groom.found circle { stroke: var(--sage-accent); stroke-width: 4; }
+/* 找人 */
+.seatviewer-search { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; background: var(--milk-tea-50, #f6efe6); border: 1px solid var(--border-soft); border-radius: 999px; padding: 6px 12px; color: var(--milk-tea-700); }
+.seatviewer-search input { flex: 1; min-width: 0; border: none; background: transparent; font: inherit; font-size: 15px; color: var(--text-body); outline: none; padding: 4px 0; }
+.seatviewer-search-clear { border: none; background: var(--milk-tea-100); color: var(--milk-tea-900); width: 24px; height: 24px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; flex: none; }
+.seatviewer:not(.seatviewer-full) .seatviewer-search { margin-bottom: 8px; }
+.seatviewer-results { margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px dashed var(--border-soft); }
+.seatviewer-pill-where { font-size: 12px; color: var(--text-muted); }
+.seatviewer-pill.mine .seatviewer-pill-where { color: rgba(255, 255, 255, 0.85); }

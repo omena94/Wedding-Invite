@@ -189,7 +189,7 @@ TaskKind = Literal["task", "milestone"]
 FileKind = Literal["doc", "receipt", "photo"]
 
 
-SeatKind = Literal["round", "rect", "chair", "zone", "label"]
+SeatKind = Literal["round", "rect", "chair", "zone", "label", "stage", "entrance"]
 
 
 class SeatObjectIn(BaseModel):

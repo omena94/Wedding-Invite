@@ -23,14 +23,27 @@ def canvas_size(db: Session) -> dict:
     }
 
 
+_CIRCLED = "①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳"
+
+
+def _tag(n: int) -> str:
+    """第 n 個人的小圓圈數字；超過 20 個人就退回 (21) 這種寫法。"""
+    return _CIRCLED[n - 1] if 1 <= n <= len(_CIRCLED) else f"({n})"
+
+
 def persons_for(r: Rsvp) -> list[dict]:
-    """一組賓客 → 每個人。1 = 填表人，之後是同行大人，最後是小孩。"""
+    """一組賓客 → 每個人。1 = 填表人，之後是同行大人，最後是小孩。
+    只有一個人就只寫名字；兩人以上每個人都掛小圓圈數字（丁宣文①、丁宣文②…），
+    小孩後面再加「小孩」當副標（地圖會畫成小字第二行）。"""
     out = []
     adults = max(1, int(r.adult_count or 0))
+    kids = max(0, int(r.child_count or 0))
+    total = adults + kids
     for i in range(1, adults + 1):
-        out.append({"person_no": i, "name": r.name if i == 1 else f"{r.name} +{i - 1}", "is_child": False})
-    for k in range(1, int(r.child_count or 0) + 1):
-        out.append({"person_no": adults + k, "name": f"{r.name} 小孩{k}", "is_child": True})
+        name = r.name if total == 1 else f"{r.name}{_tag(i)}"
+        out.append({"person_no": i, "name": name, "is_child": False})
+    for k in range(1, kids + 1):
+        out.append({"person_no": adults + k, "name": f"{r.name}{_tag(adults + k)} 小孩", "is_child": True})
     return out
 
 

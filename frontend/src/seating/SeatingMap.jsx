@@ -2,7 +2,8 @@
 // props: layout {canvas, objects}, highlightIds: Set<object_id>, highlightSeats: Set<"objId:idx">, showNames
 import { SEAT_R, bounds, center, seatPositions } from "./geometry.js";
 
-const NAME_FONT = 9;
+const NAME_FONT = 10.5; // 主名字
+const SUB_FONT = 8.5; // 「+1」「小孩1」這種副標
 
 // 名字有空格（「王小明 +1」「王小明 小孩1」）就拆成兩行，不截短
 function nameLines(name) {
@@ -52,19 +53,42 @@ export function ObjectShape({ o, highlighted, highlightSeats, showNames, interac
     : Object.fromEntries((o.assignments || []).map((a) => [a.seat_index, a]));
   const cls = ["seat-obj", `seat-${o.kind}`, highlighted ? "hi" : "", selected ? "selected" : ""].filter(Boolean).join(" ");
   const rot = o.rotation ? `rotate(${o.rotation} ${cx} ${cy})` : undefined;
-  const fontSize = o.kind === "label" ? Math.max(11, Math.min(28, h * 0.5)) : 13;
+  const fontSize = o.kind === "label" ? Math.max(11, Math.min(28, h * 0.5)) : o.kind === "stage" ? 16 : 13;
+  // 入口的字要讓開左邊的門
+  const textX = o.kind === "entrance" ? cx + Math.max(12, h - 18) * 0.45 : cx;
   return (
     <g className={cls} data-object-id={o.id}>
       {/* 本體 */}
       {o.kind === "round" && <circle cx={cx} cy={cy} r={w / 2} className="seat-body" />}
       {o.kind === "rect" && <rect x={o.x} y={o.y} width={w} height={h} rx="10" className="seat-body" transform={rot} />}
       {o.kind === "zone" && <rect x={o.x} y={o.y} width={w} height={h} rx="14" className="seat-body seat-zone-body" transform={rot} />}
+      {/* 舞台：深色台面加一條金色台口 */}
+      {o.kind === "stage" && (
+        <g transform={rot}>
+          <rect x={o.x} y={o.y} width={w} height={h} rx="12" className="seat-body seat-stage-body" />
+          <rect x={o.x + 8} y={o.y + h - 9} width={Math.max(0, w - 16)} height="4" rx="2" className="seat-stage-edge" />
+        </g>
+      )}
+      {/* 入口：紅框加一扇雙開門 */}
+      {o.kind === "entrance" && (() => {
+        const dh = Math.max(12, h - 18);
+        const dw = dh * 0.42;
+        return (
+          <g transform={rot}>
+            <rect x={o.x} y={o.y} width={w} height={h} rx="10" className="seat-body seat-entrance-body" />
+            <rect x={o.x + 10} y={o.y + 9} width={dw} height={dh} rx="2" className="seat-entrance-door" />
+            <rect x={o.x + 10 + dw + 3} y={o.y + 9} width={dw} height={dh} rx="2" className="seat-entrance-door" />
+            <circle cx={o.x + 10 + dw - 4} cy={o.y + 9 + dh / 2} r="1.6" className="seat-entrance-knob" />
+            <circle cx={o.x + 10 + dw + 3 + 4} cy={o.y + 9 + dh / 2} r="1.6" className="seat-entrance-knob" />
+          </g>
+        );
+      })()}
       {o.kind === "label" && <rect x={o.x} y={o.y} width={w} height={h} rx="8" className="seat-body seat-label-body" transform={rot} />}
       {o.kind === "chair" && null}
       {/* 標籤文字 */}
       {o.kind !== "chair" && (
-        <text x={cx} y={cy} className={`seat-text seat-text-${o.kind}`} textAnchor="middle" dominantBaseline="middle" fontSize={fontSize} transform={rot}>
-          {o.label || (o.kind === "zone" ? "區域" : "")}
+        <text x={textX} y={cy} className={`seat-text seat-text-${o.kind}`} textAnchor="middle" dominantBaseline="middle" fontSize={fontSize} transform={rot}>
+          {o.label || (o.kind === "zone" ? "區域" : o.kind === "stage" ? "舞台" : o.kind === "entrance" ? "入口" : "")}
         </text>
       )}
       {/* 椅子 */}
@@ -72,6 +96,7 @@ export function ObjectShape({ o, highlighted, highlightSeats, showNames, interac
         const a = names[i];
         const key = `${o.id}:${i}`;
         const seatCls = ["seat-chair", a ? `taken side-${a.side || "none"}` : "empty", (highlightSeats && highlightSeats.has(key)) || (a && a.mine) ? "hi" : "", a && a.mine ? "mine" : "", seatClass ? seatClass(o, i) : ""].filter(Boolean).join(" ");
+        const gap = SEAT_R + (a && a.mine ? 9 : 4); // 自己的位子外面有光暈，名字再推遠一點
         const lines = a ? nameLines(a.display_name) : [];
         const label = lines.length ? lines[0] : "";
         return (
@@ -86,16 +111,19 @@ export function ObjectShape({ o, highlighted, highlightSeats, showNames, interac
             {a && <title>{a.display_name}</title>}
             {showNames && label && !dimNames && (() => {
               // 名字放在椅子外側；兩行時往外多推一行的高度，垂直排列的（上/下）第二行接在第一行下面
-              const tx = p.x + p.ox * (SEAT_R + 4);
-              const ty = p.y + p.oy * (SEAT_R + 4);
+              const tx = p.x + p.ox * gap;
+              const ty = p.y + p.oy * gap;
               const anchor = p.ox > 0.3 ? "start" : p.ox < -0.3 ? "end" : "middle";
               const above = p.oy < -0.3;
               const baseline = p.oy > 0.3 ? "hanging" : above ? "auto" : "middle";
               const lineH = NAME_FONT + 2;
               const y0 = above ? ty - lineH * (lines.length - 1) : lines.length > 1 && !(p.oy > 0.3) ? ty - lineH / 2 : ty;
+              // 第一行是名字（粗體），第二行是「+1」「小孩1」這種副標（小一點、淡一點）
               return (
                 <text x={tx} y={y0} fontSize={NAME_FONT} className="seat-name" textAnchor={anchor} dominantBaseline={baseline}>
-                  {lines.map((ln, k) => <tspan key={k} x={tx} dy={k === 0 ? 0 : lineH}>{ln}</tspan>)}
+                  {lines.map((ln, k) => (
+                    <tspan key={k} x={tx} dy={k === 0 ? 0 : lineH} className={k === 0 ? "seat-name-main" : "seat-name-sub"} fontSize={k === 0 ? NAME_FONT : SUB_FONT}>{ln}</tspan>
+                  ))}
                 </text>
               );
             })()}

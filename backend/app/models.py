@@ -232,7 +232,8 @@ class FileAsset(Base):
 # =====================================================================
 
 class SeatObject(Base):
-    """平面圖上的物件：round 圓桌 / rect 長桌 / chair 單張椅子 / zone 區域（舞台、入口…）/ label 文字。
+    """平面圖上的物件：round 圓桌 / rect 長桌 / chair 單張椅子 / zone 區域 / stage 舞台 / entrance 入口 / label 文字。
+    舞台與入口是獨立的種類：賓客頁靠它們算「怎麼走」與入口到桌子的路線。
     座標與尺寸是畫布單位（1 = 1px @ 100%）。圓桌的 w 是直徑。
     meta_json 放各類型的額外設定，例如長桌每邊幾張椅子 {"sides":{"top":4,"bottom":4,"left":1,"right":1}}。
     """
