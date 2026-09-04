@@ -680,3 +680,28 @@ tbody tr:last-child td { border-bottom: none; }
 
 /* SVG 文字不用網頁字型：大型中文網頁字型在 SVG 內渲染很慢，拖曳會卡、擷圖會逾時 */
 .seat-text, .seat-no, .seat-name { font-family: system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", "PingFang TC", "Noto Sans TC", sans-serif !important; letter-spacing: 0; text-rendering: optimizeSpeed; }
+
+/* ============ 照片：後台相簿 ============ */
+.pl-album-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+.pl-album-tab { border: 1px solid var(--border-soft); background: var(--bg-card-subtle); border-radius: 20px; padding: 6px 14px; font: inherit; font-size: 13px; color: var(--text-body); cursor: pointer; }
+.pl-album-tab.active { background: var(--milk-tea-100); color: var(--milk-tea-900); font-weight: 600; border-color: var(--milk-tea-300); }
+.photo-admin-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px; }
+.photo-admin-card { border: 1px solid var(--border-soft); border-radius: 14px; overflow: hidden; background: var(--bg-card); display: flex; flex-direction: column; }
+.photo-admin-card.selected { border-color: var(--milk-tea-700); box-shadow: 0 0 0 3px rgba(178, 143, 112, 0.2); }
+.photo-admin-card.private .photo-admin-thumb img { opacity: 0.55; }
+.photo-admin-thumb { position: relative; aspect-ratio: 1; background: var(--milk-tea-50); cursor: zoom-in; }
+.photo-admin-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.photo-admin-loading { display: flex; align-items: center; justify-content: center; height: 100%; color: var(--text-muted); }
+.photo-admin-check { position: absolute; top: 8px; left: 8px; background: rgba(255, 255, 255, 0.85); border-radius: 8px; padding: 2px; }
+.photo-admin-flag { position: absolute; bottom: 8px; left: 8px; }
+.photo-admin-meta { padding: 8px 10px 4px; }
+.photo-admin-caption { font-size: 12.5px; color: var(--milk-tea-900); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.photo-admin-actions { display: flex; flex-wrap: wrap; gap: 2px; padding: 4px 6px 8px; }
+.photo-admin-actions .btn-sm { padding: 5px 7px; }
+
+/* 賓客端：相簿與方格 */
+.photo-albums { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; margin-bottom: 14px; }
+.photo-album-pill { border: none; cursor: pointer; font-family: inherit; font-size: 13px; padding: 6px 14px; }
+.photo-cell { position: relative; }
+.photo-cell-caption { position: absolute; left: 0; right: 0; bottom: 0; padding: 18px 8px 6px; font-size: 11.5px; color: #fff; text-align: left; background: linear-gradient(transparent, rgba(40, 28, 20, 0.65)); pointer-events: none; }
+.photo-lightbox-caption { color: #fff; font-size: 14px; text-align: center; max-width: 90vw; }

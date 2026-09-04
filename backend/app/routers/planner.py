@@ -29,6 +29,7 @@ from ..schemas import (
     VendorPatch,
 )
 from ..security import CoupleRequired
+from ..thumbs import is_image, make_thumb
 from ..stage import (
     ALL_KEYS,
     PHASE2_KEY,
@@ -112,6 +113,10 @@ def _file_out(f: FileAsset) -> dict:
         "expense_id": f.expense_id,
         "payment_id": f.payment_id,
         "note": f.note,
+        "caption": f.caption or "",
+        "album": f.album or "",
+        "sort_order": f.sort_order or 0,
+        "has_thumb": bool(f.thumb_name),
         "created_at": f.created_at.isoformat() if f.created_at else None,
     }
 
@@ -753,6 +758,8 @@ async def upload_file(
     expense_id: int | None = Form(None),
     payment_id: int | None = Form(None),
     note: str = Form(""),
+    caption: str = Form(""),
+    album: str = Form(""),
     db: Session = Depends(get_db),
 ):
     if kind not in ("doc", "receipt", "photo"):
@@ -775,6 +782,18 @@ async def upload_file(
     stored = f"{uuid.uuid4().hex}{ext}"
     (settings.upload_path / stored).write_bytes(data)
     mime = file.content_type or mimetypes.guess_type(original)[0] or "application/octet-stream"
+    # 照片：產生縮圖，並排在同一本相簿的最後
+    thumb_name = ""
+    sort_order = 0
+    if kind == "photo":
+        if is_image(original):
+            thumb_name = f"thumb_{stored.rsplit('.', 1)[0]}.jpg"
+            if not make_thumb(settings.upload_path / stored, settings.upload_path / thumb_name):
+                thumb_name = ""
+        last = db.scalar(
+            select(func.max(FileAsset.sort_order)).where(FileAsset.kind == "photo", FileAsset.album == album.strip()[:50])
+        )
+        sort_order = (last if last is not None else -1) + 1
     row = FileAsset(
         filename=original[:255],
         stored_name=stored,
@@ -786,6 +805,10 @@ async def upload_file(
         expense_id=expense_id,
         payment_id=payment_id,
         note=note[:300],
+        caption=caption.strip()[:200],
+        album=album.strip()[:50] if kind == "photo" else "",
+        sort_order=sort_order,
+        thumb_name=thumb_name,
     )
     db.add(row)
     db.commit()
@@ -835,11 +858,26 @@ def update_file(file_id: int, payload: FilePatch, db: Session = Depends(get_db))
 @router.delete("/files/{file_id}", status_code=204)
 def delete_file(file_id: int, db: Session = Depends(get_db)):
     f = _get_or_404(db, FileAsset, file_id, "檔案")
-    path = settings.upload_path / f.stored_name
+    paths = [settings.upload_path / f.stored_name]
+    if f.thumb_name:
+        paths.append(settings.upload_path / f.thumb_name)
     db.delete(f)
     db.commit()
-    try:
-        path.unlink(missing_ok=True)
-    except OSError:
-        pass
+    for p in paths:
+        try:
+            p.unlink(missing_ok=True)
+        except OSError:
+            pass
     return None
+
+
+@router.get("/files/{file_id}/thumb")
+def file_thumb(file_id: int, db: Session = Depends(get_db)):
+    """照片縮圖（沒有縮圖就給原圖）。"""
+    f = _get_or_404(db, FileAsset, file_id, "檔案")
+    if f.thumb_name and (settings.upload_path / f.thumb_name).is_file():
+        return FileResponse(settings.upload_path / f.thumb_name, media_type="image/jpeg")
+    path = settings.upload_path / f.stored_name
+    if not path.is_file():
+        raise HTTPException(404, "檔案不存在")
+    return FileResponse(path, media_type=f.mime)

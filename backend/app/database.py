@@ -50,13 +50,20 @@ def init_db() -> None:
         try:
             Base.metadata.create_all(bind=conn)
             conn.commit()
-            # 舊版 settings.value 是 VARCHAR(200)，婚禮資訊文案會超過，放寬成 TEXT
-            try:
-                conn.execute(text("ALTER TABLE settings ALTER COLUMN value TYPE TEXT"))
-                conn.commit()
-            except Exception as e:  # pragma: no cover
-                conn.rollback()
-                log.warning("settings.value 型別調整略過：%s", e)
+            # 既有資料表的小幅欄位調整（create_all 不會改已存在的表）。每一句都可重複執行。
+            for sql in (
+                "ALTER TABLE settings ALTER COLUMN value TYPE TEXT",
+                "ALTER TABLE files ADD COLUMN IF NOT EXISTS caption VARCHAR(200) NOT NULL DEFAULT ''",
+                "ALTER TABLE files ADD COLUMN IF NOT EXISTS album VARCHAR(50) NOT NULL DEFAULT ''",
+                "ALTER TABLE files ADD COLUMN IF NOT EXISTS sort_order INTEGER NOT NULL DEFAULT 0",
+                "ALTER TABLE files ADD COLUMN IF NOT EXISTS thumb_name VARCHAR(80) NOT NULL DEFAULT ''",
+            ):
+                try:
+                    conn.execute(text(sql))
+                    conn.commit()
+                except Exception as e:  # pragma: no cover
+                    conn.rollback()
+                    log.warning("欄位調整略過（%s）：%s", sql, e)
         finally:
             conn.execute(text(f"SELECT pg_advisory_unlock({_INIT_LOCK_ID})"))
             conn.commit()

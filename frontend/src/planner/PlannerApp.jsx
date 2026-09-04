@@ -3,7 +3,7 @@ import { useState } from "react";
 import { BrowserRouter, NavLink, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import {
   LayoutDashboard, Users, Store, Wallet, CalendarClock, Scale, ListChecks, FolderOpen,
-  Settings as SettingsIcon, LogOut, Lock, LogIn, Home as HomeIcon, Armchair,
+  Settings as SettingsIcon, LogOut, Lock, LogIn, Home as HomeIcon, Armchair, Images,
 } from "lucide-react";
 import { adminLogin, clearToken, getRole, getToken, setRole, setToken } from "../api.js";
 import Dashboard from "./Dashboard.jsx";
@@ -17,6 +17,7 @@ import Timeline from "./Timeline.jsx";
 import Files from "./Files.jsx";
 import SettingsPage from "./Settings.jsx";
 import Seating from "./Seating.jsx";
+import Photos from "./Photos.jsx";
 
 import { PlannerContext } from "./context.js";
 
@@ -30,6 +31,7 @@ const NAV = [
   { to: "/compare", label: "比價", icon: Scale },
   { to: "/timeline", label: "時程待辦", icon: ListChecks },
   { to: "/files", label: "文件庫", icon: FolderOpen },
+  { to: "/photos", label: "照片", icon: Images },
   { to: "/settings", label: "設定", icon: SettingsIcon },
 ];
 
@@ -68,6 +70,7 @@ export default function PlannerApp() {
             <Route path="/compare" element={<CoupleOnly role={role}><Compare /></CoupleOnly>} />
             <Route path="/timeline" element={<CoupleOnly role={role}><Timeline /></CoupleOnly>} />
             <Route path="/files" element={<CoupleOnly role={role}><Files /></CoupleOnly>} />
+            <Route path="/photos" element={<CoupleOnly role={role}><Photos /></CoupleOnly>} />
             <Route path="/settings" element={<CoupleOnly role={role}><SettingsPage /></CoupleOnly>} />
             <Route path="*" element={<Navigate to={role === "helper" ? "/guests" : "/"} replace />} />
           </Routes>

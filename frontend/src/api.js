@@ -68,6 +68,7 @@ export const fetchInfo = () => request("/api/info");
 export const seatLookup = (query) => request("/api/seat/lookup", { method: "POST", body: { query } });
 export const fetchPhotos = () => request("/api/photos");
 export const photoUrl = (id) => `/api/photos/${id}`;
+export const photoThumbUrl = (id) => `/api/photos/${id}/thumb`;
 
 // ===== 登入（新人 / 幫手共用）=====
 export const adminLogin = (password) =>
@@ -180,6 +181,17 @@ export const renameAssignment = (id, display_name) =>
   request(`${SE}/assign/${id}`, { method: "PATCH", body: { display_name }, auth: true });
 export const unassignSeat = (id) => request(`${SE}/assign/${id}`, { method: "DELETE", auth: true });
 export const clearAllSeats = () => request(`${SE}/assignments`, { method: "DELETE", auth: true });
+
+// ===== 照片相簿 =====
+export const fetchPlannerPhotos = () => request(`${P}/photos`, { auth: true });
+export const reorderPhotos = (ids) => request(`${P}/photos/reorder`, { method: "POST", body: { ids }, auth: true });
+export const publishPhotos = (ids, is_public) =>
+  request(`${P}/photos/publish`, { method: "POST", body: { ids, is_public }, auth: true });
+export async function fetchThumbBlobUrl(id) {
+  const res = await fetch(`${P}/files/${id}/thumb`, { headers: { Authorization: `Bearer ${getToken()}` } });
+  if (!res.ok) throw new Error("讀取縮圖失敗");
+  return URL.createObjectURL(await res.blob());
+}
 
 export const fetchFiles = (params = {}) => request(`${P}/files${qs(params)}`, { auth: true });
 export function uploadFile(file, fields = {}) {

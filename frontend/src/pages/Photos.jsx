@@ -1,26 +1,48 @@
-// 婚紗照分享頁：只顯示後台標記為公開的照片
-import { useEffect, useState } from "react";
+// 婚紗照分享頁：分相簿、方格牆（縮圖）、燈箱可左右滑
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, Images } from "lucide-react";
-import { fetchPhotos, photoUrl } from "../api.js";
+import { fetchPhotos, photoThumbUrl, photoUrl } from "../api.js";
 
 export default function Photos() {
   const [photos, setPhotos] = useState(null);
+  const [album, setAlbum] = useState("");
   const [current, setCurrent] = useState(null);
+  const touch = useRef(null);
 
   useEffect(() => {
     fetchPhotos().then(setPhotos).catch(() => setPhotos([]));
   }, []);
 
+  const albums = useMemo(() => {
+    const seen = [];
+    (photos || []).forEach((p) => { const a = p.album || ""; if (!seen.includes(a)) seen.push(a); });
+    return seen;
+  }, [photos]);
+  useEffect(() => {
+    if (albums.length && !albums.includes(album)) setAlbum(albums[0]);
+  }, [albums, album]);
+  const list = useMemo(() => (photos || []).filter((p) => (p.album || "") === album), [photos, album]);
+
   useEffect(() => {
     if (current === null) return;
     const onKey = (e) => {
       if (e.key === "Escape") setCurrent(null);
-      if (e.key === "ArrowRight") setCurrent((i) => Math.min(photos.length - 1, i + 1));
+      if (e.key === "ArrowRight") setCurrent((i) => Math.min(list.length - 1, i + 1));
       if (e.key === "ArrowLeft") setCurrent((i) => Math.max(0, i - 1));
     };
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [current, photos]);
+    document.body.style.overflow = "hidden";
+    return () => { window.removeEventListener("keydown", onKey); document.body.style.overflow = ""; };
+  }, [current, list.length]);
+
+  const onTouchStart = (e) => { touch.current = e.touches[0].clientX; };
+  const onTouchEnd = (e) => {
+    if (touch.current === null) return;
+    const dx = e.changedTouches[0].clientX - touch.current;
+    touch.current = null;
+    if (Math.abs(dx) < 40) return;
+    setCurrent((i) => (dx < 0 ? Math.min(list.length - 1, i + 1) : Math.max(0, i - 1)));
+  };
 
   return (
     <div className="container container-photos">
@@ -41,22 +63,35 @@ export default function Photos() {
           <p style={{ fontSize: 14, lineHeight: 1.8 }}>婚紗照取件後會放上來，敬請期待</p>
         </section>
       ) : (
-        <div className="photo-grid">
-          {photos.map((p, i) => (
-            <button type="button" key={p.id} className="photo-cell" onClick={() => setCurrent(i)} aria-label={`照片 ${i + 1}`}>
-              <img src={photoUrl(p.id)} alt="" loading="lazy" />
-            </button>
-          ))}
-        </div>
+        <>
+          {albums.length > 1 && (
+            <div className="photo-albums">
+              {albums.map((a) => (
+                <button key={a} type="button" className={`pill ${a === album ? "pill-yes" : "pill-groom"} photo-album-pill`} onClick={() => { setAlbum(a); setCurrent(null); }}>
+                  {a || "未分類"}
+                </button>
+              ))}
+            </div>
+          )}
+          <div className="photo-grid">
+            {list.map((p, i) => (
+              <button type="button" key={p.id} className="photo-cell" onClick={() => setCurrent(i)} aria-label={p.caption || `照片 ${i + 1}`}>
+                <img src={p.has_thumb ? photoThumbUrl(p.id) : photoUrl(p.id)} alt={p.caption || ""} loading="lazy" />
+                {p.caption && <span className="photo-cell-caption">{p.caption}</span>}
+              </button>
+            ))}
+          </div>
+        </>
       )}
 
-      {current !== null && photos && photos[current] && (
-        <div className="photo-lightbox" onClick={() => setCurrent(null)}>
-          <img src={photoUrl(photos[current].id)} alt="" onClick={(e) => e.stopPropagation()} />
+      {current !== null && list[current] && (
+        <div className="photo-lightbox" onClick={() => setCurrent(null)} onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
+          <img src={photoUrl(list[current].id)} alt={list[current].caption || ""} onClick={(e) => e.stopPropagation()} />
+          {list[current].caption && <div className="photo-lightbox-caption">{list[current].caption}</div>}
           <div className="photo-lightbox-nav" onClick={(e) => e.stopPropagation()}>
             <button type="button" className="btn btn-ghost btn-sm" disabled={current === 0} onClick={() => setCurrent(current - 1)}>‹ 上一張</button>
-            <span>{current + 1} / {photos.length}</span>
-            <button type="button" className="btn btn-ghost btn-sm" disabled={current === photos.length - 1} onClick={() => setCurrent(current + 1)}>下一張 ›</button>
+            <span>{current + 1} / {list.length}</span>
+            <button type="button" className="btn btn-ghost btn-sm" disabled={current === list.length - 1} onClick={() => setCurrent(current + 1)}>下一張 ›</button>
             <button type="button" className="btn btn-ghost btn-sm" onClick={() => setCurrent(null)}>關閉</button>
           </div>
         </div>

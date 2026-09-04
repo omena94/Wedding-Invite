@@ -376,3 +376,16 @@ class FilePatch(BaseModel):
     payment_id: int | None = None
     clear_links: bool = False
     note: str | None = Field(default=None, max_length=300)
+    # 照片專用
+    caption: str | None = Field(default=None, max_length=200)
+    album: str | None = Field(default=None, max_length=50)
+    sort_order: int | None = None
+
+
+class PhotoReorderIn(BaseModel):
+    ids: list[int]
+
+
+class PhotoPublishIn(BaseModel):
+    ids: list[int]
+    is_public: bool = True

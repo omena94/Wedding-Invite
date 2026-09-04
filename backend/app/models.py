@@ -195,6 +195,11 @@ class FileAsset(Base):
         ForeignKey("payments.id", ondelete="SET NULL"), nullable=True, index=True
     )
     note: Mapped[str] = mapped_column(String(300), default="")
+    # 照片專用：說明、相簿、排序、縮圖檔名（沒有縮圖時為空字串）
+    caption: Mapped[str] = mapped_column(String(200), default="")
+    album: Mapped[str] = mapped_column(String(50), default="")
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    thumb_name: Mapped[str] = mapped_column(String(80), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     vendor: Mapped["Vendor | None"] = relationship(back_populates="files")

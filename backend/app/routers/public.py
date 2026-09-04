@@ -63,22 +63,41 @@ def list_photos(db: Session = Depends(get_db)):
     """婚紗照分享頁：只回傳標記為公開的照片。"""
     if not is_on(db, PHOTOS_KEY):
         return []
-    rows = db.scalars(
-        select(FileAsset)
-        .where(FileAsset.is_public.is_(True), FileAsset.kind == "photo")
-        .order_by(FileAsset.created_at.asc(), FileAsset.id.asc())
-    ).all()
-    return [{"id": f.id, "filename": f.filename, "mime": f.mime} for f in rows]
+    from .photos import sort_photos  # 與後台相簿同樣的順序
+
+    rows = sort_photos(
+        db.scalars(select(FileAsset).where(FileAsset.is_public.is_(True), FileAsset.kind == "photo")).all()
+    )
+    return [
+        {"id": f.id, "caption": f.caption or "", "album": f.album or "", "has_thumb": bool(f.thumb_name)}
+        for f in rows
+    ]
 
 
-@router.get("/photos/{file_id}")
-def get_photo(file_id: int, db: Session = Depends(get_db)):
+def _public_photo(db: Session, file_id: int) -> FileAsset:
     if not is_on(db, PHOTOS_KEY):
         raise HTTPException(404, "Not Found")
     f = db.get(FileAsset, file_id)
     if not f or not f.is_public or f.kind != "photo":
         raise HTTPException(404, "Not Found")
+    return f
+
+
+@router.get("/photos/{file_id}")
+def get_photo(file_id: int, db: Session = Depends(get_db)):
+    f = _public_photo(db, file_id)
     path = settings.upload_path / f.stored_name
     if not path.is_file():
         raise HTTPException(404, "Not Found")
-    return FileResponse(path, media_type=f.mime)
+    return FileResponse(path, media_type=f.mime, headers={"Cache-Control": "public, max-age=86400"})
+
+
+@router.get("/photos/{file_id}/thumb")
+def get_photo_thumb(file_id: int, db: Session = Depends(get_db)):
+    f = _public_photo(db, file_id)
+    if f.thumb_name and (settings.upload_path / f.thumb_name).is_file():
+        return FileResponse(settings.upload_path / f.thumb_name, media_type="image/jpeg", headers={"Cache-Control": "public, max-age=86400"})
+    path = settings.upload_path / f.stored_name
+    if not path.is_file():
+        raise HTTPException(404, "Not Found")
+    return FileResponse(path, media_type=f.mime, headers={"Cache-Control": "public, max-age=86400"})
