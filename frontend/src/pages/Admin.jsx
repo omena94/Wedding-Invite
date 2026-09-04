@@ -123,7 +123,7 @@ function Dashboard({ onLogout }) {
   return (
     <div className="container-wide">
       <div className="top-bar">
-        <a className="top-link" href="/">← 回到意願表單</a>
+        <a className="top-link" href="/">← 回首頁</a>
         <button className="btn btn-ghost btn-sm" onClick={onLogout}>登出</button>
       </div>
 

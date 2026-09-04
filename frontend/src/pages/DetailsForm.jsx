@@ -152,7 +152,7 @@ export default function DetailsForm() {
           </section>
           <button type="submit" className="btn-submit" disabled={busy}>{busy ? "查詢中…" : <><Search size={17} /> 找到我的紀錄</>}</button>
           <p style={{ textAlign: "center", marginTop: 18, fontSize: 12.5, color: "var(--text-muted)" }}>
-            還沒填第一階段？<a href="/" style={{ color: "var(--milk-tea-700)", fontWeight: 600 }}>先填出席意願 →</a>
+            還沒填第一階段？<a href="/rsvp" style={{ color: "var(--milk-tea-700)", fontWeight: 600 }}>先填出席意願 →</a>
           </p>
         </form>
       )}

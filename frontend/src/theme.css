@@ -421,3 +421,39 @@ tbody tr:last-child td { border-bottom: none; }
   .toolbar { width: 100%; }
   .search-box { min-width: 140px; }
 }
+
+/* ============ 首頁導覽 ============ */
+.countdown {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: linear-gradient(135deg, var(--milk-tea-50), var(--milk-tea-100));
+  color: var(--milk-tea-700); font-size: 13px; font-weight: 600;
+  padding: 6px 16px; border-radius: 30px; border: 1px solid var(--border-soft);
+  margin-bottom: 20px; letter-spacing: 1px;
+}
+.countdown strong { font-family: "Noto Serif TC", serif; font-size: 17px; color: var(--milk-tea-900); margin: 0 2px; }
+
+.nav-cards { display: flex; flex-direction: column; gap: 14px; }
+.nav-card {
+  display: flex; align-items: center; gap: 16px;
+  background: var(--bg-card); border: 1px solid var(--border-soft); border-radius: var(--radius-card);
+  padding: 20px 22px; box-shadow: var(--shadow-card);
+  text-decoration: none; color: inherit; transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.nav-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-elegant); }
+.nav-card-icon {
+  width: 46px; height: 46px; border-radius: 50%; flex-shrink: 0;
+  background: var(--milk-tea-50); border: 1px solid var(--border-soft); color: var(--milk-tea-700);
+  display: flex; align-items: center; justify-content: center;
+}
+.nav-card-body { flex: 1; min-width: 0; }
+.nav-card-step { font-size: 11.5px; letter-spacing: 2px; color: var(--text-muted); }
+.nav-card-title { font-family: "Noto Serif TC", serif; font-size: 17px; font-weight: 600; color: var(--milk-tea-900); letter-spacing: 1.5px; margin: 2px 0; }
+.nav-card-desc { font-size: 12.5px; color: var(--text-body); line-height: 1.6; }
+.nav-card-arrow { color: var(--milk-tea-500); flex-shrink: 0; }
+.nav-card-primary { background: linear-gradient(135deg, var(--milk-tea-500), var(--milk-tea-700)); border-color: transparent; box-shadow: 0 10px 26px rgba(178, 143, 112, 0.3); }
+.nav-card-primary .nav-card-icon { background: rgba(255, 255, 255, 0.18); border-color: rgba(255, 255, 255, 0.3); color: #fff; }
+.nav-card-primary .nav-card-step, .nav-card-primary .nav-card-desc { color: rgba(255, 255, 255, 0.85); }
+.nav-card-primary .nav-card-title, .nav-card-primary .nav-card-arrow { color: #fff; }
+@media (max-width: 480px) {
+  .nav-card { padding: 16px 16px; gap: 12px; }
+}
