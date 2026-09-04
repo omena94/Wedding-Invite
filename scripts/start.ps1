@@ -1,18 +1,25 @@
-# 一鍵啟動：PostgreSQL + Redis + 網站後端（單一 port 8000）
+﻿# 一鍵啟動：PostgreSQL + Redis + 網站後端（單一 port 8000）
 $ErrorActionPreference = "Stop"
-$PG    = "C:\WeddingRSVP\pgsql\bin"
-$DATA  = "C:\WeddingRSVP\pgdata"
-$REDIS = "C:\WeddingRSVP\redis"
-$APP   = Split-Path $PSScriptRoot -Parent   # 專案根目錄
-$BACK  = Join-Path $APP "backend"
+. "$PSScriptRoot\paths.ps1"
 
+# 先確認需要的東西都在，缺了就用中文講清楚，不要噴一堆紅字
+foreach ($p in @("$PG\pg_ctl.exe", "$REDIS\redis-server.exe", $PYTHON)) {
+    if (-not (Test-Path $p)) {
+        Write-Host "找不到：$p" -ForegroundColor Red
+        Write-Host "本機資料目錄目前是：$RSVP_HOME" -ForegroundColor Yellow
+        Write-Host "請確認 pgsql\、redis\ 放在那裡（或設定環境變數 WEDDING_RSVP_HOME 指到正確位置），且 backend\.venv 已建立。" -ForegroundColor Yellow
+        exit 1
+    }
+}
+
+Write-Host "本機資料目錄：$RSVP_HOME" -ForegroundColor DarkGray
 Write-Host "檢查資料庫服務..." -ForegroundColor Cyan
 
 # 1) PostgreSQL
 & "$PG\pg_ctl.exe" -D $DATA status *> $null
 if ($LASTEXITCODE -ne 0) {
     Write-Host "  啟動 PostgreSQL..."
-    & "$PG\pg_ctl.exe" -D $DATA -l "C:\WeddingRSVP\pg.log" -o "-p 5432" start | Out-Null
+    & "$PG\pg_ctl.exe" -D $DATA -l $PGLOG -o "-p 5432" start | Out-Null
     Start-Sleep -Seconds 3
 } else { Write-Host "  PostgreSQL 已在執行" -ForegroundColor Green }
 
@@ -41,4 +48,4 @@ Write-Host "====================================================" -ForegroundCol
 Start-Process "http://localhost:8000/"
 
 Set-Location $BACK
-& "$BACK\.venv\Scripts\python.exe" -m uvicorn app.main:app --host 0.0.0.0 --port 8000
+& $PYTHON -m uvicorn app.main:app --host 0.0.0.0 --port 8000
