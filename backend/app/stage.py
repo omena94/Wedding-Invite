@@ -24,7 +24,20 @@ INFO_KEYS = (
     "info_notes",        # 其他提醒（多行）
     "info_contact",      # 當天聯絡窗口
 )
-ALL_KEYS = (PHASE2_KEY, SEAT_KEY, PHOTOS_KEY, *INFO_KEYS)
+# 婚宴費用預估的參數（後台可改）
+BANQUET_KEYS = (
+    "banquet_adult_price",   # 大人每位（未含服務費）
+    "banquet_service_pct",   # 服務費 %
+    "banquet_child_mode",    # free 免費 / half 半價 / full 全價 / custom 自訂
+    "banquet_child_price",   # child_mode=custom 時每位小孩的價格（未含服務費）
+)
+BANQUET_DEFAULTS = {
+    "banquet_adult_price": "3980",
+    "banquet_service_pct": "10",
+    "banquet_child_mode": "half",
+    "banquet_child_price": "0",
+}
+ALL_KEYS = (PHASE2_KEY, SEAT_KEY, PHOTOS_KEY, *INFO_KEYS, *BANQUET_KEYS)
 
 
 def get_setting(db: Session, key: str) -> str:
@@ -46,6 +59,55 @@ def get_all(db: Session) -> dict[str, str]:
         if row.key in data:
             data[row.key] = row.value or ""
     return data
+
+
+def _to_int(value: str, default: int) -> int:
+    try:
+        return max(0, int(float(str(value).strip())))
+    except (TypeError, ValueError):
+        return default
+
+
+def banquet_params(db: Session) -> dict:
+    """婚宴費用參數（含預設值）。"""
+    raw = get_all(db)
+    mode = (raw.get("banquet_child_mode") or BANQUET_DEFAULTS["banquet_child_mode"]).strip()
+    if mode not in ("free", "half", "full", "custom"):
+        mode = "half"
+    return {
+        "adult_price": _to_int(raw.get("banquet_adult_price"), 3980),
+        "service_pct": _to_int(raw.get("banquet_service_pct"), 10),
+        "child_mode": mode,
+        "child_price": _to_int(raw.get("banquet_child_price"), 0),
+    }
+
+
+def child_unit_price(params: dict, mode: str | None = None) -> int:
+    mode = mode or params["child_mode"]
+    if mode == "free":
+        return 0
+    if mode == "half":
+        return round(params["adult_price"] / 2)
+    if mode == "full":
+        return params["adult_price"]
+    return params["child_price"]
+
+
+def banquet_estimate(params: dict, adults: int, children: int, mode: str | None = None) -> dict:
+    """算一種情境：大人與小孩的餐費 + 服務費 = 合計（都取整數）。"""
+    child_price = child_unit_price(params, mode)
+    adult_subtotal = adults * params["adult_price"]
+    child_subtotal = children * child_price
+    food = adult_subtotal + child_subtotal
+    service = round(food * params["service_pct"] / 100)
+    return {
+        "child_unit_price": child_price,
+        "adult_subtotal": adult_subtotal,
+        "child_subtotal": child_subtotal,
+        "food_subtotal": food,
+        "service": service,
+        "total": food + service,
+    }
 
 
 def parse_dt(value: str) -> datetime | None:

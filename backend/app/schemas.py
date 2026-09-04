@@ -175,6 +175,13 @@ TaskKind = Literal["task", "milestone"]
 FileKind = Literal["doc", "receipt", "photo"]
 
 
+class BanquetPatch(BaseModel):
+    adult_price: int | None = Field(default=None, ge=0, le=1_000_000)
+    service_pct: int | None = Field(default=None, ge=0, le=100)
+    child_mode: Literal["free", "half", "full", "custom"] | None = None
+    child_price: int | None = Field(default=None, ge=0, le=1_000_000)
+
+
 class CategoryIn(BaseModel):
     name: str = Field(min_length=1, max_length=30)
 

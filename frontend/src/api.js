@@ -118,6 +118,8 @@ export const fetchPlannerSettings = () => request(`${P}/settings`, { auth: true 
 export const savePlannerSettings = (values) =>
   request(`${P}/settings`, { method: "PATCH", body: values, auth: true });
 export const fetchDashboard = () => request(`${P}/dashboard`, { auth: true });
+export const fetchBanquet = () => request(`${P}/banquet`, { auth: true });
+export const saveBanquet = (params) => request(`${P}/banquet`, { method: "PATCH", body: params, auth: true });
 
 export const fetchCategories = () => request(`${P}/categories`, { auth: true });
 export const createCategory = (name) => request(`${P}/categories`, { method: "POST", body: { name }, auth: true });

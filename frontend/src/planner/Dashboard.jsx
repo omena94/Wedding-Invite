@@ -1,8 +1,10 @@
 // 總覽：倒數、預算與付款、近期要付的款、待辦、廠商狀態、賓客摘要、目前階段
 import { Link } from "react-router-dom";
-import { CalendarClock, Hourglass, ListChecks, Store, Users, Wallet, Settings as SettingsIcon } from "lucide-react";
+import { CalendarClock, Hourglass, ListChecks, Store, Users, Utensils, Wallet, Settings as SettingsIcon } from "lucide-react";
 import { fetchDashboard, fetchStats } from "../api.js";
 import { ASSIGNEE, VENDOR_STATUS, WEDDING_DATE, daysUntil, fmtDate, fmtDateTime, money } from "../constants.js";
+
+const CHILD_MODE_LABEL = { free: "免費", half: "半價", full: "全價", custom: "自訂" };
 import { ErrorBox, Loading, PageHead, useLoader } from "./ui.jsx";
 
 export default function Dashboard() {
@@ -29,6 +31,15 @@ export default function Dashboard() {
         <Stat icon={<Wallet size={20} />} value={money(b.paid_total)} label={`已付 ${paidPct}%`} bar={paidPct} />
         <Stat icon={<CalendarClock size={20} />} value={money(b.unpaid_total)} label="未付款" />
       </div>
+
+      {data.banquet && (
+        <div className="stats-grid" style={{ gridTemplateColumns: "repeat(3, 1fr)" }}>
+          <Stat icon={<Utensils size={20} />} value={money(data.banquet.estimate.total)}
+            label={`婚宴預估 · 大人 ${data.banquet.counts.adults} 位、小孩 ${data.banquet.counts.children} 位（小孩${CHILD_MODE_LABEL[data.banquet.params.child_mode] || ""}）`} />
+          <Stat icon={<Utensils size={20} />} value={money(data.banquet.scenarios.free)} label="若小孩免費" />
+          <Stat icon={<Utensils size={20} />} value={money(data.banquet.scenarios.full)} label="若小孩全價" />
+        </div>
+      )}
 
       <div className="pl-grid-2">
         <div className="panel">

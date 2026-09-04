@@ -10,8 +10,9 @@ from sqlalchemy.orm import Session, selectinload
 
 from ..config import settings
 from ..database import get_db
-from ..models import Expense, FileAsset, Payment, Quote, Task, Vendor, VendorCategory
+from ..models import Expense, FileAsset, Payment, Quote, Rsvp, Task, Vendor, VendorCategory
 from ..schemas import (
+    BanquetPatch,
     CategoryIn,
     CategoryPatch,
     CategoryReorder,
@@ -28,7 +29,16 @@ from ..schemas import (
     VendorPatch,
 )
 from ..security import CoupleRequired
-from ..stage import ALL_KEYS, PHASE2_KEY, get_all, parse_dt, public_stage, set_setting
+from ..stage import (
+    ALL_KEYS,
+    PHASE2_KEY,
+    banquet_estimate,
+    banquet_params,
+    get_all,
+    parse_dt,
+    public_stage,
+    set_setting,
+)
 
 router = APIRouter(prefix="/api/planner", tags=["planner"], dependencies=[CoupleRequired])
 
@@ -185,6 +195,45 @@ def patch_settings(values: dict[str, str], db: Session = Depends(get_db)):
 
 
 # ---------------------------------------------------------------------
+# 婚宴費用預估（依賓客回覆的出席人數）
+# ---------------------------------------------------------------------
+def _banquet_counts(db: Session) -> dict:
+    attending = [Rsvp.attending.is_(True), Rsvp.is_test.is_(False)]
+    adults = db.scalar(select(func.coalesce(func.sum(Rsvp.adult_count), 0)).where(*attending)) or 0
+    children = db.scalar(select(func.coalesce(func.sum(Rsvp.child_count), 0)).where(*attending)) or 0
+    kids_meals = db.scalar(select(func.coalesce(func.sum(Rsvp.kids_meal_count), 0)).where(*attending)) or 0
+    groups = db.scalar(select(func.count()).select_from(Rsvp).where(*attending)) or 0
+    return {"adults": int(adults), "children": int(children), "kids_meals": int(kids_meals), "groups": int(groups)}
+
+
+def _banquet_out(db: Session) -> dict:
+    params = banquet_params(db)
+    counts = _banquet_counts(db)
+    a, c = counts["adults"], counts["children"]
+    return {
+        "params": params,
+        "counts": counts,
+        "estimate": banquet_estimate(params, a, c),
+        "scenarios": {m: banquet_estimate(params, a, c, m)["total"] for m in ("free", "half", "full")},
+    }
+
+
+@router.get("/banquet")
+def get_banquet(db: Session = Depends(get_db)):
+    return _banquet_out(db)
+
+
+@router.patch("/banquet")
+def patch_banquet(payload: BanquetPatch, db: Session = Depends(get_db)):
+    data = payload.model_dump(exclude_unset=True)
+    for k, v in data.items():
+        if v is not None:
+            set_setting(db, f"banquet_{k}", str(v))
+    db.commit()
+    return _banquet_out(db)
+
+
+# ---------------------------------------------------------------------
 # 總覽
 # ---------------------------------------------------------------------
 @router.get("/dashboard")
@@ -228,6 +277,7 @@ def dashboard(db: Session = Depends(get_db)):
         "open_tasks_total": open_tasks_total,
         "vendor_counts": {"total": sum(vendor_counts.values()), **vendor_counts},
         "stage": public_stage(db),
+        "banquet": _banquet_out(db),
     }
 
 

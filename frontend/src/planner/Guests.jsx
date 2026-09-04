@@ -15,12 +15,13 @@ import {
 } from "../api.js";
 import { usePlanner } from "./context.js";
 import { NumberInput, PageHead, confirmDelete, toastErr } from "./ui.jsx";
+import BanquetPanel from "./BanquetPanel.jsx";
 
 const SIDE_LABEL = { groom: "男方", bride: "女方" };
 
 /* ---------- 賓客名單（原 /admin）---------- */
 export default function Guests() {
-  const { logout: onLogout } = usePlanner();
+  const { logout: onLogout, role } = usePlanner();
   const [stats, setStats] = useState(null);
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -88,6 +89,7 @@ export default function Guests() {
       ) : (
         <>
           <StatsCards stats={stats} />
+          {role === "couple" && <BanquetPanel />}
           <BroadcastPanel stats={stats} />
           <Breakdown stats={stats} />
 
