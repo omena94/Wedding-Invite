@@ -63,6 +63,17 @@ def require_couple(authorization: str | None = Header(default=None)) -> str:
     return role
 
 
+def optional_staff(authorization: str | None = Header(default=None)) -> str | None:
+    """賓客頁的 API 用：有帶有效的後台 token 就回傳角色，否則 None（不會擋人）。
+    用途是「預覽模式」：新人或幫手登入後，尚未開放的頁面也看得到。"""
+    if not authorization:
+        return None
+    try:
+        return _decode(authorization)["role"]
+    except HTTPException:
+        return None
+
+
 # 舊名稱維持相容（賓客相關 API 用）
 require_admin = require_staff
 AdminRequired = Depends(require_staff)

@@ -11,28 +11,29 @@ from ..database import get_db
 from ..models import FileAsset, Rsvp
 from ..schemas import SeatLookupIn, SeatLookupOut
 from ..seating import guest_seat_view
+from ..security import optional_staff
 from ..stage import INFO_KEYS, PHOTOS_KEY, SEAT_KEY, get_all, is_on, public_stage
 
 router = APIRouter(prefix="/api", tags=["public"])
 
 
 @router.get("/stage")
-def get_stage(db: Session = Depends(get_db)):
-    """首頁 / 各頁面載入時查詢：第二階段開了沒、桌次查詢開了沒…"""
-    return public_stage(db)
+def get_stage(db: Session = Depends(get_db), role: str | None = Depends(optional_staff)):
+    """首頁 / 各頁面載入時查詢：第二階段開了沒、桌次查詢開了沒…（有登入後台會多一個 preview=True）"""
+    return public_stage(db, preview=role is not None)
 
 
 @router.get("/info")
-def get_info(db: Session = Depends(get_db)):
+def get_info(db: Session = Depends(get_db), role: str | None = Depends(optional_staff)):
     """婚禮資訊頁的文案（由籌備後台編輯）。"""
     data = get_all(db)
-    return {**{k: data.get(k, "") for k in INFO_KEYS}, **public_stage(db)}
+    return {**{k: data.get(k, "") for k in INFO_KEYS}, **public_stage(db, preview=role is not None)}
 
 
 @router.post("/seat/lookup", response_model=SeatLookupOut)
-def seat_lookup(payload: SeatLookupIn, db: Session = Depends(get_db)):
-    """婚禮當天：輸入姓名或電話查桌號。"""
-    if not is_on(db, SEAT_KEY):
+def seat_lookup(payload: SeatLookupIn, db: Session = Depends(get_db), role: str | None = Depends(optional_staff)):
+    """婚禮當天：輸入姓名或電話查桌號。後台登入者不受開關限制（預覽）。"""
+    if not is_on(db, SEAT_KEY) and role is None:
         raise HTTPException(403, "桌次查詢尚未開放，婚禮當天再來查詢喔")
     q = payload.query.strip()
     digits = re.sub(r"\D", "", q)
@@ -53,9 +54,9 @@ def seat_lookup(payload: SeatLookupIn, db: Session = Depends(get_db)):
 
 
 @router.get("/photos")
-def list_photos(db: Session = Depends(get_db)):
-    """婚紗照分享頁：只回傳標記為公開的照片。"""
-    if not is_on(db, PHOTOS_KEY):
+def list_photos(db: Session = Depends(get_db), role: str | None = Depends(optional_staff)):
+    """婚紗照分享頁：只回傳標記為公開的照片。後台登入者在未開放時也拿得到（預覽）。"""
+    if not is_on(db, PHOTOS_KEY) and role is None:
         return []
     from .photos import sort_photos  # 與後台相簿同樣的順序
 
@@ -68,8 +69,8 @@ def list_photos(db: Session = Depends(get_db)):
     ]
 
 
-def _public_photo(db: Session, file_id: int) -> FileAsset:
-    if not is_on(db, PHOTOS_KEY):
+def _public_photo(db: Session, file_id: int, role: str | None = None) -> FileAsset:
+    if not is_on(db, PHOTOS_KEY) and role is None:
         raise HTTPException(404, "Not Found")
     f = db.get(FileAsset, file_id)
     if not f or not f.is_public or f.kind != "photo":
@@ -78,8 +79,8 @@ def _public_photo(db: Session, file_id: int) -> FileAsset:
 
 
 @router.get("/photos/{file_id}")
-def get_photo(file_id: int, db: Session = Depends(get_db)):
-    f = _public_photo(db, file_id)
+def get_photo(file_id: int, db: Session = Depends(get_db), role: str | None = Depends(optional_staff)):
+    f = _public_photo(db, file_id, role)
     path = settings.upload_path / f.stored_name
     if not path.is_file():
         raise HTTPException(404, "Not Found")
@@ -87,8 +88,8 @@ def get_photo(file_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/photos/{file_id}/thumb")
-def get_photo_thumb(file_id: int, db: Session = Depends(get_db)):
-    f = _public_photo(db, file_id)
+def get_photo_thumb(file_id: int, db: Session = Depends(get_db), role: str | None = Depends(optional_staff)):
+    f = _public_photo(db, file_id, role)
     if f.thumb_name and (settings.upload_path / f.thumb_name).is_file():
         return FileResponse(settings.upload_path / f.thumb_name, media_type="image/jpeg", headers={"Cache-Control": "public, max-age=86400"})
     path = settings.upload_path / f.stored_name

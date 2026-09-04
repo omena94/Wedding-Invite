@@ -724,3 +724,42 @@ tbody tr:last-child td { border-bottom: none; }
 
 .se-marquee { fill: rgba(178, 143, 112, 0.12); stroke: var(--milk-tea-700); pointer-events: none; }
 .se-hint { font-size: 0.8rem; color: var(--milk-tea-700); background: var(--milk-tea-100); border-radius: 999px; padding: 4px 12px; animation: selectPop 0.2s; }
+
+/* 預覽模式（已登入後台、但這頁賓客還看不到）：頁面最上方的琥珀色提示條 */
+.preview-banner { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; margin: 0 0 16px; padding: 10px 14px; border-radius: 12px; background: #FFF4E0; border: 1px solid #F0D9A8; color: #7A5A1E; font-size: 13.5px; line-height: 1.6; }
+.preview-banner strong { font-weight: 700; }
+.preview-banner .preview-note { flex-basis: 100%; font-size: 12.5px; color: #9A7A3A; }
+.preview-banner .preview-actions { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
+.preview-banner .preview-actions a, .preview-banner .preview-actions button { display: inline-flex; align-items: center; gap: 4px; font: inherit; font-size: 12.5px; color: #7A5A1E; background: #fff; border: 1px solid #E2C98F; border-radius: 999px; padding: 3px 12px; cursor: pointer; text-decoration: none; }
+.photo-img-loading { display: block; width: 100%; aspect-ratio: 1; background: var(--milk-tea-100); }
+
+/* ============ 賓客互動座位圖（縮放、拖曳、點椅子看是誰） ============ */
+.seatviewer { margin-top: 12px; }
+.seatviewer-wrap { position: relative; width: 100%; height: 56vh; min-height: 280px; max-height: 560px; overflow: hidden; border-radius: 16px; border: 1px solid var(--border-soft); background: #fbf8f4; touch-action: none; user-select: none; -webkit-user-select: none; }
+.seatviewer-wrap svg { width: 100%; height: 100%; display: block; cursor: grab; }
+.seatviewer-wrap.dragging svg { cursor: grabbing; }
+.seatviewer-wrap .seat-chair { cursor: pointer; }
+.seatviewer-ctl { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; margin-bottom: 8px; }
+.seatviewer-ctl button { min-width: 36px; height: 36px; border-radius: 10px; border: 1px solid var(--border-soft); background: rgba(255, 255, 255, 0.94); color: var(--milk-tea-900); display: inline-flex; align-items: center; justify-content: center; gap: 4px; cursor: pointer; font: inherit; font-size: 12px; padding: 0 8px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06); }
+.seatviewer-ctl button.wide { padding: 0 10px; white-space: nowrap; }
+.seatviewer-info { margin-top: 10px; border: 1px solid var(--border-soft); border-radius: 14px; padding: 12px 14px; background: var(--bg-card-subtle); text-align: left; font-size: 13.5px; min-height: 60px; }
+.seatviewer-info-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.seatviewer-info-head strong { font-family: "Noto Serif TC", serif; font-size: 22px; color: var(--milk-tea-900); }
+.seatviewer-info-name { font-size: 17px; font-weight: 700; color: var(--milk-tea-900); }
+.seatviewer-info-name.empty { color: var(--text-muted); font-weight: 500; }
+.seatviewer-pills { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.seatviewer-pill { border: 1px solid var(--border-soft); background: #fff; border-radius: 999px; padding: 5px 12px; font: inherit; font-size: 13px; color: var(--text-body); cursor: pointer; }
+.seatviewer-pill.mine { background: var(--milk-tea-700); color: #fff; border-color: var(--milk-tea-700); }
+.seatviewer-pill.empty { color: var(--text-muted); border-style: dashed; }
+.seatviewer-hint { font-size: 12.5px; color: var(--text-muted); line-height: 1.6; }
+.seatviewer-link { display: inline-block; margin-top: 10px; background: none; border: none; padding: 0; font: inherit; font-size: 13px; color: var(--milk-tea-700); font-weight: 600; cursor: pointer; }
+/* 自己的位子（金色）、點到的（綠色）、鄰座（虛線）要壓過男女方的底色，所以寫得比 .taken.side-* 更具體 */
+.seat-chair.hi circle, .seat-chair.taken.side-bride.hi circle, .seat-chair.taken.side-groom.hi circle, .seat-chair.taken.side-none.hi circle { stroke: #3d2d20; stroke-width: 3; fill: var(--gold-accent); }
+.seat-chair.focus circle, .seat-chair.taken.side-bride.focus circle, .seat-chair.taken.side-groom.focus circle, .seat-chair.taken.side-none.focus circle { stroke: #3d2d20; stroke-width: 3.5; fill: var(--sage-accent); }
+.seat-chair.focus .seat-no { fill: #fff; }
+.seat-chair.nb circle, .seat-chair.taken.side-bride.nb circle, .seat-chair.taken.side-groom.nb circle { stroke: #3d2d20; stroke-width: 2.5; stroke-dasharray: 3 2; }
+.seat-result-mine { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 20px; margin-bottom: 10px; }
+.seat-result-mine .seat-result-table { margin: 0; }
+.seat-result-mine .seat-result-table strong { font-size: 40px; display: block; line-height: 1.1; }
+.seat-result-seats { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px; font-size: 13px; margin-top: 4px; }
+.phone-frame .seatviewer-wrap { height: 42vh; min-height: 220px; }

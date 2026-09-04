@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { ArrowRight, Armchair, CalendarCheck, Hourglass, Images, Info, Utensils } from "lucide-react";
 import EventDetails from "../components/EventDetails.jsx";
+import PreviewBanner from "../components/PreviewBanner.jsx";
 import { fetchStage } from "../api.js";
 import { WEDDING_DATE, daysUntil, fmtDateTime } from "../constants.js";
 
@@ -41,7 +42,8 @@ export default function Home() {
     fetchStage().then(setStage).catch(() => setStage({ phase2_open: false }));
   }, []);
   const s = stage || {};
-  const phase2Open = !!s.phase2_open;
+  const preview = !!s.preview; // 已登入後台：尚未開放的入口也讓他進去看
+  const phase2Open = !!s.phase2_open || preview;
 
   const phase1 = (
     <Card key="p1" href="/rsvp" icon={<CalendarCheck size={22} />} step="第一階段" title="填寫出席意願"
@@ -49,7 +51,7 @@ export default function Home() {
   );
   const phase2 = phase2Open ? (
     <Card key="p2" href="/details" icon={<Utensils size={22} />} step="第二階段" title="確認出席與主餐"
-      desc="輸入第一階段留的 Email 或電話，確認最終人數並挑選主餐" primary />
+      desc={s.phase2_open ? "輸入第一階段留的 Email 或電話，確認最終人數並挑選主餐" : "尚未開放給賓客（你已登入後台，可先進去看）"} primary />
   ) : (
     <Card key="p2" icon={<Utensils size={22} />} step="第二階段" title="確認出席與主餐" disabled
       desc={s.phase2_open_at ? `預計 ${fmtDateTime(s.phase2_open_at)} 開放，收到通知後再回來填` : "尚未開放，收到我們的通知後再回來填"} />
@@ -57,6 +59,7 @@ export default function Home() {
 
   return (
     <div className="container">
+      <PreviewBanner stage={s} closedLabels={[!s.phase2_open && "第二階段", !s.seat_open && "桌次查詢", !s.photos_open && "婚紗照"].filter(Boolean)} />
       <header className="hero-arch-card">
         <p className="script-title">We're Married</p>
         <p className="english-sub">Alan &amp; Omena</p>
@@ -75,8 +78,8 @@ export default function Home() {
       <nav className="nav-cards" aria-label="頁面入口">
         {phase2Open ? [phase2, phase1] : [phase1, phase2]}
         <Card href="/info" icon={<Info size={22} />} title="婚禮當天資訊" desc="流程、交通、停車、服裝建議" />
-        {s.seat_open && <Card href="/seat" icon={<Armchair size={22} />} title="查詢桌次" desc="婚禮當天輸入姓名或電話，看你坐第幾桌" />}
-        {s.photos_open && <Card href="/photos" icon={<Images size={22} />} title="婚紗照" desc="我們的婚紗照，歡迎欣賞" />}
+        {(s.seat_open || preview) && <Card href="/seat" icon={<Armchair size={22} />} title="查詢桌次" desc={s.seat_open ? "婚禮當天輸入姓名或電話，看你坐第幾桌" : "尚未開放給賓客（你已登入後台，可先進去看）"} />}
+        {(s.photos_open || preview) && <Card href="/photos" icon={<Images size={22} />} title="婚紗照" desc={s.photos_open ? "我們的婚紗照，歡迎欣賞" : "尚未開放給賓客（你已登入後台，可先進去看）"} />}
       </nav>
 
       <p className="footnote">有任何問題，歡迎直接聯繫宣文或孟庭</p>

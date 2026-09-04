@@ -10,6 +10,7 @@ from ..database import get_db
 from ..models import Rsvp
 from ..notify import phase1_message, phase2_message, send_telegram
 from ..schemas import LookupIn, LookupOut, Phase1Create, Phase2Details, RsvpOut
+from ..security import optional_staff
 from ..stage import is_phase2_open
 
 
@@ -78,8 +79,9 @@ def create_phase1(payload: Phase1Create, db: Session = Depends(get_db)):
 
 # ===== Phase 2：先用 Email/電話找到自己 =====
 @router.post("/rsvp/lookup", response_model=LookupOut)
-def lookup(payload: LookupIn, db: Session = Depends(get_db)):
-    if not is_phase2_open(db):
+def lookup(payload: LookupIn, db: Session = Depends(get_db), role: str | None = Depends(optional_staff)):
+    # 後台登入者不受開放時間限制（預覽／測試用）
+    if not is_phase2_open(db) and role is None:
         raise HTTPException(403, "第二階段尚未開放，收到我們的通知後再回來填喔")
     record = _find_by_contact(db, payload.contact)
     if not record:
@@ -104,8 +106,8 @@ def lookup(payload: LookupIn, db: Session = Depends(get_db)):
 
 # ===== Phase 2：送出詳細調查（補到同一筆）=====
 @router.post("/rsvp/details", response_model=RsvpOut)
-def submit_phase2(payload: Phase2Details, db: Session = Depends(get_db)):
-    if not is_phase2_open(db):
+def submit_phase2(payload: Phase2Details, db: Session = Depends(get_db), role: str | None = Depends(optional_staff)):
+    if not is_phase2_open(db) and role is None:
         raise HTTPException(403, "第二階段尚未開放，收到我們的通知後再回來填喔")
     record = _find_by_contact(db, payload.contact)
     if not record:

@@ -7,6 +7,7 @@ Alan & Omena 的婚禮網站：賓客填表（兩階段）、婚禮資訊、桌�
 - **不用瀏覽器原生控制項。** 下拉用 `components/Select.jsx`、日期用 `DatePicker.jsx`、日期時間用 `DateTimePicker.jsx`、開關與勾選用 `Toggle.jsx`、數字用 `planner/ui.jsx` 的 `NumberInput`、選檔案用藏在樣式按鈕裡的 hidden input、確認與提示用 sweetalert2（`confirmDelete` / `toastOk` / `toastErr`）。不要出現 `<select>`、`type="date|datetime-local|time|checkbox|number"` 裸露在畫面上、`alert()`、`confirm()`。完整對照表在 `使用說明.md` 的「前端開發規範」。
 - **不用絕對路徑。** 腳本與文件一律相對於專案根目錄；本機資料目錄由 `scripts/paths.ps1` 決定。
 - **賓客能看到的網址不要隨便改。** `/`、`/rsvp`、`/details` 已經發給賓客；要加頁面就加新的。
+- **賓客頁的「尚未開放」要放行後台登入者（預覽模式）。** 賓客頁的 API 用 `security.optional_staff`，有有效 token 就略過開放檢查；前端用 `fetchStage()` 回的 `preview` 判斷，並放 `PreviewBanner` 提醒。新增有開關的賓客功能時照做。
 - 密碼、`.env`、`backend/uploads/`、`frontend/dist/` 不進 Git。伺服器金鑰 `server-key.pem` 是刻意放在 repo 的，別再貼到別處。
 
 ## 怎麼改、怎麼測

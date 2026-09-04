@@ -42,7 +42,8 @@ export default function SeatingMap({ layout, highlightIds, highlightSeats, showN
   );
 }
 
-export function ObjectShape({ o, highlighted, highlightSeats, showNames, interactive, selected, onSeatPointerDown, onSeatPointerUp, seatNames, dimNames }) {
+// seatClass(o, i)：賓客互動地圖用，替某些椅子加額外 class（點到的、鄰座）
+export function ObjectShape({ o, highlighted, highlightSeats, showNames, interactive, selected, onSeatPointerDown, onSeatPointerUp, seatNames, dimNames, seatClass }) {
   const { cx, cy, w, h } = center(o);
   const seats = seatPositions(o);
   // seatNames 給的是 {index: {name, mine, side}}；編輯器則直接用 assignments
@@ -70,7 +71,7 @@ export function ObjectShape({ o, highlighted, highlightSeats, showNames, interac
       {seats.map((p, i) => {
         const a = names[i];
         const key = `${o.id}:${i}`;
-        const seatCls = ["seat-chair", a ? `taken side-${a.side || "none"}` : "empty", (highlightSeats && highlightSeats.has(key)) || (a && a.mine) ? "hi" : ""].filter(Boolean).join(" ");
+        const seatCls = ["seat-chair", a ? `taken side-${a.side || "none"}` : "empty", (highlightSeats && highlightSeats.has(key)) || (a && a.mine) ? "hi" : "", a && a.mine ? "mine" : "", seatClass ? seatClass(o, i) : ""].filter(Boolean).join(" ");
         const lines = a ? nameLines(a.display_name) : [];
         const label = lines.length ? lines[0] : "";
         return (

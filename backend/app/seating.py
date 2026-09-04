@@ -189,7 +189,7 @@ def seats_of_rsvp(db: Session, rsvp: Rsvp) -> list[dict]:
 
 
 def guest_seat_view(db: Session, rsvp: Rsvp) -> dict:
-    """賓客在 /seat 看到的完整內容：自己的位子、每張桌的同桌名單、左右鄰座、平面圖（只有自己那幾桌有名字）。"""
+    """賓客在 /seat 看到的完整內容：自己的位子、每張桌的同桌名單、左右鄰座、整張平面圖（含每個座位是誰）。"""
     seats = seats_of_rsvp(db, rsvp)
     if not seats:
         return {"seats": [], "tables": [], "map": None, "map_names": {}}
@@ -215,10 +215,21 @@ def guest_seat_view(db: Session, rsvp: Rsvp) -> dict:
                 "mine": (oid, i) in mine,
             })
         tables.append({"object_id": oid, "label": o.label, "kind": o.kind, "seats_total": n, "mates": mates})
-        map_names[str(oid)] = {
-            str(i): {"name": m["name"], "is_child": m["is_child"], "side": m["side"], "mine": m["mine"]}
-            for i, m in enumerate(mates) if m["name"]
-        }
+    # 平面圖上每張桌、每張椅子是誰：整張圖都給（就像入口的座位表），賓客點一點就知道旁邊坐誰；
+    # 自己的位子標 mine 讓前端亮起來
+    for o in objects.values():
+        if seat_count(o) <= 0:
+            continue
+        names = {}
+        for a in o.assignments:
+            ao = assignment_out(a)
+            if ao["display_name"]:
+                names[str(a.seat_index)] = {
+                    "name": ao["display_name"], "is_child": ao["is_child"], "side": ao["side"],
+                    "mine": (o.id, a.seat_index) in mine,
+                }
+        if names:
+            map_names[str(o.id)] = names
     # 左右鄰座：座位順序是繞桌一圈，所以頭尾相鄰
     for s in seats:
         o = objects.get(s["object_id"])

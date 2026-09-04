@@ -172,11 +172,14 @@ def is_on(db: Session, key: str) -> bool:
     return get_setting(db, key).strip() in ("1", "true", "on", "yes")
 
 
-def public_stage(db: Session) -> dict:
-    """給賓客端首頁 / 各頁面判斷要顯示什麼。"""
+def public_stage(db: Session, preview: bool = False) -> dict:
+    """給賓客端首頁 / 各頁面判斷要顯示什麼。
+    preview=True 表示這個請求帶著後台登入：頁面照樣拿到真實的開放狀態，
+    但前端會讓登入者在未開放時也能進去看（畫面上標示預覽模式）。"""
     dt = phase2_open_at(db)
     bp = banquet_params(db)
     return {
+        "preview": preview,
         "phase2_open": is_phase2_open(db),
         "phase2_open_at": dt.astimezone(TAIPEI).isoformat() if dt else "",
         "seat_open": is_on(db, SEAT_KEY),

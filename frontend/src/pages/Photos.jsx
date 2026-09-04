@@ -1,17 +1,34 @@
 // 婚紗照分享頁：分相簿、方格牆（縮圖）、燈箱可左右滑
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, Images } from "lucide-react";
-import { fetchPhotos, photoThumbUrl, photoUrl } from "../api.js";
+import { fetchAuthBlobUrl, fetchPhotos, fetchStage, photoThumbUrl, photoUrl } from "../api.js";
+import PreviewBanner from "../components/PreviewBanner.jsx";
+
+// 預覽模式（頁面還沒開放、但已登入後台）：<img src> 帶不了 token，改成先 fetch 再顯示
+function PhotoImg({ src, auth, ...rest }) {
+  const [url, setUrl] = useState(auth ? null : src);
+  useEffect(() => {
+    if (!auth) { setUrl(src); return undefined; }
+    let alive = true;
+    let obj = null;
+    fetchAuthBlobUrl(src).then((u) => { if (alive) { obj = u; setUrl(u); } else URL.revokeObjectURL(u); }).catch(() => {});
+    return () => { alive = false; if (obj) URL.revokeObjectURL(obj); };
+  }, [src, auth]);
+  return url ? <img src={url} {...rest} /> : <span className="photo-img-loading" aria-hidden="true" />;
+}
 
 export default function Photos() {
   const [photos, setPhotos] = useState(null);
+  const [stage, setStage] = useState(null);
   const [album, setAlbum] = useState("");
   const [current, setCurrent] = useState(null);
   const touch = useRef(null);
 
   useEffect(() => {
     fetchPhotos().then(setPhotos).catch(() => setPhotos([]));
+    fetchStage().then(setStage).catch(() => setStage({}));
   }, []);
+  const previewClosed = !!(stage && stage.preview && !stage.photos_open); // 賓客還看不到，只有登入者在看
 
   const albums = useMemo(() => {
     const seen = [];
@@ -46,6 +63,7 @@ export default function Photos() {
 
   return (
     <div className="container container-photos">
+      <PreviewBanner stage={stage} closedLabels={stage && !stage.photos_open ? ["婚紗照"] : []} />
       <header className="hero-arch-card">
         <p className="script-title">Our Moments</p>
         <p className="english-sub">Alan &amp; Omena</p>
@@ -60,7 +78,7 @@ export default function Photos() {
           <div className="section-header" style={{ justifyContent: "center" }}>
             <div className="section-header-title"><Images size={18} /> 照片還沒準備好</div>
           </div>
-          <p style={{ fontSize: 14, lineHeight: 1.8 }}>婚紗照取件後會放上來，敬請期待</p>
+          <p style={{ fontSize: 14, lineHeight: 1.8 }}>{previewClosed ? "後台還沒有標記為公開的照片；到「照片」頁上傳並設為公開就會出現在這裡" : "婚紗照取件後會放上來，敬請期待"}</p>
         </section>
       ) : (
         <>
@@ -76,7 +94,7 @@ export default function Photos() {
           <div className="photo-grid">
             {list.map((p, i) => (
               <button type="button" key={p.id} className="photo-cell" onClick={() => setCurrent(i)} aria-label={p.caption || `照片 ${i + 1}`}>
-                <img src={p.has_thumb ? photoThumbUrl(p.id) : photoUrl(p.id)} alt={p.caption || ""} loading="lazy" />
+                <PhotoImg src={p.has_thumb ? photoThumbUrl(p.id) : photoUrl(p.id)} auth={previewClosed} alt={p.caption || ""} loading="lazy" />
                 {p.caption && <span className="photo-cell-caption">{p.caption}</span>}
               </button>
             ))}
@@ -86,7 +104,7 @@ export default function Photos() {
 
       {current !== null && list[current] && (
         <div className="photo-lightbox" onClick={() => setCurrent(null)} onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
-          <img src={photoUrl(list[current].id)} alt={list[current].caption || ""} onClick={(e) => e.stopPropagation()} />
+          <PhotoImg src={photoUrl(list[current].id)} auth={previewClosed} alt={list[current].caption || ""} onClick={(e) => e.stopPropagation()} />
           {list[current].caption && <div className="photo-lightbox-caption">{list[current].caption}</div>}
           <div className="photo-lightbox-nav" onClick={(e) => e.stopPropagation()}>
             <button type="button" className="btn btn-ghost btn-sm" disabled={current === 0} onClick={() => setCurrent(current - 1)}>‹ 上一張</button>

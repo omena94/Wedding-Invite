@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { ArrowLeft, Armchair, Search } from "lucide-react";
 import { fetchStage, seatLookup } from "../api.js";
 import SeatResult from "../seating/SeatResult.jsx";
+import PreviewBanner from "../components/PreviewBanner.jsx";
 
 export default function Seat() {
   const [stage, setStage] = useState(null);
@@ -33,6 +34,7 @@ export default function Seat() {
 
   return (
     <div className="container">
+      <PreviewBanner stage={stage} closedLabels={stage && !stage.seat_open ? ["桌次查詢"] : []} />
       <header className="hero-arch-card">
         <p className="script-title">Find Your Seat</p>
         <p className="english-sub">Alan &amp; Omena</p>
@@ -46,7 +48,7 @@ export default function Seat() {
 
       {stage === null ? (
         <div className="loading">讀取中…</div>
-      ) : !stage.seat_open ? (
+      ) : !stage.seat_open && !stage.preview ? (
         <section className="section-card" style={{ textAlign: "center" }}>
           <div className="section-header" style={{ justifyContent: "center" }}>
             <div className="section-header-title"><Armchair size={18} /> 桌次查詢尚未開放</div>

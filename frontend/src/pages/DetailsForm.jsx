@@ -3,6 +3,7 @@ import Swal from "sweetalert2";
 import { Search, Users, Utensils, Baby, Salad, PenLine, Send, PartyPopper, Ruler } from "lucide-react";
 import Select, { range } from "../components/Select.jsx";
 import EmailInput from "../components/EmailInput.jsx";
+import PreviewBanner from "../components/PreviewBanner.jsx";
 import { fetchStage, lookupRsvp, submitPhase2 } from "../api.js";
 import { fmtDateTime } from "../constants.js";
 import { isValidEmail, isValidPhone, normalizePhone } from "../validators.js";
@@ -154,7 +155,9 @@ export default function DetailsForm() {
         )}
       </header>
 
-      {step === "lookup" && stage && !stage.phase2_open && (
+      <PreviewBanner stage={stage} closedLabels={stage && !stage.phase2_open ? ["第二階段"] : []}
+        note="在這裡送出的資料會真的存進賓客名單，測試完記得到後台改回來" />
+      {step === "lookup" && stage && !stage.phase2_open && !stage.preview && (
         <section className="section-card" style={{ textAlign: "center" }}>
           <div className="section-header" style={{ justifyContent: "center" }}>
             <div className="section-header-title">第二階段尚未開放</div>
@@ -166,7 +169,7 @@ export default function DetailsForm() {
           <p style={{ marginTop: 14 }}><a href="/" style={{ color: "var(--milk-tea-700)", fontWeight: 600 }}>← 回首頁</a></p>
         </section>
       )}
-      {step === "lookup" && stage && stage.phase2_open && (
+      {step === "lookup" && stage && (stage.phase2_open || stage.preview) && (
         <form onSubmit={doLookup}>
           <section className="section-card">
             <div className="section-header">

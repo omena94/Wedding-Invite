@@ -19,9 +19,11 @@ export function setRole(r) {
   localStorage.setItem(ROLE_KEY, r || "couple");
 }
 
-async function request(path, { method = "GET", body, auth = false } = {}) {
+// authOptional：賓客頁用。有登入過後台就順便帶 token，後端會回 preview=true 並放行尚未開放的功能；
+// 沒登入就是一般賓客，不會因此被擋。
+async function request(path, { method = "GET", body, auth = false, authOptional = false } = {}) {
   const headers = { "Content-Type": "application/json" };
-  if (auth) headers["Authorization"] = `Bearer ${getToken()}`;
+  if (auth || (authOptional && getToken())) headers["Authorization"] = `Bearer ${getToken()}`;
 
   const res = await fetch(path, {
     method,
@@ -60,15 +62,21 @@ const qs = (params = {}) => {
 // Phase 1：意願調查
 export const submitPhase1 = (data) => request("/api/rsvp", { method: "POST", body: data });
 // Phase 2：用 Email/電話找到自己，再送出詳細資料
-export const lookupRsvp = (contact) => request("/api/rsvp/lookup", { method: "POST", body: { contact } });
-export const submitPhase2 = (data) => request("/api/rsvp/details", { method: "POST", body: data });
-// 目前階段（第二階段開了沒、桌次查詢開了沒…）
-export const fetchStage = () => request("/api/stage");
-export const fetchInfo = () => request("/api/info");
-export const seatLookup = (query) => request("/api/seat/lookup", { method: "POST", body: { query } });
-export const fetchPhotos = () => request("/api/photos");
+export const lookupRsvp = (contact) => request("/api/rsvp/lookup", { method: "POST", body: { contact }, authOptional: true });
+export const submitPhase2 = (data) => request("/api/rsvp/details", { method: "POST", body: data, authOptional: true });
+// 目前階段（第二階段開了沒、桌次查詢開了沒…）；登入後台的人會多拿到 preview=true
+export const fetchStage = () => request("/api/stage", { authOptional: true });
+export const fetchInfo = () => request("/api/info", { authOptional: true });
+export const seatLookup = (query) => request("/api/seat/lookup", { method: "POST", body: { query }, authOptional: true });
+export const fetchPhotos = () => request("/api/photos", { authOptional: true });
 export const photoUrl = (id) => `/api/photos/${id}`;
 export const photoThumbUrl = (id) => `/api/photos/${id}/thumb`;
+// 預覽模式下照片頁還沒開放，<img src> 帶不了 token，改用 fetch 取回 blob
+export async function fetchAuthBlobUrl(url) {
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${getToken()}` } });
+  if (!res.ok) throw new Error("讀取失敗");
+  return URL.createObjectURL(await res.blob());
+}
 
 // ===== 登入（新人 / 幫手共用）=====
 export const adminLogin = (password) =>
