@@ -18,6 +18,12 @@ class Phase1Create(BaseModel):
     message: str = Field(default="", max_length=2000)
 
 
+# ===== 小孩：身高（賓客填）與計價方式（新人在後台可手動指定）=====
+class ChildIn(BaseModel):
+    height: int | None = Field(default=None, ge=40, le=200)
+    pricing: Literal["auto", "free", "half", "full"] = "auto"
+
+
 # ===== Phase 2：用 Email/電話找到自己的紀錄 =====
 class LookupIn(BaseModel):
     contact: str = Field(min_length=1, max_length=200)  # Email 或 電話
@@ -38,6 +44,7 @@ class LookupOut(BaseModel):
     main_course: dict[str, int] = {}
     kids_meal_count: int = 0
     remark: str = ""
+    children: list[dict] = []
 
 
 # ===== Phase 2：詳細調查送出 =====
@@ -51,6 +58,7 @@ class Phase2Details(BaseModel):
     veg_type: str = Field(default="無", max_length=30)
     dietary_note: str = Field(default="", max_length=300)
     remark: str = Field(default="", max_length=500)
+    children: list[ChildIn] = []  # 每個小孩的身高（依 child_count 順序）
 
 
 # ===== 後台更新（可修正賓客填錯的任何欄位）=====
@@ -72,6 +80,7 @@ class RsvpAdminUpdate(BaseModel):
     veg_type: str | None = Field(default=None, max_length=30)
     dietary_note: str | None = Field(default=None, max_length=300)
     remark: str | None = Field(default=None, max_length=500)
+    children: list[ChildIn] | None = None
     # 後台管理
     manage_status: Literal["new", "contacted", "seated"] | None = None
     table_no: int | None = Field(default=None, ge=0, le=999)
@@ -102,6 +111,7 @@ class RsvpOut(BaseModel):
     main_course: dict[str, int]
     kids_meal_count: int
     remark: str
+    children: list[dict]
     manage_status: str
     table_no: int | None
     admin_note: str
@@ -240,8 +250,10 @@ class SeatCanvasIn(BaseModel):
 class BanquetPatch(BaseModel):
     adult_price: int | None = Field(default=None, ge=0, le=1_000_000)
     service_pct: int | None = Field(default=None, ge=0, le=100)
-    child_mode: Literal["free", "half", "full", "custom"] | None = None
+    child_mode: Literal["free", "half", "full", "custom"] | None = None  # 沒填身高的小孩怎麼算
     child_price: int | None = Field(default=None, ge=0, le=1_000_000)
+    child_free_below: int | None = Field(default=None, ge=0, le=250)  # 身高低於此免費
+    child_half_below: int | None = Field(default=None, ge=0, le=250)  # 身高低於此半價（以上全價）
 
 
 class CategoryIn(BaseModel):

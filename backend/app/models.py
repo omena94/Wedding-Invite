@@ -52,6 +52,10 @@ class Rsvp(Base):
     main_course_json: Mapped[str] = mapped_column(Text, default="{}")  # 主餐份數 {"牛排":2,...}
     kids_meal_count: Mapped[int] = mapped_column(Integer, default=0)   # 兒童餐點份數
     remark: Mapped[str] = mapped_column(String(500), default="")       # 賓客備註
+    # 每個小孩的資料：[{"height": 95, "pricing": "auto"}, ...]
+    #   height  身高（公分），賓客在第二階段填；None = 沒填
+    #   pricing auto = 依身高分級 / free / half / full = 新人在後台手動指定
+    children_json: Mapped[str] = mapped_column(Text, default="[]")
 
     @property
     def main_course(self) -> dict:
@@ -60,6 +64,24 @@ class Rsvp(Base):
             return {k: int(v) for k, v in data.items() if v}
         except (ValueError, TypeError):
             return {}
+
+    @property
+    def children(self) -> list[dict]:
+        """依 child_count 對齊：多的截掉、少的補空白。"""
+        try:
+            raw = json.loads(self.children_json or "[]")
+            raw = raw if isinstance(raw, list) else []
+        except (ValueError, TypeError):
+            raw = []
+        out = []
+        for i in range(int(self.child_count or 0)):
+            c = raw[i] if i < len(raw) and isinstance(raw[i], dict) else {}
+            h = c.get("height")
+            out.append({
+                "height": int(h) if isinstance(h, (int, float)) and 40 <= h <= 200 else None,
+                "pricing": c.get("pricing") if c.get("pricing") in ("auto", "free", "half", "full") else "auto",
+            })
+        return out
 
     # ===== 後台管理 =====
     manage_status: Mapped[str] = mapped_column(String(20), default="new")  # new/contacted/seated

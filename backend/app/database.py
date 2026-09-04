@@ -57,6 +57,7 @@ def init_db() -> None:
                 "ALTER TABLE files ADD COLUMN IF NOT EXISTS album VARCHAR(50) NOT NULL DEFAULT ''",
                 "ALTER TABLE files ADD COLUMN IF NOT EXISTS sort_order INTEGER NOT NULL DEFAULT 0",
                 "ALTER TABLE files ADD COLUMN IF NOT EXISTS thumb_name VARCHAR(80) NOT NULL DEFAULT ''",
+                "ALTER TABLE rsvps ADD COLUMN IF NOT EXISTS children_json TEXT NOT NULL DEFAULT '[]'",
             ):
                 try:
                     conn.execute(text(sql))

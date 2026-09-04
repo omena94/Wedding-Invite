@@ -98,6 +98,7 @@ def lookup(payload: LookupIn, db: Session = Depends(get_db)):
         main_course=record.main_course,
         kids_meal_count=record.kids_meal_count,
         remark=record.remark,
+        children=record.children,
     )
 
 
@@ -125,6 +126,17 @@ def submit_phase2(payload: Phase2Details, db: Session = Depends(get_db)):
         raise HTTPException(400, "兒童餐點份數不可超過小孩人數，請調整後再送出")
     record.main_course_json = json.dumps(mains, ensure_ascii=False)
     record.kids_meal_count = payload.kids_meal_count
+    # 每個小孩的身高（依人數對齊；賓客不能改計價方式，保留後台原本指定的）
+    old_children = record.children
+    new_children = []
+    for i in range(payload.child_count):
+        given = payload.children[i] if i < len(payload.children) else None
+        prev = old_children[i] if i < len(old_children) else {}
+        new_children.append({
+            "height": given.height if given is not None else prev.get("height"),
+            "pricing": prev.get("pricing", "auto"),
+        })
+    record.children_json = json.dumps(new_children, ensure_ascii=False)
     record.baby_chair_count = payload.baby_chair_count
     record.veg_type = payload.veg_type
     record.dietary_note = payload.dietary_note

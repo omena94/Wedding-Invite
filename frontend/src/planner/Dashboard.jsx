@@ -32,14 +32,20 @@ export default function Dashboard() {
         <Stat icon={<CalendarClock size={20} />} value={money(b.unpaid_total)} label="未付款" />
       </div>
 
-      {data.banquet && (
-        <div className="stats-grid" style={{ gridTemplateColumns: "repeat(3, 1fr)" }}>
-          <Stat icon={<Utensils size={20} />} value={money(data.banquet.estimate.total)}
-            label={`婚宴預估 · 大人 ${data.banquet.counts.adults} 位、小孩 ${data.banquet.counts.children} 位（小孩${CHILD_MODE_LABEL[data.banquet.params.child_mode] || ""}）`} />
-          <Stat icon={<Utensils size={20} />} value={money(data.banquet.scenarios.free)} label="若小孩免費" />
-          <Stat icon={<Utensils size={20} />} value={money(data.banquet.scenarios.full)} label="若小孩全價" />
-        </div>
-      )}
+      {data.banquet && (() => {
+        const b = data.banquet;
+        const cc = b.estimate.child_counts;
+        return (
+          <div className="stats-grid" style={{ gridTemplateColumns: "repeat(3, 1fr)" }}>
+            <Stat icon={<Utensils size={20} />} value={money(b.estimate.total)}
+              label={`婚宴預估 · 大人 ${b.counts.adults} 位、小孩 ${b.counts.children} 位`} />
+            <Stat icon={<Utensils size={20} />} value={`${cc.free} / ${cc.half} / ${cc.full}`}
+              label={`小孩 免費 / 半價 / 全價（依身高 ${b.params.child_free_below}、${b.params.child_half_below} cm）`} />
+            <Stat icon={<Utensils size={20} />} value={cc.unknown ? money(b.scenarios.full) : money(b.estimate.total)}
+              label={cc.unknown ? `未填身高 ${cc.unknown} 位（現在當${CHILD_MODE_LABEL[b.params.child_mode]}）· 若都全價` : "小孩身高都已填"} />
+          </div>
+        );
+      })()}
 
       <div className="pl-grid-2">
         <div className="panel">

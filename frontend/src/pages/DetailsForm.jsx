@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import Swal from "sweetalert2";
-import { Search, Users, Utensils, Baby, Salad, PenLine, Send, PartyPopper } from "lucide-react";
+import { Search, Users, Utensils, Baby, Salad, PenLine, Send, PartyPopper, Ruler } from "lucide-react";
 import Select, { range } from "../components/Select.jsx";
 import EmailInput from "../components/EmailInput.jsx";
 import { fetchStage, lookupRsvp, submitPhase2 } from "../api.js";
@@ -30,10 +30,21 @@ export default function DetailsForm() {
     veg_type: "無",
     dietary_note: "",
     remark: "",
+    children: [],   // 每個小孩的身高 [{height: "95"}]
   });
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
   const setMain = (dish, v) =>
     setForm((f) => ({ ...f, main_course: { ...f.main_course, [dish]: v } }));
+  const setChild = (i, height) =>
+    setForm((f) => {
+      const arr = [...(f.children || [])];
+      while (arr.length <= i) arr.push({ height: "" });
+      arr[i] = { ...arr[i], height };
+      return { ...f, children: arr };
+    });
+  // 飯店依身高計費的門檻（後台可改），給下面的提示用
+  const heightFree = stage?.child_free_below ?? 90;
+  const heightHalf = stage?.child_half_below ?? 120;
 
   const mainTotal = Object.values(form.main_course).reduce((a, b) => a + (b || 0), 0);
   const mainRemaining = Math.max(0, form.adult_count - mainTotal); // 主餐剩餘可選份數
@@ -65,6 +76,9 @@ export default function DetailsForm() {
           veg_type: r.veg_type || "無",
           dietary_note: r.dietary_note || "",
           remark: r.remark || "",
+          children: Array.from({ length: r.child_count || 0 }, (_, i) => ({
+            height: r.children && r.children[i] && r.children[i].height != null ? String(r.children[i].height) : "",
+          })),
         }));
         setStep("form");
       }
@@ -87,7 +101,13 @@ export default function DetailsForm() {
     setBusy(true);
     try {
       const c = contact.trim();
-      await submitPhase2({ contact: isValidPhone(c) ? normalizePhone(c) : c, ...form });
+      const children = Array.from({ length: form.child_count }, (_, i) => {
+        const h = form.children && form.children[i] ? String(form.children[i].height || "").trim() : "";
+        return { height: h === "" ? null : parseInt(h, 10) };
+      });
+      const bad = children.find((k) => k.height !== null && (k.height < 40 || k.height > 200));
+      if (bad) { setBusy(false); return setError("小孩身高請填 40～200 公分之間的數字（大概就好）"); }
+      await submitPhase2({ contact: isValidPhone(c) ? normalizePhone(c) : c, ...form, children });
       Swal.fire({
         icon: "success",
         title: "已收到，感謝您！",
@@ -204,6 +224,28 @@ export default function DetailsForm() {
               </div>
             </div>
           </section>
+
+          {/* 小孩身高（飯店依身高計費） */}
+          {form.child_count > 0 && (
+            <section className="section-card">
+              <div className="section-header">
+                <div className="section-header-title"><Ruler size={18} /> 小孩身高</div>
+                <div className="section-header-en">Kids Height</div>
+              </div>
+              <p className="helper-text" style={{ marginBottom: 14 }}>
+                飯店的兒童餐費依身高計算：未滿 {heightFree} 公分免費、{heightFree}～{heightHalf} 公分半價、{heightHalf} 公分以上與大人相同。
+                大概就好，量的時候鞋子脫掉、盡量往低一點報就對了 😉
+              </p>
+              {Array.from({ length: form.child_count }, (_, i) => (
+                <div className="form-group grid-2" key={i} style={{ alignItems: "center", marginBottom: 12 }}>
+                  <label style={{ margin: 0 }}>小孩 {i + 1} 身高（公分）</label>
+                  <input type="text" inputMode="numeric" placeholder="例如 95"
+                    value={(form.children && form.children[i] && form.children[i].height) || ""}
+                    onChange={(e) => setChild(i, e.target.value.replace(/[^\d]/g, "").slice(0, 3))} />
+                </div>
+              ))}
+            </section>
+          )}
 
           {/* 選擇主餐 */}
           <section className="section-card">

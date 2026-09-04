@@ -202,24 +202,38 @@ def patch_settings(values: dict[str, str], db: Session = Depends(get_db)):
 # ---------------------------------------------------------------------
 # 婚宴費用預估（依賓客回覆的出席人數）
 # ---------------------------------------------------------------------
-def _banquet_counts(db: Session) -> dict:
-    attending = [Rsvp.attending.is_(True), Rsvp.is_test.is_(False)]
-    adults = db.scalar(select(func.coalesce(func.sum(Rsvp.adult_count), 0)).where(*attending)) or 0
-    children = db.scalar(select(func.coalesce(func.sum(Rsvp.child_count), 0)).where(*attending)) or 0
-    kids_meals = db.scalar(select(func.coalesce(func.sum(Rsvp.kids_meal_count), 0)).where(*attending)) or 0
-    groups = db.scalar(select(func.count()).select_from(Rsvp).where(*attending)) or 0
-    return {"adults": int(adults), "children": int(children), "kids_meals": int(kids_meals), "groups": int(groups)}
+def _banquet_counts(db: Session) -> tuple[dict, list[dict]]:
+    """回傳（摘要, 每個小孩的清單）。小孩清單來自每組賓客的身高資料，沒填的補空白。"""
+    rows = db.scalars(select(Rsvp).where(Rsvp.attending.is_(True), Rsvp.is_test.is_(False))).all()
+    children: list[dict] = []
+    adults = kids_meals = 0
+    for r in rows:
+        adults += int(r.adult_count or 0)
+        kids_meals += int(r.kids_meal_count or 0)
+        children.extend(r.children)
+    heights_filled = sum(1 for c in children if c.get("height") is not None or c.get("pricing") != "auto")
+    return (
+        {
+            "adults": adults,
+            "children": len(children),
+            "children_with_height": heights_filled,
+            "kids_meals": kids_meals,
+            "groups": len(rows),
+        },
+        children,
+    )
 
 
 def _banquet_out(db: Session) -> dict:
     params = banquet_params(db)
-    counts = _banquet_counts(db)
-    a, c = counts["adults"], counts["children"]
+    counts, children = _banquet_counts(db)
+    a = counts["adults"]
     return {
         "params": params,
         "counts": counts,
-        "estimate": banquet_estimate(params, a, c),
-        "scenarios": {m: banquet_estimate(params, a, c, m)["total"] for m in ("free", "half", "full")},
+        "estimate": banquet_estimate(params, a, children),
+        # 沒填身高的小孩改用不同計價時的合計（有填的照身高算，不受影響）
+        "scenarios": {m: banquet_estimate(params, a, children, m)["total"] for m in ("free", "half", "full")},
     }
 
 
@@ -230,10 +244,14 @@ def get_banquet(db: Session = Depends(get_db)):
 
 @router.patch("/banquet")
 def patch_banquet(payload: BanquetPatch, db: Session = Depends(get_db)):
-    data = payload.model_dump(exclude_unset=True)
+    data = {k: v for k, v in payload.model_dump(exclude_unset=True).items() if v is not None}
+    current = banquet_params(db)
+    free = data.get("child_free_below", current["child_free_below"])
+    half = data.get("child_half_below", current["child_half_below"])
+    if free > half:
+        raise HTTPException(400, "免費身高門檻不能高於半價身高門檻")
     for k, v in data.items():
-        if v is not None:
-            set_setting(db, f"banquet_{k}", str(v))
+        set_setting(db, f"banquet_{k}", str(v))
     db.commit()
     return _banquet_out(db)
 

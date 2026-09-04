@@ -211,6 +211,13 @@ def update_rsvp(rsvp_id: int, payload: RsvpAdminUpdate, db: Session = Depends(ge
         record.main_course_json = json.dumps(clean, ensure_ascii=False)
         record.veg_count = clean.get("素食", 0)
 
+    children = data.pop("children", None)
+    if children is not None:
+        record.children_json = json.dumps(
+            [{"height": c.get("height"), "pricing": c.get("pricing", "auto")} for c in children],
+            ensure_ascii=False,
+        )
+
     for field, value in data.items():
         setattr(record, field, value)
 
@@ -245,7 +252,7 @@ def export_csv(db: Session = Depends(get_db)):
     buf.write("﻿")  # BOM，讓 Excel 正確辨識 UTF-8 中文
     writer = csv.writer(buf)
     writer.writerow([
-        "姓名", "親友方", "出席", "日期偏好", "大人", "幼童",
+        "姓名", "親友方", "出席", "日期偏好", "大人", "幼童", "小孩身高",
         "詳細已填", "主餐", "兒童餐點", "兒童座椅", "素食人數", "素食類型",
         "飲食備註", "賓客備註", "電話", "Email", "想說的話",
         "桌號", "內部備註", "填表時間",
@@ -259,6 +266,7 @@ def export_csv(db: Session = Depends(get_db)):
             "出席" if r.attending else "不克出席",
             date_map.get(r.date_preference, "") if r.attending else "",
             r.adult_count, r.child_count,
+            "/".join(str(c["height"]) if c["height"] is not None else "?" for c in r.children),
             "是" if r.details_completed else "否",
             main_str, r.kids_meal_count,
             r.baby_chair_count, r.veg_count, r.veg_type, r.dietary_note,

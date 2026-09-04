@@ -26,16 +26,20 @@ INFO_KEYS = (
 )
 # 婚宴費用預估的參數（後台可改）
 BANQUET_KEYS = (
-    "banquet_adult_price",   # 大人每位（未含服務費）
-    "banquet_service_pct",   # 服務費 %
-    "banquet_child_mode",    # free 免費 / half 半價 / full 全價 / custom 自訂
-    "banquet_child_price",   # child_mode=custom 時每位小孩的價格（未含服務費）
+    "banquet_adult_price",       # 大人每位（未含服務費）
+    "banquet_service_pct",       # 服務費 %
+    "banquet_child_mode",        # 沒填身高的小孩：free 免費 / half 半價 / full 全價 / custom 自訂
+    "banquet_child_price",       # child_mode=custom 時每位小孩的價格（未含服務費）
+    "banquet_child_free_below",  # 身高低於此（公分）免費
+    "banquet_child_half_below",  # 身高低於此半價，以上全價
 )
 BANQUET_DEFAULTS = {
     "banquet_adult_price": "3980",
     "banquet_service_pct": "10",
     "banquet_child_mode": "half",
     "banquet_child_price": "0",
+    "banquet_child_free_below": "90",
+    "banquet_child_half_below": "120",
 }
 SEATING_KEYS = ("seating_canvas_w", "seating_canvas_h")  # 座位圖畫布大小
 ALL_KEYS = (PHASE2_KEY, SEAT_KEY, PHOTOS_KEY, *INFO_KEYS, *BANQUET_KEYS, *SEATING_KEYS)
@@ -75,15 +79,20 @@ def banquet_params(db: Session) -> dict:
     mode = (raw.get("banquet_child_mode") or BANQUET_DEFAULTS["banquet_child_mode"]).strip()
     if mode not in ("free", "half", "full", "custom"):
         mode = "half"
+    free_below = _to_int(raw.get("banquet_child_free_below"), 90)
+    half_below = max(free_below, _to_int(raw.get("banquet_child_half_below"), 120))
     return {
         "adult_price": _to_int(raw.get("banquet_adult_price"), 3980),
         "service_pct": _to_int(raw.get("banquet_service_pct"), 10),
         "child_mode": mode,
         "child_price": _to_int(raw.get("banquet_child_price"), 0),
+        "child_free_below": free_below,
+        "child_half_below": half_below,
     }
 
 
 def child_unit_price(params: dict, mode: str | None = None) -> int:
+    """某種計價方式下一個小孩多少錢（未含服務費）。"""
     mode = mode or params["child_mode"]
     if mode == "free":
         return 0
@@ -94,17 +103,43 @@ def child_unit_price(params: dict, mode: str | None = None) -> int:
     return params["child_price"]
 
 
-def banquet_estimate(params: dict, adults: int, children: int, mode: str | None = None) -> dict:
-    """算一種情境：大人與小孩的餐費 + 服務費 = 合計（都取整數）。"""
-    child_price = child_unit_price(params, mode)
+def child_bracket(params: dict, child: dict) -> str | None:
+    """一個小孩該算哪一級：後台手動指定優先，其次依身高；沒填身高回傳 None。"""
+    pricing = child.get("pricing", "auto")
+    if pricing in ("free", "half", "full"):
+        return pricing
+    h = child.get("height")
+    if h is None:
+        return None
+    if h < params["child_free_below"]:
+        return "free"
+    if h < params["child_half_below"]:
+        return "half"
+    return "full"
+
+
+def banquet_estimate(params: dict, adults: int, children: list[dict], unknown_mode: str | None = None) -> dict:
+    """大人 × 單價 + 每個小孩依身高分級 + 服務費。沒填身高的小孩用 unknown_mode（預設是設定裡的 child_mode）。"""
+    unknown_mode = unknown_mode or params["child_mode"]
+    counts = {"free": 0, "half": 0, "full": 0, "unknown": 0}
+    child_subtotal = 0
+    for c in children:
+        b = child_bracket(params, c)
+        if b is None:
+            counts["unknown"] += 1
+            child_subtotal += child_unit_price(params, unknown_mode)
+        else:
+            counts[b] += 1
+            child_subtotal += child_unit_price(params, b)
     adult_subtotal = adults * params["adult_price"]
-    child_subtotal = children * child_price
     food = adult_subtotal + child_subtotal
     service = round(food * params["service_pct"] / 100)
     return {
-        "child_unit_price": child_price,
         "adult_subtotal": adult_subtotal,
         "child_subtotal": child_subtotal,
+        "child_counts": counts,
+        "child_prices": {m: child_unit_price(params, m) for m in ("free", "half", "full")},
+        "unknown_unit_price": child_unit_price(params, unknown_mode),
         "food_subtotal": food,
         "service": service,
         "total": food + service,
@@ -140,9 +175,13 @@ def is_on(db: Session, key: str) -> bool:
 def public_stage(db: Session) -> dict:
     """給賓客端首頁 / 各頁面判斷要顯示什麼。"""
     dt = phase2_open_at(db)
+    bp = banquet_params(db)
     return {
         "phase2_open": is_phase2_open(db),
         "phase2_open_at": dt.astimezone(TAIPEI).isoformat() if dt else "",
         "seat_open": is_on(db, SEAT_KEY),
         "photos_open": is_on(db, PHOTOS_KEY),
+        # 第二階段表單提示用：飯店依身高計費的門檻
+        "child_free_below": bp["child_free_below"],
+        "child_half_below": bp["child_half_below"],
     }

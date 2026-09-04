@@ -141,6 +141,8 @@ export default function Guests() {
                       if (r.kids_meal_count > 0) extras.push(`兒童餐×${r.kids_meal_count}`);
                       if (r.baby_chair_count > 0) extras.push(`座椅×${r.baby_chair_count}`);
                       if (r.veg_count > 0) extras.push(r.veg_type !== "無" ? r.veg_type : "素食");
+                      const hs = (r.children || []).map((c) => (c.height != null ? c.height : "?"));
+                      if (r.child_count > 0 && hs.some((h) => h !== "?")) extras.push(`身高 ${hs.join("/")}`);
                       // 留言彈窗內容（想說的話 / 備註 / 飲食過敏 合併）
                       const notes = [
                         r.message && { label: "想說的話", text: r.message },
@@ -240,10 +242,21 @@ function EditModal({ row, onClose, onSaved }) {
     ...row,
     table_no: row.table_no ?? "",
     main_course: { ...Object.fromEntries(EDIT_DISHES.map((d) => [d, 0])), ...(row.main_course || {}) },
+    children: Array.from({ length: row.child_count || 0 }, (_, i) => ({
+      height: row.children && row.children[i] && row.children[i].height != null ? row.children[i].height : "",
+      pricing: (row.children && row.children[i] && row.children[i].pricing) || "auto",
+    })),
   });
   const [busy, setBusy] = useState(false);
   const set = (k, v) => setF((x) => ({ ...x, [k]: v }));
   const setMain = (d, v) => setF((x) => ({ ...x, main_course: { ...x.main_course, [d]: v } }));
+  const setChild = (i, patch) =>
+    setF((x) => {
+      const arr = [...(x.children || [])];
+      while (arr.length <= i) arr.push({ height: "", pricing: "auto" });
+      arr[i] = { ...arr[i], ...patch };
+      return { ...x, children: arr };
+    });
 
   const save = async () => {
     if (!String(f.name).trim()) return toastErr(new Error("姓名不能空白"));
@@ -266,6 +279,10 @@ function EditModal({ row, onClose, onSaved }) {
         dietary_note: f.dietary_note || "",
         remark: f.remark || "",
         table_no: f.table_no === "" ? null : parseInt(f.table_no, 10),
+        children: Array.from({ length: f.child_count }, (_, i) => {
+          const c = (f.children && f.children[i]) || {};
+          return { height: c.height === "" || c.height == null ? null : parseInt(c.height, 10), pricing: c.pricing || "auto" };
+        }),
         admin_note: f.admin_note || "",
         is_test: f.is_test,
       });
@@ -351,6 +368,22 @@ function EditModal({ row, onClose, onSaved }) {
             <Select value={f.baby_chair_count} onChange={(v) => set("baby_chair_count", v)} options={numOpts(0, 15, " 張")} />
           </div>
         </div>
+
+        {f.child_count > 0 && (
+          <div className="form-group">
+            <label>小孩身高與計價（每個小孩各自設定；「依身高自動」用後台設定的門檻）</label>
+            {Array.from({ length: f.child_count }, (_, i) => {
+              const c = (f.children && f.children[i]) || { height: "", pricing: "auto" };
+              return (
+                <div className="grid-2" key={i} style={{ alignItems: "center", marginBottom: 8 }}>
+                  <NumberInput value={c.height === null ? "" : c.height} onChange={(v) => setChild(i, { height: v })} placeholder={`小孩 ${i + 1} 身高 cm（未填）`} />
+                  <Select value={c.pricing} onChange={(v) => setChild(i, { pricing: v })}
+                    options={[{ value: "auto", label: "依身高自動" }, { value: "free", label: "指定免費" }, { value: "half", label: "指定半價" }, { value: "full", label: "指定全價" }]} />
+                </div>
+              );
+            })}
+          </div>
+        )}
 
         <div className="form-group grid-2">
           <div>
