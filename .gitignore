@@ -10,6 +10,8 @@ frontend/dist/
 # 機密設定（含資料庫密碼、SECRET_KEY，絕不能上 Git）
 backend/.env
 *.pem
+# 例外：伺服器 SSH 金鑰刻意放在 repo 內供部署使用（見 部署說明.md）
+!server-key.pem
 *.key
 
 # 本機雜項
