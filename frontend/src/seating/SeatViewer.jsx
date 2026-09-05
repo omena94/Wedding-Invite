@@ -9,20 +9,14 @@
 //   names     {object_id: {seat_index: {name, side, is_child, mine}}} 每個座位是誰
 //   mineIds   Set<object_id> 自己所在的桌子
 //   fullscreen / onClose / title 全螢幕模式用
-import { Component, lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { LocateFixed, Maximize2, Minus, Plus, Search, X } from "lucide-react";
 import { ObjectShape, nameGetter } from "./SeatingMap.jsx";
 import { planLabels } from "./labels.js";
-import { bounds, center, seatPositions } from "./geometry.js";
+import { bounds, seatPositions } from "./geometry.js";
 import { entrancesOf, navigationGrid, routeToSeat } from './navigation.js';
 import Select from '../components/Select.jsx';
-const Venue3D = lazy(() => import('./Venue3D.jsx'));
-class VenueBoundary extends Component {
-  state={failed:false};
-  static getDerivedStateFromError(){return {failed:true};}
-  render(){return this.state.failed?<div className="map-status" role="alert">3D 場地載入失敗<button type="button" onClick={this.props.onFallback}>回到平面圖</button></div>:this.props.children;}
-}
 
 const PAD = 40;
 const MIN_ZOOM_OUT = 1.6; // 最多再縮到整張圖的 1/1.6
@@ -43,7 +37,7 @@ function matchRatio(b, ratio) {
 
 const easeInOut = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 
-export default function SeatViewer({ layout, names, mineIds, fullscreen = false, onClose, title = "", initialDimension='2d' }) {
+export default function SeatViewer({ layout, names, mineIds, fullscreen = false, onClose, title = "" }) {
   const objects = useMemo(() => (layout?.objects || []), [layout]);
   const byId = useMemo(() => Object.fromEntries(objects.map((o) => [o.id, o])), [objects]);
   const full = useMemo(() => fitBox(objects), [objects]);
@@ -52,7 +46,6 @@ export default function SeatViewer({ layout, names, mineIds, fullscreen = false,
   const [focus, setFocus] = useState(null); // {oid, idx} 點到椅子；{oid} 點到桌子
   const [expanded, setExpanded] = useState(false);
   const [intro, setIntro] = useState('ready');
-  const [dimension, setDimension] = useState(initialDimension);
   const [entranceId, setEntranceId] = useState(null);
   const entrances = useMemo(() => entrancesOf(objects), [objects]);
   const grid = useMemo(() => navigationGrid(layout), [layout]);
@@ -231,14 +224,12 @@ export default function SeatViewer({ layout, names, mineIds, fullscreen = false,
     const v = viewRef.current;
     animateTo({ x: v.x + v.w / 2 - v.w / factor / 2, y: v.y + v.h / 2 - v.h / factor / 2, w: v.w / factor, h: v.h / factor }, 300);
   };
-  const fitAll = () => { setDimension('2d'); animateTo(fullView(), 700); };
+  const fitAll = () => animateTo(fullView(), 700);
   const fitRoute = () => {
-    setDimension('2d');
     const target=routeView(route);
     if(target)animateTo(target,900);
   };
   const fitMine = () => {
-    setDimension('2d');
     const mb = mineBox(60);
     if (!mb) return fitAll();
     setFocus(firstMine);
@@ -257,7 +248,7 @@ export default function SeatViewer({ layout, names, mineIds, fullscreen = false,
     };
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => el.removeEventListener("wheel", onWheel);
-  }, [toSvg, zoomAt, cancelIntro, dimension]);
+  }, [toSvg, zoomAt, cancelIntro]);
 
   const onPointerDown = (e) => {
     cancelAnim(); // 手一碰就停掉開場動畫，交給使用者
@@ -341,7 +332,6 @@ export default function SeatViewer({ layout, names, mineIds, fullscreen = false,
   const matches = useMemo(() => (q ? everyone.filter((p) => norm(p.name).includes(q)).slice(0, 30) : []), [q, everyone]);
   const foundKeys = useMemo(() => new Set(matches.map((m) => `${m.oid}:${m.idx}`)), [matches]);
   const jumpTo = (m) => {
-    setDimension('2d');
     const o = byId[m.oid];
     setFocus({ oid: m.oid, idx: m.idx });
     if (o) animateTo(boxFor([o], 60), 700);
@@ -398,13 +388,12 @@ export default function SeatViewer({ layout, names, mineIds, fullscreen = false,
   const controls = (
     <div className="seatviewer-ctl">
       <button type="button" className="wide" onClick={fitRoute} disabled={!route.points.length}>查看路線</button>
-      <button type="button" className="wide" onClick={()=>setDimension(d=>d==='2d'?'3d':'2d')}>{dimension==='2d'?'3D 場地':'平面圖'}</button>
       {mineIds && mineIds.size > 0 && (
         <button type="button" className="wide primary" onClick={fitMine}><LocateFixed size={15} /> 我的位子</button>
       )}
       <button type="button" onClick={fitAll} className="wide"><Maximize2 size={14} /> 整個場地</button>
-      {dimension==='2d'&&<><button type="button" onClick={() => zoomCenter(1.4)} aria-label="放大"><Plus size={18} /></button>
-      <button type="button" onClick={() => zoomCenter(1 / 1.4)} aria-label="縮小"><Minus size={18} /></button></>}
+      <button type="button" onClick={() => zoomCenter(1.4)} aria-label="放大"><Plus size={18} /></button>
+      <button type="button" onClick={() => zoomCenter(1 / 1.4)} aria-label="縮小"><Minus size={18} /></button>
     </div>
   );
 
@@ -457,10 +446,9 @@ export default function SeatViewer({ layout, names, mineIds, fullscreen = false,
       {!fullscreen && searchBox}
       {controls}
       <div className={`seatviewer-wrap${dragging ? " dragging" : ""}`}>
-        {dimension==='2d'&&intro!=='ready'&&<div className="seatviewer-intro" role="status"><strong>{intro==='mine'?'已找到我的位置':'查看前往座位的路線'}</strong><span>{byId[firstMine?.oid]?.label} · {(firstMine?.idx??0)+1} 號{intro==='mine'?'，稍後為您帶路':''}</span></div>}
-        {dimension==='3d'&&<VenueBoundary onFallback={()=>setDimension('2d')}><Suspense fallback={<div className="loading">正在載入 3D 場地…</div>}><Venue3D layout={layout} route={route} focus={focus} onFocus={setFocus} onFallback={()=>setDimension('2d')}/></Suspense></VenueBoundary>}
+        {intro!=='ready'&&<div className="seatviewer-intro" role="status"><strong>{intro==='mine'?'已找到我的位置':'查看前往座位的路線'}</strong><span>{byId[firstMine?.oid]?.label} · {(firstMine?.idx??0)+1} 號{intro==='mine'?'，稍後為您帶路':''}</span></div>}
         <svg ref={svgRef} viewBox={vb} preserveAspectRatio="xMidYMid meet" className="seatmap" role="img" aria-label="座位平面圖"
-          style={dimension==='3d'?{display:'none'}:ready ? undefined : { visibility: "hidden" }}
+          style={ready ? undefined : { visibility: "hidden" }}
           onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={e=>{pointers.current.delete(e.pointerId);if(!pointers.current.size)setDragging(false);gesture.current.moved=0;}}>
           <defs>
             <marker id="seat-route-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">

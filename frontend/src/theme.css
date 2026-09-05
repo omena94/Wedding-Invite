@@ -904,11 +904,5 @@ tbody tr:last-child td { border-bottom: none; }
 .seat-route { stroke: #9a435f; stroke-width: 5; stroke-dasharray: 10 7; }
 .seat-route-arrow { fill: #9a435f; }
 .seat-obstacle { fill: #b4a797 !important; stroke: #756659 !important; stroke-dasharray: 5 3; }
-.venue3d { width: 100%; height: 100%; position: relative; touch-action: none; }
-.venue3d-canvas { position: absolute; inset: 0; }
-.venue3d-canvas canvas { display: block; width: 100%; height: 100%; }
-.venue3d-mode { position: absolute; right: 12px; top: 12px; border: 1px solid var(--border-highlight); padding: 10px 16px; border-radius: 12px; background: #fffcf4; color: var(--milk-tea-900); font: inherit; min-height: 44px; cursor: pointer; }
-.map-status { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; background: #f7f3eeee; padding: 20px; text-align: center; }
-.map-status button { padding: 12px; font: inherit; border-radius: 12px; border: 1px solid var(--milk-tea-300); }
 @media (max-width: 420px) { .seatviewer-ctl { gap: 5px; } .seatviewer-ctl button.wide { padding: 0 8px; font-size: 13px; } .guest-home .hero-arch-card { padding-left: 16px; padding-right: 16px; } }
 @media (prefers-reduced-motion: reduce) { *,*::before,*::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; } .hero-swap-back { opacity: 0 !important; } }

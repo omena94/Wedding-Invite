@@ -42,7 +42,7 @@ export default function Seating() {
   const [view, setView] = useState({ zoom: 0.55, x: 24, y: 24 });
   const [dragChip, setDragChip] = useState(null);     // {x, y, name}
   const [canvasModal, setCanvasModal] = useState(false);
-  const [venueOpen,setVenueOpen]=useState(false);
+  const [mapPreviewOpen,setMapPreviewOpen]=useState(false);
   const [preview, setPreview] = useState(null);       // 預覽某組賓客在 /seat 看到的畫面 {rsvp_id, name}
   const [marqueeMode, setMarqueeMode] = useState(false); // 框選模式：拖背景是框選而不是平移（按住 Shift 也可）
   const [hint, setHint] = useState(""); // 工具列上的小提示（複製／貼上用，不用彈窗，才不會擋住 Ctrl+V）
@@ -501,11 +501,11 @@ export default function Seating() {
 
   return (
     <div className="se-page">
-      {venueOpen&&<SeatViewer layout={layout} fullscreen initialDimension="3d" onClose={()=>setVenueOpen(false)}/>}
+      {mapPreviewOpen&&<SeatViewer layout={layout} fullscreen onClose={()=>setMapPreviewOpen(false)}/>}
       <PageHead title="座位圖" sub={readonly ? "唯讀：點椅子看是誰，方便帶位" : "拖曳擺桌椅，把右邊的賓客拖到椅子上；也可以先點人再點椅子"}
         actions={
           <>
-            <button className="btn btn-ghost" onClick={()=>setVenueOpen(true)}>3D 宴會廳與路線</button>
+            <button className="btn btn-ghost" onClick={()=>setMapPreviewOpen(true)}>預覽座位與路線</button>
             <a className="btn btn-ghost" href="/planner/seating?print=1" target="_blank" rel="noopener"><Printer size={14} /> 列印版</a>
             {!readonly && <button className="btn btn-ghost" onClick={() => setCanvasModal(true)}>畫布 {layout.canvas.w}×{layout.canvas.h}</button>}
           </>

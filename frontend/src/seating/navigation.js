@@ -1,4 +1,4 @@
-// 四方向、等距網格 BFS。路徑與 2D / 3D 顯示共用，不依賴 React。
+// 四方向、等距網格 BFS；獨立於地圖顯示與 React，方便驗證通道是否可達。
 import { center, seatPositions, SEAT_R } from './geometry.js';
 
 export const entrancesOf = (objects = []) => objects.filter(o => o.kind === 'entrance' || (o.kind === 'zone' && /入口|entrance/i.test(o.label || '')));

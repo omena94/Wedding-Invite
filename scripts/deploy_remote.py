@@ -44,7 +44,7 @@ def main():
             if not (item.name.startswith('backend/app/') or item.name=='backend/app' or item.name=='backend/requirements.txt' or item.name.startswith('frontend/dist/') or item.name=='frontend/dist'):
                 raise ValueError('Unexpected deployment file: '+item.name)
         archive.extractall(staged, filter='data')
-    for expected in ['backend/app/main.py', 'frontend/dist/index.html', 'frontend/dist/models/grand-mayfull-2f.glb']:
+    for expected in ['backend/app/main.py', 'frontend/dist/index.html', 'frontend/dist/seat.html', 'frontend/dist/planner.html']:
         if not (staged/expected).is_file():
             raise ValueError('Incomplete release: '+expected)
     run(str(python), '-m', 'compileall', '-q', str(staged/'backend/app'))
