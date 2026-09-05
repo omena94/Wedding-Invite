@@ -26,6 +26,19 @@ class Setting(Base):
     value: Mapped[str] = mapped_column(Text, default="")
 
 
+class GuestVerification(Base):
+    __tablename__ = "guest_verifications"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    rsvp_id: Mapped[int] = mapped_column(ForeignKey("rsvps.id", ondelete="CASCADE"), index=True)
+    code_hash: Mapped[str] = mapped_column(String(64))
+    ip_hash: Mapped[str] = mapped_column(String(64), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    used: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
 class Rsvp(Base):
     __tablename__ = "rsvps"
 

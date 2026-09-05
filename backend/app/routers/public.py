@@ -7,6 +7,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from ..config import settings
+from ..contacts import normalize_phone, phone_column
 from ..database import get_db
 from ..models import FileAsset, Rsvp
 from ..schemas import SeatLookupIn, SeatLookupOut
@@ -36,17 +37,21 @@ def seat_lookup(payload: SeatLookupIn, db: Session = Depends(get_db), role: str 
     if not is_on(db, SEAT_KEY) and role is None:
         raise HTTPException(403, "桌次查詢尚未開放，婚禮當天再來查詢喔")
     q = payload.query.strip()
-    digits = re.sub(r"\D", "", q)
     conds = [func.lower(Rsvp.name) == q.lower()]
-    if len(digits) >= 8:
-        conds.append(Rsvp.phone == digits)
-        conds.append(Rsvp.phone == q)
+    phone = normalize_phone(q)
+    if re.fullmatch(r"09\d{8}", phone):
+        conds.append(phone_column(Rsvp.phone) == phone)
     stmt = (
         select(Rsvp)
         .where(Rsvp.is_test.is_(False), Rsvp.attending.is_(True), or_(*conds))
         .order_by(Rsvp.created_at.desc())
     )
-    row = db.scalars(stmt).first()
+    if payload.phone.strip():
+        stmt = stmt.where(phone_column(Rsvp.phone) == normalize_phone(payload.phone))
+    rows = db.scalars(stmt.limit(2)).all()
+    if len(rows) > 1:
+        return SeatLookupOut(found=False, needs_phone=True)
+    row = rows[0] if rows else None
     if not row:
         return SeatLookupOut(found=False)
     view = guest_seat_view(db, row)

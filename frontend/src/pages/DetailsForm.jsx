@@ -1,10 +1,11 @@
+import { GuestHeader, GuestNav, LoadError, useGuestLoad, GuestReceipt, useDraft } from '../components/GuestUI.jsx';
 import { useEffect, useState } from "react";
 import Swal from "sweetalert2";
 import { Search, Users, Utensils, Baby, Salad, PenLine, Send, PartyPopper, Ruler } from "lucide-react";
 import Select, { range } from "../components/Select.jsx";
 import EmailInput from "../components/EmailInput.jsx";
 import PreviewBanner from "../components/PreviewBanner.jsx";
-import { fetchStage, lookupRsvp, submitPhase2 } from "../api.js";
+import { fetchStage, lookupRsvp, submitPhase2, requestVerification, verifyGuest } from "../api.js";
 import { fmtDateTime } from "../constants.js";
 import { isValidEmail, isValidPhone, normalizePhone } from "../validators.js";
 
@@ -17,12 +18,14 @@ export default function DetailsForm() {
   const [guest, setGuest] = useState(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const [stage, setStage] = useState(null); // 第二階段開了沒（null = 還在查）
-  useEffect(() => {
-    fetchStage().then(setStage).catch(() => setStage({ phase2_open: true }));
-  }, []);
+  const {data:stage,error:stageError,retry} = useGuestLoad(fetchStage);
+  const [access,setAccess]=useState(() => new URLSearchParams(location.hash.slice(1)).get('access')||'');
+  const [challenge,setChallenge]=useState('');
+  const [code,setCode]=useState('');
+  const [receipt,setReceipt]=useState(null);
+  useEffect(()=>{if(location.hash.startsWith('#access=')) history.replaceState(null,'',location.pathname);},[]);
 
-  const [form, setForm] = useState({
+  const [form, setForm, draft] = useDraft(guest ? `wedding-details-${guest.public_id}` : null, {
     adult_count: 1,
     child_count: 0,
     main_course: Object.fromEntries(MAIN_DISHES.map((d) => [d, 0])),
@@ -52,26 +55,33 @@ export default function DetailsForm() {
 
   const doLookup = async (e) => {
     e.preventDefault();
+    if(busy)return;
     setError("");
     const c = contact.trim();
-    if (!c) return setError("請輸入您第一階段填寫的 Email 或電話");
-    if (!isValidEmail(c) && !isValidPhone(c))
+    if (!access && !c) return setError("請輸入您第一階段填寫的 Email 或電話");
+    if (!access && !isValidEmail(c) && !isValidPhone(c))
       return setError("格式不正確，請輸入有效的 Email 或 09 開頭的 10 碼手機號碼");
     setBusy(true);
     try {
-      const r = await lookupRsvp(isValidPhone(c) ? normalizePhone(c) : c);
+      let token=access;
+      if (!stage.preview && !token) {
+        if (!challenge) { const r=await requestVerification(isValidPhone(c)?normalizePhone(c):c);setChallenge(r.challenge_id);return; }
+        token=(await verifyGuest(challenge,code)).access_token;setAccess(token);
+      }
+      const r = await lookupRsvp(isValidPhone(c) ? normalizePhone(c) : c, token);
       if (!r.found) {
         setError("找不到您的意願調查紀錄。請確認 Email／電話與第一階段相同，或先完成第一階段。");
       } else if (!r.attending) {
         setError("您先前回覆無法出席。若情況有變，歡迎直接聯繫我們");
       } else {
         setGuest(r);
+        setAccess(r.access_token);
         // 用 Phase 1（或先前 Phase 2）的資料預填
         setForm((f) => ({
           ...f,
           adult_count: r.adult_count || 1,
           child_count: r.child_count || 0,
-          main_course: { ...f.main_course, ...(r.main_course || {}) },
+          main_course: { ...Object.fromEntries(MAIN_DISHES.map(d=>[d,0])), ...(r.main_course || {}) },
           kids_meal_count: r.kids_meal_count || 0,
           baby_chair_count: r.baby_chair_count || 0,
           veg_type: r.veg_type || "無",
@@ -85,6 +95,7 @@ export default function DetailsForm() {
       }
     } catch (err) {
       setError(err.message);
+      if(err.status===401){setAccess('');setChallenge('');setCode('');}
     } finally {
       setBusy(false);
     }
@@ -92,13 +103,15 @@ export default function DetailsForm() {
 
   const doSubmit = async (e) => {
     e.preventDefault();
+    if(busy)return;
     setError("");
-    if (mainTotal > form.adult_count) {
-      return setError(`主餐總份數（${mainTotal}）超過大人人數（${form.adult_count}），請調整主餐選擇`);
+    if (mainTotal !== form.adult_count) {
+      return setError(`主餐總份數（${mainTotal}）須等於大人人數（${form.adult_count}），請為每位大人選一份主餐`);
     }
     if (form.kids_meal_count > form.child_count) {
       return setError(`兒童餐點份數（${form.kids_meal_count}）超過小孩人數（${form.child_count}），請調整`);
     }
+    if(form.baby_chair_count>form.child_count)return setError('兒童椅數量不可超過小孩人數，請調整後再送出');
     setBusy(true);
     try {
       const c = contact.trim();
@@ -108,17 +121,12 @@ export default function DetailsForm() {
       });
       const bad = children.find((k) => k.height !== null && (k.height < 40 || k.height > 200));
       if (bad) { setBusy(false); return setError("小孩身高請填 40～200 公分之間的數字（大概就好）"); }
-      await submitPhase2({ contact: isValidPhone(c) ? normalizePhone(c) : c, ...form, children });
-      Swal.fire({
-        icon: "success",
-        title: "已收到，感謝您！",
-        text: "您的座位與餐飲細節我們已經記錄下來，期待與您相聚",
-        confirmButtonText: "好的",
-        confirmButtonColor: "#B28F70",
-      });
-      setStep("done");
+      setReceipt(await submitPhase2({ access_token: access, ...form, children }));
+      draft.clear();
+      setStep('done');
     } catch (err) {
       setError(err.message);
+      if(err.status===401){setAccess('');setChallenge('');setCode('');setGuest(null);setStep('lookup');}
     } finally {
       setBusy(false);
     }
@@ -126,35 +134,9 @@ export default function DetailsForm() {
 
   return (
     <div className="container">
-      <header className="hero-arch-card">
-        <p className="script-title">See You at the Table</p>
-        <p className="english-sub">Alan &amp; Omena</p>
-        <div className="illustration-art-wrapper hero-swap">
-          <img src="/hero-line.png" alt="Alan & Omena" className="hero-image" />
-          <img src="/hero.png" alt="Alan & Omena" className="hero-image hero-swap-back" />
-        </div>
-        {step === "done" ? (
-          <>
-            <p className="invitation-quote" style={{ marginBottom: 12 }}>
-              都收到囉！謝謝你的回覆<br />
-              你的主餐與細節我們都記下來了<br />
-              期待與你一起大吃一頓
-            </p>
-            <p className="announce-title">我們一起來吃飯聊天吧!!</p>
-          </>
-        ) : (
-          <>
-            <p className="announce-title">準備好開啟這場美味聚會了嗎？</p>
-            <p className="invitation-quote" style={{ marginBottom: 12 }}>
-              請協助確認出席人數與您的主餐偏好，<br />
-              若有過敏食材亦請告知我們唷 !<br />
-              期待當天與您相見~~ !
-            </p>
-            <p className="announce-title">我們一起來吃飯聊天吧!!</p>
-          </>
-        )}
-      </header>
+      <GuestHeader title="為你留一席，也留一份美味" subtitle="確認同行人數、主餐與需要我們留意的事"/>
 
+      <>{stageError?<LoadError error={stageError} retry={retry}/>:!stage&&<div className="loading" role="status">讀取回覆開放時間…</div>}</>
       <PreviewBanner stage={stage} closedLabels={stage && !stage.phase2_open ? ["第二階段"] : []}
         note="在這裡送出的資料會真的存進賓客名單，測試完記得到後台改回來" />
       {step === "lookup" && stage && !stage.phase2_open && !stage.preview && (
@@ -171,26 +153,29 @@ export default function DetailsForm() {
       )}
       {step === "lookup" && stage && (stage.phase2_open || stage.preview) && (
         <form onSubmit={doLookup}>
+          {access && <p className="draft-notice">已讀取您的專屬回覆連結，按下方按鈕繼續。</p>}
           <section className="section-card">
             <div className="section-header">
               <div className="section-header-title"><Search size={18} /> 確認您的身分</div>
               <div className="section-header-en">Find Your RSVP</div>
             </div>
-            <div className="form-group">
-              <label className="required">請輸入第一階段填寫的 Email 或 電話</label>
-              <EmailInput
+            {!access&&<div className="form-group">
+              <label htmlFor="guest-contact" className="required">請輸入第一階段填寫的 Email 或 電話</label>
+              <EmailInput id="guest-contact"
+                disabled={busy}
                 type="text"
                 requireAt
                 value={contact}
-                onChange={(v) => { setContact(v); setError(""); }}
+                onChange={(v) => { setContact(v); setError(""); setChallenge(""); setCode(""); }}
                 placeholder="例如 you@email.com 或 0912345678"
                 invalid={!!error}
               />
-              <div className="helper-text">我們會用它找到您先前填寫的意願紀錄</div>
-            </div>
-            {error && <p style={{ color: "var(--rose-accent)", fontSize: 13.5, marginTop: 8 }}>{error}</p>}
+              <div className="helper-text">驗證碼會寄到您原先填寫的 Email，完成驗證後即可修改回覆</div>
+            </div>}
+            {challenge && <div className="form-group"><label htmlFor="guest-code">Email 中的 6 位驗證碼</label><input id="guest-code" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code} onChange={e=>setCode(e.target.value.replace(/\D/g,''))}/><button type="button" className="btn" disabled={busy} onClick={()=>{setChallenge('');setCode('');}}>重新取得驗證碼</button><p className="helper-text">10 分鐘內有效，請一併檢查垃圾郵件匣。</p></div>}
+            {error && <p role="alert" style={{ color: "var(--rose-accent)", fontSize: 13.5, marginTop: 8 }}>{error}</p>}
           </section>
-          <button type="submit" className="btn-submit" disabled={busy}>{busy ? "查詢中…" : <><Search size={17} /> 找到我的紀錄</>}</button>
+          <button type="submit" className="btn-submit" disabled={busy}>{busy ? "查詢中…" : <><Search size={17} /> {access||stage.preview?'開啟我的回覆':challenge?'驗證並繼續':'寄送驗證碼'}</>}</button>
           <p style={{ textAlign: "center", marginTop: 18, fontSize: 12.5, color: "var(--text-muted)" }}>
             還沒填第一階段？<a href="/rsvp" style={{ color: "var(--milk-tea-700)", fontWeight: 600 }}>先填出席意願 →</a>
           </p>
@@ -199,6 +184,7 @@ export default function DetailsForm() {
 
       {step === "form" && guest && (
         <form onSubmit={doSubmit}>
+          {draft.restored && <p className="draft-notice">已恢復這個分頁未送出的餐點回覆。</p>}
           <section className="section-card">
             <p style={{ fontSize: 14, color: "var(--milk-tea-900)", marginBottom: 4 }}>
               哈囉，<strong>{guest.name}</strong>
@@ -217,13 +203,13 @@ export default function DetailsForm() {
             <div className="form-group grid-2">
               <div>
                 <label className="required">大人人數（含自己）</label>
-                <Select value={form.adult_count} onChange={(v) => set("adult_count", v)}
-                  options={range(1, 10, (n) => `${n} 位`)} />
+                <Select aria-label="大人人數（含自己）" value={form.adult_count} onChange={(v) => set("adult_count", v)}
+                  options={range(1, 50, (n) => `${n} 位`)} />
               </div>
               <div>
                 <label>小孩人數</label>
-                <Select value={form.child_count} onChange={(v) => set("child_count", v)}
-                  options={range(0, 10, (n) => `${n} 位`)} />
+                <Select aria-label="小孩人數" value={form.child_count} onChange={(v) => set("child_count", v)}
+                  options={range(0, 50, (n) => `${n} 位`)} />
               </div>
             </div>
           </section>
@@ -237,12 +223,12 @@ export default function DetailsForm() {
               </div>
               <p className="helper-text" style={{ marginBottom: 14 }}>
                 飯店的兒童餐費依身高計算：未滿 {heightFree} 公分免費、{heightFree}～{heightHalf} 公分半價、{heightHalf} 公分以上與大人相同。
-                大概就好，量的時候鞋子脫掉、盡量往低一點報就對了 😉
+                請填寫孩子脫鞋後的實際身高，方便安排餐點與座位。
               </p>
               {Array.from({ length: form.child_count }, (_, i) => (
                 <div className="form-group grid-2" key={i} style={{ alignItems: "center", marginBottom: 12 }}>
                   <label style={{ margin: 0 }}>小孩 {i + 1} 身高（公分）</label>
-                  <input type="text" inputMode="numeric" placeholder="例如 95"
+                  <input aria-label={`小孩 ${i+1} 身高公分`} type="text" inputMode="numeric" placeholder="例如 95"
                     value={(form.children && form.children[i] && form.children[i].height) || ""}
                     onChange={(e) => setChild(i, e.target.value.replace(/[^\d]/g, "").slice(0, 3))} />
                 </div>
@@ -265,19 +251,19 @@ export default function DetailsForm() {
             {MAIN_DISHES.map((dish) => {
               const cur = form.main_course[dish] || 0;
               // 已選滿時只能維持或減少；有剩餘額度才能往上加
-              const maxSel = Math.min(10, Math.max(cur, cur + mainRemaining));
+              const maxSel = Math.min(50, Math.max(cur, cur + mainRemaining));
               return (
                 <div className="form-group grid-2" key={dish} style={{ alignItems: "center", marginBottom: 12 }}>
                   <label style={{ margin: 0 }}>{dish}</label>
-                  <Select value={cur} onChange={(v) => setMain(dish, v)}
+                  <Select aria-label={dish} value={cur} onChange={(v) => setMain(dish, v)}
                     options={range(0, maxSel, (n) => `${n} 份`)} />
                 </div>
               );
             })}
             <div className="form-group">
               <label>兒童餐點</label>
-              <Select value={form.kids_meal_count} onChange={(v) => set("kids_meal_count", v)}
-                options={range(0, Math.min(10, Math.max(form.kids_meal_count || 0, form.child_count)), (n) => (n === 0 ? "不需要兒童餐點" : `需要 ${n} 份兒童餐點`))} />
+              <Select aria-label="兒童餐點" value={form.kids_meal_count} onChange={(v) => set("kids_meal_count", v)}
+                options={range(0, Math.min(50, Math.max(form.kids_meal_count || 0, form.child_count)), (n) => (n === 0 ? "不需要兒童餐點" : `需要 ${n} 份兒童餐點`))} />
               <div className="helper-text">
                 依小孩人數填寫，最多 {form.child_count} 份；若無需求也沒關係，現場自助吧的餐點小孩皆可享用
               </div>
@@ -292,8 +278,8 @@ export default function DetailsForm() {
             </div>
             <div className="form-group">
               <label>兒童座椅需求</label>
-              <Select value={form.baby_chair_count} onChange={(v) => set("baby_chair_count", v)}
-                options={range(0, 3, (n) => (n === 0 ? "不需要兒童座椅" : n === 3 ? "需要 3 張以上" : `需要 ${n} 張兒童座椅`))} />
+              <Select aria-label="兒童座椅需求" value={form.baby_chair_count} onChange={(v) => set("baby_chair_count", v)}
+                options={range(0, Math.max(form.child_count,form.baby_chair_count), n=>n===0?"不需要兒童座椅":`需要 ${n} 張兒童座椅`)} />
             </div>
           </section>
 
@@ -305,7 +291,7 @@ export default function DetailsForm() {
             </div>
             <div className="form-group">
               <label>素食類型（若有選素食主餐）</label>
-              <Select value={form.veg_type} onChange={(v) => set("veg_type", v)}
+              <Select aria-label="素食類型" value={form.veg_type} onChange={(v) => set("veg_type", v)}
                 options={[
                   { value: "無", label: "無" },
                   { value: "蛋奶素", label: "蛋奶素 (Lacto-Ovo)" },
@@ -315,7 +301,7 @@ export default function DetailsForm() {
             </div>
             <div className="form-group">
               <label>食物過敏提醒</label>
-              <input type="text" value={form.dietary_note} onChange={(e) => set("dietary_note", e.target.value)} placeholder="例如：海鮮過敏、不吃牛…" />
+              <input type="text" aria-label="食物過敏提醒" value={form.dietary_note} onChange={(e) => set("dietary_note", e.target.value)} placeholder="例如：海鮮過敏、不吃牛…" />
               <div className="helper-text">我們會特別請主廚於餐牌備註過敏原</div>
             </div>
           </section>
@@ -328,24 +314,17 @@ export default function DetailsForm() {
             </div>
             <div className="form-group">
               <label>其他想告訴我們的事</label>
-              <textarea rows={3} value={form.remark} onChange={(e) => set("remark", e.target.value)} />
+              <textarea aria-label="其他想告訴我們的事" rows={3} value={form.remark} onChange={(e) => set("remark", e.target.value)} />
             </div>
           </section>
 
-          {error && <p style={{ color: "var(--rose-accent)", textAlign: "center", marginBottom: 12, fontSize: 13.5 }}>{error}</p>}
+          {error && <p role="alert" style={{ color: "var(--rose-accent)", textAlign: "center", marginBottom: 12, fontSize: 13.5 }}>{error}</p>}
           <button type="submit" className="btn-submit" disabled={busy}>{busy ? "傳送中…" : <><Send size={17} /> 送出詳細資料</>}</button>
         </form>
       )}
 
-      {step === "done" && (
-        <section className="section-card" style={{ textAlign: "center", padding: "40px 24px" }}>
-          <div className="modal-icon" style={{ margin: "0 auto 16px" }}><PartyPopper size={26} /></div>
-          <h3 className="modal-title">已收到，感謝您！</h3>
-          <p className="modal-desc" style={{ marginBottom: 0 }}>
-            您的座位與餐飲細節我們已經記錄下來，期待與您相聚
-          </p>
-        </section>
-      )}
+      {step === "done" && receipt && <GuestReceipt receipt={receipt}/>}
+      <GuestNav/>
     </div>
   );
 }

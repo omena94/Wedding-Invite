@@ -41,7 +41,7 @@ BANQUET_DEFAULTS = {
     "banquet_child_free_below": "90",
     "banquet_child_half_below": "120",
 }
-SEATING_KEYS = ("seating_canvas_w", "seating_canvas_h")  # 座位圖畫布大小
+SEATING_KEYS = ("seating_canvas_w", "seating_canvas_h", "seating_clearance")
 ALL_KEYS = (PHASE2_KEY, SEAT_KEY, PHOTOS_KEY, *INFO_KEYS, *BANQUET_KEYS, *SEATING_KEYS)
 
 

@@ -5,8 +5,7 @@ import {
   ClipboardList, Download, Trash2, Armchair, Salad, Pencil, MessageCircle,
   Megaphone, Send, ChevronDown,
 } from "lucide-react";
-import ReactQuill from "react-quill";
-import "react-quill/dist/quill.snow.css";
+import RichTextEditor from '../components/RichTextEditor.jsx';
 import Select from "../components/Select.jsx";
 import {
   getToken,
@@ -461,7 +460,7 @@ function StatsCards({ stats }) {
 
 /* 群發 Email 通知 */
 const DEFAULT_SUBJECT = "宣文 & 孟庭 婚宴｜請幫我們確認出席與主餐 🍽";
-const DEFAULT_BODY = `<p>{name} 你好：</p><p>謝謝你先前回覆出席我們的婚宴！<br>日期已確定為 <strong>2027.03.13（週六）中午 12:00</strong>，<br>地點在<strong>台北美福大飯店</strong>（台北市中山區樂群二路55號）。</p><p>接下來想請你幫我們確認最終出席人數、挑選你的專屬主餐：<br><a href="https://wedding.example.com/details">https://wedding.example.com/details</a><br>（進入後輸入你當初留的 Email 或電話即可）</p><p>期待與你相見！<br>宣文 &amp; 孟庭</p>`;
+const DEFAULT_BODY = `<p>{name} 你好：</p><p>謝謝你先前回覆出席我們的婚宴！<br>日期已確定為 <strong>2027.03.13（週六）中午 12:00</strong>，<br>地點在<strong>台北美福大飯店</strong>（台北市中山區樂群二路55號）。</p><p>接下來想請你幫我們確認最終出席人數、挑選你的專屬主餐：<br><a href="https://wedding.example.com/details">https://wedding.example.com/details</a><br>（進入後輸入你當初留的 Email 或電話，再用 Email 驗證碼開啟回覆）</p><p>期待與你相見！<br>宣文 &amp; 孟庭</p>`;
 
 const QUILL_MODULES = {
   toolbar: [
@@ -573,7 +572,7 @@ function BroadcastPanel({ stats }) {
 
       <div className="form-group">
         <label>信件內文（所見即所得，寄出即為此排版）</label>
-        <ReactQuill theme="snow" value={body} onChange={setBody} modules={QUILL_MODULES} />
+        <RichTextEditor value={body} onChange={setBody} modules={QUILL_MODULES} />
       </div>
 
       <div className="form-group">

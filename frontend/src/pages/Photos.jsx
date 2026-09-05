@@ -3,31 +3,42 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, Images } from "lucide-react";
 import { fetchAuthBlobUrl, fetchPhotos, fetchStage, photoThumbUrl, photoUrl } from "../api.js";
 import PreviewBanner from "../components/PreviewBanner.jsx";
+import { GuestHeader, GuestNav, LoadError, useGuestLoad } from '../components/GuestUI.jsx';
 
 // 預覽模式（頁面還沒開放、但已登入後台）：<img src> 帶不了 token，改成先 fetch 再顯示
-function PhotoImg({ src, auth, ...rest }) {
+function PhotoImg({ src, auth, retryable=false, ...rest }) {
   const [url, setUrl] = useState(auth ? null : src);
+  const [failed,setFailed]=useState(false),[attempt,setAttempt]=useState(0);
   useEffect(() => {
-    if (!auth) { setUrl(src); return undefined; }
+    setFailed(false);
+    if (!auth) { setUrl(src+(attempt?`?retry=${attempt}`:'')); return undefined; }
+    setUrl(null);
     let alive = true;
     let obj = null;
-    fetchAuthBlobUrl(src).then((u) => { if (alive) { obj = u; setUrl(u); } else URL.revokeObjectURL(u); }).catch(() => {});
+    fetchAuthBlobUrl(src).then((u) => { if (alive) { obj = u; setUrl(u); } else URL.revokeObjectURL(u); }).catch(() => {if(alive)setFailed(true);});
     return () => { alive = false; if (obj) URL.revokeObjectURL(obj); };
-  }, [src, auth]);
-  return url ? <img src={url} {...rest} /> : <span className="photo-img-loading" aria-hidden="true" />;
+  }, [src, auth,attempt]);
+  if(failed)return <span className="photo-load-error" role="status">照片暫時無法載入{retryable&&<button type="button" className="btn" onClick={e=>{e.stopPropagation();setAttempt(v=>v+1);}}>重新載入照片</button>}</span>;
+  return url ? <img src={url} {...rest} decoding="async" onError={()=>setFailed(true)}/> : <span className="photo-img-loading" role="status" aria-label="照片載入中" />;
 }
 
 export default function Photos() {
-  const [photos, setPhotos] = useState(null);
-  const [stage, setStage] = useState(null);
+  const {data:photos,error:photoError,retry:retryPhotos}=useGuestLoad(fetchPhotos);
+  const {data:stage,error:stageError,retry:retryStage}=useGuestLoad(fetchStage);
   const [album, setAlbum] = useState("");
   const [current, setCurrent] = useState(null);
   const touch = useRef(null);
 
-  useEffect(() => {
-    fetchPhotos().then(setPhotos).catch(() => setPhotos([]));
-    fetchStage().then(setStage).catch(() => setStage({}));
-  }, []);
+  const lightbox=useRef(null);
+  const isOpen=current!==null;
+  useEffect(()=>{
+    if(!isOpen)return;
+    const previous=document.activeElement;
+    lightbox.current?.querySelector('button:not(:disabled)')?.focus();
+    const trap=e=>{if(e.key!=='Tab')return;const items=[...lightbox.current.querySelectorAll('button:not(:disabled)')];if(!items.length)return;const first=items[0],last=items.at(-1);if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}};
+    const el=lightbox.current;el?.addEventListener('keydown',trap);
+    return()=>{el?.removeEventListener('keydown',trap);previous?.focus();};
+  },[isOpen]);
   const previewClosed = !!(stage && stage.preview && !stage.photos_open); // 賓客還看不到，只有登入者在看
 
   const albums = useMemo(() => {
@@ -64,16 +75,11 @@ export default function Photos() {
   return (
     <div className="container container-photos">
       <PreviewBanner stage={stage} closedLabels={stage && !stage.photos_open ? ["婚紗照"] : []} />
-      <header className="hero-arch-card">
-        <p className="script-title">Our Moments</p>
-        <p className="english-sub">Alan &amp; Omena</p>
-        <h1 className="main-title">婚紗照</h1>
-        <p className="invitation-quote">謝謝你們一路的祝福<br />這是我們留下的美好片刻</p>
-      </header>
+      <GuestHeader title="把喜歡的時光，留在這裡" english="OUR MOMENTS" subtitle="與你分享我們的美好片刻"/>
 
-      {photos === null ? (
+      {photoError||stageError ? <LoadError error={photoError||stageError} retry={()=>{retryPhotos();retryStage();}}/> : photos === null || stage === null ? (
         <div className="loading">讀取中…</div>
-      ) : photos.length === 0 ? (
+      ) : !stage.photos_open&&!stage.preview ? <section className="section-card"><h2>婚紗照尚未開放</h2><p>準備好後，會再與你分享。</p></section> : photos.length === 0 ? (
         <section className="section-card" style={{ textAlign: "center" }}>
           <div className="section-header" style={{ justifyContent: "center" }}>
             <div className="section-header-title"><Images size={18} /> 照片還沒準備好</div>
@@ -103,8 +109,8 @@ export default function Photos() {
       )}
 
       {current !== null && list[current] && (
-        <div className="photo-lightbox" onClick={() => setCurrent(null)} onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
-          <PhotoImg src={photoUrl(list[current].id)} auth={previewClosed} alt={list[current].caption || ""} onClick={(e) => e.stopPropagation()} />
+        <div ref={lightbox} role="dialog" aria-modal="true" aria-label="婚紗照瀏覽" className="photo-lightbox" onClick={() => setCurrent(null)} onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
+          <PhotoImg key={list[current].id} retryable src={photoUrl(list[current].id)} auth={previewClosed} alt={list[current].caption || ""} onClick={(e) => e.stopPropagation()} />
           {list[current].caption && <div className="photo-lightbox-caption">{list[current].caption}</div>}
           <div className="photo-lightbox-nav" onClick={(e) => e.stopPropagation()}>
             <button type="button" className="btn btn-ghost btn-sm" disabled={current === 0} onClick={() => setCurrent(current - 1)}>‹ 上一張</button>
@@ -116,6 +122,7 @@ export default function Photos() {
       )}
 
       <p className="footnote"><a href="/" className="top-link"><ArrowLeft size={14} /> 回首頁</a></p>
+      <GuestNav/>
     </div>
   );
 }

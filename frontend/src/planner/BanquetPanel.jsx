@@ -24,8 +24,8 @@ export default function BanquetPanel({ compact = false }) {
     if (data) setF(data.params);
   }, [data]);
 
-  if (loading || !f) return <Loading />;
   if (error) return <ErrorBox error={error} />;
+  if (loading || !f) return <Loading />;
 
   const { counts, estimate, scenarios, params } = data;
   const cc = estimate.child_counts;

@@ -1,56 +1,23 @@
-// 婚禮當天資訊：固定的日期地點 + 後台可編輯的流程、交通、服裝、提醒、聯絡窗口
-import { useEffect, useState } from "react";
-import { ArrowLeft, Bus, ListOrdered, Phone, Shirt, Sparkles } from "lucide-react";
-import EventDetails from "../components/EventDetails.jsx";
-import { fetchInfo } from "../api.js";
+import { Bus, Clock, Phone, Shirt, Sparkles, CalendarPlus } from 'lucide-react';
+import EventDetails, { VENUE } from '../components/EventDetails.jsx';
+import { GuestHeader, GuestNav, LoadError, useGuestLoad, addCalendar } from '../components/GuestUI.jsx';
+import { fetchInfo } from '../api.js';
 
-const SECTIONS = [
-  { key: "info_schedule", title: "當天流程", icon: ListOrdered },
-  { key: "info_transport", title: "交通方式", icon: Bus },
-  { key: "info_dress_code", title: "服裝建議", icon: Shirt },
-  { key: "info_notes", title: "其他提醒", icon: Sparkles },
-  { key: "info_contact", title: "當天聯絡窗口", icon: Phone },
-];
-
+function ContactText({text}) {
+  return text.split(/(09\d{2}[ -]?\d{3}[ -]?\d{3}|0[2-8][ -]?\d{4}[ -]?\d{4})/g).map((s,i)=>/^0\d/.test(s)?<a key={i} href={`tel:${s.replace(/[ -]/g,'')}`}>{s}</a>:s);
+}
 export default function Info() {
-  const [info, setInfo] = useState(null);
-  useEffect(() => {
-    fetchInfo().then(setInfo).catch(() => setInfo({}));
-  }, []);
-  const filled = SECTIONS.filter((s) => info && (info[s.key] || "").trim());
-
-  return (
-    <div className="container">
-      <header className="hero-arch-card">
-        <p className="script-title">Save the Date</p>
-        <p className="english-sub">Alan &amp; Omena</p>
-        <div className="illustration-art-wrapper hero-swap">
-          <img src="/hero-line.png" alt="Alan & Omena" className="hero-image" />
-          <img src="/hero.png" alt="Alan & Omena" className="hero-image hero-swap-back" />
-        </div>
-        <h1 className="main-title">婚禮當天資訊</h1>
-        <p className="invitation-quote">期待在這一天與你相見</p>
-        <EventDetails />
-      </header>
-
-      {info === null ? (
-        <div className="loading">讀取中…</div>
-      ) : filled.length === 0 ? (
-        <section className="section-card" style={{ textAlign: "center", color: "var(--text-muted)", fontSize: 14 }}>
-          更多細節（流程、交通、服裝建議）會在婚禮前更新，敬請期待
-        </section>
-      ) : (
-        filled.map(({ key, title, icon: Icon }) => (
-          <section className="section-card" key={key}>
-            <div className="section-header">
-              <div className="section-header-title"><Icon size={18} /> {title}</div>
-            </div>
-            <div className="info-text">{info[key]}</div>
-          </section>
-        ))
-      )}
-
-      <p className="footnote"><a href="/" className="top-link"><ArrowLeft size={14} /> 回首頁</a></p>
-    </div>
-  );
+  const {data:info,error,retry}=useGuestLoad(fetchInfo);
+  return <div className="container">
+    <GuestHeader title="相聚的日子" subtitle="2027 年 3 月 13 日・星期六" english="THE WEDDING DAY"/>
+    <section className="section-card"><EventDetails/><button type="button" className="btn calendar-action" onClick={addCalendar}><CalendarPlus size={18}/>加入行事曆</button></section>
+    {error?<LoadError error={error} retry={retry}/>:!info?<div className="loading">讀取婚禮資訊…</div>:<>
+      <section className="section-card"><h2 className="section-header-title"><Clock size={19}/>當天流程</h2><ol className="wedding-timeline">{(info.info_schedule?.trim()?info.info_schedule.split('\n'):['12:00 婚宴開始']).filter(s=>s.trim()).map((s,i)=><li key={i}>{s}</li>)}</ol>{!info.info_schedule?.trim()&&<p className="helper-text">入席與其他活動時間，會在婚禮前更新。</p>}</section>
+      <section className="section-card"><h2 className="section-header-title"><Bus size={19}/>前往婚禮</h2><p>抵達美福後，請前往 2F 大宴會廳。</p>{info.info_transport&&<p className="info-text">{info.info_transport}</p>}<div className="receipt-actions"><a className="btn" href={VENUE.mapUrl} target="_blank" rel="noopener noreferrer">開啟 Google Maps</a><a className="btn" href={VENUE.parkingUrl} target="_blank" rel="noopener noreferrer">停車場位置</a></div></section>
+      {info.info_dress_code?.trim()&&<section className="section-card"><h2 className="section-header-title"><Shirt size={19}/>服裝建議</h2><p className="info-text">{info.info_dress_code}</p></section>}
+      {info.info_notes?.trim()&&<section className="section-card"><h2 className="section-header-title"><Sparkles size={19}/>給你的提醒</h2><p className="info-text">{info.info_notes}</p></section>}
+      <section className="section-card"><h2 className="section-header-title"><Phone size={19}/>需要幫忙嗎</h2><p className="info-text">{info.info_contact?.trim()?<ContactText text={info.info_contact}/>: '婚禮前可直接聯繫宣文或孟庭；當天抵達宴會廳後，招待會協助您入座。'}</p></section>
+    </>}
+    <GuestNav/>
+  </div>;
 }

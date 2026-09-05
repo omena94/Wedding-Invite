@@ -21,6 +21,8 @@ app = FastAPI(title="Wedding RSVP", version="2.0")
 
 @app.on_event("startup")
 def _startup():
+    if len(settings.secret_key) < 32 or settings.secret_key.startswith('change-me'):
+        raise RuntimeError('請在 backend/.env 設定至少 32 字元的隨機 SECRET_KEY，供後台登入與賓客回覆連結簽章使用')
     init_db()  # 自動建立資料表
     settings.upload_path  # 確保上傳目錄存在
 
@@ -68,11 +70,14 @@ if FRONTEND_DIST.exists():
             return _html(FRONTEND_DIST / "planner.html")
         # 1) 實體檔案（圖片、.html、favicon 等）直接回傳
         candidate = FRONTEND_DIST / full_path
+        # resolve 也會處理符號連結；只允許前端目錄內的檔案。
+        if not candidate.resolve().is_relative_to(FRONTEND_DIST.resolve()):
+            return JSONResponse({"detail": "Not Found"}, status_code=404)
         if full_path and candidate.is_file():
             return _html(candidate) if candidate.suffix == ".html" else FileResponse(candidate)
         # 2) 乾淨網址：/rsvp → rsvp.html、/details → details.html…
         html = FRONTEND_DIST / f"{full_path}.html"
-        if full_path and html.is_file():
+        if full_path and html.resolve().is_relative_to(FRONTEND_DIST.resolve()) and html.is_file():
             return _html(html)
         # 3) 其餘一律回首頁
         return _html(FRONTEND_DIST / "index.html")

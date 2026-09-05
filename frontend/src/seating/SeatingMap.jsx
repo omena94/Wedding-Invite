@@ -60,9 +60,11 @@ export function ObjectShape({ o, highlighted, highlightSeats, showNames, interac
   return (
     <g className={cls} data-object-id={o.id}>
       {/* 本體 */}
+      {o.kind === 'wall' && <rect x={o.x} y={o.y} width={w} height={h} className="seat-body seat-obstacle" transform={rot}/>}
+      {o.kind === 'column' && <circle cx={cx} cy={cy} r={w/2} className="seat-body seat-obstacle"/>}
       {o.kind === "round" && <circle cx={cx} cy={cy} r={w / 2} className="seat-body" />}
       {o.kind === "rect" && <rect x={o.x} y={o.y} width={w} height={h} rx="10" className="seat-body" transform={rot} />}
-      {o.kind === "zone" && <rect x={o.x} y={o.y} width={w} height={h} rx="14" className="seat-body seat-zone-body" transform={rot} />}
+      {o.kind === "zone" && <rect x={o.x} y={o.y} width={w} height={h} rx="14" className={`seat-body seat-zone-body${o.meta?.blocked?' seat-obstacle':''}`} transform={rot} />}
       {/* 舞台：深色台面加一條金色台口 */}
       {o.kind === "stage" && (
         <g transform={rot}>

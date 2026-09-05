@@ -21,11 +21,11 @@ export default function SettingsPage() {
   const [busy, setBusy] = useState("");
 
   useEffect(() => {
-    if (data) setValues(data.values);
+    if (data) setValues(v => v || data.values);
   }, [data]);
 
-  if (loading || !values) return <Loading />;
   if (error) return <ErrorBox error={error} />;
+  if (loading || !values) return <Loading />;
 
   const stage = data.stage;
   const set = (k, v) => setValues((x) => ({ ...x, [k]: v }));
@@ -35,7 +35,7 @@ export default function SettingsPage() {
     try {
       const r = await savePlannerSettings(patch);
       setData(r);
-      setValues(r.values);
+      setValues(v => ({...v, ...Object.fromEntries(Object.keys(patch).map(k => [k, r.values[k]]))}));
       toastOk("已儲存");
     } catch (e) {
       toastErr(e);

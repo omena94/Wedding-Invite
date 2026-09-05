@@ -22,7 +22,7 @@ export default function Photos() {
   const albums = data?.albums || [];
   useEffect(() => {
     if (data && albums.length && !albums.some((a) => a.album === album)) setAlbum(albums[0].album);
-  }, [data]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [data]);
 
   const photos = useMemo(() => (data?.photos || []).filter((p) => (p.album || "") === album), [data, album]);
   const allSelected = photos.length > 0 && photos.every((p) => selected.has(p.id));

@@ -15,6 +15,7 @@ Alan & Omena 的婚禮網站：賓客填表（兩階段）、婚禮資訊、桌�
 - 後端需要 Python 3.10+。本機沒有的話，在伺服器上另開測試實例（SQLite、port 8001、Redis 指到不存在的 port），再用 `ssh -L 8001:127.0.0.1:8001` 接回本機，前端 `VITE_API_PROXY=http://127.0.0.1:8001 npx vite`。**不要把測試資料寫進正式資料庫。**
 - 新增資料表只要加 model，後端啟動會自動建表（多 worker 有 advisory lock 排隊）；改既有欄位要另外寫 SQL。
 - 前端改完 `npm run build`；部署照 `部署說明.md` 的三步（先刪舊 `backend/app` 與 `dist` 再解壓）。
+- 使用者已要求修改完成後自動部署正式環境並 `git push`：先完成相關測試與打包，備份後部署，再檢查正式站；不需要再次詢問部署許可。正式資料不可用作測試資料。
 - 文案、日期、地點集中在 `frontend/src/constants.js` 與 `components/EventDetails.jsx`。
 
 ## 風格

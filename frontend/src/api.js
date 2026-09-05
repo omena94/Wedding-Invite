@@ -25,13 +25,18 @@ async function request(path, { method = "GET", body, auth = false, authOptional 
   const headers = { "Content-Type": "application/json" };
   if (auth || (authOptional && getToken())) headers["Authorization"] = `Bearer ${getToken()}`;
 
-  const res = await fetch(path, {
+  let res;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 70000);
+  try { res = await fetch(path, {
     method,
     headers,
     body: body ? JSON.stringify(body) : undefined,
-  });
+    signal: controller.signal,
+  }); } catch { throw new Error('連線暫時中斷，請確認網路後再試一次'); }
+  finally { clearTimeout(timeout); }
 
-  if (res.status === 401) {
+  if (res.status === 401 && auth) {
     clearToken();
     throw new Error("登入已失效，請重新登入");
   }
@@ -62,12 +67,14 @@ const qs = (params = {}) => {
 // Phase 1：意願調查
 export const submitPhase1 = (data) => request("/api/rsvp", { method: "POST", body: data });
 // Phase 2：用 Email/電話找到自己，再送出詳細資料
-export const lookupRsvp = (contact) => request("/api/rsvp/lookup", { method: "POST", body: { contact }, authOptional: true });
+export const lookupRsvp = (contact, access_token = '') => request("/api/rsvp/lookup", { method: "POST", body: { contact, access_token }, authOptional: true });
+export const requestVerification = contact => request('/api/rsvp/verification', {method:'POST',body:{contact},authOptional:true});
+export const verifyGuest = (challenge_id,code) => request('/api/rsvp/verify', {method:'POST',body:{challenge_id,code}});
 export const submitPhase2 = (data) => request("/api/rsvp/details", { method: "POST", body: data, authOptional: true });
 // 目前階段（第二階段開了沒、桌次查詢開了沒…）；登入後台的人會多拿到 preview=true
 export const fetchStage = () => request("/api/stage", { authOptional: true });
 export const fetchInfo = () => request("/api/info", { authOptional: true });
-export const seatLookup = (query) => request("/api/seat/lookup", { method: "POST", body: { query }, authOptional: true });
+export const seatLookup = (query, phone = '') => request("/api/seat/lookup", { method: "POST", body: { query, phone }, authOptional: true });
 export const fetchPhotos = () => request("/api/photos", { authOptional: true });
 export const photoUrl = (id) => `/api/photos/${id}`;
 export const photoThumbUrl = (id) => `/api/photos/${id}/thumb`;
@@ -177,7 +184,7 @@ export const deleteTask = (id) => request(`${P}/tasks/${id}`, { method: "DELETE"
 const SE = `${P}/seating`;
 export const fetchSeating = (readonly = false) => request(readonly ? "/api/admin/seating" : SE, { auth: true });
 export const fetchSeatPreview = (rsvpId) => request(`/api/admin/seating/preview/${rsvpId}`, { auth: true });
-export const setSeatingCanvas = (w, h) => request(`${SE}/canvas`, { method: "PATCH", body: { w, h }, auth: true });
+export const setSeatingCanvas = (w, h, clearance = 20) => request(`${SE}/canvas`, { method: "PATCH", body: { w, h, clearance }, auth: true });
 export const createSeatObject = (data) => request(`${SE}/objects`, { method: "POST", body: data, auth: true });
 export const updateSeatObject = (id, data) => request(`${SE}/objects/${id}`, { method: "PATCH", body: data, auth: true });
 export const moveSeatObjects = (items) => request(`${SE}/objects/move`, { method: "POST", body: items, auth: true });

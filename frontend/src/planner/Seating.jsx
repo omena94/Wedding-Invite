@@ -15,6 +15,7 @@ import { DEFAULTS, KIND_LABEL, SEAT_GAP, SEAT_R, bounds, center, defaultSides, s
 import SeatingMap, { ObjectShape, nameGetter } from "../seating/SeatingMap.jsx";
 import { planLabels } from "../seating/labels.js";
 import SeatResult from "../seating/SeatResult.jsx";
+import SeatViewer from '../seating/SeatViewer.jsx';
 import { usePlanner } from "./context.js";
 import { ErrorBox, Field, Loading, Modal, NumberInput, PageHead, toInt, toastErr, toastOk, useLoader } from "./ui.jsx";
 
@@ -41,6 +42,7 @@ export default function Seating() {
   const [view, setView] = useState({ zoom: 0.55, x: 24, y: 24 });
   const [dragChip, setDragChip] = useState(null);     // {x, y, name}
   const [canvasModal, setCanvasModal] = useState(false);
+  const [venueOpen,setVenueOpen]=useState(false);
   const [preview, setPreview] = useState(null);       // 預覽某組賓客在 /seat 看到的畫面 {rsvp_id, name}
   const [marqueeMode, setMarqueeMode] = useState(false); // 框選模式：拖背景是框選而不是平移（按住 Shift 也可）
   const [hint, setHint] = useState(""); // 工具列上的小提示（複製／貼上用，不用彈窗，才不會擋住 Ctrl+V）
@@ -435,7 +437,6 @@ export default function Seating() {
   };
   useEffect(() => {
     if (layout && containerRef.current && !printMode) fitAll();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [layout?.canvas?.w, layout?.canvas?.h, layout === null]);
 
   // ---------- 鍵盤 ----------
@@ -500,9 +501,11 @@ export default function Seating() {
 
   return (
     <div className="se-page">
+      {venueOpen&&<SeatViewer layout={layout} fullscreen initialDimension="3d" onClose={()=>setVenueOpen(false)}/>}
       <PageHead title="座位圖" sub={readonly ? "唯讀：點椅子看是誰，方便帶位" : "拖曳擺桌椅，把右邊的賓客拖到椅子上；也可以先點人再點椅子"}
         actions={
           <>
+            <button className="btn btn-ghost" onClick={()=>setVenueOpen(true)}>3D 宴會廳與路線</button>
             <a className="btn btn-ghost" href="/planner/seating?print=1" target="_blank" rel="noopener"><Printer size={14} /> 列印版</a>
             {!readonly && <button className="btn btn-ghost" onClick={() => setCanvasModal(true)}>畫布 {layout.canvas.w}×{layout.canvas.h}</button>}
           </>
@@ -526,6 +529,8 @@ export default function Seating() {
           <button className="btn btn-ghost btn-sm" onClick={() => addObject("stage")} title="賓客頁用它判斷「面向舞台」的方向"><Star size={14} /> 舞台</button>
           <button className="btn btn-ghost btn-sm" onClick={() => addObject("entrance")} title="賓客頁用它算「怎麼走」與入口到桌子的路線"><DoorClosed size={14} /> 入口</button>
           <button className="btn btn-ghost btn-sm" onClick={() => addObject("zone")}><Square size={14} /> 區域</button>
+          <button className="btn btn-ghost btn-sm" onClick={() => addObject('wall')}>牆面</button>
+          <button className="btn btn-ghost btn-sm" onClick={() => addObject('column')}>柱體</button>
           <button className="btn btn-ghost btn-sm" onClick={() => addObject("label")}><Type size={14} /> 文字</button>
           <span className="sep" />
           <button className="btn btn-ghost btn-sm" onClick={undo} title="復原 (Ctrl+Z)"><Undo2 size={14} /></button>
@@ -793,10 +798,11 @@ function ObjectPanel({ o, seatSel, readonly, selectedCount, onChange, onImmediat
           )}
           {(o.kind === "stage" || o.kind === "entrance") && (
             <div className="helper-text" style={{ marginBottom: 10 }}>
-              {o.kind === "stage" ? "賓客頁會以「從入口面向舞台」來描述方向與左右手邊。" : "賓客頁會從這裡畫一條路線到賓客的桌子，並算出第幾排、左手邊數來第幾桌。"}整張圖放一個就好。
+              {o.kind === "stage" ? '舞台不可通行，路線會繞開台面。' : '可放多個入口，請將入口放在廳內可通行的門口位置；賓客可自行切換出發入口。'}
             </div>
           )}
-          {(o.kind === "zone" || o.kind === "label" || o.kind === "stage" || o.kind === "entrance") && (
+          {o.kind==='zone'&&<Checkbox checked={!!o.meta?.blocked} onChange={v=>onChange({meta:{...o.meta,blocked:v}})} label="此區域不可通行（尋路時避開）"/>}
+          {(['zone','label','stage','entrance','wall','column'].includes(o.kind)) && (
             <div className="form-group grid-2">
               <Field label="寬"><NumberInput value={Math.round(o.w)} onChange={(v) => onChange({ w: Math.max(20, toInt(v)) })} /></Field>
               <Field label="高"><NumberInput value={Math.round(o.h)} onChange={(v) => onChange({ h: Math.max(20, toInt(v)) })} /></Field>
@@ -855,11 +861,12 @@ function ObjectPanel({ o, seatSel, readonly, selectedCount, onChange, onImmediat
 function CanvasModal({ canvas, onClose, onSaved }) {
   const [w, setW] = useState(canvas.w);
   const [h, setH] = useState(canvas.h);
+  const [clearance,setClearance]=useState(canvas.clearance??20);
   const [busy, setBusy] = useState(false);
   const save = async () => {
     setBusy(true);
     try {
-      onSaved(await setSeatingCanvas(Math.max(400, toInt(w)), Math.max(400, toInt(h))));
+      onSaved(await setSeatingCanvas(Math.max(400, toInt(w)), Math.max(400, toInt(h)),Math.max(4,Math.min(100,toInt(clearance)))));
     } catch (e) {
       toastErr(e);
     } finally {
@@ -873,6 +880,9 @@ function CanvasModal({ canvas, onClose, onSaved }) {
         <Field label="寬"><NumberInput value={w} onChange={setW} /></Field>
         <Field label="高"><NumberInput value={h} onChange={setH} /></Field>
       </div>
+      <Field label="路線與障礙物的保留距離（畫布單位）" hint="每側預留這個距離，包含桌邊椅子；通道不足就不會畫出路線。"><NumberInput value={clearance} onChange={setClearance}/></Field>
+      <button type="button" className="btn btn-ghost" onClick={()=>{setW(1900);setH(1000);setClearance(23);}}>套用美福 38 × 20 公尺比例</button>
+      <p className="helper-text">套用比例後每 50 單位約 1 公尺，請依現場尺寸校正桌椅與入口；既有物件位置保留。</p>
     </Modal>
   );
 }

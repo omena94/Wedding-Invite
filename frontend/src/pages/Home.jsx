@@ -1,3 +1,4 @@
+import { GuestNav, LoadError, useGuestLoad, addCalendar } from '../components/GuestUI.jsx';
 // 首頁：邀請、倒數、婚禮資訊、各表單入口。內容依「目前階段」變化（後台設定）。
 import { useEffect, useState } from "react";
 import { ArrowRight, Armchair, CalendarCheck, Hourglass, Images, Info, Utensils } from "lucide-react";
@@ -37,10 +38,7 @@ function Card({ href, icon, step, title, desc, primary, disabled }) {
 }
 
 export default function Home() {
-  const [stage, setStage] = useState(null);
-  useEffect(() => {
-    fetchStage().then(setStage).catch(() => setStage({ phase2_open: false }));
-  }, []);
+  const {data:stage,error,retry}=useGuestLoad(fetchStage);
   const s = stage || {};
   const preview = !!s.preview; // 已登入後台：尚未開放的入口也讓他進去看
   const phase2Open = !!s.phase2_open || preview;
@@ -58,23 +56,25 @@ export default function Home() {
   );
 
   return (
-    <div className="container">
+    <div className="container guest-home">
       <PreviewBanner stage={s} closedLabels={[!s.phase2_open && "第二階段", !s.seat_open && "桌次查詢", !s.photos_open && "婚紗照"].filter(Boolean)} />
       <header className="hero-arch-card">
-        <p className="script-title">We're Married</p>
+        <p className="script-title">We're Getting Married</p>
         <p className="english-sub">Alan &amp; Omena</p>
 
         <div className="illustration-art-wrapper hero-swap">
-          <img src="/hero-line.png" alt="Alan & Omena" className="hero-image" />
-          <img src="/hero.png" alt="Alan & Omena" className="hero-image hero-swap-back" />
+          <img src="/hero-line.webp" width="800" height="800" fetchPriority="high" alt="Alan & Omena" className="hero-image" />
+          <img src="/hero.webp" width="800" height="800" loading="lazy" alt="Alan & Omena" className="hero-image hero-swap-back" />
         </div>
 
         <p className="announce-lead">最愛的家人與好友們~~</p>
-        <p className="announce-title">宣文與孟庭 要結婚啦</p>
+        <h1 className="announce-title">宣文與孟庭<br/><span className="wedding-date">2027 · 03 · 13</span></h1><p className="invitation-quote">把最重要的一天，與最珍惜的人一起度過。</p>
         <Countdown />
-        <EventDetails />
+        <a className="btn-submit hero-response" href={phase2Open?'/details':'/rsvp'}>{phase2Open?'確認我的出席與餐點':'回覆我的出席意願'}<ArrowRight size={18}/></a>
+        <EventDetails /><button type="button" className="btn calendar-action" onClick={addCalendar}>加入我的行事曆</button>
       </header>
 
+      {error&&<LoadError error={error} retry={retry}/>}
       <nav className="nav-cards" aria-label="頁面入口">
         {phase2Open ? [phase2, phase1] : [phase1, phase2]}
         <Card href="/info" icon={<Info size={22} />} title="婚禮當天資訊" desc="流程、交通、停車、服裝建議" />
@@ -82,6 +82,7 @@ export default function Home() {
         {(s.photos_open || preview) && <Card href="/photos" icon={<Images size={22} />} title="婚紗照" desc={s.photos_open ? "我們的婚紗照，歡迎欣賞" : "尚未開放給賓客（你已登入後台，可先進去看）"} />}
       </nav>
 
+      <GuestNav/>
       <p className="footnote">有任何問題，歡迎直接聯繫宣文或孟庭</p>
     </div>
   );

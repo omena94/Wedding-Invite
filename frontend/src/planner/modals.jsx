@@ -136,7 +136,7 @@ export function QuoteModal({ vendorId, category, initial, onClose, onSaved }) {
 export function ExpenseModal({ initial, vendors, onClose, onSaved }) {
   const isNew = !initial?.id;
   const [f, setF] = useState({
-    vendor_id: "", category: "其他", title: "", budget_amount: 0, contract_amount: 0, paid_by: "shared", note: "",
+    category: "其他", title: "", budget_amount: 0, contract_amount: 0, paid_by: "shared", note: "",
     ...(initial || {}),
     vendor_id: initial?.vendor_id ? String(initial.vendor_id) : "",
   });
@@ -190,7 +190,7 @@ export function ExpenseModal({ initial, vendors, onClose, onSaved }) {
 export function PaymentModal({ expenseId, expenseTitle, initial, onClose, onSaved, markPaid }) {
   const isNew = !initial?.id;
   const [f, setF] = useState({
-    title: "", amount: 0, due_date: "", paid_date: markPaid ? todayISO() : "", method: "", payer: "", note: "", sort_order: 0,
+    title: "", amount: 0, method: "", payer: "", note: "", sort_order: 0,
     ...(initial || {}),
     due_date: initial?.due_date || "",
     paid_date: markPaid ? (initial?.paid_date || todayISO()) : (initial?.paid_date || ""),
@@ -251,7 +251,7 @@ export function PaymentModal({ expenseId, expenseTitle, initial, onClose, onSave
 export function TaskModal({ initial, vendors, onClose, onSaved }) {
   const isNew = !initial?.id;
   const [f, setF] = useState({
-    title: "", kind: "task", due_date: "", done: false, assignee: "both", vendor_id: "", note: "", sort_order: 0,
+    title: "", kind: "task", done: false, assignee: "both", note: "", sort_order: 0,
     ...(initial || {}),
     due_date: initial?.due_date || "",
     vendor_id: initial?.vendor_id ? String(initial.vendor_id) : "",

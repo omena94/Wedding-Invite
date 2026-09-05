@@ -1,0 +1,51 @@
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Heart, Home, MapPin, Armchair, CalendarPlus, Check } from 'lucide-react';
+import { VENUE } from './EventDetails.jsx';
+
+export function GuestHeader({title, subtitle, english='OUR WEDDING · 2027.03.13'}) {
+  return <header className="guest-header"><a href="/" className="guest-brand">Alan <span>&</span> Omena</a><p className="guest-eyebrow">{english}</p><h1>{title}</h1>{subtitle&&<p>{subtitle}</p>}</header>;
+}
+export function GuestNav() {
+  return <nav className="guest-nav" aria-label="婚禮導覽">{[['/','首頁',Home],['/rsvp','出席回覆',Heart],['/info','婚禮資訊',MapPin],['/seat','我的座位',Armchair]].map(([href,label,Icon])=><a key={href} href={href} aria-current={location.pathname===href?'page':undefined}><Icon size={19}/><span>{label}</span></a>)}</nav>;
+}
+export function LoadError({error,retry}) { return <div className="guest-error" role="alert"><p>{error?.message||error||'資料暫時無法讀取'}</p><button type="button" className="btn" onClick={retry}>重新讀取</button></div>; }
+export function useGuestLoad(loader) {
+  const [data,setData]=useState(null),[error,setError]=useState(''),[attempt,setAttempt]=useState(0);
+  const retry=useCallback(()=>setAttempt(v=>v+1),[]);
+  useEffect(()=>{let active=true;setError('');setData(null);loader().then(v=>{if(active)setData(v);}).catch(e=>{if(active)setError(e.message||'連線失敗，請稍後再試');});return()=>{active=false;};},[loader,attempt]);
+  return {data,error,retry};
+}
+const TTL=24*60*60*1000;
+export function useDraft(key,initial) {
+  const [restored,setRestored]=useState(false);
+  const [value,setValue]=useState(initial);
+  const [loadedKey,setLoadedKey]=useState(null);
+  const shape=useRef(initial);shape.current=initial;
+  useEffect(()=>{
+    setRestored(false);
+    if(!key){setLoadedKey(null);return;}
+    try{
+      const saved=JSON.parse(sessionStorage.getItem(key)||'null');
+      const compatible=saved?.value&&Object.entries(shape.current).every(([field,v])=>saved.value[field]!==null&&typeof saved.value[field]===typeof v&&Array.isArray(saved.value[field])===Array.isArray(v));
+      if(compatible&&saved.time<=Date.now()&&Date.now()-saved.time<TTL){setValue(saved.value);setRestored(true);}else sessionStorage.removeItem(key);
+    }catch{}
+    setLoadedKey(key);
+  },[key]);
+  useEffect(()=>{if(key&&loadedKey===key){try{sessionStorage.setItem(key,JSON.stringify({time:Date.now(),value}));}catch{}}},[key,value,loadedKey]);
+  const clear=()=>{try{sessionStorage.removeItem(key);}catch{}setRestored(false);setLoadedKey(null);};
+  return [value,setValue,{restored,clear}];
+}
+export function addCalendar() {
+  const data=['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Wedding//Alan Omena//ZH-TW','BEGIN:VEVENT','UID:alan-omena-20270313','DTSTAMP:20260905T000000Z','DTSTART:20270313T040000Z','SUMMARY:宣文與孟庭的婚禮',`LOCATION:${VENUE.name} ${VENUE.address}`,'END:VEVENT','END:VCALENDAR'].join('\r\n')+'\r\n';
+  const url=URL.createObjectURL(new Blob([data],{type:'text/calendar;charset=utf-8'}));const a=document.createElement('a');a.href=url;a.download='Alan-Omena-Wedding.ics';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+export function GuestReceipt({receipt}) {
+  const card=useRef(null);
+  useEffect(()=>{card.current?.focus({preventScroll:true});card.current?.scrollIntoView({block:'start',behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth'});},[]);
+  const [copied,setCopied]=useState(false),[copyError,setCopyError]=useState(false);
+  const link=`${location.origin}/details#access=${encodeURIComponent(receipt.access_token)}`;
+  return <section ref={card} tabIndex={-1} className="section-card guest-receipt" role="status"><div className="receipt-seal"><Check size={28}/></div><p className="guest-eyebrow">WITH LOVE & THANKS</p><h2>{receipt.name}，謝謝你的回覆</h2><p>{receipt.attending?`已記下 ${receipt.adult_count} 位大人、${receipt.child_count} 位小孩，期待與你相聚。`:'你的祝福，我們都好好收下了。'}</p>
+    {receipt.details_completed&&<p>{Object.entries(receipt.main_course||{}).filter(([,n])=>n>0).map(([dish,n])=>`${dish} ${n} 份`).join('・')}</p>}
+    {receipt.attending&&<><p>{receipt.details_completed?'餐點與需求已更新。':'餐點確認開放時，我們會再通知你。'}</p><div className="receipt-actions"><button type="button" className="btn" onClick={addCalendar}><CalendarPlus size={17}/>加入行事曆</button><a className="btn" href={VENUE.mapUrl} target="_blank" rel="noopener noreferrer"><MapPin size={17}/>前往場地</a></div><button type="button" className="btn-submit" onClick={async()=>{try{await navigator.clipboard.writeText(link);setCopied(true);setCopyError(false);}catch{setCopyError(true);}}}>{copied?'已複製，請自行保存':'複製我的回覆連結'}</button>{copyError&&<label>長按複製回覆連結<input readOnly value={link} onFocus={e=>e.target.select()}/></label>}<p className="helper-text">連結可用來修改餐點回覆，請妥善保存，勿轉傳；90 天內有效。</p></>}
+    <a href="/info" className="top-link">查看婚禮當天資訊 →</a></section>;
+}

@@ -1,24 +1,16 @@
 // 賓客查桌次的結果。現場沒有人帶位、也有長輩在用，所以：
 //   1. 卡片只放最重要的：桌名與座號大字、一句白話的「怎麼走」、一顆大按鈕「打開地圖」
-//   2. 地圖是全螢幕（像地圖 App）：查到之後自動打開並播開場動畫（先放大自己的位子再縮小到全場），
+//   2. 查到後自動開啟全螢幕：先標記我的位置，再平滑放大至入口與座位之間的路線，
 //      紅色虛線指路、點椅子看旁邊坐誰；關掉就回到這張卡
 // 賓客頁 /seat 與後台「預覽賓客畫面」共用；後台的手機框用 embedded（地圖直接嵌在卡片裡，不全螢幕）。
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Map as MapIcon } from "lucide-react";
 import SeatViewer from "./SeatViewer.jsx";
-import { describeRoute } from "./guide.js";
 
 export default function SeatResult({ result, embedded = false }) {
   const [mapOpen, setMapOpen] = useState(false);
   const cardRef = useRef(null);
   const mineIds = useMemo(() => new Set((result?.seats || []).map((s) => s.object_id)), [result]);
-  const guides = useMemo(() => {
-    const objs = result?.map?.objects || [];
-    return (result?.tables || []).map((t) => {
-      const table = objs.find((o) => o.id === t.object_id);
-      return table ? describeRoute(objs, table) : { text: `請找桌上寫著「${t.label}」桌牌的那一桌。`, line: null };
-    });
-  }, [result]);
   const hasMap = !!(result && result.found && result.attending !== false && (result.tables || []).length && result.map);
 
   // 查到之後：自動打開全螢幕地圖（後台預覽不用）
@@ -34,6 +26,7 @@ export default function SeatResult({ result, embedded = false }) {
   }, [result, mapOpen]);
 
   if (!result) return null;
+  if (result.needs_phone) return null;
   if (!result.found) {
     return (
       <section ref={cardRef} className="section-card seat-result">
@@ -62,13 +55,11 @@ export default function SeatResult({ result, embedded = false }) {
     );
   }
   const seatsByTable = Object.fromEntries(tables.map((t) => [t.object_id, result.seats.filter((s) => s.object_id === t.object_id)]));
-  const routes = guides.map((g) => g.line).filter(Boolean);
-  const guideText = guides.map((g) => g.text).join(" ");
   const title = tables.map((t) => `${t.label || "桌"} · ${seatsByTable[t.object_id].map((s) => `${s.seat_no} 號`).join("、")}`).join("　");
   const viewerKey = `${result.name}:${(result.seats || []).map((s) => `${s.object_id}-${s.seat_no}`).join(",")}`;
   const viewer = (fullscreen) => (
-    <SeatViewer key={viewerKey} layout={result.map} names={result.map_names || {}} mineIds={mineIds} routes={routes}
-      guideText={guideText} fullscreen={fullscreen} onClose={() => setMapOpen(false)} title={title} />
+    <SeatViewer key={viewerKey} layout={result.map} names={result.map_names || {}} mineIds={mineIds}
+      fullscreen={fullscreen} onClose={() => setMapOpen(false)} title={title} />
   );
 
   return (
@@ -88,7 +79,7 @@ export default function SeatResult({ result, embedded = false }) {
               </div>
             </div>
           </div>
-          <div className="seat-guide"><span className="seat-guide-title">怎麼走</span>{guides[i]?.text}</div>
+          <div className="seat-guide">打開地圖，選擇您所在的入口，即可查看前往座位的路線。</div>
         </div>
       ))}
       {!embedded && hasMap && (

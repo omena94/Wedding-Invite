@@ -4,7 +4,7 @@ import { Calendar, Clock, MapPin, SquareParking } from "lucide-react";
 export const VENUE = {
   date: "2027.03.13（週六）",
   time: "12:00",
-  name: "台北美福大飯店",
+  name: "台北美福大飯店 · 2F 大宴會廳",
   address: "台北市中山區樂群二路55號",
   mapUrl: "https://maps.app.goo.gl/oLUTYpC5Czfo5SZD6",
   parkingUrl: "https://maps.app.goo.gl/JdHCL5tFBmSuWxeJ9",

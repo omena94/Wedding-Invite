@@ -1,3 +1,4 @@
+import { GuestHeader, GuestNav, LoadError, useGuestLoad, GuestReceipt, useDraft } from '../components/GuestUI.jsx';
 import { useState } from "react";
 import Swal from "sweetalert2";
 import { User, CalendarCheck, Mail, Users, MessageCircle, Calendar, MapPin, Send, Mars, Venus, Clock, SquareParking } from "lucide-react";
@@ -20,7 +21,8 @@ const initial = {
 };
 
 export default function RsvpForm() {
-  const [form, setForm] = useState(initial);
+  const [form, setForm, draft] = useDraft('wedding-rsvp-draft', initial);
+  const [receipt, setReceipt] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [fieldErrors, setFieldErrors] = useState({}); // 各欄位驗證錯誤
@@ -33,6 +35,7 @@ export default function RsvpForm() {
 
   const onSubmit = async (e) => {
     e.preventDefault();
+    if(submitting)return;
     setError("");
 
     // 逐欄驗證（Email/電話僅在「出席」時必填）
@@ -44,6 +47,7 @@ export default function RsvpForm() {
     if (errs.name || errs.email || errs.phone) {
       setFieldErrors(errs);
       setError("請檢查紅框欄位的內容");
+      requestAnimationFrame(() => document.querySelector(".input-error")?.focus());
       return;
     }
     setFieldErrors({});
@@ -56,17 +60,8 @@ export default function RsvpForm() {
         email: form.email.trim().toLowerCase(),
         phone: normalizePhone(form.phone),
       };
-      await submitPhase1(payload);
-      Swal.fire({
-        icon: "success",
-        title: "感謝您的回覆！",
-        text: form.attending
-          ? "我們已收到您的出席意願！待統計完畢會再另行通知詳細資訊。"
-          : "感謝您的暖心祝福！雖然這次無法前來，這份心意我們都好好收下囉",
-        confirmButtonText: "好的",
-        confirmButtonColor: "#B28F70",
-      });
-      setForm(initial);
+      setReceipt(await submitPhase1(payload));
+      draft.clear();
     } catch (err) {
       if (err.status === 409) {
         // 重複填寫 → SweetAlert 提示
@@ -87,68 +82,10 @@ export default function RsvpForm() {
 
   return (
     <div className="container">
-      <header className="hero-arch-card">
-        <p className="script-title">We're Married</p>
-        <p className="english-sub">Alan &amp; Omena</p>
+      <GuestHeader title="把這一天，留給我們" subtitle="2027.03.13 · 台北美福 2F 大宴會廳"/>
 
-        <div className="illustration-art-wrapper hero-swap">
-          <img src="/hero-line.png" alt="Alan & Omena" className="hero-image" />
-          <img src="/hero.png" alt="Alan & Omena" className="hero-image hero-swap-back" />
-        </div>
-
-        <h1 className="main-title">出席意願調查</h1>
-        <p className="announce-lead">最愛的家人與好友們~~</p>
-        <p className="announce-title">宣文與孟庭 要結婚啦</p>
-        <p className="invitation-quote">
-          先調查大家的出席意願來安排舒服的場地<br />
-          待場地敲定後，會再將詳細資訊雙手奉上<br />
-          期待與你們見面喔!!!
-        </p>
-
-        <div className="event-details-card">
-          <div className="detail-item">
-            <div className="detail-icon"><Calendar size={16} /></div>
-            <div className="detail-content"><strong>日期：</strong>2027.03.13（週六）</div>
-          </div>
-          <div className="detail-item">
-            <div className="detail-icon"><Clock size={16} /></div>
-            <div className="detail-content"><strong>時間：</strong>12:00</div>
-          </div>
-          <div className="detail-item" style={{ alignItems: "flex-start" }}>
-            <div className="detail-icon" style={{ marginTop: -4 }}><MapPin size={16} /></div>
-            <div className="detail-content">
-              <strong>地點：</strong>
-              <span style={{ display: "inline-block", verticalAlign: "top" }}>
-                <a
-                  href="https://maps.app.goo.gl/oLUTYpC5Czfo5SZD6"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{ color: "var(--milk-tea-700)", fontWeight: 500, textDecoration: "underline", textUnderlineOffset: 3 }}
-                >
-                  台北美福大飯店
-                </a>
-                <span style={{ display: "block", marginLeft: "-0.5em" }}>（台北市中山區樂群二路55號）</span>
-              </span>
-            </div>
-          </div>
-          <div className="detail-item">
-            <div className="detail-icon"><SquareParking size={16} /></div>
-            <div className="detail-content">
-              <strong>停車：</strong>
-              <a
-                href="https://maps.app.goo.gl/JdHCL5tFBmSuWxeJ9"
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{ color: "var(--milk-tea-700)", fontWeight: 500, textDecoration: "underline", textUnderlineOffset: 3 }}
-              >
-                停車場資訊
-              </a>
-            </div>
-          </div>
-        </div>
-      </header>
-
-      <form onSubmit={onSubmit}>
+      {receipt ? <GuestReceipt receipt={receipt}/> : <form onSubmit={onSubmit} noValidate>
+        {draft.restored && <p className="draft-notice">已恢復這個分頁尚未送出的回覆。草稿保留 24 小時。</p>}
         {/* 基本資料 */}
         <section className="section-card">
           <div className="section-header">
@@ -157,9 +94,9 @@ export default function RsvpForm() {
           </div>
 
           <div className="form-group">
-            <label className="required">您的姓名</label>
+            <label htmlFor="rsvp-name" className="required">您的姓名</label>
             <input
-              type="text"
+              type="text" id="rsvp-name" autoComplete="name" aria-invalid={!!fieldErrors.name}
               value={form.name}
               onChange={(e) => set("name", e.target.value)}
               className={fieldErrors.name ? "input-error" : undefined}
@@ -172,11 +109,11 @@ export default function RsvpForm() {
             <label className="required">您是哪一方的親友？</label>
             <div className="radio-grid">
               <div className="radio-card">
-                <input type="radio" name="side" checked={form.side === "groom"} onChange={() => set("side", "groom")} />
+                <input type="radio" name="side" aria-label="男方親友" checked={form.side === "groom"} onChange={() => set("side", "groom")} />
                 <div className="radio-box"><Mars size={16} /><span>男方親友</span></div>
               </div>
               <div className="radio-card">
-                <input type="radio" name="side" checked={form.side === "bride"} onChange={() => set("side", "bride")} />
+                <input type="radio" name="side" aria-label="女方親友" checked={form.side === "bride"} onChange={() => set("side", "bride")} />
                 <div className="radio-box"><Venus size={16} /><span>女方親友</span></div>
               </div>
             </div>
@@ -193,11 +130,11 @@ export default function RsvpForm() {
             <label className="required">是否能來參加？</label>
             <div className="radio-grid">
               <div className="radio-card">
-                <input type="radio" name="attending" checked={form.attending === true} onChange={() => set("attending", true)} />
+                <input type="radio" name="attending" aria-label="期待出席" checked={form.attending === true} onChange={() => set("attending", true)} />
                 <div className="radio-box"><span>Yes　期待出席</span></div>
               </div>
               <div className="radio-card">
-                <input type="radio" name="attending" checked={form.attending === false} onChange={() => set("attending", false)} />
+                <input type="radio" name="attending" aria-label="不克前往" checked={form.attending === false} onChange={() => set("attending", false)} />
                 <div className="radio-box"><span>No　不克前往</span></div>
               </div>
             </div>
@@ -214,16 +151,16 @@ export default function RsvpForm() {
               </div>
               <div className="form-group grid-2">
                 <div>
-                  <label className="required">聯絡 Email</label>
-                  <EmailInput value={form.email} onChange={(v) => set("email", v)} invalid={!!fieldErrors.email} />
+                  <label htmlFor="rsvp-email" className="required">聯絡 Email</label>
+                  <EmailInput id="rsvp-email" value={form.email} onChange={(v) => set("email", v)} invalid={!!fieldErrors.email} />
                   {fieldErrors.email
                     ? <div className="field-error">{fieldErrors.email}</div>
                     : <div className="helper-text">詳細資料將寄送至此</div>}
                 </div>
                 <div>
-                  <label className="required">聯絡電話</label>
+                  <label htmlFor="rsvp-phone" className="required">聯絡電話</label>
                   <input
-                    type="tel"
+                    type="tel" id="rsvp-phone" autoComplete="tel" aria-invalid={!!fieldErrors.phone}
                     inputMode="tel"
                     placeholder="0912345678"
                     value={form.phone}
@@ -249,12 +186,12 @@ export default function RsvpForm() {
               <div className="form-group grid-2">
                 <div>
                   <label className="required">大人人數（含自己）</label>
-                  <Select value={form.adult_count} onChange={(v) => set("adult_count", v)}
+                  <Select aria-label="大人人數（含自己）" value={form.adult_count} onChange={(v) => set("adult_count", v)}
                     options={range(1, 10, (n) => `${n} 位`)} />
                 </div>
                 <div>
                   <label>小孩人數</label>
-                  <Select value={form.child_count} onChange={(v) => set("child_count", v)}
+                  <Select aria-label="小孩人數" value={form.child_count} onChange={(v) => set("child_count", v)}
                     options={range(0, 10, (n) => `${n} 位`)} />
                 </div>
               </div>
@@ -269,17 +206,18 @@ export default function RsvpForm() {
             <div className="section-header-en">Message for Us</div>
           </div>
           <div className="form-group">
-            <textarea rows={3} value={form.message} onChange={(e) => set("message", e.target.value)} />
+            <textarea aria-label="想對新人說的話" rows={3} value={form.message} onChange={(e) => set("message", e.target.value)} />
           </div>
         </section>
 
-        {error && <p style={{ color: "var(--rose-accent)", textAlign: "center", marginBottom: 12, fontSize: 13.5 }}>{error}</p>}
+        {error && <p role="alert" style={{ color: "var(--rose-accent)", textAlign: "center", marginBottom: 12, fontSize: 13.5 }}>{error}</p>}
 
         <button type="submit" className="btn-submit" disabled={submitting}>
           {submitting ? "傳送中…" : <><Send size={17} /> 送出出席意願</>}
         </button>
-      </form>
+      </form>}
 
+      <GuestNav/>
     </div>
   );
 }

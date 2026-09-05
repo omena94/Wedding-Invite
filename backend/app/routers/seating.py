@@ -53,8 +53,9 @@ def get_layout(db: Session = Depends(get_db)):
 def set_canvas(payload: SeatCanvasIn, db: Session = Depends(get_db)):
     set_setting(db, "seating_canvas_w", str(payload.w))
     set_setting(db, "seating_canvas_h", str(payload.h))
+    set_setting(db, "seating_clearance", str(payload.clearance))
     db.commit()
-    return {"w": payload.w, "h": payload.h}
+    return payload.model_dump()
 
 
 # ---------------- 桌椅物件 ----------------
@@ -64,7 +65,7 @@ def create_object(payload: SeatObjectIn, db: Session = Depends(get_db)):
     meta = data.pop("meta")
     if data["kind"] == "chair":
         data["seats"] = 1
-    elif data["kind"] in ("zone", "label", "stage", "entrance"):
+    elif data["kind"] in ("zone", "label", "stage", "entrance", "wall", "column"):
         data["seats"] = 0
     o = SeatObject(**data, meta_json=dump_meta(meta))
     db.add(o)
@@ -83,7 +84,7 @@ def update_object(object_id: int, payload: SeatObjectPatch, db: Session = Depend
             setattr(o, k, v)
     if o.kind == "chair":
         o.seats = 1
-    elif o.kind in ("zone", "label", "stage", "entrance"):
+    elif o.kind in ("zone", "label", "stage", "entrance", "wall", "column"):
         o.seats = 0
     # 座位變少：超出的指定清掉
     limit = seat_count(o)

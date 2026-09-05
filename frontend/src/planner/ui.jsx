@@ -96,7 +96,7 @@ export function useLoader(fn, deps = []) {
     } finally {
       setLoading(false);
     }
-  }, deps); // eslint-disable-line react-hooks/exhaustive-deps
+  }, deps);
   useEffect(() => {
     reload();
   }, [reload]);

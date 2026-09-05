@@ -12,6 +12,10 @@ KINDS_WITH_SEATS = ("round", "rect", "chair")
 
 
 def canvas_size(db: Session) -> dict:
+    try:
+        clearance = max(4, min(100, int(get_setting(db, 'seating_clearance') or 20)))
+    except (ValueError, TypeError):
+        clearance = 20
     def _int(v, d):
         try:
             return max(400, min(6000, int(float(v))))
@@ -20,6 +24,7 @@ def canvas_size(db: Session) -> dict:
     return {
         "w": _int(get_setting(db, "seating_canvas_w"), CANVAS_DEFAULT["w"]),
         "h": _int(get_setting(db, "seating_canvas_h"), CANVAS_DEFAULT["h"]),
+        "clearance": clearance,
     }
 
 
@@ -72,6 +77,9 @@ def object_out(obj: SeatObject, with_names: bool = True) -> dict:
     }
     if with_names:
         data["assignments"] = [assignment_out(a) for a in sorted(obj.assignments, key=lambda a: a.seat_index)]
+    else:
+        data.pop("note")
+        data["meta"] = {k: v for k, v in obj.meta.items() if k in {"sides", "color", "blocked"}}
     return data
 
 

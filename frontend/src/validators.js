@@ -2,7 +2,8 @@
 
 /** 移除電話中的空格、破折號、括號 */
 export function normalizePhone(v) {
-  return (v || "").replace(/[\s\-()]/g, "");
+  const p = (v || "").replace(/[\s\-()]/g, "");
+  return /^\+?8869\d{8}$/.test(p) ? '0' + p.replace(/^\+?886/, '') : p;
 }
 
 /** Email 格式：xxx@yyy.zz */

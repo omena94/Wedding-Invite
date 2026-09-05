@@ -2,7 +2,8 @@
 from datetime import date, datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from .contacts import normalize_phone
 
 
 # ===== Phase 1：意願調查送出 =====
@@ -17,6 +18,30 @@ class Phase1Create(BaseModel):
     child_count: int = Field(default=0, ge=0, le=50)
     message: str = Field(default="", max_length=2000)
 
+    @field_validator("name")
+    @classmethod
+    def clean_name(cls, v):
+        if not v.strip():
+            raise ValueError("請填寫姓名")
+        return v.strip()
+
+    @field_validator("phone")
+    @classmethod
+    def clean_phone(cls, v):
+        return normalize_phone(v)
+
+    @field_validator("email")
+    @classmethod
+    def clean_email(cls, v):
+        return v.strip().lower()
+
+    @model_validator(mode="after")
+    def attending_contact(self):
+        import re
+        if self.attending and (not re.fullmatch(r"09\d{8}", self.phone) or not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]{2,}", self.email) or self.adult_count < 1):
+            raise ValueError("出席時請填寫有效的 Email、手機號碼及大人人數")
+        return self
+
 
 # ===== 小孩：身高（賓客填）與計價方式（新人在後台可手動指定）=====
 class ChildIn(BaseModel):
@@ -26,7 +51,27 @@ class ChildIn(BaseModel):
 
 # ===== Phase 2：用 Email/電話找到自己的紀錄 =====
 class LookupIn(BaseModel):
-    contact: str = Field(min_length=1, max_length=200)  # Email 或 電話
+    contact: str = Field(default="", max_length=200)
+    access_token: str = Field(default="", max_length=1000)
+
+
+class VerificationIn(BaseModel):
+    contact: str = Field(min_length=1, max_length=200)
+
+
+class VerifyCodeIn(BaseModel):
+    challenge_id: str = Field(min_length=1, max_length=64)
+    code: str = Field(pattern=r"^\d{6}$")
+
+
+class GuestReceipt(BaseModel):
+    name: str
+    attending: bool
+    adult_count: int
+    child_count: int
+    details_completed: bool
+    main_course: dict[str, int] = {}
+    access_token: str
 
 
 class LookupOut(BaseModel):
@@ -45,12 +90,14 @@ class LookupOut(BaseModel):
     kids_meal_count: int = 0
     remark: str = ""
     children: list[dict] = []
+    access_token: str = ""
 
 
 # ===== Phase 2：詳細調查送出 =====
 class Phase2Details(BaseModel):
-    contact: str = Field(min_length=1, max_length=200)  # 對應 Phase 1 的 Email 或 電話
-    adult_count: int = Field(default=1, ge=0, le=50)     # 再次確認人數
+    contact: str = Field(default="", max_length=200)
+    access_token: str = Field(default="", max_length=1000)
+    adult_count: int = Field(default=1, ge=1, le=50)
     child_count: int = Field(default=0, ge=0, le=50)
     main_course: dict[str, int] = {}                     # {"牛排":2,"雞腿排":1,...}
     kids_meal_count: int = Field(default=0, ge=0, le=50)
@@ -63,6 +110,13 @@ class Phase2Details(BaseModel):
 
 # ===== 後台更新（可修正賓客填錯的任何欄位）=====
 class RsvpAdminUpdate(BaseModel):
+    @field_validator('phone','email')
+    @classmethod
+    def clean_contact(cls,v,info):
+        if v is None:
+            return v
+        return normalize_phone(v) if info.field_name=='phone' else v.strip().lower()
+
     # 基本資料
     name: str | None = Field(default=None, min_length=1, max_length=100)
     side: Literal["groom", "bride"] | None = None
@@ -167,10 +221,12 @@ class Stats(BaseModel):
 # ===== 賓客端：桌次查詢 =====
 class SeatLookupIn(BaseModel):
     query: str = Field(min_length=1, max_length=100)  # 姓名或電話
+    phone: str = Field(default="", max_length=50)
 
 
 class SeatLookupOut(BaseModel):
     found: bool
+    needs_phone: bool = False
     name: str = ""
     table_no: int | None = None
     seats: list[dict] = []          # [{object_id, table_label, seat_no, display_name, neighbors:[{seat_no,name}]}]
@@ -189,7 +245,7 @@ TaskKind = Literal["task", "milestone"]
 FileKind = Literal["doc", "receipt", "photo"]
 
 
-SeatKind = Literal["round", "rect", "chair", "zone", "label", "stage", "entrance"]
+SeatKind = Literal["round", "rect", "chair", "zone", "label", "stage", "entrance", "wall", "column"]
 
 
 class SeatObjectIn(BaseModel):
@@ -253,6 +309,7 @@ class SeatAutoAssignIn(BaseModel):
 class SeatCanvasIn(BaseModel):
     w: int = Field(ge=400, le=6000)
     h: int = Field(ge=400, le=6000)
+    clearance: int = Field(default=20, ge=4, le=100)
 
 
 class BanquetPatch(BaseModel):
