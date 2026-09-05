@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "lint": "eslint src",
-    "test": "node --test src/seating/navigation.test.js src/validators.test.js",
+    "test": "node --test src/seating/navigation.test.js src/validators.test.js src/home/journey.test.js",
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview"

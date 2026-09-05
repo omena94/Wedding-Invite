@@ -2,6 +2,13 @@
 
 // 婚禮日期（倒數用）。改日期只要改這一行。
 export const WEDDING_DATE = "2027-03-13";
+export const WEDDING_START = `${WEDDING_DATE}T12:00:00+08:00`;
+export const WEDDING_DATE_DISPLAY = WEDDING_DATE.replaceAll('-', ' · ');
+export const OUR_STORY = [
+  { date: '2019-04-29', label: '故事的開始', title: '從你和我，到我們', text: '從這一天起，故事裡多了一個「我們」。一起分享日常，也一起期待下一次出發。', mark: '01' },
+  { date: '2027-01-26', label: '預計登記結婚', title: '把往後的日子，寫在一起', text: '我們計畫在這一天登記結婚。帶著這些年累積的喜歡，走進下一段人生。', mark: '02' },
+  { date: WEDDING_DATE, label: '婚宴之約', title: '下一頁，想和你一起', text: '最重要的一天，想和最珍惜的人一起度過。這次，邀請你也走進我們的故事。', mark: '03' },
+];
 
 export const VENDOR_CATEGORIES = [
   "婚宴場地", "婚紗攝影", "禮服", "新秘造型", "婚戒", "喜餅", "喜帖",

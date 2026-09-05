@@ -3,7 +3,8 @@ const TOKEN_KEY = "wedding_admin_token";
 const ROLE_KEY = "wedding_admin_role";
 
 export function getToken() {
-  return localStorage.getItem(TOKEN_KEY) || "";
+  // 隱私設定封鎖儲存時，公開賓客頁仍應以未登入身分正常讀取。
+  try { return localStorage.getItem(TOKEN_KEY) || ""; } catch { return ""; }
 }
 export function setToken(t) {
   localStorage.setItem(TOKEN_KEY, t);

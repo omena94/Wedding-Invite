@@ -1,26 +1,11 @@
 // 婚紗照分享頁：分相簿、方格牆（縮圖）、燈箱可左右滑
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, Images } from "lucide-react";
-import { fetchAuthBlobUrl, fetchPhotos, fetchStage, photoThumbUrl, photoUrl } from "../api.js";
+import { fetchPhotos, fetchStage, photoThumbUrl, photoUrl } from "../api.js";
 import PreviewBanner from "../components/PreviewBanner.jsx";
 import { GuestHeader, GuestNav, LoadError, useGuestLoad } from '../components/GuestUI.jsx';
 
-// 預覽模式（頁面還沒開放、但已登入後台）：<img src> 帶不了 token，改成先 fetch 再顯示
-function PhotoImg({ src, auth, retryable=false, ...rest }) {
-  const [url, setUrl] = useState(auth ? null : src);
-  const [failed,setFailed]=useState(false),[attempt,setAttempt]=useState(0);
-  useEffect(() => {
-    setFailed(false);
-    if (!auth) { setUrl(src+(attempt?`?retry=${attempt}`:'')); return undefined; }
-    setUrl(null);
-    let alive = true;
-    let obj = null;
-    fetchAuthBlobUrl(src).then((u) => { if (alive) { obj = u; setUrl(u); } else URL.revokeObjectURL(u); }).catch(() => {if(alive)setFailed(true);});
-    return () => { alive = false; if (obj) URL.revokeObjectURL(obj); };
-  }, [src, auth,attempt]);
-  if(failed)return <span className="photo-load-error" role="status">照片暫時無法載入{retryable&&<button type="button" className="btn" onClick={e=>{e.stopPropagation();setAttempt(v=>v+1);}}>重新載入照片</button>}</span>;
-  return url ? <img src={url} {...rest} decoding="async" onError={()=>setFailed(true)}/> : <span className="photo-img-loading" role="status" aria-label="照片載入中" />;
-}
+import PhotoImg from "../components/PhotoImage.jsx";
 
 export default function Photos() {
   const {data:photos,error:photoError,retry:retryPhotos}=useGuestLoad(fetchPhotos);
