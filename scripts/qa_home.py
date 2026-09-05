@@ -28,9 +28,9 @@ def main():
         photo_requests = []
         page.on('request', lambda request: photo_requests.append(request.url) if '/api/photos' in request.url else None)
         page.goto(BASE)
-        dialog = page.get_by_role('dialog', name='一封，留給你的邀請')
+        dialog = page.get_by_role('dialog', name='宣文與孟庭的婚禮喜帖')
         expect(dialog).to_be_visible()
-        expect(page.get_by_role('button', name='打開婚禮喜帖')).to_be_focused()
+        expect(dialog).to_be_focused()
         assert page.locator('#root').evaluate('(el) => el.inert')
         page.keyboard.press('Tab')
         expect(page.get_by_role('button', name='略過開場')).to_be_focused()
@@ -124,7 +124,7 @@ def main():
         expect(blocked.locator('.home-primary')).to_have_attribute('href', '/rsvp')
         assert not errors, errors
         browser.close()
-    print(json.dumps({'result': 'PASS', 'checks': 'first visit, seal, skip, replay, focus, revisit, breakpoints, scroll, closed album, admin, authorized images, lightbox, stage change, reduced motion, disabled storage', 'screenshots': str(output)}, ensure_ascii=False))
+    print(json.dumps({'result': 'PASS', 'checks': 'first visit, invitation, skip, replay, focus, revisit, breakpoints, scroll, closed album, admin, authorized images, lightbox, stage change, reduced motion, disabled storage', 'screenshots': str(output)}, ensure_ascii=False))
 
 
 if __name__ == '__main__':

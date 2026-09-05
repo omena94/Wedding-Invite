@@ -92,36 +92,42 @@
 .wedding-reveal { opacity: 0; transform: translateY(24px); transition: opacity .7s var(--reveal-delay, 0ms), transform .7s cubic-bezier(.22,1,.36,1) var(--reveal-delay, 0ms); }
 .wedding-reveal[data-visible='true'], .wedding-reveal:focus-within { opacity: 1; transform: none; }
 
-/* 信封使用平面形狀與位移，開封後即卸載，避免持續佔用手機效能。 */
-.invitation-intro { position: fixed; z-index: 1000; inset: 0; height: 100dvh; overflow-y: auto; display: flex; align-items: center; justify-content: center; flex-direction: column; padding: 64px 24px 32px; background: radial-gradient(ellipse at 50% 48%, #fffdf8, var(--milk-tea-100)); isolation: isolate; }
-.invitation-skip { position: absolute; right: max(24px, env(safe-area-inset-right)); top: max(14px, env(safe-area-inset-top)); padding: 5px 10px; font-size: 14px; }
-.invitation-heading { text-align: center; margin-bottom: 58px; }
-.invitation-heading .guest-eyebrow { font-size: 10px; line-height: 1.8; }
-.invitation-heading h2 { font-size: clamp(24px, 4vw, 32px); letter-spacing: .1em; margin: 18px 0 12px; }
-.invitation-heading > p:last-child { font-size: 13px; }
-.invitation-envelope { position: relative; width: min(420px, 100%); aspect-ratio: 1.55; flex-shrink: 0; filter: drop-shadow(0 24px 30px #7e60471e); }
-.envelope-back { position: absolute; inset: 0; background: var(--milk-tea-300); border-radius: 6px; }
-.envelope-letter { position: absolute; z-index: 1; inset: 14px 18px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; background: #fffdf8; border: 1px solid var(--milk-tea-200); color: var(--milk-tea-700); transition: transform .85s .25s cubic-bezier(.22,1,.36,1); }
-.envelope-letter > span { font: 35px 'Cormorant Garamond', Georgia, serif; }
-.envelope-letter small { font: 12px 'Plus Jakarta Sans', sans-serif; letter-spacing: .2em; }
-.envelope-letter svg { stroke-width: 1; }
-.envelope-fold { position: absolute; inset: 0; z-index: 2; background: linear-gradient(30deg, var(--milk-tea-200), var(--milk-tea-100)); clip-path: polygon(0 0, 50% 52%, 100% 0, 100% 100%, 0 100%); border-radius: 6px; }
-.envelope-fold::after { content: ''; position: absolute; inset: 0; clip-path: polygon(0 100%, 50% 48%, 100% 100%); background: linear-gradient(0deg, #f2e8dc, #ecddcc); }
-.envelope-flap { position: absolute; inset: 0; z-index: 3; background: linear-gradient(180deg, #f6efe6, var(--milk-tea-200)); clip-path: polygon(0 0, 100% 0, 50% 53%); transform-origin: top; transition: transform .45s ease, opacity .35s; }
-.invitation-seal { position: absolute; z-index: 4; left: 50%; top: 48%; transform: translate(-50%, -50%); width: 76px; height: 76px; border-radius: 48% 52% 46% 54%; border: 1px solid #d8b17e; background: radial-gradient(circle at 30% 25%, #c8a270, #947044); box-shadow: 0 4px 7px #7e604733, inset 0 0 0 5px #ffffff15, inset 0 0 0 7px #6d4d2520; color: #fff5e4; cursor: pointer; transition: transform .3s, opacity .3s; }
-.invitation-seal span { font: 25px 'Cormorant Garamond', Georgia, serif; }
-.invitation-seal i { font-size: 17px; }
-.invitation-seal:hover { transform: translate(-50%, -50%) scale(1.06); }
-.invitation-hint { margin-top: 30px; min-height: 24px; font-size: 13px; letter-spacing: .1em; color: var(--milk-tea-700); }
-.invitation-signature { margin-top: 38px; font-size: 9px; letter-spacing: .24em; color: var(--milk-tea-700); }
-.is-opening .invitation-seal { transform: translate(-50%, -50%) scale(1.22); opacity: 0; pointer-events: none; }
-.is-opening .envelope-flap { transform: scaleY(.02); opacity: 0; }
-.is-opening .envelope-letter { transform: translateY(-65px); }
-.is-opening { animation: invitationLeave .45s .85s ease-in both; }
+/* 先退去封面文字，再移開不透明紙頁，避免兩組文字淡出時相互疊印。 */
+.invitation-intro { position: fixed; z-index: 1000; inset: 0; height: 100%; height: 100dvh; overflow: hidden; isolation: isolate; outline: none; }
+.invitation-paper { position: absolute; inset-block: 0; width: calc(50% + 1px); background: var(--milk-tea-50); }
+.invitation-paper::after { content: ''; position: absolute; top: 20px; bottom: 20px; border: 1px solid var(--milk-tea-200); pointer-events: none; }
+.invitation-paper-left { left: 0; background: linear-gradient(110deg, var(--milk-tea-100), var(--milk-tea-50) 70%); }
+.invitation-paper-left::after { left: 18px; right: 0; border-right: 0; }
+.invitation-paper-right { right: 0; background: linear-gradient(250deg, var(--milk-tea-100), var(--milk-tea-50) 70%); }
+.invitation-paper-right::after { right: 18px; left: 0; border-left: 0; }
+.invitation-skip { position: absolute; z-index: 3; right: max(24px, env(safe-area-inset-right)); top: max(14px, env(safe-area-inset-top)); padding: 6px 12px; font-size: 12px; border-radius: 22px; background: var(--milk-tea-50); }
+.invitation-content { position: relative; z-index: 2; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: clamp(14px, 2.3svh, 22px); height: 100%; width: min(100%, 480px); margin: auto; padding: max(68px, calc(env(safe-area-inset-top) + 44px)) 30px max(36px, calc(env(safe-area-inset-bottom) + 20px)); text-align: center; }
+.invitation-content > * { flex-shrink: 0; }
+.invitation-heading { color: var(--milk-tea-900); }
+.invitation-kicker { font: 9px/1.7 'Plus Jakarta Sans', sans-serif; letter-spacing: .18em; color: var(--milk-tea-700); margin-bottom: 10px; }
+.invitation-heading h2 { font: 500 clamp(40px, 10vw, 54px)/1.15 'Cormorant Garamond', Georgia, serif; white-space: nowrap; }
+.invitation-heading h2 i { font-weight: 400; color: var(--milk-tea-500); }
+.invitation-couple { font: 15px/1.7 'Noto Serif TC', serif; letter-spacing: .24em; margin-top: 9px; }
+.invitation-couple span { font-size: 11px; color: var(--milk-tea-700); margin: 0 10px; }
+.invitation-portrait { position: relative; height: clamp(140px, 28svh, 238px); aspect-ratio: .96; margin: 5px 0 10px; border-radius: 150px 150px 9px 9px; box-shadow: 0 14px 25px #7e604714; }
+.invitation-portrait::before { content: ''; position: absolute; inset: -7px; border: 1px solid var(--milk-tea-300); border-radius: inherit; }
+.invitation-portrait img { display: block; height: 100%; width: 100%; object-fit: cover; object-position: center 40%; border-radius: inherit; }
+.invitation-portrait-note { position: absolute; bottom: -15px; left: 50%; transform: translateX(-50%) rotate(-5deg); white-space: nowrap; font: 28px/1 'Alex Brush', cursive; color: var(--milk-tea-700); background: var(--milk-tea-50); padding: 0 9px; }
+.invitation-promise { font: 20px/1.65 'Noto Serif TC', serif; letter-spacing: .07em; color: var(--milk-tea-900); }
+.invitation-date { font: 24px/1.3 'Cormorant Garamond', Georgia, serif; letter-spacing: .14em; color: var(--milk-tea-700); margin-top: 12px; }
+.invitation-venue { font-size: 11px; color: var(--text-muted); letter-spacing: .03em; margin-top: 6px; }
+.invitation-open { display: inline-flex; align-items: center; justify-content: center; gap: 23px; min-height: 52px; width: min(100%, 262px); border: 1px solid var(--milk-tea-700); border-radius: 28px; padding: 12px 22px; background: var(--milk-tea-700); color: var(--milk-tea-50); box-shadow: 0 7px 18px #7e60471c; font: 14px/1.6 'Plus Jakarta Sans', sans-serif; letter-spacing: .08em; cursor: pointer; touch-action: manipulation; }
+.invitation-open:active { background: var(--milk-tea-900); }
+.invitation-footnote { font-size: 10px; letter-spacing: .12em; color: var(--text-muted); }
+.is-opening .invitation-content { animation: invitationContentLeave 180ms ease-out both; pointer-events: none; }
+.is-opening .invitation-paper-left { animation: invitationPaperLeft 900ms 180ms cubic-bezier(.65,0,.25,1) both; }
+.is-opening .invitation-paper-right { animation: invitationPaperRight 900ms 180ms cubic-bezier(.65,0,.25,1) both; }
+@keyframes invitationContentLeave { to { opacity: 0; transform: translateY(-10px); } }
+@keyframes invitationPaperLeft { to { transform: translateX(-100%); } }
+@keyframes invitationPaperRight { to { transform: translateX(100%); } }
 @keyframes homeArrive { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: none; } }
 @keyframes photoUnveil { from { clip-path: inset(100% 0 0); } to { clip-path: inset(0); } }
 @keyframes clockTick { from { opacity: .4; transform: translateY(12px); } to { opacity: 1; transform: none; } }
-@keyframes invitationLeave { to { opacity: 0; } }
 
 @media (max-width: 760px) {
   .home-edition { max-width: 135px; font-size: 9px; line-height: 1.7; }
@@ -158,15 +164,23 @@
   .home-essentials .nav-cards { grid-template-columns: 1fr; }
   .home-essentials h2 { font-size: 22px; }
   .home-signoff { padding-top: 45px; }
-  .invitation-heading { margin-bottom: 44px; }
-  .invitation-seal { width: 66px; height: 66px; }
-  .envelope-letter > span { font-size: 29px; }
 }
-@media (max-height: 620px) {
-  .invitation-intro { justify-content: flex-start; }
-  .invitation-heading { margin-bottom: 22px; }
-  .invitation-envelope { width: min(300px, 90%); }
-  .invitation-signature { margin-top: 18px; }
+@media (max-height: 680px) {
+  .invitation-content { gap: 13px; padding-top: 60px; padding-bottom: 27px; }
+  .invitation-heading h2 { font-size: 39px; }
+  .invitation-kicker { font-size: 8px; margin-bottom: 5px; }
+  .invitation-couple { font-size: 13px; margin-top: 5px; }
+  .invitation-portrait { height: 25svh; margin-block: 3px 8px; }
+  .invitation-promise { font-size: 18px; }
+  .invitation-date { margin-top: 6px; font-size: 21px; }
+  .invitation-venue { margin-top: 3px; }
+  .invitation-footnote { font-size: 9px; }
+}
+@media (max-height: 480px) {
+  .invitation-content { gap: 10px; padding-block: 55px 24px; }
+  .invitation-portrait, .invitation-kicker, .invitation-footnote { display: none; }
+  .invitation-heading h2 { font-size: 35px; }
+  .invitation-paper::after { inset-block: 12px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .wedding-home *, .invitation-intro * { animation: none !important; transition: none !important; }

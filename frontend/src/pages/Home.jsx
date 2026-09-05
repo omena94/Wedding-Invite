@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { ArrowDown, ArrowRight, Armchair, CalendarCheck, CalendarPlus, Heart, Images, Info, MailOpen, Utensils } from 'lucide-react';
 import { GuestNav, LoadError, useGuestLoad, addCalendar } from '../components/GuestUI.jsx';
-import EventDetails from '../components/EventDetails.jsx';
+import EventDetails, { VENUE } from '../components/EventDetails.jsx';
 import PreviewBanner from '../components/PreviewBanner.jsx';
 import { fetchStage } from '../api.js';
 import { WEDDING_DATE_DISPLAY, fmtDateTime } from '../constants.js';
@@ -28,22 +28,32 @@ export default function Home() {
   const { data: stage, error, retry } = useGuestLoad(fetchStage);
   const [visit] = useState(previousVisit);
   const [intro, setIntro] = useState(!visit);
-  const titleRef = useRef(null), replayRef = useRef(null), replaying = useRef(false), focusFrame = useRef(0);
+  const [revealed, setRevealed] = useState(!!visit);
+  const titleRef = useRef(null), replayRef = useRef(null), replaying = useRef(false), focusPending = useRef(false);
   const clock = useWeddingClock();
   const s = stage || {}, preview = !!s.preview;
   const action = stage ? homeAction(stage, clock.period) : { id: '', href: '/info', action: '查看婚禮當天資訊' };
   const updated = !!(visit?.chapter && action.id && visit.chapter !== action.id);
   useEffect(() => { if (!intro && stage) saveVisit(action.id); }, [intro, stage, action.id]);
-  useEffect(() => () => cancelAnimationFrame(focusFrame.current), []);
+  useEffect(() => {
+    if (intro || !focusPending.current) return undefined;
+    // 等喜帖卸載、解除 inert 後再交還焦點；動畫事件當下直接 focus 仍會被擋。
+    const frame = requestAnimationFrame(() => {
+      (replaying.current ? replayRef.current : titleRef.current)?.focus({ preventScroll: true });
+      focusPending.current = false;
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [intro]);
   const openInvitation = () => {
     saveVisit(action.id);
+    setRevealed(true);
+    focusPending.current = true;
     setIntro(false);
-    focusFrame.current = requestAnimationFrame(() => (replaying.current ? replayRef.current : titleRef.current)?.focus({ preventScroll: true }));
   };
   const countdown = <Reveal className="home-countdown"><Countdown clock={clock}/></Reveal>;
   const nextPanel = stage && <Reveal><section className="home-next" aria-labelledby="home-next-title"><div><p className="home-next-label"><span className="home-status-dot"/>{updated ? '有新消息，這次回來可以…' : action.label}</p><h2 id="home-next-title">{action.title}</h2><p>{action.description}</p></div><a className="btn" href={action.href}>{action.action}<ArrowRight size={18}/></a></section></Reveal>;
 
-  return <div className={`container guest-home wedding-home${intro ? '' : ' invitation-opened'}`}>
+  return <div className={`container guest-home wedding-home${revealed ? ' invitation-opened' : ''}`}>
     <PreviewBanner stage={s} closedLabels={[!s.phase2_open && '第二階段', !s.seat_open && '桌次查詢', !s.photos_open && '婚紗照'].filter(Boolean)}/>
     <div className="home-masthead"><span className="home-monogram">A <i>&</i> O</span><span className="home-edition">THE WEDDING OF ALAN & OMENA</span><button type="button" ref={replayRef} className="invitation-replay" onClick={() => { replaying.current = true; setIntro(true); }}><MailOpen size={16}/>重看喜帖</button></div>
     {error && <LoadError error={error} retry={retry}/>}
@@ -56,7 +66,7 @@ export default function Home() {
         <h1 ref={titleRef} tabIndex={-1}>把最重要的一天<br/><span>留給最珍惜的你</span></h1>
         <p className="home-couple">宣文 <i>&</i> 孟庭</p>
         <p className="home-couple-english">Alan & Omena</p>
-        <p className="home-wedding-date">{WEDDING_DATE_DISPLAY}<span>台北美福大飯店 · 2F 大宴會廳</span></p>
+        <p className="home-wedding-date">{WEDDING_DATE_DISPLAY}<span>{VENUE.name}</span></p>
         <a className="btn-submit home-primary" href={action.href}>{action.action}<ArrowRight size={18}/></a>
         <a className="home-story-link" href="#our-story">往下看我們的故事 <ArrowDown size={16}/></a>
       </div>
@@ -81,6 +91,6 @@ export default function Home() {
     </nav></section>
     <Reveal className="home-signoff"><Heart size={20} aria-hidden="true"/><p>有你在，就是最好的祝福。</p><span>With love, Alan & Omena</span></Reveal>
     <GuestNav/><p className="footnote">有任何問題，歡迎直接聯繫宣文或孟庭</p>
-    {intro && <Invitation onOpen={openInvitation}/>}
+    {intro && <Invitation onOpen={openInvitation} onReveal={() => setRevealed(true)}/>}
   </div>;
 }
