@@ -189,6 +189,7 @@ class Expense(Base):
     payments: Mapped[list["Payment"]] = relationship(
         back_populates="expense", cascade="all, delete-orphan", order_by="Payment.sort_order"
     )
+    gift_order: Mapped["GiftOrder | None"] = relationship(foreign_keys="GiftOrder.expense_id", passive_deletes="all")
 
 
 class Payment(Base):
@@ -318,3 +319,90 @@ class Task(Base):
     )
 
     vendor: Mapped["Vendor | None"] = relationship(back_populates="tasks")
+
+
+# 喜餅需求與出席分開：未填婚宴表單的親友也能送餅，且不影響餐點／座位。
+class GiftProduct(Base):
+    __tablename__ = "gift_products"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(100))
+    vendor_id: Mapped[int | None] = mapped_column(ForeignKey("vendors.id", ondelete="SET NULL"), nullable=True)
+    reference_price: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    reserve_qty: Mapped[int] = mapped_column(Integer, default=0)
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    __mapper_args__ = {"version_id_col": version}
+
+
+class GiftRecipient(Base):
+    __tablename__ = "gift_recipients"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    request_key: Mapped[str] = mapped_column(String(64), unique=True)
+    name: Mapped[str] = mapped_column(String(100))
+    kind: Mapped[str] = mapped_column(String(20), default="household")
+    side: Mapped[str] = mapped_column(String(20), default="other")
+    contact_name: Mapped[str] = mapped_column(String(100), default="")
+    phone: Mapped[str] = mapped_column(String(50), default="")
+    address: Mapped[str] = mapped_column(String(300), default="")
+    owner: Mapped[str] = mapped_column(String(60), default="")
+    method: Mapped[str] = mapped_column(String(20), default="venue")
+    state: Mapped[str] = mapped_column(String(20), default="confirmed")
+    due_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    note: Mapped[str] = mapped_column(String(1000), default="")
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    __mapper_args__ = {"version_id_col": version}
+
+
+class GiftRsvpLink(Base):
+    __tablename__ = "gift_rsvp_links"
+    rsvp_id: Mapped[int] = mapped_column(ForeignKey("rsvps.id", ondelete="CASCADE"), primary_key=True)
+    recipient_id: Mapped[int] = mapped_column(ForeignKey("gift_recipients.id", ondelete="CASCADE"), index=True)
+
+
+class GiftPlan(Base):
+    __tablename__ = "gift_plans"
+    __table_args__ = (UniqueConstraint("recipient_id", "product_id", name="uq_gift_recipient_product"),)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    recipient_id: Mapped[int] = mapped_column(ForeignKey("gift_recipients.id", ondelete="CASCADE"), index=True)
+    product_id: Mapped[int] = mapped_column(ForeignKey("gift_products.id", ondelete="RESTRICT"), index=True)
+    quantity: Mapped[int] = mapped_column(Integer)
+
+
+class GiftDelivery(Base):
+    __tablename__ = "gift_deliveries"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    recipient_id: Mapped[int] = mapped_column(ForeignKey("gift_recipients.id", ondelete="RESTRICT"), index=True)
+    request_key: Mapped[str] = mapped_column(String(64), unique=True)
+    payload_hash: Mapped[str] = mapped_column(String(64))
+    items_json: Mapped[str] = mapped_column(Text)
+    method: Mapped[str] = mapped_column(String(20))
+    receiver: Mapped[str] = mapped_column(String(100))
+    handler: Mapped[str] = mapped_column(String(60), default="")
+    address: Mapped[str] = mapped_column(String(300), default="")
+    tracking: Mapped[str] = mapped_column(String(100), default="")
+    note: Mapped[str] = mapped_column(String(500), default="")
+    delivered_on: Mapped[date] = mapped_column(Date)
+    received_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    void_reason: Mapped[str] = mapped_column(String(300), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    __mapper_args__ = {"version_id_col": version}
+
+
+class GiftOrder(Base):
+    __tablename__ = "gift_orders"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    request_key: Mapped[str] = mapped_column(String(64), unique=True)
+    vendor_id: Mapped[int] = mapped_column(ForeignKey("vendors.id", ondelete="RESTRICT"), index=True)
+    expense_id: Mapped[int] = mapped_column(ForeignKey("expenses.id", ondelete="RESTRICT"), unique=True)
+    title: Mapped[str] = mapped_column(String(150))
+    items_json: Mapped[str] = mapped_column(Text)
+    shipping: Mapped[int] = mapped_column(Integer, default=0)
+    other_cost: Mapped[int] = mapped_column(Integer, default=0)
+    discount: Mapped[int] = mapped_column(Integer, default=0)
+    due_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    received_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    note: Mapped[str] = mapped_column(String(1000), default="")
+    history_json: Mapped[str] = mapped_column(Text, default="[]")
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    __mapper_args__ = {"version_id_col": version}

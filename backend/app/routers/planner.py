@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from ..config import settings
 from ..database import get_db
-from ..models import Expense, FileAsset, Payment, Quote, Rsvp, Task, Vendor, VendorCategory
+from ..models import Expense, FileAsset, GiftOrder, Payment, Quote, Rsvp, Task, Vendor, VendorCategory
 from ..schemas import (
     BanquetPatch,
     CategoryIn,
@@ -71,7 +71,8 @@ def _payment_out(p: Payment, e: Expense | None = None) -> dict:
 def _expense_out(e: Expense) -> dict:
     payments = sorted(e.payments, key=lambda p: (p.sort_order, p.id))
     paid = sum(p.amount for p in payments if p.paid_date)
-    unpaid = sum(p.amount for p in payments if not p.paid_date)
+    scheduled = sum(p.amount for p in payments if not p.paid_date)
+    unpaid = max(0, e.contract_amount - paid)
     return {
         "id": e.id,
         "vendor_id": e.vendor_id,
@@ -84,6 +85,10 @@ def _expense_out(e: Expense) -> dict:
         "note": e.note,
         "paid_total": paid,
         "unpaid_total": unpaid,
+        "scheduled_unpaid": scheduled,
+        "unscheduled_unpaid": max(0, unpaid - scheduled),
+        "overpaid_total": max(0, paid - e.contract_amount),
+        "gift_order_id": e.gift_order.id if e.gift_order else None,
         "payments": [_payment_out(p, e) for p in payments],
         "created_at": e.created_at.isoformat() if e.created_at else None,
     }
@@ -266,9 +271,10 @@ def dashboard(db: Session = Depends(get_db)):
     paid_total = db.scalar(
         select(func.coalesce(func.sum(Payment.amount), 0)).where(Payment.paid_date.is_not(None))
     ) or 0
-    unpaid_total = db.scalar(
-        select(func.coalesce(func.sum(Payment.amount), 0)).where(Payment.paid_date.is_(None))
-    ) or 0
+    # 未建立尾款分期也計入尚欠；某筆溢付不可沖掉另一筆欠款。
+    paid_by_expense = dict(db.execute(select(Payment.expense_id, func.sum(Payment.amount))
+                                     .where(Payment.paid_date.is_not(None)).group_by(Payment.expense_id)).all())
+    unpaid_total = sum(max(0, e.contract_amount - paid_by_expense.get(e.id, 0)) for e in db.scalars(select(Expense)))
 
     upcoming = db.scalars(
         select(Payment)
@@ -498,6 +504,8 @@ def update_vendor(vendor_id: int, payload: VendorPatch, db: Session = Depends(ge
 @router.delete("/vendors/{vendor_id}", status_code=204)
 def delete_vendor(vendor_id: int, db: Session = Depends(get_db)):
     v = _get_or_404(db, Vendor, vendor_id, "廠商")
+    if db.scalar(select(GiftOrder.id).where(GiftOrder.vendor_id == vendor_id).limit(1)):
+        raise HTTPException(400, "此廠商已有喜餅訂購紀錄，請保留以供對帳")
     # 花費、檔案、待辦保留但解除連結（DB 設定 ON DELETE SET NULL；這裡再保險一次）
     for e in v.expenses:
         e.vendor_id = None
@@ -603,8 +611,15 @@ def create_expense(payload: ExpenseIn, db: Session = Depends(get_db)):
 
 @router.patch("/expenses/{expense_id}")
 def update_expense(expense_id: int, payload: ExpensePatch, db: Session = Depends(get_db)):
-    e = _get_or_404(db, Expense, expense_id, "花費項目")
+    e = db.scalar(select(Expense).where(Expense.id == expense_id).with_for_update())
+    if e is None:
+        raise HTTPException(404, "找不到花費項目")
     data = payload.model_dump(exclude_unset=True)
+    if db.scalar(select(GiftOrder.id).where(GiftOrder.expense_id == expense_id)):
+        if (data.get("contract_amount", e.contract_amount) != e.contract_amount
+                or data.get("title", e.title) != e.title
+                or data.get("vendor_id") not in (None, e.vendor_id) or data.get("clear_vendor")):
+            raise HTTPException(400, "此花費連結喜餅訂購，名稱、合約金額與廠商請至「喜餅 → 訂購與費用」編輯")
     if data.pop("clear_vendor", False):
         e.vendor_id = None
         data.pop("vendor_id", None)
@@ -621,7 +636,11 @@ def update_expense(expense_id: int, payload: ExpensePatch, db: Session = Depends
 
 @router.delete("/expenses/{expense_id}", status_code=204)
 def delete_expense(expense_id: int, db: Session = Depends(get_db)):
-    e = _get_or_404(db, Expense, expense_id, "花費項目")
+    e = db.scalar(select(Expense).where(Expense.id == expense_id).with_for_update())
+    if e is None:
+        raise HTTPException(404, "找不到花費項目")
+    if db.scalar(select(GiftOrder.id).where(GiftOrder.expense_id == expense_id)):
+        raise HTTPException(400, "此花費已有喜餅訂購，請保留訂購與付款紀錄供對帳")
     db.delete(e)
     db.commit()
     return None

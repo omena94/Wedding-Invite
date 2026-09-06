@@ -58,9 +58,9 @@ def main():
     changed = []
     run('systemctl', 'stop', 'wedding')
     try:
-        # 不含新驗證碼表；比較既有資料，確認程式更新沒有更改賓客與座位。
-        fingerprint = "from app.database import engine; from sqlalchemy import MetaData,select; import hashlib,json; m=MetaData(); m.reflect(engine); c=engine.connect(); print(hashlib.sha256(json.dumps({t.name:[dict(r) for r in c.execute(select(t).order_by(*t.primary_key.columns)).mappings()] for t in m.sorted_tables if t.name!='guest_verifications'},default=str,sort_keys=True).encode()).hexdigest())"
-        before = run(str(python), '-c', fingerprint, cwd=root/'backend', capture_output=True, text=True).stdout.strip()
+        # 固定部署前的資料表集合，新功能建表不應被誤判為既有資料異動。
+        fingerprint = "from app.database import engine; from sqlalchemy import MetaData,select; import hashlib,json,sys; m=MetaData(); m.reflect(engine); names=json.loads(sys.argv[1]) if len(sys.argv)>1 else sorted(t.name for t in m.sorted_tables if t.name!='guest_verifications'); c=engine.connect(); data={name:[dict(r) for r in c.execute(select(m.tables[name]).order_by(*m.tables[name].primary_key.columns)).mappings()] for name in names}; print(json.dumps({'tables':names,'hash':hashlib.sha256(json.dumps(data,default=str,sort_keys=True).encode()).hexdigest()}))"
+        before = json.loads(run(str(python), '-c', fingerprint, cwd=root/'backend', capture_output=True, text=True).stdout)
         for target in targets:
             previous = release/('previous-'+target.name)
             target.rename(previous)
@@ -69,6 +69,11 @@ def main():
             run('chown', '-R', 'ubuntu:ubuntu', str(target))
         shutil.copyfile(staged/'backend/requirements.txt', requirements)
         run('chown', 'ubuntu:ubuntu', str(requirements))
+        run(str(python), '-c', 'from app.database import init_db; init_db()', cwd=root/'backend', capture_output=True, text=True)
+        # 尚未恢復流量前比較，避免把真正賓客剛送出的回覆誤認為部署改動。
+        after = json.loads(run(str(python), '-c', fingerprint, json.dumps(before['tables']), cwd=root/'backend', capture_output=True, text=True).stdout)
+        if before != after:
+            raise RuntimeError('Existing data changed during deployment; restoring previous code')
         run('systemctl', 'start', 'wedding')
         for attempt in range(30):
             try:
@@ -79,7 +84,6 @@ def main():
                 time.sleep(1)
         else:
             raise RuntimeError('Health check failed')
-        after = run(str(python), '-c', fingerprint, cwd=root/'backend', capture_output=True, text=True).stdout.strip()
         manifest = dict(revision=revision, bundle_sha256=hashlib.sha256(bundle.read_bytes()).hexdigest(), health='ok', existing_data_unchanged=before==after)
         (release/'release.json').write_text(json.dumps(manifest, indent=2)+'\n')
         print(json.dumps({**manifest, 'backup': str(release)}))

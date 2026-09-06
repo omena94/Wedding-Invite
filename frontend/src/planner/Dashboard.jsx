@@ -29,7 +29,7 @@ export default function Dashboard() {
         <Stat icon={<Hourglass size={20} />} value={days > 0 ? days : 0} unit="天" label="距離婚禮" />
         <Stat icon={<Wallet size={20} />} value={money(b.contract_total)} label={`合約總額 · 預算 ${money(b.budget_total)}`} />
         <Stat icon={<Wallet size={20} />} value={money(b.paid_total)} label={`已付 ${paidPct}%`} bar={paidPct} />
-        <Stat icon={<CalendarClock size={20} />} value={money(b.unpaid_total)} label="未付款" />
+        <Stat icon={<CalendarClock size={20} />} value={money(b.unpaid_total)} label="合約尚欠（含未排分期）" />
       </div>
 
       {data.banquet && (() => {

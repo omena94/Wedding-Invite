@@ -169,8 +169,8 @@ export function ExpenseModal({ initial, vendors, onClose, onSaved }) {
     <Modal title={isNew ? "新增花費項目" : `編輯花費 — ${initial.title}`} onClose={onClose} wide
       footer={<Footer onClose={onClose} onSave={save} busy={busy} />}>
       <div className="form-group grid-2">
-        <Field label="項目名稱" required><input type="text" value={f.title} onChange={(e) => set("title", e.target.value)} autoFocus placeholder="例如：婚紗拍攝 9 小時三套方案" /></Field>
-        <Field label="廠商"><Select value={f.vendor_id} onChange={pickVendor} options={vendorOptions(vendors)} /></Field>
+        <Field label="項目名稱" required><input type="text" disabled={!!initial?.gift_order_id} value={f.title} onChange={(e) => set("title", e.target.value)} autoFocus placeholder="例如：婚紗拍攝 9 小時三套方案" /></Field>
+        <Field label="廠商"><Select disabled={!!initial?.gift_order_id} value={f.vendor_id} onChange={pickVendor} options={vendorOptions(vendors)} /></Field>
       </div>
       <div className="form-group grid-2">
         <Field label="類別"><Select value={f.category} onChange={(v) => set("category", v)} options={cats.options} /></Field>
@@ -178,7 +178,7 @@ export function ExpenseModal({ initial, vendors, onClose, onSaved }) {
       </div>
       <div className="form-group grid-2">
         <Field label="預算（元）" hint="一開始想花多少"><NumberInput value={f.budget_amount} onChange={(v) => set("budget_amount", v)} /></Field>
-        <Field label="合約 / 實際金額（元）" hint="簽約後的總價，分期在付款期程裡填"><NumberInput value={f.contract_amount} onChange={(v) => set("contract_amount", v)} /></Field>
+        <Field label="合約 / 實際金額（元）" hint={initial?.gift_order_id ? "名稱、廠商與合約金額請到「喜餅 → 訂購與費用」修改；此處可調整預算及付款方。" : "簽約後的總價，分期在付款期程裡填"}><NumberInput disabled={!!initial?.gift_order_id} value={f.contract_amount} onChange={(v) => set("contract_amount", v)} /></Field>
       </div>
       <Field label="備註"><textarea rows={3} value={f.note} onChange={(e) => set("note", e.target.value)} /></Field>
     </Modal>

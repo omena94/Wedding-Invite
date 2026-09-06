@@ -906,3 +906,65 @@ tbody tr:last-child td { border-bottom: none; }
 .seat-obstacle { fill: #b4a797 !important; stroke: #756659 !important; stroke-dasharray: 5 3; }
 @media (max-width: 420px) { .seatviewer-ctl { gap: 5px; } .seatviewer-ctl button.wide { padding: 0 8px; font-size: 13px; } .guest-home .hero-arch-card { padding-left: 16px; padding-right: 16px; } }
 @media (prefers-reduced-motion: reduce) { *,*::before,*::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; } .hero-swap-back { opacity: 0 !important; } }
+
+/* 喜餅：手機以每戶卡片操作，盒數與交付動作留在同一個畫面。 */
+.gift-tabs, .gift-card-actions, .gift-export { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.gift-tabs { margin: 0 0 24px; }
+.gift-card-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+.gift-recipient { margin: 0; min-width: 0; }
+.gift-recipient .panel-head { align-items: flex-start; }
+.gift-recipient h2, .gift-order h2 { margin: 0; overflow-wrap: anywhere; }
+.gift-attendance { color: var(--text-muted); font-size: 12px; margin: 0 0 12px; }
+.gift-recipient-items { margin: 14px 0; border-top: 1px solid var(--border-soft); }
+.gift-recipient-items > div { padding: 10px 0; display: flex; justify-content: space-between; gap: 14px; border-bottom: 1px solid var(--border-soft); }
+.gift-recipient-items small { color: var(--text-muted); font-size: 12px; }
+.gift-recipient-items > div > span { min-width: 0; overflow-wrap: anywhere; }
+.gift-recipient-items > div > span:last-child { flex-shrink: 0; text-align: right; }
+.gift-card-actions { margin-top: 16px; }
+.gift-note { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; }
+.gift-phone { color: var(--milk-tea-700); }
+.gift-warning { color: #895a20; font-size: 13px; background: #fcf4e7; padding: 8px 10px; border-radius: 8px; }
+.gift-error { color: #9e4840; background: #fbefed; padding: 12px; border-radius: 10px; }
+.gift-cancelled { opacity: .65; }
+.gift-intro { display: flex; align-items: center; gap: 18px; }
+.gift-intro p { font-size: 13px; margin-bottom: 0; }
+.gift-toolbar { margin-bottom: 16px; }
+.gift-toolbar > input { flex: 1 1 180px; min-width: 0; }
+.gift-export { border-top: 1px solid var(--border-soft); padding-top: 14px; }
+.gift-form-fields { border: 0; padding: 0; margin: 0; min-width: 0; }
+.gift-guest-picker { padding: 14px; background: var(--milk-tea-50); border: 1px solid var(--border-soft); border-radius: 12px; margin: 12px 0; }
+.gift-guest-list { display: flex; flex-direction: column; gap: 10px; max-height: 170px; overflow-y: auto; }
+.gift-lines { margin: 12px 0 20px; }
+.gift-line { display: grid; grid-template-columns: minmax(150px, 1fr) minmax(90px, 1fr) auto; align-items: end; gap: 12px; padding: 14px; margin-bottom: 10px; border: 1px solid var(--border-soft); border-radius: 12px; }
+.gift-line > .form-group { margin-bottom: 0; }
+.gift-line-numbers { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.gift-line-numbers .form-group { margin-bottom: 0; }
+.gift-line:has(.gift-line-numbers) { grid-template-columns: minmax(140px, 1fr) minmax(230px, 2fr) auto; }
+.gift-order-total { display: flex; justify-content: space-between; font-size: 18px; margin-top: 20px; color: var(--milk-tea-900); }
+.gift-order-money { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; margin: 20px 0; }
+.gift-order-money span, .gift-order-money strong { display: block; }
+.gift-order-money span { font-size: 12px; color: var(--text-muted); }
+.gift-order-money strong { font-size: clamp(18px, 2vw, 25px); overflow-wrap: anywhere; }
+.gift-product { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 14px; padding: 14px 0; border-top: 1px solid var(--border-soft); }
+.gift-product-counts { display: flex; gap: 16px; flex-wrap: wrap; align-items: center; font-size: 13px; }
+.gift-product-counts span { white-space: nowrap; }
+.gift-product p { margin-bottom: 0; }
+.gift-history-item { padding: 12px 0 18px; border-bottom: 1px solid var(--border-soft); }
+.gift-history-item p { font-size: 13px; margin: 8px 0; }
+.gift-payment-list { margin-top: 18px; }
+.gift-payment-row { width: 100%; display: flex; align-items: center; gap: 15px; padding: 12px 0; text-align: left; border: 0; border-top: 1px solid var(--border-soft); background: none; color: inherit; font: inherit; cursor: pointer; }
+.gift-payment-row > span { flex: 1; }
+.gift-payment-row small { display: block; color: var(--text-muted); font-size: 12px; margin-top: 3px; }
+.gift-history { margin-top: 20px; font-size: 12px; color: var(--text-muted); }
+.gift-history summary { cursor: pointer; }
+@media (max-width: 760px) {
+  .gift-card-grid { grid-template-columns: minmax(0, 1fr); }
+  .gift-intro { flex-wrap: wrap; }
+  .gift-line, .gift-line:has(.gift-line-numbers) { grid-template-columns: minmax(0, 1fr) auto; }
+  .gift-line > .form-group:first-child { grid-column: 1 / -1; }
+  .gift-order-money { gap: 8px; }
+  .gift-page .stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .gift-page .stat-card .value { font-size: 23px; overflow-wrap: anywhere; }
+  .gift-page .pl-head { align-items: stretch; }
+  .gift-toolbar .ui-select { flex: 1 1 130px; }
+}

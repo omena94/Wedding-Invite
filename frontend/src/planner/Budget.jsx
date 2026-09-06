@@ -51,7 +51,7 @@ export default function Budget() {
         <Card label="預算合計" value={money(totals.budget)} />
         <Card label="合約 / 實際合計" value={money(totals.contract)} sub={totals.budget ? `${totals.contract > totals.budget ? "超出" : "低於"}預算 ${money(Math.abs(totals.contract - totals.budget))}` : ""} />
         <Card label="已付" value={money(totals.paid)} bar={totals.contract ? Math.round((totals.paid / totals.contract) * 100) : 0} />
-        <Card label="未付" value={money(totals.unpaid)} />
+        <Card label="合約尚欠" value={money(totals.unpaid)} sub="包含尚未安排分期的尾款" />
       </div>
 
       {(!data || data.length === 0) ? (
@@ -79,18 +79,19 @@ export default function Budget() {
                           <span className="muted-cell" style={{ marginLeft: 6, fontSize: 12 }}>{e.payments.length} 期</span>
                         </button>
                         {e.note && <div className="muted-cell" style={{ fontSize: 11.5, marginTop: 2, whiteSpace: "pre-wrap" }}>{e.note}</div>}
+                        {e.gift_order_id && <Link className="top-link" to="/gifts?tab=orders">查看喜餅訂購</Link>}
                       </td>
                       <td>{e.vendor_id ? <Link to={`/vendors/${e.vendor_id}`}>{e.vendor_name}</Link> : <span className="muted-cell">—</span>}</td>
                       <td><span className="pill pill-groom">{PAID_BY[e.paid_by]}</span></td>
                       <td className="amount">{money(e.budget_amount)}</td>
                       <td className="amount">{money(e.contract_amount)}</td>
                       <td className="amount">{money(e.paid_total)}</td>
-                      <td className="amount">{e.unpaid_total ? money(e.unpaid_total) : "—"}</td>
+                      <td className="amount">{e.unpaid_total ? money(e.unpaid_total) : "—"}{e.unscheduled_unpaid > 0 && <div className="muted-cell" style={{ fontSize: 11 }}>未排分期 {money(e.unscheduled_unpaid)}</div>}{e.overpaid_total > 0 && <div className="pill pill-warn">溢付 {money(e.overpaid_total)}</div>}</td>
                       <td><div className="bar-track" style={{ marginTop: 0 }}><div className="bar-fill" style={{ width: `${pct}%` }} /></div><div className="muted-cell" style={{ fontSize: 11 }}>{pct}%</div></td>
                       <td className="row-actions">
                         <button className="btn btn-ghost btn-sm" title="新增付款" onClick={() => setModal({ type: "payment", expense: e })}><Plus size={13} /></button>{" "}
                         <button className="btn btn-ghost btn-sm" title="編輯" onClick={() => setModal({ type: "expense", expense: e })}><Pencil size={13} /></button>{" "}
-                        <button className="btn btn-ghost btn-sm" title="刪除" onClick={() => act(() => deleteExpense(e.id), e.title)}><Trash2 size={13} /></button>
+                        {!e.gift_order_id && <button className="btn btn-ghost btn-sm" title="刪除" onClick={() => act(() => deleteExpense(e.id), e.title)}><Trash2 size={13} /></button>}
                       </td>
                     </tr>,
                     isOpen && (

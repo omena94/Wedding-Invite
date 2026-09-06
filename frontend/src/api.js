@@ -131,6 +131,20 @@ async function multipart(path, fd, method = "POST") {
 
 // ===== 籌備後台（僅新人）=====
 const P = "/api/planner";
+const GIFTS = `${P}/gifts`;
+export const fetchGifts = () => request(GIFTS, { auth: true });
+export const saveGiftProduct = (id, data) => request(`${GIFTS}/products${id ? `/${id}` : ""}`, { method: id ? "PUT" : "POST", body: data, auth: true });
+export const saveGiftRecipient = (id, data) => request(`${GIFTS}/recipients${id ? `/${id}` : ""}`, { method: id ? "PUT" : "POST", body: data, auth: true });
+export const saveGiftOrder = (id, data) => request(`${GIFTS}/orders${id ? `/${id}` : ""}`, { method: id ? "PUT" : "POST", body: data, auth: true });
+export const createGiftDelivery = (id, data) => request(`${GIFTS}/recipients/${id}/deliveries`, { method: "POST", body: data, auth: true });
+export const updateGiftDelivery = (id, data) => request(`${GIFTS}/deliveries/${id}`, { method: "PATCH", body: data, auth: true });
+export async function downloadGiftCsv(method = "all") {
+  const response = await fetch(`${GIFTS}/export.csv?method=${encodeURIComponent(method)}`, { headers: { Authorization: `Bearer ${getToken()}` } });
+  if (!response.ok) throw new Error("喜餅清單匯出失敗，請確認登入後重試");
+  const url = URL.createObjectURL(await response.blob());
+  const a = document.createElement("a"); a.href = url; a.download = `喜餅清單-${method}.csv`; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+}
 export const fetchPlannerSettings = () => request(`${P}/settings`, { auth: true });
 export const savePlannerSettings = (values) =>
   request(`${P}/settings`, { method: "PATCH", body: values, auth: true });
