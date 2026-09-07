@@ -1,7 +1,7 @@
 // 婚宴費用預估：大人每位 × 人數（選素食主餐的大人可另設價位）；小孩每一個依身高分級（免費／半價／全價），沒填身高的用預設；加服務費。
 // 人數直接用賓客回覆「出席」的大人與小孩數（測試資料不算）。
 import { useEffect, useState } from "react";
-import { Calculator, Save } from "lucide-react";
+import { Calculator, ChevronDown, Save } from "lucide-react";
 import Select from "../components/Select.jsx";
 import Toggle from "../components/Toggle.jsx";
 import { fetchBanquet, saveBanquet } from "../api.js";
@@ -16,10 +16,21 @@ const CHILD_MODES = [
 ];
 const MODE_LABEL = Object.fromEntries(CHILD_MODES.map((m) => [m.value, m.label]));
 
+const OPEN_KEY = "planner.banquet.open";
+const readOpen = () => {
+  try { return localStorage.getItem(OPEN_KEY) !== "0"; } catch { return true; }
+};
+
 export default function BanquetPanel({ compact = false }) {
   const { data, setData, loading, error } = useLoader(fetchBanquet, []);
   const [f, setF] = useState(null);
   const [busy, setBusy] = useState(false);
+  // 面板可收折（跟花費項目展開分期一樣）；記住上次開合，預算頁才不會每次都被它佔一大塊
+  const [open, setOpen] = useState(readOpen);
+  const toggleOpen = () => setOpen((o) => {
+    try { localStorage.setItem(OPEN_KEY, o ? "0" : "1"); } catch { /* 封鎖儲存時就只記在這次 */ }
+    return !o;
+  });
 
   useEffect(() => {
     // veg_diff 只是畫面上的開關：素食價位 0 代表跟大人一樣
@@ -58,14 +69,28 @@ export default function BanquetPanel({ compact = false }) {
 
   return (
     <div className="panel">
-      <div className="panel-head">
-        <div className="panel-title"><Calculator size={18} /> 婚宴費用預估</div>
-        <div className="muted-cell" style={{ fontSize: 12.5 }}>
-          依目前回覆出席的 {counts.groups} 組：大人 {counts.adults} 位{counts.veg_adults ? `（素食 ${counts.veg_adults} 位）` : ""}、小孩 {counts.children} 位（已填身高 {counts.children_with_height} 位{counts.kids_meals ? `，兒童餐 ${counts.kids_meals} 份` : ""}）
+      <div
+        className="panel-head"
+        style={{ cursor: "pointer", marginBottom: open ? undefined : 0, paddingBottom: open ? undefined : 0, borderBottom: open ? undefined : "none" }}
+        onClick={toggleOpen}
+        role="button" tabIndex={0} aria-expanded={open}
+        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleOpen(); } }}
+      >
+        <div className="panel-title">
+          <Calculator size={18} /> 婚宴費用預估
+          {!open && <span className="banquet-head-total">{money(estimate.total)}</span>}
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div className="muted-cell" style={{ fontSize: 12.5 }}>
+            {open
+              ? <>依目前回覆出席的 {counts.groups} 組：大人 {counts.adults} 位{counts.veg_adults ? `（素食 ${counts.veg_adults} 位）` : ""}、小孩 {counts.children} 位（已填身高 {counts.children_with_height} 位{counts.kids_meals ? `，兒童餐 ${counts.kids_meals} 份` : ""}）</>
+              : <>大人 {counts.adults} 位、小孩 {counts.children} 位 · 點擊展開</>}
+          </div>
+          <ChevronDown size={17} style={{ color: "var(--milk-tea-700)", transition: "transform 0.2s", transform: open ? "rotate(180deg)" : "none" }} />
         </div>
       </div>
 
-      <div className="banquet-grid">
+      {open && <div className="banquet-grid">
         <div className="banquet-params">
           <div className="form-group grid-2">
             <Field label="大人每位（未含服務費）"><NumberInput value={f.adult_price} onChange={(v) => set("adult_price", v)} /></Field>
@@ -132,7 +157,7 @@ export default function BanquetPanel({ compact = false }) {
           )}
           <div className="footnote" style={{ textAlign: "left", marginTop: 8 }}>只算已回覆「出席」的人數；素食人數來自第二階段主餐選「素食」的份數；有填身高的小孩照身高算，人數、主餐或身高變動時自動重算。</div>
         </div>
-      </div>
+      </div>}
     </div>
   );
 }

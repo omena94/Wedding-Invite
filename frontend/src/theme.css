@@ -605,6 +605,8 @@ tbody tr:last-child td { border-bottom: none; }
 .pay-row-paid td { color: var(--text-muted); }
 
 /* 婚宴費用預估 */
+/* 收起時標題旁的預估合計 */
+.banquet-head-total { margin-left: 10px; font-family: "Noto Serif TC", serif; font-size: 15px; font-weight: 700; color: var(--milk-tea-900); }
 .banquet-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; align-items: start; }
 .banquet-total { background: linear-gradient(135deg, var(--milk-tea-50), var(--milk-tea-100)); border: 1px solid var(--border-soft); border-radius: 16px; padding: 14px 18px; margin-bottom: 12px; }
 .banquet-total-value { font-family: "Noto Serif TC", serif; font-size: 30px; font-weight: 700; color: var(--milk-tea-900); line-height: 1.2; margin-top: 4px; }
