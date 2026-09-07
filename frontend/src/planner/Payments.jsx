@@ -1,4 +1,5 @@
-// 付款期程：所有廠商的分期合併成一張表，依應付日排序
+// 付款期程：所有廠商的分期合併成一張表，依應付日排序。
+// 預設顯示全部：已付的留在清單裡當紀錄（排在未付後面、顏色淡一點），不會一標記就不見。
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { Check, Pencil, Plus, Trash2, Undo2 } from "lucide-react";
@@ -9,7 +10,7 @@ import { PaymentModal } from "./modals.jsx";
 import { Empty, ErrorBox, Loading, PageHead, confirmDelete, toastErr, useLoader } from "./ui.jsx";
 
 export default function Payments() {
-  const [status, setStatus] = useState("unpaid");
+  const [status, setStatus] = useState("all");
   const { data, loading, error, reload } = useLoader(() => fetchPayments(status), [status]);
   const [modal, setModal] = useState(null);
 
@@ -25,6 +26,13 @@ export default function Payments() {
     return s;
   }, [data]);
 
+  // 「全部」時未付在前、已付在後，各自照應付日；後端已照應付日排好，這裡只做穩定分組
+  const rows = useMemo(() => {
+    const list = data || [];
+    if (status !== "all") return list;
+    return [...list.filter((p) => !p.paid_date), ...list.filter((p) => p.paid_date)];
+  }, [data, status]);
+
   const close = () => setModal(null);
   const saved = () => { close(); reload(); };
   const remove = async (p) => {
@@ -38,30 +46,30 @@ export default function Payments() {
         actions={<button className="btn btn-primary" onClick={() => setModal({ create: true })}><Plus size={15} /> 新增付款</button>} />
 
       <div className="stats-grid">
-        <div className="stat-card"><div className="value" style={{ fontSize: 22 }}>{money(summary.unpaid)}</div><div className="label">未付合計（目前篩選）</div></div>
+        <div className="stat-card"><div className="value" style={{ fontSize: 22 }}>{money(summary.unpaid)}</div><div className="label">未付合計</div></div>
         <div className="stat-card"><div className="value">{summary.overdue}<small> 筆</small></div><div className="label">已逾期</div></div>
         <div className="stat-card"><div className="value">{summary.soon}<small> 筆</small></div><div className="label">兩週內到期</div></div>
-        <div className="stat-card"><div className="value" style={{ fontSize: 22 }}>{money(summary.paid)}</div><div className="label">已付合計（目前篩選）</div></div>
+        <div className="stat-card"><div className="value" style={{ fontSize: 22 }}>{money(summary.paid)}</div><div className="label">已付合計</div></div>
       </div>
 
       <div className="panel">
         <div className="panel-head">
           <div className="panel-title">付款清單</div>
-          <Select compact value={status} onChange={setStatus} options={[{ value: "unpaid", label: "未付" }, { value: "paid", label: "已付" }, { value: "all", label: "全部" }]} />
+          <Select compact value={status} onChange={setStatus} options={[{ value: "all", label: "全部（已付留作紀錄）" }, { value: "unpaid", label: "只看未付" }, { value: "paid", label: "只看已付" }]} />
         </div>
         {loading ? <Loading /> : error ? <ErrorBox error={error} /> : data.length === 0 ? (
-          <Empty>{status === "unpaid" ? "沒有未付款項" : "沒有資料"}。分期要在「預算花費」或廠商頁面的花費項目底下新增。</Empty>
+          <Empty>{status === "unpaid" ? "沒有未付款項" : status === "paid" ? "還沒有已付的款項" : "還沒有付款紀錄"}。分期要在「預算花費」或廠商頁面的花費項目底下新增。</Empty>
         ) : (
           <div className="table-wrap">
             <table>
               <thead><tr><th>應付日</th><th>付款</th><th>花費項目</th><th>廠商</th><th style={{ textAlign: "right" }}>金額</th><th>狀態</th><th></th></tr></thead>
               <tbody>
-                {data.map((p) => {
+                {rows.map((p) => {
                   const d = daysUntil(p.due_date);
                   const overdue = !p.paid_date && d !== null && d < 0;
                   const soon = !p.paid_date && d !== null && d >= 0 && d <= 14;
                   return (
-                    <tr key={p.id} style={overdue ? { background: "#fbf3f1" } : undefined}>
+                    <tr key={p.id} className={p.paid_date ? "pay-row-paid" : undefined} style={overdue ? { background: "#fbf3f1" } : undefined}>
                       <td style={{ whiteSpace: "nowrap" }}>
                         {p.due_date ? fmtDate(p.due_date) : <span className="muted-cell">未定</span>}
                         {overdue && <div className="pill pill-no" style={{ marginTop: 3 }}>逾期 {-d} 天</div>}
