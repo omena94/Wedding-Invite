@@ -1,4 +1,5 @@
-// 預算與花費：依類別看預算、合約金額、已付、未付；展開看分期
+// 預算與花費：依類別看預算、合約金額、已付、未付；展開看分期。
+// 婚宴費用預估也放這裡（原本在賓客名單），跟錢有關的都集中在同一頁比較好找。
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { Check, ChevronDown, Pencil, Plus, Trash2, Undo2 } from "lucide-react";
@@ -7,6 +8,7 @@ import { PAID_BY, fmtDate, money } from "../constants.js";
 import { ExpenseModal, PaymentModal } from "./modals.jsx";
 import { Empty, ErrorBox, Loading, PageHead, confirmDelete, toastErr, useLoader } from "./ui.jsx";
 import { dueTag } from "./Dashboard.jsx";
+import BanquetPanel from "./BanquetPanel.jsx";
 
 export default function Budget() {
   const { data, loading, error, reload } = useLoader(fetchExpenses, []);
@@ -44,7 +46,7 @@ export default function Budget() {
 
   return (
     <div>
-      <PageHead title="預算與花費" sub="每個項目的預算、簽約金額與付款進度；分期在「付款期程」頁也看得到"
+      <PageHead title="預算與花費" sub="婚宴費用預估、每個項目的預算、簽約金額與付款進度；分期在「付款期程」頁也看得到"
         actions={<button className="btn btn-primary" onClick={() => setModal({ type: "expense" })}><Plus size={15} /> 新增花費</button>} />
 
       <div className="stats-grid">
@@ -53,6 +55,9 @@ export default function Budget() {
         <Card label="已付" value={money(totals.paid)} bar={totals.contract ? Math.round((totals.paid / totals.contract) * 100) : 0} />
         <Card label="合約尚欠" value={money(totals.unpaid)} sub="包含尚未安排分期的尾款" />
       </div>
+
+      {/* 桌菜依出席人數估算，不會自動記進下面的花費項目；簽約後請自行新增一筆「婚宴」花費 */}
+      <BanquetPanel />
 
       {(!data || data.length === 0) ? (
         <div className="panel"><Empty>還沒有花費項目。從「新增花費」開始，或到廠商頁面新增，會自動掛在該廠商底下。</Empty></div>
