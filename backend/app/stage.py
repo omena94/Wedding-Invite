@@ -32,6 +32,7 @@ BANQUET_KEYS = (
     "banquet_child_price",       # child_mode=custom 時每位小孩的價格（未含服務費）
     "banquet_child_free_below",  # 身高低於此（公分）免費
     "banquet_child_half_below",  # 身高低於此半價，以上全價
+    "banquet_veg_price",         # 素食每位（未含服務費）；0 = 跟大人一樣
 )
 BANQUET_DEFAULTS = {
     "banquet_adult_price": "3980",
@@ -40,6 +41,7 @@ BANQUET_DEFAULTS = {
     "banquet_child_price": "0",
     "banquet_child_free_below": "90",
     "banquet_child_half_below": "120",
+    "banquet_veg_price": "0",
 }
 SEATING_KEYS = ("seating_canvas_w", "seating_canvas_h", "seating_clearance")
 ALL_KEYS = (PHASE2_KEY, SEAT_KEY, PHOTOS_KEY, *INFO_KEYS, *BANQUET_KEYS, *SEATING_KEYS)
@@ -88,6 +90,8 @@ def banquet_params(db: Session) -> dict:
         "child_price": _to_int(raw.get("banquet_child_price"), 0),
         "child_free_below": free_below,
         "child_half_below": half_below,
+        # 素食主餐通常另有價位；0 表示跟大人一樣（不另計）
+        "veg_price": _to_int(raw.get("banquet_veg_price"), 0),
     }
 
 
@@ -118,9 +122,18 @@ def child_bracket(params: dict, child: dict) -> str | None:
     return "full"
 
 
-def banquet_estimate(params: dict, adults: int, children: list[dict], unknown_mode: str | None = None) -> dict:
-    """大人 × 單價 + 每個小孩依身高分級 + 服務費。沒填身高的小孩用 unknown_mode（預設是設定裡的 child_mode）。"""
+def veg_unit_price(params: dict) -> int:
+    """素食每位多少錢（未含服務費）：沒設定就跟大人一樣。"""
+    return params.get("veg_price") or params["adult_price"]
+
+
+def banquet_estimate(params: dict, adults: int, children: list[dict], unknown_mode: str | None = None, veg_adults: int = 0) -> dict:
+    """大人 × 單價 + 素食大人 × 素食單價 + 每個小孩依身高分級 + 服務費。
+    沒填身高的小孩用 unknown_mode（預設是設定裡的 child_mode）。
+    veg_adults 是大人裡選素食主餐的人數（小孩吃兒童餐，不算素食價）。"""
     unknown_mode = unknown_mode or params["child_mode"]
+    veg_adults = max(0, min(int(veg_adults or 0), adults))
+    regular_adults = adults - veg_adults
     counts = {"free": 0, "half": 0, "full": 0, "unknown": 0}
     child_subtotal = 0
     for c in children:
@@ -131,11 +144,19 @@ def banquet_estimate(params: dict, adults: int, children: list[dict], unknown_mo
         else:
             counts[b] += 1
             child_subtotal += child_unit_price(params, b)
-    adult_subtotal = adults * params["adult_price"]
+    veg_unit = veg_unit_price(params)
+    regular_subtotal = regular_adults * params["adult_price"]
+    veg_subtotal = veg_adults * veg_unit
+    adult_subtotal = regular_subtotal + veg_subtotal
     food = adult_subtotal + child_subtotal
     service = round(food * params["service_pct"] / 100)
     return {
         "adult_subtotal": adult_subtotal,
+        "regular_adults": regular_adults,
+        "regular_subtotal": regular_subtotal,
+        "veg_adults": veg_adults,
+        "veg_unit_price": veg_unit,
+        "veg_subtotal": veg_subtotal,
         "child_subtotal": child_subtotal,
         "child_counts": counts,
         "child_prices": {m: child_unit_price(params, m) for m in ("free", "half", "full")},

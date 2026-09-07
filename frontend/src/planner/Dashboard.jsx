@@ -38,7 +38,7 @@ export default function Dashboard() {
         return (
           <div className="stats-grid" style={{ gridTemplateColumns: "repeat(3, 1fr)" }}>
             <Stat icon={<Utensils size={20} />} value={money(b.estimate.total)}
-              label={`婚宴預估 · 大人 ${b.counts.adults} 位、小孩 ${b.counts.children} 位`} />
+              label={`婚宴預估 · 大人 ${b.counts.adults} 位${b.counts.veg_adults ? `（素食 ${b.counts.veg_adults}）` : ""}、小孩 ${b.counts.children} 位`} />
             <Stat icon={<Utensils size={20} />} value={`${cc.free} / ${cc.half} / ${cc.full}`}
               label={`小孩 免費 / 半價 / 全價（依身高 ${b.params.child_free_below}、${b.params.child_half_below} cm）`} />
             <Stat icon={<Utensils size={20} />} value={cc.unknown ? money(b.scenarios.full) : money(b.estimate.total)}

@@ -211,10 +211,13 @@ def _banquet_counts(db: Session) -> tuple[dict, list[dict]]:
     """回傳（摘要, 每個小孩的清單）。小孩清單來自每組賓客的身高資料，沒填的補空白。"""
     rows = db.scalars(select(Rsvp).where(Rsvp.attending.is_(True), Rsvp.is_test.is_(False))).all()
     children: list[dict] = []
-    adults = kids_meals = 0
+    adults = kids_meals = veg_adults = 0
     for r in rows:
-        adults += int(r.adult_count or 0)
+        a = int(r.adult_count or 0)
+        adults += a
         kids_meals += int(r.kids_meal_count or 0)
+        # 素食份數來自主餐選「素食」，每組不會超過大人數（第二階段沒填就是 0）
+        veg_adults += max(0, min(int(r.veg_count or 0), a))
         children.extend(r.children)
     heights_filled = sum(1 for c in children if c.get("height") is not None or c.get("pricing") != "auto")
     return (
@@ -223,6 +226,7 @@ def _banquet_counts(db: Session) -> tuple[dict, list[dict]]:
             "children": len(children),
             "children_with_height": heights_filled,
             "kids_meals": kids_meals,
+            "veg_adults": veg_adults,
             "groups": len(rows),
         },
         children,
@@ -233,12 +237,13 @@ def _banquet_out(db: Session) -> dict:
     params = banquet_params(db)
     counts, children = _banquet_counts(db)
     a = counts["adults"]
+    v = counts["veg_adults"]
     return {
         "params": params,
         "counts": counts,
-        "estimate": banquet_estimate(params, a, children),
+        "estimate": banquet_estimate(params, a, children, veg_adults=v),
         # 沒填身高的小孩改用不同計價時的合計（有填的照身高算，不受影響）
-        "scenarios": {m: banquet_estimate(params, a, children, m)["total"] for m in ("free", "half", "full")},
+        "scenarios": {m: banquet_estimate(params, a, children, m, veg_adults=v)["total"] for m in ("free", "half", "full")},
     }
 
 

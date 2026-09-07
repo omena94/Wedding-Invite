@@ -1,8 +1,9 @@
-// 婚宴費用預估：大人每位 × 人數；小孩每一個依身高分級（免費／半價／全價），沒填身高的用預設；加服務費。
+// 婚宴費用預估：大人每位 × 人數（選素食主餐的大人可另設價位）；小孩每一個依身高分級（免費／半價／全價），沒填身高的用預設；加服務費。
 // 人數直接用賓客回覆「出席」的大人與小孩數（測試資料不算）。
 import { useEffect, useState } from "react";
 import { Calculator, Save } from "lucide-react";
 import Select from "../components/Select.jsx";
+import Toggle from "../components/Toggle.jsx";
 import { fetchBanquet, saveBanquet } from "../api.js";
 import { money } from "../constants.js";
 import { ErrorBox, Field, Loading, NumberInput, toInt, toastErr, toastOk, useLoader } from "./ui.jsx";
@@ -21,7 +22,8 @@ export default function BanquetPanel({ compact = false }) {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    if (data) setF(data.params);
+    // veg_diff 只是畫面上的開關：素食價位 0 代表跟大人一樣
+    if (data) setF({ ...data.params, veg_diff: data.params.veg_price > 0 });
   }, [data]);
 
   if (error) return <ErrorBox error={error} />;
@@ -31,7 +33,7 @@ export default function BanquetPanel({ compact = false }) {
   const cc = estimate.child_counts;
   const cp = estimate.child_prices;
   const set = (k, v) => setF((x) => ({ ...x, [k]: v }));
-  const dirty = JSON.stringify(f) !== JSON.stringify(params);
+  const dirty = JSON.stringify(f) !== JSON.stringify({ ...params, veg_diff: params.veg_price > 0 });
 
   const save = async () => {
     setBusy(true);
@@ -43,6 +45,7 @@ export default function BanquetPanel({ compact = false }) {
         child_price: toInt(f.child_price),
         child_free_below: toInt(f.child_free_below),
         child_half_below: toInt(f.child_half_below),
+        veg_price: f.veg_diff ? toInt(f.veg_price) : 0, // 關掉開關就回到「同大人」
       });
       setData(r);
       toastOk("已更新預估");
@@ -58,7 +61,7 @@ export default function BanquetPanel({ compact = false }) {
       <div className="panel-head">
         <div className="panel-title"><Calculator size={18} /> 婚宴費用預估</div>
         <div className="muted-cell" style={{ fontSize: 12.5 }}>
-          依目前回覆出席的 {counts.groups} 組：大人 {counts.adults} 位、小孩 {counts.children} 位（已填身高 {counts.children_with_height} 位{counts.kids_meals ? `，兒童餐 ${counts.kids_meals} 份` : ""}）
+          依目前回覆出席的 {counts.groups} 組：大人 {counts.adults} 位{counts.veg_adults ? `（素食 ${counts.veg_adults} 位）` : ""}、小孩 {counts.children} 位（已填身高 {counts.children_with_height} 位{counts.kids_meals ? `，兒童餐 ${counts.kids_meals} 份` : ""}）
         </div>
       </div>
 
@@ -67,6 +70,17 @@ export default function BanquetPanel({ compact = false }) {
           <div className="form-group grid-2">
             <Field label="大人每位（未含服務費）"><NumberInput value={f.adult_price} onChange={(v) => set("adult_price", v)} /></Field>
             <Field label="服務費 %"><NumberInput value={f.service_pct} onChange={(v) => set("service_pct", v)} placeholder="10" /></Field>
+          </div>
+          <div className="form-group grid-2">
+            <Field label="素食價位不同" hint="選素食主餐的大人另外算；關掉就跟大人一樣">
+              <div style={{ display: "flex", alignItems: "center", gap: 10, minHeight: 46 }}>
+                <Toggle checked={!!f.veg_diff} onChange={(v) => set("veg_diff", v)} label="素食價位不同" />
+                <span className="muted-cell" style={{ fontSize: 12.5 }}>{f.veg_diff ? "素食另計" : "同大人價"}</span>
+              </div>
+            </Field>
+            {f.veg_diff && (
+              <Field label="素食每位（未含服務費）"><NumberInput value={f.veg_price} onChange={(v) => set("veg_price", v)} /></Field>
+            )}
           </div>
           <div className="form-group grid-2">
             <Field label="小孩免費：身高未滿（公分）"><NumberInput value={f.child_free_below} onChange={(v) => set("child_free_below", v)} placeholder="90" /></Field>
@@ -91,7 +105,14 @@ export default function BanquetPanel({ compact = false }) {
           </div>
           <table className="banquet-table">
             <tbody>
-              <tr><td>大人 {counts.adults} 位 × {money(params.adult_price)}</td><td className="amount">{money(estimate.adult_subtotal)}</td></tr>
+              {estimate.veg_adults > 0 && params.veg_price > 0 ? (
+                <>
+                  <tr><td>大人 {estimate.regular_adults} 位 × {money(params.adult_price)}</td><td className="amount">{money(estimate.regular_subtotal)}</td></tr>
+                  <tr><td>素食 {estimate.veg_adults} 位 × {money(estimate.veg_unit_price)}</td><td className="amount">{money(estimate.veg_subtotal)}</td></tr>
+                </>
+              ) : (
+                <tr><td>大人 {counts.adults} 位 × {money(params.adult_price)}{estimate.veg_adults > 0 ? `（含素食 ${estimate.veg_adults} 位，同價）` : ""}</td><td className="amount">{money(estimate.adult_subtotal)}</td></tr>
+              )}
               {cc.free > 0 && <tr><td>小孩免費（未滿 {params.child_free_below} cm）{cc.free} 位</td><td className="amount">{money(0)}</td></tr>}
               {cc.half > 0 && <tr><td>小孩半價（{params.child_free_below}～{params.child_half_below} cm）{cc.half} 位 × {money(cp.half)}</td><td className="amount">{money(cc.half * cp.half)}</td></tr>}
               {cc.full > 0 && <tr><td>小孩全價（{params.child_half_below} cm 以上）{cc.full} 位 × {money(cp.full)}</td><td className="amount">{money(cc.full * cp.full)}</td></tr>}
@@ -109,7 +130,7 @@ export default function BanquetPanel({ compact = false }) {
               ))}
             </div>
           )}
-          <div className="footnote" style={{ textAlign: "left", marginTop: 8 }}>只算已回覆「出席」的人數；有填身高的小孩照身高算，人數或身高變動時自動重算。</div>
+          <div className="footnote" style={{ textAlign: "left", marginTop: 8 }}>只算已回覆「出席」的人數；素食人數來自第二階段主餐選「素食」的份數；有填身高的小孩照身高算，人數、主餐或身高變動時自動重算。</div>
         </div>
       </div>
     </div>
