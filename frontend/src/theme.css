@@ -178,9 +178,9 @@ input.input-error, textarea.input-error {
 
 /* ============ 自訂日期選擇器 ============ */
 .ui-datepicker { position: relative; width: 100%; }
+/* 日曆用 portal 浮在整個畫面上（座標由 DatePicker.jsx 算），z-index 要壓過後台彈窗（100）與相簿燈箱（1100） */
 .ui-datepicker-pop {
-  position: absolute; z-index: 60; top: calc(100% + 6px); left: 0;
-  min-width: 258px; max-width: calc(100vw - 32px);
+  position: fixed; z-index: 1200; box-sizing: border-box;
   background: #fff; border: 1px solid var(--border-soft); border-radius: 14px;
   box-shadow: 0 14px 34px rgba(126, 96, 71, 0.16); padding: 12px;
   animation: selectPop 0.16s cubic-bezier(0.4, 0, 0.2, 1);

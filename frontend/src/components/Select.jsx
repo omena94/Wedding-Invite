@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { ChevronDown, Check } from "lucide-react";
+import { isScrollbarPress } from "./DatePicker.jsx";
 
 /**
  * 自訂下拉選單（取代原生 <select>，樣式與主題一致）
@@ -19,6 +20,7 @@ export default function Select({ value, onChange, options, placeholder = "請選
   // 點擊選單外側 → 收合
   useEffect(() => {
     const onOutside = (e) => {
+      if (isScrollbarPress(e)) return; // 拉可捲動彈窗的捲軸不算點到外面
       if (ref.current && !ref.current.contains(e.target)) setOpen(false);
     };
     document.addEventListener("mousedown", onOutside);
