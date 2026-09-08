@@ -1,22 +1,22 @@
 import { useState } from "react";
 import Swal from "sweetalert2";
 import { Link, useSearchParams } from "react-router-dom";
-import { Check, Gift, History, Package, Pencil, Plus, Truck, Users } from "lucide-react";
+import { Check, Gift, History, Package, Pencil, Plus, Trash2, Truck, Users } from "lucide-react";
 import Select from "../components/Select.jsx";
 import Toggle from "../components/Toggle.jsx";
 import { usePlanner } from "./context.js";
-import { createGiftDelivery, fetchExpenses, fetchGifts, fetchRsvps, fetchVendors, importGiftGuests, saveGiftRecipient, updateGiftDelivery } from "../api.js";
+import { createGiftDelivery, deleteGiftRecipient, fetchExpenses, fetchGifts, fetchRsvps, fetchVendors, importGiftGuests, saveGiftRecipient, updateGiftDelivery } from "../api.js";
 import { fmtDate, money } from "../constants.js";
 import { DeliveryForm, GiftDialog, METHODS, OrderForm, ProductForm, RecipientForm, SIDES, STATES, options, today } from "./giftForms.jsx";
 import { PaymentModal, UploadModal } from "./modals.jsx";
-import { Empty, ErrorBox, Field, Loading, Modal, PageHead, toInt, toastErr, toastOk, useLoader } from "./ui.jsx";
+import { Empty, ErrorBox, Field, Loading, Modal, PageHead, confirmDelete, toInt, toastErr, toastOk, useLoader } from "./ui.jsx";
 
 function Stat({ label, value, sub }) {
   return <div className="stat-card"><div className="value">{value}</div><div className="label">{label}</div>{sub && <div className="helper-text">{sub}</div>}</div>;
 }
 
 // 送餅名單改為清單條列（2026-09-08 依新人要求），一列一位對象；細節仍在「編輯安排」與「交付紀錄」
-function RecipientRow({ r, edit, deliver, history, onMethod, onPickup, canManage }) {
+function RecipientRow({ r, edit, deliver, history, onMethod, onPickup, onRemove, canManage }) {
   const inTransit = r.deliveries.some((d) => !d.void_reason && !d.received_on);
   // 「已領取」開關：已全部交出就鎖住（確認後不能再改）；要送且尚欠才能勾
   const picked = r.state === "confirmed" && r.items.length > 0 && r.remaining === 0;
@@ -40,7 +40,8 @@ function RecipientRow({ r, edit, deliver, history, onMethod, onPickup, canManage
     <td className="row-actions">{canManage && <>
       <button className="btn btn-ghost btn-sm" onClick={edit}><Pencil size={13}/> 編輯</button>{" "}
       <button className="btn btn-ghost btn-sm" onClick={history}><History size={13}/> 紀錄{r.deliveries.length ? ` ${r.deliveries.length}` : ""}</button>{" "}
-      {r.state === "confirmed" && r.remaining > 0 && r.method === "mail" && <button className="btn btn-primary btn-sm" onClick={deliver}><Truck size={13}/> 登記寄出</button>}
+      {r.state === "confirmed" && r.remaining > 0 && r.method === "mail" && <button className="btn btn-primary btn-sm" onClick={deliver}><Truck size={13}/> 登記寄出</button>}{" "}
+      <button className="btn btn-ghost btn-sm" onClick={onRemove}><Trash2 size={13}/> 刪除</button>
     </>}</td>
   </tr>;
 }
@@ -150,6 +151,11 @@ export default function Gifts() {
   // 名單上的「已領取」開關：確認後登記一筆婚禮領取（剩餘盒數全交），之後不能在名單上取消
   // 簽收確認：開小視窗（盒數大於 1 可分批），每次都記一筆交付紀錄
   const confirmPickup = (r) => setModal({ type: "pickup", recipient: r });
+  // 刪除送禮對象（清重複或誤建用；會連同簽收紀錄一起刪，先確認）
+  const removeRecipient = async (r) => {
+    if (!(await confirmDelete(`${r.name} 的送餅安排${r.deliveries.length ? "（含簽收紀錄）" : ""}`))) return;
+    try { await deleteGiftRecipient(r.id); reload(); } catch (e) { toastErr(e); }
+  };
   const changeMethod = async (r, choice) => {
     const none = choice === "none";
     const method = none ? (METHODS[r.method] ? r.method : "tbd") : choice;
@@ -178,7 +184,7 @@ export default function Gifts() {
         <Select compact aria-label="篩選親友方" value={side} onChange={setSide} options={[{ value: "", label: "全部親友" }, { value: "groom", label: "男方親友" }, { value: "bride", label: "女方親友" }]}/>
         </div>
       </div>
-      {filtered.length === 0 ? <div className="panel"><Empty>{recipients.length ? "沒有符合篩選的送餅安排" : "還沒有送餅對象，從賓客加入或直接新增親友。"}</Empty></div> : <div className="panel"><div className="table-wrap"><table className="gift-table"><thead><tr><th>簽收確認</th><th>送禮對象</th><th>盒數</th><th>領取方式</th><th>電話</th><th></th></tr></thead><tbody>{filtered.map((r) => <RecipientRow key={r.id} r={r} onMethod={changeMethod} onPickup={confirmPickup} canManage={role !== "helper"} edit={() => setModal({ type: "recipient", initial: r })} deliver={() => setModal({ type: "delivery", recipient: r })} history={() => setModal({ type: "history", recipient: r })}/>)}</tbody></table></div></div>}
+      {filtered.length === 0 ? <div className="panel"><Empty>{recipients.length ? "沒有符合篩選的送餅安排" : "還沒有送餅對象，從賓客加入或直接新增親友。"}</Empty></div> : <div className="panel"><div className="table-wrap"><table className="gift-table"><thead><tr><th>簽收確認</th><th>送禮對象</th><th>盒數</th><th>領取方式</th><th>電話</th><th></th></tr></thead><tbody>{filtered.map((r) => <RecipientRow key={r.id} r={r} onMethod={changeMethod} onPickup={confirmPickup} onRemove={() => removeRecipient(r)} canManage={role !== "helper"} edit={() => setModal({ type: "recipient", initial: r })} deliver={() => setModal({ type: "delivery", recipient: r })} history={() => setModal({ type: "history", recipient: r })}/>)}</tbody></table></div></div>}
     </> : <>
       <div className="stats-grid"><Stat label="確認訂購金額" value={money(s.total)}/><Stat label="已付" value={money(s.paid)}/><Stat label="尚欠" value={money(s.balance)}/><Stat label="需求參考估算" value={money(s.estimate)} sub="含備用；未含運費與折扣"/></div>
       <div className="panel"><div className="panel-head"><h2 className="panel-title">款式與盒數</h2><span className="helper-text">已訂含廠商贈盒，不代表已到貨。</span></div>

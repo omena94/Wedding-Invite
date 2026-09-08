@@ -139,6 +139,7 @@ export const saveGiftOrder = (id, data) => request(`${GIFTS}/orders${id ? `/${id
 export const createGiftDelivery = (id, data) => request(`${GIFTS}/recipients/${id}/deliveries`, { method: "POST", body: data, auth: true });
 export const updateGiftDelivery = (id, data) => request(`${GIFTS}/deliveries/${id}`, { method: "PATCH", body: data, auth: true });
 export const importGiftGuests = () => request(`${GIFTS}/recipients/import-guests`, { method: "POST", auth: true });
+export const deleteGiftRecipient = (id) => request(`${GIFTS}/recipients/${id}`, { method: "DELETE", auth: true });
 export async function downloadGiftCsv(method = "all") {
   const response = await fetch(`${GIFTS}/export.csv?method=${encodeURIComponent(method)}`, { headers: { Authorization: `Bearer ${getToken()}` } });
   if (!response.ok) throw new Error("喜餅清單匯出失敗，請確認登入後重試");

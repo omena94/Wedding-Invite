@@ -6,7 +6,7 @@ import json
 from collections import defaultdict
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -234,6 +234,22 @@ def create_recipient(payload: RecipientIn, db: Session = Depends(get_db)):
 @router.put("/recipients/{recipient_id}", dependencies=[CoupleRequired])
 def update_recipient(recipient_id: int, payload: RecipientIn, db: Session = Depends(get_db)):
     return save_recipient(db, payload, get_row(db, GiftRecipient, recipient_id, payload.version))
+
+
+@router.delete("/recipients/{recipient_id}", status_code=204, dependencies=[CoupleRequired])
+def delete_recipient(recipient_id: int, db: Session = Depends(get_db)):
+    """刪除送禮對象（新人用，前端會先確認）。連同送餅安排、回覆連結與交付紀錄一起刪除；
+    用途是清掉重複或誤建的對象，正常結案請用「不送喜餅」而不是刪除。"""
+    row = get_row(db, GiftRecipient, recipient_id)
+    for delivery in db.scalars(select(GiftDelivery).where(GiftDelivery.recipient_id == row.id)):
+        db.delete(delivery)
+    for plan in db.scalars(select(GiftPlan).where(GiftPlan.recipient_id == row.id)):
+        db.delete(plan)
+    for link in db.scalars(select(GiftRsvpLink).where(GiftRsvpLink.recipient_id == row.id)):
+        db.delete(link)
+    db.delete(row)
+    commit(db)
+    return Response(status_code=204)
 
 
 @router.post("/recipients/import-guests", dependencies=[CoupleRequired])

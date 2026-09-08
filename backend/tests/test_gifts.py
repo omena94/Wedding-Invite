@@ -319,3 +319,21 @@ def test_helper_partial_pickups_record_each_receiver(setup):
     r = current(client)["recipients"][0]
     assert r["remaining"] == 0 and [(d["receiver"], d["items"][0]["quantity"]) for d in reversed(r["deliveries"])] == [("王媽媽", 1), ("本人", 2)]
     helper.close()
+
+
+def test_couple_can_delete_recipient_with_history_but_helper_cannot(setup):
+    client, db, vid, pid = setup
+    guest = Rsvp(name="重複的表哥", side="groom", attending=True)
+    db.add(guest); db.commit()
+    rid = client.post(P + "/recipients", json=recipient_body(pid, name="重複的表哥", method="venue", rsvp_ids=[guest.id], items=[{"product_id": pid, "quantity": 1}])).json()["id"]
+    r = current(client)["recipients"][0]
+    assert client.post(P + f"/recipients/{rid}/deliveries", json=delivery_body(pid, version=r["version"])).status_code == 201
+    helper = TestClient(app)
+    helper.headers["Authorization"] = "Bearer " + create_token("helper")
+    assert helper.delete(P + f"/recipients/{rid}").status_code == 403
+    helper.close()
+    assert client.delete(P + f"/recipients/{rid}").status_code == 204
+    assert current(client)["recipients"] == []
+    assert client.delete(P + f"/recipients/{rid}").status_code == 404
+    # 回覆本身還在，之後再帶入會重新建一筆
+    assert client.post(P + "/recipients/import-guests").json()["created"] == 1
