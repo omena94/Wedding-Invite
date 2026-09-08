@@ -10,7 +10,6 @@ import { ErrorBox, Field, Loading, PageHead, toastErr, toastOk, useLoader } from
 const INFO_FIELDS = [
   { key: "info_transport", label: "交通方式", rows: 4, hint: "捷運、開車、停車、接駁…" },
   { key: "info_notes", label: "其他提醒", rows: 4, hint: "禮金、小孩、攝影、婚禮遊戲…" },
-  { key: "info_contact", label: "當天聯絡窗口", rows: 2, hint: "招待或伴郎伴娘的姓名與電話，方便賓客找人" },
 ];
 
 export default function SettingsPage() {

@@ -84,7 +84,7 @@ export default function Home() {
     <section className="home-essentials" aria-labelledby="home-essentials-title"><Reveal><p className="guest-eyebrow">EVERYTHING FOR YOUR VISIT</p><h2 id="home-essentials-title">赴約前，你需要的都在這裡</h2></Reveal><nav className="nav-cards" aria-label="頁面入口">
       <Reveal><Card href="/rsvp" icon={<CalendarCheck size={22}/>} step="第一階段" title="填寫出席意願" desc="告訴我們你會不會來，大人小孩幾位"/></Reveal>
       {stage && <Reveal delay={60}><Card href="/details" icon={<Utensils size={22}/>} step="第二階段" title="確認出席與主餐" disabled={!s.phase2_open && !preview} desc={s.phase2_open ? '確認同行人數、主餐與飲食需求' : preview ? '登入預覽：賓客尚未開放' : s.phase2_open_at ? `預計 ${fmtDateTime(s.phase2_open_at)} 開放` : '準備好後，我們會通知你回來確認'}/></Reveal>}
-      <Reveal delay={90}><Card href="/info" icon={<Info size={22}/>} title="婚禮當天資訊" desc="日期、交通、停車與聯絡方式"/></Reveal>
+      <Reveal delay={90}><Card href="/info" icon={<Info size={22}/>} title="婚禮當天資訊" desc="日期、地點、交通與停車"/></Reveal>
       {(s.seat_open || preview) && <Reveal delay={120}><Card href="/seat" icon={<Armchair size={22}/>} title="找到我的座位" desc={s.seat_open ? '從入口出發，一路找到為你留的那一席' : '登入預覽：賓客尚未開放'}/></Reveal>}
       {(s.photos_open || preview) && <Reveal delay={150}><Card href="/photos" icon={<Images size={22}/>} title="我們的婚紗照" desc={s.photos_open ? '把喜歡的時光，分享給你' : '登入預覽：賓客尚未開放'}/></Reveal>}
     </nav></section>

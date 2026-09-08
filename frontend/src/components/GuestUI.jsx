@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Heart, Home, MapPin, Armchair, CalendarPlus, Check, Download } from 'lucide-react';
+import { Heart, Home, MapPin, Armchair, CalendarPlus, Check } from 'lucide-react';
 import { VENUE } from './EventDetails.jsx';
 
 export function GuestHeader({title, subtitle, english='OUR WEDDING · 2027.03.13'}) {
@@ -35,7 +35,7 @@ export function useDraft(key,initial) {
   const clear=()=>{try{sessionStorage.removeItem(key);}catch{}setRestored(false);setLoadedKey(null);};
   return [value,setValue,{restored,clear}];
 }
-// 婚宴時間（台灣 12:00–16:00，用 UTC 寫給行事曆）；Google 日曆與 .ics 共用
+// 婚宴時間（台灣 12:00–16:00，用 UTC 寫給 Google 日曆）
 const CAL_START='20270313T040000Z', CAL_END='20270313T080000Z', CAL_TITLE='宣文與孟庭的婚禮';
 const calLocation=()=>`${VENUE.name} ${VENUE.address}`;
 const calDetails=()=>`婚禮資訊、交通與座位查詢：${location.origin}/info`;
@@ -43,21 +43,10 @@ const calDetails=()=>`婚禮資訊、交通與座位查詢：${location.origin}/
 export function googleCalendarUrl() {
   return 'https://calendar.google.com/calendar/render?'+new URLSearchParams({action:'TEMPLATE',text:CAL_TITLE,dates:`${CAL_START}/${CAL_END}`,details:calDetails(),location:calLocation(),ctz:'Asia/Taipei'}).toString();
 }
-/** 下載 .ics：Apple 行事曆、Outlook 或其他行事曆用 */
-export function addCalendar() {
-  // .ics 規定反斜線、分號、逗號要跳脫，換行用 CRLF；用字元碼寫是避免反斜線在各種工具裡被吃掉
-  const BS=String.fromCharCode(92), CRLF=String.fromCharCode(13,10);
-  const esc=(t)=>t.split(BS).join(BS+BS).split(';').join(BS+';').split(',').join(BS+',');
-  const data=['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Wedding//Alan Omena//ZH-TW','BEGIN:VEVENT','UID:alan-omena-20270313','DTSTAMP:20260905T000000Z',`DTSTART:${CAL_START}`,`DTEND:${CAL_END}`,`SUMMARY:${esc(CAL_TITLE)}`,`LOCATION:${esc(calLocation())}`,`DESCRIPTION:${esc(calDetails())}`,`URL:${location.origin}/info`,'END:VEVENT','END:VCALENDAR'].join(CRLF)+CRLF;
-  const url=URL.createObjectURL(new Blob([data],{type:'text/calendar;charset=utf-8'}));const a=document.createElement('a');a.href=url;a.download='Alan-Omena-Wedding.ics';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
-}
-/** 兩顆按鈕：Google 日曆（直接連動）與 .ics（Apple／其他）。inline=true 時不包外框，塞進既有按鈕列 */
+/** 只提供 Google 日曆（2026-09-08 依新人要求移除 .ics 下載）。inline=true 時不包外框，塞進既有按鈕列 */
 export function CalendarButtons({inline=false, primary=false}) {
-  const buttons=<>
-    <a className={`btn${primary?' btn-primary':''}`} href={googleCalendarUrl()} target="_blank" rel="noopener noreferrer"><CalendarPlus size={17}/>加入 Google 日曆</a>
-    <button type="button" className="btn" onClick={addCalendar}><Download size={17}/>Apple／其他行事曆</button>
-  </>;
-  return inline?buttons:<div className="calendar-actions">{buttons}</div>;
+  const link=<a className={`btn${primary?' btn-primary':''}`} href={googleCalendarUrl()} target="_blank" rel="noopener noreferrer"><CalendarPlus size={17}/>加入 Google 日曆</a>;
+  return inline?link:<div className="calendar-actions">{link}</div>;
 }
 export function GuestReceipt({receipt}) {
   const card=useRef(null);
