@@ -30,7 +30,8 @@
 body {
   background-color: var(--bg-body);
   color: var(--text-body);
-  font-family: "Plus Jakarta Sans", "PingFang TC", "Microsoft JhengHei", sans-serif;
+  /* 2026-09-09 新人選用芫荽（Iansui）手寫字：中文一律用它，英文草寫／襯線字型維持不變 */
+  font-family: "Plus Jakarta Sans", "Iansui", "PingFang TC", "Microsoft JhengHei", sans-serif;
   line-height: 1.7;
   min-height: 100vh;
   position: relative;
@@ -147,14 +148,14 @@ body::after {
 
 /* SweetAlert2 奶茶主題 */
 .swal2-popup {
-  font-family: "Plus Jakarta Sans", "Noto Serif TC", serif, sans-serif !important;
+  font-family: "Plus Jakarta Sans", "Iansui", "Noto Serif TC", serif, sans-serif !important;
   border-radius: 24px !important;
   border: 1px solid var(--border-soft);
 }
 /* sweetalert 的輸入框吃到全域 input 的 100% 寬與內距，在小螢幕會凸出視窗；改成扣掉左右邊距 */
 .swal2-popup .swal2-input { box-sizing: border-box; width: calc(100% - 2em) !important; margin: 1em 1em 3px !important; }
 .swal2-title {
-  font-family: "Noto Serif TC", serif !important;
+  font-family: "Iansui", "Iansui", "Noto Serif TC", serif !important;
   color: var(--milk-tea-900) !important;
   font-size: 21px !important;
 }
@@ -191,7 +192,7 @@ input.input-error, textarea.input-error {
   animation: selectPop 0.16s cubic-bezier(0.4, 0, 0.2, 1);
 }
 .ui-datepicker-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
-.ui-datepicker-title { font-family: "Noto Serif TC", serif; font-weight: 600; color: var(--milk-tea-900); font-size: 13.5px; letter-spacing: 1px; }
+.ui-datepicker-title { font-family: "Iansui", "Noto Serif TC", serif; font-weight: 600; color: var(--milk-tea-900); font-size: 13.5px; letter-spacing: 1px; }
 .ui-datepicker-nav {
   width: 26px; height: 26px; border-radius: 8px; cursor: pointer;
   border: 1px solid var(--border-soft); background: var(--milk-tea-50); color: var(--milk-tea-700);
@@ -227,7 +228,7 @@ input.input-error, textarea.input-error {
 .btn svg,
 .btn-submit svg,
 .top-link svg { flex-shrink: 0; }
-.main-title { font-family: "Noto Serif TC", serif; font-size: 24px; font-weight: 600; color: var(--milk-tea-900); letter-spacing: 3px; margin-bottom: 8px; }
+.main-title { font-family: "Iansui", "Noto Serif TC", serif; font-size: 24px; font-weight: 600; color: var(--milk-tea-900); letter-spacing: 3px; margin-bottom: 8px; }
 .ribbon-tag {
   display: inline-flex; align-items: center; gap: 6px;
   background: linear-gradient(135deg, var(--milk-tea-50), var(--milk-tea-100));
@@ -236,12 +237,12 @@ input.input-error, textarea.input-error {
   margin-bottom: 18px; letter-spacing: 1px;
 }
 .main-subtitle {
-  font-family: "Noto Serif TC", serif; font-size: 18px; font-weight: 600;
+  font-family: "Iansui", "Noto Serif TC", serif; font-size: 18px; font-weight: 600;
   color: var(--milk-tea-700); letter-spacing: 2.5px; margin-bottom: 10px;
 }
 .announce-lead { font-size: 13.5px; color: var(--text-muted); margin-bottom: 6px; letter-spacing: 0.5px; }
 .announce-title {
-  font-family: "Noto Serif TC", serif; font-size: 21px; font-weight: 600;
+  font-family: "Iansui", "Noto Serif TC", serif; font-size: 21px; font-weight: 600;
   color: var(--milk-tea-900); letter-spacing: 2.5px; margin-bottom: 14px;
 }
 .invitation-quote { font-size: 14px; color: var(--text-body); line-height: 1.8; margin-bottom: 24px; font-weight: 300; }
@@ -268,7 +269,7 @@ input.input-error, textarea.input-error {
   margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid var(--milk-tea-100);
 }
 .section-header-title {
-  font-family: "Noto Serif TC", serif; font-size: 16.5px; font-weight: 600;
+  font-family: "Iansui", "Noto Serif TC", serif; font-size: 16.5px; font-weight: 600;
   color: var(--milk-tea-900); letter-spacing: 1px; display: flex; align-items: center; gap: 8px;
 }
 .section-header-en { font-family: "Cormorant Garamond", serif; font-size: 13px; letter-spacing: 2px; text-transform: uppercase; color: var(--milk-tea-500); font-style: italic; }
@@ -328,7 +329,7 @@ textarea { resize: vertical; }
 }
 @keyframes modalPop { 0% { transform: scale(0.9); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
 .modal-icon { width: 60px; height: 60px; border-radius: 50%; background: var(--milk-tea-50); border: 1px solid var(--border-soft); font-size: 28px; display: flex; align-items: center; justify-content: center; margin: 0 auto 16px; }
-.modal-title { font-family: "Noto Serif TC", serif; font-size: 21px; font-weight: 600; color: var(--milk-tea-900); margin-bottom: 10px; }
+.modal-title { font-family: "Iansui", "Noto Serif TC", serif; font-size: 21px; font-weight: 600; color: var(--milk-tea-900); margin-bottom: 10px; }
 .modal-desc { font-size: 13.5px; color: var(--text-body); line-height: 1.7; margin-bottom: 26px; }
 .modal-btn { width: 100%; padding: 13px; background: var(--milk-tea-700); color: #fff; border: none; border-radius: var(--radius-input); font-size: 14.5px; font-weight: 600; cursor: pointer; letter-spacing: 1px; transition: background 0.2s; }
 .modal-btn:hover { background: var(--milk-tea-900); }
@@ -341,7 +342,7 @@ textarea { resize: vertical; }
 }
 .modal-card.wide .form-group { margin-bottom: 14px; }
 .edit-modal-title {
-  font-family: "Noto Serif TC", serif; font-size: 18px; font-weight: 600;
+  font-family: "Iansui", "Noto Serif TC", serif; font-size: 18px; font-weight: 600;
   color: var(--milk-tea-900); margin-bottom: 16px; padding-bottom: 10px;
   border-bottom: 1px solid var(--milk-tea-100);
   display: flex; align-items: center; gap: 8px;
@@ -351,23 +352,23 @@ textarea { resize: vertical; }
 
 /* ============ 後台 Admin ============ */
 .page-head { text-align: center; margin-bottom: 28px; }
-.page-head h1 { font-family: "Noto Serif TC", serif; font-size: 22px; font-weight: 600; color: var(--milk-tea-900); letter-spacing: 2px; margin-top: 10px; }
+.page-head h1 { font-family: "Iansui", "Noto Serif TC", serif; font-size: 22px; font-weight: 600; color: var(--milk-tea-900); letter-spacing: 2px; margin-top: 10px; }
 
 .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 22px; }
 .stat-card { background: var(--bg-card); border-radius: var(--radius-card); padding: 20px 18px; border: 1px solid var(--border-soft); box-shadow: var(--shadow-card); }
 .stat-card .ic { width: 38px; height: 38px; border-radius: 50%; background: var(--milk-tea-50); border: 1px solid var(--border-soft); display: flex; align-items: center; justify-content: center; margin-bottom: 12px; font-size: 18px; }
-.stat-card .value { font-family: "Noto Serif TC", serif; font-size: 30px; font-weight: 700; color: var(--milk-tea-900); line-height: 1; }
+.stat-card .value { font-family: "Iansui", "Noto Serif TC", serif; font-size: 30px; font-weight: 700; color: var(--milk-tea-900); line-height: 1; }
 .stat-card .value small { font-size: 15px; font-weight: 500; color: var(--text-muted); margin-left: 2px; }
 .stat-card .label { font-size: 12.5px; color: var(--text-muted); margin-top: 6px; letter-spacing: 0.5px; }
 
 .panel { background: var(--bg-card); border-radius: var(--radius-card); padding: 24px; box-shadow: var(--shadow-card); border: 1px solid var(--border-soft); margin-bottom: 20px; }
 .panel-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; padding-bottom: 12px; border-bottom: 1px solid var(--milk-tea-100); flex-wrap: wrap; gap: 12px; }
-.panel-title { font-family: "Noto Serif TC", serif; font-size: 16px; font-weight: 600; color: var(--milk-tea-900); letter-spacing: 1px; display: flex; align-items: center; gap: 8px; }
+.panel-title { font-family: "Iansui", "Noto Serif TC", serif; font-size: 16px; font-weight: 600; color: var(--milk-tea-900); letter-spacing: 1px; display: flex; align-items: center; gap: 8px; }
 
 .mini-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
 .mini { background: var(--bg-card-subtle); border: 1px solid var(--border-soft); border-radius: 16px; padding: 14px 16px; }
 .mini .m-label { font-size: 12.5px; color: var(--text-muted); }
-.mini .m-value { font-family: "Noto Serif TC", serif; font-size: 22px; font-weight: 700; color: var(--milk-tea-900); margin-top: 4px; }
+.mini .m-value { font-family: "Iansui", "Noto Serif TC", serif; font-size: 22px; font-weight: 700; color: var(--milk-tea-900); margin-top: 4px; }
 .bar-track { height: 7px; border-radius: 6px; background: var(--milk-tea-100); margin-top: 10px; overflow: hidden; }
 .bar-fill { height: 100%; border-radius: 6px; background: linear-gradient(135deg, var(--milk-tea-500), var(--milk-tea-700)); transition: width 0.5s ease; }
 
@@ -406,7 +407,7 @@ tbody tr:last-child td { border-bottom: none; }
 .lock-overlay { position: fixed; inset: 0; background: var(--bg-body); display: flex; align-items: center; justify-content: center; padding: 20px; z-index: 200; }
 .lock-card { background: #fff; border-radius: 28px; padding: 40px 30px; max-width: 380px; width: 100%; text-align: center; box-shadow: 0 20px 50px rgba(126, 96, 71, 0.12); border: 1px solid var(--border-soft); }
 .lock-card .ic { width: 60px; height: 60px; border-radius: 50%; background: var(--milk-tea-50); border: 1px solid var(--border-soft); font-size: 26px; display: flex; align-items: center; justify-content: center; margin: 0 auto 16px; }
-.lock-card h2 { font-family: "Noto Serif TC", serif; font-size: 20px; color: var(--milk-tea-900); margin-bottom: 8px; }
+.lock-card h2 { font-family: "Iansui", "Noto Serif TC", serif; font-size: 20px; color: var(--milk-tea-900); margin-bottom: 8px; }
 .lock-card p { font-size: 13px; color: var(--text-muted); margin-bottom: 22px; }
 .lock-card input { text-align: center; letter-spacing: 3px; margin-bottom: 14px; }
 .lock-error { color: var(--rose-accent); font-size: 12.5px; margin-bottom: 12px; min-height: 16px; }
@@ -435,7 +436,7 @@ tbody tr:last-child td { border-bottom: none; }
   padding: 6px 16px; border-radius: 30px; border: 1px solid var(--border-soft);
   margin-bottom: 20px; letter-spacing: 1px;
 }
-.countdown strong { font-family: "Noto Serif TC", serif; font-size: 17px; color: var(--milk-tea-900); margin: 0 2px; }
+.countdown strong { font-family: "Iansui", "Noto Serif TC", serif; font-size: 17px; color: var(--milk-tea-900); margin: 0 2px; }
 
 .nav-cards { display: flex; flex-direction: column; gap: 14px; }
 .nav-card {
@@ -452,7 +453,7 @@ tbody tr:last-child td { border-bottom: none; }
 }
 .nav-card-body { flex: 1; min-width: 0; }
 .nav-card-step { font-size: 11.5px; letter-spacing: 2px; color: var(--text-muted); }
-.nav-card-title { font-family: "Noto Serif TC", serif; font-size: 17px; font-weight: 600; color: var(--milk-tea-900); letter-spacing: 1.5px; margin: 2px 0; }
+.nav-card-title { font-family: "Iansui", "Noto Serif TC", serif; font-size: 17px; font-weight: 600; color: var(--milk-tea-900); letter-spacing: 1.5px; margin: 2px 0; }
 .nav-card-desc { font-size: 12.5px; color: var(--text-body); line-height: 1.6; }
 .nav-card-arrow { color: var(--milk-tea-500); flex-shrink: 0; }
 .nav-card-primary { background: linear-gradient(135deg, var(--milk-tea-500), var(--milk-tea-700)); border-color: transparent; box-shadow: 0 10px 26px rgba(178, 143, 112, 0.3); }
@@ -469,8 +470,8 @@ tbody tr:last-child td { border-bottom: none; }
 .info-text { white-space: pre-wrap; font-size: 14px; line-height: 1.9; color: var(--text-body); }
 .seat-result { text-align: center; margin-top: 18px; }
 .seat-result p { font-size: 13.5px; color: var(--text-muted); }
-.seat-result-title { font-family: "Noto Serif TC", serif; font-size: 18px; font-weight: 600; color: var(--milk-tea-900); margin-bottom: 8px; }
-.seat-result-table { font-family: "Noto Serif TC", serif; font-size: 20px; color: var(--milk-tea-700); margin: 6px 0 10px; }
+.seat-result-title { font-family: "Iansui", "Noto Serif TC", serif; font-size: 18px; font-weight: 600; color: var(--milk-tea-900); margin-bottom: 8px; }
+.seat-result-table { font-family: "Iansui", "Noto Serif TC", serif; font-size: 20px; color: var(--milk-tea-700); margin: 6px 0 10px; }
 .seat-result-table strong { font-size: 44px; color: var(--milk-tea-900); margin: 0 4px; }
 .container-photos { max-width: 960px; }
 .photo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
@@ -489,7 +490,7 @@ tbody tr:last-child td { border-bottom: none; }
 }
 .pl-brand { padding: 4px 8px; }
 .pl-brand-script { font-family: "Alex Brush", cursive; font-size: 30px; color: var(--milk-tea-700); line-height: 1; }
-.pl-brand-title { font-family: "Noto Serif TC", serif; font-size: 14px; font-weight: 600; color: var(--milk-tea-900); letter-spacing: 2px; margin-top: 6px; }
+.pl-brand-title { font-family: "Iansui", "Noto Serif TC", serif; font-size: 14px; font-weight: 600; color: var(--milk-tea-900); letter-spacing: 2px; margin-top: 6px; }
 .pl-brand-role { font-size: 11.5px; color: var(--text-muted); margin-top: 2px; letter-spacing: 1px; }
 .pl-nav { display: flex; flex-direction: column; gap: 2px; flex: 1; }
 .pl-nav a {
@@ -503,7 +504,7 @@ tbody tr:last-child td { border-bottom: none; }
 /* 2026-09-08 新人要求頁面收窄：內容最寬 1180px 置中，大螢幕不再整片拉開 */
 .pl-main > * { max-width: 1180px; margin-left: auto; margin-right: auto; }
 .pl-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
-.pl-title { font-family: "Noto Serif TC", serif; font-size: 22px; font-weight: 600; color: var(--milk-tea-900); letter-spacing: 2px; }
+.pl-title { font-family: "Iansui", "Noto Serif TC", serif; font-size: 22px; font-weight: 600; color: var(--milk-tea-900); letter-spacing: 2px; }
 .pl-sub { font-size: 13px; color: var(--text-muted); margin-top: 4px; }
 .pl-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .pl-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
@@ -532,7 +533,7 @@ tbody tr:last-child td { border-bottom: none; }
 .pl-subrow table { min-width: 0; }
 .pl-subrow table td { border-bottom: 1px solid var(--border-soft); padding: 8px 10px; }
 .pl-month { margin-bottom: 8px; }
-.pl-month-title { font-family: "Noto Serif TC", serif; font-size: 14px; font-weight: 600; color: var(--milk-tea-700); letter-spacing: 1px; padding: 10px 0 4px; border-bottom: 1px solid var(--border-soft); }
+.pl-month-title { font-family: "Iansui", "Noto Serif TC", serif; font-size: 14px; font-weight: 600; color: var(--milk-tea-700); letter-spacing: 1px; padding: 10px 0 4px; border-bottom: 1px solid var(--border-soft); }
 .pl-switch-list { display: flex; flex-direction: column; gap: 12px; }
 .pl-switch { display: flex; gap: 12px; align-items: flex-start; cursor: pointer; }
 .pl-switch input { margin-top: 4px; width: 18px; height: 18px; }
@@ -613,10 +614,10 @@ tbody tr:last-child td { border-bottom: none; }
 
 /* 婚宴費用預估 */
 /* 收起時標題旁的預估合計 */
-.banquet-head-total { margin-left: 10px; font-family: "Noto Serif TC", serif; font-size: 15px; font-weight: 700; color: var(--milk-tea-900); }
+.banquet-head-total { margin-left: 10px; font-family: "Iansui", "Noto Serif TC", serif; font-size: 15px; font-weight: 700; color: var(--milk-tea-900); }
 .banquet-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; align-items: start; }
 .banquet-total { background: linear-gradient(135deg, var(--milk-tea-50), var(--milk-tea-100)); border: 1px solid var(--border-soft); border-radius: 16px; padding: 14px 18px; margin-bottom: 12px; }
-.banquet-total-value { font-family: "Noto Serif TC", serif; font-size: 30px; font-weight: 700; color: var(--milk-tea-900); line-height: 1.2; margin-top: 4px; }
+.banquet-total-value { font-family: "Iansui", "Noto Serif TC", serif; font-size: 30px; font-weight: 700; color: var(--milk-tea-900); line-height: 1.2; margin-top: 4px; }
 .banquet-table { width: 100%; min-width: 0 !important; font-size: 13.5px; }
 .banquet-table td { padding: 7px 4px; border-bottom: 1px solid var(--milk-tea-100); }
 .banquet-table tr.banquet-sum td { font-weight: 700; color: var(--milk-tea-900); border-bottom: none; }
@@ -633,7 +634,7 @@ tbody tr:last-child td { border-bottom: none; }
 .seat-zone-body { fill: rgba(130, 149, 132, 0.12); stroke: var(--sage-accent); stroke-dasharray: 8 6; }
 .seat-label-body { fill: transparent; stroke: transparent; }
 .seat-obj.selected .seat-label-body { stroke: var(--milk-tea-500); stroke-dasharray: 4 3; }
-.seat-text { fill: var(--milk-tea-900); font-family: "Noto Serif TC", serif; font-weight: 600; letter-spacing: 1px; pointer-events: none; }
+.seat-text { fill: var(--milk-tea-900); font-family: "Iansui", "Noto Serif TC", serif; font-weight: 600; letter-spacing: 1px; pointer-events: none; }
 .seat-text-zone { fill: var(--sage-accent); }
 .seat-text-label { fill: var(--milk-tea-700); }
 .seat-chair circle { fill: #fff; stroke: var(--milk-tea-300); stroke-width: 1.5; }
@@ -675,7 +676,7 @@ tbody tr:last-child td { border-bottom: none; }
 .se-print .seatmap-wrap { border: none; }
 .print-tables { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; }
 .print-table { border: 1px solid var(--border-soft); border-radius: 12px; padding: 10px 12px; break-inside: avoid; }
-.print-table-title { font-family: "Noto Serif TC", serif; font-weight: 600; color: var(--milk-tea-900); margin-bottom: 6px; }
+.print-table-title { font-family: "Iansui", "Noto Serif TC", serif; font-weight: 600; color: var(--milk-tea-900); margin-bottom: 6px; }
 .print-table ol { padding-left: 20px; font-size: 13px; line-height: 1.7; }
 @media (max-width: 900px) {
   .se-shell { grid-template-columns: 1fr; height: auto; }
@@ -756,7 +757,7 @@ tbody tr:last-child td { border-bottom: none; }
 .seatviewer-ctl button.wide { padding: 0 10px; white-space: nowrap; }
 .seatviewer-info { margin-top: 10px; border: 1px solid var(--border-soft); border-radius: 14px; padding: 12px 14px; background: var(--bg-card-subtle); text-align: left; font-size: 13.5px; min-height: 60px; }
 .seatviewer-info-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
-.seatviewer-info-head strong { font-family: "Noto Serif TC", serif; font-size: 22px; color: var(--milk-tea-900); }
+.seatviewer-info-head strong { font-family: "Iansui", "Noto Serif TC", serif; font-size: 22px; color: var(--milk-tea-900); }
 .seatviewer-info-name { font-size: 17px; font-weight: 700; color: var(--milk-tea-900); }
 .seatviewer-info-name.empty { color: var(--text-muted); font-weight: 500; }
 .seatviewer-pills { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
@@ -785,7 +786,7 @@ tbody tr:last-child td { border-bottom: none; }
 /* ============ 查桌次結果（長輩也看得懂）：大字桌名座號、怎麼走、入口到桌子的虛線 ============ */
 .seat-big { border: 1px solid var(--border-soft); border-radius: 18px; padding: 16px 14px 14px; margin: 12px 0; background: var(--bg-card-subtle); }
 .seat-big-label { font-size: 15px; color: var(--text-muted); letter-spacing: 2px; }
-.seat-big-table { font-family: "Noto Serif TC", serif; font-size: 64px; font-weight: 700; line-height: 1.15; color: var(--milk-tea-900); margin: 2px 0 10px; }
+.seat-big-table { font-family: "Iansui", "Noto Serif TC", serif; font-size: 64px; font-weight: 700; line-height: 1.15; color: var(--milk-tea-900); margin: 2px 0 10px; }
 .seat-big-seats { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 14px; font-size: 20px; color: var(--milk-tea-900); margin: 4px 0 14px; }
 .seat-big-seat strong { font-size: 26px; }
 .seat-guide { text-align: left; font-size: 17px; line-height: 1.9; color: var(--text-body); background: #fff; border: 1px dashed var(--milk-tea-300); border-radius: 14px; padding: 12px 14px; }
@@ -804,7 +805,7 @@ tbody tr:last-child td { border-bottom: none; }
 .seat-big-grid .seat-big-table { font-size: 52px; margin: 0; }
 .seat-big-grid .seat-big-seats { flex-direction: column; align-items: center; gap: 2px; margin: 0; }
 .seat-big-seat { display: inline-flex; flex-direction: column; align-items: center; line-height: 1.15; }
-.seat-big-seat strong { font-family: "Noto Serif TC", serif; font-size: 44px; color: var(--milk-tea-900); }
+.seat-big-seat strong { font-family: "Iansui", "Noto Serif TC", serif; font-size: 44px; color: var(--milk-tea-900); }
 .seat-big-seat small { font-size: 14px; color: var(--text-muted); }
 .seat-open-map { width: 100%; margin: 14px 0 4px; font-size: 18px; padding: 16px 18px; }
 .seat-open-map svg { margin-right: 6px; }
@@ -812,7 +813,7 @@ tbody tr:last-child td { border-bottom: none; }
 .seatviewer-full { position: fixed; inset: 0; z-index: 1000; display: flex; flex-direction: column; background: #fbf8f4; margin: 0; }
 .seatviewer-full .seatviewer-top { display: flex; align-items: center; gap: 10px; padding: 10px 12px; padding-top: calc(10px + env(safe-area-inset-top)); background: #fff; border-bottom: 1px solid var(--border-soft); flex: none; }
 .seatviewer-top-close { display: inline-flex; align-items: center; gap: 4px; font: inherit; font-size: 16px; font-weight: 700; color: var(--milk-tea-900); background: var(--milk-tea-100); border: none; border-radius: 999px; padding: 10px 16px; cursor: pointer; flex: none; }
-.seatviewer-top-title { flex: 1; text-align: center; font-family: "Noto Serif TC", serif; font-size: 20px; font-weight: 700; color: var(--milk-tea-900); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 8px; }
+.seatviewer-top-title { flex: 1; text-align: center; font-family: "Iansui", "Noto Serif TC", serif; font-size: 20px; font-weight: 700; color: var(--milk-tea-900); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 8px; }
 .seatviewer-full .seatviewer-wrap { flex: 1; min-height: 0; height: auto; max-height: none; border: none; border-radius: 0; }
 .seatviewer-full .seatviewer-info { flex: none; margin: 0; border: none; border-radius: 18px 18px 0 0; background: #fff; box-shadow: 0 -6px 18px rgba(61, 45, 32, 0.10); max-height: 42vh; overflow-y: auto; padding: 10px 14px calc(14px + env(safe-area-inset-bottom)); min-height: 0; }
 .seatviewer-full .seatviewer-ctl { justify-content: flex-start; margin-bottom: 10px; }
@@ -852,14 +853,14 @@ tbody tr:last-child td { border-bottom: none; }
 .guest-brand { display: inline-block; font: 30px 'Cormorant Garamond', Georgia, serif; color: var(--milk-tea-900); text-decoration: none; margin-bottom: 24px; }
 .guest-brand span { font-style: normal; color: var(--gold-accent); padding: 0 6px; } /* & 不用斜體 */
 .guest-eyebrow { font: 12px 'Plus Jakarta Sans', sans-serif; letter-spacing: .2em; color: var(--milk-tea-700); margin-bottom: 12px; }
-.guest-header h1 { font: 600 clamp(23px,5.6vw,30px)/1.6 'Noto Serif TC',serif; color: var(--milk-tea-900); margin-bottom: 10px; }
+.guest-header h1 { font: 600 clamp(23px,5.6vw,30px)/1.6 'Iansui', 'Noto Serif TC',serif; color: var(--milk-tea-900); margin-bottom: 10px; }
 .guest-header>p:last-child { font-size: 15px; color: var(--text-body); }
 .guest-nav { position: fixed; z-index: 50; bottom: 0; left: 50%; transform: translateX(-50%); width: min(100%,580px); padding: 9px 8px calc(8px + env(safe-area-inset-bottom)); display: grid; grid-template-columns: repeat(5,1fr); background: rgba(255,252,248,.97); border: 1px solid var(--border-soft); border-bottom: 0; border-radius: 20px 20px 0 0; box-shadow: 0 -3px 25px #5c4f440d; }
 .guest-nav a { min-height: 48px; display: flex; gap: 5px; flex-direction: column; align-items: center; justify-content: center; text-decoration: none; color: var(--milk-tea-700); font-size: 12px; border-radius: 12px; }
 .guest-nav a[aria-current=page] { background: var(--milk-tea-100); color: var(--milk-tea-900); font-weight: 700; }
 .guest-home .hero-arch-card { background: linear-gradient(160deg,#fffcf7,#faf3e8); padding-top: 54px; }
 .guest-home .illustration-art-wrapper { width: 250px; height: 285px; border-radius: 130px 130px 18px 18px; box-shadow: none; border: 1px solid var(--milk-tea-200); margin: 20px auto; }
-.guest-home .announce-title { font: 600 28px/1.7 'Noto Serif TC',serif; }
+.guest-home .announce-title { font: 600 28px/1.7 'Iansui', 'Noto Serif TC',serif; }
 .wedding-date { font: 20px 'Cormorant Garamond',Georgia,serif; letter-spacing: .22em; }
 .guest-home .announce-lead { font-size: 14px; }
 .guest-home .nav-card-primary { background: #755640; border-color: #755640; }
@@ -878,7 +879,7 @@ tbody tr:last-child td { border-bottom: none; }
 .guest-error p { margin-bottom: 12px; }
 .draft-notice { padding: 12px 16px; background: var(--milk-tea-100); border-radius: 12px; font-size: 14px; margin-bottom: 18px; }
 .guest-receipt { text-align: center; padding: 32px 24px; }
-.guest-receipt h2 { font: 600 25px/1.6 'Noto Serif TC',serif; margin-bottom: 14px; }
+.guest-receipt h2 { font: 600 25px/1.6 'Iansui', 'Noto Serif TC',serif; margin-bottom: 14px; }
 .guest-receipt p { margin: 12px 0; }
 .receipt-seal { border: 1px solid var(--milk-tea-300); color: var(--milk-tea-700); border-radius: 50%; width: 66px; height: 66px; display: grid; place-items: center; margin: 0 auto 20px; }
 .receipt-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin: 18px 0; }

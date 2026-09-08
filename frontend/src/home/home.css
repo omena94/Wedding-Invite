@@ -4,7 +4,7 @@
 .home-edition { font-size: 10px; letter-spacing: .18em; margin-right: auto; }
 .invitation-replay { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 44px; border: 0; background: transparent; color: var(--milk-tea-700); font-family: inherit; font-size: 13px; cursor: pointer; }
 .invitation-replay { margin-left: auto; flex-shrink: 0; }
-.wedding-home :is(h1,h2,h3) { font-family: 'Noto Serif TC', serif; font-weight: 500; color: var(--milk-tea-900); }
+.wedding-home :is(h1,h2,h3) { font-family: 'Iansui', 'Noto Serif TC', serif; font-weight: 500; color: var(--milk-tea-900); }
 .wedding-home h2 { font-size: clamp(22px, 3vw, 30px); line-height: 1.6; }
 .wedding-home :is(a,button):focus-visible, .invitation-intro button:focus-visible { outline: 3px solid var(--milk-tea-700); outline-offset: 5px; }
 /* 頁首只剩文字（插畫移到倒數下方），改單欄置中 */
@@ -14,7 +14,7 @@
 .wedding-hero h1 { font-size: clamp(28px, 3.5vw, 39px); line-height: 1.75; letter-spacing: .07em; white-space: nowrap; }
 .wedding-hero h1:focus { outline: none; }
 .wedding-hero h1 span { color: var(--milk-tea-700); }
-.home-couple { font: 23px/1.6 'Noto Serif TC', serif; letter-spacing: .13em; color: var(--milk-tea-900); margin-top: 28px; }
+.home-couple { font: 23px/1.6 'Iansui', 'Noto Serif TC', serif; letter-spacing: .13em; color: var(--milk-tea-900); margin-top: 28px; }
 /* 所有「&」一律正體，不用草寫或斜體（新人反映草寫看不出是 &） */
 .home-couple .amp { font: 26px 'Cormorant Garamond', Georgia, serif; color: var(--milk-tea-500); margin: 0 10px; }
 .home-couple-english { font: italic 24px 'Cormorant Garamond', Georgia, serif; margin-top: 5px; }
@@ -40,7 +40,7 @@
 .clock-window { overflow: hidden; height: 59px; }
 .clock-window span { display: block; font: 52px/1.1 'Cormorant Garamond', Georgia, serif; font-variant-numeric: tabular-nums; color: var(--milk-tea-900); animation: clockTick .35s ease-out; }
 .clock-unit small { font-size: 11px; color: var(--text-muted); }
-.wedding-clock-message p { font: 24px/1.6 'Noto Serif TC', serif; }
+.wedding-clock-message p { font: 24px/1.6 'Iansui', 'Noto Serif TC', serif; }
 .moving-photo { overflow: hidden; background: var(--milk-tea-100); }
 .moving-photo img { display: block; width: 100%; height: 100%; object-fit: cover; transform: translateY(var(--photo-shift, 0px)) scale(1.12); }
 .home-meet { display: grid; grid-template-columns: 1fr 1fr; gap: 48px; padding: 45px 36px; border-radius: var(--radius-card); background: var(--bg-card-subtle); border: 1px solid var(--border-highlight); align-items: center; }
@@ -49,7 +49,7 @@
 .home-meet .event-details-card { margin: 0; }
 .home-signoff { text-align: center; padding: 65px 0 28px; }
 .home-signoff svg { color: var(--rose-accent); stroke-width: 1; }
-.home-signoff p { font: 21px/1.8 'Noto Serif TC', serif; margin: 16px 0; }
+.home-signoff p { font: 21px/1.8 'Iansui', 'Noto Serif TC', serif; margin: 16px 0; }
 .home-signoff > span { font: 30px 'Alex Brush', cursive; color: var(--milk-tea-700); }
 .home-signoff > span .amp { font: 26px 'Cormorant Garamond', Georgia, serif; }
 .wedding-reveal { opacity: 0; transform: translateY(24px); transition: opacity .7s var(--reveal-delay, 0ms), transform .7s cubic-bezier(.22,1,.36,1) var(--reveal-delay, 0ms); }
