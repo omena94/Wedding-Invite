@@ -24,7 +24,7 @@ const NAV = [
   { to: "/guests", label: "賓客名單", icon: Users, helper: true }, // 2026-09-08 依新人要求改名為「賓客名單」
   { to: "/seating", label: "座位圖", icon: Armchair, helper: true },
   { to: "/gifts", label: "喜餅", icon: Gift, helper: true }, // 幫手：看名單、勾已領取
-  { to: "/budget", label: "預算花費", icon: Wallet },
+  { to: "/budget", label: "花費", icon: Wallet }, // 2026-09-08 依新人要求移除「預算」概念，只記實際金額
   { to: "/timeline", label: "籌備進度", icon: ListChecks },
   { to: "/files", label: "文件庫", icon: FolderOpen },
   { to: "/photos", label: "照片", icon: Images },
@@ -134,7 +134,7 @@ function LoginGate({ onOk }) {
       <div className="lock-card">
         <div className="ic"><Lock size={26} /></div>
         <h2>婚禮籌備後台</h2>
-        <p>Alan &amp; Omena · 賓客、喜餅、預算、時程</p>
+        <p>Alan &amp; Omena · 賓客、喜餅、花費、時程</p>
         <input
           type="password" value={pw} placeholder="請輸入密碼" autoFocus
           onChange={(e) => setPw(e.target.value)}
