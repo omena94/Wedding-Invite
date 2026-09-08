@@ -962,6 +962,7 @@ tbody tr:last-child td { border-bottom: none; }
   .gift-table td:nth-child(2) { grid-column: 2; grid-row: 1; }
   .gift-table td:nth-child(3) { grid-column: 3; grid-row: 1; font-size: 20px; text-align: right; align-self: start; } /* 盒數放姓名右邊、放大 */
   .gift-table td:nth-child(3) strong { font-size: 22px; }
+  .gift-table td:nth-child(3) .gift-given { display: block; font-size: 12px; margin-top: 2px; } /* 已給 N 換到盒數下一行 */
   .gift-table td:nth-child(5) { grid-column: 2 / -1; grid-row: 2; font-size: 13px; }
   .gift-table td:nth-child(4) { grid-column: 1 / -1; grid-row: 3; }
   .gift-method-cell .ui-select { width: 100%; }
