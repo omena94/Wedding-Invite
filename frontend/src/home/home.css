@@ -27,8 +27,8 @@
 .hero-arch-frame img { display: block; width: 100%; height: 100%; object-fit: cover; }
 /* 插畫只有一張（2026-09-08 拿掉底下不同構圖的線稿），開場後由下往上浮現 */
 .hero-arch-frame .hero-color-reveal { position: absolute; inset: 0; clip-path: inset(100% 0 0); }
-/* 新人要求一直重複：浮現 → 停留 → 淡出 → 再浮現，一輪約 2 秒；減少動態效果時由下方規則改為靜態 */
-.invitation-opened .hero-color-reveal { animation: photoUnveil 2s .25s cubic-bezier(.22,1,.36,1) infinite both; }
+/* 新人要求一直重複並上下交替：一輪由下往上浮現、下一輪由上往下浮現，每輪 3 秒（停留後淡出），兩輪 6 秒循環；減少動態效果時由下方規則改為靜態 */
+.invitation-opened .hero-color-reveal { animation: photoUnveil 6s .25s cubic-bezier(.22,1,.36,1) infinite both; }
 .hero-art-caption { display: flex; justify-content: space-between; align-items: center; margin: 18px 12px 0; color: var(--milk-tea-700); }
 .hero-art-caption span { font: 15px 'Cormorant Garamond', Georgia, serif; letter-spacing: .32em; text-transform: uppercase; }
 .hero-art-note { position: absolute; right: -25px; top: 31%; writing-mode: vertical-rl; font: 20px 'Alex Brush', cursive; letter-spacing: .04em; color: var(--milk-tea-700); }
@@ -83,7 +83,10 @@
 @keyframes invitationPaperLeft { to { transform: translateX(-100%); } }
 @keyframes invitationPaperRight { to { transform: translateX(100%); } }
 @keyframes homeArrive { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: none; } }
-@keyframes photoUnveil { 0% { clip-path: inset(100% 0 0); opacity: 1; } 45% { clip-path: inset(0); opacity: 1; } 70% { clip-path: inset(0); opacity: 1; } 95% { clip-path: inset(0); opacity: 0; } 100% { clip-path: inset(100% 0 0); opacity: 0; } }
+@keyframes photoUnveil {
+  0% { clip-path: inset(100% 0 0); opacity: 1; } 22.5% { clip-path: inset(0); opacity: 1; } 37% { clip-path: inset(0); opacity: 1; } 47.5% { clip-path: inset(0); opacity: 0; } 49.9% { clip-path: inset(0 0 100%); opacity: 0; }
+  50% { clip-path: inset(0 0 100%); opacity: 1; } 72.5% { clip-path: inset(0); opacity: 1; } 87% { clip-path: inset(0); opacity: 1; } 97.5% { clip-path: inset(0); opacity: 0; } 100% { clip-path: inset(100% 0 0); opacity: 0; }
+}
 @keyframes clockTick { from { opacity: .4; transform: translateY(12px); } to { opacity: 1; transform: none; } }
 
 @media (max-width: 760px) {
