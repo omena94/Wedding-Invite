@@ -24,7 +24,7 @@ function RecipientRow({ r, edit, deliver, history }) {
   const inTransit = r.deliveries.some((d) => !d.void_reason && !d.received_on);
   return <tr className={r.state === "cancelled" ? "gift-cancelled" : undefined}>
     <td><strong>{r.name}</strong><div className="muted-cell" style={{ fontSize: 11.5 }}>{SIDES[r.side]}{r.owner ? ` · ${r.owner} 負責` : ""}</div>{r.note && <div className="gift-note muted-cell" style={{ fontSize: 11.5 }}>{r.note}</div>}</td>
-    <td>{r.items.length ? r.items.map((i) => <div key={i.product_id}><strong>{i.quantity}</strong> 盒<span className="muted-cell" style={{ fontSize: 11.5 }}>（{i.name}，已交出 {i.delivered}）</span></div>) : <span className="muted-cell">未定</span>}</td>
+    <td>{r.items.length ? r.items.map((i) => <div key={i.product_id}><strong>{i.quantity}</strong> 盒{i.delivered > 0 && <span className="muted-cell" style={{ fontSize: 11.5 }}>（已交出 {i.delivered}）</span>}</div>) : <span className="muted-cell">未定</span>}</td>
     <td>{r.method === "tbd" ? <span className="muted-cell">尚未決定</span> : METHODS[r.method] || r.method}{r.due_date && <div className="muted-cell" style={{ fontSize: 11.5 }}>預計 {fmtDate(r.due_date)}</div>}{r.contact_name && r.contact_name !== r.name && <div className="muted-cell" style={{ fontSize: 11.5 }}>聯絡人 {r.contact_name}</div>}</td>
     <td>{r.phone ? <a className="gift-phone" href={`tel:${r.phone.replace(/[^\d+]/g, "")}`}>{r.phone}</a> : <span className="muted-cell">—</span>}</td>
     <td>{progressPill(r, inTransit)}
