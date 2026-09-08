@@ -160,8 +160,8 @@ function DetailModal({ kind, expenses, onClose }) {
       {rows.length === 0 ? <Empty>目前沒有資料</Empty> : (
         <div className="table-wrap"><table style={{ minWidth: 0 }}>
           <thead><tr><th>項目</th><th>說明</th><th style={{ textAlign: "right" }}>金額</th></tr></thead>
-          <tbody>{rows.map((r, i) => <tr key={i}><td>{r[0]}</td><td className="muted-cell">{r[1]}</td><td className="amount">{money(r[2])}</td></tr>)}</tbody>
-          <tfoot><tr><td colSpan={2}><strong>合計</strong></td><td className="amount"><strong>{money(total)}</strong></td></tr></tfoot>
+          <tbody>{rows.map((r, i) => <tr key={i}><td>{r[0]}</td><td className="muted-cell">{r[1]}</td><td className="amount">{money(r[2])}</td></tr>)}
+            <tr><td colSpan={2}><strong>合計</strong></td><td className="amount"><strong>{money(total)}</strong></td></tr></tbody>
         </table></div>
       )}
     </Modal>
