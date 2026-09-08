@@ -4,11 +4,12 @@ import { ArrowRight } from 'lucide-react';
 import { useReducedMotion } from './motion.jsx';
 
 // 2026-09-08 改用新人自製的喜帖（docs/ 內的 PDF 轉成 /invitation-1.webp、/invitation-2.webp）：
-// 兩頁上下排列直接捲動（新人不要翻頁），第一頁 SAVE THE DATE 封面完整可見，往下是中文喜帖內頁，
+// 頁面上下排列直接捲動（新人不要翻頁），第一頁 SAVE THE DATE 封面完整可見，
 // 最下方「進入婚禮網站」才展開紙頁進入首頁。沒有略過按鈕（新人要求），鍵盤 Escape 仍可直接進入。
+// 2026-09-08 新人決定第二頁（中文喜帖內頁）先不放；要放回去時把下面第二筆解除註解，並執行 scripts/render_invitation.py 產生 invitation-2.webp
 const PAGES = [
   { src: '/invitation-1.webp', alt: 'SAVE THE DATE：Alan 與 Omena 的婚禮，2027 年 3 月 13 日' },
-  { src: '/invitation-2.webp', alt: '誠摯邀請您參加我們的婚宴。新郎丁宣文、新娘余孟庭，男方家長○○○、○○○，女方家長○○○敬邀。2027 年 3 月 13 日星期六 12:00 婚宴入席，台北美福大飯店，台北市中山區樂群二路 55 號' },
+  // { src: '/invitation-2.webp', alt: '誠摯邀請您參加我們的婚宴。新郎丁宣文、新娘余孟庭，男方家長○○○、○○○，女方家長○○○敬邀。2027 年 3 月 13 日星期六 12:00 婚宴入席，台北美福大飯店，台北市中山區樂群二路 55 號' },
 ];
 
 export default function Invitation({ onOpen, onReveal }) {
