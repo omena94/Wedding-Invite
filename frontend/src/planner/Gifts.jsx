@@ -9,7 +9,7 @@ import { createGiftDelivery, fetchExpenses, fetchGifts, fetchRsvps, fetchVendors
 import { fmtDate, money } from "../constants.js";
 import { DeliveryForm, GiftDialog, METHODS, OrderForm, ProductForm, RecipientForm, SIDES, STATES, options, today } from "./giftForms.jsx";
 import { PaymentModal, UploadModal } from "./modals.jsx";
-import { Empty, ErrorBox, Field, Loading, Modal, NumberInput, PageHead, toInt, toastErr, toastOk, useLoader } from "./ui.jsx";
+import { Empty, ErrorBox, Field, Loading, Modal, PageHead, toInt, toastErr, toastOk, useLoader } from "./ui.jsx";
 
 function Stat({ label, value, sub }) {
   return <div className="stat-card"><div className="value">{value}</div><div className="label">{label}</div>{sub && <div className="helper-text">{sub}</div>}</div>;
@@ -115,7 +115,7 @@ function PickupDialog({ recipient: r, role, onClose, onSaved }) {
   };
   return <GiftDialog title={`簽收確認 — ${r.name}`} onClose={onClose} onSaved={onSaved} submit={submit} label="確認簽收" wide={false}>
     <p className="helper-text">{remaining > 1 ? `這位共 ${remaining} 盒尚未領取，可以分批：` : ""}確認後登記為已領取，不能再修改；誤按只能由新人到「紀錄」作廢。</p>
-    {remaining > 1 && single && <Field label={`本次領取盒數（尚欠 ${remaining} 盒）`}><NumberInput aria-label="本次領取盒數" value={qty} onChange={setQty}/></Field>}
+    {remaining > 1 && single && <Field label={`本次領取盒數（尚欠 ${remaining} 盒）`}><Select aria-label="本次領取盒數" value={qty} onChange={(v) => setQty(Number(v))} options={Array.from({ length: remaining }, (_, i) => ({ value: i + 1, label: `${i + 1} 盒` }))}/></Field>}
     <Field label="由誰領取"><Select aria-label="由誰領取" value={who} onChange={setWho} options={[{ value: "self", label: "本人領取" }, { value: "proxy", label: "他人代領" }]}/></Field>
     {who === "proxy" && <Field label="代領人姓名" required><input type="text" aria-label="代領人姓名" value={proxy} onChange={(e) => setProxy(e.target.value)} placeholder="例如：王媽媽" maxLength={100}/></Field>}
   </GiftDialog>;
