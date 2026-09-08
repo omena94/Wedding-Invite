@@ -11,6 +11,7 @@ import {
   fetchSeatPreview, moveSeatObjects, renameAssignment, setSeatingCanvas, unassignSeat, updateSeatObject,
 } from "../api.js";
 import { Checkbox } from "../components/Toggle.jsx";
+import Select from "../components/Select.jsx";
 import { DEFAULTS, KIND_LABEL, SEAT_GAP, SEAT_R, bounds, center, defaultSides, seatPositions, sidesOf } from "../seating/geometry.js";
 import SeatingMap, { ObjectShape, nameGetter } from "../seating/SeatingMap.jsx";
 import { planLabels } from "../seating/labels.js";
@@ -38,6 +39,7 @@ export default function Seating() {
   const [grid, setGrid] = useState(true);
   const [onlyUnassigned, setOnlyUnassigned] = useState(false);
   const [search, setSearch] = useState("");
+  const [sideFilter, setSideFilter] = useState(""); // 賓客清單只看男方或女方親友（2026-09-08 新人要求）
   const [tab, setTab] = useState("guests");
   const [view, setView] = useState({ zoom: 0.55, x: 24, y: 24 });
   const [dragChip, setDragChip] = useState(null);     // {x, y, name}
@@ -472,9 +474,10 @@ export default function Seating() {
     let g = layout?.guests || [];
     const q = search.trim().toLowerCase();
     if (q) g = g.filter((x) => x.name.toLowerCase().includes(q) || x.persons.some((p) => (p.name || "").toLowerCase().includes(q)));
+    if (sideFilter) g = g.filter((x) => x.side === sideFilter);
     if (onlyUnassigned) g = g.filter((x) => x.unassigned > 0);
     return g;
-  }, [layout, search, onlyUnassigned]);
+  }, [layout, search, sideFilter, onlyUnassigned]);
 
   // 搜尋框有字時，畫布上符合的人也一起標亮（不用再 Ctrl+F 找）
   const searchSeats = useMemo(() => {
@@ -590,7 +593,7 @@ export default function Seating() {
           </div>
           <div className="se-panel-body">
             {tab === "guests" ? (
-              <GuestPanel guests={guests} search={search} setSearch={setSearch} onlyUnassigned={onlyUnassigned} setOnlyUnassigned={setOnlyUnassigned}
+              <GuestPanel guests={guests} search={search} setSearch={setSearch} sideFilter={sideFilter} setSideFilter={setSideFilter} onlyUnassigned={onlyUnassigned} setOnlyUnassigned={setOnlyUnassigned}
                 picked={picked} readonly={readonly} selectedObj={selectedObj} byId={byId}
                 onPersonPointerDown={onPersonPointerDown} onPersonPointerMove={onPointerMove} onPersonPointerUp={onPointerUp}
                 onSeatGroup={seatGroup} onPreview={(g) => setPreview({ rsvp_id: g.rsvp_id, name: g.name })} />
@@ -699,11 +702,12 @@ function Handles({ o, zoom, onPointerDown }) {
 }
 
 /* ---------- 右側：賓客 ---------- */
-function GuestPanel({ guests, search, setSearch, onlyUnassigned, setOnlyUnassigned, picked, readonly, selectedObj, byId, onPersonPointerDown, onPersonPointerMove, onPersonPointerUp, onSeatGroup, onPreview }) {
+function GuestPanel({ guests, search, setSearch, sideFilter, setSideFilter, onlyUnassigned, setOnlyUnassigned, picked, readonly, selectedObj, byId, onPersonPointerDown, onPersonPointerMove, onPersonPointerUp, onSeatGroup, onPreview }) {
   const where = (p) => (p.seat ? `${p.seat.label || KIND_LABEL[byId[p.seat.object_id]?.kind] || "桌"} · ${p.seat.seat_index + 1} 號` : "未安排");
   return (
     <div>
       <input type="text" placeholder="搜尋姓名…" value={search} onChange={(e) => setSearch(e.target.value)} style={{ marginBottom: 8 }} />
+      <div style={{ marginBottom: 8 }}><Select compact aria-label="篩選親友方" value={sideFilter} onChange={setSideFilter} options={[{ value: "", label: "全部親友" }, { value: "groom", label: "男方親友" }, { value: "bride", label: "女方親友" }]} /></div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
         <Checkbox checked={onlyUnassigned} onChange={setOnlyUnassigned}>只看未安排</Checkbox>
         <span className="muted-cell" style={{ fontSize: 12 }}>{guests.length} 組</span>
