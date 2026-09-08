@@ -31,6 +31,8 @@ export default function BanquetPanel({ compact = false }) {
   if (loading || !f) return <Loading />;
 
   const { counts, estimate, params } = data;
+  const cc = estimate.child_counts;
+  const cp = estimate.child_prices;
   const set = (k, v) => setF((x) => ({ ...x, [k]: v }));
   const dirty = JSON.stringify(f) !== JSON.stringify(params);
 
@@ -98,7 +100,18 @@ export default function BanquetPanel({ compact = false }) {
             <div className="m-label">預估合計</div>
             <div className="banquet-total-value">{money(estimate.total)}</div>
           </div>
-          {/* 2026-09-08 新人要求只留預估合計，明細表移除 */}
+          {/* 2026-09-08 新人要求：合計下方列出人數與金額明細 */}
+          <table className="banquet-table">
+            <tbody>
+              <tr><td>大人 {estimate.regular_adults} 人 × {money(params.adult_price)}</td><td className="amount">{money(estimate.regular_subtotal)}</td></tr>
+              {estimate.veg_adults > 0 && <tr><td>素食 {estimate.veg_adults} 人 × {money(estimate.veg_unit_price)}</td><td className="amount">{money(estimate.veg_subtotal)}</td></tr>}
+              <tr><td>小孩 身高 110 以下 {cc.free} 人（免費）</td><td className="amount">{money(0)}</td></tr>
+              <tr><td>小孩 身高 130 以下 {cc.half} 人 × {money(cp.half)}</td><td className="amount">{money(cc.half * cp.half)}</td></tr>
+              {cc.full > 0 && <tr><td>其餘小孩 {cc.full} 人 × {money(cp.full)}</td><td className="amount">{money(cc.full * cp.full)}</td></tr>}
+              <tr><td>服務費 10%</td><td className="amount">{money(estimate.service)}</td></tr>
+              <tr className="banquet-sum"><td>合計</td><td className="amount">{money(estimate.total)}</td></tr>
+            </tbody>
+          </table>
           <div className="footnote" style={{ textAlign: "left", marginTop: 8 }}>含大人、素食、小孩餐費與 10% 服務費；只算已回覆「出席」的人數，人數變動時自動重算。</div>
         </div>
       </div>}
