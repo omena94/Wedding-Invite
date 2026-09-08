@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ArrowRight, Armchair, CalendarCheck, CalendarPlus, Heart, Images, Info, MailOpen, Utensils } from 'lucide-react';
+import { ArrowRight, Armchair, CalendarCheck, CalendarPlus, Heart, Info, MailOpen, Utensils } from 'lucide-react';
 import { GuestNav, LoadError, useGuestLoad, CalendarButtons } from '../components/GuestUI.jsx';
 import EventDetails, { VENUE } from '../components/EventDetails.jsx';
 import PreviewBanner from '../components/PreviewBanner.jsx';
@@ -7,7 +7,6 @@ import { fetchStage } from '../api.js';
 import { WEDDING_DATE_DISPLAY, fmtDateTime } from '../constants.js';
 import Invitation from '../home/Invitation.jsx';
 import Countdown, { useWeddingClock } from '../home/Countdown.jsx';
-import PhotoStory from '../home/PhotoStory.jsx';
 import { Reveal } from '../home/motion.jsx';
 import { homeAction, readVisit, rememberVisit } from '../home/journey.js';
 import '../home/home.css';
@@ -54,7 +53,7 @@ export default function Home() {
   const nextPanel = stage && <Reveal><section className="home-next" aria-labelledby="home-next-title"><div><p className="home-next-label"><span className="home-status-dot"/>{updated ? '有新消息，這次回來可以…' : action.label}</p><h2 id="home-next-title">{action.title}</h2><p>{action.description}</p></div><a className="btn" href={action.href}>{action.action}<ArrowRight size={18}/></a></section></Reveal>;
 
   return <div className={`container guest-home wedding-home${revealed ? ' invitation-opened' : ''}`}>
-    <PreviewBanner stage={s} closedLabels={[!s.phase2_open && '第二階段', !s.seat_open && '桌次查詢', !s.photos_open && '婚紗照'].filter(Boolean)}/>
+    <PreviewBanner stage={s} closedLabels={[!s.phase2_open && '第二階段', !s.seat_open && '桌次查詢'].filter(Boolean)}/>
     <div className="home-masthead"><span className="home-monogram">A <i>&</i> O</span><span className="home-edition">THE WEDDING OF ALAN & OMENA</span><button type="button" ref={replayRef} className="invitation-replay" onClick={() => { replaying.current = true; setIntro(true); }}><MailOpen size={16}/>重看喜帖</button></div>
     {error && <LoadError error={error} retry={retry}/>}
     {visit && <section className="home-return" aria-label="歡迎回來">{countdown}{nextPanel}</section>}
@@ -78,7 +77,6 @@ export default function Home() {
 
     {!visit && <>{countdown}{nextPanel}</>}
 
-    <PhotoStory stage={stage}/>
     <Reveal as="section" className="home-meet"><div className="home-meet-heading"><p className="guest-eyebrow">SAVE A LITTLE TIME FOR US</p><h2>這一天，我們在這裡等你</h2><p>把日期留起來，剩下的期待，交給那天。</p><CalendarButtons/></div><EventDetails/></Reveal>
 
     <section className="home-essentials" aria-labelledby="home-essentials-title"><Reveal><p className="guest-eyebrow">EVERYTHING FOR YOUR VISIT</p><h2 id="home-essentials-title">赴約前，你需要的都在這裡</h2></Reveal><nav className="nav-cards" aria-label="頁面入口">
@@ -86,7 +84,6 @@ export default function Home() {
       {stage && <Reveal delay={60}><Card href="/details" icon={<Utensils size={22}/>} step="第二階段" title="確認出席與主餐" disabled={!s.phase2_open && !preview} desc={s.phase2_open ? '確認同行人數、主餐與飲食需求' : preview ? '登入預覽：賓客尚未開放' : s.phase2_open_at ? `預計 ${fmtDateTime(s.phase2_open_at)} 開放` : '準備好後，我們會通知你回來確認'}/></Reveal>}
       <Reveal delay={90}><Card href="/info" icon={<Info size={22}/>} title="婚禮當天資訊" desc="日期、地點、交通與停車"/></Reveal>
       {(s.seat_open || preview) && <Reveal delay={120}><Card href="/seat" icon={<Armchair size={22}/>} title="找到我的座位" desc={s.seat_open ? '從入口出發，一路找到為你留的那一席' : '登入預覽：賓客尚未開放'}/></Reveal>}
-      {(s.photos_open || preview) && <Reveal delay={150}><Card href="/photos" icon={<Images size={22}/>} title="我們的婚紗照" desc={s.photos_open ? '把喜歡的時光，分享給你' : '登入預覽：賓客尚未開放'}/></Reveal>}
     </nav></section>
     <Reveal className="home-signoff"><Heart size={20} aria-hidden="true"/><p>有你在，就是最好的祝福。</p><span>With love, Alan & Omena</span></Reveal>
     <GuestNav/><p className="footnote">有任何問題，歡迎直接聯繫宣文或孟庭</p>

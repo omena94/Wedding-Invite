@@ -83,12 +83,11 @@ def main():
         page.goto(BASE)
         expect(page.locator('.preview-banner')).to_be_visible()
         expect(page.locator('.home-primary')).to_have_attribute('href', '/rsvp')
-        page.locator('.story-album').scroll_into_view_if_needed()
-        expect(page.locator('.story-photo-grid img')).to_be_visible()
-        assert authenticated and all(authenticated)
-        assert page.locator('.story-photo-grid img').get_attribute('src').startswith('blob:')
+        # 首頁已不再有婚紗照入口與預覽（2026-09-08 依新人要求）；只驗證 /photos 頁在登入預覽下仍帶 Authorization
+        assert page.locator('.story-album').count() == 0
         page.goto(BASE + '/photos')
         expect(page.locator('.photo-grid img')).to_be_visible()
+        assert authenticated and all(authenticated)
         page.locator('.photo-cell').click()
         expect(page.locator('.photo-lightbox img')).to_be_visible()
         page.keyboard.press('Escape')
