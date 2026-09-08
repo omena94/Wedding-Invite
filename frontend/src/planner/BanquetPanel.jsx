@@ -12,6 +12,7 @@ const CHILD_MODES = [
   { value: "half", label: "半價" },
   { value: "full", label: "全價（同大人）" },
   { value: "custom", label: "自訂金額（全部小孩同價）" },
+  { value: "manual", label: "手動填人數（110 以下免費、130 以下半價）" },
 ];
 const MODE_LABEL = Object.fromEntries(CHILD_MODES.map((m) => [m.value, m.label]));
 
@@ -54,6 +55,8 @@ export default function BanquetPanel({ compact = false }) {
         child_price: toInt(f.child_price),
         child_free_below: toInt(f.child_free_below),
         child_half_below: toInt(f.child_half_below),
+        child_free_count: toInt(f.child_free_count),
+        child_half_count: toInt(f.child_half_count),
         veg_price: toInt(f.veg_price), // 0 = 跟大人一樣
       });
       setData(r);
@@ -97,12 +100,16 @@ export default function BanquetPanel({ compact = false }) {
           <div className="form-group grid-2">
             <Field label="服務費 %"><NumberInput value={f.service_pct} onChange={(v) => set("service_pct", v)} placeholder="10" /></Field>
           </div>
-          <div className="form-group grid-2">
+          {f.child_mode !== "manual" && <div className="form-group grid-2">
             <Field label="小孩免費：身高未滿（公分）"><NumberInput value={f.child_free_below} onChange={(v) => set("child_free_below", v)} placeholder="90" /></Field>
             <Field label="小孩半價：身高未滿（公分）" hint="達到這個身高就算全價"><NumberInput value={f.child_half_below} onChange={(v) => set("child_half_below", v)} placeholder="120" /></Field>
-          </div>
+          </div>}
+          {f.child_mode === "manual" && <div className="form-group grid-2">
+            <Field label="身高 110 以下人數（免費）"><NumberInput value={f.child_free_count} onChange={(v) => set("child_free_count", v)} /></Field>
+            <Field label="身高 130 以下人數（半價）" hint={`其餘小孩以全價計；目前回覆共 ${counts.children} 位小孩`}><NumberInput value={f.child_half_count} onChange={(v) => set("child_half_count", v)} /></Field>
+          </div>}
           <div className="form-group grid-2">
-            <Field label="小孩計價方式" hint={f.child_mode === "custom" ? "自訂金額會套用到所有小孩（賓客名單裡個別指定免費／半價／全價的除外）" : "有填身高的依身高分級；沒填的先用這個，右邊也列了其他情境"}>
+            <Field label="小孩計價方式" hint={f.child_mode === "manual" ? "直接填兩種身高的人數，不看賓客填的身高" : f.child_mode === "custom" ? "自訂金額會套用到所有小孩（賓客名單裡個別指定免費／半價／全價的除外）" : "有填身高的依身高分級；沒填的先用這個，右邊也列了其他情境"}>
               <Select value={f.child_mode} onChange={(v) => set("child_mode", v)} options={CHILD_MODES} />
             </Field>
             {f.child_mode === "custom" && (
@@ -128,9 +135,9 @@ export default function BanquetPanel({ compact = false }) {
               ) : (
                 <tr><td>大人 {counts.adults} 位 × {money(params.adult_price)}{estimate.veg_adults > 0 ? `（含素食 ${estimate.veg_adults} 位，同價）` : ""}</td><td className="amount">{money(estimate.adult_subtotal)}</td></tr>
               )}
-              {cc.free > 0 && <tr><td>小孩免費（未滿 {params.child_free_below} cm）{cc.free} 位</td><td className="amount">{money(0)}</td></tr>}
-              {cc.half > 0 && <tr><td>小孩半價（{params.child_free_below}～{params.child_half_below} cm）{cc.half} 位 × {money(cp.half)}</td><td className="amount">{money(cc.half * cp.half)}</td></tr>}
-              {cc.full > 0 && <tr><td>小孩全價（{params.child_half_below} cm 以上）{cc.full} 位 × {money(cp.full)}</td><td className="amount">{money(cc.full * cp.full)}</td></tr>}
+              {cc.free > 0 && <tr><td>小孩免費（{params.child_mode === "manual" ? "110 以下" : `未滿 ${params.child_free_below} cm`}）{cc.free} 位</td><td className="amount">{money(0)}</td></tr>}
+              {cc.half > 0 && <tr><td>小孩半價（{params.child_mode === "manual" ? "130 以下" : `${params.child_free_below}～${params.child_half_below} cm`}）{cc.half} 位 × {money(cp.half)}</td><td className="amount">{money(cc.half * cp.half)}</td></tr>}
+              {cc.full > 0 && <tr><td>小孩全價（{params.child_mode === "manual" ? "其餘" : `${params.child_half_below} cm 以上`}）{cc.full} 位 × {money(cp.full)}</td><td className="amount">{money(cc.full * cp.full)}</td></tr>}
               {cc.custom > 0 && <tr><td>小孩 {cc.custom} 位 × {money(cp.custom)}（自訂）</td><td className="amount">{money(cc.custom * cp.custom)}</td></tr>}
               {cc.unknown > 0 && <tr><td>小孩未填身高 {cc.unknown} 位 × {money(estimate.unknown_unit_price)}（先當{MODE_LABEL[params.child_mode]}）</td><td className="amount">{money(cc.unknown * estimate.unknown_unit_price)}</td></tr>}
               {counts.children === 0 && <tr><td>小孩 0 位</td><td className="amount">{money(0)}</td></tr>}

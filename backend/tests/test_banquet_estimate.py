@@ -46,3 +46,14 @@ def test_custom_child_mode_applies_to_all_children_except_manual_override():
     assert est["child_counts"] == {"free": 1, "half": 0, "full": 0, "custom": 3, "unknown": 0}
     assert est["child_subtotal"] == 3 * 2880
     assert est["service"] == round((4000 + 3 * 2880) * 0.1)
+
+
+def test_manual_child_counts_free_half_rest_full_with_service():
+    kids = [{"height": None, "pricing": "auto"}] * 11
+    est = banquet_estimate({**PARAMS, "child_mode": "manual", "child_free_count": 3, "child_half_count": 5}, adults=10, children=kids)
+    assert est["child_counts"] == {"free": 3, "half": 5, "full": 3, "custom": 0, "unknown": 0}
+    assert est["child_subtotal"] == 5 * 2000 + 3 * 4000
+    assert est["service"] == round((10 * 4000 + est["child_subtotal"]) * 0.1)
+    # 填超過人數會被截到實際小孩數
+    est = banquet_estimate({**PARAMS, "child_mode": "manual", "child_free_count": 20, "child_half_count": 5}, adults=1, children=kids)
+    assert est["child_counts"]["free"] == 11 and est["child_counts"]["half"] == 0 and est["child_subtotal"] == 0

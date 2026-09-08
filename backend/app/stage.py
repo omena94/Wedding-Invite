@@ -32,6 +32,8 @@ BANQUET_KEYS = (
     "banquet_child_price",       # child_mode=custom 時每位小孩的價格（未含服務費）
     "banquet_child_free_below",  # 身高低於此（公分）免費
     "banquet_child_half_below",  # 身高低於此半價，以上全價
+    "banquet_child_free_count",  # child_mode=manual：新人手動填「110 以下」免費人數
+    "banquet_child_half_count",  # child_mode=manual：手動填「130 以下」半價人數；其餘小孩全價
     "banquet_veg_price",         # 素食每位（未含服務費）；0 = 跟大人一樣
 )
 BANQUET_DEFAULTS = {
@@ -41,6 +43,8 @@ BANQUET_DEFAULTS = {
     "banquet_child_price": "0",
     "banquet_child_free_below": "90",
     "banquet_child_half_below": "120",
+    "banquet_child_free_count": "0",
+    "banquet_child_half_count": "0",
     "banquet_veg_price": "0",
 }
 SEATING_KEYS = ("seating_canvas_w", "seating_canvas_h", "seating_clearance")
@@ -79,7 +83,7 @@ def banquet_params(db: Session) -> dict:
     """婚宴費用參數（含預設值）。"""
     raw = get_all(db)
     mode = (raw.get("banquet_child_mode") or BANQUET_DEFAULTS["banquet_child_mode"]).strip()
-    if mode not in ("free", "half", "full", "custom"):
+    if mode not in ("free", "half", "full", "custom", "manual"):
         mode = "half"
     free_below = _to_int(raw.get("banquet_child_free_below"), 90)
     half_below = max(free_below, _to_int(raw.get("banquet_child_half_below"), 120))
@@ -90,6 +94,8 @@ def banquet_params(db: Session) -> dict:
         "child_price": _to_int(raw.get("banquet_child_price"), 0),
         "child_free_below": free_below,
         "child_half_below": half_below,
+        "child_free_count": _to_int(raw.get("banquet_child_free_count"), 0),
+        "child_half_count": _to_int(raw.get("banquet_child_half_count"), 0),
         # 素食主餐通常另有價位；0 表示跟大人一樣（不另計）
         "veg_price": _to_int(raw.get("banquet_veg_price"), 0),
     }
@@ -147,6 +153,13 @@ def banquet_estimate(params: dict, adults: int, children: list[dict], unknown_mo
         else:
             counts[b] += 1
             child_subtotal += child_unit_price(params, b)
+    # 2026-09-08 新人要求：手動填人數模式。110 以下免費、130 以下半價，其餘全價；人數不看賓客填的身高
+    if params.get("child_mode") == "manual":
+        n = len(children)
+        free = min(max(0, int(params.get("child_free_count", 0))), n)
+        half = min(max(0, int(params.get("child_half_count", 0))), n - free)
+        counts = {"free": free, "half": half, "full": n - free - half, "custom": 0, "unknown": 0}
+        child_subtotal = half * child_unit_price(params, "half") + counts["full"] * child_unit_price(params, "full")
     veg_unit = veg_unit_price(params)
     regular_subtotal = regular_adults * params["adult_price"]
     veg_subtotal = veg_adults * veg_unit

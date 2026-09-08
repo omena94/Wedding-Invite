@@ -342,7 +342,9 @@ class SeatCanvasIn(BaseModel):
 class BanquetPatch(BaseModel):
     adult_price: int | None = Field(default=None, ge=0, le=1_000_000)
     service_pct: int | None = Field(default=None, ge=0, le=100)
-    child_mode: Literal["free", "half", "full", "custom"] | None = None  # 沒填身高的小孩怎麼算
+    child_mode: Literal["free", "half", "full", "custom", "manual"] | None = None  # 沒填身高的小孩怎麼算；manual = 手動填人數
+    child_free_count: int | None = Field(default=None, ge=0, le=500)  # manual：110 以下人數（免費）
+    child_half_count: int | None = Field(default=None, ge=0, le=500)  # manual：130 以下人數（半價）
     child_price: int | None = Field(default=None, ge=0, le=1_000_000)
     child_free_below: int | None = Field(default=None, ge=0, le=250)  # 身高低於此免費
     child_half_below: int | None = Field(default=None, ge=0, le=250)  # 身高低於此半價（以上全價）
