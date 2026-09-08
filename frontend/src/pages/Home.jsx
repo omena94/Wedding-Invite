@@ -54,6 +54,8 @@ export default function Home() {
     <div className="home-masthead"><span className="home-edition">THE WEDDING OF ALAN & OMENA</span><button type="button" ref={replayRef} className="invitation-replay" onClick={() => { replaying.current = true; setIntro(true); }}><MailOpen size={16}/>重看喜帖</button></div>
     {error && <LoadError error={error} retry={retry}/>}
 
+    {/* 2026-09-08 新人要求倒數放最上方（頁首文字之前） */}
+    {countdown}
     <header className="wedding-hero">
       <div className="wedding-hero-copy">
         <p className="guest-eyebrow">{visit ? 'SO LOVELY TO SEE YOU AGAIN' : 'TO OUR DEAREST FAMILY & FRIENDS'}</p>
@@ -67,8 +69,7 @@ export default function Home() {
       </div>
     </header>
 
-    {/* 2026-09-08 依新人要求：插畫（含動畫）移到倒數下方；倒數對首次與回訪都在頁首文字之後 */}
-    {countdown}
+    {/* 2026-09-08 依新人要求：插畫（含動畫）在倒數下方 */}
     <section className="wedding-hero-art" aria-label="婚禮插畫">
       <div className="hero-arch-frame"><img src="/hero.webp" width="800" height="800" fetchPriority="high" alt="Alan 與 Omena 的婚禮插畫" className="hero-color-reveal"/></div>
       {/* 2026-09-08 依新人要求兩句互換：照片下方放 A NEW CHAPTER BEGINS，右側直排放 together, always */}

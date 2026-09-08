@@ -8,7 +8,7 @@
 .wedding-home h2 { font-size: clamp(22px, 3vw, 30px); line-height: 1.6; }
 .wedding-home :is(a,button):focus-visible, .invitation-intro button:focus-visible { outline: 3px solid var(--milk-tea-700); outline-offset: 5px; }
 /* 頁首只剩文字（插畫移到倒數下方），改單欄置中 */
-.wedding-hero { display: grid; grid-template-columns: 1fr; justify-items: center; text-align: center; padding: 60px 14px 44px; }
+.wedding-hero { display: grid; grid-template-columns: 1fr; justify-items: center; text-align: center; padding: 44px 14px 44px; }
 .wedding-hero-copy { min-width: 0; }
 .home-greeting { font-size: 14px; margin: 16px 0 20px; }
 .wedding-hero h1 { font-size: clamp(28px, 3.5vw, 39px); line-height: 1.75; letter-spacing: .07em; white-space: nowrap; }
