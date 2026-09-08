@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-// 2026-09-08 依新人要求拿掉「婚禮當天資訊」入口卡：內容與上方「這一天，我們在這裡等你」重複；/info 仍可從底部導覽「婚禮資訊」進入
+// 2026-09-08 依新人要求拿掉「婚禮當天資訊」入口卡：內容與上方「這一天，我們在這裡等你」重複；婚禮資訊頁已從導覽移除
 import { ArrowRight, Armchair, CalendarCheck, CalendarPlus, Heart, MailOpen, Utensils } from 'lucide-react';
 import { GuestNav, LoadError, useGuestLoad, CalendarButtons } from '../components/GuestUI.jsx';
 import EventDetails, { VENUE } from '../components/EventDetails.jsx';
@@ -32,7 +32,7 @@ export default function Home() {
   const titleRef = useRef(null), replayRef = useRef(null), replaying = useRef(false), focusPending = useRef(false);
   const clock = useWeddingClock();
   const s = stage || {}, preview = !!s.preview;
-  const action = stage ? homeAction(stage, clock.period) : { id: '', href: '/info', action: '查看婚禮當天資訊' };
+  const action = stage ? homeAction(stage, clock.period) : { id: '', href: '/rsvp', action: '回覆我的出席意願' };
   useEffect(() => { if (!intro && stage) saveVisit(action.id); }, [intro, stage, action.id]);
   useEffect(() => {
     if (intro || !focusPending.current) return undefined;

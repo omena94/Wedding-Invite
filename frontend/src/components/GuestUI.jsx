@@ -6,7 +6,7 @@ export function GuestHeader({title, subtitle, english='OUR WEDDING · 2027.03.13
   return <header className="guest-header"><a href="/" className="guest-brand">Alan <span>&</span> Omena</a><p className="guest-eyebrow">{english}</p><h1>{title}</h1>{subtitle&&<p>{subtitle}</p>}</header>;
 }
 export function GuestNav() {
-  return <nav className="guest-nav" aria-label="婚禮導覽">{[['/','首頁',Home],['/rsvp','出席回覆',Heart],['/info','婚禮資訊',MapPin],['/seat','我的座位',Armchair]].map(([href,label,Icon])=><a key={href} href={href} aria-current={location.pathname===href?'page':undefined}><Icon size={19}/><span>{label}</span></a>)}</nav>;
+  return <nav className="guest-nav" aria-label="婚禮導覽">{[['/','首頁',Home],['/rsvp','出席回覆',Heart],['/seat','我的座位',Armchair]].map(([href,label,Icon])=><a key={href} href={href} aria-current={location.pathname===href?'page':undefined}><Icon size={19}/><span>{label}</span></a>)}</nav>;
 }
 export function LoadError({error,retry}) { return <div className="guest-error" role="alert"><p>{error?.message||error||'資料暫時無法讀取'}</p><button type="button" className="btn" onClick={retry}>重新讀取</button></div>; }
 export function useGuestLoad(loader) {
@@ -38,7 +38,7 @@ export function useDraft(key,initial) {
 // 婚宴時間（台灣 12:00–16:00，用 UTC 寫給 Google 日曆）
 const CAL_START='20270313T040000Z', CAL_END='20270313T080000Z', CAL_TITLE='宣文與孟庭的婚禮';
 const calLocation=()=>`${VENUE.name} ${VENUE.address}`;
-const calDetails=()=>`婚禮資訊、交通與座位查詢：${location.origin}/info`;
+const calDetails=()=>`婚禮資訊、交通與座位查詢：${location.origin}/`;
 /** Google 日曆的「建立活動」連結：手機會直接開 Google 日曆 App，電腦開網頁，按儲存就加進去 */
 export function googleCalendarUrl() {
   return 'https://calendar.google.com/calendar/render?'+new URLSearchParams({action:'TEMPLATE',text:CAL_TITLE,dates:`${CAL_START}/${CAL_END}`,details:calDetails(),location:calLocation(),ctz:'Asia/Taipei'}).toString();
@@ -56,5 +56,5 @@ export function GuestReceipt({receipt}) {
   return <section ref={card} tabIndex={-1} className="section-card guest-receipt" role="status"><div className="receipt-seal"><Check size={28}/></div><p className="guest-eyebrow">WITH LOVE & THANKS</p><h2>{receipt.name}，謝謝你的回覆</h2><p>{receipt.attending?`已記下 ${receipt.adult_count} 位大人、${receipt.child_count} 位小孩，期待與你相聚。`:'你的祝福，我們都好好收下了。'}</p>
     {receipt.details_completed&&<p>{Object.entries(receipt.main_course||{}).filter(([,n])=>n>0).map(([dish,n])=>`${dish} ${n} 份`).join('・')}</p>}
     {receipt.attending&&<><p>{receipt.details_completed?'餐點與需求已更新。':'餐點確認開放時，我們會再通知你。'}</p><div className="receipt-actions"><CalendarButtons inline/><a className="btn" href={VENUE.mapUrl} target="_blank" rel="noopener noreferrer"><MapPin size={17}/>前往場地</a></div><button type="button" className="btn-submit" onClick={async()=>{try{await navigator.clipboard.writeText(link);setCopied(true);setCopyError(false);}catch{setCopyError(true);}}}>{copied?'已複製，請自行保存':'複製我的回覆連結'}</button>{copyError&&<label>長按複製回覆連結<input readOnly value={link} onFocus={e=>e.target.select()}/></label>}<p className="helper-text">連結可用來修改餐點回覆，請妥善保存，勿轉傳；90 天內有效。</p></>}
-    <a href="/info" className="top-link">查看婚禮當天資訊 →</a></section>;
+    <a href="/" className="top-link">回首頁看婚禮資訊 →</a></section>;
 }

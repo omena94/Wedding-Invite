@@ -14,8 +14,8 @@ test('回訪主行動只導向已開放功能，admin 預覽不改變賓客階�
   assert.equal(homeAction({ preview: true }).href, '/rsvp');
   assert.equal(homeAction({ phase2_open: true }).href, '/details');
   assert.equal(homeAction({ phase2_open: true, seat_open: true }).href, '/seat');
-  assert.equal(homeAction({ seat_open: true, photos_open: false, preview: true }, 'after').href, '/info');
-  assert.equal(homeAction({ photos_open: true }, 'after').href, '/info'); // 婚紗照不給賓客看，開關開著也不導向相簿
+  assert.equal(homeAction({ seat_open: true, photos_open: false, preview: true }, 'after').href, '/rsvp');
+  assert.equal(homeAction({ photos_open: true }, 'after').href, '/rsvp'); // 婚紗照不給賓客看，開關開著也不導向相簿
 });
 
 test('無效、未來與無法存取的回訪紀錄不會使首頁失效', () => {
