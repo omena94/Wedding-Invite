@@ -125,10 +125,22 @@ export default function Gifts() {
   };
   // 名單上的「已領取」開關：確認後登記一筆婚禮領取（剩餘盒數全交），之後不能在名單上取消
   const confirmPickup = async (r) => {
-    const ok = await Swal.fire({ icon: "question", title: `${r.name} 簽收確認？`, text: "確認後登記為已領取，之後不能再修改；誤按只能由新人到「紀錄」作廢。", showCancelButton: true, confirmButtonText: "確認簽收", cancelButtonText: "取消", confirmButtonColor: "#B28F70" });
-    if (!ok.isConfirmed) return;
+    // 先問是本人還是他人代領；代領要填代領人姓名，會記進交付紀錄
+    const who = await Swal.fire({ icon: "question", title: `${r.name} 簽收確認`, text: "請選擇由誰領取；確認後登記為已領取，之後不能再修改，誤按只能由新人到「紀錄」作廢。",
+      showDenyButton: true, showCancelButton: true, confirmButtonText: "本人領取", denyButtonText: "他人代領", cancelButtonText: "取消",
+      confirmButtonColor: "#B28F70", denyButtonColor: "#8C7A6B" });
+    if (!who.isConfirmed && !who.isDenied) return;
+    let receiver = r.contact_name || r.name, note = "本人領取（名單簽收確認）";
+    if (who.isDenied) {
+      const proxy = await Swal.fire({ title: "代領人是誰？", input: "text", inputLabel: "請填代領人姓名，方便日後對照", inputPlaceholder: "例如：王媽媽", inputAttributes: { maxlength: 100 },
+        showCancelButton: true, confirmButtonText: "確認簽收", cancelButtonText: "取消", confirmButtonColor: "#B28F70",
+        inputValidator: (v) => (v && v.trim() ? undefined : "請填寫代領人姓名") });
+      if (!proxy.isConfirmed) return;
+      receiver = proxy.value.trim();
+      note = `他人代領：${receiver}（名單簽收確認）`;
+    }
     try {
-      await createGiftDelivery(r.id, { request_key: crypto.randomUUID(), version: r.version, method: "venue", receiver: r.contact_name || r.name, handler: role === "helper" ? "幫手" : "", address: "", tracking: "", note: "名單簽收確認", delivered_on: today(),
+      await createGiftDelivery(r.id, { request_key: crypto.randomUUID(), version: r.version, method: "venue", receiver, handler: role === "helper" ? "幫手" : "", address: "", tracking: "", note, delivered_on: today(),
         items: r.items.filter((i) => i.remaining > 0).map((i) => ({ product_id: i.product_id, quantity: i.remaining })) });
       reload();
     } catch (e) { toastErr(e); }
