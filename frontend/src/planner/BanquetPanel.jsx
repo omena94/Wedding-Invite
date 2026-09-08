@@ -2,7 +2,6 @@
 // 人數直接用賓客回覆「出席」的大人與小孩數（測試資料不算）。
 import { useEffect, useState } from "react";
 import { Calculator, ChevronDown, Save } from "lucide-react";
-import Select from "../components/Select.jsx";
 import { fetchBanquet, saveBanquet } from "../api.js";
 import { money } from "../constants.js";
 import { ErrorBox, Field, Loading, NumberInput, toInt, toastErr, toastOk, useLoader } from "./ui.jsx";
@@ -50,8 +49,8 @@ export default function BanquetPanel({ compact = false }) {
     try {
       const r = await saveBanquet({
         adult_price: toInt(f.adult_price),
-        service_pct: toInt(f.service_pct),
-        child_mode: f.child_mode,
+        service_pct: 10, // 固定 10%，畫面不再提供修改
+        child_mode: "manual", // 2026-09-08 新人決定固定用手動填人數
         child_price: toInt(f.child_price),
         child_free_below: toInt(f.child_free_below),
         child_half_below: toInt(f.child_half_below),
@@ -98,26 +97,10 @@ export default function BanquetPanel({ compact = false }) {
             <Field label="素食每位（未含服務費）"><NumberInput value={f.veg_price} onChange={(v) => set("veg_price", v)} /></Field>
           </div>
           <div className="form-group grid-2">
-            <Field label="服務費 %"><NumberInput value={f.service_pct} onChange={(v) => set("service_pct", v)} placeholder="10" /></Field>
-          </div>
-          {f.child_mode !== "manual" && <div className="form-group grid-2">
-            <Field label="小孩免費：身高未滿（公分）"><NumberInput value={f.child_free_below} onChange={(v) => set("child_free_below", v)} placeholder="90" /></Field>
-            <Field label="小孩半價：身高未滿（公分）" hint="達到這個身高就算全價"><NumberInput value={f.child_half_below} onChange={(v) => set("child_half_below", v)} placeholder="120" /></Field>
-          </div>}
-          {f.child_mode === "manual" && <div className="form-group grid-2">
             <Field label="身高 110 以下人數（免費）"><NumberInput value={f.child_free_count} onChange={(v) => set("child_free_count", v)} /></Field>
-            <Field label="身高 130 以下人數（半價）" hint={`其餘小孩以全價計；目前回覆共 ${counts.children} 位小孩`}><NumberInput value={f.child_half_count} onChange={(v) => set("child_half_count", v)} /></Field>
-          </div>}
-          <div className="form-group grid-2">
-            <Field label="小孩計價方式" hint={f.child_mode === "manual" ? "直接填兩種身高的人數，不看賓客填的身高" : f.child_mode === "custom" ? "自訂金額會套用到所有小孩（賓客名單裡個別指定免費／半價／全價的除外）" : "有填身高的依身高分級；沒填的先用這個，右邊也列了其他情境"}>
-              <Select value={f.child_mode} onChange={(v) => set("child_mode", v)} options={CHILD_MODES} />
-            </Field>
-            {f.child_mode === "custom" && (
-              <Field label="自訂每位（未含服務費）"><NumberInput value={f.child_price} onChange={(v) => set("child_price", v)} /></Field>
-            )}
+            <Field label="身高 130 以下人數（半價）" hint={`其餘小孩以全價計，全部含 10% 服務費；目前回覆共 ${counts.children} 位小孩`}><NumberInput value={f.child_half_count} onChange={(v) => set("child_half_count", v)} /></Field>
           </div>
           <button className="btn btn-primary btn-sm" disabled={busy || !dirty} onClick={save}><Save size={13} /> {busy ? "儲存中…" : "儲存並重算"}</button>
-          <div className="helper-text" style={{ marginTop: 8 }}>個別小孩想指定免費／半價／全價，在賓客名單按「編輯」，每個小孩都能單獨設定。</div>
         </div>
 
         <div className="banquet-result">
