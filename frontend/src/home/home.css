@@ -7,7 +7,8 @@
 .wedding-home :is(h1,h2,h3) { font-family: 'Noto Serif TC', serif; font-weight: 500; color: var(--milk-tea-900); }
 .wedding-home h2 { font-size: clamp(22px, 3vw, 30px); line-height: 1.6; }
 .wedding-home :is(a,button):focus-visible, .invitation-intro button:focus-visible { outline: 3px solid var(--milk-tea-700); outline-offset: 5px; }
-.wedding-hero { display: grid; grid-template-columns: 1.12fr 1fr; gap: 65px; align-items: center; padding: 68px 14px 52px; }
+/* 頁首只剩文字（插畫移到倒數下方），改單欄置中 */
+.wedding-hero { display: grid; grid-template-columns: 1fr; justify-items: center; text-align: center; padding: 60px 14px 44px; }
 .wedding-hero-copy { min-width: 0; }
 .home-greeting { font-size: 14px; margin: 16px 0 20px; }
 .wedding-hero h1 { font-size: clamp(28px, 3.5vw, 39px); line-height: 1.75; letter-spacing: .07em; white-space: nowrap; }
@@ -21,7 +22,7 @@
 .home-wedding-date { font: 26px 'Cormorant Garamond', Georgia, serif; letter-spacing: .1em; margin: 22px 0; color: var(--milk-tea-900); }
 .home-wedding-date span { display: block; font: 13px/1.8 'Plus Jakarta Sans', sans-serif; letter-spacing: .06em; margin-top: 9px; }
 .wedding-home .home-primary { display: inline-flex; align-items: center; justify-content: center; gap: 12px; width: auto; padding: 14px 23px; margin: 0; }
-.wedding-hero-art { position: relative; min-width: 0; padding: 10px 0; }
+.wedding-hero-art { position: relative; min-width: 0; width: min(420px, 86%); margin: 44px auto 56px; }
 .hero-arch-frame { position: relative; overflow: hidden; border-radius: 220px 220px 16px 16px; background: var(--milk-tea-100); aspect-ratio: 4 / 5; border: 1px solid var(--milk-tea-200); box-shadow: var(--shadow-elegant); }
 .hero-arch-frame::after { content: ''; position: absolute; inset: 10px; border: 1px solid #ffffff90; border-radius: inherit; pointer-events: none; }
 .hero-arch-frame img { display: block; width: 100%; height: 100%; object-fit: cover; }
@@ -40,9 +41,6 @@
 .clock-window span { display: block; font: 52px/1.1 'Cormorant Garamond', Georgia, serif; font-variant-numeric: tabular-nums; color: var(--milk-tea-900); animation: clockTick .35s ease-out; }
 .clock-unit small { font-size: 11px; color: var(--text-muted); }
 .wedding-clock-message p { font: 24px/1.6 'Noto Serif TC', serif; }
-.home-return { display: grid; grid-template-columns: 1fr; padding-top: 26px; } /* 只剩倒數，改單欄 */
-.home-return .home-countdown { border: 0; }
-.home-return .wedding-clock-digits { gap: 26px; }
 .moving-photo { overflow: hidden; background: var(--milk-tea-100); }
 .moving-photo img { display: block; width: 100%; height: 100%; object-fit: cover; transform: translateY(var(--photo-shift, 0px)) scale(1.12); }
 .home-meet { display: grid; grid-template-columns: 1fr 1fr; gap: 48px; padding: 45px 36px; border-radius: var(--radius-card); background: var(--bg-card-subtle); border: 1px solid var(--border-highlight); align-items: center; }
@@ -100,8 +98,6 @@
   .wedding-hero-art { width: min(310px, 86%); margin: 0 auto; }
   .hero-arch-frame { aspect-ratio: 1; }
   .hero-art-note { right: -20px; }
-  .home-return { grid-template-columns: 1fr; gap: 6px; padding-top: 8px; }
-  .home-return .home-countdown { padding: 24px 8px; }
   .home-meet { grid-template-columns: 1fr; gap: 25px; padding: 28px 21px; }
   .home-meet-heading { text-align: center; }
   .home-meet .calendar-actions { justify-content: center; } /* 手機標題置中，按鈕跟著置中 */
