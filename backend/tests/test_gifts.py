@@ -258,7 +258,7 @@ def test_import_guests_creates_one_box_each_and_is_repeatable(setup):
     assert by_name["出席的表哥"]["method"] == "tbd" and by_name["出席的表哥"]["state"] == "confirmed"  # 領取方式不預設
     assert by_name["出席的表哥"]["items"] == [{"product_id": pid, "name": "綜合禮盒", "quantity": 1, "delivered": 0, "remaining": 1}]
     assert by_name["出席的表哥"]["rsvps"][0]["attending"] and by_name["出席的表哥"]["phone"] == "0911000001"
-    assert by_name["不出席的阿姨"]["method"] == "tbd" and "不出席" in by_name["不出席的阿姨"]["note"]
+    assert by_name["不出席的阿姨"]["method"] == "tbd" and by_name["不出席的阿姨"]["note"] == ""  # 不自動加備註
     assert client.post(P + f"/recipients/{by_name['出席的表哥']['id']}/deliveries", json=delivery_body(pid, version=by_name["出席的表哥"]["version"], method="tbd")).status_code == 422  # 交付一定要選方式
     assert client.post(P + "/recipients", json=recipient_body(pid, method="personal")).status_code == 422  # 親送已停用
     assert data["summary"]["demand"] == 2

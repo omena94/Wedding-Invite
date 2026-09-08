@@ -114,7 +114,7 @@ export default function Gifts() {
     const pending = (data?.guests || []).filter((g) => !g.is_test && !data.recipients.some((r) => r.rsvps.some((x) => x.id === g.id)));
     if (!pending.length) { toastOk("所有賓客都已在送餅名單裡"); return; }
     const ok = await Swal.fire({ icon: "question", title: `帶入 ${pending.length} 位賓客？`,
-      html: "會依賓客填的資料各建一筆送餅安排，每戶 1 盒。<br/>領取方式先留「尚未決定」，帶入後再逐筆選擇；不出席者會加註提醒。<br/>已在名單裡的不會重複，之後有新回覆再按一次即可。",
+      html: "會依賓客填的資料各建一筆送餅安排，每戶 1 盒。<br/>領取方式先留「尚未決定」，帶入後再逐筆選擇。<br/>已在名單裡的不會重複，之後有新回覆再按一次即可。",
       showCancelButton: true, confirmButtonText: "帶入", cancelButtonText: "取消", confirmButtonColor: "#B28F70" });
     if (!ok.isConfirmed) return;
     try {
@@ -164,7 +164,7 @@ export default function Gifts() {
       || filter === "missing" && r.missing_address || filter === "draft" && r.state === "draft" || filter === "cancelled" && r.state === "cancelled"));
   return <div className="gift-page">
     <PageHead title="喜餅" sub="把每一份心意送到，也把盒數、訂購與付款記清楚。"
-      actions={role === "helper" ? null : tab === "recipients" ? <><button className="btn btn-primary" onClick={importGuests}><Users size={15}/>帶入所有賓客</button><button className="btn" onClick={() => setModal({ type: "recipient", fromGuest: true })}><Users size={15}/>從賓客加入</button><button className="btn" onClick={() => setModal({ type: "recipient" })}><Plus size={15}/>新增送禮對象</button></>
+      actions={role === "helper" ? null : tab === "recipients" ? <><button className="btn btn-primary" onClick={importGuests}><Users size={15}/>帶入所有賓客</button><button className="btn" onClick={() => setModal({ type: "recipient" })}><Plus size={15}/>新增送禮對象</button></>
         : <><button className="btn" onClick={() => setModal({ type: "product" })}><Gift size={15}/>新增款式</button><button className="btn btn-primary" onClick={() => setModal({ type: "order" })}><Plus size={15}/>新增訂購</button></>}/>
     {role !== "helper" && <div className="gift-tabs" role="group" aria-label="喜餅功能分頁"><button className={`btn ${tab === "recipients" ? "btn-primary" : "btn-ghost"}`} aria-pressed={tab === "recipients"} onClick={() => setParams({})}>送餅名單</button><button className={`btn ${tab === "orders" ? "btn-primary" : "btn-ghost"}`} aria-pressed={tab === "orders"} onClick={() => setParams({ tab: "orders" })}>訂購與費用</button></div>}
     {tab === "recipients" ? <>
@@ -188,7 +188,7 @@ export default function Gifts() {
       {!orders.length ? <div className="panel"><Empty>確認廠商報價後新增訂購，會建立或連結一筆預算花費。付款沿用既有訂金與尾款紀錄。</Empty></div> : orders.map((o) => <OrderCard key={o.id} o={o} vendors={vendors} edit={() => setModal({ type: "order", initial: o })} payment={(p) => setModal({ type: "payment", order: o, initial: p })} upload={() => setModal({ type: "upload", order: o })}/>)}
     </>}
     {modal?.type === "product" && <ProductForm initial={modal.initial} vendors={vendors} onClose={close} onSaved={saved}/>}
-    {modal?.type === "recipient" && <RecipientForm initial={modal.initial} fromGuest={modal.fromGuest} products={products} guests={guests} recipients={recipients} onClose={close} onSaved={saved}/>}
+    {modal?.type === "recipient" && <RecipientForm initial={modal.initial} products={products} recipients={recipients} onClose={close} onSaved={saved}/>}
     {modal?.type === "order" && <OrderForm initial={modal.initial} products={products} vendors={vendors} expenses={expenses} orders={orders} onClose={close} onSaved={saved}/>}
     {modal?.type === "delivery" && <DeliveryForm recipient={modal.recipient} onClose={close} onSaved={saved}/>}
     {modal?.type === "history" && <DeliveryHistory recipient={modal.recipient} onClose={close} onSaved={saved}/>}

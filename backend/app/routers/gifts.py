@@ -242,7 +242,7 @@ def import_guests(db: Session = Depends(get_db)):
 
     新人只有一家喜餅，不想一筆一筆「從賓客加入」。重跑只會補新回覆，已加入的不動；
     測試賓客略過。只有一款啟用中的款式時直接確認並帶入 1 盒，否則先存為待決定。
-    領取方式不預設（尚未決定），由新人逐筆選擇；不出席者加註提醒。
+    領取方式不預設（尚未決定），由新人逐筆選擇；不另加備註。
     """
     active = list(db.scalars(select(GiftProduct).where(GiftProduct.active.is_(True)).order_by(GiftProduct.id)))
     product = active[0] if len(active) == 1 else None
@@ -262,7 +262,7 @@ def import_guests(db: Session = Depends(get_db)):
             contact_name=guest.name, phone=guest.phone or "", address="", owner="",
             method="tbd",
             state="confirmed" if product else "draft",
-            note="" if attending else "回覆不出席，請選擇寄送或當天由家人代領",
+            note="",  # 2026-09-08 新人要求不出席者不要自動加備註
         )
         db.add(row)
         db.flush()

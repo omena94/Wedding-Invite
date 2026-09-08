@@ -81,26 +81,15 @@ function ProductLines({ items, onChange, products, order = false }) {
   </div>;
 }
 
-export function RecipientForm({ initial, fromGuest = false, products, guests, recipients, onClose, onSaved }) {
-  const [f, set, setF] = useForm(() => ({ request_key: crypto.randomUUID(), name: "", kind: "household", side: "other", contact_name: "", phone: "", address: "", owner: "", method: "tbd", state: products.some((p) => p.active) ? "confirmed" : "draft", due_date: "", note: "", version: 1,
+export function RecipientForm({ initial, products, recipients, onClose, onSaved }) {
+  const [f, set] = useForm(() => ({ request_key: crypto.randomUUID(), name: "", kind: "household", side: "other", contact_name: "", phone: "", address: "", owner: "", method: "tbd", state: products.some((p) => p.active) ? "confirmed" : "draft", due_date: "", note: "", version: 1,
     ...(initial || {}), rsvp_ids: initial?.rsvps.map((r) => r.id) || [],
     items: initial?.items.map(({ product_id, quantity }) => ({ product_id, quantity })) || (products.filter((p) => p.active).length === 1 ? [{ product_id: products.find((p) => p.active).id, quantity: 1 }] : []) }));
-  const [search, setSearch] = useState("");
-  const [showGuests, setShowGuests] = useState(fromGuest || !!initial?.rsvps.length);
-  const linked = new Set(recipients.filter((r) => r.id !== initial?.id).flatMap((r) => r.rsvps.map((g) => g.id)));
-  const toggleGuest = (g, checked) => setF((old) => ({ ...old,
-    rsvp_ids: checked ? [...old.rsvp_ids, g.id] : old.rsvp_ids.filter((id) => id !== g.id),
-    ...(checked && !old.name ? { name: g.name, contact_name: g.name, phone: g.phone, side: g.side } : {}) }));
   const duplicates = recipients.filter((r) => r.id !== initial?.id && (r.name.trim() === f.name.trim() || (f.phone.trim() && r.phone.replace(/\D/g, "") === f.phone.replace(/\D/g, ""))));
-  return <GiftDialog title={initial ? "編輯" : fromGuest ? "從賓客加入送餅名單" : "新增送禮對象"} onClose={onClose} onSaved={onSaved}
+  return <GiftDialog title={initial ? "編輯" : "新增送禮對象"} onClose={onClose} onSaved={onSaved}
     submit={() => saveGiftRecipient(initial?.id, { request_key: f.request_key, version: f.version, name: f.name, kind: f.kind, side: f.side, contact_name: f.contact_name, phone: f.phone, address: f.address, owner: f.owner,
       method: f.method, state: f.state, due_date: f.due_date || null, note: f.note, rsvp_ids: f.rsvp_ids, items: f.items.map((i) => ({ product_id: Number(i.product_id), quantity: toInt(i.quantity) })) })}>
     <p className="helper-text">以一人、一戶或一個部門登記，不影響婚宴人數。盒數由你指定。</p>
-    <button className="btn btn-ghost btn-sm" type="button" onClick={() => setShowGuests(!showGuests)}>{showGuests ? "收合婚宴回覆" : "連結既有婚宴回覆（選填）"}</button>
-    {showGuests && <div className="gift-guest-picker"><input type="text" aria-label="搜尋婚宴回覆" placeholder="搜尋姓名或電話" value={search} onChange={(e) => setSearch(e.target.value)}/>
-      <p className="helper-text">同一戶有多筆回覆可一起勾選；這些回覆共用下方一份送餅安排。</p>
-      <div className="gift-guest-list">{guests.filter((g) => !g.is_test && !linked.has(g.id) && `${g.name} ${g.phone}`.includes(search)).map((g) => <Checkbox key={g.id} checked={f.rsvp_ids.includes(g.id)} onChange={(v) => toggleGuest(g, v)}>{g.name} · {g.attending ? "出席" : "不出席"}{g.phone ? ` · ${g.phone}` : ""}</Checkbox>)}</div>
-    </div>}
     <div className="grid-2"><TextField label="送禮對象" value={f.name} onChange={(v) => set("name", v)} required placeholder="例如：台中的阿姨、公司行政部"/>
       <Field label="對象類型"><Select aria-label="對象類型" value={f.kind} onChange={(v) => set("kind", v)} options={options({ household: "家庭", person: "個人", group: "公司／團體" })}/></Field></div>
     {duplicates.length > 0 && <p className="gift-warning">名單已有相同姓名或電話：{duplicates.map((r) => r.name).join("、")}。請確認是否為同一戶，系統不會自動合併。</p>}
