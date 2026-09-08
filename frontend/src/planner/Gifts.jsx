@@ -104,6 +104,7 @@ export default function Gifts() {
   const [modal, setModal] = useState(null);
   const [search, setSearch] = useState("");
   const [method, setMethod] = useState("");
+  const [side, setSide] = useState("");
   const close = () => setModal(null);
   const saved = () => { close(); reload(); };
   // 一鍵把還沒加入名單的賓客回覆帶進來（每戶 1 盒）；重按只補新回覆
@@ -156,7 +157,7 @@ export default function Gifts() {
   if (error) return <><ErrorBox error={error}/><button className="btn" onClick={reload}>重新讀取</button></>;
   const { summary: s, products, recipients, orders, guests, vendors, expenses } = data;
   // 篩選只留姓名搜尋與領取方式（2026-09-08 新人要求精簡，幫手現場好用）
-  const filtered = recipients.filter((r) => (!method || r.method === method) && `${r.name} ${r.contact_name}`.toLowerCase().includes(search.toLowerCase()));
+  const filtered = recipients.filter((r) => (!method || r.method === method) && (!side || r.side === side) && `${r.name} ${r.contact_name}`.toLowerCase().includes(search.toLowerCase()));
   return <div className="gift-page">
     <PageHead title="喜餅" sub="把每一份心意送到，也把盒數、訂購與付款記清楚。"
       actions={role === "helper" ? null : tab === "recipients" ? <><button className="btn btn-primary" onClick={importGuests}><Users size={15}/>帶入所有賓客</button><button className="btn" onClick={() => setModal({ type: "recipient" })}><Plus size={15}/>新增送禮對象</button></>
@@ -167,6 +168,7 @@ export default function Gifts() {
       {!products.length && <div className="panel gift-intro"><Package size={25}/><div><strong>先建送禮名單，款式可以稍後決定</strong><p>不出席或未填婚宴表單的親友，都能獨立加入。已有喜餅款式時，可先設定參考價格及備用盒數。</p></div><button className="btn" onClick={() => setModal({ type: "product" })}>新增喜餅款式</button></div>}
       <div className="panel"><div className="toolbar gift-toolbar"><input type="text" aria-label="搜尋送禮對象" placeholder="搜尋姓名" value={search} onChange={(e) => setSearch(e.target.value)}/>
         <Select compact aria-label="篩選領取方式" value={method} onChange={setMethod} options={[{ value: "", label: "全部" }, ...options(METHODS)]}/>
+        <Select compact aria-label="篩選親友方" value={side} onChange={setSide} options={[{ value: "", label: "全部親友" }, { value: "groom", label: "男方親友" }, { value: "bride", label: "女方親友" }]}/>
         </div>
       </div>
       {filtered.length === 0 ? <div className="panel"><Empty>{recipients.length ? "沒有符合篩選的送餅安排" : "還沒有送餅對象，從賓客加入或直接新增親友。"}</Empty></div> : <div className="panel"><div className="table-wrap"><table className="gift-table"><thead><tr><th>簽收確認</th><th>送禮對象</th><th>盒數</th><th>領取方式</th><th>電話</th><th>進度</th><th></th></tr></thead><tbody>{filtered.map((r) => <RecipientRow key={r.id} r={r} onMethod={changeMethod} onPickup={confirmPickup} canManage={role !== "helper"} edit={() => setModal({ type: "recipient", initial: r })} deliver={() => setModal({ type: "delivery", recipient: r })} history={() => setModal({ type: "history", recipient: r })}/>)}</tbody></table></div></div>}
