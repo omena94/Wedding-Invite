@@ -57,6 +57,13 @@ export function ProductForm({ initial, vendors, onClose, onSaved }) {
 
 function ProductLines({ items, onChange, products, order = false }) {
   const update = (index, key, value) => onChange(items.map((item, i) => i === index ? { ...item, [key]: value } : item));
+  // 送餅安排只有一款啟用款式時（新人只訂一家），不顯示款式選單與「加入一款」，只填盒數
+  const active = products.filter((p) => p.active);
+  if (!order && active.length === 1) {
+    const only = active[0];
+    const item = items.find((x) => Number(x.product_id) === only.id) || { product_id: only.id, quantity: 1 };
+    return <Field label="送餅盒數"><NumberInput aria-label="送餅盒數" value={item.quantity} onChange={(v) => onChange([{ product_id: only.id, quantity: v }])}/></Field>;
+  }
   return <div className="gift-lines">
     {items.map((item, i) => <div className="gift-line" key={i}>
       <Field label={`款式 ${i + 1}`}><Select aria-label={`款式 ${i + 1}`} value={item.product_id} onChange={(v) => {

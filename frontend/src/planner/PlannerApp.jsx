@@ -22,7 +22,7 @@ import { PlannerContext } from "./context.js";
 // 2026-09-08 依新人要求移除「廠商」與「比價」頁（資料與 API 保留，花費、文件、付款仍可顯示廠商名稱）
 const NAV = [
   { to: "/", label: "總覽", icon: LayoutDashboard, end: true },
-  { to: "/guests", label: "賓客", icon: Users, helper: true },
+  { to: "/guests", label: "喜宴", icon: Users, helper: true }, // 2026-09-08 依新人要求由「賓客」改名
   { to: "/seating", label: "座位圖", icon: Armchair, helper: true },
   { to: "/gifts", label: "喜餅", icon: Gift, helper: true }, // 幫手：看名單、勾已領取
   { to: "/budget", label: "預算花費", icon: Wallet },

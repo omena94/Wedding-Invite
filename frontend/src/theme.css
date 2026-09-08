@@ -497,6 +497,8 @@ tbody tr:last-child td { border-bottom: none; }
 .pl-nav a.active { background: var(--milk-tea-50); color: var(--milk-tea-900); font-weight: 600; border: 1px solid var(--border-soft); }
 .pl-side-foot { display: flex; flex-direction: column; gap: 8px; padding: 0 8px; }
 .pl-main { flex: 1; min-width: 0; padding: 26px 28px 80px; }
+/* 2026-09-08 新人要求頁面收窄：內容最寬 1180px 置中，大螢幕不再整片拉開 */
+.pl-main > * { max-width: 1180px; margin-left: auto; margin-right: auto; }
 .pl-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
 .pl-title { font-family: "Noto Serif TC", serif; font-size: 22px; font-weight: 600; color: var(--milk-tea-900); letter-spacing: 2px; }
 .pl-sub { font-size: 13px; color: var(--text-muted); margin-top: 4px; }
@@ -934,7 +936,8 @@ tbody tr:last-child td { border-bottom: none; }
 .gift-table td, .gift-table th { vertical-align: top; white-space: nowrap; }
 /* 欄寬：姓名欄固定、盒數緊接在後，剩餘空間留給進度與操作 */
 .gift-table th:nth-child(1) { width: 110px; }
-.gift-pickup-cell { padding-right: 0; display: flex; align-items: center; gap: 8px; }
+.gift-pickup-cell { padding-right: 0; }
+.gift-pickup-cell > div { display: flex; align-items: center; gap: 8px; } /* 開關與「已簽收」並排；td 本身不能設 flex，否則格線跑掉 */
 .gift-signed { font-size: 12px; color: var(--milk-tea-700); font-weight: 600; }
 .gift-table th:nth-child(2), .gift-table td:nth-child(2) { white-space: normal; width: 210px; min-width: 190px; max-width: 240px; }
 .gift-table th:nth-child(3) { width: 70px; }
