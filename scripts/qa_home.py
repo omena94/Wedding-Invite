@@ -97,10 +97,10 @@ def main():
         page.route(BASE + '/api/stage', lambda route: route.fulfill(json={'phase2_open': True, 'seat_open': True, 'photos_open': False, 'preview': False}))
         page.goto(BASE)
         expect(page.locator('.home-primary')).to_have_attribute('href', '/seat')
-        expect(page.locator('.home-next-label')).to_contain_text('有新消息')
-        assert page.locator('.home-next .btn').bounding_box()['y'] < 740, 'returning guest should see the latest action immediately'
+        # 「下一步」卡片已移除（2026-09-08），回訪只看頁首主按鈕是否指向最新開放功能
+        assert page.locator('.home-next').count() == 0
         page.reload()
-        expect(page.locator('.home-next-label')).to_contain_text('座位查詢已開放')
+        expect(page.locator('.home-primary')).to_have_attribute('href', '/seat')
         page.emulate_media(reduced_motion='reduce')
         page.get_by_role('button', name='重看喜帖').click()
         page.get_by_role('button', name='打開婚禮喜帖').click()

@@ -33,7 +33,6 @@ export default function Home() {
   const clock = useWeddingClock();
   const s = stage || {}, preview = !!s.preview;
   const action = stage ? homeAction(stage, clock.period) : { id: '', href: '/info', action: '查看婚禮當天資訊' };
-  const updated = !!(visit?.chapter && action.id && visit.chapter !== action.id);
   useEffect(() => { if (!intro && stage) saveVisit(action.id); }, [intro, stage, action.id]);
   useEffect(() => {
     if (intro || !focusPending.current) return undefined;
@@ -51,13 +50,13 @@ export default function Home() {
     setIntro(false);
   };
   const countdown = <Reveal className="home-countdown"><Countdown clock={clock}/></Reveal>;
-  const nextPanel = stage && <Reveal><section className="home-next" aria-labelledby="home-next-title"><div><p className="home-next-label"><span className="home-status-dot"/>{updated ? '有新消息，這次回來可以…' : action.label}</p><h2 id="home-next-title">{action.title}</h2><p>{action.description}</p></div><a className="btn" href={action.href}>{action.action}<ArrowRight size={18}/></a></section></Reveal>;
+  // 2026-09-08 依新人要求拿掉「下一步」深色卡片：頁首已有同樣的主按鈕，只留倒數
 
   return <div className={`container guest-home wedding-home${revealed ? ' invitation-opened' : ''}`}>
     <PreviewBanner stage={s} closedLabels={[!s.phase2_open && '第二階段', !s.seat_open && '桌次查詢'].filter(Boolean)}/>
     <div className="home-masthead"><span className="home-monogram">A <i>&</i> O</span><span className="home-edition">THE WEDDING OF ALAN & OMENA</span><button type="button" ref={replayRef} className="invitation-replay" onClick={() => { replaying.current = true; setIntro(true); }}><MailOpen size={16}/>重看喜帖</button></div>
     {error && <LoadError error={error} retry={retry}/>}
-    {visit && <section className="home-return" aria-label="歡迎回來">{countdown}{nextPanel}</section>}
+    {visit && <section className="home-return" aria-label="歡迎回來">{countdown}</section>}
 
     <header className="wedding-hero">
       <div className="wedding-hero-copy">
@@ -76,7 +75,7 @@ export default function Home() {
       </div>
     </header>
 
-    {!visit && <>{countdown}{nextPanel}</>}
+    {!visit && countdown}
 
     <Reveal as="section" className="home-meet"><div className="home-meet-heading"><p className="guest-eyebrow">SAVE A LITTLE TIME FOR US</p><h2>這一天，我們在這裡等你</h2><p>把日期留起來，剩下的期待，交給那天。</p><CalendarButtons/></div><EventDetails/></Reveal>
 
