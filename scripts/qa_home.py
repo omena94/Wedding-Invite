@@ -33,7 +33,7 @@ def main():
         expect(dialog).to_be_focused()
         assert page.locator('#root').evaluate('(el) => el.inert')
         page.keyboard.press('Tab')
-        expect(page.get_by_role('button', name='略過開場')).to_be_focused()
+        expect(page.get_by_role('button', name='打開婚禮喜帖')).to_be_focused()  # 略過按鈕已移除，唯一按鈕是進入網站
         for width in (320, 390, 768, 1440):
             check_width(page, width)
         check_width(page, 390)
@@ -52,7 +52,7 @@ def main():
         expect(dialog).to_have_count(0)
         expect(page.get_by_role('button', name='重看喜帖')).to_be_focused()
         page.get_by_role('button', name='重看喜帖').click()
-        page.get_by_role('button', name='略過開場').click()
+        page.keyboard.press('Escape')  # 略過按鈕已移除，改用 Escape 關閉
         expect(dialog).to_have_count(0)
         page.reload()
         expect(page.locator('.home-greeting')).to_contain_text('歡迎回來')
@@ -116,7 +116,7 @@ def main():
         blocked = private.new_page()
         blocked.on('pageerror', lambda error: errors.append(str(error)))
         blocked.goto(BASE)
-        blocked.get_by_role('button', name='略過開場').click()
+        blocked.keyboard.press('Escape')
         expect(blocked.locator('h1')).to_be_visible()
         expect(blocked.locator('.home-primary')).to_have_attribute('href', '/rsvp')
         assert not errors, errors

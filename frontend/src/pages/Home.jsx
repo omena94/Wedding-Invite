@@ -66,7 +66,7 @@ export default function Home() {
         <a className="btn-submit home-primary" href={action.href}>{action.action}<ArrowRight size={18}/></a>
       </div>
       <div className="wedding-hero-art">
-        <div className="hero-arch-frame"><img src="/hero-line.webp" width="800" height="800" fetchPriority="high" alt="Alan 與 Omena 的婚禮插畫"/><img src="/hero.webp" width="800" height="800" decoding="async" alt="" className="hero-color-reveal" aria-hidden="true"/></div>
+        <div className="hero-arch-frame"><img src="/hero.webp" width="800" height="800" fetchPriority="high" alt="Alan 與 Omena 的婚禮插畫" className="hero-color-reveal"/></div>
         <div className="hero-art-caption"><span>together, always</span><Heart size={17} aria-hidden="true"/></div>
         <span className="hero-art-note" aria-hidden="true">A NEW CHAPTER BEGINS</span>
       </div>
