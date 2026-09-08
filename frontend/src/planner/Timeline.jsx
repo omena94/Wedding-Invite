@@ -2,21 +2,21 @@
 import { useMemo, useState } from "react";
 import { Pencil, Plus, Trash2 } from "lucide-react";
 import Select from "../components/Select.jsx";
+import DatePicker from "../components/DatePicker.jsx";
 import { Checkbox } from "../components/Toggle.jsx";
 import { deleteTask, fetchTasks, fetchVendors, updateTask } from "../api.js";
-import { ASSIGNEE, daysUntil, fmtDate } from "../constants.js";
+import { daysUntil } from "../constants.js";
 import { TaskModal } from "./modals.jsx";
 import { Empty, ErrorBox, Loading, PageHead, confirmDelete, toastErr, useLoader } from "./ui.jsx";
 
 export default function Timeline() {
   const [status, setStatus] = useState("open");
-  const [assignee, setAssignee] = useState("");
   const { data, loading, error, reload } = useLoader(() => fetchTasks(status), [status]);
   const { data: vendors } = useLoader(() => fetchVendors(), []);
   const [modal, setModal] = useState(null);
 
   const groups = useMemo(() => {
-    const list = (data || []).filter((t) => !assignee || t.assignee === assignee || t.assignee === "both");
+    const list = data || [];
     const m = new Map();
     list.forEach((t) => {
       const key = t.due_date ? t.due_date.slice(0, 7).replace("-", " 年 ") + " 月" : "未定日期";
@@ -24,12 +24,16 @@ export default function Timeline() {
       m.get(key).push(t);
     });
     return Array.from(m.entries());
-  }, [data, assignee]);
+  }, [data]);
 
   const close = () => setModal(null);
   const saved = () => { close(); reload(); };
   const toggle = async (t) => {
     try { await updateTask(t.id, { done: !t.done }); reload(); } catch (e) { toastErr(e); }
+  };
+  // 清單上直接改日期（2026-09-08 新人要求），清空就是未定日期
+  const changeDate = async (t, v) => {
+    try { await updateTask(t.id, v ? { due_date: v } : { clear_due_date: true }); reload(); } catch (e) { toastErr(e); }
   };
   const remove = async (t) => {
     if (!(await confirmDelete(t.title))) return;
@@ -44,7 +48,6 @@ export default function Timeline() {
       <div className="panel">
         <div className="toolbar" style={{ marginBottom: 16 }}>
           <Select compact value={status} onChange={setStatus} options={[{ value: "open", label: "未完成" }, { value: "done", label: "已完成" }, { value: "all", label: "全部" }]} />
-          <Select compact value={assignee} onChange={setAssignee} options={[{ value: "", label: "所有人" }, { value: "groom", label: "新郎（含兩人）" }, { value: "bride", label: "新娘（含兩人）" }]} />
         </div>
 
         {loading ? <Loading /> : error ? <ErrorBox error={error} /> : groups.length === 0 ? (
@@ -66,9 +69,8 @@ export default function Timeline() {
                           {t.title}
                         </div>
                         <div className="pl-list-sub">
-                          {t.due_date ? fmtDate(t.due_date) : "未定日期"}
+                          <span className="pl-date-inline"><DatePicker value={t.due_date || ""} onChange={(v) => changeDate(t, v)} placeholder="未定日期" /></span>
                           {!t.done && d !== null && (overdue ? <span className="pill pill-no" style={{ marginLeft: 6 }}>逾期 {-d} 天</span> : d === 0 ? <span className="pill pill-warn" style={{ marginLeft: 6 }}>今天</span> : d <= 14 ? <span className="pill pill-warn" style={{ marginLeft: 6 }}>{d} 天後</span> : null)}
-                          {" · "}{ASSIGNEE[t.assignee]}
                           {t.vendor_id && <> · {t.vendor_name}</>}
                           {t.note && <div style={{ whiteSpace: "pre-wrap" }}>{t.note}</div>}
                         </div>

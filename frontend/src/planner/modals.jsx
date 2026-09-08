@@ -8,7 +8,7 @@ import {
   updateExpense, updateFile, updatePayment, updateQuote, updateTask, updateVendor, uploadFile,
 } from "../api.js";
 import {
-  ASSIGNEE, FILE_KIND, PAID_BY, PAY_METHODS, TASK_KIND, VENDOR_STATUS,
+  FILE_KIND, PAID_BY, PAY_METHODS, TASK_KIND, VENDOR_STATUS,
   fmtSize, listOptions, money, toOptions, todayISO,
 } from "../constants.js";
 import { useCategories } from "./categories.js";
@@ -282,7 +282,6 @@ export function TaskModal({ initial, vendors, onClose, onSaved }) {
         <Field label="日期"><DatePicker value={f.due_date} onChange={(v) => set("due_date", v)} placeholder="未定日期" /></Field>
       </div>
       <div className="form-group grid-2">
-        <Field label="負責人"><Select value={f.assignee} onChange={(v) => set("assignee", v)} options={toOptions(ASSIGNEE)} /></Field>
         <Field label="相關廠商"><Select value={f.vendor_id} onChange={(v) => set("vendor_id", v)} options={vendorOptions(vendors)} /></Field>
       </div>
       <Field label="備註"><textarea rows={2} value={f.note} onChange={(e) => set("note", e.target.value)} /></Field>

@@ -2,7 +2,7 @@
 import { Link } from "react-router-dom";
 import { CalendarClock, Hourglass, ListChecks, Users, Utensils, Wallet, Settings as SettingsIcon } from "lucide-react";
 import { fetchDashboard, fetchStats } from "../api.js";
-import { ASSIGNEE, WEDDING_DATE, daysUntil, fmtDate, fmtDateTime, money } from "../constants.js";
+import { WEDDING_DATE, daysUntil, fmtDate, fmtDateTime, money } from "../constants.js";
 
 const CHILD_MODE_LABEL = { free: "免費", half: "半價", full: "全價", custom: "自訂" };
 import { ErrorBox, Loading, PageHead, useLoader } from "./ui.jsx";
@@ -83,7 +83,7 @@ export default function Dashboard() {
                 <li key={t.id}>
                   <div>
                     <div className="pl-list-title">{t.kind === "milestone" && <span className="pill pill-bride" style={{ marginRight: 6 }}>里程碑</span>}{t.title}</div>
-                    <div className="pl-list-sub">{ASSIGNEE[t.assignee]}{t.vendor_name ? ` · ${t.vendor_name}` : ""}</div>
+                    <div className="pl-list-sub">{t.vendor_name || ""}</div>
                   </div>
                   <div className="muted-cell" style={{ whiteSpace: "nowrap" }}>{t.due_date ? `${fmtDate(t.due_date)}${dueTag(t.due_date)}` : "未定"}</div>
                 </li>

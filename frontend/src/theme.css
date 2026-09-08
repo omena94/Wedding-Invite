@@ -1013,3 +1013,7 @@ tbody tr:last-child td { border-bottom: none; }
   .gift-page .pl-head { align-items: stretch; }
   .gift-toolbar .ui-select { flex: 1 1 130px; }
 }
+
+/* 籌備進度：清單上直接改日期的小型日期選擇器 */
+.pl-date-inline { display: inline-block; width: 168px; vertical-align: middle; }
+.pl-date-inline .ui-select-trigger { padding: 5px 10px; font-size: 13px; border-radius: 10px; }
