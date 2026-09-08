@@ -92,7 +92,7 @@ export default function BanquetPanel({ compact = false }) {
         <div className="banquet-params">
           <div className="form-group grid-2">
             <Field label="大人每位（未含服務費）"><NumberInput value={f.adult_price} onChange={(v) => set("adult_price", v)} /></Field>
-            <Field label="素食每位（未含服務費）" hint="選素食主餐的大人用這個價；填 0 表示跟大人一樣"><NumberInput value={f.veg_price} onChange={(v) => set("veg_price", v)} /></Field>
+            <Field label="素食每位（未含服務費）"><NumberInput value={f.veg_price} onChange={(v) => set("veg_price", v)} /></Field>
           </div>
           <div className="form-group grid-2">
             <Field label="服務費 %"><NumberInput value={f.service_pct} onChange={(v) => set("service_pct", v)} placeholder="10" /></Field>
@@ -134,7 +134,7 @@ export default function BanquetPanel({ compact = false }) {
               {cc.custom > 0 && <tr><td>小孩 {cc.custom} 位 × {money(cp.custom)}（自訂）</td><td className="amount">{money(cc.custom * cp.custom)}</td></tr>}
               {cc.unknown > 0 && <tr><td>小孩未填身高 {cc.unknown} 位 × {money(estimate.unknown_unit_price)}（先當{MODE_LABEL[params.child_mode]}）</td><td className="amount">{money(cc.unknown * estimate.unknown_unit_price)}</td></tr>}
               {counts.children === 0 && <tr><td>小孩 0 位</td><td className="amount">{money(0)}</td></tr>}
-              <tr><td>服務費 {params.service_pct}%</td><td className="amount">{money(estimate.service)}</td></tr>
+              <tr><td>服務費 {params.service_pct}%（大人、素食、小孩餐費全部計入）</td><td className="amount">{money(estimate.service)}</td></tr>
               <tr className="banquet-sum"><td>合計</td><td className="amount">{money(estimate.total)}</td></tr>
             </tbody>
           </table>
