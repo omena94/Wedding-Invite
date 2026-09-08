@@ -10,7 +10,7 @@ import { Field, Modal, NumberInput, toInt } from "./ui.jsx";
 export const METHODS = { venue: "婚禮領取", mail: "寄送" }; // 2026-09-08 新人決定只用這兩種
 export const PLAN_METHODS = { tbd: "尚未決定", ...METHODS }; // 送餅安排可先不決定（帶入賓客時不預設）
 export const SIDES = { groom: "男方親友", bride: "女方親友", other: "其他／共同親友" };
-export const STATES = { confirmed: "已確認送餅", draft: "待決定", cancelled: "已取消" };
+export const STATES = { confirmed: "要送", draft: "待決定", cancelled: "不送喜餅" }; // 2026-09-08 「已取消」改稱「不送喜餅」：有些親友不拿喜餅
 export const options = (map) => Object.entries(map).map(([value, label]) => ({ value, label }));
 export const today = () => new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Taipei" }).format(new Date());
 
@@ -85,7 +85,7 @@ export function RecipientForm({ initial, fromGuest = false, products, guests, re
     rsvp_ids: checked ? [...old.rsvp_ids, g.id] : old.rsvp_ids.filter((id) => id !== g.id),
     ...(checked && !old.name ? { name: g.name, contact_name: g.name, phone: g.phone, side: g.side } : {}) }));
   const duplicates = recipients.filter((r) => r.id !== initial?.id && (r.name.trim() === f.name.trim() || (f.phone.trim() && r.phone.replace(/\D/g, "") === f.phone.replace(/\D/g, ""))));
-  return <GiftDialog title={initial ? "編輯送餅安排" : fromGuest ? "從賓客加入送餅名單" : "新增送禮對象"} onClose={onClose} onSaved={onSaved}
+  return <GiftDialog title={initial ? "編輯" : fromGuest ? "從賓客加入送餅名單" : "新增送禮對象"} onClose={onClose} onSaved={onSaved}
     submit={() => saveGiftRecipient(initial?.id, { request_key: f.request_key, version: f.version, name: f.name, kind: f.kind, side: f.side, contact_name: f.contact_name, phone: f.phone, address: f.address, owner: f.owner,
       method: f.method, state: f.state, due_date: f.due_date || null, note: f.note, rsvp_ids: f.rsvp_ids, items: f.items.map((i) => ({ product_id: Number(i.product_id), quantity: toInt(i.quantity) })) })}>
     <p className="helper-text">以一人、一戶或一個部門登記，不影響婚宴人數。盒數由你指定。</p>

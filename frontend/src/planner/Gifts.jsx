@@ -25,15 +25,15 @@ function RecipientRow({ r, edit, deliver, history, onMethod }) {
   return <tr className={r.state === "cancelled" ? "gift-cancelled" : undefined}>
     <td><strong>{r.name}</strong><div className="muted-cell" style={{ fontSize: 11.5 }}>{SIDES[r.side]}{r.owner ? ` · ${r.owner} 負責` : ""}</div>{r.note && <div className="gift-note muted-cell" style={{ fontSize: 11.5 }}>{r.note}</div>}</td>
     <td>{r.items.length ? r.items.map((i) => <div key={i.product_id}><strong>{i.quantity}</strong> 盒{i.delivered > 0 && <span className="muted-cell" style={{ fontSize: 11.5 }}>（已交出 {i.delivered}）</span>}</div>) : <span className="muted-cell">未定</span>}</td>
-    <td className="gift-method-cell">{r.state === "cancelled" ? (METHODS[r.method] || "—") : <Select compact aria-label={`${r.name} 領取方式`} value={METHODS[r.method] ? r.method : ""} placeholder="尚未決定" options={options(METHODS)} onChange={(v) => onMethod(r, v)}/>}{r.due_date && <div className="muted-cell" style={{ fontSize: 11.5 }}>預計 {fmtDate(r.due_date)}</div>}{r.contact_name && r.contact_name !== r.name && <div className="muted-cell" style={{ fontSize: 11.5 }}>聯絡人 {r.contact_name}</div>}</td>
+    <td className="gift-method-cell"><Select compact aria-label={`${r.name} 領取方式`} value={r.state === "cancelled" ? "none" : METHODS[r.method] ? r.method : ""} placeholder="尚未決定" options={[...options(METHODS), { value: "none", label: "不送喜餅" }]} onChange={(v) => onMethod(r, v)}/>{r.due_date && <div className="muted-cell" style={{ fontSize: 11.5 }}>預計 {fmtDate(r.due_date)}</div>}{r.contact_name && r.contact_name !== r.name && <div className="muted-cell" style={{ fontSize: 11.5 }}>聯絡人 {r.contact_name}</div>}</td>
     <td>{r.phone ? <a className="gift-phone" href={`tel:${r.phone.replace(/[^\d+]/g, "")}`}>{r.phone}</a> : <span className="muted-cell">—</span>}</td>
     <td>{progressPill(r, inTransit)}
       {r.state === "confirmed" && r.method === "tbd" && r.remaining > 0 && <div className="gift-warning gift-warning-inline">領取方式未定</div>}
       {r.missing_address && <div className="gift-warning gift-warning-inline">缺寄送地址</div>}
       {r.change_method && <div className="gift-warning gift-warning-inline">已回覆不出席，請改寄送或家人代領</div>}</td>
     <td className="row-actions">
-      <button className="btn btn-ghost btn-sm" title="編輯安排" onClick={edit}><Pencil size={13}/></button>{" "}
-      <button className="btn btn-ghost btn-sm" title="交付紀錄" onClick={history}><History size={13}/>{r.deliveries.length ? ` ${r.deliveries.length}` : ""}</button>{" "}
+      <button className="btn btn-ghost btn-sm" onClick={edit}><Pencil size={13}/> 編輯</button>{" "}
+      <button className="btn btn-ghost btn-sm" onClick={history}><History size={13}/> 紀錄{r.deliveries.length ? ` ${r.deliveries.length}` : ""}</button>{" "}
       {r.state === "confirmed" && r.remaining > 0 && <button className="btn btn-primary btn-sm" onClick={deliver}><Truck size={13}/> 登記交付</button>}
     </td>
   </tr>;
@@ -96,7 +96,7 @@ export default function Gifts() {
   const [search, setSearch] = useState("");
   const [method, setMethod] = useState("");
   const [side, setSide] = useState("");
-  const [filter, setFilter] = useState("active");
+  const [filter, setFilter] = useState("all");
   const [exportType, setExportType] = useState("all");
   const close = () => setModal(null);
   const saved = () => { close(); reload(); };
@@ -114,10 +114,13 @@ export default function Gifts() {
       reload();
     } catch (e) { toastErr(e); }
   };
-  const changeMethod = async (r, method) => {
+  const changeMethod = async (r, choice) => {
+    const none = choice === "none";
+    const method = none ? (METHODS[r.method] ? r.method : "tbd") : choice;
+    const state = none ? "cancelled" : r.state === "draft" && !r.items.length ? "draft" : "confirmed";
     try {
       await saveGiftRecipient(r.id, { request_key: r.request_key, version: r.version, name: r.name, kind: r.kind, side: r.side, contact_name: r.contact_name, phone: r.phone, address: r.address, owner: r.owner,
-        method, state: r.state, due_date: r.due_date || null, note: r.note, rsvp_ids: r.rsvps.map((g) => g.id), items: r.items.map((i) => ({ product_id: i.product_id, quantity: i.quantity })) });
+        method, state, due_date: r.due_date || null, note: r.note, rsvp_ids: r.rsvps.map((g) => g.id), items: r.items.map((i) => ({ product_id: i.product_id, quantity: i.quantity })) });
       reload();
     } catch (e) { toastErr(e); }
   };
@@ -139,7 +142,7 @@ export default function Gifts() {
       <div className="panel"><div className="toolbar gift-toolbar"><input type="text" aria-label="搜尋送禮對象" placeholder="姓名、電話或負責人" value={search} onChange={(e) => setSearch(e.target.value)}/>
         <Select compact aria-label="篩選領取方式" value={method} onChange={setMethod} options={[{ value: "", label: "所有領取方式" }, ...options(PLAN_METHODS)]}/>
         <Select compact aria-label="篩選親友方" value={side} onChange={setSide} options={[{ value: "", label: "所有親友" }, ...options(SIDES)]}/>
-        <Select compact aria-label="篩選安排進度" value={filter} onChange={setFilter} options={options({ active: "進行中的安排", remaining: "尚未交付", missing: "缺寄送地址", draft: "待決定", cancelled: "已取消", all: "全部" })}/></div>
+        <Select compact aria-label="篩選安排進度" value={filter} onChange={setFilter} options={options({ all: "全部", active: "要送的", remaining: "尚未交付", missing: "缺寄送地址", draft: "待決定", cancelled: "不送喜餅" })}/></div>
         <div className="gift-export"><Select compact aria-label="匯出清單類型" value={exportType} onChange={setExportType} options={options({ all: "完整送餅清單", mail: "寄送清單", venue: "當天領取清單", products: "廠商款式數量" })}/><button className="btn btn-ghost btn-sm" onClick={() => downloadGiftCsv(exportType).catch(toastErr)}><Download size={14}/>匯出 CSV</button><span className="helper-text">匯出所選類型的全部已確認安排，含已交出與尚欠盒數。</span></div></div>
       {filtered.length === 0 ? <div className="panel"><Empty>{recipients.length ? "沒有符合篩選的送餅安排" : "還沒有送餅對象，從賓客加入或直接新增親友。"}</Empty></div> : <div className="panel"><div className="table-wrap"><table className="gift-table"><thead><tr><th>送禮對象</th><th>盒數</th><th>領取方式</th><th>電話</th><th>進度</th><th></th></tr></thead><tbody>{filtered.map((r) => <RecipientRow key={r.id} r={r} onMethod={changeMethod} edit={() => setModal({ type: "recipient", initial: r })} deliver={() => setModal({ type: "delivery", recipient: r })} history={() => setModal({ type: "history", recipient: r })}/>)}</tbody></table></div></div>}
     </> : <>
