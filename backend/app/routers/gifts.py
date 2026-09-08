@@ -294,7 +294,7 @@ def create_delivery(recipient_id: int, payload: DeliveryIn, db: Session = Depend
     plans = {p.product_id: p.quantity for p in db.scalars(select(GiftPlan).where(GiftPlan.recipient_id == row.id))}
     counts = delivered_quantities(db.scalars(select(GiftDelivery).where(GiftDelivery.recipient_id == row.id)))
     if any(i.quantity + counts[i.product_id] > plans.get(i.product_id, 0) for i in payload.items):
-        raise HTTPException(400, "本次盒數超過尚未交付的數量，請確認是否已由其他人領取")
+        raise HTTPException(400, "本次盒數超過未給的數量，請確認是否已由其他人領取")
     data = payload.model_dump(exclude={"version", "items"})
     items = [{**i.model_dump(), "name": products[i.product_id].name} for i in payload.items]
     d = GiftDelivery(recipient_id=row.id, payload_hash=digest, items_json=json.dumps(items, ensure_ascii=False),
