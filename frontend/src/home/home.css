@@ -91,7 +91,7 @@
   .home-edition { max-width: 135px; font-size: 9px; line-height: 1.7; }
   .home-masthead { gap: 12px; }
   .wedding-hero { grid-template-columns: 1fr; gap: 36px; padding: 38px 6px 32px; text-align: center; }
-  .wedding-hero h1 { font-size: clamp(26px, 6.9vw, 37px); }
+  .wedding-hero h1 { font-size: clamp(20px, 6.6vw, 37px); } /* 新標題第二行 13 字，窄手機要縮小才不溢出 */
   .wedding-hero .guest-eyebrow { font-size: 10px; letter-spacing: .14em; }
   .home-greeting { margin: 12px 0 16px; font-size: 13px; }
   .home-couple { margin-top: 22px; }
