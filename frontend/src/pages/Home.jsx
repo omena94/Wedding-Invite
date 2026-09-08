@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 // 2026-09-08 依新人要求拿掉「婚禮當天資訊」入口卡：內容與上方「這一天，我們在這裡等你」重複；婚禮資訊頁已從導覽移除
 // 2026-09-08 依新人要求拿掉入口區「第一階段 填寫出席意願」卡：頁首主按鈕與底部導覽已有出席回覆
-import { ArrowRight, Armchair, CalendarPlus, Heart, MailOpen, Utensils } from 'lucide-react';
+// 2026-09-08 依新人要求移除「赴約前，你需要的都在這裡」入口區；第二階段與座位改放底部導覽
+import { ArrowRight, CalendarPlus, Heart, MailOpen } from 'lucide-react';
 import { GuestNav, LoadError, useGuestLoad, CalendarButtons } from '../components/GuestUI.jsx';
 import EventDetails, { VENUE } from '../components/EventDetails.jsx';
 import PreviewBanner from '../components/PreviewBanner.jsx';
 import { fetchStage } from '../api.js';
-import { WEDDING_DATE_DISPLAY, fmtDateTime } from '../constants.js';
+import { WEDDING_DATE_DISPLAY } from '../constants.js';
 import Invitation from '../home/Invitation.jsx';
 import Countdown, { useWeddingClock } from '../home/Countdown.jsx';
 import { Reveal } from '../home/motion.jsx';
@@ -18,11 +19,6 @@ function previousVisit() {
 }
 function saveVisit(chapter) {
   try { rememberVisit(window.localStorage, chapter); } catch { /* 停用儲存時也能開啟喜帖。 */ }
-}
-
-function Card({ href, icon, step, title, desc, disabled }) {
-  const content = <><div className="nav-card-icon">{icon}</div><div className="nav-card-body">{step && <div className="nav-card-step">{step}</div>}<div className="nav-card-title">{title}</div><div className="nav-card-desc">{desc}</div></div>{!disabled && <ArrowRight size={18} className="nav-card-arrow"/>}</>;
-  return disabled ? <div className="nav-card nav-card-disabled" aria-disabled="true">{content}</div> : <a className="nav-card" href={href}>{content}</a>;
 }
 
 export default function Home() {
@@ -80,10 +76,6 @@ export default function Home() {
 
     <Reveal as="section" className="home-meet"><div className="home-meet-heading"><p className="guest-eyebrow">SAVE A LITTLE TIME FOR US</p><h2>這一天，我們在這裡等你</h2><p>把日期留起來，剩下的期待，交給那天。</p><CalendarButtons/></div><EventDetails/></Reveal>
 
-    <section className="home-essentials" aria-labelledby="home-essentials-title"><Reveal><p className="guest-eyebrow">EVERYTHING FOR YOUR VISIT</p><h2 id="home-essentials-title">赴約前，你需要的都在這裡</h2></Reveal><nav className="nav-cards" aria-label="頁面入口">
-      {stage && <Reveal delay={60}><Card href="/details" icon={<Utensils size={22}/>} step="第二階段" title="確認出席與主餐" disabled={!s.phase2_open && !preview} desc={s.phase2_open ? '確認同行人數、主餐與飲食需求' : preview ? '登入預覽：賓客尚未開放' : s.phase2_open_at ? `預計 ${fmtDateTime(s.phase2_open_at)} 開放` : '準備好後，我們會通知你回來確認'}/></Reveal>}
-      {(s.seat_open || preview) && <Reveal delay={120}><Card href="/seat" icon={<Armchair size={22}/>} title="找到我的座位" desc={s.seat_open ? '從入口出發，一路找到為你留的那一席' : '登入預覽：賓客尚未開放'}/></Reveal>}
-    </nav></section>
     <Reveal className="home-signoff"><Heart size={20} aria-hidden="true"/><p>有你在，就是最好的祝福。</p><span>With love, Alan <span className="amp">&</span> Omena</span></Reveal>
     <GuestNav/><p className="footnote">有任何問題，歡迎直接聯繫宣文或孟庭</p>
     {intro && <Invitation onOpen={openInvitation} onReveal={() => setRevealed(true)}/>}

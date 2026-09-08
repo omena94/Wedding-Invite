@@ -847,7 +847,7 @@ tbody tr:last-child td { border-bottom: none; }
 .guest-eyebrow { font: 12px 'Plus Jakarta Sans', sans-serif; letter-spacing: .2em; color: var(--milk-tea-700); margin-bottom: 12px; }
 .guest-header h1 { font: 600 clamp(23px,5.6vw,30px)/1.6 'Noto Serif TC',serif; color: var(--milk-tea-900); margin-bottom: 10px; }
 .guest-header>p:last-child { font-size: 15px; color: var(--text-body); }
-.guest-nav { position: fixed; z-index: 50; bottom: 0; left: 50%; transform: translateX(-50%); width: min(100%,580px); padding: 9px 8px calc(8px + env(safe-area-inset-bottom)); display: grid; grid-template-columns: repeat(3,1fr); background: rgba(255,252,248,.97); border: 1px solid var(--border-soft); border-bottom: 0; border-radius: 20px 20px 0 0; box-shadow: 0 -3px 25px #5c4f440d; }
+.guest-nav { position: fixed; z-index: 50; bottom: 0; left: 50%; transform: translateX(-50%); width: min(100%,580px); padding: 9px 8px calc(8px + env(safe-area-inset-bottom)); display: grid; grid-template-columns: repeat(4,1fr); background: rgba(255,252,248,.97); border: 1px solid var(--border-soft); border-bottom: 0; border-radius: 20px 20px 0 0; box-shadow: 0 -3px 25px #5c4f440d; }
 .guest-nav a { min-height: 48px; display: flex; gap: 5px; flex-direction: column; align-items: center; justify-content: center; text-decoration: none; color: var(--milk-tea-700); font-size: 12px; border-radius: 12px; }
 .guest-nav a[aria-current=page] { background: var(--milk-tea-100); color: var(--milk-tea-900); font-weight: 700; }
 .guest-home .hero-arch-card { background: linear-gradient(160deg,#fffcf7,#faf3e8); padding-top: 54px; }

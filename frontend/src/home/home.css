@@ -47,10 +47,6 @@
 .home-meet-heading > p:not(.guest-eyebrow) { margin-top: 16px; font-size: 14px; }
 .home-meet .calendar-actions { margin: 22px 0 0; justify-content: flex-start; } /* 桌機：按鈕靠左，跟標題對齊 */
 .home-meet .event-details-card { margin: 0; }
-.home-essentials { margin-top: 76px; }
-.home-essentials > .wedding-reveal { text-align: center; margin-bottom: 30px; }
-.home-essentials .nav-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
-.home-essentials .nav-card { height: 100%; }
 .home-signoff { text-align: center; padding: 65px 0 28px; }
 .home-signoff svg { color: var(--rose-accent); stroke-width: 1; }
 .home-signoff p { font: 21px/1.8 'Noto Serif TC', serif; margin: 16px 0; }
@@ -107,9 +103,6 @@
   .home-meet { grid-template-columns: 1fr; gap: 25px; padding: 28px 21px; }
   .home-meet-heading { text-align: center; }
   .home-meet .calendar-actions { justify-content: center; } /* 手機標題置中，按鈕跟著置中 */
-  .home-essentials { margin-top: 56px; }
-  .home-essentials .nav-cards { grid-template-columns: 1fr; }
-  .home-essentials h2 { font-size: 22px; }
   .home-signoff { padding-top: 45px; }
 }
 @media (max-height: 680px) {

@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Heart, Home, MapPin, Armchair, CalendarPlus, Check } from 'lucide-react';
+import { Heart, Home, MapPin, Armchair, CalendarPlus, Check, Utensils } from 'lucide-react';
 import { VENUE } from './EventDetails.jsx';
 
 export function GuestHeader({title, subtitle, english='OUR WEDDING · 2027.03.13'}) {
   return <header className="guest-header"><a href="/" className="guest-brand">Alan <span>&</span> Omena</a><p className="guest-eyebrow">{english}</p><h1>{title}</h1>{subtitle&&<p>{subtitle}</p>}</header>;
 }
 export function GuestNav() {
-  return <nav className="guest-nav" aria-label="婚禮導覽">{[['/','首頁',Home],['/rsvp','出席回覆',Heart],['/seat','我的座位',Armchair]].map(([href,label,Icon])=><a key={href} href={href} aria-current={location.pathname===href?'page':undefined}><Icon size={19}/><span>{label}</span></a>)}</nav>;
+  return <nav className="guest-nav" aria-label="婚禮導覽">{[['/','首頁',Home],['/rsvp','出席回覆',Heart],['/details','餐點確認',Utensils],['/seat','我的座位',Armchair]].map(([href,label,Icon])=><a key={href} href={href} aria-current={location.pathname===href?'page':undefined}><Icon size={19}/><span>{label}</span></a>)}</nav>;
 }
 export function LoadError({error,retry}) { return <div className="guest-error" role="alert"><p>{error?.message||error||'資料暫時無法讀取'}</p><button type="button" className="btn" onClick={retry}>重新讀取</button></div>; }
 export function useGuestLoad(loader) {
