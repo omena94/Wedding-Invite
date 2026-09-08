@@ -1,6 +1,5 @@
 // 時程與待辦：依月份分組，里程碑與待辦混排
 import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
 import { Pencil, Plus, Trash2 } from "lucide-react";
 import Select from "../components/Select.jsx";
 import { Checkbox } from "../components/Toggle.jsx";
@@ -70,7 +69,7 @@ export default function Timeline() {
                           {t.due_date ? fmtDate(t.due_date) : "未定日期"}
                           {!t.done && d !== null && (overdue ? <span className="pill pill-no" style={{ marginLeft: 6 }}>逾期 {-d} 天</span> : d === 0 ? <span className="pill pill-warn" style={{ marginLeft: 6 }}>今天</span> : d <= 14 ? <span className="pill pill-warn" style={{ marginLeft: 6 }}>{d} 天後</span> : null)}
                           {" · "}{ASSIGNEE[t.assignee]}
-                          {t.vendor_id && <> · <Link to={`/vendors/${t.vendor_id}`}>{t.vendor_name}</Link></>}
+                          {t.vendor_id && <> · {t.vendor_name}</>}
                           {t.note && <div style={{ whiteSpace: "pre-wrap" }}>{t.note}</div>}
                         </div>
                       </div>

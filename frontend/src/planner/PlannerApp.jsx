@@ -2,17 +2,14 @@
 import { useState } from "react";
 import { BrowserRouter, NavLink, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import {
-  LayoutDashboard, Users, Store, Wallet, CalendarClock, Scale, ListChecks, FolderOpen,
+  LayoutDashboard, Users, Wallet, CalendarClock, ListChecks, FolderOpen,
   Settings as SettingsIcon, LogOut, Lock, LogIn, Home as HomeIcon, Armchair, Images, Gift,
 } from "lucide-react";
 import { adminLogin, clearToken, getRole, getToken, setRole, setToken } from "../api.js";
 import Dashboard from "./Dashboard.jsx";
 import Guests from "./Guests.jsx";
-import Vendors from "./Vendors.jsx";
-import VendorDetail from "./VendorDetail.jsx";
 import Budget from "./Budget.jsx";
 import Payments from "./Payments.jsx";
-import Compare from "./Compare.jsx";
 import Timeline from "./Timeline.jsx";
 import Files from "./Files.jsx";
 import SettingsPage from "./Settings.jsx";
@@ -22,15 +19,14 @@ import Gifts from "./Gifts.jsx";
 
 import { PlannerContext } from "./context.js";
 
+// 2026-09-08 依新人要求移除「廠商」與「比價」頁（資料與 API 保留，花費、文件、付款仍可顯示廠商名稱）
 const NAV = [
   { to: "/", label: "總覽", icon: LayoutDashboard, end: true },
   { to: "/guests", label: "賓客", icon: Users, helper: true },
   { to: "/seating", label: "座位圖", icon: Armchair, helper: true },
   { to: "/gifts", label: "喜餅", icon: Gift, helper: true }, // 幫手：看名單、勾已領取
-  { to: "/vendors", label: "廠商", icon: Store },
   { to: "/budget", label: "預算花費", icon: Wallet },
   { to: "/payments", label: "付款期程", icon: CalendarClock },
-  { to: "/compare", label: "比價", icon: Scale },
   { to: "/timeline", label: "時程待辦", icon: ListChecks },
   { to: "/files", label: "文件庫", icon: FolderOpen },
   { to: "/photos", label: "照片", icon: Images },
@@ -66,11 +62,8 @@ export default function PlannerApp() {
             <Route path="/guests" element={<Guests />} />
             <Route path="/seating" element={<Seating />} />
             <Route path="/gifts" element={<Gifts />} />
-            <Route path="/vendors" element={<CoupleOnly role={role}><Vendors /></CoupleOnly>} />
-            <Route path="/vendors/:id" element={<CoupleOnly role={role}><VendorDetail /></CoupleOnly>} />
             <Route path="/budget" element={<CoupleOnly role={role}><Budget /></CoupleOnly>} />
             <Route path="/payments" element={<CoupleOnly role={role}><Payments /></CoupleOnly>} />
-            <Route path="/compare" element={<CoupleOnly role={role}><Compare /></CoupleOnly>} />
             <Route path="/timeline" element={<CoupleOnly role={role}><Timeline /></CoupleOnly>} />
             <Route path="/files" element={<CoupleOnly role={role}><Files /></CoupleOnly>} />
             <Route path="/photos" element={<CoupleOnly role={role}><Photos /></CoupleOnly>} />
@@ -144,7 +137,7 @@ function LoginGate({ onOk }) {
       <div className="lock-card">
         <div className="ic"><Lock size={26} /></div>
         <h2>婚禮籌備後台</h2>
-        <p>Alan &amp; Omena · 賓客、廠商、預算、時程</p>
+        <p>Alan &amp; Omena · 賓客、喜餅、預算、時程</p>
         <input
           type="password" value={pw} placeholder="請輸入密碼" autoFocus
           onChange={(e) => setPw(e.target.value)}

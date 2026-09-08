@@ -1,8 +1,8 @@
 // 總覽：倒數、預算與付款、近期要付的款、待辦、廠商狀態、賓客摘要、目前階段
 import { Link } from "react-router-dom";
-import { CalendarClock, Hourglass, ListChecks, Store, Users, Utensils, Wallet, Settings as SettingsIcon } from "lucide-react";
+import { CalendarClock, Hourglass, ListChecks, Users, Utensils, Wallet, Settings as SettingsIcon } from "lucide-react";
 import { fetchDashboard, fetchStats } from "../api.js";
-import { ASSIGNEE, VENDOR_STATUS, WEDDING_DATE, daysUntil, fmtDate, fmtDateTime, money } from "../constants.js";
+import { ASSIGNEE, WEDDING_DATE, daysUntil, fmtDate, fmtDateTime, money } from "../constants.js";
 
 const CHILD_MODE_LABEL = { free: "免費", half: "半價", full: "全價", custom: "自訂" };
 import { ErrorBox, Loading, PageHead, useLoader } from "./ui.jsx";
@@ -94,21 +94,6 @@ export default function Dashboard() {
       </div>
 
       <div className="pl-grid-2">
-        <div className="panel">
-          <div className="panel-head">
-            <div className="panel-title"><Store size={18} /> 廠商</div>
-            <Link className="btn btn-ghost btn-sm" to="/vendors">廠商清單</Link>
-          </div>
-          <div className="mini-grid">
-            {Object.entries(VENDOR_STATUS).map(([k, label]) => (
-              <div className="mini" key={k}>
-                <div className="m-label">{label}</div>
-                <div className="m-value">{data.vendor_counts[k] || 0}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-
         <div className="panel">
           <div className="panel-head">
             <div className="panel-title"><Users size={18} /> 賓客</div>

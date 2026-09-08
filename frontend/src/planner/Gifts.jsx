@@ -77,7 +77,7 @@ function DeliveryHistory({ recipient, onClose, onSaved }) {
 function OrderCard({ o, vendors, edit, payment, upload }) {
   const vendor = vendors.find((v) => v.id === o.vendor_id);
   return <article className="panel gift-order" id={`gift-order-${o.id}`}>
-    <div className="panel-head"><div><h2 className="panel-title">{o.title}</h2><Link className="top-link" to={`/vendors/${o.vendor_id}`}>{vendor?.name || "廠商資料"}</Link></div><button className="btn btn-ghost btn-sm" onClick={edit}><Pencil size={14}/>編輯訂購</button></div>
+    <div className="panel-head"><div><h2 className="panel-title">{o.title}</h2><span className="helper-text">{vendor?.name || ""}</span></div><button className="btn btn-ghost btn-sm" onClick={edit}><Pencil size={14}/>編輯訂購</button></div>
     <div className="gift-order-money"><div><span>訂購總額</span><strong>{money(o.total)}</strong></div><div><span>已付</span><strong>{money(o.paid)}</strong></div><div><span>{o.balance < 0 ? "溢付待對帳" : "尚欠"}</span><strong>{money(Math.abs(o.balance))}</strong></div></div>
     {o.unscheduled > 0 && <p className="gift-warning">尚有 {money(o.unscheduled)} 未安排付款期程，已包含在尚欠金額。</p>}
     {o.scheduled > Math.max(0, o.balance) && <p className="gift-warning">未付分期超過尚欠金額，請核對付款安排。</p>}

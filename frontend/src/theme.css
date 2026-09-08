@@ -151,6 +151,8 @@ body::after {
   border-radius: 24px !important;
   border: 1px solid var(--border-soft);
 }
+/* sweetalert 的輸入框吃到全域 input 的 100% 寬與內距，在小螢幕會凸出視窗；改成扣掉左右邊距 */
+.swal2-popup .swal2-input { box-sizing: border-box; width: calc(100% - 2em) !important; margin: 1em 1em 3px !important; }
 .swal2-title {
   font-family: "Noto Serif TC", serif !important;
   color: var(--milk-tea-900) !important;

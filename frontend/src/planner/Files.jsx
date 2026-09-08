@@ -1,6 +1,5 @@
 // 文件庫：所有上傳過的合約、報價單、收據、婚紗照
 import { useState } from "react";
-import { Link } from "react-router-dom";
 import { Download, ExternalLink, Eye, EyeOff, Pencil, Trash2, Upload } from "lucide-react";
 import Select from "../components/Select.jsx";
 import { deleteFile, downloadFile, fetchFiles, fetchVendors, openFile, updateFile } from "../api.js";
@@ -50,7 +49,7 @@ export default function Files() {
                         </button>
                       )}
                     </td>
-                    <td>{f.vendor_id ? <Link to={`/vendors/${f.vendor_id}`}>{f.vendor_name}</Link> : <span className="muted-cell">—</span>}</td>
+                    <td>{f.vendor_id ? f.vendor_name : <span className="muted-cell">—</span>}</td>
                     <td className="muted-cell" style={{ whiteSpace: "nowrap" }}>{fmtSize(f.size)}</td>
                     <td className="muted-cell" style={{ whiteSpace: "nowrap" }}>{fmtDate(f.created_at)}</td>
                     <td className="muted-cell">{f.note || "—"}</td>

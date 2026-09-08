@@ -1,7 +1,6 @@
 // 付款期程：所有廠商的分期合併成一張表，依應付日排序。
 // 預設顯示全部：已付的留在清單裡當紀錄（排在未付後面、顏色淡一點），不會一標記就不見。
 import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
 import { Check, Pencil, Plus, Trash2, Undo2 } from "lucide-react";
 import Select from "../components/Select.jsx";
 import { deletePayment, fetchPayments } from "../api.js";
@@ -77,7 +76,7 @@ export default function Payments() {
                       </td>
                       <td>{p.title}{p.note && <div className="muted-cell" style={{ fontSize: 11.5 }}>{p.note}</div>}</td>
                       <td>{p.expense_title}<div className="muted-cell" style={{ fontSize: 11.5 }}>{p.category}</div></td>
-                      <td>{p.vendor_id ? <Link to={`/vendors/${p.vendor_id}`}>{p.vendor_name}</Link> : <span className="muted-cell">—</span>}</td>
+                      <td>{p.vendor_id ? p.vendor_name : <span className="muted-cell">—</span>}</td>
                       <td className="amount">{money(p.amount)}</td>
                       <td>
                         {p.paid_date

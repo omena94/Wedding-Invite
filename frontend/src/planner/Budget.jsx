@@ -86,7 +86,7 @@ export default function Budget() {
                         {e.note && <div className="muted-cell" style={{ fontSize: 11.5, marginTop: 2, whiteSpace: "pre-wrap" }}>{e.note}</div>}
                         {e.gift_order_id && <Link className="top-link" to="/gifts?tab=orders">查看喜餅訂購</Link>}
                       </td>
-                      <td>{e.vendor_id ? <Link to={`/vendors/${e.vendor_id}`}>{e.vendor_name}</Link> : <span className="muted-cell">—</span>}</td>
+                      <td>{e.vendor_id ? e.vendor_name : <span className="muted-cell">—</span>}</td>
                       <td><span className="pill pill-groom">{PAID_BY[e.paid_by]}</span></td>
                       <td className="amount">{money(e.budget_amount)}</td>
                       <td className="amount">{money(e.contract_amount)}</td>
