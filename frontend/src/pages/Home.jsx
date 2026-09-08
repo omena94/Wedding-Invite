@@ -54,7 +54,7 @@ export default function Home() {
 
   return <div className={`container guest-home wedding-home${revealed ? ' invitation-opened' : ''}`}>
     <PreviewBanner stage={s} closedLabels={[!s.phase2_open && '第二階段', !s.seat_open && '桌次查詢'].filter(Boolean)}/>
-    <div className="home-masthead"><span className="home-monogram">A <i>&</i> O</span><span className="home-edition">THE WEDDING OF ALAN & OMENA</span><button type="button" ref={replayRef} className="invitation-replay" onClick={() => { replaying.current = true; setIntro(true); }}><MailOpen size={16}/>重看喜帖</button></div>
+    <div className="home-masthead"><span className="home-edition">THE WEDDING OF ALAN & OMENA</span><button type="button" ref={replayRef} className="invitation-replay" onClick={() => { replaying.current = true; setIntro(true); }}><MailOpen size={16}/>重看喜帖</button></div>
     {error && <LoadError error={error} retry={retry}/>}
     {visit && <section className="home-return" aria-label="歡迎回來">{countdown}</section>}
 
@@ -63,8 +63,8 @@ export default function Home() {
         <p className="guest-eyebrow">{visit ? 'SO LOVELY TO SEE YOU AGAIN' : 'TO OUR DEAREST FAMILY & FRIENDS'}</p>
         <p className="home-greeting">{visit ? clock.period === 'after' ? '歡迎回來，謝謝你留下的祝福。' : clock.period === 'today' ? '歡迎回來，今天就要相見了。' : '歡迎回來，離相聚又近了一點。' : '最愛的家人與好友們，'}</p>
         <h1 ref={titleRef} tabIndex={-1}>把最重要的一天<br/><span>留給最珍惜的你</span></h1>
-        <p className="home-couple">宣文 <i>&</i> 孟庭</p>
-        <p className="home-couple-english">Alan & Omena</p>
+        <p className="home-couple">宣文 <span className="amp">&</span> 孟庭</p>
+        <p className="home-couple-english">Alan <span className="amp">&</span> Omena</p>
         <p className="home-wedding-date">{WEDDING_DATE_DISPLAY}<span>{VENUE.name}</span></p>
         <a className="btn-submit home-primary" href={action.href}>{action.action}<ArrowRight size={18}/></a>
       </div>
@@ -84,7 +84,7 @@ export default function Home() {
       {stage && <Reveal delay={60}><Card href="/details" icon={<Utensils size={22}/>} step="第二階段" title="確認出席與主餐" disabled={!s.phase2_open && !preview} desc={s.phase2_open ? '確認同行人數、主餐與飲食需求' : preview ? '登入預覽：賓客尚未開放' : s.phase2_open_at ? `預計 ${fmtDateTime(s.phase2_open_at)} 開放` : '準備好後，我們會通知你回來確認'}/></Reveal>}
       {(s.seat_open || preview) && <Reveal delay={120}><Card href="/seat" icon={<Armchair size={22}/>} title="找到我的座位" desc={s.seat_open ? '從入口出發，一路找到為你留的那一席' : '登入預覽：賓客尚未開放'}/></Reveal>}
     </nav></section>
-    <Reveal className="home-signoff"><Heart size={20} aria-hidden="true"/><p>有你在，就是最好的祝福。</p><span>With love, Alan & Omena</span></Reveal>
+    <Reveal className="home-signoff"><Heart size={20} aria-hidden="true"/><p>有你在，就是最好的祝福。</p><span>With love, Alan <span className="amp">&</span> Omena</span></Reveal>
     <GuestNav/><p className="footnote">有任何問題，歡迎直接聯繫宣文或孟庭</p>
     {intro && <Invitation onOpen={openInvitation} onReveal={() => setRevealed(true)}/>}
   </div>;

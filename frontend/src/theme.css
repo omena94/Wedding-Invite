@@ -843,7 +843,7 @@ tbody tr:last-child td { border-bottom: none; }
 .container:has(.guest-nav) { padding-bottom: calc(104px + env(safe-area-inset-bottom)); }
 .guest-header { padding: 10px 8px 28px; text-align: center; }
 .guest-brand { display: inline-block; font: 30px 'Cormorant Garamond', Georgia, serif; color: var(--milk-tea-900); text-decoration: none; margin-bottom: 24px; }
-.guest-brand span { font-style: italic; color: var(--gold-accent); padding: 0 6px; }
+.guest-brand span { font-style: normal; color: var(--gold-accent); padding: 0 6px; } /* & 不用斜體 */
 .guest-eyebrow { font: 12px 'Plus Jakarta Sans', sans-serif; letter-spacing: .2em; color: var(--milk-tea-700); margin-bottom: 12px; }
 .guest-header h1 { font: 600 clamp(23px,5.6vw,30px)/1.6 'Noto Serif TC',serif; color: var(--milk-tea-900); margin-bottom: 10px; }
 .guest-header>p:last-child { font-size: 15px; color: var(--text-body); }
