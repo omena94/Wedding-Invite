@@ -7,7 +7,7 @@ import { createGiftDelivery, saveGiftOrder, saveGiftProduct, saveGiftRecipient }
 import { money } from "../constants.js";
 import { Field, Modal, NumberInput, toInt } from "./ui.jsx";
 
-export const METHODS = { venue: "婚宴領取", mail: "宅配", personal: "親送" };
+export const METHODS = { venue: "婚宴當天領取", mail: "寄送" }; // 2026-09-08 新人決定只用這兩種
 export const SIDES = { groom: "男方親友", bride: "女方親友", other: "其他／共同親友" };
 export const STATES = { confirmed: "已確認送餅", draft: "待決定", cancelled: "已取消" };
 export const options = (map) => Object.entries(map).map(([value, label]) => ({ value, label }));
@@ -103,7 +103,7 @@ export function RecipientForm({ initial, fromGuest = false, products, guests, re
     <div className="grid-2"><Field label="交付方式"><Select aria-label="交付方式" value={f.method} onChange={(v) => set("method", v)} options={options(METHODS)}/></Field>
       <Field label="預計交付日期"><DatePicker value={f.due_date || ""} onChange={(v) => set("due_date", v)} placeholder="尚未決定"/></Field></div>
     <div className="grid-2"><TextField label="聯絡／收件人" value={f.contact_name} onChange={(v) => set("contact_name", v)}/><TextField label="電話" value={f.phone} onChange={(v) => set("phone", v)}/></div>
-    <TextField label="收件地址" value={f.address} onChange={(v) => set("address", v)} placeholder="宅配可稍後補，寄出前需填妥"/>
+    <TextField label="收件地址" value={f.address} onChange={(v) => set("address", v)} placeholder="寄送可稍後補，寄出前需填妥"/>
     <Field label="安排狀態"><Select aria-label="安排狀態" value={f.state} onChange={(v) => set("state", v)} options={options(STATES)}/></Field>
     <TextField label="備註" value={f.note} onChange={(v) => set("note", v)} area/>
   </GiftDialog>;
@@ -120,8 +120,8 @@ export function DeliveryForm({ recipient, onClose, onSaved }) {
     <div className="grid-2"><Field label="本次交付方式"><Select aria-label="本次交付方式" value={f.method} onChange={(v) => set("method", v)} options={options(METHODS)}/></Field>
       <Field label="交付／寄出日期"><DatePicker value={f.delivered_on} onChange={(v) => set("delivered_on", v)}/></Field></div>
     <div className="grid-2"><TextField label="實際收件／代領人" value={f.receiver} onChange={(v) => set("receiver", v)} required/><TextField label="經手人" value={f.handler} onChange={(v) => set("handler", v)}/></div>
-    {f.method === "mail" && <><TextField label="本次收件地址" value={f.address} onChange={(v) => set("address", v)} required/><TextField label="宅配單號" value={f.tracking} onChange={(v) => set("tracking", v)}/></>}
-    <TextField label="交付備註" value={f.note} onChange={(v) => set("note", v)} placeholder="例如：由媽媽代領、廠商直接宅配"/>
+    {f.method === "mail" && <><TextField label="本次收件地址" value={f.address} onChange={(v) => set("address", v)} required/><TextField label="寄送單號" value={f.tracking} onChange={(v) => set("tracking", v)}/></>}
+    <TextField label="交付備註" value={f.note} onChange={(v) => set("note", v)} placeholder="例如：由媽媽代領、廠商直接寄送"/>
   </GiftDialog>;
 }
 

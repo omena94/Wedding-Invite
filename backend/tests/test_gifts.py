@@ -238,3 +238,42 @@ def test_overpayment_does_not_hide_other_unpaid_contracts(setup):
     assert client.get("/api/planner/dashboard").json()["budget"]["unpaid_total"] == 500
     rows = {e["id"]: e for e in client.get("/api/planner/expenses").json()}
     assert rows[a.id]["overpaid_total"] == 100 and rows[b.id]["unscheduled_unpaid"] == 500
+
+
+def test_import_guests_creates_one_box_each_and_is_repeatable(setup):
+    client, db, vid, pid = setup
+    db.add_all([
+        Rsvp(name="出席的表哥", side="groom", phone="0911000001", attending=True, adult_count=2),
+        Rsvp(name="不出席的阿姨", side="bride", phone="0911000002", attending=False, adult_count=1),
+        Rsvp(name="測試資料", side="groom", phone="0911000003", attending=True, is_test=True),
+    ])
+    db.commit()
+    first = client.post(P + "/recipients/import-guests")
+    assert first.status_code == 200, first.text
+    assert first.json()["created"] == 2 and first.json()["skipped"] == 0 and first.json()["product"] == "綜合禮盒"
+    data = current(client)
+    by_name = {r["name"]: r for r in data["recipients"]}
+    assert set(by_name) == {"出席的表哥", "不出席的阿姨"}
+    assert by_name["出席的表哥"]["method"] == "venue" and by_name["出席的表哥"]["state"] == "confirmed"
+    assert by_name["出席的表哥"]["items"] == [{"product_id": pid, "name": "綜合禮盒", "quantity": 1, "delivered": 0, "remaining": 1}]
+    assert by_name["出席的表哥"]["rsvps"][0]["attending"] and by_name["出席的表哥"]["phone"] == "0911000001"
+    assert by_name["不出席的阿姨"]["method"] == "mail" and "寄送" in by_name["不出席的阿姨"]["note"]
+    assert client.post(P + "/recipients", json=recipient_body(pid, method="personal")).status_code == 422  # 親送已停用
+    assert data["summary"]["demand"] == 2
+    # 重跑只補新回覆：原本的不動、也不重複
+    db.add(Rsvp(name="後來才填的同事", side="groom", phone="0911000004", attending=True))
+    db.commit()
+    again = client.post(P + "/recipients/import-guests").json()
+    assert again["created"] == 1 and again["skipped"] == 2 and again["names"] == ["後來才填的同事"]
+    assert len(current(client)["recipients"]) == 3
+
+
+def test_import_guests_without_single_product_stays_draft(setup):
+    client, db, vid, pid = setup
+    client.post(P + "/products", json={"name": "第二款", "reference_price": 500, "vendor_id": vid})
+    db.add(Rsvp(name="兩款未定的朋友", side="groom", attending=True))
+    db.commit()
+    result = client.post(P + "/recipients/import-guests").json()
+    assert result["created"] == 1 and result["product"] is None
+    r = current(client)["recipients"][0]
+    assert r["state"] == "draft" and r["items"] == []

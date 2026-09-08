@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 Qty = Annotated[int, Field(ge=0, le=10000)]
 Money = Annotated[int, Field(ge=0, le=100000000)]
 Key = Annotated[str, Field(min_length=8, max_length=64, pattern=r"^[a-zA-Z0-9-]+$")]
-Method = Literal["venue", "mail", "personal"]
+Method = Literal["venue", "mail"]  # 2026-09-08 新人決定只用「婚宴當天領取」與「寄送」
 
 
 class Form(BaseModel):

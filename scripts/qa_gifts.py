@@ -51,12 +51,12 @@ def main():
             dialog.get_by_role("button", name="加入一款", exact=True).click()
         pick(page, dialog, "款式 1", product)
         dialog.get_by_label("送餅盒數 1", exact=True).fill("2")
-        pick(page, dialog, "交付方式", "宅配")
+        pick(page, dialog, "交付方式", "寄送")
         dialog.get_by_label("負責人", exact=True).fill("測試媽媽")
         dialog.get_by_role("button", name="儲存", exact=True).click()
         expect(dialog).to_have_count(0)
         card = page.locator(".gift-recipient").filter(has=page.get_by_role("heading", name=name, exact=True))
-        expect(card).to_contain_text("宅配地址尚未填妥")
+        expect(card).to_contain_text("寄送地址尚未填妥")
         expect(card).to_contain_text("未關聯婚宴回覆")
         assert page.request.get(BASE + "/api/admin/rsvps", headers=headers).json() == before
         for width in (320, 390, 768, 1440):
@@ -69,7 +69,7 @@ def main():
         dialog = page.get_by_role("dialog", name="登記交付 — " + name, exact=True)
         dialog.get_by_label(product + " 本次盒數", exact=True).fill("1")
         dialog.get_by_role("button", name="確認已寄出", exact=True).click()
-        expect(dialog.get_by_role("alert")).to_contain_text("宅配寄出前請填收件地址")
+        expect(dialog.get_by_role("alert")).to_contain_text("寄送寄出前請填收件地址")
         dialog.get_by_label("本次收件地址", exact=True).fill("測試縣測試路 1 號")
         dialog.get_by_label("實際收件／代領人", exact=True).fill("阿姨的家人代收")
         dialog.get_by_role("button", name="確認已寄出", exact=True).click()

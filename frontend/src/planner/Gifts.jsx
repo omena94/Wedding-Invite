@@ -1,12 +1,13 @@
 import { useState } from "react";
+import Swal from "sweetalert2";
 import { Link, useSearchParams } from "react-router-dom";
 import { Check, Download, Gift, History, Package, Pencil, Plus, Truck, Users } from "lucide-react";
 import Select from "../components/Select.jsx";
-import { fetchExpenses, fetchGifts, fetchRsvps, fetchVendors, downloadGiftCsv, updateGiftDelivery } from "../api.js";
+import { fetchExpenses, fetchGifts, fetchRsvps, fetchVendors, downloadGiftCsv, importGiftGuests, updateGiftDelivery } from "../api.js";
 import { fmtDate, money } from "../constants.js";
 import { DeliveryForm, GiftDialog, METHODS, OrderForm, ProductForm, RecipientForm, SIDES, STATES, options, today } from "./giftForms.jsx";
 import { PaymentModal, UploadModal } from "./modals.jsx";
-import { Empty, ErrorBox, Field, Loading, Modal, PageHead, toastErr, useLoader } from "./ui.jsx";
+import { Empty, ErrorBox, Field, Loading, Modal, PageHead, toastErr, toastOk, useLoader } from "./ui.jsx";
 
 function Stat({ label, value, sub }) {
   return <div className="stat-card"><div className="value">{value}</div><div className="label">{label}</div>{sub && <div className="helper-text">{sub}</div>}</div>;
@@ -22,8 +23,8 @@ function RecipientCard({ r, edit, deliver, history }) {
     <div className="gift-recipient-items">{r.items.map((i) => <div key={i.product_id}><span>{i.name}</span><span><strong>{i.quantity}</strong> 盒 <small>已交出 {i.delivered}</small></span></div>)}{!r.items.length && <p className="helper-text">款式與盒數尚未決定</p>}</div>
     <p className="helper-text">{METHODS[r.method]}{r.due_date ? ` · 預計 ${fmtDate(r.due_date)}` : ""}{r.contact_name ? ` · 聯絡人 ${r.contact_name}` : ""}</p>
     {r.phone && <a className="gift-phone" href={`tel:${r.phone.replace(/[^\d+]/g, "")}`}>{r.phone}</a>}
-    {r.missing_address && <p className="gift-warning">宅配地址尚未填妥</p>}
-    {r.change_method && <p className="gift-warning">親友已回覆不出席，請確認是否改用親送、宅配或由家人代領。</p>}
+    {r.missing_address && <p className="gift-warning">寄送地址尚未填妥</p>}
+    {r.change_method && <p className="gift-warning">親友已回覆不出席，請確認改為寄送，或當天由家人代領。</p>}
     {r.note && <p className="gift-note">{r.note}</p>}
     <div className="gift-card-actions"><button className="btn btn-ghost btn-sm" onClick={edit}><Pencil size={14}/>編輯安排</button>
       <button className="btn btn-ghost btn-sm" onClick={history}><History size={14}/>交付紀錄 {r.deliveries.length || ""}</button>
@@ -92,6 +93,20 @@ export default function Gifts() {
   const [exportType, setExportType] = useState("all");
   const close = () => setModal(null);
   const saved = () => { close(); reload(); };
+  // 一鍵把還沒加入名單的賓客回覆帶進來（每戶 1 盒）；重按只補新回覆
+  const importGuests = async () => {
+    const pending = (data?.guests || []).filter((g) => !g.is_test && !data.recipients.some((r) => r.rsvps.some((x) => x.id === g.id)));
+    if (!pending.length) { toastOk("所有賓客都已在送餅名單裡"); return; }
+    const ok = await Swal.fire({ icon: "question", title: `帶入 ${pending.length} 位賓客？`,
+      html: "會依賓客填的資料各建一筆送餅安排，每戶 1 盒。<br/>出席者預設婚宴當天領取，不出席者預設寄送並加註提醒補地址。<br/>已在名單裡的不會重複，之後有新回覆再按一次即可。",
+      showCancelButton: true, confirmButtonText: "帶入", cancelButtonText: "取消", confirmButtonColor: "#B28F70" });
+    if (!ok.isConfirmed) return;
+    try {
+      const r = await importGiftGuests();
+      await toastOk(r.created ? `已帶入 ${r.created} 位賓客${r.product ? `（${r.product} 各 1 盒）` : "（尚無單一款式，先存為待決定）"}` : "沒有新的賓客需要帶入");
+      reload();
+    } catch (e) { toastErr(e); }
+  };
   if (loading) return <Loading/>;
   if (error) return <><ErrorBox error={error}/><button className="btn" onClick={reload}>重新讀取</button></>;
   const { summary: s, products, recipients, orders, guests, vendors, expenses } = data;
@@ -101,17 +116,17 @@ export default function Gifts() {
       || filter === "missing" && r.missing_address || filter === "draft" && r.state === "draft" || filter === "cancelled" && r.state === "cancelled"));
   return <div className="gift-page">
     <PageHead title="喜餅" sub="把每一份心意送到，也把盒數、訂購與付款記清楚。"
-      actions={tab === "recipients" ? <><button className="btn" onClick={() => setModal({ type: "recipient", fromGuest: true })}><Users size={15}/>從賓客加入</button><button className="btn btn-primary" onClick={() => setModal({ type: "recipient" })}><Plus size={15}/>新增送禮對象</button></>
+      actions={tab === "recipients" ? <><button className="btn btn-primary" onClick={importGuests}><Users size={15}/>帶入所有賓客</button><button className="btn" onClick={() => setModal({ type: "recipient", fromGuest: true })}><Users size={15}/>從賓客加入</button><button className="btn" onClick={() => setModal({ type: "recipient" })}><Plus size={15}/>新增送禮對象</button></>
         : <><button className="btn" onClick={() => setModal({ type: "product" })}><Gift size={15}/>新增款式</button><button className="btn btn-primary" onClick={() => setModal({ type: "order" })}><Plus size={15}/>新增訂購</button></>}/>
     <div className="gift-tabs" role="group" aria-label="喜餅功能分頁"><button className={`btn ${tab === "recipients" ? "btn-primary" : "btn-ghost"}`} aria-pressed={tab === "recipients"} onClick={() => setParams({})}>送餅名單</button><button className={`btn ${tab === "orders" ? "btn-primary" : "btn-ghost"}`} aria-pressed={tab === "orders"} onClick={() => setParams({ tab: "orders" })}>訂購與費用</button></div>
     {tab === "recipients" ? <>
-      <div className="stats-grid"><Stat label="已確認送餅" value={`${s.demand} 盒`} sub={`另有 ${s.tentative} 盒待決定`}/><Stat label="尚未交付" value={`${s.remaining} 盒`}/><Stat label="宅配缺地址" value={`${s.missing_address} 筆`}/><Stat label="喜餅需求估算" value={money(s.estimate)} sub={`${s.estimate_incomplete ? "部分款式尚無報價 · " : ""}含備用，不含運費與未確認優惠`}/></div>
+      <div className="stats-grid"><Stat label="已確認送餅" value={`${s.demand} 盒`} sub={`另有 ${s.tentative} 盒待決定`}/><Stat label="尚未交付" value={`${s.remaining} 盒`}/><Stat label="寄送缺地址" value={`${s.missing_address} 筆`}/><Stat label="喜餅需求估算" value={money(s.estimate)} sub={`${s.estimate_incomplete ? "部分款式尚無報價 · " : ""}含備用，不含運費與未確認優惠`}/></div>
       {!products.length && <div className="panel gift-intro"><Package size={25}/><div><strong>先建送禮名單，款式可以稍後決定</strong><p>不出席或未填婚宴表單的親友，都能獨立加入。已有喜餅款式時，可先設定參考價格及備用盒數。</p></div><button className="btn" onClick={() => setModal({ type: "product" })}>新增喜餅款式</button></div>}
       <div className="panel"><div className="toolbar gift-toolbar"><input type="text" aria-label="搜尋送禮對象" placeholder="姓名、電話或負責人" value={search} onChange={(e) => setSearch(e.target.value)}/>
         <Select compact aria-label="篩選交付方式" value={method} onChange={setMethod} options={[{ value: "", label: "所有交付方式" }, ...options(METHODS)]}/>
         <Select compact aria-label="篩選親友方" value={side} onChange={setSide} options={[{ value: "", label: "所有親友" }, ...options(SIDES)]}/>
-        <Select compact aria-label="篩選安排進度" value={filter} onChange={setFilter} options={options({ active: "進行中的安排", remaining: "尚未交付", missing: "缺宅配地址", draft: "待決定", cancelled: "已取消", all: "全部" })}/></div>
-        <div className="gift-export"><Select compact aria-label="匯出清單類型" value={exportType} onChange={setExportType} options={options({ all: "完整送餅清單", mail: "宅配清單", personal: "親送清單", venue: "婚宴領取清單", products: "廠商款式數量" })}/><button className="btn btn-ghost btn-sm" onClick={() => downloadGiftCsv(exportType).catch(toastErr)}><Download size={14}/>匯出 CSV</button><span className="helper-text">匯出所選類型的全部已確認安排，含已交出與尚欠盒數。</span></div></div>
+        <Select compact aria-label="篩選安排進度" value={filter} onChange={setFilter} options={options({ active: "進行中的安排", remaining: "尚未交付", missing: "缺寄送地址", draft: "待決定", cancelled: "已取消", all: "全部" })}/></div>
+        <div className="gift-export"><Select compact aria-label="匯出清單類型" value={exportType} onChange={setExportType} options={options({ all: "完整送餅清單", mail: "寄送清單", venue: "當天領取清單", products: "廠商款式數量" })}/><button className="btn btn-ghost btn-sm" onClick={() => downloadGiftCsv(exportType).catch(toastErr)}><Download size={14}/>匯出 CSV</button><span className="helper-text">匯出所選類型的全部已確認安排，含已交出與尚欠盒數。</span></div></div>
       {filtered.length === 0 ? <div className="panel"><Empty>{recipients.length ? "沒有符合篩選的送餅安排" : "還沒有送餅對象，從賓客加入或直接新增親友。"}</Empty></div> : <div className="gift-card-grid">{filtered.map((r) => <RecipientCard key={r.id} r={r} edit={() => setModal({ type: "recipient", initial: r })} deliver={() => setModal({ type: "delivery", recipient: r })} history={() => setModal({ type: "history", recipient: r })}/>)}</div>}
     </> : <>
       <div className="stats-grid"><Stat label="確認訂購金額" value={money(s.total)}/><Stat label="已付" value={money(s.paid)}/><Stat label="尚欠" value={money(s.balance)}/><Stat label="需求參考估算" value={money(s.estimate)} sub="含備用；未含運費與折扣"/></div>

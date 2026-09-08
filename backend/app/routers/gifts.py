@@ -20,7 +20,7 @@ from ..models import (Expense, GiftDelivery, GiftOrder, GiftPlan, GiftProduct,
 from ..security import CoupleRequired
 
 router = APIRouter(prefix="/api/planner/gifts", tags=["gifts"], dependencies=[CoupleRequired])
-METHODS = {"venue": "婚宴領取", "mail": "宅配", "personal": "親送"}
+METHODS = {"venue": "婚宴當天領取", "mail": "寄送", "personal": "親送（已停用）"}  # 2026-09-08 起只用前兩種；personal 只為舊資料顯示
 
 
 def row_dict(row):
@@ -228,6 +228,45 @@ def update_recipient(recipient_id: int, payload: RecipientIn, db: Session = Depe
     return save_recipient(db, payload, get_row(db, GiftRecipient, recipient_id, payload.version))
 
 
+@router.post("/recipients/import-guests")
+def import_guests(db: Session = Depends(get_db)):
+    """把所有還沒加入送餅名單的賓客回覆各建一筆送餅安排（每戶 1 盒）。
+
+    新人只有一家喜餅，不想一筆一筆「從賓客加入」。重跑只會補新回覆，已加入的不動；
+    測試賓客略過。只有一款啟用中的款式時直接確認並帶入 1 盒，否則先存為待決定。
+    出席者預設婚宴當天領取，不出席者預設寄送並加註提醒補地址（新人只用這兩種方式）。
+    """
+    active = list(db.scalars(select(GiftProduct).where(GiftProduct.active.is_(True)).order_by(GiftProduct.id)))
+    product = active[0] if len(active) == 1 else None
+    linked = {link.rsvp_id for link in db.scalars(select(GiftRsvpLink))}
+    existing_keys = {k for k in db.scalars(select(GiftRecipient.request_key))}
+    created = skipped = 0
+    names = []
+    for guest in db.scalars(select(Rsvp).where(Rsvp.is_test.is_(False)).order_by(Rsvp.id)):
+        key = f"rsvp-import-{guest.id}"
+        if guest.id in linked or key in existing_keys:
+            skipped += 1
+            continue
+        attending = bool(guest.attending)
+        row = GiftRecipient(
+            request_key=key, name=guest.name, kind="household",
+            side=guest.side if guest.side in ("groom", "bride") else "other",
+            contact_name=guest.name, phone=guest.phone or "", address="", owner="",
+            method="venue" if attending else "mail",
+            state="confirmed" if product else "draft",
+            note="" if attending else "回覆不出席，預設寄送，請補收件地址或改為當天由家人代領",
+        )
+        db.add(row)
+        db.flush()
+        if product:
+            db.add(GiftPlan(recipient_id=row.id, product_id=product.id, quantity=1))
+        db.add(GiftRsvpLink(rsvp_id=guest.id, recipient_id=row.id))
+        created += 1
+        names.append(guest.name)
+    commit(db)
+    return {"created": created, "skipped": skipped, "product": product.name if product else None, "names": names}
+
+
 @router.post("/recipients/{recipient_id}/deliveries", status_code=201)
 def create_delivery(recipient_id: int, payload: DeliveryIn, db: Session = Depends(get_db)):
     row = get_row(db, GiftRecipient, recipient_id)
@@ -242,7 +281,7 @@ def create_delivery(recipient_id: int, payload: DeliveryIn, db: Session = Depend
     if row.state != "confirmed":
         raise HTTPException(400, "請先確認送餅安排")
     if payload.method == "mail" and not payload.address:
-        raise HTTPException(400, "宅配寄出前請填收件地址")
+        raise HTTPException(400, "寄送寄出前請填收件地址")
     products = products_for(db, payload.items)
     plans = {p.product_id: p.quantity for p in db.scalars(select(GiftPlan).where(GiftPlan.recipient_id == row.id))}
     counts = delivered_quantities(db.scalars(select(GiftDelivery).where(GiftDelivery.recipient_id == row.id)))
@@ -349,7 +388,7 @@ def csv_cell(value):
 
 
 @router.get("/export.csv")
-def export_gifts(method: str = Query("all", pattern="^(all|mail|personal|venue|products)$"), db: Session = Depends(get_db)):
+def export_gifts(method: str = Query("all", pattern="^(all|mail|venue|products)$"), db: Session = Depends(get_db)):
     data = snapshot(db)
     output = io.StringIO()
     output.write("\ufeff")
