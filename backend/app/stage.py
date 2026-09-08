@@ -112,6 +112,9 @@ def child_bracket(params: dict, child: dict) -> str | None:
     pricing = child.get("pricing", "auto")
     if pricing in ("free", "half", "full"):
         return pricing
+    # 2026-09-08 新人要求：選「自訂金額」時所有小孩都用同一價（個別指定的除外），不再看身高
+    if params.get("child_mode") == "custom":
+        return "custom"
     h = child.get("height")
     if h is None:
         return None
@@ -134,7 +137,7 @@ def banquet_estimate(params: dict, adults: int, children: list[dict], unknown_mo
     unknown_mode = unknown_mode or params["child_mode"]
     veg_adults = max(0, min(int(veg_adults or 0), adults))
     regular_adults = adults - veg_adults
-    counts = {"free": 0, "half": 0, "full": 0, "unknown": 0}
+    counts = {"free": 0, "half": 0, "full": 0, "custom": 0, "unknown": 0}
     child_subtotal = 0
     for c in children:
         b = child_bracket(params, c)
@@ -159,7 +162,7 @@ def banquet_estimate(params: dict, adults: int, children: list[dict], unknown_mo
         "veg_subtotal": veg_subtotal,
         "child_subtotal": child_subtotal,
         "child_counts": counts,
-        "child_prices": {m: child_unit_price(params, m) for m in ("free", "half", "full")},
+        "child_prices": {m: child_unit_price(params, m) for m in ("free", "half", "full", "custom")},
         "unknown_unit_price": child_unit_price(params, unknown_mode),
         "food_subtotal": food,
         "service": service,

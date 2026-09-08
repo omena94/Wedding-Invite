@@ -38,3 +38,11 @@ def test_children_unaffected_by_veg():
     est = banquet_estimate(PARAMS, adults=4, children=kids, veg_adults=1)
     assert est["child_counts"] == {"free": 0, "half": 1, "full": 0, "unknown": 1}
     assert est["child_subtotal"] == 2 * 2000
+
+
+def test_custom_child_mode_applies_to_all_children_except_manual_override():
+    kids = [{"height": 80, "pricing": "auto"}, {"height": 150, "pricing": "auto"}, {"height": None, "pricing": "auto"}, {"height": 150, "pricing": "free"}]
+    est = banquet_estimate({**PARAMS, "child_mode": "custom", "child_price": 2880}, adults=1, children=kids)
+    assert est["child_counts"] == {"free": 1, "half": 0, "full": 0, "custom": 3, "unknown": 0}
+    assert est["child_subtotal"] == 3 * 2880
+    assert est["service"] == round((4000 + 3 * 2880) * 0.1)
