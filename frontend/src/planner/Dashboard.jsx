@@ -51,7 +51,7 @@ export default function Dashboard() {
         <div className="panel">
           <div className="panel-head">
             <div className="panel-title"><CalendarClock size={18} /> 近期要付的款</div>
-            <Link className="btn btn-ghost btn-sm" to="/payments">全部付款</Link>
+            <Link className="btn btn-ghost btn-sm" to="/budget">預算花費</Link>
           </div>
           {data.upcoming_payments.length === 0 ? (
             <div className="empty-state" style={{ padding: 24 }}>目前沒有未付款項</div>

@@ -80,7 +80,7 @@ function OrderCard({ o, vendors, edit, payment, upload }) {
   return <article className="panel gift-order" id={`gift-order-${o.id}`}>
     <div className="panel-head"><div><h2 className="panel-title">{o.title}</h2><span className="helper-text">{vendor?.name || ""}</span></div><button className="btn btn-ghost btn-sm" onClick={edit}><Pencil size={14}/>編輯訂購</button></div>
     <div className="gift-order-money"><div><span>訂購總額</span><strong>{money(o.total)}</strong></div><div><span>已付</span><strong>{money(o.paid)}</strong></div><div><span>{o.balance < 0 ? "溢付待對帳" : "尚欠"}</span><strong>{money(Math.abs(o.balance))}</strong></div></div>
-    {o.unscheduled > 0 && <p className="gift-warning">尚有 {money(o.unscheduled)} 未安排付款期程，已包含在尚欠金額。</p>}
+    {o.unscheduled > 0 && <p className="gift-warning">尚有 {money(o.unscheduled)} 未安排分期，已包含在尚欠金額。</p>}
     {o.scheduled > Math.max(0, o.balance) && <p className="gift-warning">未付分期超過尚欠金額，請核對付款安排。</p>}
     <div className="gift-recipient-items">{o.items.map((i) => <div key={i.product_id}><span>{i.name}</span><span>購買 {i.paid_qty} 盒 · 廠商贈 {i.gift_qty} 盒<br/><small>每盒 {money(i.unit_price)}</small></span></div>)}</div>
     <p className="helper-text">運費 {money(o.shipping)} · 其他 {money(o.other_cost)} · 折扣 {money(o.discount)}</p>

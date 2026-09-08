@@ -2,14 +2,13 @@
 import { useState } from "react";
 import { BrowserRouter, NavLink, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import {
-  LayoutDashboard, Users, Wallet, CalendarClock, ListChecks, FolderOpen,
+  LayoutDashboard, Users, Wallet, ListChecks, FolderOpen,
   Settings as SettingsIcon, LogOut, Lock, LogIn, Home as HomeIcon, Armchair, Images, Gift,
 } from "lucide-react";
 import { adminLogin, clearToken, getRole, getToken, setRole, setToken } from "../api.js";
 import Dashboard from "./Dashboard.jsx";
 import Guests from "./Guests.jsx";
 import Budget from "./Budget.jsx";
-import Payments from "./Payments.jsx";
 import Timeline from "./Timeline.jsx";
 import Files from "./Files.jsx";
 import SettingsPage from "./Settings.jsx";
@@ -26,7 +25,6 @@ const NAV = [
   { to: "/seating", label: "座位圖", icon: Armchair, helper: true },
   { to: "/gifts", label: "喜餅", icon: Gift, helper: true }, // 幫手：看名單、勾已領取
   { to: "/budget", label: "預算花費", icon: Wallet },
-  { to: "/payments", label: "付款期程", icon: CalendarClock },
   { to: "/timeline", label: "時程待辦", icon: ListChecks },
   { to: "/files", label: "文件庫", icon: FolderOpen },
   { to: "/photos", label: "照片", icon: Images },
@@ -63,7 +61,6 @@ export default function PlannerApp() {
             <Route path="/seating" element={<Seating />} />
             <Route path="/gifts" element={<Gifts />} />
             <Route path="/budget" element={<CoupleOnly role={role}><Budget /></CoupleOnly>} />
-            <Route path="/payments" element={<CoupleOnly role={role}><Payments /></CoupleOnly>} />
             <Route path="/timeline" element={<CoupleOnly role={role}><Timeline /></CoupleOnly>} />
             <Route path="/files" element={<CoupleOnly role={role}><Files /></CoupleOnly>} />
             <Route path="/photos" element={<CoupleOnly role={role}><Photos /></CoupleOnly>} />

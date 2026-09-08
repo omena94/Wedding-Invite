@@ -46,7 +46,7 @@ export default function Budget() {
 
   return (
     <div>
-      <PageHead title="預算與花費" sub="婚宴費用預估、每個項目的預算、簽約金額與付款進度；分期在「付款期程」頁也看得到"
+      <PageHead title="預算與花費" sub="婚宴費用預估、每個項目的預算、簽約金額與付款進度；展開項目可新增或標記分期付款"
         actions={<button className="btn btn-primary" onClick={() => setModal({ type: "expense" })}><Plus size={15} /> 新增花費</button>} />
 
       <div className="stats-grid">
