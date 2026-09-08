@@ -55,7 +55,7 @@ def main():
         page.keyboard.press('Escape')  # 略過按鈕已移除，改用 Escape 關閉
         expect(dialog).to_have_count(0)
         page.reload()
-        expect(page.locator('.wedding-hero-copy .guest-eyebrow')).to_contain_text('SO LOVELY TO SEE YOU AGAIN')  # 回訪問候句已移除，改看頁首英文小標
+        expect(page.locator('.wedding-hero-copy .guest-eyebrow')).to_contain_text('SO GLAD TO HAVE YOU HERE')  # 回訪問候句已移除，改看頁首英文小標
         expect(dialog).to_have_count(0)
         saved = page.evaluate("JSON.parse(localStorage.getItem('wedding-invitation-visit-v1'))")
         assert sorted(saved) == ['chapter', 'openedAt']
