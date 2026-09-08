@@ -86,7 +86,7 @@ export function RecipientForm({ initial, products, recipients, onClose, onSaved 
     ...(initial || {}), rsvp_ids: initial?.rsvps.map((r) => r.id) || [],
     items: initial?.items.map(({ product_id, quantity }) => ({ product_id, quantity })) || (products.filter((p) => p.active).length === 1 ? [{ product_id: products.find((p) => p.active).id, quantity: 1 }] : []) }));
   const duplicates = recipients.filter((r) => r.id !== initial?.id && (r.name.trim() === f.name.trim() || (f.phone.trim() && r.phone.replace(/\D/g, "") === f.phone.replace(/\D/g, ""))));
-  return <GiftDialog title={initial ? "編輯" : "新增送禮對象"} onClose={onClose} onSaved={onSaved}
+  return <GiftDialog title={initial ? "編輯" : "新增送餅對象"} onClose={onClose} onSaved={onSaved}
     submit={() => saveGiftRecipient(initial?.id, { request_key: f.request_key, version: f.version, name: f.name, kind: f.kind, side: f.side, contact_name: f.contact_name, phone: f.phone, address: f.address, owner: f.owner,
       method: f.method, state: f.state, due_date: f.due_date || null, note: f.note, rsvp_ids: f.rsvp_ids, items: f.items.map((i) => ({ product_id: Number(i.product_id), quantity: toInt(i.quantity) })) })}>
     <p className="helper-text">以一人、一戶或一個部門登記，不影響婚宴人數。盒數由你指定。</p>
