@@ -21,7 +21,7 @@ from ..security import AdminRequired, CoupleRequired, require_staff
 
 # 2026-09-08 起幫手也能進來：看名單、在婚禮現場勾「已領取」；管理款式／安排／訂購／匯出仍限新人（各端點另加 CoupleRequired）
 router = APIRouter(prefix="/api/planner/gifts", tags=["gifts"], dependencies=[AdminRequired])
-METHODS = {"tbd": "尚未決定", "venue": "婚禮領取", "mail": "寄送", "personal": "親送（已停用）"}  # 2026-09-08 起只用前兩種；personal 只為舊資料顯示
+METHODS = {"tbd": "尚未決定", "venue": "婚禮領取", "mail": "寄送", "personal": "親送"}
 
 
 def row_dict(row):
@@ -412,7 +412,7 @@ def csv_cell(value):
 
 
 @router.get("/export.csv", dependencies=[CoupleRequired])
-def export_gifts(method: str = Query("all", pattern="^(all|mail|venue|products)$"), db: Session = Depends(get_db)):
+def export_gifts(method: str = Query("all", pattern="^(all|mail|venue|personal|products)$"), db: Session = Depends(get_db)):
     data = snapshot(db)
     output = io.StringIO()
     output.write("\ufeff")

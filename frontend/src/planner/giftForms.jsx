@@ -7,7 +7,7 @@ import { createGiftDelivery, saveGiftOrder, saveGiftProduct, saveGiftRecipient }
 import { money } from "../constants.js";
 import { Field, Modal, NumberInput, toInt } from "./ui.jsx";
 
-export const METHODS = { venue: "婚禮領取", mail: "寄送" }; // 2026-09-08 新人決定只用這兩種
+export const METHODS = { venue: "婚禮領取", mail: "寄送", personal: "親送" }; // 2026-09-08 新人決定只用這兩種
 export const PLAN_METHODS = { tbd: "尚未決定", ...METHODS }; // 送餅安排可先不決定（帶入賓客時不預設）
 export const SIDES = { groom: "男方親友", bride: "女方親友", other: "其他／共同親友" };
 export const STATES = { confirmed: "要送", draft: "待決定", cancelled: "不送喜餅" }; // 2026-09-08 「已取消」改稱「不送喜餅」：有些親友不拿喜餅
@@ -90,15 +90,12 @@ export function RecipientForm({ initial, products, recipients, onClose, onSaved 
     submit={() => saveGiftRecipient(initial?.id, { request_key: f.request_key, version: f.version, name: f.name, kind: f.kind, side: f.side, contact_name: f.contact_name, phone: f.phone, address: f.address, owner: f.owner,
       method: f.method, state: f.state, due_date: f.due_date || null, note: f.note, rsvp_ids: f.rsvp_ids, items: f.items.map((i) => ({ product_id: Number(i.product_id), quantity: toInt(i.quantity) })) })}>
     <p className="helper-text">以一人、一戶或一個部門登記，不影響婚宴人數。盒數由你指定。</p>
-    <div className="grid-2"><TextField label="送禮對象" value={f.name} onChange={(v) => set("name", v)} required placeholder="例如：台中的阿姨、公司行政部"/>
-      <Field label="對象類型"><Select aria-label="對象類型" value={f.kind} onChange={(v) => set("kind", v)} options={options({ household: "家庭", person: "個人", group: "公司／團體" })}/></Field></div>
+    <div className="grid-2"><TextField label="送禮對象" value={f.name} onChange={(v) => set("name", v)} required placeholder="例如：台中的阿姨、公司行政部"/></div>
     {duplicates.length > 0 && <p className="gift-warning">名單已有相同姓名或電話：{duplicates.map((r) => r.name).join("、")}。請確認是否為同一戶，系統不會自動合併。</p>}
-    <div className="grid-2"><Field label="親友方"><Select aria-label="親友方" value={f.side} onChange={(v) => set("side", v)} options={options(SIDES)}/></Field>
-      <TextField label="負責人" value={f.owner} onChange={(v) => set("owner", v)} placeholder="例如：孟庭、媽媽"/></div>
+    <div className="grid-2"><Field label="親友方"><Select aria-label="親友方" value={f.side} onChange={(v) => set("side", v)} options={options(SIDES)}/></Field></div>
     <ProductLines products={products} items={f.items} onChange={(v) => set("items", v)}/>
     {!products.length && <p className="gift-warning">尚無喜餅款式，可先儲存為「待決定」，再到訂購分頁新增款式。</p>}
-    <div className="grid-2"><Field label="領取方式"><Select aria-label="領取方式" value={f.method} onChange={(v) => set("method", v)} options={options(PLAN_METHODS)}/></Field>
-      <Field label="預計交付日期"><DatePicker value={f.due_date || ""} onChange={(v) => set("due_date", v)} placeholder="尚未決定"/></Field></div>
+    <div className="grid-2"><Field label="領取方式"><Select aria-label="領取方式" value={f.method} onChange={(v) => set("method", v)} options={options(PLAN_METHODS)}/></Field></div>
     <div className="grid-2"><TextField label="聯絡／收件人" value={f.contact_name} onChange={(v) => set("contact_name", v)}/><TextField label="電話" value={f.phone} onChange={(v) => set("phone", v)}/></div>
     <TextField label="收件地址" value={f.address} onChange={(v) => set("address", v)} placeholder="寄送可稍後補，寄出前需填妥"/>
     <Field label="安排狀態"><Select aria-label="安排狀態" value={f.state} onChange={(v) => set("state", v)} options={options(STATES)}/></Field>

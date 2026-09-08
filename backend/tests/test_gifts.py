@@ -260,7 +260,7 @@ def test_import_guests_creates_one_box_each_and_is_repeatable(setup):
     assert by_name["出席的表哥"]["rsvps"][0]["attending"] and by_name["出席的表哥"]["phone"] == "0911000001"
     assert by_name["不出席的阿姨"]["method"] == "tbd" and by_name["不出席的阿姨"]["note"] == ""  # 不自動加備註
     assert client.post(P + f"/recipients/{by_name['出席的表哥']['id']}/deliveries", json=delivery_body(pid, version=by_name["出席的表哥"]["version"], method="tbd")).status_code == 422  # 交付一定要選方式
-    assert client.post(P + "/recipients", json=recipient_body(pid, method="personal")).status_code == 422  # 親送已停用
+    assert client.post(P + "/recipients", json=recipient_body(pid, method="personal")).status_code == 201  # 親送可用
     assert data["summary"]["demand"] == 2
     # 重跑只補新回覆：原本的不動、也不重複
     db.add(Rsvp(name="後來才填的同事", side="groom", phone="0911000004", attending=True))
