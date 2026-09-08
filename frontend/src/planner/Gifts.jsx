@@ -16,12 +16,6 @@ function Stat({ label, value, sub }) {
 }
 
 // 送餅名單改為清單條列（2026-09-08 依新人要求），一列一位對象；細節仍在「編輯安排」與「交付紀錄」
-function progressPill(r, inTransit) {
-  if (r.state !== "confirmed") return <span className={`pill ${r.state === "draft" ? "pill-warn" : "pill-no"}`}>{STATES[r.state]}</span>;
-  if (r.remaining === 0) return <span className="pill pill-yes">{inTransit ? "配送中" : "已交付"}</span>;
-  return <span className="pill pill-groom">尚欠 {r.remaining} 盒</span>;
-}
-
 function RecipientRow({ r, edit, deliver, history, onMethod, onPickup, canManage }) {
   const inTransit = r.deliveries.some((d) => !d.void_reason && !d.received_on);
   // 「已領取」開關：已全部交出就鎖住（確認後不能再改）；要送且尚欠才能勾
@@ -32,15 +26,17 @@ function RecipientRow({ r, edit, deliver, history, onMethod, onPickup, canManage
   const takers = r.deliveries.filter((d) => !d.void_reason).map((d) => `${d.receiver} ${d.items.reduce((a, i) => a + i.quantity, 0)} 盒`).join("、");
   return <tr className={r.state === "cancelled" ? "gift-cancelled" : undefined}>
     <td className="gift-pickup-cell"><div><Toggle checked={picked} disabled={!canPick} onChange={(v) => v && onPickup(r)} label={`${r.name} 簽收確認`}/>{picked ? <span className="gift-signed">已簽收</span> : delivered > 0 && <span className="gift-signed">已領 {delivered}/{total}</span>}</div></td>
-    <td><strong>{r.name}</strong><div className="muted-cell" style={{ fontSize: 11.5 }}>{SIDES[r.side]}{r.owner ? ` · ${r.owner} 負責` : ""}</div></td>
+    <td><strong>{r.name}</strong><div className="muted-cell" style={{ fontSize: 11.5 }}>{SIDES[r.side]}{r.owner ? ` · ${r.owner} 負責` : ""}</div>
+      {/* 2026-09-08 進度欄移除：只留還有用的提醒與「誰拿了幾盒」，放在姓名下方 */}
+      {r.state === "draft" && <span className="pill pill-warn gift-mini-pill">待決定</span>}
+      {r.state === "confirmed" && r.method === "mail" && inTransit && <span className="pill pill-warn gift-mini-pill">配送中</span>}
+      {r.state === "confirmed" && r.method === "tbd" && r.remaining > 0 && <span className="gift-warning gift-warning-inline">領取方式未定</span>}
+      {r.missing_address && <span className="gift-warning gift-warning-inline">缺寄送地址</span>}
+      {r.change_method && <span className="gift-warning gift-warning-inline">已回覆不出席，請改寄送或家人代領</span>}
+      {takers && <div className="muted-cell" style={{ fontSize: 11.5, marginTop: 3 }}>{takers}</div>}</td>
     <td>{r.items.length ? r.items.map((i) => <div key={i.product_id}><strong>{i.quantity}</strong> 盒{i.delivered > 0 && <span className="muted-cell" style={{ fontSize: 11.5 }}>（已交出 {i.delivered}）</span>}</div>) : <span className="muted-cell">未定</span>}</td>
     <td className="gift-method-cell">{canManage ? <Select compact aria-label={`${r.name} 領取方式`} value={r.state === "cancelled" ? "none" : METHODS[r.method] ? r.method : ""} placeholder="尚未決定" options={[...options(METHODS), { value: "none", label: "不送喜餅" }]} onChange={(v) => onMethod(r, v)}/> : (r.state === "cancelled" ? "不送喜餅" : METHODS[r.method] || "尚未決定")}{r.due_date && <div className="muted-cell" style={{ fontSize: 11.5 }}>預計 {fmtDate(r.due_date)}</div>}{r.contact_name && r.contact_name !== r.name && <div className="muted-cell" style={{ fontSize: 11.5 }}>聯絡人 {r.contact_name}</div>}</td>
     <td>{r.phone ? <a className="gift-phone" href={`tel:${r.phone.replace(/[^\d+]/g, "")}`}>{r.phone}</a> : <span className="muted-cell">—</span>}</td>
-    <td>{progressPill(r, inTransit)}
-      {takers && <div className="muted-cell" style={{ fontSize: 11.5, marginTop: 4 }}>{takers}</div>}
-      {r.state === "confirmed" && r.method === "tbd" && r.remaining > 0 && <div className="gift-warning gift-warning-inline">領取方式未定</div>}
-      {r.missing_address && <div className="gift-warning gift-warning-inline">缺寄送地址</div>}
-      {r.change_method && <div className="gift-warning gift-warning-inline">已回覆不出席，請改寄送或家人代領</div>}</td>
     <td className="row-actions">{canManage && <>
       <button className="btn btn-ghost btn-sm" onClick={edit}><Pencil size={13}/> 編輯</button>{" "}
       <button className="btn btn-ghost btn-sm" onClick={history}><History size={13}/> 紀錄{r.deliveries.length ? ` ${r.deliveries.length}` : ""}</button>{" "}
@@ -182,7 +178,7 @@ export default function Gifts() {
         <Select compact aria-label="篩選親友方" value={side} onChange={setSide} options={[{ value: "", label: "全部親友" }, { value: "groom", label: "男方親友" }, { value: "bride", label: "女方親友" }]}/>
         </div>
       </div>
-      {filtered.length === 0 ? <div className="panel"><Empty>{recipients.length ? "沒有符合篩選的送餅安排" : "還沒有送餅對象，從賓客加入或直接新增親友。"}</Empty></div> : <div className="panel"><div className="table-wrap"><table className="gift-table"><thead><tr><th>簽收確認</th><th>送禮對象</th><th>盒數</th><th>領取方式</th><th>電話</th><th>進度</th><th></th></tr></thead><tbody>{filtered.map((r) => <RecipientRow key={r.id} r={r} onMethod={changeMethod} onPickup={confirmPickup} canManage={role !== "helper"} edit={() => setModal({ type: "recipient", initial: r })} deliver={() => setModal({ type: "delivery", recipient: r })} history={() => setModal({ type: "history", recipient: r })}/>)}</tbody></table></div></div>}
+      {filtered.length === 0 ? <div className="panel"><Empty>{recipients.length ? "沒有符合篩選的送餅安排" : "還沒有送餅對象，從賓客加入或直接新增親友。"}</Empty></div> : <div className="panel"><div className="table-wrap"><table className="gift-table"><thead><tr><th>簽收確認</th><th>送禮對象</th><th>盒數</th><th>領取方式</th><th>電話</th><th></th></tr></thead><tbody>{filtered.map((r) => <RecipientRow key={r.id} r={r} onMethod={changeMethod} onPickup={confirmPickup} canManage={role !== "helper"} edit={() => setModal({ type: "recipient", initial: r })} deliver={() => setModal({ type: "delivery", recipient: r })} history={() => setModal({ type: "history", recipient: r })}/>)}</tbody></table></div></div>}
     </> : <>
       <div className="stats-grid"><Stat label="確認訂購金額" value={money(s.total)}/><Stat label="已付" value={money(s.paid)}/><Stat label="尚欠" value={money(s.balance)}/><Stat label="需求參考估算" value={money(s.estimate)} sub="含備用；未含運費與折扣"/></div>
       <div className="panel"><div className="panel-head"><h2 className="panel-title">款式與盒數</h2><span className="helper-text">已訂含廠商贈盒，不代表已到貨。</span></div>

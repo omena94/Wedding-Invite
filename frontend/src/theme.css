@@ -939,6 +939,8 @@ tbody tr:last-child td { border-bottom: none; }
 .gift-pickup-cell { padding-right: 0; }
 .gift-pickup-cell > div { display: flex; align-items: center; gap: 8px; } /* 開關與「已簽收」並排；td 本身不能設 flex，否則格線跑掉 */
 .gift-signed { font-size: 12px; color: var(--milk-tea-700); font-weight: 600; }
+.gift-mini-pill { font-size: 11px; padding: 2px 8px; margin: 4px 4px 0 0; }
+.gift-table td:nth-child(2) .gift-warning-inline { margin: 4px 4px 0 0; }
 .gift-table th:nth-child(2), .gift-table td:nth-child(2) { white-space: normal; width: 210px; min-width: 190px; max-width: 240px; }
 .gift-table th:nth-child(3) { width: 70px; }
 .gift-table th:nth-child(4) { width: 180px; }
@@ -960,10 +962,8 @@ tbody tr:last-child td { border-bottom: none; }
   .gift-table td:nth-child(5) { grid-column: 2 / -1; grid-row: 2; font-size: 13px; }
   .gift-table td:nth-child(4) { grid-column: 1 / -1; grid-row: 3; }
   .gift-method-cell .ui-select { width: 100%; }
-  .gift-table td:nth-child(6) { grid-column: 1 / -1; grid-row: 4; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
-  .gift-table td:nth-child(6) .gift-warning-inline { margin-top: 0; }
-  .gift-table td:nth-child(7) { grid-column: 1 / -1; grid-row: 5; display: flex; flex-wrap: wrap; gap: 6px; }
-  .gift-table td:nth-child(7):empty { display: none; }
+  .gift-table td:nth-child(6) { grid-column: 1 / -1; grid-row: 4; display: flex; flex-wrap: wrap; gap: 6px; } /* 操作按鈕（進度欄已移除） */
+  .gift-table td:nth-child(6):empty { display: none; }
   .gift-signed { white-space: nowrap; }
 }
 .gift-table td strong { font-weight: 600; }
