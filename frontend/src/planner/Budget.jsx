@@ -23,7 +23,8 @@ export default function Budget() {
       if (!m.has(e.category)) m.set(e.category, []);
       m.get(e.category).push(e);
     });
-    return Array.from(m.entries());
+    // 「其他」固定排最後（2026-09-09 新人要求）
+    return Array.from(m.entries()).sort((a, b) => (a[0] === "其他") - (b[0] === "其他"));
   }, [data]);
 
   const totals = useMemo(() => {
