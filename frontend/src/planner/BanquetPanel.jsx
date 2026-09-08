@@ -6,14 +6,6 @@ import { fetchBanquet, saveBanquet } from "../api.js";
 import { money } from "../constants.js";
 import { ErrorBox, Field, Loading, NumberInput, toInt, toastErr, toastOk, useLoader } from "./ui.jsx";
 
-const CHILD_MODES = [
-  { value: "free", label: "免費" },
-  { value: "half", label: "半價" },
-  { value: "full", label: "全價（同大人）" },
-  { value: "custom", label: "自訂金額（全部小孩同價）" },
-  { value: "manual", label: "手動填人數（110 以下免費、130 以下半價）" },
-];
-const MODE_LABEL = Object.fromEntries(CHILD_MODES.map((m) => [m.value, m.label]));
 
 const OPEN_KEY = "planner.banquet.open";
 const readOpen = () => {
@@ -38,9 +30,7 @@ export default function BanquetPanel({ compact = false }) {
   if (error) return <ErrorBox error={error} />;
   if (loading || !f) return <Loading />;
 
-  const { counts, estimate, scenarios, params } = data;
-  const cc = estimate.child_counts;
-  const cp = estimate.child_prices;
+  const { counts, estimate, params } = data;
   const set = (k, v) => setF((x) => ({ ...x, [k]: v }));
   const dirty = JSON.stringify(f) !== JSON.stringify(params);
 
@@ -108,35 +98,8 @@ export default function BanquetPanel({ compact = false }) {
             <div className="m-label">預估合計</div>
             <div className="banquet-total-value">{money(estimate.total)}</div>
           </div>
-          <table className="banquet-table">
-            <tbody>
-              {estimate.veg_adults > 0 && params.veg_price > 0 ? (
-                <>
-                  <tr><td>大人 {estimate.regular_adults} 位 × {money(params.adult_price)}</td><td className="amount">{money(estimate.regular_subtotal)}</td></tr>
-                  <tr><td>素食 {estimate.veg_adults} 位 × {money(estimate.veg_unit_price)}</td><td className="amount">{money(estimate.veg_subtotal)}</td></tr>
-                </>
-              ) : (
-                <tr><td>大人 {counts.adults} 位 × {money(params.adult_price)}{estimate.veg_adults > 0 ? `（含素食 ${estimate.veg_adults} 位，同價）` : ""}</td><td className="amount">{money(estimate.adult_subtotal)}</td></tr>
-              )}
-              {cc.free > 0 && <tr><td>小孩免費（{params.child_mode === "manual" ? "110 以下" : `未滿 ${params.child_free_below} cm`}）{cc.free} 位</td><td className="amount">{money(0)}</td></tr>}
-              {cc.half > 0 && <tr><td>小孩半價（{params.child_mode === "manual" ? "130 以下" : `${params.child_free_below}～${params.child_half_below} cm`}）{cc.half} 位 × {money(cp.half)}</td><td className="amount">{money(cc.half * cp.half)}</td></tr>}
-              {cc.full > 0 && <tr><td>小孩全價（{params.child_mode === "manual" ? "其餘" : `${params.child_half_below} cm 以上`}）{cc.full} 位 × {money(cp.full)}</td><td className="amount">{money(cc.full * cp.full)}</td></tr>}
-              {cc.custom > 0 && <tr><td>小孩 {cc.custom} 位 × {money(cp.custom)}（自訂）</td><td className="amount">{money(cc.custom * cp.custom)}</td></tr>}
-              {cc.unknown > 0 && <tr><td>小孩未填身高 {cc.unknown} 位 × {money(estimate.unknown_unit_price)}（先當{MODE_LABEL[params.child_mode]}）</td><td className="amount">{money(cc.unknown * estimate.unknown_unit_price)}</td></tr>}
-              {counts.children === 0 && <tr><td>小孩 0 位</td><td className="amount">{money(0)}</td></tr>}
-              <tr><td>服務費 {params.service_pct}%（大人、素食、小孩餐費全部計入）</td><td className="amount">{money(estimate.service)}</td></tr>
-              <tr className="banquet-sum"><td>合計</td><td className="amount">{money(estimate.total)}</td></tr>
-            </tbody>
-          </table>
-          {!compact && cc.unknown > 0 && (
-            <div className="banquet-scenarios">
-              <span className="muted-cell">未填身高的 {cc.unknown} 位若改算：</span>
-              {["free", "half", "full"].map((m) => (
-                <span key={m} className={`pill ${params.child_mode === m ? "pill-yes" : "pill-groom"}`}>{MODE_LABEL[m].replace("（同大人）", "")} {money(scenarios[m])}</span>
-              ))}
-            </div>
-          )}
-          <div className="footnote" style={{ textAlign: "left", marginTop: 8 }}>只算已回覆「出席」的人數；素食人數來自第二階段主餐選「素食」的份數；有填身高的小孩照身高算，人數、主餐或身高變動時自動重算。</div>
+          {/* 2026-09-08 新人要求只留預估合計，明細表移除 */}
+          <div className="footnote" style={{ textAlign: "left", marginTop: 8 }}>含大人、素食、小孩餐費與 10% 服務費；只算已回覆「出席」的人數，人數變動時自動重算。</div>
         </div>
       </div>}
     </div>
