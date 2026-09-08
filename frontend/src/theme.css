@@ -876,9 +876,6 @@ tbody tr:last-child td { border-bottom: none; }
 .receipt-seal { border: 1px solid var(--milk-tea-300); color: var(--milk-tea-700); border-radius: 50%; width: 66px; height: 66px; display: grid; place-items: center; margin: 0 auto 20px; }
 .receipt-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin: 18px 0; }
 .calendar-action { margin: 16px auto 0; display: flex; }
-.wedding-timeline { list-style: none; padding: 12px 0 0 14px; }
-.wedding-timeline li { position: relative; padding: 0 0 22px 24px; border-left: 1px solid var(--milk-tea-300); }
-.wedding-timeline li::before { content: ''; position: absolute; left: -5px; top: 8px; width: 9px; height: 9px; background: var(--milk-tea-700); border: 2px solid #fff; border-radius: 50%; }
 .ui-select-option.active { background: var(--milk-tea-100); outline: 2px solid var(--milk-tea-500); outline-offset: -2px; }
 :is(a,button,input,textarea,[tabindex]):focus-visible { outline: 3px solid #84683f; outline-offset: 3px; }
 .radio-card:focus-within { outline: 3px solid var(--milk-tea-700); border-radius: 14px; }
