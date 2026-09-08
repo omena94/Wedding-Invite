@@ -930,7 +930,11 @@ tbody tr:last-child td { border-bottom: none; }
 /* 送餅名單清單版：手機不硬擠欄位，改由 table-wrap 橫向捲動 */
 .gift-table { min-width: 880px; }
 .gift-table td, .gift-table th { vertical-align: top; white-space: nowrap; }
-.gift-table td:first-child { white-space: normal; min-width: 200px; max-width: 280px; }
+/* 欄寬：姓名欄固定、盒數緊接在後，剩餘空間留給進度與操作 */
+.gift-table th:nth-child(1), .gift-table td:first-child { white-space: normal; width: 210px; min-width: 190px; max-width: 240px; }
+.gift-table th:nth-child(2) { width: 70px; }
+.gift-table th:nth-child(3) { width: 180px; }
+.gift-table th:nth-child(4) { width: 130px; }
 .gift-method-cell { min-width: 170px; }
 .gift-method-cell .ui-select { width: 150px; }
 .gift-table td strong { font-weight: 600; }
