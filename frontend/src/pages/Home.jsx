@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ArrowDown, ArrowRight, Armchair, CalendarCheck, CalendarPlus, Heart, Images, Info, MailOpen, Utensils } from 'lucide-react';
+import { ArrowRight, Armchair, CalendarCheck, CalendarPlus, Heart, Images, Info, MailOpen, Utensils } from 'lucide-react';
 import { GuestNav, LoadError, useGuestLoad, addCalendar } from '../components/GuestUI.jsx';
 import EventDetails, { VENUE } from '../components/EventDetails.jsx';
 import PreviewBanner from '../components/PreviewBanner.jsx';
@@ -68,7 +68,6 @@ export default function Home() {
         <p className="home-couple-english">Alan & Omena</p>
         <p className="home-wedding-date">{WEDDING_DATE_DISPLAY}<span>{VENUE.name}</span></p>
         <a className="btn-submit home-primary" href={action.href}>{action.action}<ArrowRight size={18}/></a>
-        <a className="home-story-link" href="#our-story">往下看我們的故事 <ArrowDown size={16}/></a>
       </div>
       <div className="wedding-hero-art">
         <div className="hero-arch-frame"><img src="/hero-line.webp" width="800" height="800" fetchPriority="high" alt="Alan 與 Omena 的婚禮插畫"/><img src="/hero.webp" width="800" height="800" decoding="async" alt="" className="hero-color-reveal" aria-hidden="true"/></div>

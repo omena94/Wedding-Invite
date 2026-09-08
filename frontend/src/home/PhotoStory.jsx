@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { ArrowRight, Heart } from 'lucide-react';
+import { ArrowRight } from 'lucide-react';
 import { fetchPhotos, photoThumbUrl, photoUrl } from '../api.js';
-import { OUR_STORY, fmtDate } from '../constants.js';
 import PhotoImage from '../components/PhotoImage.jsx';
 import { MovingPhoto, Reveal } from './motion.jsx';
 
@@ -28,13 +27,10 @@ function AlbumPreview({ auth }) {
   </div>;
 }
 
+// 2026-09-07 依新人要求移除「我們的故事」標題與時間軸；這裡只剩相簿開放（或登入預覽）時的婚紗照預覽
 export default function PhotoStory({ stage }) {
-  return <section className="our-story" id="our-story" aria-labelledby="story-title">
-    <Reveal className="story-heading"><p className="guest-eyebrow">THE DAYS THAT BECAME OUR STORY</p><h2 id="story-title">慢慢走，把日子走成我們</h2><p>從故事的開始，到即將到來的那一天。</p></Reveal>
-    <div className="story-timeline">{OUR_STORY.map((chapter, index) => <Reveal className={`story-chapter story-chapter-${index + 1}`} as="article" key={chapter.date}>
-      <div className="story-date"><span>{chapter.mark}</span><time dateTime={chapter.date}>{fmtDate(chapter.date)}</time><small>{chapter.label}</small></div>
-      <div className="story-copy"><h3>{chapter.title}</h3><p>{chapter.text}</p>{index === 1 && <MovingPhoto className="story-portrait"><img src="/hero.webp" alt="Alan 與 Omena 的婚禮插畫" width="800" height="800" loading="lazy" decoding="async"/></MovingPhoto>}{index === 2 && <Heart className="story-heart" size={32} aria-hidden="true"/>}</div>
-    </Reveal>)}</div>
-    {(stage?.photos_open || stage?.preview) && <AlbumPreview key={!!stage.photos_open} auth={!stage.photos_open && stage.preview}/>}
+  if (!stage?.photos_open && !stage?.preview) return null;
+  return <section className="our-story" id="our-story" aria-label="我們的婚紗照">
+    <AlbumPreview key={!!stage.photos_open} auth={!stage.photos_open && stage.preview}/>
   </section>;
 }

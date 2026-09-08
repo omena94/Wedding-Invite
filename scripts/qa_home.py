@@ -59,8 +59,6 @@ def main():
         expect(dialog).to_have_count(0)
         saved = page.evaluate("JSON.parse(localStorage.getItem('wedding-invitation-visit-v1'))")
         assert sorted(saved) == ['chapter', 'openedAt']
-        page.locator('.our-story').scroll_into_view_if_needed()
-        expect(page.locator('.story-heading')).to_have_attribute('data-visible', 'true')
         page.locator('.home-signoff').scroll_into_view_if_needed()
         assert not photo_requests, 'guest must not request a closed album'
         page.evaluate('scrollTo(0,0)')

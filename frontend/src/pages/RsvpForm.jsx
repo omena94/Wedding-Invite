@@ -82,7 +82,7 @@ export default function RsvpForm() {
 
   return (
     <div className="container">
-      <GuestHeader title="把這一天，留給我們" subtitle="2027.03.13 · 台北美福 2F 大宴會廳"/>
+      <GuestHeader title="把這一天，留給我們" subtitle="2027.03.13 · 台北美福大飯店"/>
 
       {receipt ? <GuestReceipt receipt={receipt}/> : <form onSubmit={onSubmit} noValidate>
         {draft.restored && <p className="draft-notice">已恢復這個分頁尚未送出的回覆。草稿保留 24 小時。</p>}
