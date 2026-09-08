@@ -3,7 +3,9 @@ import Swal from "sweetalert2";
 import { Link, useSearchParams } from "react-router-dom";
 import { Check, Download, Gift, History, Package, Pencil, Plus, Truck, Users } from "lucide-react";
 import Select from "../components/Select.jsx";
-import { fetchExpenses, fetchGifts, fetchRsvps, fetchVendors, downloadGiftCsv, importGiftGuests, saveGiftRecipient, updateGiftDelivery } from "../api.js";
+import Toggle from "../components/Toggle.jsx";
+import { usePlanner } from "./context.js";
+import { createGiftDelivery, fetchExpenses, fetchGifts, fetchRsvps, fetchVendors, downloadGiftCsv, importGiftGuests, saveGiftRecipient, updateGiftDelivery } from "../api.js";
 import { fmtDate, money } from "../constants.js";
 import { DeliveryForm, GiftDialog, METHODS, OrderForm, PLAN_METHODS, ProductForm, RecipientForm, SIDES, STATES, options, today } from "./giftForms.jsx";
 import { PaymentModal, UploadModal } from "./modals.jsx";
@@ -20,22 +22,26 @@ function progressPill(r, inTransit) {
   return <span className="pill pill-groom">尚欠 {r.remaining} 盒</span>;
 }
 
-function RecipientRow({ r, edit, deliver, history, onMethod }) {
+function RecipientRow({ r, edit, deliver, history, onMethod, onPickup, canManage }) {
   const inTransit = r.deliveries.some((d) => !d.void_reason && !d.received_on);
+  // 「已領取」開關：已全部交出就鎖住（確認後不能再改）；要送且尚欠才能勾
+  const picked = r.state === "confirmed" && r.items.length > 0 && r.remaining === 0;
+  const canPick = r.state === "confirmed" && r.remaining > 0;
   return <tr className={r.state === "cancelled" ? "gift-cancelled" : undefined}>
+    <td className="gift-pickup-cell"><Toggle checked={picked} disabled={!canPick} onChange={(v) => v && onPickup(r)} label={`${r.name} 簽收確認`}/>{picked && <span className="gift-signed">已簽收</span>}</td>
     <td><strong>{r.name}</strong><div className="muted-cell" style={{ fontSize: 11.5 }}>{SIDES[r.side]}{r.owner ? ` · ${r.owner} 負責` : ""}</div>{r.note && <div className="gift-note muted-cell" style={{ fontSize: 11.5 }}>{r.note}</div>}</td>
     <td>{r.items.length ? r.items.map((i) => <div key={i.product_id}><strong>{i.quantity}</strong> 盒{i.delivered > 0 && <span className="muted-cell" style={{ fontSize: 11.5 }}>（已交出 {i.delivered}）</span>}</div>) : <span className="muted-cell">未定</span>}</td>
-    <td className="gift-method-cell"><Select compact aria-label={`${r.name} 領取方式`} value={r.state === "cancelled" ? "none" : METHODS[r.method] ? r.method : ""} placeholder="尚未決定" options={[...options(METHODS), { value: "none", label: "不送喜餅" }]} onChange={(v) => onMethod(r, v)}/>{r.due_date && <div className="muted-cell" style={{ fontSize: 11.5 }}>預計 {fmtDate(r.due_date)}</div>}{r.contact_name && r.contact_name !== r.name && <div className="muted-cell" style={{ fontSize: 11.5 }}>聯絡人 {r.contact_name}</div>}</td>
+    <td className="gift-method-cell">{canManage ? <Select compact aria-label={`${r.name} 領取方式`} value={r.state === "cancelled" ? "none" : METHODS[r.method] ? r.method : ""} placeholder="尚未決定" options={[...options(METHODS), { value: "none", label: "不送喜餅" }]} onChange={(v) => onMethod(r, v)}/> : (r.state === "cancelled" ? "不送喜餅" : METHODS[r.method] || "尚未決定")}{r.due_date && <div className="muted-cell" style={{ fontSize: 11.5 }}>預計 {fmtDate(r.due_date)}</div>}{r.contact_name && r.contact_name !== r.name && <div className="muted-cell" style={{ fontSize: 11.5 }}>聯絡人 {r.contact_name}</div>}</td>
     <td>{r.phone ? <a className="gift-phone" href={`tel:${r.phone.replace(/[^\d+]/g, "")}`}>{r.phone}</a> : <span className="muted-cell">—</span>}</td>
     <td>{progressPill(r, inTransit)}
       {r.state === "confirmed" && r.method === "tbd" && r.remaining > 0 && <div className="gift-warning gift-warning-inline">領取方式未定</div>}
       {r.missing_address && <div className="gift-warning gift-warning-inline">缺寄送地址</div>}
       {r.change_method && <div className="gift-warning gift-warning-inline">已回覆不出席，請改寄送或家人代領</div>}</td>
-    <td className="row-actions">
+    <td className="row-actions">{canManage && <>
       <button className="btn btn-ghost btn-sm" onClick={edit}><Pencil size={13}/> 編輯</button>{" "}
       <button className="btn btn-ghost btn-sm" onClick={history}><History size={13}/> 紀錄{r.deliveries.length ? ` ${r.deliveries.length}` : ""}</button>{" "}
-      {r.state === "confirmed" && r.remaining > 0 && <button className="btn btn-primary btn-sm" onClick={deliver}><Truck size={13}/> 登記交付</button>}
-    </td>
+      {r.state === "confirmed" && r.remaining > 0 && r.method === "mail" && <button className="btn btn-primary btn-sm" onClick={deliver}><Truck size={13}/> 登記寄出</button>}
+    </>}</td>
   </tr>;
 }
 
@@ -88,7 +94,10 @@ function OrderCard({ o, vendors, edit, payment, upload }) {
 export default function Gifts() {
   const [params, setParams] = useSearchParams();
   const tab = params.get("tab") === "orders" ? "orders" : "recipients";
+  const { role } = usePlanner();
   const { data, loading, error, reload } = useLoader(async () => {
+    // 幫手拿不到廠商與花費（403），只載名單與賓客
+    if (role === "helper") { const [gifts, guests] = await Promise.all([fetchGifts(), fetchRsvps()]); return { ...gifts, guests, vendors: [], expenses: [] }; }
     const [gifts, guests, vendors, expenses] = await Promise.all([fetchGifts(), fetchRsvps(), fetchVendors(), fetchExpenses()]);
     return { ...gifts, guests, vendors, expenses };
   });
@@ -114,6 +123,16 @@ export default function Gifts() {
       reload();
     } catch (e) { toastErr(e); }
   };
+  // 名單上的「已領取」開關：確認後登記一筆婚禮領取（剩餘盒數全交），之後不能在名單上取消
+  const confirmPickup = async (r) => {
+    const ok = await Swal.fire({ icon: "question", title: `${r.name} 簽收確認？`, text: "確認後登記為已領取，之後不能再修改；誤按只能由新人到「紀錄」作廢。", showCancelButton: true, confirmButtonText: "確認簽收", cancelButtonText: "取消", confirmButtonColor: "#B28F70" });
+    if (!ok.isConfirmed) return;
+    try {
+      await createGiftDelivery(r.id, { request_key: crypto.randomUUID(), version: r.version, method: "venue", receiver: r.contact_name || r.name, handler: role === "helper" ? "幫手" : "", address: "", tracking: "", note: "名單簽收確認", delivered_on: today(),
+        items: r.items.filter((i) => i.remaining > 0).map((i) => ({ product_id: i.product_id, quantity: i.remaining })) });
+      reload();
+    } catch (e) { toastErr(e); }
+  };
   const changeMethod = async (r, choice) => {
     const none = choice === "none";
     const method = none ? (METHODS[r.method] ? r.method : "tbd") : choice;
@@ -133,18 +152,18 @@ export default function Gifts() {
       || filter === "missing" && r.missing_address || filter === "draft" && r.state === "draft" || filter === "cancelled" && r.state === "cancelled"));
   return <div className="gift-page">
     <PageHead title="喜餅" sub="把每一份心意送到，也把盒數、訂購與付款記清楚。"
-      actions={tab === "recipients" ? <><button className="btn btn-primary" onClick={importGuests}><Users size={15}/>帶入所有賓客</button><button className="btn" onClick={() => setModal({ type: "recipient", fromGuest: true })}><Users size={15}/>從賓客加入</button><button className="btn" onClick={() => setModal({ type: "recipient" })}><Plus size={15}/>新增送禮對象</button></>
+      actions={role === "helper" ? null : tab === "recipients" ? <><button className="btn btn-primary" onClick={importGuests}><Users size={15}/>帶入所有賓客</button><button className="btn" onClick={() => setModal({ type: "recipient", fromGuest: true })}><Users size={15}/>從賓客加入</button><button className="btn" onClick={() => setModal({ type: "recipient" })}><Plus size={15}/>新增送禮對象</button></>
         : <><button className="btn" onClick={() => setModal({ type: "product" })}><Gift size={15}/>新增款式</button><button className="btn btn-primary" onClick={() => setModal({ type: "order" })}><Plus size={15}/>新增訂購</button></>}/>
-    <div className="gift-tabs" role="group" aria-label="喜餅功能分頁"><button className={`btn ${tab === "recipients" ? "btn-primary" : "btn-ghost"}`} aria-pressed={tab === "recipients"} onClick={() => setParams({})}>送餅名單</button><button className={`btn ${tab === "orders" ? "btn-primary" : "btn-ghost"}`} aria-pressed={tab === "orders"} onClick={() => setParams({ tab: "orders" })}>訂購與費用</button></div>
+    {role !== "helper" && <div className="gift-tabs" role="group" aria-label="喜餅功能分頁"><button className={`btn ${tab === "recipients" ? "btn-primary" : "btn-ghost"}`} aria-pressed={tab === "recipients"} onClick={() => setParams({})}>送餅名單</button><button className={`btn ${tab === "orders" ? "btn-primary" : "btn-ghost"}`} aria-pressed={tab === "orders"} onClick={() => setParams({ tab: "orders" })}>訂購與費用</button></div>}
     {tab === "recipients" ? <>
-      <div className="stats-grid"><Stat label="已確認送餅" value={`${s.demand} 盒`} sub={`另有 ${s.tentative} 盒待決定`}/><Stat label="尚未交付" value={`${s.remaining} 盒`}/><Stat label="寄送缺地址" value={`${s.missing_address} 筆`}/><Stat label="喜餅需求估算" value={money(s.estimate)} sub={`${s.estimate_incomplete ? "部分款式尚無報價 · " : ""}含備用，不含運費與未確認優惠`}/></div>
+      <div className="stats-grid"><Stat label="已確認送餅" value={`${s.demand} 盒`} sub={`另有 ${s.tentative} 盒待決定`}/><Stat label="尚未交付" value={`${s.remaining} 盒`}/><Stat label="寄送缺地址" value={`${s.missing_address} 筆`}/>{role !== "helper" && <Stat label="喜餅需求估算" value={money(s.estimate)} sub={`${s.estimate_incomplete ? "部分款式尚無報價 · " : ""}含備用，不含運費與未確認優惠`}/>}</div>
       {!products.length && <div className="panel gift-intro"><Package size={25}/><div><strong>先建送禮名單，款式可以稍後決定</strong><p>不出席或未填婚宴表單的親友，都能獨立加入。已有喜餅款式時，可先設定參考價格及備用盒數。</p></div><button className="btn" onClick={() => setModal({ type: "product" })}>新增喜餅款式</button></div>}
       <div className="panel"><div className="toolbar gift-toolbar"><input type="text" aria-label="搜尋送禮對象" placeholder="姓名、電話或負責人" value={search} onChange={(e) => setSearch(e.target.value)}/>
         <Select compact aria-label="篩選領取方式" value={method} onChange={setMethod} options={[{ value: "", label: "所有領取方式" }, ...options(PLAN_METHODS)]}/>
         <Select compact aria-label="篩選親友方" value={side} onChange={setSide} options={[{ value: "", label: "所有親友" }, ...options(SIDES)]}/>
         <Select compact aria-label="篩選安排進度" value={filter} onChange={setFilter} options={options({ all: "全部", active: "要送的", remaining: "尚未交付", missing: "缺寄送地址", draft: "待決定", cancelled: "不送喜餅" })}/></div>
-        <div className="gift-export"><Select compact aria-label="匯出清單類型" value={exportType} onChange={setExportType} options={options({ all: "完整送餅清單", mail: "寄送清單", venue: "當天領取清單", products: "廠商款式數量" })}/><button className="btn btn-ghost btn-sm" onClick={() => downloadGiftCsv(exportType).catch(toastErr)}><Download size={14}/>匯出 CSV</button><span className="helper-text">匯出所選類型的全部已確認安排，含已交出與尚欠盒數。</span></div></div>
-      {filtered.length === 0 ? <div className="panel"><Empty>{recipients.length ? "沒有符合篩選的送餅安排" : "還沒有送餅對象，從賓客加入或直接新增親友。"}</Empty></div> : <div className="panel"><div className="table-wrap"><table className="gift-table"><thead><tr><th>送禮對象</th><th>盒數</th><th>領取方式</th><th>電話</th><th>進度</th><th></th></tr></thead><tbody>{filtered.map((r) => <RecipientRow key={r.id} r={r} onMethod={changeMethod} edit={() => setModal({ type: "recipient", initial: r })} deliver={() => setModal({ type: "delivery", recipient: r })} history={() => setModal({ type: "history", recipient: r })}/>)}</tbody></table></div></div>}
+        {role !== "helper" && <div className="gift-export"><Select compact aria-label="匯出清單類型" value={exportType} onChange={setExportType} options={options({ all: "完整送餅清單", mail: "寄送清單", venue: "當天領取清單", products: "廠商款式數量" })}/><button className="btn btn-ghost btn-sm" onClick={() => downloadGiftCsv(exportType).catch(toastErr)}><Download size={14}/>匯出 CSV</button><span className="helper-text">匯出所選類型的全部已確認安排，含已交出與尚欠盒數。</span></div>}</div>
+      {filtered.length === 0 ? <div className="panel"><Empty>{recipients.length ? "沒有符合篩選的送餅安排" : "還沒有送餅對象，從賓客加入或直接新增親友。"}</Empty></div> : <div className="panel"><div className="table-wrap"><table className="gift-table"><thead><tr><th>簽收確認</th><th>送禮對象</th><th>盒數</th><th>領取方式</th><th>電話</th><th>進度</th><th></th></tr></thead><tbody>{filtered.map((r) => <RecipientRow key={r.id} r={r} onMethod={changeMethod} onPickup={confirmPickup} canManage={role !== "helper"} edit={() => setModal({ type: "recipient", initial: r })} deliver={() => setModal({ type: "delivery", recipient: r })} history={() => setModal({ type: "history", recipient: r })}/>)}</tbody></table></div></div>}
     </> : <>
       <div className="stats-grid"><Stat label="確認訂購金額" value={money(s.total)}/><Stat label="已付" value={money(s.paid)}/><Stat label="尚欠" value={money(s.balance)}/><Stat label="需求參考估算" value={money(s.estimate)} sub="含備用；未含運費與折扣"/></div>
       <div className="panel"><div className="panel-head"><h2 className="panel-title">款式與盒數</h2><span className="helper-text">已訂含廠商贈盒，不代表已到貨。</span></div>

@@ -26,7 +26,7 @@ const NAV = [
   { to: "/", label: "總覽", icon: LayoutDashboard, end: true },
   { to: "/guests", label: "賓客", icon: Users, helper: true },
   { to: "/seating", label: "座位圖", icon: Armchair, helper: true },
-  { to: "/gifts", label: "喜餅", icon: Gift },
+  { to: "/gifts", label: "喜餅", icon: Gift, helper: true }, // 幫手：看名單、勾已領取
   { to: "/vendors", label: "廠商", icon: Store },
   { to: "/budget", label: "預算花費", icon: Wallet },
   { to: "/payments", label: "付款期程", icon: CalendarClock },
@@ -65,7 +65,7 @@ export default function PlannerApp() {
             <Route path="/" element={<CoupleOnly role={role}><Dashboard /></CoupleOnly>} />
             <Route path="/guests" element={<Guests />} />
             <Route path="/seating" element={<Seating />} />
-            <Route path="/gifts" element={<CoupleOnly role={role}><Gifts /></CoupleOnly>} />
+            <Route path="/gifts" element={<Gifts />} />
             <Route path="/vendors" element={<CoupleOnly role={role}><Vendors /></CoupleOnly>} />
             <Route path="/vendors/:id" element={<CoupleOnly role={role}><VendorDetail /></CoupleOnly>} />
             <Route path="/budget" element={<CoupleOnly role={role}><Budget /></CoupleOnly>} />
@@ -154,7 +154,7 @@ function LoginGate({ onOk }) {
         <button className="btn btn-primary" style={{ width: "100%", justifyContent: "center" }} disabled={busy} onClick={submit}>
           {busy ? "登入中…" : <><LogIn size={16} /> 進入後台</>}
         </button>
-        <p style={{ marginTop: 16, marginBottom: 0 }}>幫手（招待）用幫手密碼登入，只會看到賓客名單</p>
+        <p style={{ marginTop: 16, marginBottom: 0 }}>幫手（招待）用幫手密碼登入，只會看到賓客名單、座位圖與喜餅領取名單</p>
       </div>
     </div>
   );

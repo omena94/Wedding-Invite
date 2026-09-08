@@ -928,13 +928,16 @@ tbody tr:last-child td { border-bottom: none; }
 .gift-error { color: #9e4840; background: #fbefed; padding: 12px; border-radius: 10px; }
 .gift-cancelled { opacity: .65; }
 /* 送餅名單清單版：手機不硬擠欄位，改由 table-wrap 橫向捲動 */
-.gift-table { min-width: 880px; }
+.gift-table { min-width: 940px; }
 .gift-table td, .gift-table th { vertical-align: top; white-space: nowrap; }
 /* 欄寬：姓名欄固定、盒數緊接在後，剩餘空間留給進度與操作 */
-.gift-table th:nth-child(1), .gift-table td:first-child { white-space: normal; width: 210px; min-width: 190px; max-width: 240px; }
-.gift-table th:nth-child(2) { width: 70px; }
-.gift-table th:nth-child(3) { width: 180px; }
-.gift-table th:nth-child(4) { width: 130px; }
+.gift-table th:nth-child(1) { width: 110px; }
+.gift-pickup-cell { padding-right: 0; display: flex; align-items: center; gap: 8px; }
+.gift-signed { font-size: 12px; color: var(--milk-tea-700); font-weight: 600; }
+.gift-table th:nth-child(2), .gift-table td:nth-child(2) { white-space: normal; width: 210px; min-width: 190px; max-width: 240px; }
+.gift-table th:nth-child(3) { width: 70px; }
+.gift-table th:nth-child(4) { width: 180px; }
+.gift-table th:nth-child(5) { width: 130px; }
 .gift-method-cell { min-width: 170px; }
 .gift-method-cell .ui-select { width: 150px; }
 .gift-table td strong { font-weight: 600; }

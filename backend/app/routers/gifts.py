@@ -17,9 +17,10 @@ from ..database import get_db
 from ..gift_schemas import DeliveryIn, DeliveryUpdate, OrderIn, ProductIn, RecipientIn
 from ..models import (Expense, GiftDelivery, GiftOrder, GiftPlan, GiftProduct,
                       GiftRecipient, GiftRsvpLink, Payment, Rsvp, Vendor)
-from ..security import CoupleRequired
+from ..security import AdminRequired, CoupleRequired, require_staff
 
-router = APIRouter(prefix="/api/planner/gifts", tags=["gifts"], dependencies=[CoupleRequired])
+# 2026-09-08 起幫手也能進來：看名單、在婚禮現場勾「已領取」；管理款式／安排／訂購／匯出仍限新人（各端點另加 CoupleRequired）
+router = APIRouter(prefix="/api/planner/gifts", tags=["gifts"], dependencies=[AdminRequired])
 METHODS = {"tbd": "尚未決定", "venue": "婚禮領取", "mail": "寄送", "personal": "親送（已停用）"}  # 2026-09-08 起只用前兩種；personal 只為舊資料顯示
 
 
@@ -139,11 +140,18 @@ def snapshot(db):
 
 
 @router.get("")
-def overview(db: Session = Depends(get_db)):
-    return snapshot(db)
+def overview(role: str = Depends(require_staff), db: Session = Depends(get_db)):
+    data = snapshot(db)
+    if role != "couple":
+        # 幫手只需要名單與領取進度，不給訂購、金額與參考價
+        data["orders"] = []
+        for product in data["products"]:
+            product["reference_price"] = None
+        data["summary"].update(total=0, paid=0, balance=0, estimate=0, estimate_incomplete=False)
+    return data
 
 
-@router.post("/products", status_code=201)
+@router.post("/products", status_code=201, dependencies=[CoupleRequired])
 def create_product(payload: ProductIn, db: Session = Depends(get_db)):
     if payload.vendor_id:
         get_row(db, Vendor, payload.vendor_id)
@@ -153,7 +161,7 @@ def create_product(payload: ProductIn, db: Session = Depends(get_db)):
     return row_dict(p)
 
 
-@router.put("/products/{product_id}")
+@router.put("/products/{product_id}", dependencies=[CoupleRequired])
 def update_product(product_id: int, payload: ProductIn, db: Session = Depends(get_db)):
     p = get_row(db, GiftProduct, product_id, payload.version)
     if payload.vendor_id:
@@ -211,7 +219,7 @@ def save_recipient(db, payload, row=None):
     return {"id": row.id, "version": row.version}
 
 
-@router.post("/recipients", status_code=201)
+@router.post("/recipients", status_code=201, dependencies=[CoupleRequired])
 def create_recipient(payload: RecipientIn, db: Session = Depends(get_db)):
     old = db.scalar(select(GiftRecipient).where(GiftRecipient.request_key == payload.request_key))
     if old:
@@ -223,12 +231,12 @@ def create_recipient(payload: RecipientIn, db: Session = Depends(get_db)):
         raise HTTPException(409, "此對象已加入，請重新整理名單")
 
 
-@router.put("/recipients/{recipient_id}")
+@router.put("/recipients/{recipient_id}", dependencies=[CoupleRequired])
 def update_recipient(recipient_id: int, payload: RecipientIn, db: Session = Depends(get_db)):
     return save_recipient(db, payload, get_row(db, GiftRecipient, recipient_id, payload.version))
 
 
-@router.post("/recipients/import-guests")
+@router.post("/recipients/import-guests", dependencies=[CoupleRequired])
 def import_guests(db: Session = Depends(get_db)):
     """把所有還沒加入送餅名單的賓客回覆各建一筆送餅安排（每戶 1 盒）。
 
@@ -297,7 +305,7 @@ def create_delivery(recipient_id: int, payload: DeliveryIn, db: Session = Depend
     return delivery_out(d)
 
 
-@router.patch("/deliveries/{delivery_id}")
+@router.patch("/deliveries/{delivery_id}", dependencies=[CoupleRequired])
 def update_delivery(delivery_id: int, payload: DeliveryUpdate, db: Session = Depends(get_db)):
     initial = db.get(GiftDelivery, delivery_id)
     if initial is None:
@@ -364,7 +372,7 @@ def save_order(db, payload, row=None):
     return order_out(db, row)
 
 
-@router.post("/orders", status_code=201)
+@router.post("/orders", status_code=201, dependencies=[CoupleRequired])
 def create_order(payload: OrderIn, db: Session = Depends(get_db)):
     old = db.scalar(select(GiftOrder).where(GiftOrder.request_key == payload.request_key))
     if old:
@@ -376,7 +384,7 @@ def create_order(payload: OrderIn, db: Session = Depends(get_db)):
         raise HTTPException(409, "訂購已登記或花費已被連結，請重新整理")
 
 
-@router.put("/orders/{order_id}")
+@router.put("/orders/{order_id}", dependencies=[CoupleRequired])
 def update_order(order_id: int, payload: OrderIn, db: Session = Depends(get_db)):
     return save_order(db, payload, get_row(db, GiftOrder, order_id, payload.version))
 
@@ -387,7 +395,7 @@ def csv_cell(value):
     return "'" + s if s.lstrip().startswith(("=", "+", "-", "@")) or s.startswith(("\t", "\r", "\n")) else s
 
 
-@router.get("/export.csv")
+@router.get("/export.csv", dependencies=[CoupleRequired])
 def export_gifts(method: str = Query("all", pattern="^(all|mail|venue|products)$"), db: Session = Depends(get_db)):
     data = snapshot(db)
     output = io.StringIO()

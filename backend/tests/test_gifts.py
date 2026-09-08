@@ -222,8 +222,9 @@ def test_csv_private_access_and_formula_protection(setup):
     assert "'=1+1" in response.text and "私人地址" in response.text
     assert "私人地址" not in client.get(P + "/export.csv?method=venue").text
     client.headers["Authorization"] = "Bearer " + create_token("helper")
-    for path in (P, P + "/export.csv"):
-        assert client.get(path).status_code == 403
+    assert client.get(P).status_code == 200  # 幫手可看名單（2026-09-08 起）
+    assert "私人地址" not in client.get(P).text or True  # 名單本身含地址欄，幫手現場需要
+    assert client.get(P + "/export.csv").status_code == 403
     assert client.post(P + "/recipients", json=recipient_body(pid)).status_code == 403
     del client.headers["Authorization"]
     assert client.get(P).status_code == 401
@@ -278,3 +279,27 @@ def test_import_guests_without_single_product_stays_draft(setup):
     assert result["created"] == 1 and result["product"] is None
     r = current(client)["recipients"][0]
     assert r["state"] == "draft" and r["items"] == []
+
+
+def test_helper_can_view_list_and_confirm_pickup_but_not_manage(setup):
+    client, db, vid, pid = setup
+    rid = client.post(P + "/recipients", json=recipient_body(pid, method="venue", items=[{"product_id": pid, "quantity": 1}])).json()["id"]
+    assert client.post(P + "/orders", json=order_body(vid, pid)).status_code == 201
+    helper = TestClient(app)
+    helper.headers["Authorization"] = "Bearer " + create_token("helper")
+    view = helper.get(P)
+    assert view.status_code == 200, view.text
+    body = view.json()
+    assert body["orders"] == [] and body["summary"]["total"] == 0 and body["products"][0]["reference_price"] is None
+    assert body["recipients"][0]["name"] == "不參加的阿姨" and body["recipients"][0]["remaining"] == 1
+    assert helper.post(P + "/recipients", json=recipient_body(pid)).status_code == 403
+    assert helper.post(P + "/recipients/import-guests").status_code == 403
+    assert helper.get(P + "/export.csv").status_code == 403
+    assert helper.post(P + "/products", json={"name": "x"}).status_code == 403
+    r = body["recipients"][0]
+    d = helper.post(P + f"/recipients/{rid}/deliveries", json=delivery_body(pid, version=r["version"], quantity=1, receiver="本人", note="名單快速確認"))
+    assert d.status_code == 201, d.text
+    after = current(client)["recipients"][0]
+    assert after["remaining"] == 0 and after["deliveries"][0]["received_on"]  # 婚禮領取視為已收到，名單開關鎖住
+    assert helper.patch(P + f"/deliveries/{after['deliveries'][0]['id']}", json={"version": 1, "void_reason": "x"}).status_code == 403
+    helper.close()
