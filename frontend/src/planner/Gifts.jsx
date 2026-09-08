@@ -1,13 +1,13 @@
 import { useState } from "react";
 import Swal from "sweetalert2";
 import { Link, useSearchParams } from "react-router-dom";
-import { Check, Download, Gift, History, Package, Pencil, Plus, Truck, Users } from "lucide-react";
+import { Check, Gift, History, Package, Pencil, Plus, Truck, Users } from "lucide-react";
 import Select from "../components/Select.jsx";
 import Toggle from "../components/Toggle.jsx";
 import { usePlanner } from "./context.js";
-import { createGiftDelivery, fetchExpenses, fetchGifts, fetchRsvps, fetchVendors, downloadGiftCsv, importGiftGuests, saveGiftRecipient, updateGiftDelivery } from "../api.js";
+import { createGiftDelivery, fetchExpenses, fetchGifts, fetchRsvps, fetchVendors, importGiftGuests, saveGiftRecipient, updateGiftDelivery } from "../api.js";
 import { fmtDate, money } from "../constants.js";
-import { DeliveryForm, GiftDialog, METHODS, OrderForm, PLAN_METHODS, ProductForm, RecipientForm, SIDES, STATES, options, today } from "./giftForms.jsx";
+import { DeliveryForm, GiftDialog, METHODS, OrderForm, ProductForm, RecipientForm, SIDES, STATES, options, today } from "./giftForms.jsx";
 import { PaymentModal, UploadModal } from "./modals.jsx";
 import { Empty, ErrorBox, Field, Loading, Modal, PageHead, toastErr, toastOk, useLoader } from "./ui.jsx";
 
@@ -104,9 +104,6 @@ export default function Gifts() {
   const [modal, setModal] = useState(null);
   const [search, setSearch] = useState("");
   const [method, setMethod] = useState("");
-  const [side, setSide] = useState("");
-  const [filter, setFilter] = useState("all");
-  const [exportType, setExportType] = useState("all");
   const close = () => setModal(null);
   const saved = () => { close(); reload(); };
   // 一鍵把還沒加入名單的賓客回覆帶進來（每戶 1 盒）；重按只補新回覆
@@ -158,10 +155,8 @@ export default function Gifts() {
   if (loading) return <Loading/>;
   if (error) return <><ErrorBox error={error}/><button className="btn" onClick={reload}>重新讀取</button></>;
   const { summary: s, products, recipients, orders, guests, vendors, expenses } = data;
-  const filtered = recipients.filter((r) => (!method || r.method === method) && (!side || r.side === side)
-    && `${r.name} ${r.phone} ${r.contact_name} ${r.owner}`.toLowerCase().includes(search.toLowerCase())
-    && (filter === "all" || filter === "active" && r.state !== "cancelled" || filter === "remaining" && r.remaining > 0
-      || filter === "missing" && r.missing_address || filter === "draft" && r.state === "draft" || filter === "cancelled" && r.state === "cancelled"));
+  // 篩選只留姓名搜尋與領取方式（2026-09-08 新人要求精簡，幫手現場好用）
+  const filtered = recipients.filter((r) => (!method || r.method === method) && `${r.name} ${r.contact_name}`.toLowerCase().includes(search.toLowerCase()));
   return <div className="gift-page">
     <PageHead title="喜餅" sub="把每一份心意送到，也把盒數、訂購與付款記清楚。"
       actions={role === "helper" ? null : tab === "recipients" ? <><button className="btn btn-primary" onClick={importGuests}><Users size={15}/>帶入所有賓客</button><button className="btn" onClick={() => setModal({ type: "recipient" })}><Plus size={15}/>新增送禮對象</button></>
@@ -170,11 +165,10 @@ export default function Gifts() {
     {tab === "recipients" ? <>
       <div className="stats-grid"><Stat label="已確認送餅" value={`${s.demand} 盒`} sub={`另有 ${s.tentative} 盒待決定`}/><Stat label="尚未交付" value={`${s.remaining} 盒`}/><Stat label="寄送缺地址" value={`${s.missing_address} 筆`}/>{role !== "helper" && <Stat label="喜餅需求估算" value={money(s.estimate)} sub={`${s.estimate_incomplete ? "部分款式尚無報價 · " : ""}含備用，不含運費與未確認優惠`}/>}</div>
       {!products.length && <div className="panel gift-intro"><Package size={25}/><div><strong>先建送禮名單，款式可以稍後決定</strong><p>不出席或未填婚宴表單的親友，都能獨立加入。已有喜餅款式時，可先設定參考價格及備用盒數。</p></div><button className="btn" onClick={() => setModal({ type: "product" })}>新增喜餅款式</button></div>}
-      <div className="panel"><div className="toolbar gift-toolbar"><input type="text" aria-label="搜尋送禮對象" placeholder="姓名、電話或負責人" value={search} onChange={(e) => setSearch(e.target.value)}/>
-        <Select compact aria-label="篩選領取方式" value={method} onChange={setMethod} options={[{ value: "", label: "所有領取方式" }, ...options(PLAN_METHODS)]}/>
-        <Select compact aria-label="篩選親友方" value={side} onChange={setSide} options={[{ value: "", label: "所有親友" }, ...options(SIDES)]}/>
-        <Select compact aria-label="篩選安排進度" value={filter} onChange={setFilter} options={options({ all: "全部", active: "要送的", remaining: "尚未交付", missing: "缺寄送地址", draft: "待決定", cancelled: "不送喜餅" })}/></div>
-        {role !== "helper" && <div className="gift-export"><Select compact aria-label="匯出清單類型" value={exportType} onChange={setExportType} options={options({ all: "完整送餅清單", mail: "寄送清單", venue: "當天領取清單", products: "廠商款式數量" })}/><button className="btn btn-ghost btn-sm" onClick={() => downloadGiftCsv(exportType).catch(toastErr)}><Download size={14}/>匯出 CSV</button><span className="helper-text">匯出所選類型的全部已確認安排，含已交出與尚欠盒數。</span></div>}</div>
+      <div className="panel"><div className="toolbar gift-toolbar"><input type="text" aria-label="搜尋送禮對象" placeholder="搜尋姓名" value={search} onChange={(e) => setSearch(e.target.value)}/>
+        <Select compact aria-label="篩選領取方式" value={method} onChange={setMethod} options={[{ value: "", label: "全部" }, ...options(METHODS)]}/>
+        </div>
+      </div>
       {filtered.length === 0 ? <div className="panel"><Empty>{recipients.length ? "沒有符合篩選的送餅安排" : "還沒有送餅對象，從賓客加入或直接新增親友。"}</Empty></div> : <div className="panel"><div className="table-wrap"><table className="gift-table"><thead><tr><th>簽收確認</th><th>送禮對象</th><th>盒數</th><th>領取方式</th><th>電話</th><th>進度</th><th></th></tr></thead><tbody>{filtered.map((r) => <RecipientRow key={r.id} r={r} onMethod={changeMethod} onPickup={confirmPickup} canManage={role !== "helper"} edit={() => setModal({ type: "recipient", initial: r })} deliver={() => setModal({ type: "delivery", recipient: r })} history={() => setModal({ type: "history", recipient: r })}/>)}</tbody></table></div></div>}
     </> : <>
       <div className="stats-grid"><Stat label="確認訂購金額" value={money(s.total)}/><Stat label="已付" value={money(s.paid)}/><Stat label="尚欠" value={money(s.balance)}/><Stat label="需求參考估算" value={money(s.estimate)} sub="含備用；未含運費與折扣"/></div>
