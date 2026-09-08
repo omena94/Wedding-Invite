@@ -38,6 +38,7 @@ def main():
             check_width(page, width)
         check_width(page, 390)
         page.screenshot(path=str(output / 'invitation-mobile.png'))
+        page.get_by_role('button', name='翻到喜帖內頁').click()  # 喜帖有兩頁，先翻到內頁
         page.get_by_role('button', name='打開婚禮喜帖').click()
         expect(dialog).to_have_count(0, timeout=4000)
         expect(page.locator('h1')).to_be_focused()
@@ -103,6 +104,7 @@ def main():
         expect(page.locator('.home-primary')).to_have_attribute('href', '/seat')
         page.emulate_media(reduced_motion='reduce')
         page.get_by_role('button', name='重看喜帖').click()
+        page.get_by_role('button', name='翻到喜帖內頁').click()  # 喜帖有兩頁，先翻到內頁
         page.get_by_role('button', name='打開婚禮喜帖').click()
         expect(dialog).to_have_count(0, timeout=600)
         assert page.locator('.hero-color-reveal').evaluate('(el) => getComputedStyle(el).animationName') == 'none'

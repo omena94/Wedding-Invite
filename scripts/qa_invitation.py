@@ -18,6 +18,7 @@ def main():
         page = context.new_page()
         for moment in (0, 90, 180, 450, 750, 1050):
             page.goto(BASE)
+            page.get_by_role('button', name='翻到喜帖內頁').click()  # 兩頁喜帖：先翻到內頁再量開啟動畫
             page.get_by_role('button', name='打開婚禮喜帖').wait_for()
             # 暫停真正的 CSS 動畫，以相同時間點比較改版前後，不靠截圖耗時猜進度。
             page.evaluate("""async (moment) => {
@@ -37,6 +38,12 @@ def main():
             page.goto(BASE)
             cover = page.get_by_role('dialog')
             expect(cover).to_be_focused()
+            # 封面頁：按鈕不被裁切、整張喜帖不需捲動
+            first = page.get_by_role('button', name='翻到喜帖內頁')
+            rect = first.bounding_box()
+            assert rect['y'] > 44 and rect['y'] + rect['height'] < height - 12, f'Flip action clipped at {width}x{height}'
+            assert cover.evaluate('(el) => el.scrollHeight <= el.clientHeight'), f'Cover clipped at {width}x{height}'
+            first.tap()
             button = page.get_by_role('button', name='打開婚禮喜帖')
             rect = button.bounding_box()
             assert rect['y'] > 44 and rect['y'] + rect['height'] < height - 12, f'Action clipped at {width}x{height}'
@@ -54,6 +61,7 @@ def main():
 
         # 動畫途中改為減少動態效果，立即結束，不留下透明遮罩擋住首頁。
         page.goto(BASE)
+        page.get_by_role('button', name='翻到喜帖內頁').tap()
         page.get_by_role('button', name='打開婚禮喜帖').tap()
         page.emulate_media(reduced_motion='reduce')
         expect(page.get_by_role('dialog')).to_have_count(0, timeout=600)
