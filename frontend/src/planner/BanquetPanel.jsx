@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import { Calculator, ChevronDown, Save } from "lucide-react";
 import Select from "../components/Select.jsx";
-import Toggle from "../components/Toggle.jsx";
 import { fetchBanquet, saveBanquet } from "../api.js";
 import { money } from "../constants.js";
 import { ErrorBox, Field, Loading, NumberInput, toInt, toastErr, toastOk, useLoader } from "./ui.jsx";
@@ -33,8 +32,7 @@ export default function BanquetPanel({ compact = false }) {
   });
 
   useEffect(() => {
-    // veg_diff 只是畫面上的開關：素食價位 0 代表跟大人一樣
-    if (data) setF({ ...data.params, veg_diff: data.params.veg_price > 0 });
+    if (data) setF(data.params);
   }, [data]);
 
   if (error) return <ErrorBox error={error} />;
@@ -44,7 +42,7 @@ export default function BanquetPanel({ compact = false }) {
   const cc = estimate.child_counts;
   const cp = estimate.child_prices;
   const set = (k, v) => setF((x) => ({ ...x, [k]: v }));
-  const dirty = JSON.stringify(f) !== JSON.stringify({ ...params, veg_diff: params.veg_price > 0 });
+  const dirty = JSON.stringify(f) !== JSON.stringify(params);
 
   const save = async () => {
     setBusy(true);
@@ -56,7 +54,7 @@ export default function BanquetPanel({ compact = false }) {
         child_price: toInt(f.child_price),
         child_free_below: toInt(f.child_free_below),
         child_half_below: toInt(f.child_half_below),
-        veg_price: f.veg_diff ? toInt(f.veg_price) : 0, // 關掉開關就回到「同大人」
+        veg_price: toInt(f.veg_price), // 0 = 跟大人一樣
       });
       setData(r);
       toastOk("已更新預估");
@@ -94,18 +92,10 @@ export default function BanquetPanel({ compact = false }) {
         <div className="banquet-params">
           <div className="form-group grid-2">
             <Field label="大人每位（未含服務費）"><NumberInput value={f.adult_price} onChange={(v) => set("adult_price", v)} /></Field>
-            <Field label="服務費 %"><NumberInput value={f.service_pct} onChange={(v) => set("service_pct", v)} placeholder="10" /></Field>
+            <Field label="素食每位（未含服務費）" hint="選素食主餐的大人用這個價；填 0 表示跟大人一樣"><NumberInput value={f.veg_price} onChange={(v) => set("veg_price", v)} /></Field>
           </div>
           <div className="form-group grid-2">
-            <Field label="素食價位不同" hint="選素食主餐的大人另外算；關掉就跟大人一樣">
-              <div style={{ display: "flex", alignItems: "center", gap: 10, minHeight: 46 }}>
-                <Toggle checked={!!f.veg_diff} onChange={(v) => set("veg_diff", v)} label="素食價位不同" />
-                <span className="muted-cell" style={{ fontSize: 12.5 }}>{f.veg_diff ? "素食另計" : "同大人價"}</span>
-              </div>
-            </Field>
-            {f.veg_diff && (
-              <Field label="素食每位（未含服務費）"><NumberInput value={f.veg_price} onChange={(v) => set("veg_price", v)} /></Field>
-            )}
+            <Field label="服務費 %"><NumberInput value={f.service_pct} onChange={(v) => set("service_pct", v)} placeholder="10" /></Field>
           </div>
           <div className="form-group grid-2">
             <Field label="小孩免費：身高未滿（公分）"><NumberInput value={f.child_free_below} onChange={(v) => set("child_free_below", v)} placeholder="90" /></Field>
