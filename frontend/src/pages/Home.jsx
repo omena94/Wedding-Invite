@@ -58,7 +58,8 @@ export default function Home() {
     <header className="wedding-hero">
       <div className="wedding-hero-copy">
         <p className="guest-eyebrow">{visit ? 'SO LOVELY TO SEE YOU AGAIN' : 'TO OUR DEAREST FAMILY & FRIENDS'}</p>
-        <p className="home-greeting">{visit ? clock.period === 'after' ? '歡迎回來，謝謝你留下的祝福。' : clock.period === 'today' ? '歡迎回來，今天就要相見了。' : '歡迎回來，離相聚又近了一點。' : '最愛的家人與好友們，'}</p>
+        {/* 2026-09-08 依新人要求拿掉回訪問候句（歡迎回來…）；首次進站仍有稱呼 */}
+        {!visit && <p className="home-greeting">最愛的家人與好友們，</p>}
         <h1 ref={titleRef} tabIndex={-1}>把最重要的一天<br/><span>留給最珍惜的你</span></h1>
         <p className="home-couple">宣文 <span className="amp">&</span> 孟庭</p>
         <p className="home-couple-english">Alan <span className="amp">&</span> Omena</p>
