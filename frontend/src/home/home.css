@@ -68,15 +68,19 @@
 .invitation-paper-right { right: 0; background: linear-gradient(250deg, var(--milk-tea-100), var(--milk-tea-50) 70%); }
 .invitation-paper-right::after { right: 18px; left: 0; border-left: 0; }
 .invitation-skip { position: absolute; z-index: 3; right: max(24px, env(safe-area-inset-right)); top: max(14px, env(safe-area-inset-top)); padding: 6px 12px; font-size: 12px; border-radius: 22px; background: var(--milk-tea-50); }
-.invitation-content { position: relative; z-index: 2; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: clamp(14px, 2.3svh, 22px); height: 100%; width: min(100%, 480px); margin: auto; padding: max(68px, calc(env(safe-area-inset-top) + 44px)) 30px max(36px, calc(env(safe-area-inset-bottom) + 20px)); text-align: center; }
+/* 兩頁喜帖上下排列、手機直接捲動；第一頁尺寸以可視高度為準，讓封面完整可見、內頁露出一點提示往下滑 */
+.invitation-content { position: relative; z-index: 2; display: flex; align-items: center; justify-content: flex-start; flex-direction: column; gap: 18px; height: 100%; width: min(100%, 480px); margin: auto; padding: max(68px, calc(env(safe-area-inset-top) + 44px)) 30px max(36px, calc(env(safe-area-inset-bottom) + 20px)); text-align: center; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+.invitation-content::-webkit-scrollbar { display: none; }
 .invitation-content > * { flex-shrink: 0; }
 /* 新人自製喜帖（PDF 轉圖，1400×1972）：以可視高度為準等比縮放，寬度不超過畫面 */
-.invitation-card { width: min(100% , calc((100dvh - 150px) * 1400 / 1972), 520px); aspect-ratio: 1400 / 1972; border-radius: 10px; overflow: hidden; box-shadow: 0 18px 50px rgba(92, 70, 52, .18); background: #fbf6ee; animation: invitationCardIn .45s cubic-bezier(.22,1,.36,1) both; }
+.invitation-card { width: min(100%, calc((100dvh - 170px) * 1400 / 1972), 520px); aspect-ratio: 1400 / 1972; border-radius: 10px; overflow: hidden; box-shadow: 0 18px 50px rgba(92, 70, 52, .18); background: #fbf6ee; animation: invitationCardIn .45s cubic-bezier(.22,1,.36,1) both; }
 .invitation-card img { display: block; width: 100%; height: 100%; object-fit: contain; user-select: none; -webkit-user-drag: none; }
 @keyframes invitationCardIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
 .invitation-open { display: inline-flex; align-items: center; justify-content: center; gap: 23px; min-height: 52px; width: min(100%, 262px); border: 1px solid var(--milk-tea-700); border-radius: 28px; padding: 12px 22px; background: var(--milk-tea-700); color: var(--milk-tea-50); box-shadow: 0 7px 18px #7e60471c; font: 14px/1.6 'Plus Jakarta Sans', sans-serif; letter-spacing: .08em; cursor: pointer; touch-action: manipulation; }
 .invitation-open:active { background: var(--milk-tea-900); }
 .invitation-footnote { font-size: 10px; letter-spacing: .12em; color: var(--text-muted); }
+.invitation-scrollhint { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; letter-spacing: .1em; color: var(--milk-tea-700); margin: -6px 0; animation: invitationHint 1.6s ease-in-out infinite; }
+@keyframes invitationHint { 50% { transform: translateY(4px); } }
 .is-opening .invitation-content { animation: invitationContentLeave 180ms ease-out both; pointer-events: none; }
 .is-opening .invitation-paper-left { animation: invitationPaperLeft 900ms 180ms cubic-bezier(.65,0,.25,1) both; }
 .is-opening .invitation-paper-right { animation: invitationPaperRight 900ms 180ms cubic-bezier(.65,0,.25,1) both; }
