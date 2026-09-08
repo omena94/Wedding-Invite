@@ -337,6 +337,8 @@ export default function Seating() {
     if (d.type === "person") {
       setDragChip(null);
       if (!d.moved) {
+        // 點一下已入座的人：問要換位置還是移除（2026-09-08 新人要求）
+        if (d.fromSeat) { personActions(d.person, d.assignment, d.object_id, d.seat_index); return; }
         // 單純點一下：切換「準備放置」狀態
         setPicked((p) => (p && p.rsvp_id === d.person.rsvp_id && p.person_no === d.person.person_no ? null : d.person));
         return;
@@ -374,7 +376,7 @@ export default function Seating() {
     setTab("object");
     if (a) {
       // 拖著已入座的人換位子
-      drag.current = { type: "person", person: { rsvp_id: a.rsvp_id, person_no: a.person_no, name: a.display_name }, sx: e.clientX, sy: e.clientY, moved: false, fromSeat: true };
+      drag.current = { type: "person", person: { rsvp_id: a.rsvp_id, person_no: a.person_no, name: a.display_name }, sx: e.clientX, sy: e.clientY, moved: false, fromSeat: true, assignment: a, object_id: o.id, seat_index: i };
       containerRef.current.querySelector("svg").setPointerCapture(e.pointerId);
     }
   };
@@ -397,6 +399,22 @@ export default function Seating() {
   };
   const unseat = async (a) => {
     try { setLayout(await unassignSeat(a.id)); } catch (e) { toastErr(e); }
+  };
+  // 已入座的人：換位置（進入準備放置，再點另一張椅子）或移除（改為未安排）
+  const personActions = async (person, a, object_id, seat_index) => {
+    const o = byIdRef.current[object_id];
+    const where = o ? `${o.label || KIND_LABEL[o.kind] || "桌"} · ${seat_index + 1} 號` : "";
+    const r = await Swal.fire({ title: person.name, text: where ? `目前在 ${where}，要怎麼處理？` : "要怎麼處理？",
+      showDenyButton: true, showCancelButton: true, confirmButtonText: "換位置", denyButtonText: "移除", cancelButtonText: "取消",
+      confirmButtonColor: "#B28F70", denyButtonColor: "#9E5A54" });
+    if (r.isConfirmed) { setPicked({ rsvp_id: person.rsvp_id, person_no: person.person_no, name: person.name }); setTab("guests"); }
+    else if (r.isDenied && a) unseat(a);
+  };
+  const seatedClick = (g, p) => {
+    if (readonly || !p.seat) return;
+    const o = byIdRef.current[p.seat.object_id];
+    const a = (o?.assignments || []).find((x) => x.rsvp_id === g.rsvp_id && x.person_no === p.person_no);
+    personActions({ rsvp_id: g.rsvp_id, person_no: p.person_no, name: p.name }, a, p.seat.object_id, p.seat.seat_index);
   };
   const rename = async (a) => {
     const r = await Swal.fire({ title: "顯示名稱", input: "text", inputValue: a.display_name, inputPlaceholder: a.auto_name, showCancelButton: true, confirmButtonText: "儲存", cancelButtonText: "取消", confirmButtonColor: "#B28F70", inputAttributes: { maxlength: 60 } });
@@ -594,7 +612,7 @@ export default function Seating() {
           <div className="se-panel-body">
             {tab === "guests" ? (
               <GuestPanel guests={guests} search={search} setSearch={setSearch} sideFilter={sideFilter} setSideFilter={setSideFilter} onlyUnassigned={onlyUnassigned} setOnlyUnassigned={setOnlyUnassigned}
-                picked={picked} readonly={readonly} selectedObj={selectedObj} byId={byId}
+                picked={picked} readonly={readonly} selectedObj={selectedObj} byId={byId} onSeatedClick={seatedClick}
                 onPersonPointerDown={onPersonPointerDown} onPersonPointerMove={onPointerMove} onPersonPointerUp={onPointerUp}
                 onSeatGroup={seatGroup} onPreview={(g) => setPreview({ rsvp_id: g.rsvp_id, name: g.name })} />
             ) : (
@@ -702,7 +720,7 @@ function Handles({ o, zoom, onPointerDown }) {
 }
 
 /* ---------- 右側：賓客 ---------- */
-function GuestPanel({ guests, search, setSearch, sideFilter, setSideFilter, onlyUnassigned, setOnlyUnassigned, picked, readonly, selectedObj, byId, onPersonPointerDown, onPersonPointerMove, onPersonPointerUp, onSeatGroup, onPreview }) {
+function GuestPanel({ guests, search, setSearch, sideFilter, setSideFilter, onlyUnassigned, setOnlyUnassigned, picked, readonly, selectedObj, byId, onSeatedClick, onPersonPointerDown, onPersonPointerMove, onPersonPointerUp, onSeatGroup, onPreview }) {
   const where = (p) => (p.seat ? `${p.seat.label || KIND_LABEL[byId[p.seat.object_id]?.kind] || "桌"} · ${p.seat.seat_index + 1} 號` : "未安排");
   return (
     <div>
@@ -728,6 +746,7 @@ function GuestPanel({ guests, search, setSearch, sideFilter, setSideFilter, only
             return (
               <div key={p.person_no} className={`se-person${p.seat ? " seated" : ""}${isPicked ? " picked" : ""}`}
                 onPointerDown={(e) => onPersonPointerDown(e, { rsvp_id: g.rsvp_id, person_no: p.person_no, name: p.name, seat: p.seat })}
+                onClick={() => p.seat && onSeatedClick && onSeatedClick(g, p)} title={p.seat && !readonly ? "點一下可換位置或移除" : undefined}
                 onPointerMove={onPersonPointerMove} onPointerUp={onPersonPointerUp} onPointerCancel={onPersonPointerUp}>
                 <span>{p.is_child ? "👶 " : ""}{p.name}</span>
                 <span className="where">{where(p)}</span>
