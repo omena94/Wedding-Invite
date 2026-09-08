@@ -912,7 +912,6 @@ tbody tr:last-child td { border-bottom: none; }
 /* 喜餅：手機以每戶卡片操作，盒數與交付動作留在同一個畫面。 */
 .gift-tabs, .gift-card-actions, .gift-export { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
 .gift-tabs { margin: 0 0 24px; }
-.gift-card-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
 .gift-recipient { margin: 0; min-width: 0; }
 .gift-recipient .panel-head { align-items: flex-start; }
 .gift-recipient h2, .gift-order h2 { margin: 0; overflow-wrap: anywhere; }
@@ -928,6 +927,12 @@ tbody tr:last-child td { border-bottom: none; }
 .gift-warning { color: #895a20; font-size: 13px; background: #fcf4e7; padding: 8px 10px; border-radius: 8px; }
 .gift-error { color: #9e4840; background: #fbefed; padding: 12px; border-radius: 10px; }
 .gift-cancelled { opacity: .65; }
+/* 送餅名單清單版：手機不硬擠欄位，改由 table-wrap 橫向捲動 */
+.gift-table { min-width: 880px; }
+.gift-table td, .gift-table th { vertical-align: top; white-space: nowrap; }
+.gift-table td:first-child { white-space: normal; min-width: 200px; max-width: 280px; }
+.gift-table td strong { font-weight: 600; }
+.gift-warning-inline { display: inline-block; margin-top: 5px; padding: 3px 8px; font-size: 11.5px; }
 .gift-intro { display: flex; align-items: center; gap: 18px; }
 .gift-intro p { font-size: 13px; margin-bottom: 0; }
 .gift-toolbar { margin-bottom: 16px; }
@@ -960,7 +965,6 @@ tbody tr:last-child td { border-bottom: none; }
 .gift-history { margin-top: 20px; font-size: 12px; color: var(--text-muted); }
 .gift-history summary { cursor: pointer; }
 @media (max-width: 760px) {
-  .gift-card-grid { grid-template-columns: minmax(0, 1fr); }
   .gift-intro { flex-wrap: wrap; }
   .gift-line, .gift-line:has(.gift-line-numbers) { grid-template-columns: minmax(0, 1fr) auto; }
   .gift-line > .form-group:first-child { grid-column: 1 / -1; }
