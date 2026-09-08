@@ -30,8 +30,8 @@
 /* 新人要求一直重複：浮現 → 停留 → 淡出 → 再浮現，一輪約 2 秒；減少動態效果時由下方規則改為靜態 */
 .invitation-opened .hero-color-reveal { animation: photoUnveil 2s .25s cubic-bezier(.22,1,.36,1) infinite both; }
 .hero-art-caption { display: flex; justify-content: space-between; align-items: center; margin: 18px 12px 0; color: var(--milk-tea-700); }
-.hero-art-caption span { font: 32px 'Alex Brush', cursive; }
-.hero-art-note { position: absolute; right: -25px; top: 31%; writing-mode: vertical-rl; font-size: 9px; letter-spacing: .3em; color: var(--milk-tea-700); }
+.hero-art-caption span { font: 15px 'Cormorant Garamond', Georgia, serif; letter-spacing: .32em; text-transform: uppercase; }
+.hero-art-note { position: absolute; right: -25px; top: 31%; writing-mode: vertical-rl; font: 20px 'Alex Brush', cursive; letter-spacing: .04em; color: var(--milk-tea-700); }
 .invitation-opened .wedding-hero-copy { animation: homeArrive .9s .1s both; }
 .home-countdown { border-block: 1px solid var(--border-highlight); padding: 28px 12px 32px; text-align: center; }
 .wedding-clock-digits { display: flex; justify-content: center; gap: clamp(18px, 5vw, 64px); margin-top: 18px; }

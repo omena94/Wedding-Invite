@@ -67,8 +67,9 @@ export default function Home() {
       </div>
       <div className="wedding-hero-art">
         <div className="hero-arch-frame"><img src="/hero.webp" width="800" height="800" fetchPriority="high" alt="Alan 與 Omena 的婚禮插畫" className="hero-color-reveal"/></div>
-        <div className="hero-art-caption"><span>together, always</span><Heart size={17} aria-hidden="true"/></div>
-        <span className="hero-art-note" aria-hidden="true">A NEW CHAPTER BEGINS</span>
+        {/* 2026-09-08 依新人要求兩句互換：照片下方放 A NEW CHAPTER BEGINS，右側直排放 together, always */}
+        <div className="hero-art-caption"><span>A NEW CHAPTER BEGINS</span><Heart size={17} aria-hidden="true"/></div>
+        <span className="hero-art-note" aria-hidden="true">together, always</span>
       </div>
     </header>
 
