@@ -267,7 +267,7 @@ def test_import_guests_creates_one_box_each_and_is_repeatable(setup):
     db.commit()
     again = client.post(P + "/recipients/import-guests").json()
     assert again["created"] == 1 and again["skipped"] == 2 and again["names"] == ["後來才填的同事"]
-    assert len(current(client)["recipients"]) == 3
+    assert len(current(client)["recipients"]) == 4  # 2 位帶入 + 1 位後來帶入 + 上面手動建的親送對象
 
 
 def test_import_guests_without_single_product_stays_draft(setup):
