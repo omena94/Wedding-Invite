@@ -36,7 +36,7 @@ def test_veg_adults_never_exceed_adults():
 def test_children_unaffected_by_veg():
     kids = [{"height": 100, "pricing": "auto"}, {"height": None, "pricing": "auto"}]
     est = banquet_estimate(PARAMS, adults=4, children=kids, veg_adults=1)
-    assert est["child_counts"] == {"free": 0, "half": 1, "full": 0, "unknown": 1}
+    assert est["child_counts"] == {"free": 0, "half": 1, "full": 0, "custom": 0, "unknown": 1}
     assert est["child_subtotal"] == 2 * 2000
 
 
