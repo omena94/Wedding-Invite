@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { ArrowRight, Armchair, CalendarCheck, CalendarPlus, Heart, Info, MailOpen, Utensils } from 'lucide-react';
+// 2026-09-08 依新人要求拿掉「婚禮當天資訊」入口卡：內容與上方「這一天，我們在這裡等你」重複；/info 仍可從底部導覽「婚禮資訊」進入
+import { ArrowRight, Armchair, CalendarCheck, CalendarPlus, Heart, MailOpen, Utensils } from 'lucide-react';
 import { GuestNav, LoadError, useGuestLoad, CalendarButtons } from '../components/GuestUI.jsx';
 import EventDetails, { VENUE } from '../components/EventDetails.jsx';
 import PreviewBanner from '../components/PreviewBanner.jsx';
@@ -82,7 +83,6 @@ export default function Home() {
     <section className="home-essentials" aria-labelledby="home-essentials-title"><Reveal><p className="guest-eyebrow">EVERYTHING FOR YOUR VISIT</p><h2 id="home-essentials-title">赴約前，你需要的都在這裡</h2></Reveal><nav className="nav-cards" aria-label="頁面入口">
       <Reveal><Card href="/rsvp" icon={<CalendarCheck size={22}/>} step="第一階段" title="填寫出席意願" desc="告訴我們你會不會來，大人小孩幾位"/></Reveal>
       {stage && <Reveal delay={60}><Card href="/details" icon={<Utensils size={22}/>} step="第二階段" title="確認出席與主餐" disabled={!s.phase2_open && !preview} desc={s.phase2_open ? '確認同行人數、主餐與飲食需求' : preview ? '登入預覽：賓客尚未開放' : s.phase2_open_at ? `預計 ${fmtDateTime(s.phase2_open_at)} 開放` : '準備好後，我們會通知你回來確認'}/></Reveal>}
-      <Reveal delay={90}><Card href="/info" icon={<Info size={22}/>} title="婚禮當天資訊" desc="日期、地點、交通與停車"/></Reveal>
       {(s.seat_open || preview) && <Reveal delay={120}><Card href="/seat" icon={<Armchair size={22}/>} title="找到我的座位" desc={s.seat_open ? '從入口出發，一路找到為你留的那一席' : '登入預覽：賓客尚未開放'}/></Reveal>}
     </nav></section>
     <Reveal className="home-signoff"><Heart size={20} aria-hidden="true"/><p>有你在，就是最好的祝福。</p><span>With love, Alan & Omena</span></Reveal>
