@@ -303,3 +303,19 @@ def test_helper_can_view_list_and_confirm_pickup_but_not_manage(setup):
     assert after["remaining"] == 0 and after["deliveries"][0]["received_on"]  # 婚禮領取視為已收到，名單開關鎖住
     assert helper.patch(P + f"/deliveries/{after['deliveries'][0]['id']}", json={"version": 1, "void_reason": "x"}).status_code == 403
     helper.close()
+
+
+def test_helper_partial_pickups_record_each_receiver(setup):
+    client, db, vid, pid = setup
+    rid = client.post(P + "/recipients", json=recipient_body(pid, name="三盒的舅舅", method="venue", items=[{"product_id": pid, "quantity": 3}])).json()["id"]
+    helper = TestClient(app)
+    helper.headers["Authorization"] = "Bearer " + create_token("helper")
+    r = helper.get(P).json()["recipients"][0]
+    assert helper.post(P + f"/recipients/{rid}/deliveries", json=delivery_body(pid, version=r["version"], quantity=1, receiver="王媽媽", note="他人代領")).status_code == 201
+    r = helper.get(P).json()["recipients"][0]
+    assert r["remaining"] == 2 and r["items"][0]["delivered"] == 1
+    assert helper.post(P + f"/recipients/{rid}/deliveries", json=delivery_body(pid, version=r["version"], quantity=3, receiver="本人")).status_code == 400  # 超過尚欠
+    assert helper.post(P + f"/recipients/{rid}/deliveries", json=delivery_body(pid, version=r["version"], quantity=2, receiver="本人")).status_code == 201
+    r = current(client)["recipients"][0]
+    assert r["remaining"] == 0 and [(d["receiver"], d["items"][0]["quantity"]) for d in reversed(r["deliveries"])] == [("王媽媽", 1), ("本人", 2)]
+    helper.close()

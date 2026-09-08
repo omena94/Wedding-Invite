@@ -9,7 +9,7 @@ import { createGiftDelivery, fetchExpenses, fetchGifts, fetchRsvps, fetchVendors
 import { fmtDate, money } from "../constants.js";
 import { DeliveryForm, GiftDialog, METHODS, OrderForm, ProductForm, RecipientForm, SIDES, STATES, options, today } from "./giftForms.jsx";
 import { PaymentModal, UploadModal } from "./modals.jsx";
-import { Empty, ErrorBox, Field, Loading, Modal, PageHead, toastErr, toastOk, useLoader } from "./ui.jsx";
+import { Empty, ErrorBox, Field, Loading, Modal, NumberInput, PageHead, toInt, toastErr, toastOk, useLoader } from "./ui.jsx";
 
 function Stat({ label, value, sub }) {
   return <div className="stat-card"><div className="value">{value}</div><div className="label">{label}</div>{sub && <div className="helper-text">{sub}</div>}</div>;
@@ -27,13 +27,17 @@ function RecipientRow({ r, edit, deliver, history, onMethod, onPickup, canManage
   // 「已領取」開關：已全部交出就鎖住（確認後不能再改）；要送且尚欠才能勾
   const picked = r.state === "confirmed" && r.items.length > 0 && r.remaining === 0;
   const canPick = r.state === "confirmed" && r.remaining > 0;
+  const total = r.items.reduce((a, i) => a + i.quantity, 0), delivered = r.items.reduce((a, i) => a + i.delivered, 0);
+  // 誰拿了幾盒（作廢的不算），幫手在現場也看得到
+  const takers = r.deliveries.filter((d) => !d.void_reason).map((d) => `${d.receiver} ${d.items.reduce((a, i) => a + i.quantity, 0)} 盒`).join("、");
   return <tr className={r.state === "cancelled" ? "gift-cancelled" : undefined}>
-    <td className="gift-pickup-cell"><div><Toggle checked={picked} disabled={!canPick} onChange={(v) => v && onPickup(r)} label={`${r.name} 簽收確認`}/>{picked && <span className="gift-signed">已簽收</span>}</div></td>
+    <td className="gift-pickup-cell"><div><Toggle checked={picked} disabled={!canPick} onChange={(v) => v && onPickup(r)} label={`${r.name} 簽收確認`}/>{picked ? <span className="gift-signed">已簽收</span> : delivered > 0 && <span className="gift-signed">已領 {delivered}/{total}</span>}</div></td>
     <td><strong>{r.name}</strong><div className="muted-cell" style={{ fontSize: 11.5 }}>{SIDES[r.side]}{r.owner ? ` · ${r.owner} 負責` : ""}</div></td>
     <td>{r.items.length ? r.items.map((i) => <div key={i.product_id}><strong>{i.quantity}</strong> 盒{i.delivered > 0 && <span className="muted-cell" style={{ fontSize: 11.5 }}>（已交出 {i.delivered}）</span>}</div>) : <span className="muted-cell">未定</span>}</td>
     <td className="gift-method-cell">{canManage ? <Select compact aria-label={`${r.name} 領取方式`} value={r.state === "cancelled" ? "none" : METHODS[r.method] ? r.method : ""} placeholder="尚未決定" options={[...options(METHODS), { value: "none", label: "不送喜餅" }]} onChange={(v) => onMethod(r, v)}/> : (r.state === "cancelled" ? "不送喜餅" : METHODS[r.method] || "尚未決定")}{r.due_date && <div className="muted-cell" style={{ fontSize: 11.5 }}>預計 {fmtDate(r.due_date)}</div>}{r.contact_name && r.contact_name !== r.name && <div className="muted-cell" style={{ fontSize: 11.5 }}>聯絡人 {r.contact_name}</div>}</td>
     <td>{r.phone ? <a className="gift-phone" href={`tel:${r.phone.replace(/[^\d+]/g, "")}`}>{r.phone}</a> : <span className="muted-cell">—</span>}</td>
     <td>{progressPill(r, inTransit)}
+      {takers && <div className="muted-cell" style={{ fontSize: 11.5, marginTop: 4 }}>{takers}</div>}
       {r.state === "confirmed" && r.method === "tbd" && r.remaining > 0 && <div className="gift-warning gift-warning-inline">領取方式未定</div>}
       {r.missing_address && <div className="gift-warning gift-warning-inline">缺寄送地址</div>}
       {r.change_method && <div className="gift-warning gift-warning-inline">已回覆不出席，請改寄送或家人代領</div>}</td>
@@ -91,6 +95,32 @@ function OrderCard({ o, vendors, edit, payment, upload }) {
   </article>;
 }
 
+
+// 簽收確認視窗：盒數大於 1 時可填本次領幾盒（分批），並選本人或他人代領；每次都會記一筆誰拿的
+function PickupDialog({ recipient: r, role, onClose, onSaved }) {
+  const pending = r.items.filter((i) => i.remaining > 0);
+  const remaining = pending.reduce((a, i) => a + i.remaining, 0);
+  const single = pending.length === 1;
+  const [qty, setQty] = useState(remaining);
+  const [who, setWho] = useState("self");
+  const [proxy, setProxy] = useState("");
+  const submit = () => {
+    const n = single ? toInt(qty) : remaining;
+    if (single && (n < 1 || n > remaining)) throw new Error(`本次盒數需介於 1 到 ${remaining}`);
+    if (who === "proxy" && !proxy.trim()) throw new Error("請填寫代領人姓名");
+    const receiver = who === "proxy" ? proxy.trim() : (r.contact_name || r.name);
+    const items = pending.map((i) => ({ product_id: i.product_id, quantity: single ? n : i.remaining }));
+    return createGiftDelivery(r.id, { request_key: crypto.randomUUID(), version: r.version, method: "venue", receiver, handler: role === "helper" ? "幫手" : "", address: "", tracking: "",
+      note: who === "proxy" ? `他人代領：${receiver}（名單簽收確認）` : "本人領取（名單簽收確認）", delivered_on: today(), items });
+  };
+  return <GiftDialog title={`簽收確認 — ${r.name}`} onClose={onClose} onSaved={onSaved} submit={submit} label="確認簽收" wide={false}>
+    <p className="helper-text">{remaining > 1 ? `這位共 ${remaining} 盒尚未領取，可以分批：` : ""}確認後登記為已領取，不能再修改；誤按只能由新人到「紀錄」作廢。</p>
+    {remaining > 1 && single && <Field label={`本次領取盒數（尚欠 ${remaining} 盒）`}><NumberInput aria-label="本次領取盒數" value={qty} onChange={setQty}/></Field>}
+    <Field label="由誰領取"><Select aria-label="由誰領取" value={who} onChange={setWho} options={[{ value: "self", label: "本人領取" }, { value: "proxy", label: "他人代領" }]}/></Field>
+    {who === "proxy" && <Field label="代領人姓名" required><input type="text" aria-label="代領人姓名" value={proxy} onChange={(e) => setProxy(e.target.value)} placeholder="例如：王媽媽" maxLength={100}/></Field>}
+  </GiftDialog>;
+}
+
 export default function Gifts() {
   const [params, setParams] = useSearchParams();
   const tab = params.get("tab") === "orders" ? "orders" : "recipients";
@@ -122,27 +152,8 @@ export default function Gifts() {
     } catch (e) { toastErr(e); }
   };
   // 名單上的「已領取」開關：確認後登記一筆婚禮領取（剩餘盒數全交），之後不能在名單上取消
-  const confirmPickup = async (r) => {
-    // 先問是本人還是他人代領；代領要填代領人姓名，會記進交付紀錄
-    const who = await Swal.fire({ icon: "question", title: `${r.name} 簽收確認`, text: "請選擇由誰領取；確認後登記為已領取，之後不能再修改，誤按只能由新人到「紀錄」作廢。",
-      showDenyButton: true, showCancelButton: true, confirmButtonText: "本人領取", denyButtonText: "他人代領", cancelButtonText: "取消",
-      confirmButtonColor: "#B28F70", denyButtonColor: "#8C7A6B" });
-    if (!who.isConfirmed && !who.isDenied) return;
-    let receiver = r.contact_name || r.name, note = "本人領取（名單簽收確認）";
-    if (who.isDenied) {
-      const proxy = await Swal.fire({ title: "代領人是誰？", input: "text", inputLabel: "請填代領人姓名，方便日後對照", inputPlaceholder: "例如：王媽媽", inputAttributes: { maxlength: 100 },
-        showCancelButton: true, confirmButtonText: "確認簽收", cancelButtonText: "取消", confirmButtonColor: "#B28F70",
-        inputValidator: (v) => (v && v.trim() ? undefined : "請填寫代領人姓名") });
-      if (!proxy.isConfirmed) return;
-      receiver = proxy.value.trim();
-      note = `他人代領：${receiver}（名單簽收確認）`;
-    }
-    try {
-      await createGiftDelivery(r.id, { request_key: crypto.randomUUID(), version: r.version, method: "venue", receiver, handler: role === "helper" ? "幫手" : "", address: "", tracking: "", note, delivered_on: today(),
-        items: r.items.filter((i) => i.remaining > 0).map((i) => ({ product_id: i.product_id, quantity: i.remaining })) });
-      reload();
-    } catch (e) { toastErr(e); }
-  };
+  // 簽收確認：開小視窗（盒數大於 1 可分批），每次都記一筆交付紀錄
+  const confirmPickup = (r) => setModal({ type: "pickup", recipient: r });
   const changeMethod = async (r, choice) => {
     const none = choice === "none";
     const method = none ? (METHODS[r.method] ? r.method : "tbd") : choice;
@@ -187,6 +198,7 @@ export default function Gifts() {
     {modal?.type === "recipient" && <RecipientForm initial={modal.initial} products={products} recipients={recipients} onClose={close} onSaved={saved}/>}
     {modal?.type === "order" && <OrderForm initial={modal.initial} products={products} vendors={vendors} expenses={expenses} orders={orders} onClose={close} onSaved={saved}/>}
     {modal?.type === "delivery" && <DeliveryForm recipient={modal.recipient} onClose={close} onSaved={saved}/>}
+    {modal?.type === "pickup" && <PickupDialog recipient={modal.recipient} role={role} onClose={close} onSaved={saved}/>}
     {modal?.type === "history" && <DeliveryHistory recipient={modal.recipient} onClose={close} onSaved={saved}/>}
     {modal?.type === "payment" && <PaymentModal expenseId={modal.order.expense_id} expenseTitle={modal.order.title} initial={modal.initial} onClose={close} onSaved={saved}/>}
     {modal?.type === "upload" && <UploadModal vendors={vendors} defaults={{ vendor_id: modal.order.vendor_id, expense_id: modal.order.expense_id, kind: "doc" }} onClose={close} onSaved={saved}/>}
