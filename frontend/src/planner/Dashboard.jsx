@@ -1,4 +1,4 @@
-// 總覽：倒數、預算與付款、近期要付的款、待辦、廠商狀態、賓客摘要、目前階段
+// 總覽：倒數、預算與付款、待辦、賓客摘要、目前階段（近期付款與廠商面板已於 2026-09-08 移除）
 import { Link } from "react-router-dom";
 import { CalendarClock, Hourglass, ListChecks, Users, Utensils, Wallet, Settings as SettingsIcon } from "lucide-react";
 import { fetchDashboard, fetchStats } from "../api.js";
@@ -48,28 +48,6 @@ export default function Dashboard() {
       })()}
 
       <div className="pl-grid-2">
-        <div className="panel">
-          <div className="panel-head">
-            <div className="panel-title"><CalendarClock size={18} /> 近期要付的款</div>
-            <Link className="btn btn-ghost btn-sm" to="/budget">預算花費</Link>
-          </div>
-          {data.upcoming_payments.length === 0 ? (
-            <div className="empty-state" style={{ padding: 24 }}>目前沒有未付款項</div>
-          ) : (
-            <ul className="pl-list">
-              {data.upcoming_payments.map((p) => (
-                <li key={p.id}>
-                  <div>
-                    <div className="pl-list-title">{p.title} <span className="muted-cell">· {p.expense_title}</span></div>
-                    <div className="pl-list-sub">{p.vendor_name || "未指定廠商"} · {p.due_date ? `${fmtDate(p.due_date)}${dueTag(p.due_date)}` : "未定日期"}</div>
-                  </div>
-                  <div className="amount">{money(p.amount)}</div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-
         <div className="panel">
           <div className="panel-head">
             <div className="panel-title"><ListChecks size={18} /> 待辦 {data.open_tasks_total > 0 && <span className="pill pill-groom">{data.open_tasks_total}</span>}</div>

@@ -1017,3 +1017,8 @@ tbody tr:last-child td { border-bottom: none; }
 /* 籌備進度：清單上直接改日期的小型日期選擇器 */
 .pl-date-inline { display: inline-block; width: 168px; vertical-align: middle; }
 .pl-date-inline .ui-select-trigger { padding: 5px 10px; font-size: 13px; border-radius: 10px; }
+
+/* 可點的統計卡 */
+.stat-card-click { cursor: pointer; transition: transform .15s, box-shadow .15s; }
+.stat-card-click:hover { transform: translateY(-2px); box-shadow: var(--shadow-elegant); }
+.stat-card-click::after { content: '點擊看明細'; display: block; font-size: 11px; color: var(--milk-tea-700); margin-top: 6px; }

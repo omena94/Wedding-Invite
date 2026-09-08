@@ -6,7 +6,7 @@ import { Check, ChevronDown, Pencil, Plus, Trash2, Undo2 } from "lucide-react";
 import { deleteExpense, deletePayment, fetchExpenses, fetchVendors } from "../api.js";
 import { PAID_BY, fmtDate, money } from "../constants.js";
 import { ExpenseModal, PaymentModal } from "./modals.jsx";
-import { Empty, ErrorBox, Loading, PageHead, confirmDelete, toastErr, useLoader } from "./ui.jsx";
+import { Empty, ErrorBox, Loading, Modal, PageHead, confirmDelete, toastErr, useLoader } from "./ui.jsx";
 import { dueTag } from "./Dashboard.jsx";
 import BanquetPanel from "./BanquetPanel.jsx";
 
@@ -15,6 +15,7 @@ export default function Budget() {
   const { data: vendors } = useLoader(() => fetchVendors(), []);
   const [modal, setModal] = useState(null);
   const [open, setOpen] = useState({}); // expense id → 展開分期
+  const [detail, setDetail] = useState(null); // 點統計卡看明細：budget / contract / paid / unpaid
 
   const groups = useMemo(() => {
     const m = new Map();
@@ -50,11 +51,12 @@ export default function Budget() {
         actions={<button className="btn btn-primary" onClick={() => setModal({ type: "expense" })}><Plus size={15} /> 新增花費</button>} />
 
       <div className="stats-grid">
-        <Card label="預算合計" value={money(totals.budget)} />
-        <Card label="合約 / 實際合計" value={money(totals.contract)} sub={totals.budget ? `${totals.contract > totals.budget ? "超出" : "低於"}預算 ${money(Math.abs(totals.contract - totals.budget))}` : ""} />
-        <Card label="已付" value={money(totals.paid)} bar={totals.contract ? Math.round((totals.paid / totals.contract) * 100) : 0} />
-        <Card label="合約尚欠" value={money(totals.unpaid)} sub="包含尚未安排分期的尾款" />
+        <Card label="預算合計" value={money(totals.budget)} onClick={() => setDetail("budget")} />
+        <Card label="合約 / 實際合計" onClick={() => setDetail("contract")} value={money(totals.contract)} sub={totals.budget ? `${totals.contract > totals.budget ? "超出" : "低於"}預算 ${money(Math.abs(totals.contract - totals.budget))}` : ""} />
+        <Card label="已付" onClick={() => setDetail("paid")} value={money(totals.paid)} bar={totals.contract ? Math.round((totals.paid / totals.contract) * 100) : 0} />
+        <Card label="合約尚欠" value={money(totals.unpaid)} sub="包含尚未安排分期的尾款" onClick={() => setDetail("unpaid")} />
       </div>
+      {detail && <DetailModal kind={detail} expenses={data || []} onClose={() => setDetail(null)} />}
 
       {/* 桌菜依出席人數估算，不會自動記進下面的花費項目；簽約後請自行新增一筆「婚宴」花費 */}
       <BanquetPanel />
@@ -142,9 +144,34 @@ export default function Budget() {
   );
 }
 
-function Card({ label, value, sub, bar }) {
+// 統計卡明細（2026-09-08 新人要求）：點卡片列出是哪些項目加出來的
+const DETAIL = {
+  budget: { title: "預算合計明細", rows: (list) => list.filter((e) => e.budget_amount > 0).map((e) => [e.title, e.category, e.budget_amount]) },
+  contract: { title: "合約／實際合計明細", rows: (list) => list.filter((e) => e.contract_amount > 0).map((e) => [e.title, e.category, e.contract_amount]) },
+  paid: { title: "已付明細", rows: (list) => list.flatMap((e) => e.payments.filter((p) => p.paid_date).map((p) => [e.title, `${p.title} · ${fmtDate(p.paid_date)}${p.method ? ` · ${p.method}` : ""}`, p.amount])) },
+  unpaid: { title: "合約尚欠明細", rows: (list) => list.filter((e) => e.unpaid_total > 0).map((e) => [e.title, e.unscheduled_unpaid > 0 ? `含未排分期 ${money(e.unscheduled_unpaid)}` : "已排分期未付", e.unpaid_total]) },
+};
+function DetailModal({ kind, expenses, onClose }) {
+  const def = DETAIL[kind];
+  const rows = def.rows(expenses);
+  const total = rows.reduce((a, r) => a + r[2], 0);
   return (
-    <div className="stat-card">
+    <Modal title={def.title} onClose={onClose} wide>
+      {rows.length === 0 ? <Empty>目前沒有資料</Empty> : (
+        <div className="table-wrap"><table style={{ minWidth: 0 }}>
+          <thead><tr><th>項目</th><th>說明</th><th style={{ textAlign: "right" }}>金額</th></tr></thead>
+          <tbody>{rows.map((r, i) => <tr key={i}><td>{r[0]}</td><td className="muted-cell">{r[1]}</td><td className="amount">{money(r[2])}</td></tr>)}</tbody>
+          <tfoot><tr><td colSpan={2}><strong>合計</strong></td><td className="amount"><strong>{money(total)}</strong></td></tr></tfoot>
+        </table></div>
+      )}
+    </Modal>
+  );
+}
+
+function Card({ label, value, sub, bar, onClick }) {
+  return (
+    <div className={`stat-card${onClick ? " stat-card-click" : ""}`} onClick={onClick} role={onClick ? "button" : undefined} tabIndex={onClick ? 0 : undefined}
+      onKeyDown={onClick ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick(); } } : undefined}>
       <div className="value" style={{ fontSize: 22 }}>{value}</div>
       <div className="label">{label}{sub ? ` · ${sub}` : ""}</div>
       {bar !== undefined && <div className="bar-track"><div className="bar-fill" style={{ width: `${Math.min(100, bar)}%` }} /></div>}
