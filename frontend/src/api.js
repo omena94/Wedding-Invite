@@ -93,6 +93,7 @@ export const adminLogin = (password) =>
 // ===== 賓客後台 =====
 export const fetchStats = () => request("/api/admin/stats", { auth: true });
 export const fetchRsvps = (params = {}) => request(`/api/admin/rsvps${qs(params)}`, { auth: true });
+export const createRsvp = (data) => request("/api/admin/rsvps", { method: "POST", body: data, auth: true });
 export const updateRsvp = (id, data) =>
   request(`/api/admin/rsvps/${id}`, { method: "PATCH", body: data, auth: true });
 export const deleteRsvp = (id) =>

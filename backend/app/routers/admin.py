@@ -6,17 +6,19 @@ import os
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import StreamingResponse
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from .. import cache
 from ..database import get_db
+from ..contacts import phone_column
 from ..mailer import broadcast, send_one, smtp_ready
 from ..models import Rsvp
 from ..schemas import (
     DatePref,
     LoginIn,
     LoginOut,
+    RsvpAdminCreate,
     RsvpAdminUpdate,
     RsvpOut,
     SideBreakdown,
@@ -204,6 +206,27 @@ def get_stats(db: Session = Depends(get_db)):
     )
     cache.set_cached_stats(stats.model_dump())
     return stats
+
+
+# ===== 手動新增（新人用；沒有 Email／電話的賓客也能算進喜宴）=====
+@router.post("/rsvps", response_model=RsvpOut, status_code=201, dependencies=[CoupleRequired])
+def create_rsvp_manual(payload: RsvpAdminCreate, db: Session = Depends(get_db)):
+    data = payload.model_dump()
+    conds = []
+    if data["email"]:
+        conds.append(func.lower(Rsvp.email) == data["email"])
+    if data["phone"]:
+        conds.append(phone_column(Rsvp.phone) == data["phone"])
+    if conds and db.scalars(select(Rsvp).where(or_(*conds))).first():
+        raise HTTPException(409, "已有相同 Email 或電話的賓客，請直接編輯那一筆")
+    if not data["attending"]:
+        data.update(adult_count=0, child_count=0)
+    record = Rsvp(**data, date_preference="both", message="")
+    db.add(record)
+    db.commit()
+    db.refresh(record)
+    cache.invalidate_stats()
+    return record
 
 
 # ===== 更新（可修正賓客資料 / 排桌 / 狀態 / 備註）=====

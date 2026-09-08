@@ -109,6 +109,33 @@ class Phase2Details(BaseModel):
 
 
 # ===== 後台更新（可修正賓客填錯的任何欄位）=====
+class RsvpAdminCreate(BaseModel):
+    """後台手動新增賓客（2026-09-08）：沒有 Email 或電話的長輩也能算進喜宴人數；有填才檢查重複。"""
+    name: str = Field(min_length=1, max_length=100)
+    side: Literal["groom", "bride"]
+    attending: bool = True
+    adult_count: int = Field(default=1, ge=0, le=50)
+    child_count: int = Field(default=0, ge=0, le=50)
+    email: str = Field(default="", max_length=200)
+    phone: str = Field(default="", max_length=50)
+    admin_note: str = Field(default="", max_length=2000)
+
+    @field_validator("name")
+    @classmethod
+    def clean_name(cls, v):
+        if not v.strip():
+            raise ValueError("請填寫姓名")
+        return v.strip()
+
+    @field_validator("phone", "email")
+    @classmethod
+    def clean_contact(cls, v, info):
+        v = (v or "").strip()
+        if not v:
+            return ""
+        return normalize_phone(v) if info.field_name == "phone" else v.lower()
+
+
 class RsvpAdminUpdate(BaseModel):
     @field_validator('phone','email')
     @classmethod

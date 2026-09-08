@@ -3,23 +3,24 @@ import Swal from "sweetalert2";
 import {
   Users, Utensils, Baby, Mail, PieChart,
   ClipboardList, Download, Trash2, Armchair, Salad, Pencil, MessageCircle,
-  Megaphone, Send, ChevronDown,
+  Megaphone, Send, ChevronDown, Plus,
 } from "lucide-react";
 import RichTextEditor from '../components/RichTextEditor.jsx';
 import Select from "../components/Select.jsx";
 import {
   getToken,
-  fetchStats, fetchRsvps, updateRsvp, deleteRsvp, exportCsvUrl,
+  fetchStats, fetchRsvps, createRsvp, updateRsvp, deleteRsvp, exportCsvUrl,
   sendBroadcast,
 } from "../api.js";
 import { usePlanner } from "./context.js";
-import { NumberInput, PageHead, confirmDelete, toastErr } from "./ui.jsx";
+import { Field, Modal, NumberInput, PageHead, confirmDelete, toastErr, toastOk } from "./ui.jsx";
 
 const SIDE_LABEL = { groom: "男方", bride: "女方" };
 
 /* ---------- 賓客名單（原 /admin）---------- */
 export default function Guests() {
-  const { logout: onLogout } = usePlanner();
+  const { logout: onLogout, role } = usePlanner();
+  const [adding, setAdding] = useState(false); // 手動新增賓客視窗
   const [stats, setStats] = useState(null);
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -78,7 +79,9 @@ export default function Guests() {
 
   return (
     <div>
-      <PageHead title="賓客名單" sub="出席統計、第二階段進度、群發通知、匯出 Excel" />
+      <PageHead title="賓客名單" sub="出席統計、第二階段進度、群發通知、匯出 Excel"
+        actions={role === "couple" ? <button className="btn btn-primary" onClick={() => setAdding(true)}><Plus size={15} /> 手動新增賓客</button> : null} />
+      {adding && <AddGuestModal onClose={() => setAdding(false)} onSaved={() => { setAdding(false); toastOk("已新增賓客"); load(); }} />}
 
       {loading ? (
         <div className="loading">讀取資料中…</div>
@@ -233,6 +236,45 @@ export default function Guests() {
 const EDIT_DISHES = ["牛排", "雞腿排", "鮭魚排", "素食"];
 const numOpts = (from, to, unit = "") =>
   Array.from({ length: to - from + 1 }, (_, i) => ({ value: from + i, label: `${from + i}${unit}` }));
+
+
+/* ---------- 手動新增賓客（沒有 Email／電話的長輩也能算進喜宴）---------- */
+function AddGuestModal({ onClose, onSaved }) {
+  const [f, setF] = useState({ name: "", side: "groom", attending: true, adult_count: 1, child_count: 0, email: "", phone: "", admin_note: "" });
+  const [busy, setBusy] = useState(false);
+  const set = (k, v) => setF((x) => ({ ...x, [k]: v }));
+  const save = async () => {
+    if (!f.name.trim()) return toastErr(new Error("請填寫姓名"));
+    setBusy(true);
+    try {
+      await createRsvp({ ...f, name: f.name.trim(), adult_count: Number(f.adult_count) || 0, child_count: Number(f.child_count) || 0 });
+      onSaved();
+    } catch (e) { toastErr(e); } finally { setBusy(false); }
+  };
+  return (
+    <Modal title="手動新增賓客" onClose={busy ? undefined : onClose} wide
+      footer={<><button className="btn btn-ghost" disabled={busy} onClick={onClose}>取消</button><button className="btn btn-primary" disabled={busy} onClick={save}>{busy ? "儲存中…" : "新增"}</button></>}>
+      <p className="helper-text" style={{ marginBottom: 12 }}>Email 與電話都可以留空；這位賓客會算進出席人數、可以排座位與帶入喜餅名單，但收不到 Email 通知，第二階段餐點請在名單按「編輯」代填。</p>
+      <div className="form-group grid-2">
+        <Field label="姓名" required><input type="text" value={f.name} onChange={(e) => set("name", e.target.value)} autoFocus /></Field>
+        <Field label="親友方"><Select value={f.side} onChange={(v) => set("side", v)} options={[{ value: "groom", label: "男方親友" }, { value: "bride", label: "女方親友" }]} /></Field>
+      </div>
+      <div className="form-group grid-2">
+        <Field label="出席狀態"><Select value={f.attending} onChange={(v) => set("attending", v === true || v === "true")} options={[{ value: true, label: "出席" }, { value: false, label: "不克前往" }]} /></Field>
+        <div />
+      </div>
+      {f.attending && <div className="form-group grid-2">
+        <Field label="大人人數"><NumberInput value={f.adult_count} onChange={(v) => set("adult_count", v)} /></Field>
+        <Field label="小孩人數"><NumberInput value={f.child_count} onChange={(v) => set("child_count", v)} /></Field>
+      </div>}
+      <div className="form-group grid-2">
+        <Field label="Email（選填）"><input type="text" value={f.email} onChange={(e) => set("email", e.target.value)} /></Field>
+        <Field label="電話（選填）"><input type="text" value={f.phone} onChange={(e) => set("phone", e.target.value)} /></Field>
+      </div>
+      <Field label="後台備註（賓客看不到）"><input type="text" value={f.admin_note} onChange={(e) => set("admin_note", e.target.value)} placeholder="例如：阿公，由爸爸代為聯絡" /></Field>
+    </Modal>
+  );
+}
 
 function EditModal({ row, onClose, onSaved }) {
   const [f, setF] = useState({
