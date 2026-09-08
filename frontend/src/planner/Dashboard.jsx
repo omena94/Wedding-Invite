@@ -1,4 +1,4 @@
-// 總覽：倒數、預算與付款、待辦、賓客摘要、目前階段（近期付款與廠商面板已於 2026-09-08 移除）
+// 總覽：倒數、合約與付款、待辦、賓客摘要、目前階段（近期付款與廠商面板已於 2026-09-08 移除）
 import { Link } from "react-router-dom";
 import { CalendarClock, Hourglass, ListChecks, Users, Utensils, Wallet, Settings as SettingsIcon } from "lucide-react";
 import { fetchDashboard, fetchStats } from "../api.js";
@@ -27,7 +27,7 @@ export default function Dashboard() {
 
       <div className="stats-grid">
         <Stat icon={<Hourglass size={20} />} value={days > 0 ? days : 0} unit="天" label="距離婚禮" />
-        <Stat icon={<Wallet size={20} />} value={money(b.contract_total)} label={`合約總額 · 預算 ${money(b.budget_total)}`} />
+        <Stat icon={<Wallet size={20} />} value={money(b.contract_total)} label="合約總額" />
         <Stat icon={<Wallet size={20} />} value={money(b.paid_total)} label={`已付 ${paidPct}%`} bar={paidPct} />
         <Stat icon={<CalendarClock size={20} />} value={money(b.unpaid_total)} label="合約尚欠（含未排分期）" />
       </div>

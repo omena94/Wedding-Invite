@@ -61,15 +61,30 @@ export default function Photos() {
     <div className="container container-photos">
       <PreviewBanner stage={stage} closedLabels={stage && !stage.photos_open ? ["婚紗照"] : []} />
       <GuestHeader title="把喜歡的時光，留在這裡" english="OUR MOMENTS" subtitle="與你分享我們的美好片刻"/>
+      <section className="photo-notice" aria-label="肖像與影像權益提醒">
+        <strong>⚠️ 肖像與影像權益提醒</strong>
+        <p>本頁面展示之婚紗攝影與影像內容，肖像權及著作權為新人與合作攝影團隊所有。</p>
+        <p>僅供受邀親友線上瀏覽祝福，請勿擅自下載、截圖、轉載、重製或作其他商業與公開傳播用途，感謝大家的體貼與尊重 ❤️</p>
+      </section>
 
       {photoError||stageError ? <LoadError error={photoError||stageError} retry={()=>{retryPhotos();retryStage();}}/> : photos === null || stage === null ? (
         <div className="loading">讀取中…</div>
-      ) : !stage.photos_open&&!stage.preview ? <section className="section-card"><h2>婚紗照尚未開放</h2><p>準備好後，會再與你分享。</p></section> : photos.length === 0 ? (
+      ) : !stage.photos_open&&!stage.preview ? (
         <section className="section-card" style={{ textAlign: "center" }}>
           <div className="section-header" style={{ justifyContent: "center" }}>
-            <div className="section-header-title"><Images size={18} /> 照片還沒準備好</div>
+            <div className="section-header-title"><Images size={18} /> 美好回憶整理中</div>
           </div>
-          <p style={{ fontSize: 14, lineHeight: 1.8 }}>{previewClosed ? "後台還沒有標記為公開的照片；到「照片」頁上傳並設為公開就會出現在這裡" : "婚紗照取件後會放上來，敬請期待"}</p>
+          <p style={{ fontSize: 14, lineHeight: 1.8 }}>目前尚無公開的照片，甜蜜畫面正在悄悄準備中 ✨</p>
+          <div className="receipt-actions"><a className="btn" href="/">回首頁</a></div>
+        </section>
+      ) : photos.length === 0 ? (
+        <section className="section-card" style={{ textAlign: "center" }}>
+          <div className="section-header" style={{ justifyContent: "center" }}>
+            <div className="section-header-title"><Images size={18} /> 美好回憶整理中</div>
+          </div>
+          <p style={{ fontSize: 14, lineHeight: 1.8 }}>目前尚無公開的照片，甜蜜畫面正在悄悄準備中 ✨</p>
+          {stage.preview && <p className="helper-text">（管理員請至「照片」管理頁上傳，並勾選「設為公開」即可在此顯示）</p>}
+          <div className="receipt-actions"><a className="btn" href="/">回首頁</a></div>
         </section>
       ) : (
         <>

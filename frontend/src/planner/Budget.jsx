@@ -51,7 +51,7 @@ export default function Budget() {
         actions={<button className="btn btn-primary" onClick={() => setModal({ type: "expense" })}><Plus size={15} /> 新增花費</button>} />
 
       <div className="stats-grid">
-        <Card label="合約 / 實際合計" onClick={() => setDetail("contract")} value={money(totals.contract)} sub={totals.budget ? `${totals.contract > totals.budget ? "超出" : "低於"}預算 ${money(Math.abs(totals.contract - totals.budget))}` : ""} />
+        <Card label="實際合計" onClick={() => setDetail("contract")} value={money(totals.contract)} />
         <Card label="已付" onClick={() => setDetail("paid")} value={money(totals.paid)} bar={totals.contract ? Math.round((totals.paid / totals.contract) * 100) : 0} />
         <Card label="合約尚欠" value={money(totals.unpaid)} sub="包含尚未安排分期的尾款" onClick={() => setDetail("unpaid")} />
       </div>
@@ -144,7 +144,7 @@ export default function Budget() {
 
 // 統計卡明細（2026-09-08 新人要求）：點卡片列出是哪些項目加出來的
 const DETAIL = {
-  contract: { title: "合約／實際合計明細", rows: (list) => list.filter((e) => e.contract_amount > 0).map((e) => [e.title, e.category, e.contract_amount]) },
+  contract: { title: "實際合計明細", rows: (list) => list.filter((e) => e.contract_amount > 0).map((e) => [e.title, e.category, e.contract_amount]) },
   paid: { title: "已付明細", rows: (list) => list.flatMap((e) => e.payments.filter((p) => p.paid_date).map((p) => [e.title, `${p.title} · ${fmtDate(p.paid_date)}${p.method ? ` · ${p.method}` : ""}`, p.amount])) },
   unpaid: { title: "合約尚欠明細", rows: (list) => list.filter((e) => e.unpaid_total > 0).map((e) => [e.title, e.unscheduled_unpaid > 0 ? `含未排分期 ${money(e.unscheduled_unpaid)}` : "已排分期未付", e.unpaid_total]) },
 };

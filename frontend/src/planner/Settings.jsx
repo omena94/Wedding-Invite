@@ -108,7 +108,7 @@ export default function SettingsPage() {
           <p>密碼不在網頁上改，而是在伺服器的 <code>backend/.env</code>：</p>
           <ul style={{ paddingLeft: 20 }}>
             <li><code>ADMIN_PASSWORD</code>：新人密碼，看得到全部。</li>
-            <li><code>HELPER_PASSWORD</code>：幫手密碼，給招待或伴郎伴娘，登入後只有「賓客」頁面，看不到預算、合約與設定。留空 = 不啟用。</li>
+            <li><code>HELPER_PASSWORD</code>：幫手密碼，給招待或伴郎伴娘，登入後只有「賓客」頁面，看不到花費、合約與設定。留空 = 不啟用。</li>
           </ul>
           <p className="muted-cell">改完要重啟後端（<code>sudo systemctl restart wedding</code>），步驟在 部署說明.md。</p>
         </div>

@@ -141,8 +141,7 @@ export function OrderForm({ initial, products, vendors, expenses, orders, onClos
       <Field label="額外折扣"><NumberInput aria-label="額外折扣" value={f.discount} onChange={(v) => set("discount", v)}/></Field></div>
     <p className="gift-order-total">訂購總額 <strong>{money(total)}</strong></p>
     <p className="helper-text">廠商贈盒不收貨款。已包含在報價中的運費不要再加一次。</p>
-    {!initial && <Field label="預算花費" hint="已記過喜餅訂金時，請連結原花費；廠商與合約金額須一致。"><Select aria-label="連結預算花費" value={f.expense_id} onChange={(v) => set("expense_id", v)} options={[{ value: "", label: "建立一筆新的喜餅花費" }, ...available.map((e) => ({ value: e.id, label: `${e.title} · ${money(e.contract_amount)}` }))]}/></Field>}
-    {!initial && !f.expense_id && <Field label="這筆花費的預算"><NumberInput aria-label="這筆花費的預算" value={f.budget_amount} onChange={(v) => set("budget_amount", v)}/></Field>}
+    {!initial && <Field label="連結既有花費" hint="已記過喜餅訂金時，請連結原花費；廠商與合約金額須一致。"><Select aria-label="連結既有花費" value={f.expense_id} onChange={(v) => set("expense_id", v)} options={[{ value: "", label: "建立一筆新的喜餅花費" }, ...available.map((e) => ({ value: e.id, label: `${e.title} · ${money(e.contract_amount)}` }))]}/></Field>}
     <div className="grid-2"><Field label="預計取貨／出貨日"><DatePicker value={f.due_date || ""} onChange={(v) => set("due_date", v)}/></Field>
       <Field label="實際到貨日" hint="廠商直送親友可留空"><DatePicker value={f.received_on || ""} onChange={(v) => set("received_on", v)}/></Field></div>
     <TextField label="訂購備註" value={f.note} onChange={(v) => set("note", v)} area placeholder="訂單編號、分批到貨或修改原因"/>

@@ -177,8 +177,7 @@ export function ExpenseModal({ initial, vendors, onClose, onSaved }) {
         <Field label="由誰出"><Select value={f.paid_by} onChange={(v) => set("paid_by", v)} options={toOptions(PAID_BY)} /></Field>
       </div>
       <div className="form-group grid-2">
-        <Field label="預算（元）" hint="一開始想花多少"><NumberInput value={f.budget_amount} onChange={(v) => set("budget_amount", v)} /></Field>
-        <Field label="合約 / 實際金額（元）" hint={initial?.gift_order_id ? "名稱、廠商與合約金額請到「喜餅 → 訂購與費用」修改；此處可調整預算及付款方。" : "簽約後的總價，分期在付款期程裡填"}><NumberInput disabled={!!initial?.gift_order_id} value={f.contract_amount} onChange={(v) => set("contract_amount", v)} /></Field>
+        <Field label="合約 / 實際金額（元）" hint={initial?.gift_order_id ? "名稱、廠商與合約金額請到「喜餅 → 訂購與費用」修改；此處可調整付款方。" : "簽約後的總價，分期在付款期程裡填"}><NumberInput disabled={!!initial?.gift_order_id} value={f.contract_amount} onChange={(v) => set("contract_amount", v)} /></Field>
       </div>
       <Field label="備註"><textarea rows={3} value={f.note} onChange={(e) => set("note", e.target.value)} /></Field>
     </Modal>
@@ -225,7 +224,7 @@ export function PaymentModal({ expenseId, expenseTitle, initial, onClose, onSave
     <Modal title={markPaid ? `標記已付 — ${initial?.title || ""}` : isNew ? `新增付款${expenseTitle ? ` — ${expenseTitle}` : ""}` : `編輯付款 — ${initial.title}`}
       onClose={onClose} footer={<Footer onClose={onClose} onSave={save} busy={busy} saveLabel={markPaid ? "確認已付" : "儲存"} />}>
       {needPicker && (
-        <Field label="花費項目" required hint={expenses && expenses.length === 0 ? "還沒有花費項目，請先到「預算花費」新增" : ""}>
+        <Field label="花費項目" required hint={expenses && expenses.length === 0 ? "還沒有花費項目，請先到「花費」新增" : ""}>
           <Select value={expId} onChange={setExpId} placeholder={expenses ? "選擇花費項目" : "讀取中…"}
             options={(expenses || []).map((e) => ({ value: String(e.id), label: `${e.title}${e.vendor_name ? `（${e.vendor_name}）` : ""} · ${money(e.contract_amount)}` }))} />
         </Field>
