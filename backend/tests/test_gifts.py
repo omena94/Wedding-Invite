@@ -84,7 +84,7 @@ def test_household_multiple_replies_and_declining_keeps_gift(setup):
     client, db, _, pid = setup
     guests = [Rsvp(name=n, side="bride", attending=True, adult_count=2) for n in ("王先生", "王太太")]
     db.add_all(guests); db.commit()
-    body = recipient_body(pid, rsvp_ids=[g.id for g in guests], items=[{"product_id": pid, "quantity": 1}])
+    body = recipient_body(pid, rsvp_ids=[g.id for g in guests], items=[{"product_id": pid, "quantity": 1}], method="venue")  # 預設已改為尚未決定，這裡明確指定當天領取
     assert client.post(P + "/recipients", json=body).status_code == 201
     assert client.post(P + "/recipients", json={**body, "request_key": uuid4().hex}).status_code == 409
     for g in guests:
