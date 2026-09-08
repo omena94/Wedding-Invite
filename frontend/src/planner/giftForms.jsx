@@ -8,6 +8,7 @@ import { money } from "../constants.js";
 import { Field, Modal, NumberInput, toInt } from "./ui.jsx";
 
 export const METHODS = { venue: "婚宴當天領取", mail: "寄送" }; // 2026-09-08 新人決定只用這兩種
+export const PLAN_METHODS = { tbd: "尚未決定", ...METHODS }; // 送餅安排可先不決定（帶入賓客時不預設）
 export const SIDES = { groom: "男方親友", bride: "女方親友", other: "其他／共同親友" };
 export const STATES = { confirmed: "已確認送餅", draft: "待決定", cancelled: "已取消" };
 export const options = (map) => Object.entries(map).map(([value, label]) => ({ value, label }));
@@ -74,7 +75,7 @@ function ProductLines({ items, onChange, products, order = false }) {
 }
 
 export function RecipientForm({ initial, fromGuest = false, products, guests, recipients, onClose, onSaved }) {
-  const [f, set, setF] = useForm(() => ({ request_key: crypto.randomUUID(), name: "", kind: "household", side: "other", contact_name: "", phone: "", address: "", owner: "", method: "venue", state: products.some((p) => p.active) ? "confirmed" : "draft", due_date: "", note: "", version: 1,
+  const [f, set, setF] = useForm(() => ({ request_key: crypto.randomUUID(), name: "", kind: "household", side: "other", contact_name: "", phone: "", address: "", owner: "", method: "tbd", state: products.some((p) => p.active) ? "confirmed" : "draft", due_date: "", note: "", version: 1,
     ...(initial || {}), rsvp_ids: initial?.rsvps.map((r) => r.id) || [],
     items: initial?.items.map(({ product_id, quantity }) => ({ product_id, quantity })) || (products.filter((p) => p.active).length === 1 ? [{ product_id: products.find((p) => p.active).id, quantity: 1 }] : []) }));
   const [search, setSearch] = useState("");
@@ -100,7 +101,7 @@ export function RecipientForm({ initial, fromGuest = false, products, guests, re
       <TextField label="負責人" value={f.owner} onChange={(v) => set("owner", v)} placeholder="例如：孟庭、媽媽"/></div>
     <ProductLines products={products} items={f.items} onChange={(v) => set("items", v)}/>
     {!products.length && <p className="gift-warning">尚無喜餅款式，可先儲存為「待決定」，再到訂購分頁新增款式。</p>}
-    <div className="grid-2"><Field label="交付方式"><Select aria-label="交付方式" value={f.method} onChange={(v) => set("method", v)} options={options(METHODS)}/></Field>
+    <div className="grid-2"><Field label="領取方式"><Select aria-label="領取方式" value={f.method} onChange={(v) => set("method", v)} options={options(PLAN_METHODS)}/></Field>
       <Field label="預計交付日期"><DatePicker value={f.due_date || ""} onChange={(v) => set("due_date", v)} placeholder="尚未決定"/></Field></div>
     <div className="grid-2"><TextField label="聯絡／收件人" value={f.contact_name} onChange={(v) => set("contact_name", v)}/><TextField label="電話" value={f.phone} onChange={(v) => set("phone", v)}/></div>
     <TextField label="收件地址" value={f.address} onChange={(v) => set("address", v)} placeholder="寄送可稍後補，寄出前需填妥"/>
@@ -110,14 +111,14 @@ export function RecipientForm({ initial, fromGuest = false, products, guests, re
 }
 
 export function DeliveryForm({ recipient, onClose, onSaved }) {
-  const [f, set] = useForm(() => ({ request_key: crypto.randomUUID(), version: recipient.version, method: recipient.method,
+  const [f, set] = useForm(() => ({ request_key: crypto.randomUUID(), version: recipient.version, method: METHODS[recipient.method] ? recipient.method : "",
     receiver: recipient.contact_name || recipient.name, handler: recipient.owner, address: recipient.address, tracking: "", note: "", delivered_on: today(),
     items: recipient.items.filter((i) => i.remaining > 0).map((i) => ({ product_id: i.product_id, quantity: i.remaining, name: i.name, remaining: i.remaining })) }));
   return <GiftDialog title={`登記交付 — ${recipient.name}`} onClose={onClose} onSaved={onSaved} label={f.method === "mail" ? "確認已寄出" : "確認已交付"}
     submit={() => createGiftDelivery(recipient.id, { ...f, items: f.items.filter((i) => toInt(i.quantity) > 0).map((i) => ({ product_id: i.product_id, quantity: toInt(i.quantity) })) })}>
     {f.items.map((item, index) => <Field key={item.product_id} label={`${item.name}（尚欠 ${item.remaining} 盒）`}><NumberInput aria-label={`${item.name} 本次盒數`} value={item.quantity} onChange={(v) => set("items", f.items.map((x, i) => i === index ? { ...x, quantity: v } : x))}/></Field>)}
     <p className="helper-text">填本次實際交出的盒數；這次沒有交付的款式填 0。</p>
-    <div className="grid-2"><Field label="本次交付方式"><Select aria-label="本次交付方式" value={f.method} onChange={(v) => set("method", v)} options={options(METHODS)}/></Field>
+    <div className="grid-2"><Field label="本次領取方式" required><Select aria-label="本次領取方式" value={f.method} onChange={(v) => set("method", v)} options={options(METHODS)} placeholder="請選擇"/></Field>
       <Field label="交付／寄出日期"><DatePicker value={f.delivered_on} onChange={(v) => set("delivered_on", v)}/></Field></div>
     <div className="grid-2"><TextField label="實際收件／代領人" value={f.receiver} onChange={(v) => set("receiver", v)} required/><TextField label="經手人" value={f.handler} onChange={(v) => set("handler", v)}/></div>
     {f.method === "mail" && <><TextField label="本次收件地址" value={f.address} onChange={(v) => set("address", v)} required/><TextField label="寄送單號" value={f.tracking} onChange={(v) => set("tracking", v)}/></>}

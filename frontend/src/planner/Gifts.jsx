@@ -5,7 +5,7 @@ import { Check, Download, Gift, History, Package, Pencil, Plus, Truck, Users } f
 import Select from "../components/Select.jsx";
 import { fetchExpenses, fetchGifts, fetchRsvps, fetchVendors, downloadGiftCsv, importGiftGuests, updateGiftDelivery } from "../api.js";
 import { fmtDate, money } from "../constants.js";
-import { DeliveryForm, GiftDialog, METHODS, OrderForm, ProductForm, RecipientForm, SIDES, STATES, options, today } from "./giftForms.jsx";
+import { DeliveryForm, GiftDialog, METHODS, OrderForm, PLAN_METHODS, ProductForm, RecipientForm, SIDES, STATES, options, today } from "./giftForms.jsx";
 import { PaymentModal, UploadModal } from "./modals.jsx";
 import { Empty, ErrorBox, Field, Loading, Modal, PageHead, toastErr, toastOk, useLoader } from "./ui.jsx";
 
@@ -24,11 +24,11 @@ function RecipientRow({ r, edit, deliver, history }) {
   const inTransit = r.deliveries.some((d) => !d.void_reason && !d.received_on);
   return <tr className={r.state === "cancelled" ? "gift-cancelled" : undefined}>
     <td><strong>{r.name}</strong><div className="muted-cell" style={{ fontSize: 11.5 }}>{SIDES[r.side]}{r.owner ? ` · ${r.owner} 負責` : ""}</div>{r.note && <div className="gift-note muted-cell" style={{ fontSize: 11.5 }}>{r.note}</div>}</td>
-    <td className="muted-cell" style={{ fontSize: 12.5 }}>{r.rsvps.length ? r.rsvps.map((g) => <div key={g.id}>{g.name}：{g.attending ? "出席" : "不出席"}</div>) : "未關聯"}</td>
     <td>{r.items.length ? r.items.map((i) => <div key={i.product_id}><strong>{i.quantity}</strong> 盒<span className="muted-cell" style={{ fontSize: 11.5 }}>（{i.name}，已交出 {i.delivered}）</span></div>) : <span className="muted-cell">未定</span>}</td>
-    <td>{METHODS[r.method] || r.method}{r.due_date && <div className="muted-cell" style={{ fontSize: 11.5 }}>預計 {fmtDate(r.due_date)}</div>}{r.contact_name && r.contact_name !== r.name && <div className="muted-cell" style={{ fontSize: 11.5 }}>聯絡人 {r.contact_name}</div>}</td>
+    <td>{r.method === "tbd" ? <span className="muted-cell">尚未決定</span> : METHODS[r.method] || r.method}{r.due_date && <div className="muted-cell" style={{ fontSize: 11.5 }}>預計 {fmtDate(r.due_date)}</div>}{r.contact_name && r.contact_name !== r.name && <div className="muted-cell" style={{ fontSize: 11.5 }}>聯絡人 {r.contact_name}</div>}</td>
     <td>{r.phone ? <a className="gift-phone" href={`tel:${r.phone.replace(/[^\d+]/g, "")}`}>{r.phone}</a> : <span className="muted-cell">—</span>}</td>
     <td>{progressPill(r, inTransit)}
+      {r.state === "confirmed" && r.method === "tbd" && r.remaining > 0 && <div className="gift-warning gift-warning-inline">領取方式未定</div>}
       {r.missing_address && <div className="gift-warning gift-warning-inline">缺寄送地址</div>}
       {r.change_method && <div className="gift-warning gift-warning-inline">已回覆不出席，請改寄送或家人代領</div>}</td>
     <td className="row-actions">
@@ -105,7 +105,7 @@ export default function Gifts() {
     const pending = (data?.guests || []).filter((g) => !g.is_test && !data.recipients.some((r) => r.rsvps.some((x) => x.id === g.id)));
     if (!pending.length) { toastOk("所有賓客都已在送餅名單裡"); return; }
     const ok = await Swal.fire({ icon: "question", title: `帶入 ${pending.length} 位賓客？`,
-      html: "會依賓客填的資料各建一筆送餅安排，每戶 1 盒。<br/>出席者預設婚宴當天領取，不出席者預設寄送並加註提醒補地址。<br/>已在名單裡的不會重複，之後有新回覆再按一次即可。",
+      html: "會依賓客填的資料各建一筆送餅安排，每戶 1 盒。<br/>領取方式先留「尚未決定」，帶入後再逐筆選擇；不出席者會加註提醒。<br/>已在名單裡的不會重複，之後有新回覆再按一次即可。",
       showCancelButton: true, confirmButtonText: "帶入", cancelButtonText: "取消", confirmButtonColor: "#B28F70" });
     if (!ok.isConfirmed) return;
     try {
@@ -130,11 +130,11 @@ export default function Gifts() {
       <div className="stats-grid"><Stat label="已確認送餅" value={`${s.demand} 盒`} sub={`另有 ${s.tentative} 盒待決定`}/><Stat label="尚未交付" value={`${s.remaining} 盒`}/><Stat label="寄送缺地址" value={`${s.missing_address} 筆`}/><Stat label="喜餅需求估算" value={money(s.estimate)} sub={`${s.estimate_incomplete ? "部分款式尚無報價 · " : ""}含備用，不含運費與未確認優惠`}/></div>
       {!products.length && <div className="panel gift-intro"><Package size={25}/><div><strong>先建送禮名單，款式可以稍後決定</strong><p>不出席或未填婚宴表單的親友，都能獨立加入。已有喜餅款式時，可先設定參考價格及備用盒數。</p></div><button className="btn" onClick={() => setModal({ type: "product" })}>新增喜餅款式</button></div>}
       <div className="panel"><div className="toolbar gift-toolbar"><input type="text" aria-label="搜尋送禮對象" placeholder="姓名、電話或負責人" value={search} onChange={(e) => setSearch(e.target.value)}/>
-        <Select compact aria-label="篩選交付方式" value={method} onChange={setMethod} options={[{ value: "", label: "所有交付方式" }, ...options(METHODS)]}/>
+        <Select compact aria-label="篩選領取方式" value={method} onChange={setMethod} options={[{ value: "", label: "所有領取方式" }, ...options(PLAN_METHODS)]}/>
         <Select compact aria-label="篩選親友方" value={side} onChange={setSide} options={[{ value: "", label: "所有親友" }, ...options(SIDES)]}/>
         <Select compact aria-label="篩選安排進度" value={filter} onChange={setFilter} options={options({ active: "進行中的安排", remaining: "尚未交付", missing: "缺寄送地址", draft: "待決定", cancelled: "已取消", all: "全部" })}/></div>
         <div className="gift-export"><Select compact aria-label="匯出清單類型" value={exportType} onChange={setExportType} options={options({ all: "完整送餅清單", mail: "寄送清單", venue: "當天領取清單", products: "廠商款式數量" })}/><button className="btn btn-ghost btn-sm" onClick={() => downloadGiftCsv(exportType).catch(toastErr)}><Download size={14}/>匯出 CSV</button><span className="helper-text">匯出所選類型的全部已確認安排，含已交出與尚欠盒數。</span></div></div>
-      {filtered.length === 0 ? <div className="panel"><Empty>{recipients.length ? "沒有符合篩選的送餅安排" : "還沒有送餅對象，從賓客加入或直接新增親友。"}</Empty></div> : <div className="panel"><div className="table-wrap"><table className="gift-table"><thead><tr><th>送禮對象</th><th>婚宴回覆</th><th>盒數</th><th>領取方式</th><th>電話</th><th>進度</th><th></th></tr></thead><tbody>{filtered.map((r) => <RecipientRow key={r.id} r={r} edit={() => setModal({ type: "recipient", initial: r })} deliver={() => setModal({ type: "delivery", recipient: r })} history={() => setModal({ type: "history", recipient: r })}/>)}</tbody></table></div></div>}
+      {filtered.length === 0 ? <div className="panel"><Empty>{recipients.length ? "沒有符合篩選的送餅安排" : "還沒有送餅對象，從賓客加入或直接新增親友。"}</Empty></div> : <div className="panel"><div className="table-wrap"><table className="gift-table"><thead><tr><th>送禮對象</th><th>盒數</th><th>領取方式</th><th>電話</th><th>進度</th><th></th></tr></thead><tbody>{filtered.map((r) => <RecipientRow key={r.id} r={r} edit={() => setModal({ type: "recipient", initial: r })} deliver={() => setModal({ type: "delivery", recipient: r })} history={() => setModal({ type: "history", recipient: r })}/>)}</tbody></table></div></div>}
     </> : <>
       <div className="stats-grid"><Stat label="確認訂購金額" value={money(s.total)}/><Stat label="已付" value={money(s.paid)}/><Stat label="尚欠" value={money(s.balance)}/><Stat label="需求參考估算" value={money(s.estimate)} sub="含備用；未含運費與折扣"/></div>
       <div className="panel"><div className="panel-head"><h2 className="panel-title">款式與盒數</h2><span className="helper-text">已訂含廠商贈盒，不代表已到貨。</span></div>

@@ -20,7 +20,7 @@ from ..models import (Expense, GiftDelivery, GiftOrder, GiftPlan, GiftProduct,
 from ..security import CoupleRequired
 
 router = APIRouter(prefix="/api/planner/gifts", tags=["gifts"], dependencies=[CoupleRequired])
-METHODS = {"venue": "婚宴當天領取", "mail": "寄送", "personal": "親送（已停用）"}  # 2026-09-08 起只用前兩種；personal 只為舊資料顯示
+METHODS = {"tbd": "尚未決定", "venue": "婚宴當天領取", "mail": "寄送", "personal": "親送（已停用）"}  # 2026-09-08 起只用前兩種；personal 只為舊資料顯示
 
 
 def row_dict(row):
@@ -234,7 +234,7 @@ def import_guests(db: Session = Depends(get_db)):
 
     新人只有一家喜餅，不想一筆一筆「從賓客加入」。重跑只會補新回覆，已加入的不動；
     測試賓客略過。只有一款啟用中的款式時直接確認並帶入 1 盒，否則先存為待決定。
-    出席者預設婚宴當天領取，不出席者預設寄送並加註提醒補地址（新人只用這兩種方式）。
+    領取方式不預設（尚未決定），由新人逐筆選擇；不出席者加註提醒。
     """
     active = list(db.scalars(select(GiftProduct).where(GiftProduct.active.is_(True)).order_by(GiftProduct.id)))
     product = active[0] if len(active) == 1 else None
@@ -252,9 +252,9 @@ def import_guests(db: Session = Depends(get_db)):
             request_key=key, name=guest.name, kind="household",
             side=guest.side if guest.side in ("groom", "bride") else "other",
             contact_name=guest.name, phone=guest.phone or "", address="", owner="",
-            method="venue" if attending else "mail",
+            method="tbd",
             state="confirmed" if product else "draft",
-            note="" if attending else "回覆不出席，預設寄送，請補收件地址或改為當天由家人代領",
+            note="" if attending else "回覆不出席，請選擇寄送或當天由家人代領",
         )
         db.add(row)
         db.flush()

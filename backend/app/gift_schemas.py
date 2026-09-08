@@ -8,6 +8,7 @@ Qty = Annotated[int, Field(ge=0, le=10000)]
 Money = Annotated[int, Field(ge=0, le=100000000)]
 Key = Annotated[str, Field(min_length=8, max_length=64, pattern=r"^[a-zA-Z0-9-]+$")]
 Method = Literal["venue", "mail"]  # 2026-09-08 新人決定只用「婚宴當天領取」與「寄送」
+PlanMethod = Literal["tbd", "venue", "mail"]  # 送餅安排可先「尚未決定」，帶入賓客時不預設
 
 
 class Form(BaseModel):
@@ -37,7 +38,7 @@ class RecipientIn(Form):
     phone: str = Field(default="", max_length=50)
     address: str = Field(default="", max_length=300)
     owner: str = Field(default="", max_length=60)
-    method: Method = "venue"
+    method: PlanMethod = "tbd"
     state: Literal["draft", "confirmed", "cancelled"] = "confirmed"
     due_date: date | None = None
     note: str = Field(default="", max_length=1000)
