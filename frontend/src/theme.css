@@ -931,6 +931,8 @@ tbody tr:last-child td { border-bottom: none; }
 .gift-table { min-width: 880px; }
 .gift-table td, .gift-table th { vertical-align: top; white-space: nowrap; }
 .gift-table td:first-child { white-space: normal; min-width: 200px; max-width: 280px; }
+.gift-method-cell { min-width: 170px; }
+.gift-method-cell .ui-select { width: 150px; }
 .gift-table td strong { font-weight: 600; }
 .gift-warning-inline { display: inline-block; margin-top: 5px; padding: 3px 8px; font-size: 11.5px; }
 .gift-intro { display: flex; align-items: center; gap: 18px; }

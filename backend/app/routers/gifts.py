@@ -20,7 +20,7 @@ from ..models import (Expense, GiftDelivery, GiftOrder, GiftPlan, GiftProduct,
 from ..security import CoupleRequired
 
 router = APIRouter(prefix="/api/planner/gifts", tags=["gifts"], dependencies=[CoupleRequired])
-METHODS = {"tbd": "尚未決定", "venue": "婚宴當天領取", "mail": "寄送", "personal": "親送（已停用）"}  # 2026-09-08 起只用前兩種；personal 只為舊資料顯示
+METHODS = {"tbd": "尚未決定", "venue": "婚禮領取", "mail": "寄送", "personal": "親送（已停用）"}  # 2026-09-08 起只用前兩種；personal 只為舊資料顯示
 
 
 def row_dict(row):

@@ -7,7 +7,7 @@ import { createGiftDelivery, saveGiftOrder, saveGiftProduct, saveGiftRecipient }
 import { money } from "../constants.js";
 import { Field, Modal, NumberInput, toInt } from "./ui.jsx";
 
-export const METHODS = { venue: "婚宴當天領取", mail: "寄送" }; // 2026-09-08 新人決定只用這兩種
+export const METHODS = { venue: "婚禮領取", mail: "寄送" }; // 2026-09-08 新人決定只用這兩種
 export const PLAN_METHODS = { tbd: "尚未決定", ...METHODS }; // 送餅安排可先不決定（帶入賓客時不預設）
 export const SIDES = { groom: "男方親友", bride: "女方親友", other: "其他／共同親友" };
 export const STATES = { confirmed: "已確認送餅", draft: "待決定", cancelled: "已取消" };

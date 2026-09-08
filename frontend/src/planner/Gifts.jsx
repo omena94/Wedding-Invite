@@ -3,7 +3,7 @@ import Swal from "sweetalert2";
 import { Link, useSearchParams } from "react-router-dom";
 import { Check, Download, Gift, History, Package, Pencil, Plus, Truck, Users } from "lucide-react";
 import Select from "../components/Select.jsx";
-import { fetchExpenses, fetchGifts, fetchRsvps, fetchVendors, downloadGiftCsv, importGiftGuests, updateGiftDelivery } from "../api.js";
+import { fetchExpenses, fetchGifts, fetchRsvps, fetchVendors, downloadGiftCsv, importGiftGuests, saveGiftRecipient, updateGiftDelivery } from "../api.js";
 import { fmtDate, money } from "../constants.js";
 import { DeliveryForm, GiftDialog, METHODS, OrderForm, PLAN_METHODS, ProductForm, RecipientForm, SIDES, STATES, options, today } from "./giftForms.jsx";
 import { PaymentModal, UploadModal } from "./modals.jsx";
@@ -20,12 +20,12 @@ function progressPill(r, inTransit) {
   return <span className="pill pill-groom">尚欠 {r.remaining} 盒</span>;
 }
 
-function RecipientRow({ r, edit, deliver, history }) {
+function RecipientRow({ r, edit, deliver, history, onMethod }) {
   const inTransit = r.deliveries.some((d) => !d.void_reason && !d.received_on);
   return <tr className={r.state === "cancelled" ? "gift-cancelled" : undefined}>
     <td><strong>{r.name}</strong><div className="muted-cell" style={{ fontSize: 11.5 }}>{SIDES[r.side]}{r.owner ? ` · ${r.owner} 負責` : ""}</div>{r.note && <div className="gift-note muted-cell" style={{ fontSize: 11.5 }}>{r.note}</div>}</td>
     <td>{r.items.length ? r.items.map((i) => <div key={i.product_id}><strong>{i.quantity}</strong> 盒{i.delivered > 0 && <span className="muted-cell" style={{ fontSize: 11.5 }}>（已交出 {i.delivered}）</span>}</div>) : <span className="muted-cell">未定</span>}</td>
-    <td>{r.method === "tbd" ? <span className="muted-cell">尚未決定</span> : METHODS[r.method] || r.method}{r.due_date && <div className="muted-cell" style={{ fontSize: 11.5 }}>預計 {fmtDate(r.due_date)}</div>}{r.contact_name && r.contact_name !== r.name && <div className="muted-cell" style={{ fontSize: 11.5 }}>聯絡人 {r.contact_name}</div>}</td>
+    <td className="gift-method-cell">{r.state === "cancelled" ? (METHODS[r.method] || "—") : <Select compact aria-label={`${r.name} 領取方式`} value={METHODS[r.method] ? r.method : ""} placeholder="尚未決定" options={options(METHODS)} onChange={(v) => onMethod(r, v)}/>}{r.due_date && <div className="muted-cell" style={{ fontSize: 11.5 }}>預計 {fmtDate(r.due_date)}</div>}{r.contact_name && r.contact_name !== r.name && <div className="muted-cell" style={{ fontSize: 11.5 }}>聯絡人 {r.contact_name}</div>}</td>
     <td>{r.phone ? <a className="gift-phone" href={`tel:${r.phone.replace(/[^\d+]/g, "")}`}>{r.phone}</a> : <span className="muted-cell">—</span>}</td>
     <td>{progressPill(r, inTransit)}
       {r.state === "confirmed" && r.method === "tbd" && r.remaining > 0 && <div className="gift-warning gift-warning-inline">領取方式未定</div>}
@@ -114,6 +114,13 @@ export default function Gifts() {
       reload();
     } catch (e) { toastErr(e); }
   };
+  const changeMethod = async (r, method) => {
+    try {
+      await saveGiftRecipient(r.id, { request_key: r.request_key, version: r.version, name: r.name, kind: r.kind, side: r.side, contact_name: r.contact_name, phone: r.phone, address: r.address, owner: r.owner,
+        method, state: r.state, due_date: r.due_date || null, note: r.note, rsvp_ids: r.rsvps.map((g) => g.id), items: r.items.map((i) => ({ product_id: i.product_id, quantity: i.quantity })) });
+      reload();
+    } catch (e) { toastErr(e); }
+  };
   if (loading) return <Loading/>;
   if (error) return <><ErrorBox error={error}/><button className="btn" onClick={reload}>重新讀取</button></>;
   const { summary: s, products, recipients, orders, guests, vendors, expenses } = data;
@@ -134,7 +141,7 @@ export default function Gifts() {
         <Select compact aria-label="篩選親友方" value={side} onChange={setSide} options={[{ value: "", label: "所有親友" }, ...options(SIDES)]}/>
         <Select compact aria-label="篩選安排進度" value={filter} onChange={setFilter} options={options({ active: "進行中的安排", remaining: "尚未交付", missing: "缺寄送地址", draft: "待決定", cancelled: "已取消", all: "全部" })}/></div>
         <div className="gift-export"><Select compact aria-label="匯出清單類型" value={exportType} onChange={setExportType} options={options({ all: "完整送餅清單", mail: "寄送清單", venue: "當天領取清單", products: "廠商款式數量" })}/><button className="btn btn-ghost btn-sm" onClick={() => downloadGiftCsv(exportType).catch(toastErr)}><Download size={14}/>匯出 CSV</button><span className="helper-text">匯出所選類型的全部已確認安排，含已交出與尚欠盒數。</span></div></div>
-      {filtered.length === 0 ? <div className="panel"><Empty>{recipients.length ? "沒有符合篩選的送餅安排" : "還沒有送餅對象，從賓客加入或直接新增親友。"}</Empty></div> : <div className="panel"><div className="table-wrap"><table className="gift-table"><thead><tr><th>送禮對象</th><th>盒數</th><th>領取方式</th><th>電話</th><th>進度</th><th></th></tr></thead><tbody>{filtered.map((r) => <RecipientRow key={r.id} r={r} edit={() => setModal({ type: "recipient", initial: r })} deliver={() => setModal({ type: "delivery", recipient: r })} history={() => setModal({ type: "history", recipient: r })}/>)}</tbody></table></div></div>}
+      {filtered.length === 0 ? <div className="panel"><Empty>{recipients.length ? "沒有符合篩選的送餅安排" : "還沒有送餅對象，從賓客加入或直接新增親友。"}</Empty></div> : <div className="panel"><div className="table-wrap"><table className="gift-table"><thead><tr><th>送禮對象</th><th>盒數</th><th>領取方式</th><th>電話</th><th>進度</th><th></th></tr></thead><tbody>{filtered.map((r) => <RecipientRow key={r.id} r={r} onMethod={changeMethod} edit={() => setModal({ type: "recipient", initial: r })} deliver={() => setModal({ type: "delivery", recipient: r })} history={() => setModal({ type: "history", recipient: r })}/>)}</tbody></table></div></div>}
     </> : <>
       <div className="stats-grid"><Stat label="確認訂購金額" value={money(s.total)}/><Stat label="已付" value={money(s.paid)}/><Stat label="尚欠" value={money(s.balance)}/><Stat label="需求參考估算" value={money(s.estimate)} sub="含備用；未含運費與折扣"/></div>
       <div className="panel"><div className="panel-head"><h2 className="panel-title">款式與盒數</h2><span className="helper-text">已訂含廠商贈盒，不代表已到貨。</span></div>
