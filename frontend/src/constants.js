@@ -6,7 +6,7 @@ export const WEDDING_START = `${WEDDING_DATE}T12:00:00+08:00`;
 export const WEDDING_DATE_DISPLAY = WEDDING_DATE.replaceAll('-', ' · ');
 export const VENDOR_CATEGORIES = [
   "婚宴場地", "婚紗攝影", "禮服", "新秘造型", "婚戒", "喜餅", "喜帖",
-  "婚攝婚錄", "主持", "樂團表演", "婚車", "佈置花藝", "蜜月", "其他",
+  "婚禮攝影", "主持", "樂團表演", "婚車", "佈置花藝", "蜜月", "其他",
 ];
 
 export const VENDOR_STATUS = {
