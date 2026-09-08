@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { ArrowRight, Armchair, CalendarCheck, CalendarPlus, Heart, Images, Info, MailOpen, Utensils } from 'lucide-react';
-import { GuestNav, LoadError, useGuestLoad, addCalendar } from '../components/GuestUI.jsx';
+import { GuestNav, LoadError, useGuestLoad, CalendarButtons } from '../components/GuestUI.jsx';
 import EventDetails, { VENUE } from '../components/EventDetails.jsx';
 import PreviewBanner from '../components/PreviewBanner.jsx';
 import { fetchStage } from '../api.js';
@@ -79,7 +79,7 @@ export default function Home() {
     {!visit && <>{countdown}{nextPanel}</>}
 
     <PhotoStory stage={stage}/>
-    <Reveal as="section" className="home-meet"><div className="home-meet-heading"><p className="guest-eyebrow">SAVE A LITTLE TIME FOR US</p><h2>這一天，我們在這裡等你</h2><p>把日期留起來，剩下的期待，交給那天。</p><button type="button" className="btn calendar-action" onClick={addCalendar}><CalendarPlus size={17}/>加入我的行事曆</button></div><EventDetails/></Reveal>
+    <Reveal as="section" className="home-meet"><div className="home-meet-heading"><p className="guest-eyebrow">SAVE A LITTLE TIME FOR US</p><h2>這一天，我們在這裡等你</h2><p>把日期留起來，剩下的期待，交給那天。</p><CalendarButtons/></div><EventDetails/></Reveal>
 
     <section className="home-essentials" aria-labelledby="home-essentials-title"><Reveal><p className="guest-eyebrow">EVERYTHING FOR YOUR VISIT</p><h2 id="home-essentials-title">赴約前，你需要的都在這裡</h2></Reveal><nav className="nav-cards" aria-label="頁面入口">
       <Reveal><Card href="/rsvp" icon={<CalendarCheck size={22}/>} step="第一階段" title="填寫出席意願" desc="告訴我們你會不會來，大人小孩幾位"/></Reveal>

@@ -875,7 +875,7 @@ tbody tr:last-child td { border-bottom: none; }
 .guest-receipt p { margin: 12px 0; }
 .receipt-seal { border: 1px solid var(--milk-tea-300); color: var(--milk-tea-700); border-radius: 50%; width: 66px; height: 66px; display: grid; place-items: center; margin: 0 auto 20px; }
 .receipt-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin: 18px 0; }
-.calendar-action { margin: 16px auto 0; display: flex; }
+.calendar-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin: 16px auto 0; }
 .ui-select-option.active { background: var(--milk-tea-100); outline: 2px solid var(--milk-tea-500); outline-offset: -2px; }
 :is(a,button,input,textarea,[tabindex]):focus-visible { outline: 3px solid #84683f; outline-offset: 3px; }
 .radio-card:focus-within { outline: 3px solid var(--milk-tea-700); border-radius: 14px; }
