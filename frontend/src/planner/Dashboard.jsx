@@ -73,7 +73,7 @@ export default function Dashboard() {
         <div className="panel">
           <div className="panel-head">
             <div className="panel-title"><ListChecks size={18} /> 待辦 {data.open_tasks_total > 0 && <span className="pill pill-groom">{data.open_tasks_total}</span>}</div>
-            <Link className="btn btn-ghost btn-sm" to="/timeline">時程待辦</Link>
+            <Link className="btn btn-ghost btn-sm" to="/timeline">籌備進度</Link>
           </div>
           {data.open_tasks.length === 0 ? (
             <div className="empty-state" style={{ padding: 24 }}>沒有未完成的待辦</div>

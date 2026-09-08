@@ -38,7 +38,7 @@ export default function Timeline() {
 
   return (
     <div>
-      <PageHead title="時程與待辦" sub="試穿、拍攝、選片、取件、婚禮…把該做的事和日期記下來，總覽會提醒"
+      <PageHead title="籌備進度" sub="試穿、拍攝、選片、取件、婚禮…把該做的事和日期記下來，總覽會提醒"
         actions={<button className="btn btn-primary" onClick={() => setModal({})}><Plus size={15} /> 新增</button>} />
 
       <div className="panel">

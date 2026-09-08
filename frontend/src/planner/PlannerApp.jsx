@@ -25,7 +25,7 @@ const NAV = [
   { to: "/seating", label: "座位圖", icon: Armchair, helper: true },
   { to: "/gifts", label: "喜餅", icon: Gift, helper: true }, // 幫手：看名單、勾已領取
   { to: "/budget", label: "預算花費", icon: Wallet },
-  { to: "/timeline", label: "時程待辦", icon: ListChecks },
+  { to: "/timeline", label: "籌備進度", icon: ListChecks },
   { to: "/files", label: "文件庫", icon: FolderOpen },
   { to: "/photos", label: "照片", icon: Images },
   { to: "/settings", label: "設定", icon: SettingsIcon },
