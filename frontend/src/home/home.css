@@ -31,7 +31,7 @@
 .home-couple-english .amp { font-style: normal; }
 .home-wedding-date { font: 26px 'Cormorant Garamond', Georgia, serif; letter-spacing: .1em; margin: 22px 0; color: var(--milk-tea-900); }
 .home-wedding-date span { display: block; font: 13px/1.8 'Plus Jakarta Sans', 'ChenYuluoyan', sans-serif; /* 地點中文也用首頁手寫字 */ letter-spacing: .06em; margin-top: 9px; }
-.wedding-home .home-primary { display: inline-flex; align-items: center; justify-content: center; gap: 12px; width: auto; padding: 14px 23px; margin: 0; }
+.wedding-home .home-primary { display: inline-flex; align-items: center; justify-content: center; gap: 12px; width: auto; padding: 14px 23px; margin: 0; font-family: 'Plus Jakarta Sans', 'Noto Serif TC', serif; /* 2026-09-09 新人要求按鈕文字用宋體 */ }
 .wedding-hero-art { position: relative; min-width: 0; width: min(420px, 86%); margin: 44px auto 56px; }
 .hero-arch-frame { position: relative; overflow: hidden; border-radius: 220px 220px 16px 16px; background: var(--milk-tea-100); aspect-ratio: 4 / 5; border: 1px solid var(--milk-tea-200); box-shadow: var(--shadow-elegant); }
 .hero-arch-frame::after { content: ''; position: absolute; inset: 10px; border: 1px solid #ffffff90; border-radius: inherit; pointer-events: none; }
