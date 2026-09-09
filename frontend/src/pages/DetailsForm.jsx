@@ -220,7 +220,7 @@ export default function DetailsForm() {
               </div>
               {/* 2026-09-09 新人要求：不跟賓客解釋飯店依身高收費，只請他們填身高 */}
               <p className="helper-text" style={{ marginBottom: 14 }}>
-                請填寫孩子脫鞋後的實際身高，方便安排餐點與座位。
+                請填寫孩子的實際身高
               </p>
               {Array.from({ length: form.child_count }, (_, i) => (
                 <div className="form-group grid-2" key={i} style={{ alignItems: "center", marginBottom: 12 }}>
