@@ -1047,3 +1047,27 @@ tbody tr:last-child td { border-bottom: none; }
   .memo-row { flex-wrap: wrap; }
   .memo-row .row-actions { width: 100%; text-align: right; }
 }
+
+/* 活動環節：左邊時間、中間名稱與細節、右邊操作 */
+.prog-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.prog-item { display: flex; gap: 14px; align-items: flex-start; padding: 12px 0; border-bottom: 1px solid var(--milk-tea-100); }
+.prog-item:last-child { border-bottom: none; }
+.prog-item.confirmed .prog-time { color: var(--milk-tea-900); }
+.prog-time { flex: 0 0 64px; font-family: "Cormorant Garamond", Georgia, serif; font-size: 19px; line-height: 1.2; color: var(--milk-tea-700); padding-top: 2px; }
+.prog-time small { display: block; font-family: "Plus Jakarta Sans", sans-serif; font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+.prog-body { flex: 1; min-width: 0; }
+.prog-detail { margin-top: 8px; padding: 10px 12px; border-radius: 10px; background: var(--bg-card-subtle); border: 1px solid var(--border-soft); font-size: 13px; }
+.prog-note { white-space: pre-wrap; word-break: break-word; line-height: 1.7; }
+.prog-ideas { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border-soft); }
+.prog-idea { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; white-space: pre-wrap; word-break: break-word; }
+.prog-actions { flex: 0 0 auto; }
+.idea-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; }
+.idea-card { border: 1px solid var(--border-soft); border-radius: 12px; background: var(--bg-card-subtle); padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; }
+.idea-card.dropped { opacity: 0.55; }
+.idea-content { font-size: 13.5px; line-height: 1.7; white-space: pre-wrap; word-break: break-word; color: var(--milk-tea-900); }
+.idea-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+@media (max-width: 640px) {
+  .prog-item { flex-wrap: wrap; }
+  .prog-time { flex-basis: 56px; font-size: 17px; }
+  .prog-actions { width: 100%; text-align: right; }
+}

@@ -207,6 +207,20 @@ export const createMemo = (data) => request(`${P}/memos`, { method: "POST", body
 export const updateMemo = (id, data) => request(`${P}/memos/${id}`, { method: "PATCH", body: data, auth: true });
 export const deleteMemo = (id) => request(`${P}/memos/${id}`, { method: "DELETE", auth: true });
 
+// 活動環節（婚禮當天流程）與點子
+export const fetchSegments = () => request(`${P}/program/segments`, { auth: true });
+export const createSegment = (data) => request(`${P}/program/segments`, { method: "POST", body: data, auth: true });
+export const updateSegment = (id, data) => request(`${P}/program/segments/${id}`, { method: "PATCH", body: data, auth: true });
+export const reorderSegments = (ids) => request(`${P}/program/segments/reorder`, { method: "POST", body: { ids }, auth: true });
+export const deleteSegment = (id) => request(`${P}/program/segments/${id}`, { method: "DELETE", auth: true });
+export const fetchIdeas = (params = {}) => {
+  const q = new URLSearchParams(Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== ""));
+  return request(`${P}/program/ideas${q.toString() ? `?${q}` : ""}`, { auth: true });
+};
+export const createIdea = (data) => request(`${P}/program/ideas`, { method: "POST", body: data, auth: true });
+export const updateIdea = (id, data) => request(`${P}/program/ideas/${id}`, { method: "PATCH", body: data, auth: true });
+export const deleteIdea = (id) => request(`${P}/program/ideas/${id}`, { method: "DELETE", auth: true });
+
 // ===== 座位圖 =====
 const SE = `${P}/seating`;
 export const fetchSeating = (readonly = false) => request(readonly ? "/api/admin/seating" : SE, { auth: true });

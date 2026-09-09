@@ -348,6 +348,43 @@ class Memo(Base):
     expense: Mapped["Expense | None"] = relationship()
 
 
+class ProgramSegment(Base):
+    """婚禮活動環節（進場、致詞、敬酒、遊戲…）：依時間／順序排，每個環節有自己的細節紀錄。"""
+    __tablename__ = "program_segments"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    title: Mapped[str] = mapped_column(String(100))
+    start_time: Mapped[str] = mapped_column(String(5), default="")  # "12:30"，空 = 未定
+    duration_min: Mapped[int] = mapped_column(Integer, default=0)   # 0 = 未定
+    host: Mapped[str] = mapped_column(String(100), default="")      # 主持／負責的人
+    note: Mapped[str] = mapped_column(Text, default="")             # 流程細節、需要的道具、紀錄
+    status: Mapped[str] = mapped_column(String(20), default="draft")  # draft 規劃中 / confirmed 已確定
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class ProgramIdea(Base):
+    """活動點子：先把想法記下來，決定了再標採用並指到某個環節。環節刪掉時只解除連結。"""
+    __tablename__ = "program_ideas"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    content: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(20), default="idea")  # idea 想法 / adopted 採用 / dropped 不採用
+    segment_id: Mapped[int | None] = mapped_column(
+        ForeignKey("program_segments.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    segment: Mapped["ProgramSegment | None"] = relationship()
+
+
 # 喜餅需求與出席分開：未填婚宴表單的親友也能送餅，且不影響餐點／座位。
 class GiftProduct(Base):
     __tablename__ = "gift_products"

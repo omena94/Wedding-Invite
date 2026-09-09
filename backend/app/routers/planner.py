@@ -1,4 +1,4 @@
-"""籌備後台 API（僅限新人）：設定、總覽、廠商、報價、花費、付款、待辦、備忘、檔案。"""
+"""籌備後台 API（僅限新人）：設定、總覽、廠商、報價、花費、付款、待辦、備忘、活動環節、檔案。"""
 import mimetypes
 import uuid
 from pathlib import Path
@@ -10,7 +10,9 @@ from sqlalchemy.orm import Session, selectinload
 
 from ..config import settings
 from ..database import get_db
-from ..models import Expense, FileAsset, GiftOrder, Memo, Payment, Quote, Rsvp, Task, Vendor, VendorCategory
+from ..models import (
+    Expense, FileAsset, GiftOrder, Memo, Payment, ProgramIdea, ProgramSegment, Quote, Rsvp, Task, Vendor, VendorCategory,
+)
 from ..schemas import (
     BanquetPatch,
     CategoryIn,
@@ -19,12 +21,17 @@ from ..schemas import (
     ExpenseIn,
     ExpensePatch,
     FilePatch,
+    IdeaIn,
+    IdeaPatch,
     MemoIn,
     MemoPatch,
     PaymentIn,
     PaymentPatch,
     QuoteIn,
     QuotePatch,
+    SegmentIn,
+    SegmentPatch,
+    SegmentReorder,
     TaskIn,
     TaskPatch,
     VendorIn,
@@ -858,6 +865,148 @@ def update_memo(memo_id: int, payload: MemoPatch, db: Session = Depends(get_db))
 def delete_memo(memo_id: int, db: Session = Depends(get_db)):
     m = _get_or_404(db, Memo, memo_id, "備忘")
     db.delete(m)
+    db.commit()
+    return None
+
+
+# ---------------------------------------------------------------------
+# 活動環節（婚禮當天流程）與點子
+# ---------------------------------------------------------------------
+def _segment_out(s: ProgramSegment, idea_count: int = 0) -> dict:
+    return {
+        "id": s.id,
+        "title": s.title,
+        "start_time": s.start_time,
+        "duration_min": s.duration_min,
+        "host": s.host,
+        "note": s.note,
+        "status": s.status,
+        "sort_order": s.sort_order,
+        "idea_count": idea_count,
+    }
+
+
+def _idea_out(i: ProgramIdea) -> dict:
+    return {
+        "id": i.id,
+        "content": i.content,
+        "status": i.status,
+        "segment_id": i.segment_id,
+        "segment_title": i.segment.title if i.segment else "",
+        "sort_order": i.sort_order,
+        "created_at": i.created_at.isoformat() if i.created_at else None,
+    }
+
+
+def _segments_ordered(db: Session) -> list[ProgramSegment]:
+    # 先照手動順序，再照時間（未定時間的排最後），最後照建立順序
+    return db.scalars(
+        select(ProgramSegment).order_by(ProgramSegment.sort_order.asc(), ProgramSegment.id.asc())
+    ).all()
+
+
+@router.get("/program/segments")
+def list_segments(db: Session = Depends(get_db)):
+    counts = dict(
+        db.execute(
+            select(ProgramIdea.segment_id, func.count()).where(ProgramIdea.segment_id.is_not(None)).group_by(ProgramIdea.segment_id)
+        ).all()
+    )
+    return [_segment_out(s, counts.get(s.id, 0)) for s in _segments_ordered(db)]
+
+
+@router.post("/program/segments", status_code=201)
+def create_segment(payload: SegmentIn, db: Session = Depends(get_db)):
+    data = payload.model_dump()
+    if not data.get("sort_order"):
+        # 新環節排在最後
+        data["sort_order"] = (db.scalar(select(func.max(ProgramSegment.sort_order))) or 0) + 1
+    s = ProgramSegment(**data)
+    db.add(s)
+    db.commit()
+    return _segment_out(s)
+
+
+@router.patch("/program/segments/{segment_id}")
+def update_segment(segment_id: int, payload: SegmentPatch, db: Session = Depends(get_db)):
+    s = _get_or_404(db, ProgramSegment, segment_id, "活動環節")
+    for k, val in payload.model_dump(exclude_unset=True).items():
+        setattr(s, k, val)
+    db.commit()
+    count = db.scalar(select(func.count()).select_from(ProgramIdea).where(ProgramIdea.segment_id == segment_id)) or 0
+    return _segment_out(s, count)
+
+
+@router.post("/program/segments/reorder")
+def reorder_segments(payload: SegmentReorder, db: Session = Depends(get_db)):
+    """前端送由上到下的 id 清單；沒列到的環節維持在後面。"""
+    order = {sid: i + 1 for i, sid in enumerate(payload.ids)}
+    rest = len(order) + 1
+    for s in _segments_ordered(db):
+        if s.id in order:
+            s.sort_order = order[s.id]
+        else:
+            s.sort_order = rest
+            rest += 1
+    db.commit()
+    return list_segments(db)
+
+
+@router.delete("/program/segments/{segment_id}", status_code=204)
+def delete_segment(segment_id: int, db: Session = Depends(get_db)):
+    s = _get_or_404(db, ProgramSegment, segment_id, "活動環節")
+    # 點子留著，只解除連結（SQLite 測試環境沒開 FK 時也要一致）
+    db.execute(update(ProgramIdea).where(ProgramIdea.segment_id == segment_id).values(segment_id=None))
+    db.delete(s)
+    db.commit()
+    return None
+
+
+@router.get("/program/ideas")
+def list_ideas(status: str | None = Query(None), segment_id: int | None = Query(None), db: Session = Depends(get_db)):
+    stmt = select(ProgramIdea).options(selectinload(ProgramIdea.segment))
+    if status:
+        stmt = stmt.where(ProgramIdea.status == status)
+    if segment_id is not None:
+        stmt = stmt.where(ProgramIdea.segment_id == segment_id)
+    stmt = stmt.order_by(ProgramIdea.sort_order.asc(), ProgramIdea.id.desc())  # 新的想法在上面
+    return [_idea_out(i) for i in db.scalars(stmt).all()]
+
+
+@router.post("/program/ideas", status_code=201)
+def create_idea(payload: IdeaIn, db: Session = Depends(get_db)):
+    data = payload.model_dump()
+    if data.get("segment_id") is not None:
+        _get_or_404(db, ProgramSegment, data["segment_id"], "活動環節")
+    i = ProgramIdea(**data)
+    db.add(i)
+    db.commit()
+    i = db.scalars(select(ProgramIdea).options(selectinload(ProgramIdea.segment)).where(ProgramIdea.id == i.id)).one()
+    return _idea_out(i)
+
+
+@router.patch("/program/ideas/{idea_id}")
+def update_idea(idea_id: int, payload: IdeaPatch, db: Session = Depends(get_db)):
+    i = _get_or_404(db, ProgramIdea, idea_id, "點子")
+    data = payload.model_dump(exclude_unset=True)
+    if data.pop("clear_segment", False):
+        i.segment_id = None
+        data.pop("segment_id", None)
+    if "segment_id" in data and data["segment_id"] is None:
+        data.pop("segment_id")  # 帶 null 不動連結，要解除用 clear_segment
+    if data.get("segment_id") is not None:
+        _get_or_404(db, ProgramSegment, data["segment_id"], "活動環節")
+    for k, val in data.items():
+        setattr(i, k, val)
+    db.commit()
+    i = db.scalars(select(ProgramIdea).options(selectinload(ProgramIdea.segment)).where(ProgramIdea.id == idea_id)).one()
+    return _idea_out(i)
+
+
+@router.delete("/program/ideas/{idea_id}", status_code=204)
+def delete_idea(idea_id: int, db: Session = Depends(get_db)):
+    i = _get_or_404(db, ProgramIdea, idea_id, "點子")
+    db.delete(i)
     db.commit()
     return None
 

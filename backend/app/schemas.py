@@ -515,6 +515,86 @@ class MemoPatch(BaseModel):
         return v
 
 
+SegmentStatus = Literal["draft", "confirmed"]
+IdeaStatus = Literal["idea", "adopted", "dropped"]
+_TIME_RE = r"^([01]\d|2[0-3]):[0-5]\d$"
+
+
+class SegmentIn(BaseModel):
+    title: str = Field(min_length=1, max_length=100)
+    start_time: str = Field(default="", pattern=_TIME_RE + "|^$")
+    duration_min: int = Field(default=0, ge=0, le=1440)
+    host: str = Field(default="", max_length=100)
+    note: str = Field(default="", max_length=10000)
+    status: SegmentStatus = "draft"
+    sort_order: int = 0
+
+    @field_validator("title", "host", "note")
+    @classmethod
+    def _strip(cls, v: str, info) -> str:
+        v = v.strip()
+        if not v and info.field_name == "title":
+            raise ValueError("不可空白")
+        return v
+
+
+class SegmentPatch(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=100)
+    start_time: str | None = Field(default=None, pattern=_TIME_RE + "|^$")
+    duration_min: int | None = Field(default=None, ge=0, le=1440)
+    host: str | None = Field(default=None, max_length=100)
+    note: str | None = Field(default=None, max_length=10000)
+    status: SegmentStatus | None = None
+    sort_order: int | None = None
+
+    @field_validator("title", "host", "note")
+    @classmethod
+    def _strip(cls, v: str | None, info) -> str | None:
+        if not isinstance(v, str):
+            return v
+        v = v.strip()
+        if not v and info.field_name == "title":
+            raise ValueError("不可空白")
+        return v
+
+
+class SegmentReorder(BaseModel):
+    ids: list[int]  # 由上到下的環節 id
+
+
+class IdeaIn(BaseModel):
+    content: str = Field(min_length=1, max_length=5000)
+    status: IdeaStatus = "idea"
+    segment_id: int | None = None
+    sort_order: int = 0
+
+    @field_validator("content")
+    @classmethod
+    def _strip(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("不可空白")
+        return v
+
+
+class IdeaPatch(BaseModel):
+    content: str | None = Field(default=None, min_length=1, max_length=5000)
+    status: IdeaStatus | None = None
+    segment_id: int | None = None
+    clear_segment: bool = False
+    sort_order: int | None = None
+
+    @field_validator("content")
+    @classmethod
+    def _strip(cls, v: str | None) -> str | None:
+        if not isinstance(v, str):
+            return v
+        v = v.strip()
+        if not v:
+            raise ValueError("不可空白")
+        return v
+
+
 class FilePatch(BaseModel):
     kind: FileKind | None = None
     is_public: bool | None = None
