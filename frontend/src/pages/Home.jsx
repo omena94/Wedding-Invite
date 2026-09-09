@@ -61,7 +61,7 @@ export default function Home() {
         <p className="guest-eyebrow">SO GLAD TO HAVE YOU HERE</p>
         {/* 2026-09-08 依新人要求拿掉回訪問候句（歡迎回來…）；首次進站仍有稱呼 */}
         {!visit && <p className="home-greeting">最愛的家人與好友們，</p>}
-        <h1 ref={titleRef} tabIndex={-1}>重要的日子不鋪張<br/><span>只想和最喜歡的你們好好聚聚</span></h1>
+        <h1 ref={titleRef} tabIndex={-1}>重要的日子<br/><span>只想和最喜歡的你們好好聚聚</span></h1>
         <p className="home-couple">宣文 <span className="amp">&</span> 孟庭</p>
         <p className="home-couple-english">Alan <span className="amp">&</span> Omena</p>
         <p className="home-wedding-date">{WEDDING_DATE_DISPLAY}<span>{VENUE.name}</span></p>
