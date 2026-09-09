@@ -5,6 +5,9 @@
 .wedding-home .guest-nav, .wedding-home .preview-banner { font-family: 'Plus Jakarta Sans', 'PingFang TC', 'Microsoft JhengHei', sans-serif; } /* 導覽列各頁一致，不用手寫字 */
 /* 全站的 p 等元素有自己的字型規則，首頁內文改為繼承容器的手寫字；後面的英文草寫／襯線規則仍會覆蓋 */
 .wedding-home :where(p, li, small, time, label, div, a, button) { font-family: inherit; }
+/* 2026-09-09 新人要求：日期地點資訊卡（SAVE A LITTLE TIME FOR US）改回原本字型，比較清楚；標題也一併回復宋體 */
+.wedding-home .home-meet { font-family: 'Plus Jakarta Sans', 'PingFang TC', 'Microsoft JhengHei', sans-serif; }
+.wedding-home .home-meet :is(h1,h2,h3) { font-family: 'Noto Serif TC', serif; }
 /* 首頁沿用全站色票；動畫以短暫進場與捲動回應為主。 */
 .wedding-home { max-width: 1080px; padding-top: 16px; }
 .home-masthead { display: flex; align-items: center; gap: 18px; border-bottom: 1px solid var(--border-highlight); padding: 6px 0 16px; }
