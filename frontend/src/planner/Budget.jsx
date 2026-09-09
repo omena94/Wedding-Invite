@@ -3,18 +3,23 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { Check, ChevronDown, Pencil, Plus, Trash2, Undo2 } from "lucide-react";
-import { deleteExpense, deletePayment, fetchExpenses, fetchVendors } from "../api.js";
+import { deleteExpense, deletePayment, fetchExpenses, fetchMemos, fetchVendors } from "../api.js";
 import { PAID_BY, fmtDate, money } from "../constants.js";
 import { ExpenseModal, PaymentModal } from "./modals.jsx";
 import { Empty, ErrorBox, Loading, Modal, PageHead, confirmDelete, toastErr, useLoader } from "./ui.jsx";
 import { dueTag } from "./Dashboard.jsx";
 import BanquetPanel from "./BanquetPanel.jsx";
+import { MemoAddButton, MemoModal, MemoRows, groupBy, topicList } from "./memoUi.jsx";
 
 export default function Budget() {
   const { data, loading, error, reload } = useLoader(fetchExpenses, []);
   const { data: vendors } = useLoader(() => fetchVendors(), []);
   const [modal, setModal] = useState(null);
   const [open, setOpen] = useState({}); // expense id → 展開分期
+  // 2026-09-09 備忘整合：掛在花費底下的備忘，展開後顯示在分期下方
+  const { data: memos, reload: reloadMemos } = useLoader(() => fetchMemos(), []);
+  const memosByExpense = useMemo(() => groupBy(memos, "expense_id"), [memos]);
+  const [memoModal, setMemoModal] = useState(null);
   const [detail, setDetail] = useState(null); // 點統計卡看明細：budget / contract / paid / unpaid
 
   const groups = useMemo(() => {
@@ -57,6 +62,7 @@ export default function Budget() {
         <Card label="合約尚欠" value={money(totals.unpaid)} sub="包含尚未安排分期的尾款" onClick={() => setDetail("unpaid")} />
       </div>
       {detail && <DetailModal kind={detail} expenses={data || []} onClose={() => setDetail(null)} />}
+      {memoModal && <MemoModal initial={memoModal.memo} defaults={memoModal.defaults} topics={topicList(memos)} onClose={() => setMemoModal(null)} onSaved={() => { setMemoModal(null); reloadMemos(); }} />}
 
       {/* 桌菜依出席人數估算，不會自動記進下面的花費項目；簽約後請自行新增一筆「婚宴」花費 */}
       <BanquetPanel />
@@ -84,6 +90,7 @@ export default function Budget() {
                         <button className="pl-linkbtn" onClick={() => setOpen((o) => ({ ...o, [e.id]: !isOpen }))}>
                           <ChevronDown size={14} style={{ transition: "transform .2s", transform: isOpen ? "rotate(180deg)" : "none" }} /> <strong>{e.title}</strong>
                           <span className="muted-cell" style={{ marginLeft: 6, fontSize: 12 }}>{e.payments.length} 期</span>
+                          {(memosByExpense[e.id] || []).some((m) => !m.confirmed) && <span className="pill pill-warn" style={{ marginLeft: 6 }}>{memosByExpense[e.id].filter((m) => !m.confirmed).length} 待確認</span>}
                         </button>
                         {e.note && <div className="muted-cell" style={{ fontSize: 11.5, marginTop: 2, whiteSpace: "pre-wrap" }}>{e.note}</div>}
                         {e.gift_order_id && <Link className="top-link" to="/gifts?tab=orders">查看喜餅訂購</Link>}
@@ -124,6 +131,11 @@ export default function Budget() {
                               </tbody>
                             </table>
                           )}
+                          <div className="memo-block">
+                            <div className="muted-cell" style={{ fontSize: 12, fontWeight: 600 }}>備忘</div>
+                            <MemoRows memos={memosByExpense[e.id]} onChanged={reloadMemos} onEdit={(m) => setMemoModal({ memo: m })} />
+                            <MemoAddButton onClick={() => setMemoModal({ defaults: { expense_id: String(e.id), topic: e.category === "婚宴" ? "飯店" : "其他" } })} />
+                          </div>
                         </td>
                       </tr>
                     ),

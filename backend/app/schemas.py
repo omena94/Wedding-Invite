@@ -475,6 +475,46 @@ class TaskPatch(BaseModel):
     sort_order: int | None = None
 
 
+class MemoIn(BaseModel):
+    topic: str = Field(default="其他", min_length=1, max_length=50)
+    question: str = Field(min_length=1, max_length=2000)
+    answer: str = Field(default="", max_length=5000)
+    confirmed: bool = False
+    task_id: int | None = None
+    expense_id: int | None = None
+    sort_order: int = 0
+
+    @field_validator("topic", "question", "answer")
+    @classmethod
+    def _strip(cls, v: str, info) -> str:
+        v = v.strip()
+        if not v and info.field_name != "answer":  # 長度限制在去空白前檢查，這裡再擋「只有空格」
+            raise ValueError("不可空白")
+        return v
+
+
+class MemoPatch(BaseModel):
+    topic: str | None = Field(default=None, min_length=1, max_length=50)
+    question: str | None = Field(default=None, min_length=1, max_length=2000)
+    answer: str | None = Field(default=None, max_length=5000)
+    confirmed: bool | None = None
+    task_id: int | None = None
+    clear_task: bool = False
+    expense_id: int | None = None
+    clear_expense: bool = False
+    sort_order: int | None = None
+
+    @field_validator("topic", "question", "answer")
+    @classmethod
+    def _strip(cls, v: str | None, info) -> str | None:
+        if not isinstance(v, str):
+            return v
+        v = v.strip()
+        if not v and info.field_name != "answer":
+            raise ValueError("不可空白")
+        return v
+
+
 class FilePatch(BaseModel):
     kind: FileKind | None = None
     is_public: bool | None = None

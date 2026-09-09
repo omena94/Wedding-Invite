@@ -1027,3 +1027,23 @@ tbody tr:last-child td { border-bottom: none; }
 .photo-notice { margin: -6px auto 18px; max-width: 560px; padding: 12px 16px; border: 1px solid var(--border-soft); border-radius: 12px; background: var(--milk-tea-50); color: var(--milk-tea-900); font-size: 13px; line-height: 1.8; text-align: center; }
 .photo-notice strong { display: block; margin-bottom: 4px; }
 .photo-notice p { margin: 0; }
+
+/* 備忘（備忘頁、籌備進度、花費共用）：一條一條像便條，勾了會淡掉 */
+.memo-list { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.memo-row { display: flex; align-items: flex-start; gap: 8px; padding: 7px 10px; border: 1px solid var(--border-soft); border-radius: 10px; background: var(--bg-card-subtle); font-size: 13px; }
+.memo-row.done { opacity: 0.6; }
+.memo-row .ui-check { margin-top: 1px; }
+.memo-body { flex: 1; min-width: 0; }
+.memo-q { color: var(--milk-tea-900); white-space: pre-wrap; word-break: break-word; }
+.memo-a { color: var(--text-muted); font-size: 12.5px; margin-top: 2px; white-space: pre-wrap; word-break: break-word; }
+.memo-link { margin-top: 4px; display: flex; gap: 6px; flex-wrap: wrap; }
+.memo-add { margin-top: 6px; }
+.memo-block { margin-top: 10px; padding-top: 8px; border-top: 1px dashed var(--border-soft); }
+.pl-month .memo-list { margin-top: 4px; margin-bottom: 8px; }
+/* 待辦列的內容區撐滿，底下的備忘列才不會只跟文字一樣寬 */
+.pl-task-row { flex: 1; }
+.pl-task-row > div { flex: 1; }
+@media (max-width: 560px) {
+  .memo-row { flex-wrap: wrap; }
+  .memo-row .row-actions { width: 100%; text-align: right; }
+}

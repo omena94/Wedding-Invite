@@ -4,9 +4,10 @@ import { Pencil, Plus, Trash2 } from "lucide-react";
 import Select from "../components/Select.jsx";
 import DatePicker from "../components/DatePicker.jsx";
 import { Checkbox } from "../components/Toggle.jsx";
-import { deleteTask, fetchTasks, fetchVendors, updateTask } from "../api.js";
+import { deleteTask, fetchMemos, fetchTasks, fetchVendors, updateTask } from "../api.js";
 import { daysUntil } from "../constants.js";
 import { TaskModal } from "./modals.jsx";
+import { MemoAddButton, MemoModal, MemoRows, groupBy, topicList } from "./memoUi.jsx";
 import { Empty, ErrorBox, Loading, PageHead, confirmDelete, toastErr, useLoader } from "./ui.jsx";
 
 export default function Timeline() {
@@ -14,6 +15,10 @@ export default function Timeline() {
   const { data, loading, error, reload } = useLoader(() => fetchTasks(status), [status]);
   const { data: vendors } = useLoader(() => fetchVendors(), []);
   const [modal, setModal] = useState(null);
+  // 2026-09-09 備忘整合：掛在待辦底下的備忘直接顯示在該筆底下
+  const { data: memos, reload: reloadMemos } = useLoader(() => fetchMemos(), []);
+  const memosByTask = useMemo(() => groupBy(memos, "task_id"), [memos]);
+  const [memoModal, setMemoModal] = useState(null);
 
   const groups = useMemo(() => {
     const list = data || [];
@@ -74,6 +79,8 @@ export default function Timeline() {
                           {t.vendor_id && <> · {t.vendor_name}</>}
                           {t.note && <div style={{ whiteSpace: "pre-wrap" }}>{t.note}</div>}
                         </div>
+                        <MemoRows memos={memosByTask[t.id]} onChanged={reloadMemos} onEdit={(m) => setMemoModal({ memo: m })} />
+                        <MemoAddButton count={(memosByTask[t.id] || []).length} onClick={() => setMemoModal({ defaults: { task_id: String(t.id), topic: "其他" } })} />
                       </div>
                     </div>
                     <div className="row-actions">
@@ -89,6 +96,7 @@ export default function Timeline() {
       </div>
 
       {modal && <TaskModal vendors={vendors || []} initial={modal.task} onClose={close} onSaved={saved} />}
+      {memoModal && <MemoModal initial={memoModal.memo} defaults={memoModal.defaults} topics={topicList(memos)} onClose={() => setMemoModal(null)} onSaved={() => { setMemoModal(null); reloadMemos(); }} />}
     </div>
   );
 }

@@ -321,6 +321,33 @@ class Task(Base):
     vendor: Mapped["Vendor | None"] = relationship(back_populates="tasks")
 
 
+class Memo(Base):
+    """備忘：要向飯店、婚紗店、喜餅店…確認的問題與得到的答案。
+    可獨立存在（依主題分區），也可掛在某筆待辦或花費底下；三處看到的是同一份資料。
+    待辦或花費被刪時只解除連結（SET NULL），備忘本身留著。"""
+    __tablename__ = "memos"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    topic: Mapped[str] = mapped_column(String(50), default="其他")  # 飯店 / 婚紗 / 喜餅…自由輸入
+    question: Mapped[str] = mapped_column(Text)
+    answer: Mapped[str] = mapped_column(Text, default="")
+    confirmed: Mapped[bool] = mapped_column(Boolean, default=False)
+    task_id: Mapped[int | None] = mapped_column(
+        ForeignKey("tasks.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    expense_id: Mapped[int | None] = mapped_column(
+        ForeignKey("expenses.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    task: Mapped["Task | None"] = relationship()
+    expense: Mapped["Expense | None"] = relationship()
+
+
 # 喜餅需求與出席分開：未填婚宴表單的親友也能送餅，且不影響餐點／座位。
 class GiftProduct(Base):
     __tablename__ = "gift_products"

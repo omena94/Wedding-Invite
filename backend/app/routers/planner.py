@@ -1,4 +1,4 @@
-"""籌備後台 API（僅限新人）：設定、總覽、廠商、報價、花費、付款、待辦、檔案。"""
+"""籌備後台 API（僅限新人）：設定、總覽、廠商、報價、花費、付款、待辦、備忘、檔案。"""
 import mimetypes
 import uuid
 from pathlib import Path
@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from ..config import settings
 from ..database import get_db
-from ..models import Expense, FileAsset, GiftOrder, Payment, Quote, Rsvp, Task, Vendor, VendorCategory
+from ..models import Expense, FileAsset, GiftOrder, Memo, Payment, Quote, Rsvp, Task, Vendor, VendorCategory
 from ..schemas import (
     BanquetPatch,
     CategoryIn,
@@ -19,6 +19,8 @@ from ..schemas import (
     ExpenseIn,
     ExpensePatch,
     FilePatch,
+    MemoIn,
+    MemoPatch,
     PaymentIn,
     PaymentPatch,
     QuoteIn,
@@ -760,6 +762,102 @@ def update_task(task_id: int, payload: TaskPatch, db: Session = Depends(get_db))
 def delete_task(task_id: int, db: Session = Depends(get_db)):
     t = _get_or_404(db, Task, task_id, "待辦")
     db.delete(t)
+    db.commit()
+    return None
+
+
+# ---------------------------------------------------------------------
+# 備忘（要問飯店／廠商的事；可掛在待辦或花費底下）
+# ---------------------------------------------------------------------
+def _memo_out(m: Memo) -> dict:
+    return {
+        "id": m.id,
+        "topic": m.topic,
+        "question": m.question,
+        "answer": m.answer,
+        "confirmed": m.confirmed,
+        "task_id": m.task_id,
+        "task_title": m.task.title if m.task else "",
+        "expense_id": m.expense_id,
+        "expense_title": m.expense.title if m.expense else "",
+        "sort_order": m.sort_order,
+        "created_at": m.created_at.isoformat() if m.created_at else None,
+        "updated_at": m.updated_at.isoformat() if m.updated_at else None,
+    }
+
+
+def _memo_load(db: Session, memo_id: int) -> Memo:
+    return db.scalars(
+        select(Memo).options(selectinload(Memo.task), selectinload(Memo.expense)).where(Memo.id == memo_id)
+    ).one()
+
+
+def _memo_check_links(db: Session, data: dict) -> None:
+    if data.get("task_id") is not None:
+        _get_or_404(db, Task, data["task_id"], "待辦")
+    if data.get("expense_id") is not None:
+        _get_or_404(db, Expense, data["expense_id"], "花費")
+
+
+@router.get("/memos")
+def list_memos(
+    status: str = Query("all"),
+    topic: str | None = Query(None),
+    task_id: int | None = Query(None),
+    expense_id: int | None = Query(None),
+    db: Session = Depends(get_db),
+):
+    stmt = select(Memo).options(selectinload(Memo.task), selectinload(Memo.expense))
+    if status == "open":
+        stmt = stmt.where(Memo.confirmed.is_(False))
+    elif status == "done":
+        stmt = stmt.where(Memo.confirmed.is_(True))
+    if topic:
+        stmt = stmt.where(Memo.topic == topic)
+    if task_id is not None:
+        stmt = stmt.where(Memo.task_id == task_id)
+    if expense_id is not None:
+        stmt = stmt.where(Memo.expense_id == expense_id)
+    # 未確認的排前面，其餘照建立順序；主題分組交給前端
+    stmt = stmt.order_by(Memo.confirmed.asc(), Memo.sort_order.asc(), Memo.id.asc())
+    return [_memo_out(m) for m in db.scalars(stmt).all()]
+
+
+@router.post("/memos", status_code=201)
+def create_memo(payload: MemoIn, db: Session = Depends(get_db)):
+    data = payload.model_dump()
+    _memo_check_links(db, data)
+    m = Memo(**data)
+    db.add(m)
+    db.commit()
+    return _memo_out(_memo_load(db, m.id))
+
+
+@router.patch("/memos/{memo_id}")
+def update_memo(memo_id: int, payload: MemoPatch, db: Session = Depends(get_db)):
+    m = _get_or_404(db, Memo, memo_id, "備忘")
+    data = payload.model_dump(exclude_unset=True)
+    if data.pop("clear_task", False):
+        m.task_id = None
+        data.pop("task_id", None)
+    if data.pop("clear_expense", False):
+        m.expense_id = None
+        data.pop("expense_id", None)
+    # 沒帶或帶 null 的連結欄位一律不動，要解除請用 clear_*
+    for key in ("task_id", "expense_id"):
+        if key in data and data[key] is None:
+            data.pop(key)
+    _memo_check_links(db, data)
+    for k, val in data.items():
+        setattr(m, k, val)
+    db.commit()
+    return _memo_out(_memo_load(db, memo_id))
+
+
+@router.delete("/memos/{memo_id}", status_code=204)
+def delete_memo(memo_id: int, db: Session = Depends(get_db)):
+    m = _get_or_404(db, Memo, memo_id, "備忘")
+    db.delete(m)
     db.commit()
     return None
 

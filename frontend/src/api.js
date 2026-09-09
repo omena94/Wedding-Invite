@@ -198,6 +198,15 @@ export const updateTask = (id, data) =>
   request(`${P}/tasks/${id}`, { method: "PATCH", body: data, auth: true });
 export const deleteTask = (id) => request(`${P}/tasks/${id}`, { method: "DELETE", auth: true });
 
+// 備忘：可獨立、可掛在待辦或花費底下（params: status / topic / task_id / expense_id）
+export const fetchMemos = (params = {}) => {
+  const q = new URLSearchParams(Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== ""));
+  return request(`${P}/memos${q.toString() ? `?${q}` : ""}`, { auth: true });
+};
+export const createMemo = (data) => request(`${P}/memos`, { method: "POST", body: data, auth: true });
+export const updateMemo = (id, data) => request(`${P}/memos/${id}`, { method: "PATCH", body: data, auth: true });
+export const deleteMemo = (id) => request(`${P}/memos/${id}`, { method: "DELETE", auth: true });
+
 // ===== 座位圖 =====
 const SE = `${P}/seating`;
 export const fetchSeating = (readonly = false) => request(readonly ? "/api/admin/seating" : SE, { auth: true });
