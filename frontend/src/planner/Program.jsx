@@ -4,7 +4,6 @@ import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { ArrowDown, ArrowUp, ChevronDown, Clock, Gamepad2, Lightbulb, Pencil, Plus, Trash2 } from "lucide-react";
 import Select from "../components/Select.jsx";
-import { Checkbox } from "../components/Toggle.jsx";
 import {
   createIdea, createSegment, deleteGame, deleteIdea, deleteSegment, fetchGames, fetchIdeas, fetchSegments, reorderSegments, updateGame, updateIdea, updateSegment,
 } from "../api.js";
