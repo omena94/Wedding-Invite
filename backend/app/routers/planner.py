@@ -1052,6 +1052,12 @@ def list_games(segment_id: int | None = Query(None), db: Session = Depends(get_d
     return [_game_out(g) for g in db.scalars(stmt).all()]
 
 
+@router.get("/program/games/{game_id}")
+def get_game(game_id: int, db: Session = Depends(get_db)):
+    _get_or_404(db, ProgramGame, game_id, "遊戲")
+    return _game_out(_game_load(db, game_id))
+
+
 @router.post("/program/games", status_code=201)
 def create_game(payload: GameIn, db: Session = Depends(get_db)):
     data = payload.model_dump()

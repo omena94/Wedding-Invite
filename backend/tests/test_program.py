@@ -91,6 +91,7 @@ def test_games_fields_and_link(client):
     assert client.post(G, json={"name": " "}).status_code == 422
     assert client.post(G, json={"name": "x", "segment_id": 999}).status_code == 404
     assert client.get(S).json()[0]["game_count"] == 1
+    assert client.get(f"{G}/{g['id']}").json()["name"] == "搶捧花" and client.get(f"{G}/999").status_code == 404
     assert [x["id"] for x in client.get(G, params={"segment_id": seg["id"]}).json()] == [g["id"]]
 
     r = client.patch(f"{G}/{g['id']}", json={"prize": "改成紅包", "segment_id": None})

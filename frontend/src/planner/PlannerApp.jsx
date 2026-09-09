@@ -17,6 +17,7 @@ import Photos from "./Photos.jsx";
 import Gifts from "./Gifts.jsx";
 import Memos from "./Memos.jsx";
 import Program from "./Program.jsx";
+import GameEdit from "./GameEdit.jsx";
 
 import { PlannerContext } from "./context.js";
 
@@ -68,6 +69,8 @@ export default function PlannerApp() {
             <Route path="/timeline" element={<CoupleOnly role={role}><Timeline /></CoupleOnly>} />
             <Route path="/memos" element={<CoupleOnly role={role}><Memos /></CoupleOnly>} />
             <Route path="/program" element={<CoupleOnly role={role}><Program /></CoupleOnly>} />
+            <Route path="/program/games/new" element={<CoupleOnly role={role}><GameEdit /></CoupleOnly>} />
+            <Route path="/program/games/:id" element={<CoupleOnly role={role}><GameEdit /></CoupleOnly>} />
             <Route path="/files" element={<CoupleOnly role={role}><Files /></CoupleOnly>} />
             <Route path="/photos" element={<CoupleOnly role={role}><Photos /></CoupleOnly>} />
             <Route path="/settings" element={<CoupleOnly role={role}><SettingsPage /></CoupleOnly>} />

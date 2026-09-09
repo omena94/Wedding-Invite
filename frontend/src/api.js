@@ -221,6 +221,7 @@ export const createIdea = (data) => request(`${P}/program/ideas`, { method: "POS
 export const updateIdea = (id, data) => request(`${P}/program/ideas/${id}`, { method: "PATCH", body: data, auth: true });
 export const deleteIdea = (id) => request(`${P}/program/ideas/${id}`, { method: "DELETE", auth: true });
 export const fetchGames = () => request(`${P}/program/games`, { auth: true });
+export const fetchGame = (id) => request(`${P}/program/games/${id}`, { auth: true });
 export const createGame = (data) => request(`${P}/program/games`, { method: "POST", body: data, auth: true });
 export const updateGame = (id, data) => request(`${P}/program/games/${id}`, { method: "PATCH", body: data, auth: true });
 export const deleteGame = (id) => request(`${P}/program/games/${id}`, { method: "DELETE", auth: true });

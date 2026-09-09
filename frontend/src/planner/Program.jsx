@@ -1,10 +1,11 @@
 // 活動環節（只在後台）：上半是婚禮當天的環節流程（可調順序、每個環節有細節紀錄），
 // 下半是點子庫（先把想法記下來，決定了再標採用、指到某個環節）。
 import { useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { ArrowDown, ArrowUp, ChevronDown, Gamepad2, Lightbulb, Pencil, Plus, Trash2 } from "lucide-react";
 import Select from "../components/Select.jsx";
 import {
-  createGame, createIdea, createSegment, deleteGame, deleteIdea, deleteSegment, fetchGames, fetchIdeas, fetchSegments, reorderSegments, updateGame, updateIdea, updateSegment,
+  createIdea, createSegment, deleteGame, deleteIdea, deleteSegment, fetchGames, fetchIdeas, fetchSegments, reorderSegments, updateIdea, updateSegment,
 } from "../api.js";
 import { WEDDING_MINUTES, WEDDING_TIME_FROM, WEDDING_TIME_TO } from "../constants.js";
 import { Empty, ErrorBox, Field, Loading, Modal, NumberInput, PageHead, confirmDelete, toastErr, toInt, useLoader } from "./ui.jsx";
@@ -29,7 +30,7 @@ export default function Program() {
   const [gameOpen, setGameOpen] = useState({});
   const [open, setOpen] = useState({});
   const [ideaFilter, setIdeaFilter] = useState("all");
-  const [modal, setModal] = useState(null); // { type: "segment"|"idea", item?, defaults? }
+  const [modal, setModal] = useState(null); // { type: "segment"|"idea", item?, defaults? }（遊戲改用獨立頁面）
 
   const ideasBySegment = useMemo(() => {
     const m = {};
@@ -45,7 +46,6 @@ export default function Program() {
 
   const close = () => setModal(null);
   const savedSegment = () => { close(); reload(); reloadIdeas(); reloadGames(); };
-  const savedGame = () => { close(); reloadGames(); reload(); };
   const removeGame = async (g) => {
     if (!(await confirmDelete(g.name))) return;
     try { await deleteGame(g.id); reloadGames(); reload(); } catch (e) { toastErr(e); }
@@ -139,7 +139,7 @@ export default function Program() {
       <div className="panel">
         <div className="panel-title" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
           <span>遊戲</span>
-          <button className="btn btn-ghost btn-sm" onClick={() => setModal({ type: "game" })}><Gamepad2 size={13} /> 新增遊戲</button>
+          <Link className="btn btn-ghost btn-sm" to="/program/games/new"><Gamepad2 size={13} /> 新增遊戲</Link>
         </div>
         {!games ? <Loading /> : games.length === 0 ? (
           <Empty>還沒有遊戲。把名稱、規則、內容、獎品、主持人、裁判、時長、道具記下來，之後指定在哪個環節玩</Empty>
@@ -159,7 +159,7 @@ export default function Program() {
                       {g.segment_title ? <span className="pill pill-groom">環節 · {g.segment_title}</span> : <span className="pill pill-warn">還沒排進環節</span>}
                     </div>
                     <div className="row-actions">
-                      <button className="btn btn-ghost btn-sm" title="編輯" onClick={() => setModal({ type: "game", item: g })}><Pencil size={13} /></button>{" "}
+                      <Link className="btn btn-ghost btn-sm" title="編輯" to={`/program/games/${g.id}`}><Pencil size={13} /></Link>{" "}
                       <button className="btn btn-ghost btn-sm" title="刪除" onClick={() => removeGame(g)}><Trash2 size={13} /></button>
                     </div>
                   </div>
@@ -208,7 +208,6 @@ export default function Program() {
       </div>
 
       {modal?.type === "segment" && <SegmentModal initial={modal.item} onClose={close} onSaved={savedSegment} />}
-      {modal?.type === "game" && <GameModal initial={modal.item} segments={segments || []} onClose={close} onSaved={savedGame} />}
       {modal?.type === "idea" && <IdeaModal initial={modal.item} defaults={modal.defaults} segments={segments || []} onClose={close} onSaved={savedIdea} />}
     </div>
   );
@@ -248,47 +247,6 @@ function SegmentModal({ initial, onClose, onSaved }) {
         <Field label="狀態"><Select value={f.status} onChange={(v) => set("status", v)} options={toOptions(SEG_STATUS)} aria-label="狀態" /></Field>
       </div>
       <Field label="細節紀錄" hint="流程怎麼走、要準備的道具與音樂、要提醒誰…想到就記"><textarea rows={5} value={f.note} onChange={(e) => set("note", e.target.value)} /></Field>
-    </Modal>
-  );
-}
-
-function GameModal({ initial, segments, onClose, onSaved }) {
-  const isNew = !initial?.id;
-  const [f, setF] = useState({
-    name: "", rules: "", content: "", prize: "", host: "", judge: "", duration_min: 0, props: "",
-    ...(initial || {}),
-    segment_id: initial?.segment_id ? String(initial.segment_id) : "",
-  });
-  const [busy, setBusy] = useState(false);
-  const set = (k, v) => setF((x) => ({ ...x, [k]: v }));
-  const save = async () => {
-    if (!f.name.trim()) return toastErr(new Error("請填遊戲名稱"));
-    setBusy(true);
-    try {
-      const body = { name: f.name.trim(), rules: f.rules, content: f.content, prize: f.prize, host: f.host, judge: f.judge, duration_min: toInt(f.duration_min), props: f.props };
-      if (f.segment_id) body.segment_id = parseInt(f.segment_id, 10); else if (!isNew) body.clear_segment = true;
-      onSaved(isNew ? await createGame(body) : await updateGame(initial.id, body));
-    } catch (e) { toastErr(e); } finally { setBusy(false); }
-  };
-  return (
-    <Modal title={isNew ? "新增遊戲" : "編輯遊戲"} onClose={onClose} wide footer={<Footer onClose={onClose} onSave={save} busy={busy} />}>
-      <div className="form-group grid-2">
-        <Field label="名稱" required><input type="text" value={f.name} onChange={(e) => set("name", e.target.value)} autoFocus placeholder="例如：搶捧花、新人問答" /></Field>
-        <Field label="時長（分鐘）" hint="填 0 表示未定"><NumberInput value={f.duration_min} onChange={(v) => set("duration_min", v)} /></Field>
-      </div>
-      <Field label="規則"><textarea rows={3} value={f.rules} onChange={(e) => set("rules", e.target.value)} placeholder="怎麼玩、怎麼算贏" /></Field>
-      <Field label="遊戲內容"><textarea rows={3} value={f.content} onChange={(e) => set("content", e.target.value)} placeholder="流程、題目、要請誰上台…" /></Field>
-      <div className="form-group grid-2">
-        <Field label="主持人"><input type="text" value={f.host} onChange={(e) => set("host", e.target.value)} /></Field>
-        <Field label="裁判"><input type="text" value={f.judge} onChange={(e) => set("judge", e.target.value)} /></Field>
-      </div>
-      <div className="form-group grid-2">
-        <Field label="獎品"><textarea rows={2} value={f.prize} onChange={(e) => set("prize", e.target.value)} /></Field>
-        <Field label="道具"><textarea rows={2} value={f.props} onChange={(e) => set("props", e.target.value)} placeholder="要準備的東西，一行一項" /></Field>
-      </div>
-      <Field label="在哪個環節玩" hint="還沒決定可以先不選">
-        <Select value={f.segment_id || ""} onChange={(v) => set("segment_id", v)} options={[{ value: "", label: "先不指定" }, ...segments.map((s) => ({ value: String(s.id), label: s.title }))]} aria-label="在哪個環節玩" />
-      </Field>
     </Modal>
   );
 }

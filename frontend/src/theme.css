@@ -1083,3 +1083,7 @@ tbody tr:last-child td { border-bottom: none; }
 .game-detail dt { color: var(--text-muted); font-weight: 600; }
 .game-detail dd { margin: 0; white-space: pre-wrap; word-break: break-word; line-height: 1.7; }
 @media (max-width: 640px) { .game-detail { grid-template-columns: 1fr; gap: 2px; } .game-detail dd { margin-bottom: 6px; } }
+
+/* 遊戲編輯頁：表單寬度收窄、按鈕在最下面也有一組 */
+.game-edit { max-width: 860px; }
+.game-edit textarea { width: 100%; box-sizing: border-box; }
