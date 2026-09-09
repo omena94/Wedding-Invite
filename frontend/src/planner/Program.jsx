@@ -185,7 +185,7 @@ export default function Program() {
                     </button>
                     <div className="game-meta">
                       {g.duration_min > 0 && <span className="pill pill-groom">{g.duration_min} 分鐘</span>}
-                      {g.segment_title ? <span className="pill pill-groom">環節 · {g.segment_title}</span> : <span className="pill pill-warn">還沒排進環節</span>}
+                      {g.segment_title ? <span className="pill pill-groom">環節 · {g.segment_title}</span> : <button className="btn btn-ghost btn-sm" onClick={() => setModal({ type: "segment", defaults: { gameId: String(g.id) } })}><Plus size={12} /> 排進時間軸</button>}
                     </div>
                     <div className="row-actions">
                       <Link className="btn btn-ghost btn-sm" title="編輯" to={`/program/games/${g.id}`}><Pencil size={13} /></Link>{" "}
@@ -236,7 +236,7 @@ export default function Program() {
         )}
       </div>
 
-      {modal?.type === "segment" && <SegmentModal initial={modal.item} games={games || []} onClose={close} onSaved={savedSegment} />}
+      {modal?.type === "segment" && <SegmentModal initial={modal.item} defaults={modal.defaults} games={games || []} onClose={close} onSaved={savedSegment} />}
       {modal?.type === "idea" && <IdeaModal initial={modal.item} defaults={modal.defaults} segments={segments || []} onClose={close} onSaved={savedIdea} />}
     </div>
   );
@@ -251,29 +251,53 @@ function Footer({ onClose, onSave, busy }) {
   );
 }
 
-function SegmentModal({ initial, games, onClose, onSaved }) {
+function SegmentModal({ initial, defaults, games, onClose, onSaved }) {
   const isNew = !initial?.id;
-  const [f, setF] = useState({ title: "", start_time: "", duration_min: 0, host: "", note: "", status: "draft", ...(initial || {}) });
-  // 勾選的遊戲：一開始是已掛在這個環節的；存檔時把勾的掛過來、取消勾的解除
-  const [picked, setPicked] = useState(() => new Set((games || []).filter((g) => initial?.id && g.segment_id === initial.id).map((g) => g.id)));
+  // 一個環節對應一個遊戲（新人：遊戲名稱基本上就是環節名稱）。從遊戲卡「排進時間軸」進來時 defaults.gameId 已指定
+  const initialGame = (games || []).find((g) => (initial?.id && g.segment_id === initial.id) || (!initial?.id && defaults?.gameId && String(g.id) === defaults.gameId));
+  const [gameId, setGameId] = useState(initialGame ? String(initialGame.id) : "");
+  const [f, setF] = useState({
+    title: "", start_time: "", duration_min: 0, host: "", note: "", status: "draft",
+    ...(initial || {}),
+    ...(!initial?.id && initialGame ? { title: initialGame.name, duration_min: initialGame.duration_min, host: initialGame.host } : {}),
+  });
   const [busy, setBusy] = useState(false);
   const set = (k, v) => setF((x) => ({ ...x, [k]: v }));
-  const togglePick = (id) => setPicked((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
-  const pickedMinutes = (games || []).filter((g) => picked.has(g.id)).reduce((a, g) => a + (g.duration_min || 0), 0);
+  // 換遊戲：名稱若還是空的或等於上一個遊戲名，就換成新遊戲名；時長、主持人沒填的也帶入
+  const pickGame = (v) => {
+    const prev = (games || []).find((g) => String(g.id) === gameId);
+    const g = (games || []).find((x) => String(x.id) === v);
+    setGameId(v);
+    if (!g) return;
+    setF((x) => ({
+      ...x,
+      title: !x.title.trim() || (prev && x.title === prev.name) ? g.name : x.title,
+      duration_min: toInt(x.duration_min) > 0 ? x.duration_min : g.duration_min,
+      host: x.host || g.host,
+    }));
+  };
+  const gameOptions = [{ value: "", label: "不是遊戲環節" }, ...(games || []).map((g) => {
+    const elsewhere = g.segment_id && g.segment_id !== initial?.id ? `（目前在「${g.segment_title}」）` : "";
+    return { value: String(g.id), label: `${g.name}${g.duration_min > 0 ? ` · ${g.duration_min} 分` : ""}${elsewhere}` };
+  })];
   const save = async () => {
     if (!f.title.trim()) return toastErr(new Error("請填環節名稱"));
     setBusy(true);
     try {
       const body = { title: f.title.trim(), start_time: f.start_time || "", duration_min: toInt(f.duration_min), host: f.host, note: f.note, status: f.status };
       const saved = isNew ? await createSegment(body) : await updateSegment(initial.id, body);
-      const changes = (games || []).filter((g) => (picked.has(g.id) && g.segment_id !== saved.id) || (!picked.has(g.id) && g.segment_id === saved.id));
-      await Promise.all(changes.map((g) => updateGame(g.id, picked.has(g.id) ? { segment_id: saved.id } : { clear_segment: true })));
+      // 選的遊戲掛到這個環節；原本掛在這個環節、現在沒選的解除
+      const changes = (games || []).filter((g) => (String(g.id) === gameId && g.segment_id !== saved.id) || (String(g.id) !== gameId && g.segment_id === saved.id));
+      await Promise.all(changes.map((g) => updateGame(g.id, String(g.id) === gameId ? { segment_id: saved.id } : { clear_segment: true })));
       onSaved(saved);
     } catch (e) { toastErr(e); } finally { setBusy(false); }
   };
   return (
     <Modal title={isNew ? "新增環節" : "編輯環節"} onClose={onClose} wide footer={<Footer onClose={onClose} onSave={save} busy={busy} />}>
-      <Field label="環節名稱" required><input type="text" value={f.title} onChange={(e) => set("title", e.target.value)} autoFocus placeholder="例如：新人進場、證婚、第一次敬酒、遊戲" /></Field>
+      <Field label="這個環節是哪個遊戲？" hint={games.length === 0 ? "還沒有遊戲；一般環節（進場、致詞、敬酒…）直接填下面的名稱即可" : "選了會帶入遊戲名稱當環節名稱，時長與主持人沒填的也一併帶入；不是遊戲就選「不是遊戲環節」"}>
+        <Select value={gameId} onChange={pickGame} options={gameOptions} aria-label="這個環節是哪個遊戲" />
+      </Field>
+      <Field label="環節名稱" required><input type="text" value={f.title} onChange={(e) => set("title", e.target.value)} autoFocus={!gameId} placeholder="例如：新人進場、證婚、第一次敬酒" /></Field>
       <div className="form-group grid-2">
         <Field label="開始時間"><Select value={f.start_time} onChange={(v) => set("start_time", v)} options={TIME_OPTIONS} aria-label="開始時間" /></Field>
         <Field label="預計長度（分鐘）" hint="填 0 表示未定"><NumberInput value={f.duration_min} onChange={(v) => set("duration_min", v)} /></Field>
@@ -282,20 +306,6 @@ function SegmentModal({ initial, games, onClose, onSaved }) {
         <Field label="負責／主持" hint="主持人、伴郎伴娘、某位親友…"><input type="text" value={f.host} onChange={(e) => set("host", e.target.value)} /></Field>
         <Field label="狀態"><Select value={f.status} onChange={(v) => set("status", v)} options={toOptions(SEG_STATUS)} aria-label="狀態" /></Field>
       </div>
-      <Field label="這個環節要玩的遊戲" hint={games.length === 0 ? "還沒有遊戲；先到下方「遊戲」新增，再回來勾選" : pickedMinutes > 0 ? `勾選的遊戲合計約 ${pickedMinutes} 分鐘` : "勾了就掛到這個環節；一個遊戲只能在一個環節"}>
-        {games.length > 0 && (
-          <div className="seg-games">
-            {games.map((g) => {
-              const elsewhere = g.segment_id && g.segment_id !== initial?.id ? g.segment_title : "";
-              return (
-                <Checkbox key={g.id} checked={picked.has(g.id)} onChange={() => togglePick(g.id)}>
-                  {g.name}{g.duration_min > 0 && <span className="muted-cell"> · {g.duration_min} 分</span>}{elsewhere && !picked.has(g.id) && <span className="muted-cell"> · 目前在「{elsewhere}」</span>}
-                </Checkbox>
-              );
-            })}
-          </div>
-        )}
-      </Field>
       <Field label="細節紀錄" hint="流程怎麼走、要準備的道具與音樂、要提醒誰…想到就記"><textarea rows={5} value={f.note} onChange={(e) => set("note", e.target.value)} /></Field>
     </Modal>
   );
