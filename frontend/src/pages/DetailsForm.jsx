@@ -46,9 +46,6 @@ export default function DetailsForm() {
       arr[i] = { ...arr[i], height };
       return { ...f, children: arr };
     });
-  // 飯店依身高計費的門檻（後台可改），給下面的提示用
-  const heightFree = stage?.child_free_below ?? 90;
-  const heightHalf = stage?.child_half_below ?? 120;
 
   const mainTotal = Object.values(form.main_course).reduce((a, b) => a + (b || 0), 0);
   const mainRemaining = Math.max(0, form.adult_count - mainTotal); // 主餐剩餘可選份數
@@ -214,15 +211,15 @@ export default function DetailsForm() {
             </div>
           </section>
 
-          {/* 小孩身高（飯店依身高計費） */}
+          {/* 小孩身高（後台依此估算餐費，頁面上不說明收費方式） */}
           {form.child_count > 0 && (
             <section className="section-card">
               <div className="section-header">
                 <div className="section-header-title"><Ruler size={18} /> 小孩身高</div>
                 <div className="section-header-en">Kids Height</div>
               </div>
+              {/* 2026-09-09 新人要求：不跟賓客解釋飯店依身高收費，只請他們填身高 */}
               <p className="helper-text" style={{ marginBottom: 14 }}>
-                飯店的兒童餐費依身高計算：未滿 {heightFree} 公分免費、{heightFree}～{heightHalf} 公分半價、{heightHalf} 公分以上與大人相同。
                 請填寫孩子脫鞋後的實際身高，方便安排餐點與座位。
               </p>
               {Array.from({ length: form.child_count }, (_, i) => (
