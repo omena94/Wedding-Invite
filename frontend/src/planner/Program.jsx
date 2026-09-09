@@ -2,10 +2,11 @@
 // 下半是點子庫（先把想法記下來，決定了再標採用、指到某個環節）。
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { ArrowDown, ArrowUp, ChevronDown, Gamepad2, Lightbulb, Pencil, Plus, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronDown, Clock, Gamepad2, Lightbulb, Pencil, Plus, Trash2 } from "lucide-react";
 import Select from "../components/Select.jsx";
+import { Checkbox } from "../components/Toggle.jsx";
 import {
-  createIdea, createSegment, deleteGame, deleteIdea, deleteSegment, fetchGames, fetchIdeas, fetchSegments, reorderSegments, updateIdea, updateSegment,
+  createIdea, createSegment, deleteGame, deleteIdea, deleteSegment, fetchGames, fetchIdeas, fetchSegments, reorderSegments, updateGame, updateIdea, updateSegment,
 } from "../api.js";
 import { WEDDING_MINUTES, WEDDING_TIME_FROM, WEDDING_TIME_TO } from "../constants.js";
 import { Empty, ErrorBox, Field, Loading, Modal, NumberInput, PageHead, confirmDelete, toastErr, toInt, useLoader } from "./ui.jsx";
@@ -17,6 +18,9 @@ const toOptions = (map) => Object.entries(map).map(([value, label]) => ({ value,
 
 // 時間選項：婚禮時段 12:00～15:00 每 5 分鐘（不用原生 time 輸入）
 const toMin = (t) => { const [h, m] = t.split(":").map(Number); return h * 60 + m; };
+const fmtMin = (n) => `${String(Math.floor(n / 60)).padStart(2, "0")}:${String(n % 60).padStart(2, "0")}`;
+// 時間軸用：有開始時間與長度就算得出結束時間；相鄰兩個都有時間才算空檔／重疊
+const endOf = (s) => (s.start_time && s.duration_min > 0 ? toMin(s.start_time) + s.duration_min : null);
 const TIME_OPTIONS = [{ value: "", label: "未定" }];
 for (let t = toMin(WEDDING_TIME_FROM); t <= toMin(WEDDING_TIME_TO); t += 5) {
   const v = `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`;
@@ -59,6 +63,12 @@ export default function Program() {
     [ids[idx], ids[j]] = [ids[j], ids[idx]];
     try { await reorderSegments(ids); reload(); } catch (e) { toastErr(e); }
   };
+  // 依時間排序：有時間的照時間，未定時間的維持原相對順序排在後面
+  const sortByTime = async () => {
+    const timed = segments.filter((x) => x.start_time).sort((a, b) => toMin(a.start_time) - toMin(b.start_time));
+    const untimed = segments.filter((x) => !x.start_time);
+    try { await reorderSegments([...timed, ...untimed].map((x) => x.id)); reload(); } catch (e) { toastErr(e); }
+  };
   const removeSegment = async (s) => {
     if (!(await confirmDelete(s.title))) return;
     try { await deleteSegment(s.id); reload(); reloadIdeas(); reloadGames(); } catch (e) { toastErr(e); }
@@ -84,50 +94,69 @@ export default function Program() {
       <div className="panel">
         <div className="panel-title" style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap", gap: 8 }}>
           <span>環節流程 <span className="muted-cell" style={{ fontSize: 12.5, fontWeight: 400, letterSpacing: 0 }}>婚禮 {WEDDING_TIME_FROM}～{WEDDING_TIME_TO}，共 {WEDDING_MINUTES / 60} 小時</span></span>
-          {total > 0 && <span className="muted-cell" style={{ fontSize: 12.5, fontWeight: 400 }}>已排 {segments.length} 個環節 · 合計約 {total} 分鐘{total > WEDDING_MINUTES ? <span className="pill pill-no" style={{ marginLeft: 6 }}>超過 {total - WEDDING_MINUTES} 分鐘</span> : <span style={{ marginLeft: 4 }}>· 還剩 {WEDDING_MINUTES - total} 分鐘</span>}</span>}
+          {total > 0 && <span className="muted-cell" style={{ fontSize: 12.5, fontWeight: 400, display: "inline-flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>已排 {segments.length} 個環節 · 合計約 {total} 分鐘{total > WEDDING_MINUTES ? <span className="pill pill-no" style={{ marginLeft: 6 }}>超過 {total - WEDDING_MINUTES} 分鐘</span> : <span style={{ marginLeft: 4 }}>· 還剩 {WEDDING_MINUTES - total} 分鐘</span>}<button className="btn btn-ghost btn-sm" onClick={sortByTime} title="有時間的照時間排，未定時間的排後面"><Clock size={12} /> 依時間排序</button></span>}
         </div>
         {loading ? <Loading /> : error ? <ErrorBox error={error} /> : !segments || segments.length === 0 ? (
           <Empty>還沒有環節。先從進場、致詞、敬酒、遊戲、送客這些開始排，時間之後再填也可以</Empty>
         ) : (
-          <ol className="prog-list">
+          <ol className="tl">
             {segments.map((s, idx) => {
               const isOpen = !!open[s.id];
               const linked = ideasBySegment[s.id] || [];
               const segGames = gamesBySegment[s.id] || [];
+              const endMin = endOf(s);
+              // 跟上一個環節的關係：空檔或重疊（兩邊都有時間才算）
+              const prev = idx > 0 ? segments[idx - 1] : null;
+              const prevEnd = prev ? endOf(prev) : null;
+              const gap = prevEnd !== null && s.start_time ? toMin(s.start_time) - prevEnd : null;
               return (
-                <li key={s.id} className={`prog-item${s.status === "confirmed" ? " confirmed" : ""}`}>
-                  <div className="prog-time">{s.start_time || <span className="muted-cell">未定</span>}{s.duration_min > 0 && <small>{s.duration_min} 分</small>}</div>
-                  <div className="prog-body">
-                    <button className="pl-linkbtn" onClick={() => setOpen((o) => ({ ...o, [s.id]: !isOpen }))} aria-expanded={isOpen}>
-                      <ChevronDown size={14} style={{ transition: "transform .2s", transform: isOpen ? "rotate(180deg)" : "none" }} />
-                      <strong>{s.title}</strong>
-                      <span className={`pill ${s.status === "confirmed" ? "pill-yes" : "pill-warn"}`} style={{ marginLeft: 6 }}>{SEG_STATUS[s.status]}</span>
-                      {segGames.length > 0 && <span className="muted-cell" style={{ marginLeft: 6, fontSize: 12 }}>{segGames.length} 個遊戲</span>}
-                      {linked.length > 0 && <span className="muted-cell" style={{ marginLeft: 6, fontSize: 12 }}>{linked.length} 個點子</span>}
-                    </button>
-                    {s.host && <div className="muted-cell" style={{ fontSize: 12.5, marginTop: 2 }}>負責：{s.host}</div>}
-                    {isOpen && (
-                      <div className="prog-detail">
-                        {s.note ? <div className="prog-note">{s.note}</div> : <div className="muted-cell" style={{ fontSize: 12.5 }}>還沒有細節紀錄，按編輯把流程、道具、要注意的事寫進來</div>}
-                        {segGames.length > 0 && (
-                          <div className="prog-ideas">
-                            {segGames.map((g) => <div key={g.id} className="prog-idea"><span className="pill pill-bride">遊戲</span><span>{g.name}{g.duration_min > 0 && <span className="muted-cell"> · {g.duration_min} 分</span>}{g.host && <span className="muted-cell"> · 主持 {g.host}</span>}</span></div>)}
-                          </div>
-                        )}
-                        {linked.length > 0 && (
-                          <div className="prog-ideas">
-                            {linked.map((i) => <div key={i.id} className="prog-idea"><span className={`pill ${IDEA_PILL[i.status]}`}>{IDEA_STATUS[i.status]}</span><span>{i.content}</span></div>)}
-                          </div>
-                        )}
-                        <button className="btn btn-ghost btn-sm" style={{ marginTop: 8 }} onClick={() => setModal({ type: "idea", defaults: { segment_id: String(s.id) } })}><Lightbulb size={12} /> 給這個環節記點子</button>
-                      </div>
-                    )}
-                  </div>
-                  <div className="row-actions prog-actions">
-                    <button className="btn btn-ghost btn-sm" title="往上" disabled={idx === 0} onClick={() => move(idx, -1)}><ArrowUp size={13} /></button>{" "}
-                    <button className="btn btn-ghost btn-sm" title="往下" disabled={idx === segments.length - 1} onClick={() => move(idx, 1)}><ArrowDown size={13} /></button>{" "}
-                    <button className="btn btn-ghost btn-sm" title="編輯" onClick={() => setModal({ type: "segment", item: s })}><Pencil size={13} /></button>{" "}
-                    <button className="btn btn-ghost btn-sm" title="刪除" onClick={() => removeSegment(s)}><Trash2 size={13} /></button>
+                <li key={s.id} className={`tl-item${s.status === "confirmed" ? " confirmed" : ""}`}>
+                  {gap !== null && gap !== 0 && (
+                    <div className={`tl-gap${gap < 0 ? " overlap" : ""}`}>{gap > 0 ? `空檔 ${gap} 分鐘` : `與上一個環節重疊 ${-gap} 分鐘`}</div>
+                  )}
+                  <div className="tl-row">
+                    <div className="tl-time">
+                      {s.start_time ? <span>{s.start_time}</span> : <span className="muted-cell">未定</span>}
+                      {endMin !== null ? <small>～{fmtMin(endMin)}</small> : s.duration_min > 0 ? <small>{s.duration_min} 分</small> : null}
+                    </div>
+                    <div className="tl-rail"><span className="tl-dot" /></div>
+                    <div className="tl-body">
+                      <button className="pl-linkbtn" onClick={() => setOpen((o) => ({ ...o, [s.id]: !isOpen }))} aria-expanded={isOpen}>
+                        <ChevronDown size={14} style={{ transition: "transform .2s", transform: isOpen ? "rotate(180deg)" : "none" }} />
+                        <strong>{s.title}</strong>
+                        <span className={`pill ${s.status === "confirmed" ? "pill-yes" : "pill-warn"}`} style={{ marginLeft: 6 }}>{SEG_STATUS[s.status]}</span>
+                        {s.duration_min > 0 && <span className="muted-cell" style={{ marginLeft: 6, fontSize: 12 }}>{s.duration_min} 分鐘</span>}
+                        {linked.length > 0 && <span className="muted-cell" style={{ marginLeft: 6, fontSize: 12 }}>{linked.length} 個點子</span>}
+                      </button>
+                      {(s.host || segGames.length > 0) && (
+                        <div className="tl-sub">
+                          {s.host && <span>負責：{s.host}</span>}
+                          {segGames.map((g) => <span key={g.id} className="pill pill-bride">遊戲 · {g.name}{g.duration_min > 0 ? ` ${g.duration_min} 分` : ""}</span>)}
+                        </div>
+                      )}
+                      {isOpen && (
+                        <div className="prog-detail">
+                          {s.note ? <div className="prog-note">{s.note}</div> : <div className="muted-cell" style={{ fontSize: 12.5 }}>還沒有細節紀錄，按編輯把流程、道具、要注意的事寫進來</div>}
+                          {segGames.length > 0 && (
+                            <div className="prog-ideas">
+                              {segGames.map((g) => <div key={g.id} className="prog-idea"><span className="pill pill-bride">遊戲</span><span><Link className="top-link" to={`/program/games/${g.id}`}>{g.name}</Link>{g.duration_min > 0 && <span className="muted-cell"> · {g.duration_min} 分</span>}{g.host && <span className="muted-cell"> · 主持 {g.host}</span>}{g.judge && <span className="muted-cell"> · 裁判 {g.judge}</span>}</span></div>)}
+                            </div>
+                          )}
+                          {linked.length > 0 && (
+                            <div className="prog-ideas">
+                              {linked.map((i) => <div key={i.id} className="prog-idea"><span className={`pill ${IDEA_PILL[i.status]}`}>{IDEA_STATUS[i.status]}</span><span>{i.content}</span></div>)}
+                            </div>
+                          )}
+                          <button className="btn btn-ghost btn-sm" style={{ marginTop: 8 }} onClick={() => setModal({ type: "idea", defaults: { segment_id: String(s.id) } })}><Lightbulb size={12} /> 給這個環節記點子</button>
+                        </div>
+                      )}
+                    </div>
+                    <div className="row-actions tl-actions">
+                      <button className="btn btn-ghost btn-sm" title="往上" disabled={idx === 0} onClick={() => move(idx, -1)}><ArrowUp size={13} /></button>{" "}
+                      <button className="btn btn-ghost btn-sm" title="往下" disabled={idx === segments.length - 1} onClick={() => move(idx, 1)}><ArrowDown size={13} /></button>{" "}
+                      <button className="btn btn-ghost btn-sm" title="編輯" onClick={() => setModal({ type: "segment", item: s })}><Pencil size={13} /></button>{" "}
+                      <button className="btn btn-ghost btn-sm" title="刪除" onClick={() => removeSegment(s)}><Trash2 size={13} /></button>
+                    </div>
                   </div>
                 </li>
               );
@@ -207,7 +236,7 @@ export default function Program() {
         )}
       </div>
 
-      {modal?.type === "segment" && <SegmentModal initial={modal.item} onClose={close} onSaved={savedSegment} />}
+      {modal?.type === "segment" && <SegmentModal initial={modal.item} games={games || []} onClose={close} onSaved={savedSegment} />}
       {modal?.type === "idea" && <IdeaModal initial={modal.item} defaults={modal.defaults} segments={segments || []} onClose={close} onSaved={savedIdea} />}
     </div>
   );
@@ -222,17 +251,24 @@ function Footer({ onClose, onSave, busy }) {
   );
 }
 
-function SegmentModal({ initial, onClose, onSaved }) {
+function SegmentModal({ initial, games, onClose, onSaved }) {
   const isNew = !initial?.id;
   const [f, setF] = useState({ title: "", start_time: "", duration_min: 0, host: "", note: "", status: "draft", ...(initial || {}) });
+  // 勾選的遊戲：一開始是已掛在這個環節的；存檔時把勾的掛過來、取消勾的解除
+  const [picked, setPicked] = useState(() => new Set((games || []).filter((g) => initial?.id && g.segment_id === initial.id).map((g) => g.id)));
   const [busy, setBusy] = useState(false);
   const set = (k, v) => setF((x) => ({ ...x, [k]: v }));
+  const togglePick = (id) => setPicked((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const pickedMinutes = (games || []).filter((g) => picked.has(g.id)).reduce((a, g) => a + (g.duration_min || 0), 0);
   const save = async () => {
     if (!f.title.trim()) return toastErr(new Error("請填環節名稱"));
     setBusy(true);
     try {
       const body = { title: f.title.trim(), start_time: f.start_time || "", duration_min: toInt(f.duration_min), host: f.host, note: f.note, status: f.status };
-      onSaved(isNew ? await createSegment(body) : await updateSegment(initial.id, body));
+      const saved = isNew ? await createSegment(body) : await updateSegment(initial.id, body);
+      const changes = (games || []).filter((g) => (picked.has(g.id) && g.segment_id !== saved.id) || (!picked.has(g.id) && g.segment_id === saved.id));
+      await Promise.all(changes.map((g) => updateGame(g.id, picked.has(g.id) ? { segment_id: saved.id } : { clear_segment: true })));
+      onSaved(saved);
     } catch (e) { toastErr(e); } finally { setBusy(false); }
   };
   return (
@@ -246,6 +282,20 @@ function SegmentModal({ initial, onClose, onSaved }) {
         <Field label="負責／主持" hint="主持人、伴郎伴娘、某位親友…"><input type="text" value={f.host} onChange={(e) => set("host", e.target.value)} /></Field>
         <Field label="狀態"><Select value={f.status} onChange={(v) => set("status", v)} options={toOptions(SEG_STATUS)} aria-label="狀態" /></Field>
       </div>
+      <Field label="這個環節要玩的遊戲" hint={games.length === 0 ? "還沒有遊戲；先到下方「遊戲」新增，再回來勾選" : pickedMinutes > 0 ? `勾選的遊戲合計約 ${pickedMinutes} 分鐘` : "勾了就掛到這個環節；一個遊戲只能在一個環節"}>
+        {games.length > 0 && (
+          <div className="seg-games">
+            {games.map((g) => {
+              const elsewhere = g.segment_id && g.segment_id !== initial?.id ? g.segment_title : "";
+              return (
+                <Checkbox key={g.id} checked={picked.has(g.id)} onChange={() => togglePick(g.id)}>
+                  {g.name}{g.duration_min > 0 && <span className="muted-cell"> · {g.duration_min} 分</span>}{elsewhere && !picked.has(g.id) && <span className="muted-cell"> · 目前在「{elsewhere}」</span>}
+                </Checkbox>
+              );
+            })}
+          </div>
+        )}
+      </Field>
       <Field label="細節紀錄" hint="流程怎麼走、要準備的道具與音樂、要提醒誰…想到就記"><textarea rows={5} value={f.note} onChange={(e) => set("note", e.target.value)} /></Field>
     </Modal>
   );
