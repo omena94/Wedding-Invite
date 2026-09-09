@@ -3,6 +3,8 @@
 @font-face { font-family: 'ChenYuluoyan'; src: url('/fonts/chenyuluoyan-home.woff2') format('woff2'); font-weight: 100 900; font-display: swap; }
 .wedding-home { font-family: 'Plus Jakarta Sans', 'ChenYuluoyan', 'PingFang TC', 'Microsoft JhengHei', sans-serif; }
 .wedding-home .guest-nav, .wedding-home .preview-banner { font-family: 'Plus Jakarta Sans', 'PingFang TC', 'Microsoft JhengHei', sans-serif; } /* 導覽列各頁一致，不用手寫字 */
+/* 全站的 p 等元素有自己的字型規則，首頁內文改為繼承容器的手寫字；後面的英文草寫／襯線規則仍會覆蓋 */
+.wedding-home :where(p, li, small, time, label, div, a, button) { font-family: inherit; }
 /* 首頁沿用全站色票；動畫以短暫進場與捲動回應為主。 */
 .wedding-home { max-width: 1080px; padding-top: 16px; }
 .home-masthead { display: flex; align-items: center; gap: 18px; border-bottom: 1px solid var(--border-highlight); padding: 6px 0 16px; }
@@ -25,7 +27,7 @@
 .home-couple-english { font: italic 24px 'Cormorant Garamond', Georgia, serif; margin-top: 5px; }
 .home-couple-english .amp { font-style: normal; }
 .home-wedding-date { font: 26px 'Cormorant Garamond', Georgia, serif; letter-spacing: .1em; margin: 22px 0; color: var(--milk-tea-900); }
-.home-wedding-date span { display: block; font: 13px/1.8 'Plus Jakarta Sans', sans-serif; letter-spacing: .06em; margin-top: 9px; }
+.home-wedding-date span { display: block; font: 13px/1.8 'Plus Jakarta Sans', 'ChenYuluoyan', sans-serif; /* 地點中文也用首頁手寫字 */ letter-spacing: .06em; margin-top: 9px; }
 .wedding-home .home-primary { display: inline-flex; align-items: center; justify-content: center; gap: 12px; width: auto; padding: 14px 23px; margin: 0; }
 .wedding-hero-art { position: relative; min-width: 0; width: min(420px, 86%); margin: 44px auto 56px; }
 .hero-arch-frame { position: relative; overflow: hidden; border-radius: 220px 220px 16px 16px; background: var(--milk-tea-100); aspect-ratio: 4 / 5; border: 1px solid var(--milk-tea-200); box-shadow: var(--shadow-elegant); }
