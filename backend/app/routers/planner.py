@@ -11,7 +11,8 @@ from sqlalchemy.orm import Session, selectinload
 from ..config import settings
 from ..database import get_db
 from ..models import (
-    Expense, FileAsset, GiftOrder, Memo, Payment, ProgramIdea, ProgramSegment, Quote, Rsvp, Task, Vendor, VendorCategory,
+    Expense, FileAsset, GiftOrder, Memo, Payment, ProgramGame, ProgramIdea, ProgramSegment, Quote, Rsvp, Task, Vendor,
+    VendorCategory,
 )
 from ..schemas import (
     BanquetPatch,
@@ -21,6 +22,8 @@ from ..schemas import (
     ExpenseIn,
     ExpensePatch,
     FilePatch,
+    GameIn,
+    GamePatch,
     IdeaIn,
     IdeaPatch,
     MemoIn,
@@ -872,7 +875,7 @@ def delete_memo(memo_id: int, db: Session = Depends(get_db)):
 # ---------------------------------------------------------------------
 # 活動環節（婚禮當天流程）與點子
 # ---------------------------------------------------------------------
-def _segment_out(s: ProgramSegment, idea_count: int = 0) -> dict:
+def _segment_out(s: ProgramSegment, idea_count: int = 0, game_count: int = 0) -> dict:
     return {
         "id": s.id,
         "title": s.title,
@@ -883,6 +886,7 @@ def _segment_out(s: ProgramSegment, idea_count: int = 0) -> dict:
         "status": s.status,
         "sort_order": s.sort_order,
         "idea_count": idea_count,
+        "game_count": game_count,
     }
 
 
@@ -912,7 +916,12 @@ def list_segments(db: Session = Depends(get_db)):
             select(ProgramIdea.segment_id, func.count()).where(ProgramIdea.segment_id.is_not(None)).group_by(ProgramIdea.segment_id)
         ).all()
     )
-    return [_segment_out(s, counts.get(s.id, 0)) for s in _segments_ordered(db)]
+    games = dict(
+        db.execute(
+            select(ProgramGame.segment_id, func.count()).where(ProgramGame.segment_id.is_not(None)).group_by(ProgramGame.segment_id)
+        ).all()
+    )
+    return [_segment_out(s, counts.get(s.id, 0), games.get(s.id, 0)) for s in _segments_ordered(db)]
 
 
 @router.post("/program/segments", status_code=201)
@@ -957,6 +966,7 @@ def delete_segment(segment_id: int, db: Session = Depends(get_db)):
     s = _get_or_404(db, ProgramSegment, segment_id, "活動環節")
     # 點子留著，只解除連結（SQLite 測試環境沒開 FK 時也要一致）
     db.execute(update(ProgramIdea).where(ProgramIdea.segment_id == segment_id).values(segment_id=None))
+    db.execute(update(ProgramGame).where(ProgramGame.segment_id == segment_id).values(segment_id=None))
     db.delete(s)
     db.commit()
     return None
@@ -1007,6 +1017,73 @@ def update_idea(idea_id: int, payload: IdeaPatch, db: Session = Depends(get_db))
 def delete_idea(idea_id: int, db: Session = Depends(get_db)):
     i = _get_or_404(db, ProgramIdea, idea_id, "點子")
     db.delete(i)
+    db.commit()
+    return None
+
+
+# ---- 遊戲 ----
+def _game_out(g: ProgramGame) -> dict:
+    return {
+        "id": g.id,
+        "name": g.name,
+        "rules": g.rules,
+        "content": g.content,
+        "prize": g.prize,
+        "host": g.host,
+        "judge": g.judge,
+        "duration_min": g.duration_min,
+        "props": g.props,
+        "segment_id": g.segment_id,
+        "segment_title": g.segment.title if g.segment else "",
+        "sort_order": g.sort_order,
+    }
+
+
+def _game_load(db: Session, game_id: int) -> ProgramGame:
+    return db.scalars(select(ProgramGame).options(selectinload(ProgramGame.segment)).where(ProgramGame.id == game_id)).one()
+
+
+@router.get("/program/games")
+def list_games(segment_id: int | None = Query(None), db: Session = Depends(get_db)):
+    stmt = select(ProgramGame).options(selectinload(ProgramGame.segment))
+    if segment_id is not None:
+        stmt = stmt.where(ProgramGame.segment_id == segment_id)
+    stmt = stmt.order_by(ProgramGame.sort_order.asc(), ProgramGame.id.asc())
+    return [_game_out(g) for g in db.scalars(stmt).all()]
+
+
+@router.post("/program/games", status_code=201)
+def create_game(payload: GameIn, db: Session = Depends(get_db)):
+    data = payload.model_dump()
+    if data.get("segment_id") is not None:
+        _get_or_404(db, ProgramSegment, data["segment_id"], "活動環節")
+    g = ProgramGame(**data)
+    db.add(g)
+    db.commit()
+    return _game_out(_game_load(db, g.id))
+
+
+@router.patch("/program/games/{game_id}")
+def update_game(game_id: int, payload: GamePatch, db: Session = Depends(get_db)):
+    g = _get_or_404(db, ProgramGame, game_id, "遊戲")
+    data = payload.model_dump(exclude_unset=True)
+    if data.pop("clear_segment", False):
+        g.segment_id = None
+        data.pop("segment_id", None)
+    if "segment_id" in data and data["segment_id"] is None:
+        data.pop("segment_id")
+    if data.get("segment_id") is not None:
+        _get_or_404(db, ProgramSegment, data["segment_id"], "活動環節")
+    for k, val in data.items():
+        setattr(g, k, val)
+    db.commit()
+    return _game_out(_game_load(db, game_id))
+
+
+@router.delete("/program/games/{game_id}", status_code=204)
+def delete_game(game_id: int, db: Session = Depends(get_db)):
+    g = _get_or_404(db, ProgramGame, game_id, "遊戲")
+    db.delete(g)
     db.commit()
     return None
 

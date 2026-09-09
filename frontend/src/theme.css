@@ -1071,3 +1071,15 @@ tbody tr:last-child td { border-bottom: none; }
   .prog-time { flex-basis: 56px; font-size: 17px; }
   .prog-actions { width: 100%; text-align: right; }
 }
+
+/* 活動環節：遊戲卡 */
+.game-list { display: flex; flex-direction: column; gap: 10px; }
+.game-card { border: 1px solid var(--border-soft); border-radius: 12px; background: var(--bg-card-subtle); padding: 12px 14px; }
+.game-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.game-meta { display: flex; gap: 6px; flex-wrap: wrap; }
+.game-head .row-actions { margin-left: auto; }
+.game-people { font-size: 12.5px; margin-top: 4px; }
+.game-detail { display: grid; grid-template-columns: 72px 1fr; gap: 6px 12px; margin: 10px 0 0; padding-top: 10px; border-top: 1px dashed var(--border-soft); font-size: 13px; }
+.game-detail dt { color: var(--text-muted); font-weight: 600; }
+.game-detail dd { margin: 0; white-space: pre-wrap; word-break: break-word; line-height: 1.7; }
+@media (max-width: 640px) { .game-detail { grid-template-columns: 1fr; gap: 2px; } .game-detail dd { margin-bottom: 6px; } }

@@ -3,6 +3,10 @@
 // 婚禮日期（倒數用）。改日期只要改這一行。
 export const WEDDING_DATE = "2027-03-13";
 export const WEDDING_START = `${WEDDING_DATE}T12:00:00+08:00`;
+// 2026-09-09 新人確認婚禮 12:00～15:00，共 3 小時（活動環節頁的時間下拉與合計對照用）
+export const WEDDING_TIME_FROM = "12:00";
+export const WEDDING_TIME_TO = "15:00";
+export const WEDDING_MINUTES = 180;
 export const WEDDING_DATE_DISPLAY = WEDDING_DATE.replaceAll('-', ' · ');
 export const VENDOR_CATEGORIES = [
   "婚宴場地", "婚紗攝影", "婚禮禮服租借", "新秘造型", "婚戒", "喜餅", "喜帖",

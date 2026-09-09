@@ -595,6 +595,51 @@ class IdeaPatch(BaseModel):
         return v
 
 
+class GameIn(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    rules: str = Field(default="", max_length=10000)
+    content: str = Field(default="", max_length=10000)
+    prize: str = Field(default="", max_length=2000)
+    host: str = Field(default="", max_length=100)
+    judge: str = Field(default="", max_length=100)
+    duration_min: int = Field(default=0, ge=0, le=1440)
+    props: str = Field(default="", max_length=5000)
+    segment_id: int | None = None
+    sort_order: int = 0
+
+    @field_validator("name", "rules", "content", "prize", "host", "judge", "props")
+    @classmethod
+    def _strip(cls, v: str, info) -> str:
+        v = v.strip()
+        if not v and info.field_name == "name":
+            raise ValueError("不可空白")
+        return v
+
+
+class GamePatch(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    rules: str | None = Field(default=None, max_length=10000)
+    content: str | None = Field(default=None, max_length=10000)
+    prize: str | None = Field(default=None, max_length=2000)
+    host: str | None = Field(default=None, max_length=100)
+    judge: str | None = Field(default=None, max_length=100)
+    duration_min: int | None = Field(default=None, ge=0, le=1440)
+    props: str | None = Field(default=None, max_length=5000)
+    segment_id: int | None = None
+    clear_segment: bool = False
+    sort_order: int | None = None
+
+    @field_validator("name", "rules", "content", "prize", "host", "judge", "props")
+    @classmethod
+    def _strip(cls, v: str | None, info) -> str | None:
+        if not isinstance(v, str):
+            return v
+        v = v.strip()
+        if not v and info.field_name == "name":
+            raise ValueError("不可空白")
+        return v
+
+
 class FilePatch(BaseModel):
     kind: FileKind | None = None
     is_public: bool | None = None

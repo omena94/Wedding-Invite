@@ -79,6 +79,32 @@ def test_ideas_link_and_unlink(client):
     assert client.delete(f"{I}/{i1['id']}").status_code == 204
 
 
+def test_games_fields_and_link(client):
+    G = "/api/planner/program/games"
+    seg = client.post(S, json={"title": "遊戲時間"}).json()
+    body = {"name": " 搶捧花 ", "rules": "音樂停就搶", "content": "未婚女性上台", "prize": "捧花一束＋禮券",
+            "host": "主持人", "judge": "伴娘", "duration_min": 10, "props": "捧花、音樂", "segment_id": seg["id"]}
+    r = client.post(G, json=body)
+    assert r.status_code == 201, r.text
+    g = r.json()
+    assert g["name"] == "搶捧花" and g["judge"] == "伴娘" and g["props"] == "捧花、音樂" and g["segment_title"] == "遊戲時間"
+    assert client.post(G, json={"name": " "}).status_code == 422
+    assert client.post(G, json={"name": "x", "segment_id": 999}).status_code == 404
+    assert client.get(S).json()[0]["game_count"] == 1
+    assert [x["id"] for x in client.get(G, params={"segment_id": seg["id"]}).json()] == [g["id"]]
+
+    r = client.patch(f"{G}/{g['id']}", json={"prize": "改成紅包", "segment_id": None})
+    assert r.json()["prize"] == "改成紅包" and r.json()["segment_id"] == seg["id"]
+    assert client.patch(f"{G}/{g['id']}", json={"clear_segment": True}).json()["segment_id"] is None
+    client.patch(f"{G}/{g['id']}", json={"segment_id": seg["id"]})
+    # 刪環節，遊戲留著只解除連結
+    assert client.delete(f"{S}/{seg['id']}").status_code == 204
+    games = client.get(G).json()
+    assert len(games) == 1 and games[0]["segment_id"] is None
+    assert client.delete(f"{G}/{g['id']}").status_code == 204
+    assert client.get(G, headers={"Authorization": "Bearer " + create_token(role="helper")}).status_code == 403
+
+
 def test_helper_forbidden(client):
     h = {"Authorization": "Bearer " + create_token(role="helper")}
     assert client.get(S, headers=h).status_code == 403

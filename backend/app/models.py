@@ -385,6 +385,31 @@ class ProgramIdea(Base):
     segment: Mapped["ProgramSegment | None"] = relationship()
 
 
+class ProgramGame(Base):
+    """婚禮遊戲：名稱、規則、內容、獎品、主持人、裁判、時長、道具；可指定在哪個環節玩（環節刪掉只解除連結）。"""
+    __tablename__ = "program_games"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(100))
+    rules: Mapped[str] = mapped_column(Text, default="")
+    content: Mapped[str] = mapped_column(Text, default="")
+    prize: Mapped[str] = mapped_column(Text, default="")
+    host: Mapped[str] = mapped_column(String(100), default="")
+    judge: Mapped[str] = mapped_column(String(100), default="")
+    duration_min: Mapped[int] = mapped_column(Integer, default=0)
+    props: Mapped[str] = mapped_column(Text, default="")
+    segment_id: Mapped[int | None] = mapped_column(
+        ForeignKey("program_segments.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    segment: Mapped["ProgramSegment | None"] = relationship()
+
+
 # 喜餅需求與出席分開：未填婚宴表單的親友也能送餅，且不影響餐點／座位。
 class GiftProduct(Base):
     __tablename__ = "gift_products"

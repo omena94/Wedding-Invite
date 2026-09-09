@@ -220,6 +220,10 @@ export const fetchIdeas = (params = {}) => {
 export const createIdea = (data) => request(`${P}/program/ideas`, { method: "POST", body: data, auth: true });
 export const updateIdea = (id, data) => request(`${P}/program/ideas/${id}`, { method: "PATCH", body: data, auth: true });
 export const deleteIdea = (id) => request(`${P}/program/ideas/${id}`, { method: "DELETE", auth: true });
+export const fetchGames = () => request(`${P}/program/games`, { auth: true });
+export const createGame = (data) => request(`${P}/program/games`, { method: "POST", body: data, auth: true });
+export const updateGame = (id, data) => request(`${P}/program/games/${id}`, { method: "PATCH", body: data, auth: true });
+export const deleteGame = (id) => request(`${P}/program/games/${id}`, { method: "DELETE", auth: true });
 
 // ===== 座位圖 =====
 const SE = `${P}/seating`;

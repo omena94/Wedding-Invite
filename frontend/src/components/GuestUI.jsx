@@ -36,7 +36,7 @@ export function useDraft(key,initial) {
   return [value,setValue,{restored,clear}];
 }
 // 婚宴時間（台灣 12:00–16:00，用 UTC 寫給 Google 日曆）
-const CAL_START='20270313T040000Z', CAL_END='20270313T080000Z', CAL_TITLE='宣文與孟庭的婚禮';
+const CAL_START='20270313T040000Z', CAL_END='20270313T070000Z', CAL_TITLE='宣文與孟庭的婚禮'; // 12:00～15:00 台北時間（2026-09-09 新人確認）
 const calLocation=()=>`${VENUE.name} ${VENUE.address}`;
 const calDetails=()=>`婚禮資訊、交通與座位查詢：${location.origin}/`;
 /** Google 日曆的「建立活動」連結：手機會直接開 Google 日曆 App，電腦開網頁，按儲存就加進去 */

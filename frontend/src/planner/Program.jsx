@@ -1,11 +1,12 @@
 // 活動環節（只在後台）：上半是婚禮當天的環節流程（可調順序、每個環節有細節紀錄），
 // 下半是點子庫（先把想法記下來，決定了再標採用、指到某個環節）。
 import { useMemo, useState } from "react";
-import { ArrowDown, ArrowUp, ChevronDown, Lightbulb, Pencil, Plus, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronDown, Gamepad2, Lightbulb, Pencil, Plus, Trash2 } from "lucide-react";
 import Select from "../components/Select.jsx";
 import {
-  createIdea, createSegment, deleteIdea, deleteSegment, fetchIdeas, fetchSegments, reorderSegments, updateIdea, updateSegment,
+  createGame, createIdea, createSegment, deleteGame, deleteIdea, deleteSegment, fetchGames, fetchIdeas, fetchSegments, reorderSegments, updateGame, updateIdea, updateSegment,
 } from "../api.js";
+import { WEDDING_MINUTES, WEDDING_TIME_FROM, WEDDING_TIME_TO } from "../constants.js";
 import { Empty, ErrorBox, Field, Loading, Modal, NumberInput, PageHead, confirmDelete, toastErr, toInt, useLoader } from "./ui.jsx";
 
 const SEG_STATUS = { draft: "規劃中", confirmed: "已確定" };
@@ -13,16 +14,19 @@ const IDEA_STATUS = { idea: "想法", adopted: "採用", dropped: "不採用" };
 const IDEA_PILL = { idea: "pill-groom", adopted: "pill-yes", dropped: "pill-no" };
 const toOptions = (map) => Object.entries(map).map(([value, label]) => ({ value, label }));
 
-// 時間選項：09:00～23:45 每 15 分鐘（不用原生 time 輸入）
+// 時間選項：婚禮時段 12:00～15:00 每 5 分鐘（不用原生 time 輸入）
+const toMin = (t) => { const [h, m] = t.split(":").map(Number); return h * 60 + m; };
 const TIME_OPTIONS = [{ value: "", label: "未定" }];
-for (let h = 9; h <= 23; h++) for (const m of [0, 15, 30, 45]) {
-  const v = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+for (let t = toMin(WEDDING_TIME_FROM); t <= toMin(WEDDING_TIME_TO); t += 5) {
+  const v = `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`;
   TIME_OPTIONS.push({ value: v, label: v });
 }
 
 export default function Program() {
   const { data: segments, loading, error, reload } = useLoader(fetchSegments, []);
   const { data: ideas, reload: reloadIdeas } = useLoader(() => fetchIdeas(), []);
+  const { data: games, reload: reloadGames } = useLoader(fetchGames, []);
+  const [gameOpen, setGameOpen] = useState({});
   const [open, setOpen] = useState({});
   const [ideaFilter, setIdeaFilter] = useState("all");
   const [modal, setModal] = useState(null); // { type: "segment"|"idea", item?, defaults? }
@@ -32,10 +36,20 @@ export default function Program() {
     (ideas || []).forEach((i) => { if (i.segment_id) (m[i.segment_id] ||= []).push(i); });
     return m;
   }, [ideas]);
+  const gamesBySegment = useMemo(() => {
+    const m = {};
+    (games || []).forEach((g) => { if (g.segment_id) (m[g.segment_id] ||= []).push(g); });
+    return m;
+  }, [games]);
   const ideaList = useMemo(() => (ideas || []).filter((i) => ideaFilter === "all" || i.status === ideaFilter), [ideas, ideaFilter]);
 
   const close = () => setModal(null);
-  const savedSegment = () => { close(); reload(); reloadIdeas(); };
+  const savedSegment = () => { close(); reload(); reloadIdeas(); reloadGames(); };
+  const savedGame = () => { close(); reloadGames(); reload(); };
+  const removeGame = async (g) => {
+    if (!(await confirmDelete(g.name))) return;
+    try { await deleteGame(g.id); reloadGames(); reload(); } catch (e) { toastErr(e); }
+  };
   const savedIdea = () => { close(); reloadIdeas(); reload(); };
 
   const move = async (idx, dir) => {
@@ -47,7 +61,7 @@ export default function Program() {
   };
   const removeSegment = async (s) => {
     if (!(await confirmDelete(s.title))) return;
-    try { await deleteSegment(s.id); reload(); reloadIdeas(); } catch (e) { toastErr(e); }
+    try { await deleteSegment(s.id); reload(); reloadIdeas(); reloadGames(); } catch (e) { toastErr(e); }
   };
   const removeIdea = async (i) => {
     if (!(await confirmDelete(i.content.slice(0, 30)))) return;
@@ -69,8 +83,8 @@ export default function Program() {
 
       <div className="panel">
         <div className="panel-title" style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap", gap: 8 }}>
-          <span>環節流程</span>
-          {total > 0 && <span className="muted-cell" style={{ fontSize: 12.5, fontWeight: 400 }}>已排 {segments.length} 個環節 · 合計約 {total} 分鐘</span>}
+          <span>環節流程 <span className="muted-cell" style={{ fontSize: 12.5, fontWeight: 400, letterSpacing: 0 }}>婚禮 {WEDDING_TIME_FROM}～{WEDDING_TIME_TO}，共 {WEDDING_MINUTES / 60} 小時</span></span>
+          {total > 0 && <span className="muted-cell" style={{ fontSize: 12.5, fontWeight: 400 }}>已排 {segments.length} 個環節 · 合計約 {total} 分鐘{total > WEDDING_MINUTES ? <span className="pill pill-no" style={{ marginLeft: 6 }}>超過 {total - WEDDING_MINUTES} 分鐘</span> : <span style={{ marginLeft: 4 }}>· 還剩 {WEDDING_MINUTES - total} 分鐘</span>}</span>}
         </div>
         {loading ? <Loading /> : error ? <ErrorBox error={error} /> : !segments || segments.length === 0 ? (
           <Empty>還沒有環節。先從進場、致詞、敬酒、遊戲、送客這些開始排，時間之後再填也可以</Empty>
@@ -79,6 +93,7 @@ export default function Program() {
             {segments.map((s, idx) => {
               const isOpen = !!open[s.id];
               const linked = ideasBySegment[s.id] || [];
+              const segGames = gamesBySegment[s.id] || [];
               return (
                 <li key={s.id} className={`prog-item${s.status === "confirmed" ? " confirmed" : ""}`}>
                   <div className="prog-time">{s.start_time || <span className="muted-cell">未定</span>}{s.duration_min > 0 && <small>{s.duration_min} 分</small>}</div>
@@ -87,12 +102,18 @@ export default function Program() {
                       <ChevronDown size={14} style={{ transition: "transform .2s", transform: isOpen ? "rotate(180deg)" : "none" }} />
                       <strong>{s.title}</strong>
                       <span className={`pill ${s.status === "confirmed" ? "pill-yes" : "pill-warn"}`} style={{ marginLeft: 6 }}>{SEG_STATUS[s.status]}</span>
+                      {segGames.length > 0 && <span className="muted-cell" style={{ marginLeft: 6, fontSize: 12 }}>{segGames.length} 個遊戲</span>}
                       {linked.length > 0 && <span className="muted-cell" style={{ marginLeft: 6, fontSize: 12 }}>{linked.length} 個點子</span>}
                     </button>
                     {s.host && <div className="muted-cell" style={{ fontSize: 12.5, marginTop: 2 }}>負責：{s.host}</div>}
                     {isOpen && (
                       <div className="prog-detail">
                         {s.note ? <div className="prog-note">{s.note}</div> : <div className="muted-cell" style={{ fontSize: 12.5 }}>還沒有細節紀錄，按編輯把流程、道具、要注意的事寫進來</div>}
+                        {segGames.length > 0 && (
+                          <div className="prog-ideas">
+                            {segGames.map((g) => <div key={g.id} className="prog-idea"><span className="pill pill-bride">遊戲</span><span>{g.name}{g.duration_min > 0 && <span className="muted-cell"> · {g.duration_min} 分</span>}{g.host && <span className="muted-cell"> · 主持 {g.host}</span>}</span></div>)}
+                          </div>
+                        )}
                         {linked.length > 0 && (
                           <div className="prog-ideas">
                             {linked.map((i) => <div key={i.id} className="prog-idea"><span className={`pill ${IDEA_PILL[i.status]}`}>{IDEA_STATUS[i.status]}</span><span>{i.content}</span></div>)}
@@ -112,6 +133,51 @@ export default function Program() {
               );
             })}
           </ol>
+        )}
+      </div>
+
+      <div className="panel">
+        <div className="panel-title" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+          <span>遊戲</span>
+          <button className="btn btn-ghost btn-sm" onClick={() => setModal({ type: "game" })}><Gamepad2 size={13} /> 新增遊戲</button>
+        </div>
+        {!games ? <Loading /> : games.length === 0 ? (
+          <Empty>還沒有遊戲。把名稱、規則、內容、獎品、主持人、裁判、時長、道具記下來，之後指定在哪個環節玩</Empty>
+        ) : (
+          <div className="game-list">
+            {games.map((g) => {
+              const isOpen = !!gameOpen[g.id];
+              return (
+                <div key={g.id} className="game-card">
+                  <div className="game-head">
+                    <button className="pl-linkbtn" onClick={() => setGameOpen((o) => ({ ...o, [g.id]: !isOpen }))} aria-expanded={isOpen}>
+                      <ChevronDown size={14} style={{ transition: "transform .2s", transform: isOpen ? "rotate(180deg)" : "none" }} />
+                      <strong>{g.name}</strong>
+                    </button>
+                    <div className="game-meta">
+                      {g.duration_min > 0 && <span className="pill pill-groom">{g.duration_min} 分鐘</span>}
+                      {g.segment_title ? <span className="pill pill-groom">環節 · {g.segment_title}</span> : <span className="pill pill-warn">還沒排進環節</span>}
+                    </div>
+                    <div className="row-actions">
+                      <button className="btn btn-ghost btn-sm" title="編輯" onClick={() => setModal({ type: "game", item: g })}><Pencil size={13} /></button>{" "}
+                      <button className="btn btn-ghost btn-sm" title="刪除" onClick={() => removeGame(g)}><Trash2 size={13} /></button>
+                    </div>
+                  </div>
+                  <div className="game-people muted-cell">
+                    主持人：{g.host || "未定"} · 裁判：{g.judge || "未定"}
+                  </div>
+                  {isOpen && (
+                    <dl className="game-detail">
+                      <dt>規則</dt><dd>{g.rules || <span className="muted-cell">未填</span>}</dd>
+                      <dt>遊戲內容</dt><dd>{g.content || <span className="muted-cell">未填</span>}</dd>
+                      <dt>獎品</dt><dd>{g.prize || <span className="muted-cell">未填</span>}</dd>
+                      <dt>道具</dt><dd>{g.props || <span className="muted-cell">未填</span>}</dd>
+                    </dl>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         )}
       </div>
 
@@ -142,6 +208,7 @@ export default function Program() {
       </div>
 
       {modal?.type === "segment" && <SegmentModal initial={modal.item} onClose={close} onSaved={savedSegment} />}
+      {modal?.type === "game" && <GameModal initial={modal.item} segments={segments || []} onClose={close} onSaved={savedGame} />}
       {modal?.type === "idea" && <IdeaModal initial={modal.item} defaults={modal.defaults} segments={segments || []} onClose={close} onSaved={savedIdea} />}
     </div>
   );
@@ -181,6 +248,47 @@ function SegmentModal({ initial, onClose, onSaved }) {
         <Field label="狀態"><Select value={f.status} onChange={(v) => set("status", v)} options={toOptions(SEG_STATUS)} aria-label="狀態" /></Field>
       </div>
       <Field label="細節紀錄" hint="流程怎麼走、要準備的道具與音樂、要提醒誰…想到就記"><textarea rows={5} value={f.note} onChange={(e) => set("note", e.target.value)} /></Field>
+    </Modal>
+  );
+}
+
+function GameModal({ initial, segments, onClose, onSaved }) {
+  const isNew = !initial?.id;
+  const [f, setF] = useState({
+    name: "", rules: "", content: "", prize: "", host: "", judge: "", duration_min: 0, props: "",
+    ...(initial || {}),
+    segment_id: initial?.segment_id ? String(initial.segment_id) : "",
+  });
+  const [busy, setBusy] = useState(false);
+  const set = (k, v) => setF((x) => ({ ...x, [k]: v }));
+  const save = async () => {
+    if (!f.name.trim()) return toastErr(new Error("請填遊戲名稱"));
+    setBusy(true);
+    try {
+      const body = { name: f.name.trim(), rules: f.rules, content: f.content, prize: f.prize, host: f.host, judge: f.judge, duration_min: toInt(f.duration_min), props: f.props };
+      if (f.segment_id) body.segment_id = parseInt(f.segment_id, 10); else if (!isNew) body.clear_segment = true;
+      onSaved(isNew ? await createGame(body) : await updateGame(initial.id, body));
+    } catch (e) { toastErr(e); } finally { setBusy(false); }
+  };
+  return (
+    <Modal title={isNew ? "新增遊戲" : "編輯遊戲"} onClose={onClose} wide footer={<Footer onClose={onClose} onSave={save} busy={busy} />}>
+      <div className="form-group grid-2">
+        <Field label="名稱" required><input type="text" value={f.name} onChange={(e) => set("name", e.target.value)} autoFocus placeholder="例如：搶捧花、新人問答" /></Field>
+        <Field label="時長（分鐘）" hint="填 0 表示未定"><NumberInput value={f.duration_min} onChange={(v) => set("duration_min", v)} /></Field>
+      </div>
+      <Field label="規則"><textarea rows={3} value={f.rules} onChange={(e) => set("rules", e.target.value)} placeholder="怎麼玩、怎麼算贏" /></Field>
+      <Field label="遊戲內容"><textarea rows={3} value={f.content} onChange={(e) => set("content", e.target.value)} placeholder="流程、題目、要請誰上台…" /></Field>
+      <div className="form-group grid-2">
+        <Field label="主持人"><input type="text" value={f.host} onChange={(e) => set("host", e.target.value)} /></Field>
+        <Field label="裁判"><input type="text" value={f.judge} onChange={(e) => set("judge", e.target.value)} /></Field>
+      </div>
+      <div className="form-group grid-2">
+        <Field label="獎品"><textarea rows={2} value={f.prize} onChange={(e) => set("prize", e.target.value)} /></Field>
+        <Field label="道具"><textarea rows={2} value={f.props} onChange={(e) => set("props", e.target.value)} placeholder="要準備的東西，一行一項" /></Field>
+      </div>
+      <Field label="在哪個環節玩" hint="還沒決定可以先不選">
+        <Select value={f.segment_id || ""} onChange={(v) => set("segment_id", v)} options={[{ value: "", label: "先不指定" }, ...segments.map((s) => ({ value: String(s.id), label: s.title }))]} aria-label="在哪個環節玩" />
+      </Field>
     </Modal>
   );
 }
