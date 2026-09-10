@@ -47,7 +47,7 @@ export default function Seating() {
   const togglePick = (person) => setPicked((list) => (list.some((x) => pkey(x) === pkey(person)) ? list.filter((x) => pkey(x) !== pkey(person)) : [...list, { rsvp_id: person.rsvp_id, person_no: person.person_no, name: person.name }]));
   const dropPick = (person) => setPicked((list) => list.filter((x) => pkey(x) !== pkey(person)));
   const lastSeatClick = useRef(null); // 上一次點的是哪張有人的椅子：連續點同一張兩次 = 取消那個座位安排（2026-09-10 新人要求）
-  const [showNames, setShowNames] = useState(true);
+  const [showNames, setShowNames] = useState(false); // 2026-09-10 新人要求：平時不顯示名字，點到哪桌才顯示那桌的；勾這個才全部顯示
   const [grid, setGrid] = useState(true);
   const [onlyUnassigned, setOnlyUnassigned] = useState(false);
   const [search, setSearch] = useState("");
@@ -597,6 +597,8 @@ export default function Seating() {
     }));
     return set;
   }, [objects, search]);
+  // 搜尋有打字時，符合的人所在的那幾桌也把名字亮出來，不然只有選到的桌子看得到名字
+  const searchTables = useMemo(() => new Set([...searchSeats].map((k) => +k.split(":")[0])), [searchSeats]);
   const highlightSeats = useMemo(() => {
     const set = new Set(searchSeats);
     if (seatSel) set.add(`${seatSel.object_id}:${seatSel.seat_index}`);
@@ -680,7 +682,7 @@ export default function Seating() {
           <button className="btn btn-ghost btn-sm" onClick={fitAll}><Maximize2 size={14} /> 全部</button>
           <span className="sep" />
           <Checkbox checked={grid} onChange={setGrid}><Grid3x3 size={13} style={{ verticalAlign: -2 }} /> 對齊格線</Checkbox>
-          <Checkbox checked={showNames} onChange={setShowNames}><Tag size={13} style={{ verticalAlign: -2 }} /> 顯示名字</Checkbox>
+          <Checkbox checked={showNames} onChange={setShowNames}><Tag size={13} style={{ verticalAlign: -2 }} /> 顯示全部名字</Checkbox>
           {hall?.has_bg && <Checkbox checked={showBg} onChange={setShowBg}><ImageIcon size={13} style={{ verticalAlign: -2 }} /> 顯示底圖</Checkbox>}
           <span className="sep" />
           <button className="btn btn-ghost btn-sm" onClick={clearEverything}><Eraser size={14} /> 清空座位</button>
@@ -706,7 +708,7 @@ export default function Seating() {
               {grid && <rect x="0" y="0" width={layout.canvas.w} height={layout.canvas.h} fill="url(#se-grid)" style={{ pointerEvents: "none" }} />}
               {objects.map((o) => (
                 <g key={o.id} onPointerDown={(e) => onObjPointerDown(e, o)} style={{ cursor: readonly ? "default" : "move" }}>
-                  <ObjectShape o={o} selected={selected.has(o.id)} showNames={showNames} interactive labelPlan={labelPlan}
+                  <ObjectShape o={o} selected={selected.has(o.id)} showNames={showNames || selected.has(o.id) || searchTables.has(o.id)} interactive labelPlan={labelPlan}
                     highlightSeats={highlightSeats}
                     onSeatPointerDown={onSeatPointerDown} onSeatPointerUp={onSeatPointerUp} />
                 </g>
