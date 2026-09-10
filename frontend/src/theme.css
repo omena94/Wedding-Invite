@@ -1031,10 +1031,56 @@ tbody tr:last-child td { border-bottom: none; }
 .photo-notice strong { display: block; margin-bottom: 4px; }
 .photo-notice p { margin: 0; }
 
-/* 備忘（備忘頁、籌備進度、花費共用）：一條一條像便條，勾了會淡掉 */
+/* 行事曆（2026-09-10）：月曆格子 + 右側「還沒排日期」；手機改列表 */
+.cal-layout { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 16px; align-items: start; }
+.cal-main { min-width: 0; }
+.cal-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+.cal-nav { display: flex; align-items: center; gap: 4px; }
+.cal-month { font-family: "Noto Serif TC", serif; font-size: 16px; font-weight: 600; color: var(--milk-tea-900); letter-spacing: 1px; min-width: 120px; text-align: center; }
+.cal-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); border-left: 1px solid var(--border-soft); border-top: 1px solid var(--border-soft); border-radius: 12px; overflow: hidden; }
+.cal-weekday { padding: 6px 0; text-align: center; font-size: 12px; color: var(--text-muted); background: var(--milk-tea-50); border-right: 1px solid var(--border-soft); border-bottom: 1px solid var(--border-soft); }
+.cal-cell { min-height: 96px; padding: 4px; border-right: 1px solid var(--border-soft); border-bottom: 1px solid var(--border-soft); cursor: pointer; background: var(--bg-card); transition: background 0.15s; }
+.cal-cell:hover { background: var(--milk-tea-50); }
+.cal-cell.out { background: var(--bg-card-subtle); }
+.cal-cell.out .cal-day { color: var(--milk-tea-300); }
+.cal-day { font-size: 12.5px; font-weight: 600; color: var(--milk-tea-700); padding: 2px 4px; }
+.cal-cell.today .cal-day { display: inline-block; background: var(--milk-tea-700); color: #fff; border-radius: 999px; min-width: 22px; text-align: center; }
+.cal-evs { display: flex; flex-direction: column; gap: 3px; }
+.cal-ev { display: flex; gap: 4px; align-items: baseline; width: 100%; border: none; border-radius: 6px; padding: 2px 6px; font: inherit; font-size: 12px; line-height: 1.4; text-align: left; cursor: pointer; overflow: hidden; }
+.cal-ev:hover { filter: brightness(0.95); }
+.cal-ev.done { opacity: 0.5; text-decoration: line-through; }
+.cal-ev-time { font-size: 11px; opacity: 0.8; flex: none; margin-right: 4px; }
+.cal-ev-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cal-more { font-size: 11px; color: var(--text-muted); padding-left: 6px; }
+.cal-side { position: sticky; top: 16px; }
+.cal-undated-list { list-style: none; display: flex; flex-direction: column; }
+.cal-undated { display: flex; flex-direction: column; gap: 6px; padding: 10px 0; border-bottom: 1px solid var(--milk-tea-100); }
+.cal-undated:last-child { border-bottom: none; }
+.cal-undated.done { opacity: 0.55; }
+.cal-undated-head { display: flex; align-items: center; gap: 8px; }
+.cal-undated-title { flex: 1; min-width: 0; font-size: 14px; font-weight: 600; color: var(--milk-tea-900); word-break: break-word; }
+.cal-undated.done .cal-undated-title { text-decoration: line-through; }
+.cal-undated .pl-date-inline { margin-left: 30px; }
+.cal-list { display: flex; flex-direction: column; gap: 10px; }
+.cal-list-day { border: 1px solid var(--border-soft); border-radius: 12px; padding: 8px 10px; }
+.cal-list-day.today { border-color: var(--milk-tea-500); }
+.cal-list-date { font-weight: 600; font-size: 13px; color: var(--milk-tea-900); margin-bottom: 4px; }
+.cal-list-item { display: flex; align-items: flex-start; gap: 8px; padding: 6px 0; border-top: 1px dashed var(--border-soft); }
+.cal-list-item.done { opacity: 0.55; }
+.cal-list-body { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 3px; border: none; background: none; padding: 0; font: inherit; text-align: left; cursor: pointer; color: var(--milk-tea-900); }
+.cal-list-title { font-size: 14px; }
+.cal-list-item.done .cal-list-title { text-decoration: line-through; }
+.topic-tag { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; line-height: 1.5; vertical-align: middle; }
+.topic-tag.small { font-size: 11px; padding: 1px 7px; }
+@media (max-width: 900px) { .cal-layout { grid-template-columns: 1fr; } .cal-side { position: static; } }
+
+/* 筆記（原備忘）：一則一則像便條，勾了會淡掉，釘選的有邊框 */
 .memo-list { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
 .memo-row { display: flex; align-items: flex-start; gap: 8px; padding: 7px 10px; border: 1px solid var(--border-soft); border-radius: 10px; background: var(--bg-card-subtle); font-size: 13px; }
 .memo-row.done { opacity: 0.6; }
+.memo-row.pinned { border-color: var(--milk-tea-500); }
+.memo-pin { vertical-align: -1px; margin-right: 4px; color: var(--milk-tea-700); }
+.memo-row .memo-add { margin-top: 0; }
 .memo-row .ui-check { margin-top: 1px; }
 .memo-body { flex: 1; min-width: 0; }
 .memo-q { color: var(--milk-tea-900); white-space: pre-wrap; word-break: break-word; }

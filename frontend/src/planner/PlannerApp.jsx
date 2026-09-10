@@ -2,8 +2,8 @@
 import { useState } from "react";
 import { BrowserRouter, NavLink, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import {
-  LayoutDashboard, Users, Wallet, ListChecks, FolderOpen,
-  Settings as SettingsIcon, LogOut, Lock, LogIn, Home as HomeIcon, Armchair, Images, Gift, StickyNote, PartyPopper,
+  LayoutDashboard, Users, Wallet, CalendarDays, FolderOpen,
+  Settings as SettingsIcon, LogOut, Lock, LogIn, Home as HomeIcon, Armchair, Images, Gift, NotebookPen, PartyPopper,
 } from "lucide-react";
 import { adminLogin, clearToken, getRole, getToken, setRole, setToken } from "../api.js";
 import Dashboard from "./Dashboard.jsx";
@@ -28,8 +28,8 @@ const NAV = [
   { to: "/seating", label: "座位圖", icon: Armchair, helper: true },
   { to: "/gifts", label: "喜餅", icon: Gift, helper: true }, // 幫手：看名單、勾已領取
   { to: "/budget", label: "花費", icon: Wallet }, // 2026-09-08 依新人要求移除「預算」概念，只記實際金額
-  { to: "/timeline", label: "籌備進度", icon: ListChecks },
-  { to: "/memos", label: "備忘", icon: StickyNote }, // 2026-09-09 要問飯店／廠商的事，依主題記，可勾已確認
+  { to: "/timeline", label: "行事曆", icon: CalendarDays }, // 2026-09-10 原「籌備進度」改為月曆
+  { to: "/memos", label: "筆記", icon: NotebookPen }, // 2026-09-10 原「備忘」改為筆記：標題、內容、主題、已處理、釘選
   { to: "/program", label: "活動環節", icon: PartyPopper }, // 2026-09-09 婚禮當天流程與點子，只在後台
   { to: "/files", label: "文件庫", icon: FolderOpen },
   { to: "/photos", label: "照片", icon: Images },

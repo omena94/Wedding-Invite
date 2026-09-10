@@ -1,6 +1,6 @@
 """Pydantic 資料驗證模型（API 進出格式）。"""
 from datetime import date, datetime
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from .contacts import normalize_phone
@@ -473,60 +473,68 @@ class PaymentPatch(BaseModel):
     sort_order: int | None = None
 
 
+DueTime = Annotated[str, Field(pattern=r"^([01]\d|2[0-3]):[0-5]\d$|^$")]  # HH:MM 或空白
+
+
 class TaskIn(BaseModel):
+    """行事曆的一件事。kind / assignee / vendor_id 是舊欄位，前端已不送。"""
     title: str = Field(min_length=1, max_length=200)
-    kind: TaskKind = "task"
+    topic: str = Field(default="", max_length=50)
     due_date: date | None = None
+    due_time: DueTime = ""
     done: bool = False
-    assignee: Assignee = "both"
-    vendor_id: int | None = None
     note: str = Field(default="", max_length=5000)
     sort_order: int = 0
+    kind: TaskKind = "task"
+    assignee: Assignee = "both"
+    vendor_id: int | None = None
 
 
 class TaskPatch(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=200)
-    kind: TaskKind | None = None
+    topic: str | None = Field(default=None, max_length=50)
     due_date: date | None = None
     clear_due_date: bool = False
+    due_time: DueTime | None = None
     done: bool | None = None
+    note: str | None = Field(default=None, max_length=5000)
+    sort_order: int | None = None
+    kind: TaskKind | None = None
     assignee: Assignee | None = None
     vendor_id: int | None = None
     clear_vendor: bool = False
-    note: str | None = Field(default=None, max_length=5000)
-    sort_order: int | None = None
 
 
 class MemoIn(BaseModel):
+    """筆記（2026-09-10 起）：標題、內容、主題、已處理、釘選。資料表欄位仍叫 question / answer / confirmed。"""
     topic: str = Field(default="其他", min_length=1, max_length=50)
-    question: str = Field(min_length=1, max_length=2000)
-    answer: str = Field(default="", max_length=5000)
-    confirmed: bool = False
-    task_id: int | None = None
-    expense_id: int | None = None
+    title: str = Field(min_length=1, max_length=2000)
+    content: str = Field(default="", max_length=5000)
+    done: bool = False
+    pinned: bool = False
+    task_id: int | None = None  # 排進行事曆後對應的那一筆
     sort_order: int = 0
 
-    @field_validator("topic", "question", "answer")
+    @field_validator("topic", "title", "content")
     @classmethod
     def _strip(cls, v: str, info) -> str:
         v = v.strip()
-        if not v and info.field_name != "answer":  # 長度限制在去空白前檢查，這裡再擋「只有空格」
+        if not v and info.field_name != "content":  # 長度限制在去空白前檢查，這裡再擋「只有空格」
             raise ValueError("不可空白")
         return v
 
 
 class MemoPatch(BaseModel):
     topic: str | None = Field(default=None, min_length=1, max_length=50)
-    question: str | None = Field(default=None, min_length=1, max_length=2000)
-    answer: str | None = Field(default=None, max_length=5000)
-    confirmed: bool | None = None
+    title: str | None = Field(default=None, min_length=1, max_length=2000)
+    content: str | None = Field(default=None, max_length=5000)
+    done: bool | None = None
+    pinned: bool | None = None
     task_id: int | None = None
     clear_task: bool = False
-    expense_id: int | None = None
-    clear_expense: bool = False
     sort_order: int | None = None
 
-    @field_validator("topic", "question", "answer")
+    @field_validator("topic", "title", "content")
     @classmethod
     def _strip(cls, v: str | None, info) -> str | None:
         if not isinstance(v, str):

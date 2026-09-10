@@ -25,7 +25,6 @@ export const PAID_BY = { groom: "新郎", bride: "新娘", shared: "共同", fam
 export const ASSIGNEE = { groom: "新郎", bride: "新娘", both: "兩人" };
 export const PAY_METHODS = ["ATM", "現金", "信用卡", "LINE Pay", "其他"];
 export const FILE_KIND = { doc: "文件", receipt: "收據", photo: "照片" };
-export const TASK_KIND = { task: "待辦", milestone: "里程碑" };
 
 export const toOptions = (obj) => Object.entries(obj).map(([value, label]) => ({ value, label }));
 export const listOptions = (arr) => arr.map((v) => ({ value: v, label: v }));

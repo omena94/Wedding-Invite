@@ -323,13 +323,16 @@ class SeatAssignment(Base):
 
 
 class Task(Base):
-    """待辦與里程碑。"""
+    """行事曆上的一件事（2026-09-10 起「籌備進度」改為行事曆：只有標題、日期、時間、主題、備註、完成）。
+    kind / assignee / vendor_id 是舊欄位，畫面已不用，保留只為了舊資料。"""
     __tablename__ = "tasks"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     title: Mapped[str] = mapped_column(String(200))
-    kind: Mapped[str] = mapped_column(String(20), default="task")  # task 待辦 / milestone 里程碑
+    kind: Mapped[str] = mapped_column(String(20), default="task")  # 舊欄位：task / milestone，已不顯示
+    topic: Mapped[str] = mapped_column(String(50), default="")     # 主題（婚紗攝影、喜餅…），跟筆記共用，決定月曆上的顏色
     due_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    due_time: Mapped[str] = mapped_column(String(5), default="")   # HH:MM，空 = 整天
     done: Mapped[bool] = mapped_column(Boolean, default=False)
     assignee: Mapped[str] = mapped_column(String(20), default="both")  # groom / bride / both
     vendor_id: Mapped[int | None] = mapped_column(
@@ -355,7 +358,9 @@ class Memo(Base):
     topic: Mapped[str] = mapped_column(String(50), default="其他")  # 飯店 / 婚紗 / 喜餅…自由輸入
     question: Mapped[str] = mapped_column(Text)
     answer: Mapped[str] = mapped_column(Text, default="")
-    confirmed: Mapped[bool] = mapped_column(Boolean, default=False)
+    confirmed: Mapped[bool] = mapped_column(Boolean, default=False)  # 2026-09-10 起意思是「已處理」
+    pinned: Mapped[bool] = mapped_column(Boolean, default=False)     # 釘選：排在最上面
+    # task_id：這則筆記「排進行事曆」後對應的那一筆；expense_id 是舊功能（掛在花費底下），已不用
     task_id: Mapped[int | None] = mapped_column(
         ForeignKey("tasks.id", ondelete="SET NULL"), nullable=True, index=True
     )

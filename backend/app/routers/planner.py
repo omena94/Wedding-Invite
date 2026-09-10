@@ -143,6 +143,8 @@ def _task_out(t: Task) -> dict:
         "id": t.id,
         "title": t.title,
         "kind": t.kind,
+        "topic": t.topic or "",
+        "due_time": t.due_time or "",
         "due_date": t.due_date.isoformat() if t.due_date else None,
         "done": t.done,
         "assignee": t.assignee,
@@ -730,8 +732,22 @@ def list_tasks(status: str = Query("all"), db: Session = Depends(get_db)):
         stmt = stmt.where(Task.done.is_(False))
     elif status == "done":
         stmt = stmt.where(Task.done.is_(True))
-    stmt = stmt.order_by(Task.due_date.asc().nulls_last(), Task.sort_order.asc(), Task.id.asc())
+    stmt = stmt.order_by(Task.due_date.asc().nulls_last(), Task.due_time.asc(), Task.sort_order.asc(), Task.id.asc())
     return [_task_out(t) for t in db.scalars(stmt).all()]
+
+
+# 行事曆與筆記共用的主題（2026-09-10）。內建六個，新人自訂的會跟著出現，沒人用了就自動消失
+DEFAULT_TOPICS = ["婚紗攝影", "禮服", "喜餅", "婚宴", "喜帖與小物", "其他"]
+
+
+@router.get("/topics")
+def list_topics(db: Session = Depends(get_db)):
+    used = [t for (t,) in db.execute(select(Memo.topic).distinct()).all()] + [t for (t,) in db.execute(select(Task.topic).distinct()).all()]
+    out = list(DEFAULT_TOPICS)
+    for t in used:
+        if t and t not in out:
+            out.append(t)
+    return out
 
 
 @router.post("/tasks", status_code=201)
@@ -777,19 +793,23 @@ def delete_task(task_id: int, db: Session = Depends(get_db)):
 
 
 # ---------------------------------------------------------------------
-# 備忘（要問飯店／廠商的事；可掛在待辦或花費底下）
+# 筆記（2026-09-10 起；原「備忘」）。資料表欄位 question / answer / confirmed 對外叫 title / content / done
 # ---------------------------------------------------------------------
+MEMO_FIELD = {"title": "question", "content": "answer", "done": "confirmed"}
+
+
 def _memo_out(m: Memo) -> dict:
     return {
         "id": m.id,
         "topic": m.topic,
-        "question": m.question,
-        "answer": m.answer,
-        "confirmed": m.confirmed,
+        "title": m.question,
+        "content": m.answer,
+        "done": m.confirmed,
+        "pinned": bool(m.pinned),
         "task_id": m.task_id,
         "task_title": m.task.title if m.task else "",
-        "expense_id": m.expense_id,
-        "expense_title": m.expense.title if m.expense else "",
+        "task_due_date": m.task.due_date.isoformat() if m.task and m.task.due_date else None,
+        "task_done": bool(m.task.done) if m.task else False,
         "sort_order": m.sort_order,
         "created_at": m.created_at.isoformat() if m.created_at else None,
         "updated_at": m.updated_at.isoformat() if m.updated_at else None,
@@ -797,16 +817,17 @@ def _memo_out(m: Memo) -> dict:
 
 
 def _memo_load(db: Session, memo_id: int) -> Memo:
-    return db.scalars(
-        select(Memo).options(selectinload(Memo.task), selectinload(Memo.expense)).where(Memo.id == memo_id)
-    ).one()
+    return db.scalars(select(Memo).options(selectinload(Memo.task)).where(Memo.id == memo_id)).one()
 
 
 def _memo_check_links(db: Session, data: dict) -> None:
     if data.get("task_id") is not None:
-        _get_or_404(db, Task, data["task_id"], "待辦")
-    if data.get("expense_id") is not None:
-        _get_or_404(db, Expense, data["expense_id"], "花費")
+        _get_or_404(db, Task, data["task_id"], "行事曆")
+
+
+def _memo_columns(data: dict) -> dict:
+    """API 的 title / content / done 換成資料表欄位名。"""
+    return {MEMO_FIELD.get(k, k): v for k, v in data.items()}
 
 
 @router.get("/memos")
@@ -814,10 +835,9 @@ def list_memos(
     status: str = Query("all"),
     topic: str | None = Query(None),
     task_id: int | None = Query(None),
-    expense_id: int | None = Query(None),
     db: Session = Depends(get_db),
 ):
-    stmt = select(Memo).options(selectinload(Memo.task), selectinload(Memo.expense))
+    stmt = select(Memo).options(selectinload(Memo.task))
     if status == "open":
         stmt = stmt.where(Memo.confirmed.is_(False))
     elif status == "done":
@@ -826,10 +846,8 @@ def list_memos(
         stmt = stmt.where(Memo.topic == topic)
     if task_id is not None:
         stmt = stmt.where(Memo.task_id == task_id)
-    if expense_id is not None:
-        stmt = stmt.where(Memo.expense_id == expense_id)
-    # 未確認的排前面，其餘照建立順序；主題分組交給前端
-    stmt = stmt.order_by(Memo.confirmed.asc(), Memo.sort_order.asc(), Memo.id.asc())
+    # 釘選的最前面，再來未處理的，其餘照建立順序；主題分組交給前端
+    stmt = stmt.order_by(Memo.pinned.desc(), Memo.confirmed.asc(), Memo.sort_order.asc(), Memo.id.asc())
     return [_memo_out(m) for m in db.scalars(stmt).all()]
 
 
@@ -837,7 +855,7 @@ def list_memos(
 def create_memo(payload: MemoIn, db: Session = Depends(get_db)):
     data = payload.model_dump()
     _memo_check_links(db, data)
-    m = Memo(**data)
+    m = Memo(**_memo_columns(data))
     db.add(m)
     db.commit()
     return _memo_out(_memo_load(db, m.id))
@@ -845,20 +863,16 @@ def create_memo(payload: MemoIn, db: Session = Depends(get_db)):
 
 @router.patch("/memos/{memo_id}")
 def update_memo(memo_id: int, payload: MemoPatch, db: Session = Depends(get_db)):
-    m = _get_or_404(db, Memo, memo_id, "備忘")
+    m = _get_or_404(db, Memo, memo_id, "筆記")
     data = payload.model_dump(exclude_unset=True)
     if data.pop("clear_task", False):
         m.task_id = None
         data.pop("task_id", None)
-    if data.pop("clear_expense", False):
-        m.expense_id = None
-        data.pop("expense_id", None)
-    # 沒帶或帶 null 的連結欄位一律不動，要解除請用 clear_*
-    for key in ("task_id", "expense_id"):
-        if key in data and data[key] is None:
-            data.pop(key)
+    # 沒帶或帶 null 的連結欄位一律不動，要解除請用 clear_task
+    if "task_id" in data and data["task_id"] is None:
+        data.pop("task_id")
     _memo_check_links(db, data)
-    for k, val in data.items():
+    for k, val in _memo_columns(data).items():
         setattr(m, k, val)
     db.commit()
     return _memo_out(_memo_load(db, memo_id))
@@ -866,7 +880,7 @@ def update_memo(memo_id: int, payload: MemoPatch, db: Session = Depends(get_db))
 
 @router.delete("/memos/{memo_id}", status_code=204)
 def delete_memo(memo_id: int, db: Session = Depends(get_db)):
-    m = _get_or_404(db, Memo, memo_id, "備忘")
+    m = _get_or_404(db, Memo, memo_id, "筆記")
     db.delete(m)
     db.commit()
     return None

@@ -4,11 +4,11 @@ import { Upload } from "lucide-react";
 import Select from "../components/Select.jsx";
 import DatePicker from "../components/DatePicker.jsx";
 import {
-  createExpense, createPayment, createTask, fetchExpenses,
-  updateExpense, updateFile, updatePayment, updateTask, uploadFile,
+  createExpense, createPayment, fetchExpenses,
+  updateExpense, updateFile, updatePayment, uploadFile,
 } from "../api.js";
 import {
-  FILE_KIND, PAID_BY, PAY_METHODS, TASK_KIND,
+  FILE_KIND, PAID_BY, PAY_METHODS,
   fmtSize, listOptions, money, toOptions, todayISO,
 } from "../constants.js";
 import { useCategories } from "./categories.js";
@@ -123,48 +123,6 @@ export function PaymentModal({ expenseId, expenseTitle, initial, onClose, onSave
         <Field label="誰付的"><Select value={f.payer} onChange={(v) => set("payer", v)} options={[{ value: "", label: "（未填）" }, ...toOptions(PAID_BY)]} /></Field>
       </div>
       <Field label="備註"><input type="text" value={f.note} onChange={(e) => set("note", e.target.value)} placeholder="匯款後五碼、發票…" /></Field>
-    </Modal>
-  );
-}
-
-/* ---------- 待辦 / 里程碑 ---------- */
-export function TaskModal({ initial, onClose, onSaved }) {
-  const isNew = !initial?.id;
-  const [f, setF] = useState({
-    title: "", kind: "task", done: false, assignee: "both", note: "", sort_order: 0,
-    ...(initial || {}),
-    due_date: initial?.due_date || "",
-  });
-  const [busy, setBusy] = useState(false);
-  const set = (k, v) => setF((x) => ({ ...x, [k]: v }));
-  const save = async () => {
-    if (!f.title.trim()) return toastErr(new Error("請填待辦內容"));
-    setBusy(true);
-    try {
-      const body = { title: f.title.trim(), kind: f.kind, done: !!f.done, assignee: f.assignee, note: f.note, sort_order: toInt(f.sort_order) };
-      if (f.due_date) body.due_date = f.due_date; else if (!isNew) body.clear_due_date = true;
-      const saved = isNew ? await createTask(body) : await updateTask(initial.id, body);
-      onSaved(saved);
-    } catch (e) {
-      toastErr(e);
-    } finally {
-      setBusy(false);
-    }
-  };
-  return (
-    <Modal title={isNew ? "新增待辦" : "編輯待辦"} onClose={onClose} wide
-      footer={<Footer onClose={onClose} onSave={save} busy={busy} />}>
-      <Field label="內容" required><input type="text" value={f.title} onChange={(e) => set("title", e.target.value)} autoFocus placeholder="例如：預約禮服試穿" /></Field>
-      <div className="form-group grid-2">
-        <Field label="類型" hint="里程碑是固定日期的大事：拍攝日、取件、婚禮"><Select value={f.kind} onChange={(v) => set("kind", v)} options={toOptions(TASK_KIND)} /></Field>
-        <Field label="日期"><DatePicker value={f.due_date} onChange={(v) => set("due_date", v)} placeholder="未定日期" /></Field>
-      </div>
-      <Field label="備註"><textarea rows={2} value={f.note} onChange={(e) => set("note", e.target.value)} /></Field>
-      {!isNew && (
-        <Field label="狀態">
-          <Select value={f.done} onChange={(v) => set("done", v === true || v === "true")} options={[{ value: false, label: "未完成" }, { value: true, label: "已完成" }]} />
-        </Field>
-      )}
     </Modal>
   );
 }

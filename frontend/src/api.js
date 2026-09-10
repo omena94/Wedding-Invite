@@ -182,7 +182,9 @@ export const updateTask = (id, data) =>
   request(`${P}/tasks/${id}`, { method: "PATCH", body: data, auth: true });
 export const deleteTask = (id) => request(`${P}/tasks/${id}`, { method: "DELETE", auth: true });
 
-// 備忘：可獨立、可掛在待辦或花費底下（params: status / topic / task_id / expense_id）
+// 行事曆與筆記共用的主題
+export const fetchTopics = () => request(`${P}/topics`, { auth: true });
+// 筆記（原備忘；params: status / topic / task_id）
 export const fetchMemos = (params = {}) => {
   const q = new URLSearchParams(Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== ""));
   return request(`${P}/memos${q.toString() ? `?${q}` : ""}`, { auth: true });

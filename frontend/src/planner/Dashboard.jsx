@@ -1,6 +1,6 @@
 // 總覽：倒數、合約與付款、待辦、賓客摘要、目前階段（近期付款與廠商面板已於 2026-09-08 移除；2026-09-10 待辦不再顯示廠商名）
 import { Link } from "react-router-dom";
-import { CalendarClock, Hourglass, ListChecks, Users, Utensils, Wallet, Settings as SettingsIcon } from "lucide-react";
+import { CalendarClock, CalendarDays, Hourglass, Users, Utensils, Wallet, Settings as SettingsIcon } from "lucide-react";
 import { fetchDashboard, fetchStats } from "../api.js";
 import { WEDDING_DATE, daysUntil, fmtDate, fmtDateTime, money } from "../constants.js";
 
@@ -50,19 +50,20 @@ export default function Dashboard() {
       <div className="pl-grid-2">
         <div className="panel">
           <div className="panel-head">
-            <div className="panel-title"><ListChecks size={18} /> 待辦 {data.open_tasks_total > 0 && <span className="pill pill-groom">{data.open_tasks_total}</span>}</div>
-            <Link className="btn btn-ghost btn-sm" to="/timeline">籌備進度</Link>
+            <div className="panel-title"><CalendarDays size={18} /> 接下來的事 {data.open_tasks_total > 0 && <span className="pill pill-groom">{data.open_tasks_total}</span>}</div>
+            <Link className="btn btn-ghost btn-sm" to="/timeline">行事曆</Link>
           </div>
           {data.open_tasks.length === 0 ? (
-            <div className="empty-state" style={{ padding: 24 }}>沒有未完成的待辦</div>
+            <div className="empty-state" style={{ padding: 24 }}>行事曆上沒有還沒完成的事</div>
           ) : (
             <ul className="pl-list">
               {data.open_tasks.map((t) => (
                 <li key={t.id}>
                   <div>
-                    <div className="pl-list-title">{t.kind === "milestone" && <span className="pill pill-bride" style={{ marginRight: 6 }}>里程碑</span>}{t.title}</div>
+                    <div className="pl-list-title">{t.title}</div>
+                    {t.topic && <div className="pl-list-sub">{t.topic}</div>}
                   </div>
-                  <div className="muted-cell" style={{ whiteSpace: "nowrap" }}>{t.due_date ? `${fmtDate(t.due_date)}${dueTag(t.due_date)}` : "未定"}</div>
+                  <div className="muted-cell" style={{ whiteSpace: "nowrap" }}>{t.due_date ? `${fmtDate(t.due_date)}${t.due_time ? ` ${t.due_time}` : ""}${dueTag(t.due_date)}` : "未定"}</div>
                 </li>
               ))}
             </ul>
