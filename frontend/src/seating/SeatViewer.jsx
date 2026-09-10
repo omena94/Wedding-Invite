@@ -37,7 +37,8 @@ function matchRatio(b, ratio) {
 
 const easeInOut = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 
-export default function SeatViewer({ layout, names, mineIds, fullscreen = false, onClose, title = "" }) {
+// preview：後台「預覽座位與路線」用。不是某位賓客的視角，所以抽屜不講「我的座位」，找人可以輸入電話（2026-09-10）
+export default function SeatViewer({ layout, names, mineIds, fullscreen = false, onClose, title = "", preview = false }) {
   const objects = useMemo(() => (layout?.objects || []), [layout]);
   const byId = useMemo(() => Object.fromEntries(objects.map((o) => [o.id, o])), [objects]);
   const full = useMemo(() => fitBox(objects), [objects]);
@@ -50,7 +51,7 @@ export default function SeatViewer({ layout, names, mineIds, fullscreen = false,
   const entrances = useMemo(() => entrancesOf(objects), [objects]);
   const grid = useMemo(() => navigationGrid(layout), [layout]);
   const route = useMemo(() => routeToSeat(layout, { objectId: focus?.oid, seatIndex: focus?.idx, entranceId, grid }), [layout, focus, entranceId, grid]);
-  const guideText = route.message;
+  const guideText = preview && route.status === "unassigned" ? "點任何一桌或椅子，就會顯示同桌的人與從入口過去的路線。" : route.message;
   const [query, setQuery] = useState(""); // 找人：姓名模糊比對
   const [dragging, setDragging] = useState(false);
   const svgRef = useRef(null);
@@ -322,14 +323,17 @@ export default function SeatViewer({ layout, names, mineIds, fullscreen = false,
     for (const [oid, seats] of Object.entries(names || {})) {
       const o = byId[Number(oid)];
       for (const [idx, p] of Object.entries(seats)) {
-        if (p && p.name) out.push({ oid: Number(oid), idx: Number(idx), name: p.name, mine: !!p.mine, label: o ? (o.label || "桌") : "桌" });
+        if (p && p.name) out.push({ oid: Number(oid), idx: Number(idx), name: p.name, phone: p.phone || "", mine: !!p.mine, label: o ? (o.label || "桌") : "桌" });
       }
     }
     return out;
   }, [names, byId]);
   const norm = (s) => (s || "").replace(/\s+/g, "").toLowerCase();
   const q = norm(query);
-  const matches = useMemo(() => (q ? everyone.filter((p) => norm(p.name).includes(q)).slice(0, 30) : []), [q, everyone]);
+  // 打的是電話（去掉符號後 4 碼以上的數字）就比對電話尾碼；後台預覽才有電話，賓客端只比對姓名
+  const qDigits = q.replace(/\D/g, "");
+  const byPhone = qDigits.length >= 4 && qDigits.length === q.replace(/[-+()]/g, "").length;
+  const matches = useMemo(() => (q ? everyone.filter((p) => norm(p.name).includes(q) || (byPhone && p.phone && p.phone.includes(qDigits))).slice(0, 30) : []), [q, qDigits, byPhone, everyone]);
   const foundKeys = useMemo(() => new Set(matches.map((m) => `${m.oid}:${m.idx}`)), [matches]);
   const jumpTo = (m) => {
     const o = byId[m.oid];
@@ -362,14 +366,14 @@ export default function SeatViewer({ layout, names, mineIds, fullscreen = false,
   const searchBox = (
     <div className="seatviewer-search">
       <Search size={16} />
-      <input type="text" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="找人：輸入姓名，看他坐哪" aria-label="找人" />
+      <input type="text" value={query} onChange={(e) => setQuery(e.target.value)} placeholder={preview ? "找人：輸入姓名或電話，看他坐哪" : "找人：輸入姓名，看他坐哪"} aria-label="找人" />
       {query && <button type="button" className="seatviewer-search-clear" onClick={() => setQuery("")} aria-label="清除"><X size={14} /></button>}
     </div>
   );
   const searchResults = q ? (
     <div className="seatviewer-results">
       {matches.length === 0
-        ? <div className="seatviewer-hint">找不到「{query}」，請確認是第一階段填的名字</div>
+        ? <div className="seatviewer-hint">{preview ? `找不到「${query}」，這一廳還沒有安排這位賓客的座位` : `找不到「${query}」，請確認是第一階段填的名字`}</div>
         : (
           <>
             <div className="seatviewer-hint">找到 {matches.length} 位，點一下就跳到他的位子</div>
@@ -400,7 +404,7 @@ export default function SeatViewer({ layout, names, mineIds, fullscreen = false,
   const info = (
     <div className={`seatviewer-info${expanded?' expanded':''}`}>
       <button type="button" className="seatviewer-drawer-toggle" onClick={()=>setExpanded(v=>!v)} aria-expanded={expanded}>
-        <span>{focusInfo ? `${focusInfo.label}${focusInfo.idx!==undefined?` · ${focusInfo.idx+1} 號`:''}` : '我的座位'}{focusInfo?.p?.name ? ` · ${focusInfo.p.name}` : ''}</span><span>{expanded?'收合':'同桌賓客與路線'} {expanded?'⌄':'⌃'}</span>
+        <span>{focusInfo ? `${focusInfo.label}${focusInfo.idx!==undefined?` · ${focusInfo.idx+1} 號`:''}` : (preview ? '整個場地' : '我的座位')}{focusInfo?.p?.name ? ` · ${focusInfo.p.name}` : ''}</span><span>{expanded?'收合':'同桌賓客與路線'} {expanded?'⌄':'⌃'}</span>
       </button>
       <p className="seatviewer-route-summary" role="status">{guideText}</p>
       <div className="seatviewer-drawer-content" hidden={!expanded && !query}>
@@ -410,7 +414,7 @@ export default function SeatViewer({ layout, names, mineIds, fullscreen = false,
       {!focusInfo && (
         <div className="seatviewer-guide">
           {guideText && <div className="seatviewer-guide-text">{guideText}</div>}
-          <div className="seatviewer-hint">金色發光的椅子是您的位子。點任何一桌或椅子，就會列出這桌的人；兩指可以放大縮小。</div>
+          <div className="seatviewer-hint">{preview ? "這是賓客會看到的地圖。點任何一桌或椅子看這桌的人與路線；上方可用姓名或電話找人。" : "金色發光的椅子是您的位子。點任何一桌或椅子，就會列出這桌的人；兩指可以放大縮小。"}</div>
         </div>
       )}
       {focusInfo && focusInfo.idx === undefined && (

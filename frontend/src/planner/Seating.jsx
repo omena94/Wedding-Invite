@@ -650,10 +650,18 @@ export default function Seating() {
   const seatSelObj = seatSel ? byId[seatSel.object_id] : null;
   const halls = layout.halls || [];
   const activeHall = halls.find((h) => h.is_active);
+  // 預覽地圖要的「每個座位是誰」：從桌椅的座位指定組出來，順便帶電話讓找人可以打電話號碼
+  const previewNames = {};
+  if (mapPreviewOpen) {
+    const phoneOf = Object.fromEntries((layout.guests || []).map((g) => [g.rsvp_id, g.phone || ""]));
+    objects.forEach((o) => (o.assignments || []).forEach((a) => {
+      (previewNames[String(o.id)] ||= {})[String(a.seat_index)] = { name: a.display_name, side: a.side, is_child: a.is_child, phone: phoneOf[a.rsvp_id] || "" };
+    }));
+  }
 
   return (
     <div className={`se-page${fullscreen ? " se-full" : ""}`}>
-      {mapPreviewOpen&&<SeatViewer layout={layout} fullscreen onClose={()=>setMapPreviewOpen(false)}/>}
+      {mapPreviewOpen&&<SeatViewer layout={layout} names={previewNames} preview fullscreen onClose={()=>setMapPreviewOpen(false)}/>}
       <PageHead title="座位圖" sub={fullscreen ? "" : readonly ? "唯讀：點椅子看是誰，方便帶位" : "拖曳擺桌椅，把右邊的賓客拖到椅子上；也可以先點人再點椅子。廳別還沒定案可以先各排一套，再決定哪一廳正式使用"}
         actions={
           <>

@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from sqlalchemy import update
 
+from .contacts import normalize_phone
 from .models import Rsvp, SeatAssignment, SeatHall, SeatObject
 from .stage import get_setting
 
@@ -230,6 +231,7 @@ def build_layout(db: Session, hall: SeatHall) -> dict:
                 "rsvp_id": r.id,
                 "name": r.name,
                 "side": r.side,
+                "phone": normalize_phone(r.phone or ""),  # 預覽地圖找人可輸入電話（2026-09-10）
                 "adult_count": r.adult_count,
                 "child_count": r.child_count,
                 "table_no": r.table_no,
