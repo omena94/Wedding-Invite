@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import Swal from "sweetalert2";
 import {
+  AlignCenterHorizontal, AlignCenterVertical, AlignEndHorizontal, AlignEndVertical, AlignHorizontalDistributeCenter, AlignStartHorizontal, AlignStartVertical, AlignVerticalDistributeCenter,
   ArrowDownToLine, ArrowUpToLine, BoxSelect, Building2, Circle, Copy, DoorClosed, Eraser, Expand, Eye, Grid3x3, Image as ImageIcon, Maximize2, Minus, Plus, Printer, Shrink,
   RectangleHorizontal, Redo2, Square, SquareDashedMousePointer, Star, Tag, Trash2, Type, Undo2, UserRound, Users, Wand2, ZoomIn, ZoomOut,
 } from "lucide-react";
@@ -241,6 +242,42 @@ export default function Seating() {
     if (clipboard.current.length) flash(`已複製 ${clipboard.current.length} 個，Ctrl+V 貼上`);
   };
   const duplicateSelected = () => pasteObjects([...selected].map((id) => byId[id]).filter(Boolean));
+  // ---------- 對齊 / 等距（2026-09-10 新人反映拖曳對不齊）----------
+  // 以每個物件的外框（不含椅子）計算；等距是把中心點平均分布在最左（上）與最右（下）之間
+  const alignSelected = (mode) => {
+    const items = [...selected].map((id) => byId[id]).filter(Boolean);
+    if (items.length < 2) return;
+    const boxes = items.map((o) => { const { cx, cy, w, h } = center(o); return { o, cx, cy, left: cx - w / 2, right: cx + w / 2, top: cy - h / 2, bottom: cy + h / 2 }; });
+    const move = (b, dx, dy) => ({ id: b.o.id, x: Math.round(b.o.x + dx), y: Math.round(b.o.y + dy) });
+    let after = [];
+    if (mode === "left") { const v = Math.min(...boxes.map((b) => b.left)); after = boxes.map((b) => move(b, v - b.left, 0)); }
+    if (mode === "right") { const v = Math.max(...boxes.map((b) => b.right)); after = boxes.map((b) => move(b, v - b.right, 0)); }
+    if (mode === "top") { const v = Math.min(...boxes.map((b) => b.top)); after = boxes.map((b) => move(b, 0, v - b.top)); }
+    if (mode === "bottom") { const v = Math.max(...boxes.map((b) => b.bottom)); after = boxes.map((b) => move(b, 0, v - b.bottom)); }
+    if (mode === "hcenter") { const v = boxes.reduce((s, b) => s + b.cx, 0) / boxes.length; after = boxes.map((b) => move(b, v - b.cx, 0)); }
+    if (mode === "vcenter") { const v = boxes.reduce((s, b) => s + b.cy, 0) / boxes.length; after = boxes.map((b) => move(b, 0, v - b.cy)); }
+    if (mode === "hspread" || mode === "vspread") {
+      const k = mode === "hspread" ? "cx" : "cy";
+      const sorted = [...boxes].sort((a, b) => a[k] - b[k]);
+      const step = (sorted[sorted.length - 1][k] - sorted[0][k]) / (sorted.length - 1);
+      after = sorted.map((b, i) => move(b, mode === "hspread" ? sorted[0].cx + step * i - b.cx : 0, mode === "vspread" ? sorted[0].cy + step * i - b.cy : 0));
+    }
+    if (!after.length) return;
+    pushHistory({ before: items.map((o) => ({ id: o.id, x: o.x, y: o.y })), after });
+    after.forEach((u) => patchLocal(u.id, { x: u.x, y: u.y }));
+    moveSeatObjects(after).catch((e) => { toastErr(e); load(); });
+    flash(`已對齊 ${after.length} 個`);
+  };
+  // 把選取的物件貼到格線上（座標湊成 10 的倍數）；範本載入的桌子座標不在格線上時，先貼齊再拖就對得齊
+  const snapSelected = () => {
+    const items = [...selected].map((id) => byId[id]).filter(Boolean);
+    if (!items.length) return;
+    const after = items.map((o) => ({ id: o.id, x: snap(o.x, true), y: snap(o.y, true) }));
+    pushHistory({ before: items.map((o) => ({ id: o.id, x: o.x, y: o.y })), after });
+    after.forEach((u) => patchLocal(u.id, { x: u.x, y: u.y }));
+    moveSeatObjects(after).catch((e) => { toastErr(e); load(); });
+    flash(`已貼齊格線 ${after.length} 個`);
+  };
   const duplicate = (o) => pasteObjects([o]);
   const remove = async (ids) => {
     const list = [...ids].map((id) => byId[id]).filter(Boolean);
@@ -672,6 +709,22 @@ export default function Seating() {
           <button className={`btn btn-sm ${marqueeMode ? "btn-primary" : "btn-ghost"}`} onClick={() => setMarqueeMode((m) => !m)} title="框選模式：在畫布上拖曳框住多個桌椅（平時按住 Shift 拖曳也可以）"><SquareDashedMousePointer size={14} /> 框選</button>
           <button className="btn btn-ghost btn-sm" onClick={selectAll} title="全選 (Ctrl+A)"><BoxSelect size={14} /> 全選</button>
           <button className="btn btn-ghost btn-sm" onClick={duplicateSelected} disabled={!selected.size} title="複製選取的桌椅 (Ctrl+D；也可 Ctrl+C / Ctrl+V)"><Copy size={14} /> 複製{selected.size > 1 ? ` ${selected.size} 個` : ""}</button>
+          {selected.size >= 2 && (
+            <>
+              <span className="sep" />
+              <span className="se-align" role="group" aria-label="對齊選取的物件">
+                <button className="btn btn-ghost btn-sm" title="靠左對齊" onClick={() => alignSelected("left")}><AlignStartVertical size={14} /></button>
+                <button className="btn btn-ghost btn-sm" title="水平置中" onClick={() => alignSelected("hcenter")}><AlignCenterVertical size={14} /></button>
+                <button className="btn btn-ghost btn-sm" title="靠右對齊" onClick={() => alignSelected("right")}><AlignEndVertical size={14} /></button>
+                <button className="btn btn-ghost btn-sm" title="靠上對齊" onClick={() => alignSelected("top")}><AlignStartHorizontal size={14} /></button>
+                <button className="btn btn-ghost btn-sm" title="垂直置中" onClick={() => alignSelected("vcenter")}><AlignCenterHorizontal size={14} /></button>
+                <button className="btn btn-ghost btn-sm" title="靠下對齊" onClick={() => alignSelected("bottom")}><AlignEndHorizontal size={14} /></button>
+                {selected.size >= 3 && <button className="btn btn-ghost btn-sm" title="左右等距" onClick={() => alignSelected("hspread")}><AlignHorizontalDistributeCenter size={14} /></button>}
+                {selected.size >= 3 && <button className="btn btn-ghost btn-sm" title="上下等距" onClick={() => alignSelected("vspread")}><AlignVerticalDistributeCenter size={14} /></button>}
+              </span>
+            </>
+          )}
+          {selected.size >= 1 && <button className="btn btn-ghost btn-sm" title="把選取的物件貼到格線上（座標湊成 10 的倍數）" onClick={snapSelected}><Grid3x3 size={14} /> 貼齊格線</button>}
           <span className="sep" />
           <button className="btn btn-primary btn-sm" onClick={() => setAutoModal(true)} title="把還沒有位子的人自動填進空位"><Wand2 size={14} /> 一鍵安排</button>
           {hint && <span className="se-hint">{hint}</span>}
@@ -888,7 +941,7 @@ function ObjectPanel({ o, seatSel, readonly, selectedCount, onChange, onImmediat
     if (selectedCount > 1) {
       return (
         <div className="empty-state" style={{ padding: 20 }}>
-          <div>已選取 {selectedCount} 個物件，可以一起拖曳、方向鍵微調</div>
+          <div>已選取 {selectedCount} 個物件，可以一起拖曳、方向鍵微調；工具列有靠左／靠上／置中／等距的對齊按鈕</div>
           {!readonly && (
             <div style={{ display: "flex", gap: 8, justifyContent: "center", marginTop: 12, flexWrap: "wrap" }}>
               <button className="btn btn-primary btn-sm" onClick={onDuplicate}><Copy size={13} /> 複製這 {selectedCount} 個</button>

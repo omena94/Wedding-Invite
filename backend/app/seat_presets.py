@@ -24,15 +24,20 @@ def _px(v: float) -> int:
     return round(v * K)
 
 
+def _grid(v: float) -> int:
+    """桌子的座標湊成 10 的倍數：編輯器拖曳會貼齊 10 單位的格線，不在格線上的桌子拖了就對不齊（2026-09-10）。"""
+    return int(round(v * K / 10) * 10)
+
+
 def _seg_h(label: str, x_px: float, y_px: float) -> dict:
     """橫向的一段長桌（左側兩排）：上 3 下 3。"""
-    return {"kind": "rect", "label": label, "x": _px(x_px), "y": _px(y_px), "w": 90, "h": 60, "seats": 6,
+    return {"kind": "rect", "label": label, "x": _grid(x_px), "y": _grid(y_px), "w": 90, "h": 60, "seats": 6,
             "meta": {"sides": {"top": 3, "bottom": 3, "left": 0, "right": 0}}}
 
 
 def _seg_v(label: str, x_px: float, y_px: float) -> dict:
     """直向的一段長桌（右側三排）：左 3 右 3。"""
-    return {"kind": "rect", "label": label, "x": _px(x_px), "y": _px(y_px), "w": 60, "h": 90, "seats": 6,
+    return {"kind": "rect", "label": label, "x": _grid(x_px), "y": _grid(y_px), "w": 60, "h": 90, "seats": 6,
             "meta": {"sides": {"top": 0, "bottom": 0, "left": 3, "right": 3}}}
 
 
