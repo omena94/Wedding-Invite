@@ -7,10 +7,14 @@ export function blocksPoint(o, x, y, margin = 0) {
   return obstacleTest(o, margin)(x,y);
 }
 
+// 椅子不是牆：人可以貼著坐著的人背後走過，所以椅子只算「畫出來的那一圈」再加一點點，不套整個保留距離。
+// 不然像萬福廳那種桌距 260 公分的長桌區，兩排椅背之間只剩 14 單位，任何保留距離都會把走道整個封死（2026-09-10）。
+const SEAT_CORE = 7;      // 椅子當障礙物的半徑（畫的是 11）
+const SEAT_SOFT = 4;      // 椅子外圍最多再留這麼多
 function obstacleTest(o, margin) {
   if (o.kind === 'entrance' || o.kind === 'label' || (o.kind === 'zone' && !o.meta?.blocked)) return () => false;
   const { cx, cy, w, h } = center(o);
-  const seats=seatPositions(o), seatRadiusSq=(SEAT_R+margin)**2;
+  const seats=seatPositions(o), seatRadiusSq=(SEAT_CORE+Math.min(margin,SEAT_SOFT))**2;
   const a=-(o.rotation||0)*Math.PI/180,cos=Math.cos(a),sin=Math.sin(a);
   const radiusSq=(w/2+margin)**2;
   return (x,y)=>{
@@ -92,7 +96,8 @@ export function routeToSeat(layout, { objectId, seatIndex, entranceId, grid, ...
   const targets = seat ? [seat] : seats.length ? seats : [{ x: center(table).cx, y: center(table).cy - center(table).h / 2, ox: 0, oy: -1 }];
   const goals = new Set();
   for (const p of targets) {
-    const distance = SEAT_R + g.clearance + g.step * 1.5;
+    // 目標點：椅子外側一小段（不加保留距離，走道窄的長桌區才找得到落點）
+    const distance = SEAT_R + g.step * 1.5;
     const id = g.nearest({ x: p.x + p.ox * distance, y: p.y + p.oy * distance }, g.step * 2);
     if (id >= 0) goals.add(id);
   }
