@@ -3,12 +3,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import Swal from "sweetalert2";
 import {
-  ArrowDownToLine, ArrowUpToLine, BoxSelect, Circle, Copy, DoorClosed, Eraser, Eye, Grid3x3, Maximize2, Minus, Plus, Printer,
+  ArrowDownToLine, ArrowUpToLine, BoxSelect, Building2, Circle, Copy, DoorClosed, Eraser, Eye, Grid3x3, Image as ImageIcon, Maximize2, Minus, Plus, Printer,
   RectangleHorizontal, Redo2, Square, SquareDashedMousePointer, Star, Tag, Trash2, Type, Undo2, UserRound, Users, Wand2, ZoomIn, ZoomOut,
 } from "lucide-react";
 import {
-  assignGroup, assignSeat, autoAssignSeats, clearAllSeats, clearSeatObject, createSeatObject, deleteSeatObject, fetchSeating,
-  fetchSeatPreview, moveSeatObjects, renameAssignment, setSeatingCanvas, unassignSeat, updateSeatObject,
+  assignGroup, assignSeat, autoAssignSeats, clearAllSeats, clearSeatObject, createSeatHall, createSeatHallFromPreset, createSeatObject,
+  deleteSeatHall, deleteSeatObject, fetchSeatHallBackgroundUrl, fetchSeating, fetchSeatPreview, moveSeatObjects, removeSeatHallBackground,
+  renameAssignment, unassignSeat, updateSeatHall, updateSeatObject, uploadSeatHallBackground,
 } from "../api.js";
 import { Checkbox } from "../components/Toggle.jsx";
 import Select from "../components/Select.jsx";
@@ -18,7 +19,7 @@ import { planLabels } from "../seating/labels.js";
 import SeatResult from "../seating/SeatResult.jsx";
 import SeatViewer from '../seating/SeatViewer.jsx';
 import { usePlanner } from "./context.js";
-import { ErrorBox, Field, Loading, Modal, NumberInput, PageHead, toInt, toastErr, toastOk, useLoader } from "./ui.jsx";
+import { ErrorBox, Field, Loading, Modal, NumberInput, PageHead, confirmDelete, toInt, toastErr, toastOk, useLoader } from "./ui.jsx";
 
 const GRID = 10;
 const SIDE_LABEL = { groom: "男方", bride: "女方" };
@@ -27,8 +28,15 @@ const snap = (v, on) => (on ? Math.round(v / GRID) * GRID : Math.round(v));
 export default function Seating() {
   const { role } = usePlanner();
   const readonly = role !== "couple";
-  const [params] = useSearchParams();
+  const [params, setParams] = useSearchParams();
   const printMode = params.get("print") === "1";
+  // 2026-09-10 座位圖分廳：網址 ?hall= 是正在看的廳；沒帶就是「正式使用」的那一廳（賓客查桌看的）
+  const hallParam = params.get("hall");
+  const switchHall = (id) => {
+    const next = new URLSearchParams(params);
+    next.set("hall", String(id));
+    setParams(next, { replace: true });
+  };
 
   const [layout, setLayout] = useState(null);
   const [err, setErr] = useState("");
@@ -46,7 +54,9 @@ export default function Seating() {
   const [tab, setTab] = useState("guests");
   const [view, setView] = useState({ zoom: 0.55, x: 24, y: 24 });
   const [dragChip, setDragChip] = useState(null);     // {x, y, name}
-  const [canvasModal, setCanvasModal] = useState(false);
+  const [hallModal, setHallModal] = useState(false);
+  const [showBg, setShowBg] = useState(true);   // 飯店平面圖底圖要不要顯示
+  const [bgUrl, setBgUrl] = useState("");
   const [mapPreviewOpen,setMapPreviewOpen]=useState(false);
   const [preview, setPreview] = useState(null);       // 預覽某組賓客在 /seat 看到的畫面 {rsvp_id, name}
   const [marqueeMode, setMarqueeMode] = useState(false); // 框選模式：拖背景是框選而不是平移（按住 Shift 也可）
@@ -64,14 +74,36 @@ export default function Seating() {
   const load = useCallback(async () => {
     setErr("");
     try {
-      setLayout(await fetchSeating(readonly));
+      setLayout(await fetchSeating(readonly, hallParam));
     } catch (e) {
       setErr(e.message || "讀取失敗");
     }
-  }, [readonly]);
+  }, [readonly, hallParam]);
   useEffect(() => {
     load();
   }, [load]);
+  // 換廳時清掉選取狀態（選到的桌子、排隊要入座的人都是上一廳的）
+  useEffect(() => {
+    setSelected(new Set());
+    setPicked([]);
+    setSeatSel(null);
+  }, [hallParam]);
+  const hallId = layout?.hall?.id ?? null;
+  const hall = layout?.hall || null;
+  // 沒帶 ?hall= 時把實際載到的廳寫回網址，之後重新整理、列印版才會停在同一廳
+  useEffect(() => {
+    if (hallId && String(hallId) !== hallParam) switchHall(hallId);
+  }, [hallId]);
+  // 底圖：要登入才看得到，所以先抓成 blob；幫手（唯讀）看不到底圖
+  useEffect(() => {
+    let url = "";
+    let alive = true;
+    setBgUrl("");
+    if (!readonly && hall?.has_bg) {
+      fetchSeatHallBackgroundUrl(hall.id).then((u) => { if (alive) { url = u; setBgUrl(u); } else URL.revokeObjectURL(u); }).catch(() => {});
+    }
+    return () => { alive = false; if (url) URL.revokeObjectURL(url); };
+  }, [readonly, hall?.id, hall?.bg_image]);
 
   const objects = layout?.objects || [];
   const byId = useMemo(() => Object.fromEntries(objects.map((o) => [o.id, o])), [objects]);
@@ -143,7 +175,7 @@ export default function Seating() {
     const tables = objects.filter((o) => o.kind === "round" || o.kind === "rect").length;
     const label = kind === "round" || kind === "rect" ? `桌 ${tables + 1}` : kind === "zone" ? "區域" : kind === "stage" ? "舞台" : kind === "entrance" ? "入口" : kind === "label" ? "文字" : "";
     const body = {
-      kind, label, w: d.w, h: d.h, seats: d.seats,
+      hall_id: hallId, kind, label, w: d.w, h: d.h, seats: d.seats,
       x: snap(c.x - d.w / 2, grid), y: snap(c.y - d.h / 2, grid),
       z_order: kind === "zone" || kind === "stage" || kind === "entrance" ? -1 : 0, // 這些墊在桌椅下面
       meta: kind === "rect" ? { sides: defaultSides(d.seats) } : {},
@@ -181,7 +213,7 @@ export default function Seating() {
       for (let i = 0; i < items.length; i++) {
         const o = items[i];
         created.push(await createSeatObject({
-          kind: o.kind, label: labels[i], x: o.x + 40, y: o.y + 40, w: o.w, h: o.h,
+          hall_id: hallId, kind: o.kind, label: labels[i], x: o.x + 40, y: o.y + 40, w: o.w, h: o.h,
           rotation: o.rotation, seats: o.seats, meta: o.meta, z_order: o.z_order, note: o.note,
         }));
       }
@@ -459,7 +491,7 @@ export default function Seating() {
   const clearEverything = async () => {
     const r = await Swal.fire({ icon: "warning", title: "清空所有座位指定？", text: "桌椅會保留，只是大家都變成未安排。", showCancelButton: true, confirmButtonText: "清空", cancelButtonText: "取消", confirmButtonColor: "#9E5A54" });
     if (!r.isConfirmed) return;
-    try { setLayout(await clearAllSeats()); } catch (e) { toastErr(e); }
+    try { setLayout(await clearAllSeats(hallId)); } catch (e) { toastErr(e); }
   };
 
   // ---------- 縮放 ----------
@@ -487,7 +519,7 @@ export default function Seating() {
   };
   useEffect(() => {
     if (layout && containerRef.current && !printMode) fitAll();
-  }, [layout?.canvas?.w, layout?.canvas?.h, layout === null]);
+  }, [layout?.canvas?.w, layout?.canvas?.h, layout === null, hallId]);
 
   // ---------- 鍵盤 ----------
   useEffect(() => {
@@ -549,20 +581,29 @@ export default function Seating() {
 
   const s = layout.summary;
   const seatSelObj = seatSel ? byId[seatSel.object_id] : null;
+  const halls = layout.halls || [];
+  const activeHall = halls.find((h) => h.is_active);
 
   return (
     <div className="se-page">
       {mapPreviewOpen&&<SeatViewer layout={layout} fullscreen onClose={()=>setMapPreviewOpen(false)}/>}
-      <PageHead title="座位圖" sub={readonly ? "唯讀：點椅子看是誰，方便帶位" : "拖曳擺桌椅，把右邊的賓客拖到椅子上；也可以先點人再點椅子"}
+      <PageHead title="座位圖" sub={readonly ? "唯讀：點椅子看是誰，方便帶位" : "拖曳擺桌椅，把右邊的賓客拖到椅子上；也可以先點人再點椅子。廳別還沒定案可以先各排一套，再決定哪一廳正式使用"}
         actions={
           <>
+            <span className="se-hallpick">
+              <Building2 size={14} />
+              <Select compact aria-label="切換廳" value={String(hallId)} onChange={(v) => switchHall(v)}
+                options={halls.map((h) => ({ value: String(h.id), label: h.is_active ? `${h.name}（正式使用）` : h.name }))} />
+            </span>
+            {!readonly && <button className="btn btn-ghost" onClick={() => setHallModal(true)}>廳設定・畫布 {layout.canvas.w}×{layout.canvas.h}</button>}
             <button className="btn btn-ghost" onClick={()=>setMapPreviewOpen(true)}>預覽座位與路線</button>
-            <a className="btn btn-ghost" href="/planner/seating?print=1" target="_blank" rel="noopener"><Printer size={14} /> 列印版</a>
-            {!readonly && <button className="btn btn-ghost" onClick={() => setCanvasModal(true)}>畫布 {layout.canvas.w}×{layout.canvas.h}</button>}
+            <a className="btn btn-ghost" href={`/planner/seating?print=1&hall=${hallId}`} target="_blank" rel="noopener"><Printer size={14} /> 列印版</a>
           </>
         } />
 
       <div className="se-summary">
+        {hall && !hall.is_active && <span className="pill pill-warn" title="賓客在 /seat 查桌、幫手帶位看的是正式使用的那一廳">草稿：賓客看的是「{activeHall?.name || "另一廳"}」</span>}
+        {hall && hall.is_active && halls.length > 1 && <span className="pill pill-yes">正式使用：賓客查桌看這一廳</span>}
         <span>桌子 <strong>{s.tables}</strong></span>
         <span>座位 <strong>{s.seats_total}</strong></span>
         <span>出席 <strong>{s.people_total}</strong> 人</span>
@@ -611,6 +652,7 @@ export default function Seating() {
           <span className="sep" />
           <Checkbox checked={grid} onChange={setGrid}><Grid3x3 size={13} style={{ verticalAlign: -2 }} /> 對齊格線</Checkbox>
           <Checkbox checked={showNames} onChange={setShowNames}><Tag size={13} style={{ verticalAlign: -2 }} /> 顯示名字</Checkbox>
+          {hall?.has_bg && <Checkbox checked={showBg} onChange={setShowBg}><ImageIcon size={13} style={{ verticalAlign: -2 }} /> 顯示底圖</Checkbox>}
           <span className="sep" />
           <button className="btn btn-ghost btn-sm" onClick={clearEverything}><Eraser size={14} /> 清空座位</button>
         </div>
@@ -627,6 +669,11 @@ export default function Seating() {
             </defs>
             <g transform={`translate(${view.x} ${view.y}) scale(${view.zoom})`}>
               <rect x="0" y="0" width={layout.canvas.w} height={layout.canvas.h} className="floor" strokeWidth={1 / view.zoom} />
+              {/* 飯店平面圖底圖：鋪滿整張畫布（範本的畫布大小就是照原圖比例算的），只是參考，不能點 */}
+              {showBg && bgUrl && (
+                <image href={bgUrl} x="0" y="0" width={layout.canvas.w} height={layout.canvas.h} preserveAspectRatio="none"
+                  opacity={(hall?.bg_opacity ?? 55) / 100} style={{ pointerEvents: "none" }} />
+              )}
               {grid && <rect x="0" y="0" width={layout.canvas.w} height={layout.canvas.h} fill="url(#se-grid)" style={{ pointerEvents: "none" }} />}
               {objects.map((o) => (
                 <g key={o.id} onPointerDown={(e) => onObjPointerDown(e, o)} style={{ cursor: readonly ? "default" : "move" }}>
@@ -671,13 +718,13 @@ export default function Seating() {
         </aside>
       </div>
 
-      {canvasModal && (
-        <CanvasModal canvas={layout.canvas} onClose={() => setCanvasModal(false)}
-          onSaved={(c) => { setCanvasModal(false); setLayout((l) => ({ ...l, canvas: c })); }} />
+      {hallModal && (
+        <HallModal hall={hall} halls={halls} onClose={() => setHallModal(false)}
+          onLayout={(l) => { setLayout(l); if (l.hall && l.hall.id !== hallId) switchHall(l.hall.id); }} />
       )}
-      {preview && <PreviewModal rsvpId={preview.rsvp_id} name={preview.name} onClose={() => setPreview(null)} />}
+      {preview && <PreviewModal rsvpId={preview.rsvp_id} name={preview.name} hall={hallId} onClose={() => setPreview(null)} />}
       {autoModal && (
-        <AutoAssignModal summary={s} onClose={() => setAutoModal(false)}
+        <AutoAssignModal summary={s} hall={hallId} onClose={() => setAutoModal(false)}
           onDone={(l) => { setAutoModal(false); setLayout(l); toastOk(l.left_over ? `已安排 ${l.placed} 位，還有 ${l.left_over} 位沒位子（座位不夠）` : `已安排 ${l.placed} 位`); }} />
       )}
     </div>
@@ -685,7 +732,7 @@ export default function Seating() {
 }
 
 /* ---------- 一鍵安排 ---------- */
-function AutoAssignModal({ summary, onClose, onDone }) {
+function AutoAssignModal({ summary, hall, onClose, onDone }) {
   const [keepGroups, setKeepGroups] = useState(true);
   const [bySide, setBySide] = useState(true);
   const [clearFirst, setClearFirst] = useState(false);
@@ -693,7 +740,7 @@ function AutoAssignModal({ summary, onClose, onDone }) {
   const run = async () => {
     setBusy(true);
     try {
-      onDone(await autoAssignSeats({ keep_groups: keepGroups, by_side: bySide, clear_first: clearFirst }));
+      onDone(await autoAssignSeats({ keep_groups: keepGroups, by_side: bySide, clear_first: clearFirst }, hall));
     } catch (e) {
       toastErr(e);
     } finally {
@@ -718,8 +765,8 @@ function AutoAssignModal({ summary, onClose, onDone }) {
 }
 
 /* ---------- 預覽：這組賓客在 /seat 查到的畫面 ---------- */
-function PreviewModal({ rsvpId, name, onClose }) {
-  const { data, loading, error } = useLoader(() => fetchSeatPreview(rsvpId), [rsvpId]);
+function PreviewModal({ rsvpId, name, hall, onClose }) {
+  const { data, loading, error } = useLoader(() => fetchSeatPreview(rsvpId, hall), [rsvpId, hall]);
   return (
     <Modal title={`賓客看到的畫面 — ${name}`} onClose={onClose} wide
       footer={<button type="button" className="btn btn-primary" onClick={onClose}>關閉</button>}>
@@ -920,32 +967,132 @@ function ObjectPanel({ o, seatSel, readonly, selectedCount, onChange, onImmediat
   );
 }
 
-/* ---------- 畫布大小 ---------- */
-function CanvasModal({ canvas, onClose, onSaved }) {
-  const [w, setW] = useState(canvas.w);
-  const [h, setH] = useState(canvas.h);
-  const [clearance,setClearance]=useState(canvas.clearance??20);
+/* ---------- 廳設定：名稱、畫布、底圖、正式使用；新增／複製／刪除廳、載入飯店平面圖範本 ---------- */
+function HallModal({ hall, halls, onClose, onLayout }) {
+  const [name, setName] = useState(hall.name);
+  const [w, setW] = useState(hall.w);
+  const [h, setH] = useState(hall.h);
+  const [clearance, setClearance] = useState(hall.clearance ?? 20);
+  const [opacity, setOpacity] = useState(hall.bg_opacity ?? 55);
+  const [hasBg, setHasBg] = useState(!!hall.has_bg);
   const [busy, setBusy] = useState(false);
-  const save = async () => {
+  const fileRef = useRef(null);
+  const run = async (fn, doneMsg) => {
     setBusy(true);
     try {
-      onSaved(await setSeatingCanvas(Math.max(400, toInt(w)), Math.max(400, toInt(h)),Math.max(4,Math.min(100,toInt(clearance)))));
+      const l = await fn();
+      if (l && l.objects) onLayout(l);
+      if (doneMsg) toastOk(doneMsg);
+      return l;
+    } catch (e) {
+      toastErr(e);
+    } finally {
+      setBusy(false);
+    }
+    return null;
+  };
+  const save = async () => {
+    const body = { name: name.trim() || hall.name, w: Math.max(400, toInt(w)), h: Math.max(400, toInt(h)), clearance: Math.max(4, Math.min(100, toInt(clearance))), bg_opacity: Math.max(10, Math.min(100, toInt(opacity))) };
+    const l = await run(() => updateSeatHall(hall.id, body), "已儲存");
+    if (l) onClose();
+  };
+  const makeActive = async () => {
+    const r = await Swal.fire({ icon: "question", title: `把「${hall.name}」設為正式使用？`, text: "賓客在「我的座位」查到的桌次、幫手帶位看的座位圖，都會換成這一廳的安排。", showCancelButton: true, confirmButtonText: "設為正式使用", cancelButtonText: "取消", confirmButtonColor: "#B28F70" });
+    if (!r.isConfirmed) return;
+    await run(() => updateSeatHall(hall.id, { is_active: true }), `賓客查桌改看「${hall.name}」`);
+  };
+  const uploadBg = async (file) => {
+    if (!file) return;
+    setBusy(true);
+    try {
+      await uploadSeatHallBackground(hall.id, file);
+      setHasBg(true);
+      // 重新載入整份版面，底圖檔名變了畫布才會重抓
+      onLayout(await fetchSeating(false, hall.id));
+      toastOk("底圖已更新");
+    } catch (e) {
+      toastErr(e);
+    } finally {
+      setBusy(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  };
+  const removeBg = async () => {
+    if (!(await confirmDelete("這張底圖"))) return;
+    setBusy(true);
+    try {
+      await removeSeatHallBackground(hall.id);
+      setHasBg(false);
+      onLayout(await fetchSeating(false, hall.id));
     } catch (e) {
       toastErr(e);
     } finally {
       setBusy(false);
     }
   };
+  const askName = async (title, initial) => {
+    const r = await Swal.fire({ title, input: "text", inputValue: initial, showCancelButton: true, confirmButtonText: "建立", cancelButtonText: "取消", confirmButtonColor: "#B28F70", inputAttributes: { maxlength: 50 }, inputValidator: (v) => (!v || !v.trim() ? "請輸入名稱" : undefined) });
+    return r.isConfirmed ? r.value.trim() : null;
+  };
+  const addBlank = async () => {
+    const n = await askName("新的廳叫什麼？", "新的廳");
+    if (n === null) return;
+    const l = await run(() => createSeatHall({ name: n }), `已新增「${n}」`);
+    if (l) onClose();
+  };
+  const copyHall = async () => {
+    const n = await askName("複製後的廳叫什麼？（桌椅會複製，誰坐哪不會）", `${hall.name} 副本`);
+    if (n === null) return;
+    const l = await run(() => createSeatHall({ name: n, copy_from: hall.id }), `已複製成「${n}」`);
+    if (l) onClose();
+  };
+  const loadPreset = async () => {
+    const r = await Swal.fire({ icon: "info", title: "載入飯店提供的「萬福廳」平面圖？", html: "會新增一個叫「萬福廳」的廳，照飯店的圖擺好 20 段長桌（每段兩側各 3 位，共 120 個座位）、舞台、入口、洗手間等，並把原圖放在底下當底圖。<br>現在這一廳不會被動到，之後可以隨時切換。", showCancelButton: true, confirmButtonText: "載入", cancelButtonText: "取消", confirmButtonColor: "#B28F70" });
+    if (!r.isConfirmed) return;
+    const l = await run(() => createSeatHallFromPreset("wanfu"), "已載入萬福廳");
+    if (l) onClose();
+  };
+  const removeHall = async () => {
+    if (!(await confirmDelete(`「${hall.name}」整個廳（桌椅與座位安排會一起刪除）`))) return;
+    const l = await run(() => deleteSeatHall(hall.id), `已刪除「${hall.name}」`);
+    if (l) onClose();
+  };
   return (
-    <Modal title="畫布大小" onClose={onClose} footer={<><button className="btn btn-ghost" onClick={onClose}>取消</button><button className="btn btn-primary" disabled={busy} onClick={save}>儲存</button></>}>
-      <div className="helper-text" style={{ marginBottom: 10 }}>單位是畫布像素，圓桌預設直徑 120。場地大就把畫布加大，縮放時桌子不會變小。</div>
+    <Modal title={`廳設定 — ${hall.name}`} onClose={onClose} footer={<><button className="btn btn-ghost" onClick={onClose} disabled={busy}>關閉</button><button className="btn btn-primary" disabled={busy} onClick={save}>儲存</button></>}>
+      <Field label="廳的名稱"><input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="例如 萬福廳" maxLength={50} /></Field>
+      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 14 }}>
+        {hall.is_active
+          ? <span className="pill pill-yes">正式使用：賓客查桌、幫手帶位看這一廳</span>
+          : <><span className="pill pill-warn">草稿</span><button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={makeActive}>設為正式使用</button></>}
+      </div>
+
+      <div className="pl-list-title" style={{ fontSize: 13 }}>畫布</div>
+      <div className="helper-text" style={{ marginBottom: 10 }}>單位是畫布像素（50 單位約 1 公尺），圓桌預設直徑 120。場地大就把畫布加大，縮放時桌子不會變小。</div>
       <div className="form-group grid-2">
         <Field label="寬"><NumberInput value={w} onChange={setW} /></Field>
         <Field label="高"><NumberInput value={h} onChange={setH} /></Field>
       </div>
-      <Field label="路線與障礙物的保留距離（畫布單位）" hint="每側預留這個距離，包含桌邊椅子；通道不足就不會畫出路線。"><NumberInput value={clearance} onChange={setClearance}/></Field>
-      <button type="button" className="btn btn-ghost" onClick={()=>{setW(1900);setH(1000);setClearance(23);}}>套用美福 38 × 20 公尺比例</button>
-      <p className="helper-text">套用比例後每 50 單位約 1 公尺，請依現場尺寸校正桌椅與入口；既有物件位置保留。</p>
+      <Field label="路線與障礙物的保留距離（畫布單位）" hint="每側預留這個距離，包含桌邊椅子；通道不足就不會畫出路線。"><NumberInput value={clearance} onChange={setClearance} /></Field>
+      <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setW(1900); setH(1000); setClearance(23); }}>套用美福 38 × 20 公尺比例</button>
+
+      <div className="pl-list-title" style={{ fontSize: 13, marginTop: 16 }}>底圖（飯店給的平面圖）</div>
+      <div className="helper-text" style={{ marginBottom: 8 }}>鋪在畫布最底下當參考，方便對照著擺桌椅；賓客不會看到。畫布的長寬比最好跟圖一樣，圖才不會被拉歪。</div>
+      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 10 }}>
+        <input ref={fileRef} type="file" accept=".jpg,.jpeg,.png,.webp" hidden onChange={(e) => uploadBg(e.target.files?.[0])} />
+        <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={() => fileRef.current?.click()}><ImageIcon size={13} /> {hasBg ? "換一張底圖" : "上傳底圖"}</button>
+        {hasBg && <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={removeBg} style={{ color: "var(--rose-accent)" }}><Trash2 size={13} /> 移除底圖</button>}
+        {!hasBg && <span className="muted-cell" style={{ fontSize: 12 }}>目前沒有底圖</span>}
+      </div>
+      {hasBg && <Field label="底圖透明度（10～100）" hint="數字越小越淡。"><NumberInput value={opacity} onChange={setOpacity} /></Field>}
+
+      <div className="pl-list-title" style={{ fontSize: 13, marginTop: 16 }}>其他廳</div>
+      <div className="helper-text" style={{ marginBottom: 8 }}>廳別還沒確定前可以同時留好幾套座位圖，各自排位；用頁首的下拉切換。</div>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={loadPreset}><Building2 size={13} /> 載入飯店提供的「萬福廳」平面圖</button>
+        <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={addBlank}><Plus size={13} /> 新增空白廳</button>
+        <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={copyHall}><Copy size={13} /> 複製這一廳</button>
+        <button type="button" className="btn btn-ghost btn-sm" disabled={busy || halls.length <= 1} onClick={removeHall} style={{ color: "var(--rose-accent)" }} title={halls.length <= 1 ? "至少要留一個廳" : undefined}><Trash2 size={13} /> 刪除這一廳</button>
+      </div>
     </Modal>
   );
 }
@@ -956,7 +1103,7 @@ function PrintView({ layout }) {
   return (
     <div className="se-print">
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }} className="no-print">
-        <h1 className="pl-title">座位圖 · 列印版</h1>
+        <h1 className="pl-title">座位圖 · 列印版{layout.hall?.name ? ` · ${layout.hall.name}` : ""}</h1>
         <button className="btn btn-primary" onClick={() => window.print()}><Printer size={14} /> 列印</button>
       </div>
       <div className="print-page">

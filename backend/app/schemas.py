@@ -275,7 +275,29 @@ FileKind = Literal["doc", "receipt", "photo"]
 SeatKind = Literal["round", "rect", "chair", "zone", "label", "stage", "entrance", "wall", "column"]
 
 
+class SeatHallIn(BaseModel):
+    name: str = Field(min_length=1, max_length=50)
+    w: int = Field(default=1600, ge=400, le=6000)
+    h: int = Field(default=1000, ge=400, le=6000)
+    clearance: int = Field(default=20, ge=4, le=100)
+    copy_from: int | None = None  # 複製這一廳的桌椅（不含誰坐哪）
+
+
+class SeatHallPatch(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=50)
+    w: int | None = Field(default=None, ge=400, le=6000)
+    h: int | None = Field(default=None, ge=400, le=6000)
+    clearance: int | None = Field(default=None, ge=4, le=100)
+    bg_opacity: int | None = Field(default=None, ge=10, le=100)
+    is_active: bool | None = None  # True = 設為正式使用（賓客查桌用這一廳）
+
+
+class SeatPresetIn(BaseModel):
+    key: Literal["wanfu"]
+
+
 class SeatObjectIn(BaseModel):
+    hall_id: int | None = None  # 放在哪一廳；不填 = 正式使用的那一廳
     kind: SeatKind = "round"
     label: str = Field(default="", max_length=50)
     x: float = 0

@@ -4,27 +4,98 @@ import json
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from .models import Rsvp, SeatAssignment, SeatObject
+from sqlalchemy import update
+
+from .models import Rsvp, SeatAssignment, SeatHall, SeatObject
 from .stage import get_setting
 
 CANVAS_DEFAULT = {"w": 1600, "h": 1000}
 KINDS_WITH_SEATS = ("round", "rect", "chair")
+FIRST_HALL_NAME = "原本的座位圖"
 
 
-def canvas_size(db: Session) -> dict:
+def _clamp_canvas(v, d: int) -> int:
     try:
-        clearance = max(4, min(100, int(get_setting(db, 'seating_clearance') or 20)))
+        return max(400, min(6000, int(float(v))))
+    except (TypeError, ValueError):
+        return d
+
+
+def _clamp_clearance(v) -> int:
+    try:
+        return max(4, min(100, int(v or 20)))
     except (ValueError, TypeError):
-        clearance = 20
-    def _int(v, d):
-        try:
-            return max(400, min(6000, int(float(v))))
-        except (TypeError, ValueError):
-            return d
+        return 20
+
+
+# ---------------- 廳 ----------------
+def list_halls(db: Session) -> list[SeatHall]:
+    return db.scalars(select(SeatHall).order_by(SeatHall.sort_order.asc(), SeatHall.id.asc())).all()
+
+
+def ensure_halls(db: Session) -> SeatHall:
+    """至少要有一廳，而且要有一廳是「正式使用」；舊資料（還沒分廳的桌椅與座位指定）全部歸到第一廳。
+    第一廳的畫布大小沿用以前存在 settings 的值，所以升級後畫面跟原本一模一樣。"""
+    halls = list_halls(db)
+    if not halls:
+        hall = SeatHall(
+            name=FIRST_HALL_NAME,
+            canvas_w=_clamp_canvas(get_setting(db, "seating_canvas_w"), CANVAS_DEFAULT["w"]),
+            canvas_h=_clamp_canvas(get_setting(db, "seating_canvas_h"), CANVAS_DEFAULT["h"]),
+            clearance=_clamp_clearance(get_setting(db, "seating_clearance")),
+            is_active=True,
+        )
+        db.add(hall)
+        db.flush()
+        halls = [hall]
+    if not any(h.is_active for h in halls):
+        halls[0].is_active = True
+    first = halls[0]
+    db.execute(update(SeatObject).where(SeatObject.hall_id.is_(None)).values(hall_id=first.id))
+    # 座位指定跟著它的桌子走
+    orphan = db.scalars(
+        select(SeatAssignment).options(selectinload(SeatAssignment.obj)).where(SeatAssignment.hall_id.is_(None))
+    ).all()
+    for a in orphan:
+        a.hall_id = a.obj.hall_id if a.obj is not None else first.id
+    db.commit()
+    return next(h for h in halls if h.is_active)
+
+
+def active_hall(db: Session) -> SeatHall:
+    """賓客查桌、幫手帶位用的那一廳。"""
+    hall = db.scalars(select(SeatHall).where(SeatHall.is_active.is_(True)).order_by(SeatHall.id.asc())).first()
+    return hall or ensure_halls(db)
+
+
+def hall_or_active(db: Session, hall_id: int | None) -> SeatHall:
+    """後台帶 ?hall= 就用那一廳，沒帶或找不到就用正式使用的。"""
+    if hall_id is not None:
+        hall = db.get(SeatHall, hall_id)
+        if hall is not None:
+            return hall
+    return active_hall(db)
+
+
+def hall_out(h: SeatHall) -> dict:
     return {
-        "w": _int(get_setting(db, "seating_canvas_w"), CANVAS_DEFAULT["w"]),
-        "h": _int(get_setting(db, "seating_canvas_h"), CANVAS_DEFAULT["h"]),
-        "clearance": clearance,
+        "id": h.id,
+        "name": h.name,
+        "w": h.canvas_w,
+        "h": h.canvas_h,
+        "clearance": h.clearance,
+        "has_bg": bool(h.bg_image),
+        "bg_image": h.bg_image,
+        "bg_opacity": h.bg_opacity,
+        "is_active": bool(h.is_active),
+    }
+
+
+def canvas_size(hall: SeatHall) -> dict:
+    return {
+        "w": _clamp_canvas(hall.canvas_w, CANVAS_DEFAULT["w"]),
+        "h": _clamp_canvas(hall.canvas_h, CANVAS_DEFAULT["h"]),
+        "clearance": _clamp_clearance(hall.clearance),
     }
 
 
@@ -125,20 +196,21 @@ def prune(db: Session) -> None:
         db.commit()
 
 
-def load_objects(db: Session) -> list[SeatObject]:
+def load_objects(db: Session, hall_id: int) -> list[SeatObject]:
     # session 設定 expire_on_commit=False，寫入後同一個 request 再讀，集合會是舊快照；先全部失效再查
     db.expire_all()
     return db.scalars(
         select(SeatObject)
         .options(selectinload(SeatObject.assignments).selectinload(SeatAssignment.rsvp))
+        .where(SeatObject.hall_id == hall_id)
         .order_by(SeatObject.z_order.asc(), SeatObject.id.asc())
     ).all()
 
 
-def build_layout(db: Session) -> dict:
-    """給籌備後台：物件（含誰坐哪）+ 賓客清單（每個人有沒有位子）+ 摘要。"""
+def build_layout(db: Session, hall: SeatHall) -> dict:
+    """給籌備後台：這一廳的物件（含誰坐哪）+ 賓客清單（每個人在這一廳有沒有位子）+ 摘要 + 所有廳的清單。"""
     prune(db)
-    objects = load_objects(db)
+    objects = load_objects(db, hall.id)
     seated = {}  # (rsvp_id, person_no) -> {object_id, seat_index, label}
     for o in objects:
         for a in o.assignments:
@@ -167,7 +239,9 @@ def build_layout(db: Session) -> dict:
         )
     seats_total = sum(seat_count(o) for o in objects)
     return {
-        "canvas": canvas_size(db),
+        "hall": hall_out(hall),
+        "halls": [hall_out(h) for h in list_halls(db)],
+        "canvas": canvas_size(hall),
         "objects": [object_out(o) for o in objects],
         "guests": guests,
         "summary": {
@@ -180,21 +254,22 @@ def build_layout(db: Session) -> dict:
     }
 
 
-def public_map(db: Session) -> dict:
-    """給賓客端：只有形狀與桌名，沒有任何人名。"""
-    objects = load_objects(db)
+def public_map(db: Session, hall: SeatHall | None = None) -> dict:
+    """給賓客端：只有形狀與桌名，沒有任何人名。沒指定廳就用正式使用的那一廳。"""
+    hall = hall or active_hall(db)
+    objects = load_objects(db, hall.id)
     return {
-        "canvas": canvas_size(db),
+        "canvas": canvas_size(hall),
         "objects": [object_out(o, with_names=False) for o in objects],
     }
 
 
-def seats_of_rsvp(db: Session, rsvp: Rsvp) -> list[dict]:
-    """某組賓客每個人的位子（給 /seat 查詢用）。"""
+def seats_of_rsvp(db: Session, rsvp: Rsvp, hall: SeatHall) -> list[dict]:
+    """某組賓客每個人在這一廳的位子（給 /seat 查詢用）。"""
     rows = db.scalars(
         select(SeatAssignment)
         .options(selectinload(SeatAssignment.obj), selectinload(SeatAssignment.rsvp))
-        .where(SeatAssignment.rsvp_id == rsvp.id)
+        .where(SeatAssignment.rsvp_id == rsvp.id, SeatAssignment.hall_id == hall.id)
         .order_by(SeatAssignment.person_no.asc())
     ).all()
     return [
@@ -209,14 +284,16 @@ def seats_of_rsvp(db: Session, rsvp: Rsvp) -> list[dict]:
     ]
 
 
-def guest_seat_view(db: Session, rsvp: Rsvp) -> dict:
-    """賓客在 /seat 看到的完整內容：自己的位子、每張桌的同桌名單、左右鄰座、整張平面圖（含每個座位是誰）。"""
-    seats = seats_of_rsvp(db, rsvp)
+def guest_seat_view(db: Session, rsvp: Rsvp, hall: SeatHall | None = None) -> dict:
+    """賓客在 /seat 看到的完整內容：自己的位子、每張桌的同桌名單、左右鄰座、整張平面圖（含每個座位是誰）。
+    賓客端一律看正式使用的那一廳；後台預覽可指定正在編輯的廳。"""
+    hall = hall or active_hall(db)
+    seats = seats_of_rsvp(db, rsvp, hall)
     if not seats:
         return {"seats": [], "tables": [], "map": None, "map_names": {}}
     my_ids = {s["object_id"] for s in seats}
     mine = {(s["object_id"], s["seat_no"] - 1) for s in seats}
-    objects = {o.id: o for o in load_objects(db)}
+    objects = {o.id: o for o in load_objects(db, hall.id)}
     tables = []
     map_names: dict[str, dict[str, dict]] = {}
     for oid in my_ids:
@@ -264,7 +341,7 @@ def guest_seat_view(db: Session, rsvp: Rsvp) -> dict:
                     continue
                 neighbors.append({"seat_no": j + 1, "name": by_idx.get(j, "")})
         s["neighbors"] = neighbors
-    return {"seats": seats, "tables": tables, "map": public_map(db), "map_names": map_names}
+    return {"seats": seats, "tables": tables, "map": public_map(db, hall), "map_names": map_names}
 
 
 def dump_meta(meta: dict | None) -> str:

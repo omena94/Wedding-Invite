@@ -42,6 +42,7 @@ def init_db() -> None:
 
     if engine.dialect.name != "postgresql":
         Base.metadata.create_all(bind=engine)
+        _after_create()
         return
 
     with engine.connect() as conn:
@@ -58,6 +59,17 @@ def init_db() -> None:
                 "ALTER TABLE files ADD COLUMN IF NOT EXISTS sort_order INTEGER NOT NULL DEFAULT 0",
                 "ALTER TABLE files ADD COLUMN IF NOT EXISTS thumb_name VARCHAR(80) NOT NULL DEFAULT ''",
                 "ALTER TABLE rsvps ADD COLUMN IF NOT EXISTS children_json TEXT NOT NULL DEFAULT '[]'",
+                # 2026-09-10 座位圖分「廳」：桌椅與座位指定都掛在某一廳底下，同一個人在不同廳可以各有位子
+                "ALTER TABLE seat_objects ADD COLUMN IF NOT EXISTS hall_id INTEGER REFERENCES seat_halls(id) ON DELETE CASCADE",
+                "CREATE INDEX IF NOT EXISTS ix_seat_objects_hall_id ON seat_objects (hall_id)",
+                "ALTER TABLE seat_assignments ADD COLUMN IF NOT EXISTS hall_id INTEGER REFERENCES seat_halls(id) ON DELETE CASCADE",
+                "CREATE INDEX IF NOT EXISTS ix_seat_assignments_hall_id ON seat_assignments (hall_id)",
+                "ALTER TABLE seat_assignments DROP CONSTRAINT IF EXISTS uq_seat_person",
+                """DO $$ BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'uq_seat_person_hall') THEN
+                        ALTER TABLE seat_assignments ADD CONSTRAINT uq_seat_person_hall UNIQUE (hall_id, rsvp_id, person_no);
+                    END IF;
+                END $$""",
             ):
                 try:
                     conn.execute(text(sql))
@@ -65,6 +77,21 @@ def init_db() -> None:
                 except Exception as e:  # pragma: no cover
                     conn.rollback()
                     log.warning("欄位調整略過（%s）：%s", sql, e)
+            _after_create()
         finally:
             conn.execute(text(f"SELECT pg_advisory_unlock({_INIT_LOCK_ID})"))
             conn.commit()
+
+
+def _after_create() -> None:
+    """建表／改欄位之後要補的資料：舊的桌椅還沒分廳的話，全部歸到第一廳。"""
+    from .seating import ensure_halls
+
+    db = SessionLocal()
+    try:
+        ensure_halls(db)
+    except Exception as e:  # pragma: no cover
+        db.rollback()
+        log.warning("座位圖分廳補資料失敗：%s", e)
+    finally:
+        db.close()

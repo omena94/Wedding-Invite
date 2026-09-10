@@ -227,10 +227,24 @@ export const updateGame = (id, data) => request(`${P}/program/games/${id}`, { me
 export const deleteGame = (id) => request(`${P}/program/games/${id}`, { method: "DELETE", auth: true });
 
 // ===== 座位圖 =====
+// 座位圖分「廳」（2026-09-10）：hall 是廳的 id，不帶就是「正式使用」的那一廳
 const SE = `${P}/seating`;
-export const fetchSeating = (readonly = false) => request(readonly ? "/api/admin/seating" : SE, { auth: true });
-export const fetchSeatPreview = (rsvpId) => request(`/api/admin/seating/preview/${rsvpId}`, { auth: true });
-export const setSeatingCanvas = (w, h, clearance = 20) => request(`${SE}/canvas`, { method: "PATCH", body: { w, h, clearance }, auth: true });
+export const fetchSeating = (readonly = false, hall = null) => request(`${readonly ? "/api/admin/seating" : SE}${qs({ hall })}`, { auth: true });
+export const fetchSeatPreview = (rsvpId, hall = null) => request(`/api/admin/seating/preview/${rsvpId}${qs({ hall })}`, { auth: true });
+export const setSeatingCanvas = (w, h, clearance = 20, hall = null) => request(`${SE}/canvas${qs({ hall })}`, { method: "PATCH", body: { w, h, clearance }, auth: true });
+export const fetchSeatHalls = () => request(`${SE}/halls`, { auth: true });
+export const createSeatHall = (data) => request(`${SE}/halls`, { method: "POST", body: data, auth: true });
+export const createSeatHallFromPreset = (key) => request(`${SE}/halls/preset`, { method: "POST", body: { key }, auth: true });
+export const updateSeatHall = (id, data) => request(`${SE}/halls/${id}`, { method: "PATCH", body: data, auth: true });
+export const deleteSeatHall = (id) => request(`${SE}/halls/${id}`, { method: "DELETE", auth: true });
+export function uploadSeatHallBackground(id, file) {
+  const fd = new FormData();
+  fd.append("file", file);
+  return multipart(`${SE}/halls/${id}/background`, fd);
+}
+export const removeSeatHallBackground = (id) => request(`${SE}/halls/${id}/background`, { method: "DELETE", auth: true });
+// 底圖要登入才能看，<image href> 帶不了 token，所以先 fetch 成 blob
+export const fetchSeatHallBackgroundUrl = (id) => fetchAuthBlobUrl(`${SE}/halls/${id}/background`);
 export const createSeatObject = (data) => request(`${SE}/objects`, { method: "POST", body: data, auth: true });
 export const updateSeatObject = (id, data) => request(`${SE}/objects/${id}`, { method: "PATCH", body: data, auth: true });
 export const moveSeatObjects = (items) => request(`${SE}/objects/move`, { method: "POST", body: items, auth: true });
@@ -242,8 +256,8 @@ export const assignGroup = (object_id, rsvp_id) =>
 export const renameAssignment = (id, display_name) =>
   request(`${SE}/assign/${id}`, { method: "PATCH", body: { display_name }, auth: true });
 export const unassignSeat = (id) => request(`${SE}/assign/${id}`, { method: "DELETE", auth: true });
-export const clearAllSeats = () => request(`${SE}/assignments`, { method: "DELETE", auth: true });
-export const autoAssignSeats = (opts) => request(`${SE}/auto-assign`, { method: "POST", body: opts, auth: true });
+export const clearAllSeats = (hall = null) => request(`${SE}/assignments${qs({ hall })}`, { method: "DELETE", auth: true });
+export const autoAssignSeats = (opts, hall = null) => request(`${SE}/auto-assign${qs({ hall })}`, { method: "POST", body: opts, auth: true });
 
 // ===== 照片相簿 =====
 export const fetchPlannerPhotos = () => request(`${P}/photos`, { auth: true });

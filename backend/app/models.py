@@ -245,6 +245,25 @@ class FileAsset(Base):
 # 座位圖：桌椅物件 + 誰坐哪個位子
 # =====================================================================
 
+class SeatHall(Base):
+    """一個「廳」就是一整套座位圖：自己的畫布大小、桌椅、誰坐哪，以及飯店給的平面圖底圖。
+    廳別還沒定案前可以同時保留好幾套（原本的、萬福廳…）各自排位；is_active 的那一廳才是賓客查桌看到的。"""
+    __tablename__ = "seat_halls"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(50), default="")
+    canvas_w: Mapped[int] = mapped_column(Integer, default=1600)
+    canvas_h: Mapped[int] = mapped_column(Integer, default=1000)
+    clearance: Mapped[int] = mapped_column(Integer, default=20)
+    bg_image: Mapped[str] = mapped_column(String(80), default="")    # uploads/ 裡的檔名；空 = 沒有底圖
+    bg_opacity: Mapped[int] = mapped_column(Integer, default=55)      # 底圖透明度 10～100
+    is_active: Mapped[bool] = mapped_column(Boolean, default=False)   # 賓客查桌、幫手帶位用這一廳
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    objects: Mapped[list["SeatObject"]] = relationship(back_populates="hall", cascade="all, delete-orphan")
+
+
 class SeatObject(Base):
     """平面圖上的物件：round 圓桌 / rect 長桌 / chair 單張椅子 / zone 區域 / stage 舞台 / entrance 入口 / label 文字。
     舞台與入口是獨立的種類：賓客頁靠它們算「怎麼走」與入口到桌子的路線。
@@ -254,6 +273,8 @@ class SeatObject(Base):
     __tablename__ = "seat_objects"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    # 屬於哪一廳；舊資料啟動時會補上第一廳（見 seating.ensure_halls）
+    hall_id: Mapped[int | None] = mapped_column(ForeignKey("seat_halls.id", ondelete="CASCADE"), nullable=True, index=True)
     kind: Mapped[str] = mapped_column(String(10), default="round")
     label: Mapped[str] = mapped_column(String(50), default="")
     x: Mapped[float] = mapped_column(Float, default=0)
@@ -269,6 +290,7 @@ class SeatObject(Base):
     assignments: Mapped[list["SeatAssignment"]] = relationship(
         back_populates="obj", cascade="all, delete-orphan"
     )
+    hall: Mapped["SeatHall | None"] = relationship(back_populates="objects")
 
     @property
     def meta(self) -> dict:
@@ -284,10 +306,12 @@ class SeatAssignment(Base):
     __tablename__ = "seat_assignments"
     __table_args__ = (
         UniqueConstraint("object_id", "seat_index", name="uq_seat_position"),
-        UniqueConstraint("rsvp_id", "person_no", name="uq_seat_person"),
+        # 同一個人在同一廳只能有一個位子；不同廳各自排（廳別未定時兩套座位圖並存）
+        UniqueConstraint("hall_id", "rsvp_id", "person_no", name="uq_seat_person_hall"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    hall_id: Mapped[int | None] = mapped_column(ForeignKey("seat_halls.id", ondelete="CASCADE"), nullable=True, index=True)
     object_id: Mapped[int] = mapped_column(ForeignKey("seat_objects.id", ondelete="CASCADE"), index=True)
     seat_index: Mapped[int] = mapped_column(Integer, default=0)
     rsvp_id: Mapped[int] = mapped_column(ForeignKey("rsvps.id", ondelete="CASCADE"), index=True)

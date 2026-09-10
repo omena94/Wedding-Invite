@@ -25,24 +25,25 @@ from ..schemas import (
     Stats,
 )
 from ..security import AdminRequired, CoupleRequired, create_token, login_role
-from ..seating import build_layout, guest_seat_view
+from ..seating import build_layout, guest_seat_view, hall_or_active
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
 
 # ===== 座位圖（唯讀；幫手當天帶位用）=====
 @router.get("/seating", dependencies=[AdminRequired])
-def seating_readonly(db: Session = Depends(get_db)):
-    return build_layout(db)
+def seating_readonly(hall: int | None = Query(default=None), db: Session = Depends(get_db)):
+    """幫手看的座位圖；?hall= 可切換廳，不帶就是正式使用的那一廳。"""
+    return build_layout(db, hall_or_active(db, hall))
 
 
 @router.get("/seating/preview/{rsvp_id}", dependencies=[AdminRequired])
-def seating_preview(rsvp_id: int, db: Session = Depends(get_db)):
-    """某組賓客在 /seat 查到的畫面內容（不受「桌次查詢」開關影響，給後台預覽用）。"""
+def seating_preview(rsvp_id: int, hall: int | None = Query(default=None), db: Session = Depends(get_db)):
+    """某組賓客在 /seat 查到的畫面內容（不受「桌次查詢」開關影響，給後台預覽用；可指定正在編輯的廳）。"""
     row = db.get(Rsvp, rsvp_id)
     if not row:
         raise HTTPException(404, "找不到這組賓客")
-    view = guest_seat_view(db, row)
+    view = guest_seat_view(db, row, hall_or_active(db, hall))
     return {"found": True, "name": row.name, "table_no": row.table_no, "attending": row.attending, **view}
 
 
