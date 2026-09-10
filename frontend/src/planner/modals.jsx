@@ -44,6 +44,7 @@ export function ExpenseModal({ initial, onClose, onSaved }) {
         contract_amount: toInt(f.contract_amount), paid_by: f.paid_by, note: f.note, pay_method: f.pay_method || "",
       };
       if (f.due_date) body.due_date = f.due_date; else if (!isNew) body.clear_due_date = true;
+      if (initial?.banquet) { delete body.contract_amount; delete body.category; }
       const saved = isNew ? await createExpense(body) : await updateExpense(initial.id, body);
       onSaved(saved);
     } catch (e) {
@@ -57,11 +58,11 @@ export function ExpenseModal({ initial, onClose, onSaved }) {
       footer={<Footer onClose={onClose} onSave={save} busy={busy} />}>
       <Field label="項目名稱" required><input type="text" disabled={!!initial?.gift_order_id} value={f.title} onChange={(e) => set("title", e.target.value)} autoFocus placeholder="例如：婚紗拍攝 9 小時三套方案" /></Field>
       <div className="form-group grid-2">
-        <Field label="類別"><Select value={f.category} onChange={(v) => set("category", v)} options={cats.options} /></Field>
+        <Field label="類別"><Select disabled={!!initial?.banquet} value={f.category} onChange={(v) => set("category", v)} options={cats.options} /></Field>
         <Field label="由誰出"><Select value={f.paid_by} onChange={(v) => set("paid_by", v)} options={toOptions(PAID_BY)} /></Field>
       </div>
       <div className="form-group grid-2">
-        <Field label="合約 / 實際金額（元）" hint={initial?.gift_order_id ? "名稱與合約金額請到「喜餅 → 訂購與費用」修改；此處可調整付款方。" : "簽約後的總價，分期在付款期程裡填"}><NumberInput disabled={!!initial?.gift_order_id} value={f.contract_amount} onChange={(v) => set("contract_amount", v)} /></Field>
+        <Field label="合約 / 實際金額（元）" hint={initial?.banquet ? "婚宴金額由上方「婚宴費用預估」決定；簽約後到那裡填「簽約金額」。" : initial?.gift_order_id ? "名稱與合約金額請到「喜餅 → 訂購與費用」修改；此處可調整付款方。" : "簽約後的總價，分期在付款期程裡填"}><NumberInput disabled={!!initial?.gift_order_id || !!initial?.banquet} value={f.contract_amount} onChange={(v) => set("contract_amount", v)} /></Field>
         <Field label="應付款日期" hint="整筆什麼時候要付；有拆分期的話每期另有自己的應付日"><DatePicker value={f.due_date} onChange={(v) => set("due_date", v)} placeholder="未定" /></Field>
       </div>
       <div className="form-group grid-2">

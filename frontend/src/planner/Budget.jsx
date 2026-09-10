@@ -1,6 +1,6 @@
 // 花費：依類別看合約金額、已付、未付；展開看分期（2026-09-08 起不顯示預算）。
 // 婚宴費用預估也放這裡（原本在賓客名單），跟錢有關的都集中在同一頁比較好找。
-import { useCallback, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { Check, ChevronDown, Pencil, Plus, Trash2, Undo2 } from "lucide-react";
 import { deleteExpense, deletePayment, fetchExpenses } from "../api.js";
@@ -15,12 +15,6 @@ export default function Budget() {
   const [modal, setModal] = useState(null);
   const [open, setOpen] = useState({}); // expense id → 展開分期
   const [detail, setDetail] = useState(null); // 點統計卡看明細：budget / contract / paid / unpaid
-  // 婚宴預估（依出席人數算，由下方面板回報）。還沒簽約前把它算進實際合計與尚欠；
-  // 一旦有一筆「婚宴」類別、填了合約金額的花費，就改用那筆，不重複算
-  const [banquetEstimate, setBanquetEstimate] = useState(0);
-  const onEstimate = useCallback((v) => setBanquetEstimate(v), []);
-  const banquetSigned = (data || []).some((e) => e.category === "婚宴" && e.contract_amount > 0);
-  const banquetExtra = banquetSigned ? 0 : banquetEstimate;
 
   const groups = useMemo(() => {
     const m = new Map();
@@ -37,10 +31,8 @@ export default function Budget() {
     (data || []).forEach((e) => {
       t.contract += e.contract_amount; t.paid += e.paid_total; t.unpaid += e.unpaid_total;
     });
-    t.contract += banquetExtra;
-    t.unpaid += banquetExtra;
     return t;
-  }, [data, banquetExtra]);
+  }, [data]);
 
   if (loading) return <Loading />;
   if (error) return <ErrorBox error={error} />;
@@ -59,14 +51,14 @@ export default function Budget() {
         actions={<button className="btn btn-primary" onClick={() => setModal({ type: "expense" })}><Plus size={15} /> 新增花費</button>} />
 
       <div className="stats-grid">
-        <Card label="實際合計" onClick={() => setDetail("contract")} value={money(totals.contract)} sub={banquetExtra ? `含婚宴預估 ${money(banquetExtra)}` : undefined} />
+        <Card label="實際合計" onClick={() => setDetail("contract")} value={money(totals.contract)} sub="含婚宴（依人數預估或簽約金額）" />
         <Card label="已付" onClick={() => setDetail("paid")} value={money(totals.paid)} bar={totals.contract ? Math.round((totals.paid / totals.contract) * 100) : 0} />
-        <Card label="合約尚欠" value={money(totals.unpaid)} sub={banquetExtra ? "含婚宴預估與未排分期的尾款" : "包含尚未安排分期的尾款"} onClick={() => setDetail("unpaid")} />
+        <Card label="合約尚欠" value={money(totals.unpaid)} sub="包含尚未安排分期的尾款" onClick={() => setDetail("unpaid")} />
       </div>
-      {detail && <DetailModal kind={detail} expenses={data || []} banquet={banquetExtra} onClose={() => setDetail(null)} />}
+      {detail && <DetailModal kind={detail} expenses={data || []} onClose={() => setDetail(null)} />}
 
-      {/* 桌菜依出席人數估算；還沒簽約前算進上方的實際合計與尚欠，簽約後新增一筆「婚宴」花費並填合約金額，就改用那筆 */}
-      <BanquetPanel onEstimate={onEstimate} />
+      {/* 婚宴是系統綁定的一筆花費（類別「婚宴」）：合約金額跟著預估或簽約金額，定金尾款像其他花費一樣加分期（2026-09-10） */}
+      <BanquetPanel onChanged={reload} />
 
       {(!data || data.length === 0) ? (
         <div className="panel"><Empty>還沒有花費項目。從「新增花費」開始。</Empty></div>
@@ -94,6 +86,7 @@ export default function Budget() {
                         </button>
                         {e.note && <div className="muted-cell" style={{ fontSize: 11.5, marginTop: 2, whiteSpace: "pre-wrap" }}>{e.note}</div>}
                         {e.gift_order_id && <Link className="top-link" to="/gifts?tab=orders">查看喜餅訂購</Link>}
+                        {e.banquet && <span className="pill pill-bride" style={{ marginTop: 4 }}>金額跟著上方婚宴預估</span>}
                       </td>
                       <td><span className="pill pill-groom">{PAID_BY[e.paid_by]}</span></td>
                       <td className="muted-cell" style={{ whiteSpace: "nowrap" }}>{e.pay_method || "—"}</td>
@@ -105,7 +98,7 @@ export default function Budget() {
                       <td className="row-actions">
                         <button className="btn btn-ghost btn-sm" title="新增付款" onClick={() => setModal({ type: "payment", expense: e })}><Plus size={13} /></button>{" "}
                         <button className="btn btn-ghost btn-sm" title="編輯" onClick={() => setModal({ type: "expense", expense: e })}><Pencil size={13} /></button>{" "}
-                        {!e.gift_order_id && <button className="btn btn-ghost btn-sm" title="刪除" onClick={() => act(() => deleteExpense(e.id), e.title)}><Trash2 size={13} /></button>}
+                        {!e.gift_order_id && !e.banquet && <button className="btn btn-ghost btn-sm" title="刪除" onClick={() => act(() => deleteExpense(e.id), e.title)}><Trash2 size={13} /></button>}
                       </td>
                     </tr>,
                     isOpen && (
@@ -157,11 +150,9 @@ const DETAIL = {
   paid: { title: "已付明細", rows: (list) => list.flatMap((e) => e.payments.filter((p) => p.paid_date).map((p) => [e.title, `${p.title} · ${fmtDate(p.paid_date)}${p.method ? ` · ${p.method}` : ""}`, p.amount])) },
   unpaid: { title: "合約尚欠明細", rows: (list) => list.filter((e) => e.unpaid_total > 0).map((e) => [e.title, e.unscheduled_unpaid > 0 ? `含未排分期 ${money(e.unscheduled_unpaid)}` : "已排分期未付", e.unpaid_total]) },
 };
-function DetailModal({ kind, expenses, banquet = 0, onClose }) {
+function DetailModal({ kind, expenses, onClose }) {
   const def = DETAIL[kind];
   const rows = def.rows(expenses);
-  // 婚宴還沒簽約時，實際合計與尚欠都含依人數估的婚宴費用
-  if (banquet > 0 && (kind === "contract" || kind === "unpaid")) rows.push(["婚宴（依出席人數預估）", "尚未簽約，依出席人數與每位價格估算", banquet]);
   const total = rows.reduce((a, r) => a + r[2], 0);
   return (
     <Modal title={def.title} onClose={onClose} wide>

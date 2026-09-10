@@ -35,7 +35,9 @@ BANQUET_KEYS = (
     "banquet_child_free_count",  # child_mode=manual：新人手動填「110 以下」免費人數
     "banquet_child_half_count",  # child_mode=manual：手動填「130 以下」半價人數；其餘小孩全價
     "banquet_veg_price",         # 素食每位（未含服務費）；0 = 跟大人一樣
+    "banquet_contract_amount",   # 簽約金額；0 = 還沒簽約，婚宴花費的合約金額照人數預估
 )
+BANQUET_EXPENSE_KEY = "banquet_expense_id"  # 跟婚宴預估綁在一起的那筆花費（2026-09-10）
 BANQUET_DEFAULTS = {
     "banquet_adult_price": "3980",
     "banquet_service_pct": "10",
@@ -46,6 +48,7 @@ BANQUET_DEFAULTS = {
     "banquet_child_free_count": "0",
     "banquet_child_half_count": "0",
     "banquet_veg_price": "0",
+    "banquet_contract_amount": "0",
 }
 SEATING_KEYS = ("seating_canvas_w", "seating_canvas_h", "seating_clearance")
 ALL_KEYS = (PHASE2_KEY, SEAT_KEY, PHOTOS_KEY, *INFO_KEYS, *BANQUET_KEYS, *SEATING_KEYS)
@@ -98,6 +101,8 @@ def banquet_params(db: Session) -> dict:
         "child_half_count": _to_int(raw.get("banquet_child_half_count"), 0),
         # 素食主餐通常另有價位；0 表示跟大人一樣（不另計）
         "veg_price": _to_int(raw.get("banquet_veg_price"), 0),
+        # 簽約後填的實際金額；0 = 還沒簽約，用預估
+        "contract_amount": _to_int(raw.get("banquet_contract_amount"), 0),
     }
 
 

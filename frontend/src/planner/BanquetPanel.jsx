@@ -12,12 +12,9 @@ const readOpen = () => {
   try { return localStorage.getItem(OPEN_KEY) === "1"; } catch { return false; } // 預設收起（2026-09-08 新人要求）
 };
 
-// onEstimate(total)：預估金額算出來或改參數後回報給花費頁，讓「實際合計」把婚宴算進去（2026-09-10 新人要求）
-export default function BanquetPanel({ compact = false, onEstimate }) {
+// onChanged：存檔後通知花費頁重新載入（婚宴那筆花費的合約金額會跟著變；2026-09-10 婚宴改成跟喜餅、婚紗一樣是一筆可分期的花費）
+export default function BanquetPanel({ compact = false, onChanged }) {
   const { data, setData, loading, error } = useLoader(fetchBanquet, []);
-  useEffect(() => {
-    if (data && onEstimate) onEstimate(data.estimate?.total || 0);
-  }, [data, onEstimate]);
   const [f, setF] = useState(null);
   const [busy, setBusy] = useState(false);
   // 面板可收折（跟花費項目展開分期一樣）；記住上次開合，預算頁才不會每次都被它佔一大塊
@@ -53,8 +50,10 @@ export default function BanquetPanel({ compact = false, onEstimate }) {
         child_free_count: toInt(f.child_free_count),
         child_half_count: toInt(f.child_half_count),
         veg_price: toInt(f.veg_price), // 0 = 跟大人一樣
+        contract_amount: toInt(f.contract_amount), // 簽約金額；0 = 依人數預估
       });
       setData(r);
+      onChanged?.();
       toastOk("已更新預估");
     } catch (e) {
       toastErr(e);
@@ -96,6 +95,7 @@ export default function BanquetPanel({ compact = false, onEstimate }) {
             <Field label="身高 110 以下人數（免費）"><NumberInput value={f.child_free_count} onChange={(v) => set("child_free_count", v)} /></Field>
             <Field label="身高 130 以下人數（半價）" hint={`其餘小孩以全價計，全部含 10% 服務費；目前回覆共 ${counts.children} 位小孩`}><NumberInput value={f.child_half_count} onChange={(v) => set("child_half_count", v)} /></Field>
           </div>
+          <Field label="簽約金額（簽約後填）" hint="填 0 就依人數預估。下方「婚宴」類別那筆花費的合約金額會跟著這裡走"><NumberInput value={f.contract_amount} onChange={(v) => set("contract_amount", v)} /></Field>
           <button className="btn btn-primary btn-sm" disabled={busy || !dirty} onClick={save}><Save size={13} /> {busy ? "儲存中…" : "儲存並重算"}</button>
         </div>
 
@@ -116,7 +116,14 @@ export default function BanquetPanel({ compact = false, onEstimate }) {
               <tr className="banquet-sum"><td>合計</td><td className="amount">{money(estimate.total)}</td></tr>
             </tbody>
           </table>
-          <div className="footnote" style={{ textAlign: "left", marginTop: 8 }}>含大人、素食、小孩餐費與 10% 服務費；只算已回覆「出席」的人數，人數變動時自動重算。</div>
+          {data.expense && (
+            <div className="banquet-expense">
+              <span>{params.contract_amount ? "已簽約金額" : "目前帶入花費的金額"}</span><strong>{money(data.expense.contract_amount)}</strong>
+              <span>已付</span><strong>{money(data.expense.paid_total)}</strong>
+              <span>尚欠</span><strong>{money(data.expense.unpaid_total)}</strong>
+            </div>
+          )}
+          <div className="footnote" style={{ textAlign: "left", marginTop: 8 }}>含大人、素食、小孩餐費與 10% 服務費；只算已回覆「出席」的人數，人數變動時自動重算。定金、尾款請在下方「婚宴」類別的那筆花費新增分期。</div>
         </div>
       </div>}
     </div>

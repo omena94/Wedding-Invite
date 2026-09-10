@@ -44,10 +44,12 @@ from ..security import CoupleRequired
 from ..thumbs import is_image, make_thumb
 from ..stage import (
     ALL_KEYS,
+    BANQUET_EXPENSE_KEY,
     PHASE2_KEY,
     banquet_estimate,
     banquet_params,
     get_all,
+    get_setting,
     parse_dt,
     public_stage,
     set_setting,
@@ -80,7 +82,7 @@ def _payment_out(p: Payment, e: Expense | None = None) -> dict:
     }
 
 
-def _expense_out(e: Expense) -> dict:
+def _expense_out(e: Expense, banquet_id: int | None = None) -> dict:
     payments = sorted(e.payments, key=lambda p: (p.sort_order, p.id))
     paid = sum(p.amount for p in payments if p.paid_date)
     scheduled = sum(p.amount for p in payments if not p.paid_date)
@@ -97,6 +99,7 @@ def _expense_out(e: Expense) -> dict:
         "note": e.note,
         "due_date": e.due_date.isoformat() if e.due_date else None,
         "pay_method": e.pay_method or "",
+        "banquet": banquet_id is not None and e.id == banquet_id,  # 婚宴那筆：金額由預估／簽約金額決定，不能刪
         "paid_total": paid,
         "unpaid_total": unpaid,
         "scheduled_unpaid": scheduled,
@@ -249,17 +252,52 @@ def _banquet_counts(db: Session) -> tuple[dict, list[dict]]:
     )
 
 
+def _banquet_id(db: Session) -> int | None:
+    """跟婚宴預估綁在一起的那筆花費 id（還沒建就 None）。"""
+    try:
+        return int(get_setting(db, BANQUET_EXPENSE_KEY) or 0) or None
+    except ValueError:
+        return None
+
+
+def sync_banquet_expense(db: Session) -> Expense:
+    """婚宴也是一筆花費（2026-09-10 新人要求跟喜餅、婚紗一樣有分期付款）。
+    這筆花費由系統建立並綁定；合約金額 = 簽約金額（婚宴面板填的），還沒簽約就 = 依出席人數的預估，
+    人數或價格一變就跟著更新。付款（定金、尾款）跟其他花費一樣掛在底下。"""
+    params = banquet_params(db)
+    counts, children = _banquet_counts(db)
+    total = params["contract_amount"] or banquet_estimate(params, counts["adults"], children, veg_adults=counts["veg_adults"])["total"]
+    e = db.get(Expense, _banquet_id(db) or 0)
+    if e is None:
+        e = Expense(category="婚宴", title="婚宴酒席（依出席人數預估）", paid_by="shared", contract_amount=total,
+                    note="金額由「婚宴費用預估」自動帶入；簽約後到預估面板填「簽約金額」就改用實際數字。定金、尾款請在這筆底下新增分期。")
+        db.add(e)
+        db.flush()
+        set_setting(db, BANQUET_EXPENSE_KEY, str(e.id))
+        db.commit()
+    elif e.contract_amount != total or e.category != "婚宴":
+        e.contract_amount = total
+        e.category = "婚宴"
+        db.commit()
+    return e
+
+
 def _banquet_out(db: Session) -> dict:
     params = banquet_params(db)
     counts, children = _banquet_counts(db)
     a = counts["adults"]
     v = counts["veg_adults"]
+    e = sync_banquet_expense(db)
+    db.expire(e)  # 同一個 session 內剛加過付款時，付款集合要重新讀才會是最新的
+    e = db.scalars(select(Expense).options(*_EXPENSE_LOAD).where(Expense.id == e.id)).one()
     return {
         "params": params,
         "counts": counts,
         "estimate": banquet_estimate(params, a, children, veg_adults=v),
         # 沒填身高的小孩改用不同計價時的合計（有填的照身高算，不受影響）
         "scenarios": {m: banquet_estimate(params, a, children, m, veg_adults=v)["total"] for m in ("free", "half", "full")},
+        # 綁定的花費：合約金額、已付、尚欠，讓面板可以顯示付款進度
+        "expense": _expense_out(e, banquet_id=e.id),
     }
 
 
@@ -287,6 +325,7 @@ def patch_banquet(payload: BanquetPatch, db: Session = Depends(get_db)):
 # ---------------------------------------------------------------------
 @router.get("/dashboard")
 def dashboard(db: Session = Depends(get_db)):
+    sync_banquet_expense(db)
     budget_total = db.scalar(select(func.coalesce(func.sum(Expense.budget_amount), 0))) or 0
     contract_total = db.scalar(select(func.coalesce(func.sum(Expense.contract_amount), 0))) or 0
     paid_total = db.scalar(
@@ -613,10 +652,11 @@ def compare(category: str = Query(...), db: Session = Depends(get_db)):
 # ---------------------------------------------------------------------
 @router.get("/expenses")
 def list_expenses(db: Session = Depends(get_db)):
+    banquet = sync_banquet_expense(db).id  # 人數變了合約金額要跟著變，列表前先同步
     rows = db.scalars(
         select(Expense).options(*_EXPENSE_LOAD).order_by(Expense.category.asc(), Expense.id.asc())
     ).all()
-    return [_expense_out(e) for e in rows]
+    return [_expense_out(e, banquet_id=banquet) for e in rows]
 
 
 @router.post("/expenses", status_code=201)
@@ -636,6 +676,9 @@ def update_expense(expense_id: int, payload: ExpensePatch, db: Session = Depends
     if e is None:
         raise HTTPException(404, "找不到花費項目")
     data = payload.model_dump(exclude_unset=True)
+    if expense_id == _banquet_id(db):
+        if data.get("contract_amount", e.contract_amount) != e.contract_amount or data.get("category", e.category) != e.category:
+            raise HTTPException(400, "婚宴這筆的金額由「婚宴費用預估」決定；簽約後請到預估面板填「簽約金額」")
     if db.scalar(select(GiftOrder.id).where(GiftOrder.expense_id == expense_id)):
         if (data.get("contract_amount", e.contract_amount) != e.contract_amount
                 or data.get("title", e.title) != e.title
@@ -667,6 +710,8 @@ def delete_expense(expense_id: int, db: Session = Depends(get_db)):
         raise HTTPException(404, "找不到花費項目")
     if db.scalar(select(GiftOrder.id).where(GiftOrder.expense_id == expense_id)):
         raise HTTPException(400, "此花費已有喜餅訂購，請保留訂購與付款紀錄供對帳")
+    if expense_id == _banquet_id(db):
+        raise HTTPException(400, "婚宴這筆是跟「婚宴費用預估」綁在一起的，不能刪除")
     db.delete(e)
     db.commit()
     return None

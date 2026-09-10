@@ -371,6 +371,7 @@ class BanquetPatch(BaseModel):
     child_free_below: int | None = Field(default=None, ge=0, le=250)  # 身高低於此免費
     child_half_below: int | None = Field(default=None, ge=0, le=250)  # 身高低於此半價（以上全價）
     veg_price: int | None = Field(default=None, ge=0, le=1_000_000)  # 素食每位；0 = 同大人
+    contract_amount: int | None = Field(default=None, ge=0, le=100_000_000)  # 簽約金額；0 = 依人數預估
 
 
 class CategoryIn(BaseModel):
