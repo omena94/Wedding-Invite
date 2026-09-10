@@ -42,13 +42,12 @@ function TextField({ label, value, onChange, placeholder, required, area = false
     : <input type="text" aria-label={label} value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} maxLength={300}/>}</Field>;
 }
 
-export function ProductForm({ initial, vendors, onClose, onSaved }) {
-  const [f, set] = useForm(initial || { name: "", vendor_id: "", reference_price: "", reserve_qty: 0, active: true, version: 1 });
+export function ProductForm({ initial, onClose, onSaved }) {
+  const [f, set] = useForm(initial || { name: "", reference_price: "", reserve_qty: 0, active: true, version: 1 });
   return <GiftDialog title={initial ? "編輯喜餅款式" : "新增喜餅款式"} onClose={onClose} onSaved={onSaved}
-    submit={() => saveGiftProduct(initial?.id, { name: f.name, vendor_id: f.vendor_id ? Number(f.vendor_id) : null,
+    submit={() => saveGiftProduct(initial?.id, { name: f.name,
       reference_price: f.reference_price === "" || f.reference_price == null ? null : toInt(f.reference_price), reserve_qty: toInt(f.reserve_qty), active: f.active, version: f.version })}>
     <TextField label="款式名稱" value={f.name} onChange={(v) => set("name", v)} required placeholder="例如：經典綜合禮盒"/>
-    <Field label="廠商"><Select aria-label="款式廠商" value={f.vendor_id || ""} onChange={(v) => set("vendor_id", v)} options={[{ value: "", label: "尚未決定" }, ...vendors.map((v) => ({ value: v.id, label: v.name }))]}/></Field>
     <div className="grid-2"><Field label="參考單價（元）" hint="尚未報價可留空；不會改動已下訂價格"><NumberInput aria-label="參考單價" value={f.reference_price} onChange={(v) => set("reference_price", v)} placeholder="尚未報價"/></Field>
       <Field label="備用盒數"><NumberInput aria-label="備用盒數" value={f.reserve_qty} onChange={(v) => set("reserve_qty", v)}/></Field></div>
     {initial && <Checkbox checked={f.active} onChange={(v) => set("active", v)}>新增安排時顯示這個款式</Checkbox>}
@@ -72,7 +71,7 @@ function ProductLines({ items, onChange, products, order = false }) {
       }} options={[{ value: "", label: "請選款式" }, ...products.filter((p) => p.active || p.id === Number(item.product_id)).map((p) => ({ value: p.id, label: p.name }))]}/></Field>
       {order ? <div className="gift-line-numbers">
         <Field label="購買盒數"><NumberInput aria-label={`購買盒數 ${i + 1}`} value={item.paid_qty} onChange={(v) => update(i, "paid_qty", v)}/></Field>
-        <Field label="廠商贈盒"><NumberInput aria-label={`廠商贈盒 ${i + 1}`} value={item.gift_qty} onChange={(v) => update(i, "gift_qty", v)}/></Field>
+        <Field label="贈盒"><NumberInput aria-label={`贈盒 ${i + 1}`} value={item.gift_qty} onChange={(v) => update(i, "gift_qty", v)}/></Field>
         <Field label="成交單價"><NumberInput aria-label={`成交單價 ${i + 1}`} value={item.unit_price} onChange={(v) => update(i, "unit_price", v)} placeholder="請填成交價"/></Field>
       </div> : <Field label="送餅盒數"><NumberInput aria-label={`送餅盒數 ${i + 1}`} value={item.quantity} onChange={(v) => update(i, "quantity", v)}/></Field>}
       <button type="button" className="btn btn-ghost btn-sm" aria-label={`移除款式 ${i + 1}`} onClick={() => onChange(items.filter((_, j) => j !== i))}><Trash2 size={15}/></button>
@@ -115,35 +114,33 @@ export function DeliveryForm({ recipient, onClose, onSaved }) {
       <Field label="交付／寄出日期"><DatePicker value={f.delivered_on} onChange={(v) => set("delivered_on", v)}/></Field></div>
     <div className="grid-2"><TextField label="實際收件／代領人" value={f.receiver} onChange={(v) => set("receiver", v)} required/><TextField label="經手人" value={f.handler} onChange={(v) => set("handler", v)}/></div>
     {f.method === "mail" && <><TextField label="本次收件地址" value={f.address} onChange={(v) => set("address", v)} required/><TextField label="寄送單號" value={f.tracking} onChange={(v) => set("tracking", v)}/></>}
-    <TextField label="交付備註" value={f.note} onChange={(v) => set("note", v)} placeholder="例如：由媽媽代領、廠商直接寄送"/>
+    <TextField label="交付備註" value={f.note} onChange={(v) => set("note", v)} placeholder="例如：由媽媽代領、店家直接寄送"/>
   </GiftDialog>;
 }
 
-export function OrderForm({ initial, products, vendors, expenses, orders, onClose, onSaved }) {
-  const [f, set, setF] = useForm(() => ({ request_key: crypto.randomUUID(), version: 1, vendor_id: "", expense_id: "", title: "喜餅訂購", shipping: 0, other_cost: 0, discount: 0, budget_amount: 0, due_date: "", received_on: "", note: "", ...(initial || {}),
+export function OrderForm({ initial, products, expenses, orders, onClose, onSaved }) {
+  const [f, set, setF] = useForm(() => ({ request_key: crypto.randomUUID(), version: 1, expense_id: "", title: "喜餅訂購", shipping: 0, other_cost: 0, discount: 0, budget_amount: 0, due_date: "", received_on: "", note: "", ...(initial || {}),
     items: initial?.items.map(({ product_id, paid_qty, gift_qty, unit_price }) => ({ product_id, paid_qty, gift_qty, unit_price })) || [] }));
   const used = new Set(orders.filter((o) => o.id !== initial?.id).map((o) => o.expense_id));
-  const available = expenses.filter((e) => !used.has(e.id) && (!e.vendor_id || e.vendor_id === Number(f.vendor_id)));
+  const available = expenses.filter((e) => !used.has(e.id));
   const total = f.items.reduce((sum, i) => sum + toInt(i.paid_qty) * toInt(i.unit_price), 0) + toInt(f.shipping) + toInt(f.other_cost) - toInt(f.discount);
   return <GiftDialog title={initial ? "編輯喜餅訂購" : "新增喜餅訂購"} onClose={onClose} onSaved={onSaved} label={initial ? "更新訂購與花費" : "確認訂購並記帳"}
     submit={() => {
       if (f.items.some((i) => i.unit_price === "")) throw new Error("請填各款成交單價；免費項目請明確填 0");
-      return saveGiftOrder(initial?.id, { request_key: f.request_key, version: f.version, vendor_id: Number(f.vendor_id), expense_id: f.expense_id ? Number(f.expense_id) : null,
+      return saveGiftOrder(initial?.id, { request_key: f.request_key, version: f.version, expense_id: f.expense_id ? Number(f.expense_id) : null,
         title: f.title, items: f.items.map((i) => ({ product_id: Number(i.product_id), paid_qty: toInt(i.paid_qty), gift_qty: toInt(i.gift_qty), unit_price: toInt(i.unit_price) })),
         shipping: toInt(f.shipping), other_cost: toInt(f.other_cost), discount: toInt(f.discount), budget_amount: toInt(f.budget_amount), due_date: f.due_date || null, received_on: f.received_on || null, note: f.note });
     }}>
     <TextField label="訂購名稱" value={f.title} onChange={(v) => set("title", v)} required/>
-    <Field label="訂購廠商" required><Select aria-label="訂購廠商" disabled={!!initial} value={f.vendor_id} onChange={(v) => setF((old) => ({ ...old, vendor_id: v, expense_id: "" }))} options={[{ value: "", label: "請選廠商" }, ...vendors.map((v) => ({ value: v.id, label: v.name }))]}/></Field>
-    {!vendors.length && <p className="gift-warning">請先到「廠商」新增喜餅廠商，再回來記錄訂購。</p>}
-    <ProductLines order products={products.filter((p) => !p.vendor_id || p.vendor_id === Number(f.vendor_id) || f.items.some((i) => i.product_id === p.id))} items={f.items} onChange={(v) => set("items", v)}/>
+    <ProductLines order products={products} items={f.items} onChange={(v) => set("items", v)}/>
     <div className="gift-line-numbers"><Field label="本訂購運費"><NumberInput aria-label="本訂購運費" value={f.shipping} onChange={(v) => set("shipping", v)}/></Field>
       <Field label="其他費用"><NumberInput aria-label="其他費用" value={f.other_cost} onChange={(v) => set("other_cost", v)}/></Field>
       <Field label="額外折扣"><NumberInput aria-label="額外折扣" value={f.discount} onChange={(v) => set("discount", v)}/></Field></div>
     <p className="gift-order-total">訂購總額 <strong>{money(total)}</strong></p>
-    <p className="helper-text">廠商贈盒不收貨款。已包含在報價中的運費不要再加一次。</p>
-    {!initial && <Field label="連結既有花費" hint="已記過喜餅訂金時，請連結原花費；廠商與合約金額須一致。"><Select aria-label="連結既有花費" value={f.expense_id} onChange={(v) => set("expense_id", v)} options={[{ value: "", label: "建立一筆新的喜餅花費" }, ...available.map((e) => ({ value: e.id, label: `${e.title} · ${money(e.contract_amount)}` }))]}/></Field>}
+    <p className="helper-text">贈盒不收貨款。已包含在報價中的運費不要再加一次。</p>
+    {!initial && <Field label="連結既有花費" hint="已記過喜餅訂金時，請連結原花費；合約金額須一致。"><Select aria-label="連結既有花費" value={f.expense_id} onChange={(v) => set("expense_id", v)} options={[{ value: "", label: "建立一筆新的喜餅花費" }, ...available.map((e) => ({ value: e.id, label: `${e.title} · ${money(e.contract_amount)}` }))]}/></Field>}
     <div className="grid-2"><Field label="預計取貨／出貨日"><DatePicker value={f.due_date || ""} onChange={(v) => set("due_date", v)}/></Field>
-      <Field label="實際到貨日" hint="廠商直送親友可留空"><DatePicker value={f.received_on || ""} onChange={(v) => set("received_on", v)}/></Field></div>
+      <Field label="實際到貨日" hint="店家直送親友可留空"><DatePicker value={f.received_on || ""} onChange={(v) => set("received_on", v)}/></Field></div>
     <TextField label="訂購備註" value={f.note} onChange={(v) => set("note", v)} area placeholder="訂單編號、分批到貨或修改原因"/>
   </GiftDialog>;
 }

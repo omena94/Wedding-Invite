@@ -1,4 +1,4 @@
-// 總覽：倒數、合約與付款、待辦、賓客摘要、目前階段（近期付款與廠商面板已於 2026-09-08 移除）
+// 總覽：倒數、合約與付款、待辦、賓客摘要、目前階段（近期付款與廠商面板已於 2026-09-08 移除；2026-09-10 待辦不再顯示廠商名）
 import { Link } from "react-router-dom";
 import { CalendarClock, Hourglass, ListChecks, Users, Utensils, Wallet, Settings as SettingsIcon } from "lucide-react";
 import { fetchDashboard, fetchStats } from "../api.js";
@@ -61,7 +61,6 @@ export default function Dashboard() {
                 <li key={t.id}>
                   <div>
                     <div className="pl-list-title">{t.kind === "milestone" && <span className="pill pill-bride" style={{ marginRight: 6 }}>里程碑</span>}{t.title}</div>
-                    <div className="pl-list-sub">{t.vendor_name || ""}</div>
                   </div>
                   <div className="muted-cell" style={{ whiteSpace: "nowrap" }}>{t.due_date ? `${fmtDate(t.due_date)}${dueTag(t.due_date)}` : "未定"}</div>
                 </li>

@@ -506,7 +506,8 @@ class GiftOrder(Base):
     __tablename__ = "gift_orders"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     request_key: Mapped[str] = mapped_column(String(64), unique=True)
-    vendor_id: Mapped[int] = mapped_column(ForeignKey("vendors.id", ondelete="RESTRICT"), index=True)
+    # 2026-09-10 後台已不顯示廠商，訂購不必再指定廠商；舊資料的廠商保留
+    vendor_id: Mapped[int | None] = mapped_column(ForeignKey("vendors.id", ondelete="RESTRICT"), index=True, nullable=True)
     expense_id: Mapped[int] = mapped_column(ForeignKey("expenses.id", ondelete="RESTRICT"), unique=True)
     title: Mapped[str] = mapped_column(String(150))
     items_json: Mapped[str] = mapped_column(Text)

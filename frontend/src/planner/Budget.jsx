@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { Check, ChevronDown, Pencil, Plus, Trash2, Undo2 } from "lucide-react";
-import { deleteExpense, deletePayment, fetchExpenses, fetchMemos, fetchVendors } from "../api.js";
+import { deleteExpense, deletePayment, fetchExpenses, fetchMemos } from "../api.js";
 import { PAID_BY, fmtDate, money } from "../constants.js";
 import { ExpenseModal, PaymentModal } from "./modals.jsx";
 import { Empty, ErrorBox, Loading, Modal, PageHead, confirmDelete, toastErr, useLoader } from "./ui.jsx";
@@ -13,7 +13,6 @@ import { MemoAddButton, MemoModal, MemoRows, groupBy, topicList } from "./memoUi
 
 export default function Budget() {
   const { data, loading, error, reload } = useLoader(fetchExpenses, []);
-  const { data: vendors } = useLoader(() => fetchVendors(), []);
   const [modal, setModal] = useState(null);
   const [open, setOpen] = useState({}); // expense id → 展開分期
   // 2026-09-09 備忘整合：掛在花費底下的備忘，展開後顯示在分期下方
@@ -68,7 +67,7 @@ export default function Budget() {
       <BanquetPanel />
 
       {(!data || data.length === 0) ? (
-        <div className="panel"><Empty>還沒有花費項目。從「新增花費」開始，或到廠商頁面新增，會自動掛在該廠商底下。</Empty></div>
+        <div className="panel"><Empty>還沒有花費項目。從「新增花費」開始。</Empty></div>
       ) : groups.map(([cat, list]) => (
         <div className="panel" key={cat}>
           <div className="panel-head">
@@ -78,7 +77,7 @@ export default function Budget() {
           <div className="table-wrap">
             <table>
               <thead>
-                <tr><th>項目</th><th>廠商</th><th>由誰出</th><th style={{ textAlign: "right" }}>合約</th><th style={{ textAlign: "right" }}>已付</th><th style={{ textAlign: "right" }}>未付</th><th style={{ minWidth: 110 }}>進度</th><th></th></tr>
+                <tr><th>項目</th><th>由誰出</th><th style={{ textAlign: "right" }}>合約</th><th style={{ textAlign: "right" }}>已付</th><th style={{ textAlign: "right" }}>未付</th><th style={{ minWidth: 110 }}>進度</th><th></th></tr>
               </thead>
               <tbody>
                 {list.map((e) => {
@@ -95,7 +94,6 @@ export default function Budget() {
                         {e.note && <div className="muted-cell" style={{ fontSize: 11.5, marginTop: 2, whiteSpace: "pre-wrap" }}>{e.note}</div>}
                         {e.gift_order_id && <Link className="top-link" to="/gifts?tab=orders">查看喜餅訂購</Link>}
                       </td>
-                      <td>{e.vendor_id ? e.vendor_name : <span className="muted-cell">—</span>}</td>
                       <td><span className="pill pill-groom">{PAID_BY[e.paid_by]}</span></td>
                       <td className="amount">{money(e.contract_amount)}</td>
                       <td className="amount">{money(e.paid_total)}</td>
@@ -147,7 +145,7 @@ export default function Budget() {
         </div>
       ))}
 
-      {modal?.type === "expense" && <ExpenseModal vendors={vendors || []} initial={modal.expense} onClose={close} onSaved={saved} />}
+      {modal?.type === "expense" && <ExpenseModal initial={modal.expense} onClose={close} onSaved={saved} />}
       {modal?.type === "payment" && (
         <PaymentModal expenseId={modal.expense.id} expenseTitle={modal.expense.title} initial={modal.payment} markPaid={modal.markPaid} onClose={close} onSaved={saved} />
       )}

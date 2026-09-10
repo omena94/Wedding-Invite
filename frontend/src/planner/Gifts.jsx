@@ -5,7 +5,7 @@ import { Check, Gift, History, Package, Pencil, Plus, Trash2, Truck, Users } fro
 import Select from "../components/Select.jsx";
 import Toggle from "../components/Toggle.jsx";
 import { usePlanner } from "./context.js";
-import { createGiftDelivery, deleteGiftRecipient, fetchExpenses, fetchGifts, fetchRsvps, fetchVendors, importGiftGuests, saveGiftRecipient, updateGiftDelivery } from "../api.js";
+import { createGiftDelivery, deleteGiftRecipient, fetchExpenses, fetchGifts, fetchRsvps, importGiftGuests, saveGiftRecipient, updateGiftDelivery } from "../api.js";
 import { fmtDate, money } from "../constants.js";
 import { DeliveryForm, GiftDialog, METHODS, OrderForm, ProductForm, RecipientForm, SIDES, STATES, options, today } from "./giftForms.jsx";
 import { PaymentModal, UploadModal } from "./modals.jsx";
@@ -75,14 +75,13 @@ function DeliveryHistory({ recipient, onClose, onSaved }) {
   </Modal>;
 }
 
-function OrderCard({ o, vendors, edit, payment, upload }) {
-  const vendor = vendors.find((v) => v.id === o.vendor_id);
+function OrderCard({ o, edit, payment, upload }) {
   return <article className="panel gift-order" id={`gift-order-${o.id}`}>
-    <div className="panel-head"><div><h2 className="panel-title">{o.title}</h2><span className="helper-text">{vendor?.name || ""}</span></div><button className="btn btn-ghost btn-sm" onClick={edit}><Pencil size={14}/>編輯訂購</button></div>
+    <div className="panel-head"><div><h2 className="panel-title">{o.title}</h2></div><button className="btn btn-ghost btn-sm" onClick={edit}><Pencil size={14}/>編輯訂購</button></div>
     <div className="gift-order-money"><div><span>訂購總額</span><strong>{money(o.total)}</strong></div><div><span>已付</span><strong>{money(o.paid)}</strong></div><div><span>{o.balance < 0 ? "溢付待對帳" : "尚欠"}</span><strong>{money(Math.abs(o.balance))}</strong></div></div>
     {o.unscheduled > 0 && <p className="gift-warning">尚有 {money(o.unscheduled)} 未安排分期，已包含在尚欠金額。</p>}
     {o.scheduled > Math.max(0, o.balance) && <p className="gift-warning">未付分期超過尚欠金額，請核對付款安排。</p>}
-    <div className="gift-recipient-items">{o.items.map((i) => <div key={i.product_id}><span>{i.name}</span><span>購買 {i.paid_qty} 盒 · 廠商贈 {i.gift_qty} 盒<br/><small>每盒 {money(i.unit_price)}</small></span></div>)}</div>
+    <div className="gift-recipient-items">{o.items.map((i) => <div key={i.product_id}><span>{i.name}</span><span>購買 {i.paid_qty} 盒 · 贈 {i.gift_qty} 盒<br/><small>每盒 {money(i.unit_price)}</small></span></div>)}</div>
     <p className="helper-text">運費 {money(o.shipping)} · 其他 {money(o.other_cost)} · 折扣 {money(o.discount)}</p>
     <p className="helper-text">{o.due_date ? `預計取貨／出貨 ${fmtDate(o.due_date)}` : "取貨／出貨日期未定"}{o.received_on ? ` · 已於 ${fmtDate(o.received_on)} 到貨` : ""}</p>
     {o.note && <p className="gift-note">{o.note}</p>}
@@ -123,10 +122,10 @@ export default function Gifts() {
   const tab = params.get("tab") === "orders" ? "orders" : "recipients";
   const { role } = usePlanner();
   const { data, loading, error, reload } = useLoader(async () => {
-    // 幫手拿不到廠商與花費（403），只載名單與賓客
-    if (role === "helper") { const [gifts, guests] = await Promise.all([fetchGifts(), fetchRsvps()]); return { ...gifts, guests, vendors: [], expenses: [] }; }
-    const [gifts, guests, vendors, expenses] = await Promise.all([fetchGifts(), fetchRsvps(), fetchVendors(), fetchExpenses()]);
-    return { ...gifts, guests, vendors, expenses };
+    // 幫手拿不到花費（403），只載名單與賓客
+    if (role === "helper") { const [gifts, guests] = await Promise.all([fetchGifts(), fetchRsvps()]); return { ...gifts, guests, expenses: [] }; }
+    const [gifts, guests, expenses] = await Promise.all([fetchGifts(), fetchRsvps(), fetchExpenses()]);
+    return { ...gifts, guests, expenses };
   });
   const [modal, setModal] = useState(null);
   const [search, setSearch] = useState("");
@@ -168,7 +167,7 @@ export default function Gifts() {
   };
   if (loading) return <Loading/>;
   if (error) return <><ErrorBox error={error}/><button className="btn" onClick={reload}>重新讀取</button></>;
-  const { summary: s, products, recipients, orders, guests, vendors, expenses } = data;
+  const { summary: s, products, recipients, orders, guests, expenses } = data;
   // 篩選只留姓名搜尋與領取方式（2026-09-08 新人要求精簡，幫手現場好用）
   const filtered = recipients.filter((r) => (!method || r.method === method) && (!side || r.side === side) && `${r.name} ${r.contact_name}`.toLowerCase().includes(search.toLowerCase()));
   return <div className="gift-page">
@@ -187,22 +186,22 @@ export default function Gifts() {
       {filtered.length === 0 ? <div className="panel"><Empty>{recipients.length ? "沒有符合篩選的送餅安排" : "還沒有送餅對象，從賓客加入或直接新增親友。"}</Empty></div> : <div className="panel"><div className="table-wrap"><table className="gift-table"><thead><tr><th>簽收確認</th><th>送禮對象</th><th>盒數</th><th>領取方式</th><th>電話</th><th></th></tr></thead><tbody>{filtered.map((r) => <RecipientRow key={r.id} r={r} onMethod={changeMethod} onPickup={confirmPickup} onRemove={() => removeRecipient(r)} canManage={role !== "helper"} edit={() => setModal({ type: "recipient", initial: r })} deliver={() => setModal({ type: "delivery", recipient: r })} history={() => setModal({ type: "history", recipient: r })}/>)}</tbody></table></div></div>}
     </> : <>
       <div className="stats-grid"><Stat label="確認訂購金額" value={money(s.total)}/><Stat label="已付" value={money(s.paid)}/><Stat label="尚欠" value={money(s.balance)}/><Stat label="需求參考估算" value={money(s.estimate)} sub="含備用；未含運費與折扣"/></div>
-      <div className="panel"><div className="panel-head"><h2 className="panel-title">款式與盒數</h2><span className="helper-text">已訂含廠商贈盒，不代表已到貨。</span></div>
+      <div className="panel"><div className="panel-head"><h2 className="panel-title">款式與盒數</h2><span className="helper-text">已訂含贈盒，不代表已到貨。</span></div>
         {!products.length ? <Empty>新增喜餅款式後，就能安排盒數與登記訂購。</Empty> : <div className="gift-products">{products.map((p) => <div className="gift-product" key={p.id}>
           <div><strong>{p.name}{!p.active && "（停用）"}</strong><p className="helper-text">{p.reference_price == null ? "尚無參考價格" : `參考每盒 ${money(p.reference_price)}`}</p></div>
           <div className="gift-product-counts"><span>需求 <b>{p.demand}</b></span><span>備用 <b>{p.reserve_qty}</b></span><span>已訂 <b>{p.supply}</b></span><span className={p.shortage ? "gift-warning" : ""}>缺口 <b>{p.shortage}</b></span></div>
           <button className="btn btn-ghost btn-sm" aria-label={`編輯款式 ${p.name}`} onClick={() => setModal({ type: "product", initial: p })}><Pencil size={14}/>編輯</button>
         </div>)}</div>}
       </div>
-      {!orders.length ? <div className="panel"><Empty>確認廠商報價後新增訂購，會建立或連結一筆花費。付款沿用既有訂金與尾款紀錄。</Empty></div> : orders.map((o) => <OrderCard key={o.id} o={o} vendors={vendors} edit={() => setModal({ type: "order", initial: o })} payment={(p) => setModal({ type: "payment", order: o, initial: p })} upload={() => setModal({ type: "upload", order: o })}/>)}
+      {!orders.length ? <div className="panel"><Empty>報價確認後新增訂購，會建立或連結一筆花費。付款沿用既有訂金與尾款紀錄。</Empty></div> : orders.map((o) => <OrderCard key={o.id} o={o} edit={() => setModal({ type: "order", initial: o })} payment={(p) => setModal({ type: "payment", order: o, initial: p })} upload={() => setModal({ type: "upload", order: o })}/>)}
     </>}
-    {modal?.type === "product" && <ProductForm initial={modal.initial} vendors={vendors} onClose={close} onSaved={saved}/>}
+    {modal?.type === "product" && <ProductForm initial={modal.initial} onClose={close} onSaved={saved}/>}
     {modal?.type === "recipient" && <RecipientForm initial={modal.initial} products={products} recipients={recipients} onClose={close} onSaved={saved}/>}
-    {modal?.type === "order" && <OrderForm initial={modal.initial} products={products} vendors={vendors} expenses={expenses} orders={orders} onClose={close} onSaved={saved}/>}
+    {modal?.type === "order" && <OrderForm initial={modal.initial} products={products} expenses={expenses} orders={orders} onClose={close} onSaved={saved}/>}
     {modal?.type === "delivery" && <DeliveryForm recipient={modal.recipient} onClose={close} onSaved={saved}/>}
     {modal?.type === "pickup" && <PickupDialog recipient={modal.recipient} role={role} onClose={close} onSaved={saved}/>}
     {modal?.type === "history" && <DeliveryHistory recipient={modal.recipient} onClose={close} onSaved={saved}/>}
     {modal?.type === "payment" && <PaymentModal expenseId={modal.order.expense_id} expenseTitle={modal.order.title} initial={modal.initial} onClose={close} onSaved={saved}/>}
-    {modal?.type === "upload" && <UploadModal vendors={vendors} defaults={{ vendor_id: modal.order.vendor_id, expense_id: modal.order.expense_id, kind: "doc" }} onClose={close} onSaved={saved}/>}
+    {modal?.type === "upload" && <UploadModal defaults={{ expense_id: modal.order.expense_id, kind: "doc" }} onClose={close} onSaved={saved}/>}
   </div>;
 }

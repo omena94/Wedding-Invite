@@ -337,3 +337,18 @@ def test_couple_can_delete_recipient_with_history_but_helper_cannot(setup):
     assert client.delete(P + f"/recipients/{rid}").status_code == 404
     # 回覆本身還在，之後再帶入會重新建一筆
     assert client.post(P + "/recipients/import-guests").json()["created"] == 1
+
+
+def test_order_without_vendor(setup):
+    """2026-09-10 後台移除廠商：新訂購不指定廠商也能記帳，編輯時不會被「改掛廠商」擋下。"""
+    client, db, vid, pid = setup
+    body = order_body(vid, pid)
+    body.pop("vendor_id")
+    created = client.post(P + "/orders", json=body)
+    assert created.status_code == 201, created.text
+    order = created.json()
+    assert order["vendor_id"] is None
+    edit = {**body, "expense_id": order["expense_id"], "version": order["version"], "title": "改名的訂購"}
+    updated = client.put(P + f"/orders/{order['id']}", json=edit)
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["title"] == "改名的訂購"

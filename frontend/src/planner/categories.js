@@ -1,9 +1,9 @@
-// 廠商／花費類別：從後台讀取（可在「廠商」頁管理）。讀不到時退回內建清單，表單不會因此開不了。
+// 花費類別：從後台讀取。讀不到時退回內建清單，表單不會因此開不了。
 import { useCallback, useEffect, useState } from "react";
 import { fetchCategories } from "../api.js";
-import { VENDOR_CATEGORIES } from "../constants.js";
+import { EXPENSE_CATEGORIES } from "../constants.js";
 
-const FALLBACK = VENDOR_CATEGORIES.map((name, i) => ({ id: -(i + 1), name, sort_order: i, vendor_count: 0, expense_count: 0 }));
+const FALLBACK = EXPENSE_CATEGORIES.map((name, i) => ({ id: -(i + 1), name, sort_order: i, vendor_count: 0, expense_count: 0 }));
 
 export function useCategories() {
   const [list, setList] = useState(null);

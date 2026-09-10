@@ -60,6 +60,8 @@ def init_db() -> None:
                 "ALTER TABLE files ADD COLUMN IF NOT EXISTS thumb_name VARCHAR(80) NOT NULL DEFAULT ''",
                 "ALTER TABLE rsvps ADD COLUMN IF NOT EXISTS children_json TEXT NOT NULL DEFAULT '[]'",
                 # 2026-09-10 座位圖分「廳」：桌椅與座位指定都掛在某一廳底下，同一個人在不同廳可以各有位子
+                # 2026-09-10 後台移除廠商：喜餅訂購不再必填廠商
+                "ALTER TABLE gift_orders ALTER COLUMN vendor_id DROP NOT NULL",
                 "ALTER TABLE seat_objects ADD COLUMN IF NOT EXISTS hall_id INTEGER REFERENCES seat_halls(id) ON DELETE CASCADE",
                 "CREATE INDEX IF NOT EXISTS ix_seat_objects_hall_id ON seat_objects (hall_id)",
                 "ALTER TABLE seat_assignments ADD COLUMN IF NOT EXISTS hall_id INTEGER REFERENCES seat_halls(id) ON DELETE CASCADE",

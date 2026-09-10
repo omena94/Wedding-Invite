@@ -72,7 +72,7 @@ class OrderItem(BaseModel):
 
 class OrderIn(Form):
     request_key: Key
-    vendor_id: int
+    vendor_id: int | None = None  # 2026-09-10 起後台不顯示廠商，可不填
     expense_id: int | None = None
     title: str = Field(min_length=1, max_length=150)
     items: list[OrderItem] = Field(min_length=1, max_length=50)

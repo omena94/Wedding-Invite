@@ -21,7 +21,7 @@ import GameEdit from "./GameEdit.jsx";
 
 import { PlannerContext } from "./context.js";
 
-// 2026-09-08 依新人要求移除「廠商」與「比價」頁（資料與 API 保留，花費、文件、付款仍可顯示廠商名稱）
+// 2026-09-08 依新人要求移除「廠商」與「比價」頁；2026-09-10 其他頁的廠商欄位也一併移除（後端資料與 API 保留）
 const NAV = [
   { to: "/", label: "總覽", icon: LayoutDashboard, end: true },
   { to: "/guests", label: "賓客名單", icon: Users, helper: true }, // 2026-09-08 依新人要求改名為「賓客名單」

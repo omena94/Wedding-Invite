@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { Download, ExternalLink, Eye, EyeOff, Pencil, Trash2, Upload } from "lucide-react";
 import Select from "../components/Select.jsx";
-import { deleteFile, downloadFile, fetchFiles, fetchVendors, openFile, updateFile } from "../api.js";
+import { deleteFile, downloadFile, fetchFiles, openFile, updateFile } from "../api.js";
 import { FILE_KIND, fmtDate, fmtSize, toOptions } from "../constants.js";
 import { FileModal, UploadModal } from "./modals.jsx";
 import { Empty, ErrorBox, Loading, PageHead, confirmDelete, toastErr, useLoader } from "./ui.jsx";
@@ -10,7 +10,6 @@ import { Empty, ErrorBox, Loading, PageHead, confirmDelete, toastErr, useLoader 
 export default function Files() {
   const [kind, setKind] = useState("");
   const { data, loading, error, reload } = useLoader(() => fetchFiles({ kind }), [kind]);
-  const { data: vendors } = useLoader(() => fetchVendors(), []);
   const [upload, setUpload] = useState(false);
   const [edit, setEdit] = useState(null);
 
@@ -32,11 +31,11 @@ export default function Files() {
           <Select compact value={kind} onChange={setKind} options={[{ value: "", label: "全部類型" }, ...toOptions(FILE_KIND)]} />
         </div>
         {loading ? <Loading /> : error ? <ErrorBox error={error} /> : data.length === 0 ? (
-          <Empty>還沒有檔案。按「上傳檔案」，或到廠商頁面上傳會自動掛在該廠商底下。</Empty>
+          <Empty>還沒有檔案。按「上傳檔案」開始。</Empty>
         ) : (
           <div className="table-wrap">
             <table>
-              <thead><tr><th>檔名</th><th>類型</th><th>廠商</th><th>大小</th><th>上傳</th><th>備註</th><th></th></tr></thead>
+              <thead><tr><th>檔名</th><th>類型</th><th>大小</th><th>上傳</th><th>備註</th><th></th></tr></thead>
               <tbody>
                 {data.map((f) => (
                   <tr key={f.id}>
@@ -49,7 +48,6 @@ export default function Files() {
                         </button>
                       )}
                     </td>
-                    <td>{f.vendor_id ? f.vendor_name : <span className="muted-cell">—</span>}</td>
                     <td className="muted-cell" style={{ whiteSpace: "nowrap" }}>{fmtSize(f.size)}</td>
                     <td className="muted-cell" style={{ whiteSpace: "nowrap" }}>{fmtDate(f.created_at)}</td>
                     <td className="muted-cell">{f.note || "—"}</td>
@@ -67,8 +65,8 @@ export default function Files() {
         )}
       </div>
 
-      {upload && <UploadModal vendors={vendors || []} defaults={{ kind: kind || "doc" }} onClose={() => setUpload(false)} onSaved={() => { setUpload(false); reload(); }} />}
-      {edit && <FileModal file={edit} vendors={vendors || []} onClose={() => setEdit(null)} onSaved={() => { setEdit(null); reload(); }} />}
+      {upload && <UploadModal defaults={{ kind: kind || "doc" }} onClose={() => setUpload(false)} onSaved={() => { setUpload(false); reload(); }} />}
+      {edit && <FileModal file={edit} onClose={() => setEdit(null)} onSaved={() => { setEdit(null); reload(); }} />}
     </div>
   );
 }

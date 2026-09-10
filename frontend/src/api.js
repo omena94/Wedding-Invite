@@ -163,22 +163,6 @@ export const deleteCategory = (id) => request(`${P}/categories/${id}`, { method:
 export const reorderCategories = (ids) =>
   request(`${P}/categories/reorder`, { method: "POST", body: { ids }, auth: true });
 
-export const fetchVendors = (params = {}) => request(`${P}/vendors${qs(params)}`, { auth: true });
-export const fetchVendorCategories = () => request(`${P}/vendors/categories`, { auth: true });
-export const fetchVendor = (id) => request(`${P}/vendors/${id}`, { auth: true });
-export const createVendor = (data) => request(`${P}/vendors`, { method: "POST", body: data, auth: true });
-export const updateVendor = (id, data) =>
-  request(`${P}/vendors/${id}`, { method: "PATCH", body: data, auth: true });
-export const deleteVendor = (id) => request(`${P}/vendors/${id}`, { method: "DELETE", auth: true });
-
-export const createQuote = (vendorId, data) =>
-  request(`${P}/vendors/${vendorId}/quotes`, { method: "POST", body: data, auth: true });
-export const updateQuote = (id, data) =>
-  request(`${P}/quotes/${id}`, { method: "PATCH", body: data, auth: true });
-export const deleteQuote = (id) => request(`${P}/quotes/${id}`, { method: "DELETE", auth: true });
-export const fetchCompare = (category) =>
-  request(`${P}/compare?category=${encodeURIComponent(category)}`, { auth: true });
-
 export const fetchExpenses = () => request(`${P}/expenses`, { auth: true });
 export const createExpense = (data) => request(`${P}/expenses`, { method: "POST", body: data, auth: true });
 export const updateExpense = (id, data) =>

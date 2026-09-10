@@ -8,18 +8,11 @@ export const WEDDING_TIME_FROM = "12:00";
 export const WEDDING_TIME_TO = "15:00";
 export const WEDDING_MINUTES = 180;
 export const WEDDING_DATE_DISPLAY = WEDDING_DATE.replaceAll('-', ' · ');
-export const VENDOR_CATEGORIES = [
+export const EXPENSE_CATEGORIES = [
   "婚宴場地", "婚紗攝影", "婚禮禮服租借", "新秘造型", "婚戒", "喜餅", "喜帖",
   "婚禮攝影", "主持", "樂團表演", "婚車", "佈置花藝", "蜜月", "其他",
 ];
 
-export const VENDOR_STATUS = {
-  candidate: "候選",
-  quoted: "已報價",
-  signed: "已簽約",
-  done: "已完成",
-  rejected: "放棄",
-};
 export const STATUS_PILL = {
   candidate: "pill-groom",
   quoted: "pill-bride",

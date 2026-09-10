@@ -344,18 +344,21 @@ def update_delivery(delivery_id: int, payload: DeliveryUpdate, db: Session = Dep
 
 
 def save_order(db, payload, row=None):
-    get_row(db, Vendor, payload.vendor_id)
+    # 廠商已從後台移除（2026-09-10）：沒填就沿用既有訂購的廠商，新訂購不掛廠商
+    vendor_id = payload.vendor_id if payload.vendor_id is not None else (row.vendor_id if row else None)
+    if vendor_id is not None:
+        get_row(db, Vendor, vendor_id)
     products = products_for(db, payload.items)
     if any(i.paid_qty + i.gift_qty == 0 for i in payload.items):
-        raise HTTPException(400, "每款訂購至少需要一盒（含廠商贈盒）")
-    if any(products[i.product_id].vendor_id not in (None, payload.vendor_id) for i in payload.items):
+        raise HTTPException(400, "每款訂購至少需要一盒（含贈盒）")
+    if vendor_id is not None and any(products[i.product_id].vendor_id not in (None, vendor_id) for i in payload.items):
         raise HTTPException(400, "喜餅款式與本次廠商不同，請分開登記訂購")
     total = sum(i.paid_qty * i.unit_price for i in payload.items) + payload.shipping + payload.other_cost - payload.discount
     if not 0 <= total <= 1000000000:
         raise HTTPException(400, "請確認折扣及總金額，總額須介於 0 與 10 億元之間")
     if row:
-        if payload.expense_id != row.expense_id or payload.vendor_id != row.vendor_id:
-            raise HTTPException(400, "已確認訂購不能改掛其他花費或廠商")
+        if payload.expense_id != row.expense_id or vendor_id != row.vendor_id:
+            raise HTTPException(400, "已確認訂購不能改掛其他花費")
         expense = get_row(db, Expense, row.expense_id)
         history = json.loads(row.history_json)
         history.append({"at": datetime.now(timezone.utc).isoformat(), "version": row.version,
@@ -367,19 +370,20 @@ def save_order(db, payload, row=None):
         expense = get_row(db, Expense, payload.expense_id)
         if db.scalar(select(GiftOrder.id).where(GiftOrder.expense_id == expense.id)):
             raise HTTPException(409, "這筆花費已連結其他喜餅訂購")
-        if expense.vendor_id not in (None, payload.vendor_id) or expense.contract_amount != total:
-            raise HTTPException(409, "既有花費的廠商或合約金額不一致，請核對訂購明細後再連結")
+        if (vendor_id is not None and expense.vendor_id not in (None, vendor_id)) or expense.contract_amount != total:
+            raise HTTPException(409, "既有花費的合約金額不一致，請核對訂購明細後再連結")
     else:
-        expense = Expense(category="喜餅", title=payload.title, vendor_id=payload.vendor_id,
+        expense = Expense(category="喜餅", title=payload.title, vendor_id=vendor_id,
                           budget_amount=payload.budget_amount, contract_amount=total)
         db.add(expense)
         db.flush()
     expense.contract_amount = total
-    expense.vendor_id = payload.vendor_id
+    if vendor_id is not None:
+        expense.vendor_id = vendor_id
     expense.title = payload.title
     # 連結既有帳目時保留原預算；往後預算仍可在預算頁獨立調整。
     if row is None:
-        row = GiftOrder(request_key=payload.request_key, expense_id=expense.id, vendor_id=payload.vendor_id)
+        row = GiftOrder(request_key=payload.request_key, expense_id=expense.id, vendor_id=vendor_id)
         db.add(row)
     for key in ("title", "shipping", "other_cost", "discount", "due_date", "received_on", "note"):
         setattr(row, key, getattr(payload, key))
