@@ -1066,6 +1066,12 @@ tbody tr:last-child td { border-bottom: none; }
 .cal-ev-time { font-size: 11px; opacity: 0.8; flex: none; margin-right: 4px; }
 .cal-ev-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cal-more { font-size: 11px; color: var(--text-muted); padding-left: 6px; }
+/* 付款：金黃色、虛線框，點了到花費頁；已付的淡掉 */
+.cal-ev-pay { background: #fdf3d6; color: #7a5a12; border: 1px dashed #d9b86a; text-decoration: none; }
+.cal-ev-pay.done { text-decoration: line-through; }
+.cal-ev-icon { flex: none; align-self: center; }
+.cal-list-item.pay .cal-pay-icon { color: #b28f2b; margin-top: 3px; flex: none; }
+.cal-list-item.pay .cal-list-body { text-decoration: none; }
 .cal-side { position: sticky; top: 16px; }
 .cal-undated-list { list-style: none; display: flex; flex-direction: column; }
 .cal-undated { display: flex; flex-direction: column; gap: 6px; padding: 10px 0; border-bottom: 1px solid var(--milk-tea-100); }

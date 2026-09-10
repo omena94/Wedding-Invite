@@ -2,12 +2,13 @@
 // 手機自動改成當月列表。沒排日期的事放右邊「還沒排日期」，排進日期就進月曆。
 // 一件事只有：標題、日期、時間、主題（顏色）、備註、完成。舊的「里程碑／指派」已拿掉。
 import { useEffect, useMemo, useState } from "react";
-import { CalendarDays, ChevronLeft, ChevronRight, Pencil, Plus, Trash2 } from "lucide-react";
+import { Link } from "react-router-dom";
+import { CalendarDays, ChevronLeft, ChevronRight, CircleDollarSign, Pencil, Plus, Trash2 } from "lucide-react";
 import Select from "../components/Select.jsx";
 import DatePicker from "../components/DatePicker.jsx";
 import { Checkbox } from "../components/Toggle.jsx";
-import { createTask, deleteTask, fetchTasks, updateTask } from "../api.js";
-import { daysUntil, fmtDate } from "../constants.js";
+import { createTask, deleteTask, fetchExpenses, fetchTasks, updateTask } from "../api.js";
+import { daysUntil, fmtDate, money } from "../constants.js";
 import { Empty, ErrorBox, Field, Loading, Modal, PageHead, confirmDelete, toastErr, useLoader } from "./ui.jsx";
 import { TopicTag, topicColor, useTopics } from "./topics.jsx";
 
@@ -37,6 +38,21 @@ function useMediaQuery(query) {
 
 export default function Timeline() {
   const { data, loading, error, reload } = useLoader(() => fetchTasks("all"), []);
+  // 付款也標在月曆上（2026-09-10 新人要求）：每期分期的實付日或應付日、花費整筆的應付款日期；點了會到花費頁
+  const { data: expenses } = useLoader(fetchExpenses, []);
+  const [showPay, setShowPay] = useState(true);
+  const payEvents = useMemo(() => {
+    const out = [];
+    (expenses || []).forEach((e) => {
+      (e.payments || []).forEach((p) => {
+        const date = p.paid_date || p.due_date;
+        if (!date) return;
+        out.push({ id: `p${p.id}`, pay: true, date, title: `${e.title}｜${p.title}`, amount: p.amount, done: !!p.paid_date, paid_date: p.paid_date });
+      });
+      if (e.due_date && e.unpaid_total > 0) out.push({ id: `e${e.id}`, pay: true, date: e.due_date, title: `${e.title}｜整筆應付`, amount: e.unpaid_total, done: false });
+    });
+    return out;
+  }, [expenses]);
   const { topics, reload: reloadTopics } = useTopics();
   const now = new Date();
   const [view, setView] = useState({ y: now.getFullYear(), m: now.getMonth() });
@@ -49,9 +65,11 @@ export default function Timeline() {
   const byDate = useMemo(() => {
     const m = {};
     events.forEach((t) => { if (t.due_date) (m[t.due_date] ||= []).push(t); });
-    Object.values(m).forEach((list) => list.sort((a, b) => (a.due_time || "99").localeCompare(b.due_time || "99") || a.id - b.id));
+    // 付款沒有主題，篩了主題就不顯示；已付的算「已完成」
+    if (showPay && !topicFilter) payEvents.forEach((p) => { if (showDone || !p.done) (m[p.date] ||= []).push(p); });
+    Object.values(m).forEach((list) => list.sort((a, b) => (a.pay ? 1 : 0) - (b.pay ? 1 : 0) || (a.due_time || "99").localeCompare(b.due_time || "99") || String(a.id).localeCompare(String(b.id))));
     return m;
-  }, [events]);
+  }, [events, payEvents, showPay, showDone, topicFilter]);
   const undated = useMemo(() => events.filter((t) => !t.due_date), [events]);
   const usedTopics = useMemo(() => topics.filter((t) => (data || []).some((x) => x.topic === t)), [topics, data]);
 
@@ -85,6 +103,14 @@ export default function Timeline() {
   };
 
   const eventChip = (t) => {
+    if (t.pay) {
+      return (
+        <Link key={t.id} to="/planner/budget" className={`cal-ev cal-ev-pay${t.done ? " done" : ""}`} title={`${t.title}：${t.done ? `已付 ${fmtDate(t.paid_date)}` : "應付"} ${money(t.amount)}（點一下到花費頁）`} onClick={(e) => e.stopPropagation()}>
+          <CircleDollarSign size={11} className="cal-ev-icon" />
+          <span className="cal-ev-title">{money(t.amount)} {t.title}</span>
+        </Link>
+      );
+    }
     const c = topicColor(t.topic, topics);
     return (
       <button type="button" key={t.id} className={`cal-ev${t.done ? " done" : ""}`} style={{ background: c.bg, color: c.fg }} title={`${t.title}${t.topic ? `（${t.topic}）` : ""}`} onClick={(e) => { e.stopPropagation(); setModal({ event: t }); }}>
@@ -113,6 +139,7 @@ export default function Timeline() {
                 <Select compact value={topicFilter} onChange={setTopicFilter} aria-label="主題" options={[{ value: "", label: "全部主題" }, ...usedTopics.map((t) => ({ value: t, label: t }))]} />
               )}
               <Checkbox checked={showDone} onChange={setShowDone}>顯示已完成</Checkbox>
+              <Checkbox checked={showPay} onChange={setShowPay}><CircleDollarSign size={13} style={{ verticalAlign: -2 }} /> 顯示付款</Checkbox>
             </div>
           </div>
 
@@ -123,7 +150,15 @@ export default function Timeline() {
                 {monthEvents.map(([c, list]) => (
                   <div key={c.date} className={`cal-list-day${c.date === today ? " today" : ""}`}>
                     <div className="cal-list-date">{c.day} 日 <span className="muted-cell">週{WEEKDAYS[new Date(c.date + "T00:00:00").getDay()]}</span>{c.date === today && <span className="pill pill-warn" style={{ marginLeft: 6 }}>今天</span>}</div>
-                    {list.map((t) => (
+                    {list.map((t) => t.pay ? (
+                      <div key={t.id} className={`cal-list-item pay${t.done ? " done" : ""}`}>
+                        <CircleDollarSign size={16} className="cal-pay-icon" />
+                        <Link className="cal-list-body" to="/planner/budget">
+                          <span className="cal-list-title">{t.title}</span>
+                          <span className={`pill ${t.done ? "pill-yes" : "pill-warn"}`}>{t.done ? `已付 ${money(t.amount)}` : `應付 ${money(t.amount)}`}</span>
+                        </Link>
+                      </div>
+                    ) : (
                       <div key={t.id} className={`cal-list-item${t.done ? " done" : ""}`}>
                         <Checkbox checked={t.done} onChange={() => toggleDone(t)} />
                         <button type="button" className="cal-list-body" onClick={() => setModal({ event: t })}>
