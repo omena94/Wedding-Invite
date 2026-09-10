@@ -47,9 +47,9 @@ export default function Timeline() {
       (e.payments || []).forEach((p) => {
         const date = p.paid_date || p.due_date;
         if (!date) return;
-        out.push({ id: `p${p.id}`, pay: true, date, title: `${e.title}｜${p.title}`, amount: p.amount, done: !!p.paid_date, paid_date: p.paid_date });
+        out.push({ id: `p${p.id}`, pay: true, date, title: `${e.title}｜${p.title}`, amount: p.amount, done: !!p.paid_date, paid_date: p.paid_date, to: `/planner/budget?expense=${e.id}&payment=${p.id}` });
       });
-      if (e.due_date && e.unpaid_total > 0) out.push({ id: `e${e.id}`, pay: true, date: e.due_date, title: `${e.title}｜整筆應付`, amount: e.unpaid_total, done: false });
+      if (e.due_date && e.unpaid_total > 0) out.push({ id: `e${e.id}`, pay: true, date: e.due_date, title: `${e.title}｜整筆應付`, amount: e.unpaid_total, done: false, to: `/planner/budget?expense=${e.id}` });
     });
     return out;
   }, [expenses]);
@@ -105,7 +105,7 @@ export default function Timeline() {
   const eventChip = (t) => {
     if (t.pay) {
       return (
-        <Link key={t.id} to="/planner/budget" className={`cal-ev cal-ev-pay${t.done ? " done" : ""}`} title={`${t.title}：${t.done ? `已付 ${fmtDate(t.paid_date)}` : "應付"} ${money(t.amount)}（點一下到花費頁）`} onClick={(e) => e.stopPropagation()}>
+        <Link key={t.id} to={t.to} className={`cal-ev cal-ev-pay${t.done ? " done" : ""}`} title={`${t.title}：${t.done ? `已付 ${fmtDate(t.paid_date)}` : "應付"} ${money(t.amount)}（點一下到花費頁）`} onClick={(e) => e.stopPropagation()}>
           <CircleDollarSign size={11} className="cal-ev-icon" />
           <span className="cal-ev-title">{money(t.amount)} {t.title}</span>
         </Link>
@@ -153,7 +153,7 @@ export default function Timeline() {
                     {list.map((t) => t.pay ? (
                       <div key={t.id} className={`cal-list-item pay${t.done ? " done" : ""}`}>
                         <CircleDollarSign size={16} className="cal-pay-icon" />
-                        <Link className="cal-list-body" to="/planner/budget">
+                        <Link className="cal-list-body" to={t.to}>
                           <span className="cal-list-title">{t.title}</span>
                           <span className={`pill ${t.done ? "pill-yes" : "pill-warn"}`}>{t.done ? `已付 ${money(t.amount)}` : `應付 ${money(t.amount)}`}</span>
                         </Link>

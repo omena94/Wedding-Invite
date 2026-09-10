@@ -1,7 +1,7 @@
 // 花費：依類別看合約金額、已付、未付；展開看分期（2026-09-08 起不顯示預算）。
 // 婚宴費用預估也放這裡（原本在賓客名單），跟錢有關的都集中在同一頁比較好找。
-import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import { Check, ChevronDown, Pencil, Plus, Trash2, Undo2 } from "lucide-react";
 import { deleteExpense, deletePayment, fetchExpenses } from "../api.js";
 import { PAID_BY, fmtDate, money } from "../constants.js";
@@ -15,6 +15,19 @@ export default function Budget() {
   const [modal, setModal] = useState(null);
   const [open, setOpen] = useState({}); // expense id → 展開分期
   const [detail, setDetail] = useState(null); // 點統計卡看明細：budget / contract / paid / unpaid
+  // 從行事曆點付款過來：?expense=ID&payment=ID → 展開那筆花費、捲到它、閃一下（2026-09-10）
+  const [params] = useSearchParams();
+  const focusExpense = Number(params.get("expense")) || null;
+  const focusPayment = Number(params.get("payment")) || null;
+  useEffect(() => {
+    if (!data || !focusExpense) return;
+    setOpen((o) => ({ ...o, [focusExpense]: true }));
+    const id = setTimeout(() => {
+      const el = document.getElementById(focusPayment ? `payment-${focusPayment}` : `expense-${focusExpense}`) || document.getElementById(`expense-${focusExpense}`);
+      el?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 80);
+    return () => clearTimeout(id);
+  }, [data, focusExpense, focusPayment]);
 
   const groups = useMemo(() => {
     const m = new Map();
@@ -78,7 +91,7 @@ export default function Budget() {
                   const pct = e.contract_amount ? Math.min(100, Math.round((e.paid_total / e.contract_amount) * 100)) : 0;
                   const isOpen = !!open[e.id];
                   return [
-                    <tr key={e.id}>
+                    <tr key={e.id} id={`expense-${e.id}`} className={focusExpense === e.id && !focusPayment ? "row-flash" : undefined}>
                       <td>
                         <button className="pl-linkbtn" onClick={() => setOpen((o) => ({ ...o, [e.id]: !isOpen }))}>
                           <ChevronDown size={14} style={{ transition: "transform .2s", transform: isOpen ? "rotate(180deg)" : "none" }} /> <strong>{e.title}</strong>
@@ -108,7 +121,7 @@ export default function Budget() {
                             <table style={{ minWidth: 0 }}>
                               <tbody>
                                 {e.payments.map((p) => (
-                                  <tr key={p.id}>
+                                  <tr key={p.id} id={`payment-${p.id}`} className={focusPayment === p.id ? "row-flash" : undefined}>
                                     <td style={{ width: "30%" }}>{p.title}{p.note && <span className="muted-cell" style={{ fontSize: 11.5 }}> · {p.note}</span>}</td>
                                     <td className="amount" style={{ width: "15%" }}>{money(p.amount)}</td>
                                     <td className="muted-cell">{p.due_date ? `應付 ${fmtDate(p.due_date)}${p.paid_date ? "" : dueTag(p.due_date)}` : "未定應付日"}</td>
