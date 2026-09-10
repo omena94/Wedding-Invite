@@ -46,6 +46,7 @@ export default function Seating() {
   const pkey = (p) => `${p.rsvp_id}-${p.person_no}`;
   const togglePick = (person) => setPicked((list) => (list.some((x) => pkey(x) === pkey(person)) ? list.filter((x) => pkey(x) !== pkey(person)) : [...list, { rsvp_id: person.rsvp_id, person_no: person.person_no, name: person.name }]));
   const dropPick = (person) => setPicked((list) => list.filter((x) => pkey(x) !== pkey(person)));
+  const lastSeatClick = useRef(null); // 上一次點的是哪張有人的椅子：連續點同一張兩次 = 取消那個座位安排（2026-09-10 新人要求）
   const [showNames, setShowNames] = useState(true);
   const [grid, setGrid] = useState(true);
   const [onlyUnassigned, setOnlyUnassigned] = useState(false);
@@ -341,7 +342,7 @@ export default function Seating() {
     drag.current = null;
     if (!d) return;
     if (d.type === "pan") {
-      if (!d.moved) { setSelected(new Set()); setSeatSel(null); }
+      if (!d.moved) { setSelected(new Set()); setSeatSel(null); lastSeatClick.current = null; }
       return;
     }
     if (d.type === "marquee") {
@@ -411,6 +412,15 @@ export default function Seating() {
   const onSeatPointerDown = (e, o, i, a) => {
     e.stopPropagation();
     if (readonly) { setSelected(new Set([o.id])); setSeatSel({ object_id: o.id, seat_index: i }); setTab("object"); return; }
+    const key = `${o.id}:${i}`;
+    if (a && lastSeatClick.current === key) {
+      // 同一張有人的椅子連續點兩次：把這個人改成未安排（第一次點是選取，第二次就是取消安排）
+      lastSeatClick.current = null;
+      dropPick({ rsvp_id: a.rsvp_id, person_no: a.person_no });
+      unseat(a).then(() => toastOk(`已移除 ${a.display_name} 的座位`));
+      return;
+    }
+    lastSeatClick.current = a ? key : null;
     if (picked.length) { place(picked[0], o.id, i); return; }
     setSelected(new Set([o.id]));
     setSeatSel({ object_id: o.id, seat_index: i });
@@ -425,6 +435,7 @@ export default function Seating() {
   const onPersonPointerDown = (e, person) => {
     if (readonly || person.seat) return;
     e.preventDefault();
+    lastSeatClick.current = null;
     drag.current = { type: "person", person, sx: e.clientX, sy: e.clientY, moved: false };
     e.currentTarget.setPointerCapture(e.pointerId);
   };
@@ -836,7 +847,7 @@ function GuestPanel({ guests, search, setSearch, sideFilter, setSideFilter, only
         <Checkbox checked={onlyUnassigned} onChange={setOnlyUnassigned}>只看未安排</Checkbox>
         <span className="muted-cell" style={{ fontSize: 12 }}>{guests.length} 組</span>
       </div>
-      {!readonly && <div className="helper-text" style={{ marginBottom: 8 }}>點人可多選（再點一次取消），選好後點椅子依序放入、或按上方「放進這桌」「移除座位」；也可以直接拖人到椅子上。選了桌子後可按「整組入座」。</div>}
+      {!readonly && <div className="helper-text" style={{ marginBottom: 8 }}>點人可多選（再點一次取消），選好後點椅子依序放入、或按上方「放進這桌」「移除座位」；也可以直接拖人到椅子上。畫布上同一張有人的椅子連續點兩次，就會取消那個座位安排。選了桌子後可按「整組入座」。</div>}
       {guests.length === 0 && <div className="empty-state" style={{ padding: 20 }}>沒有符合的賓客</div>}
       {guests.map((g) => (
         <div className="se-group" key={g.rsvp_id}>
