@@ -95,6 +95,7 @@ def _expense_out(e: Expense) -> dict:
         "contract_amount": e.contract_amount,
         "paid_by": e.paid_by,
         "note": e.note,
+        "due_date": e.due_date.isoformat() if e.due_date else None,
         "paid_total": paid,
         "unpaid_total": unpaid,
         "scheduled_unpaid": scheduled,
@@ -646,6 +647,11 @@ def update_expense(expense_id: int, payload: ExpensePatch, db: Session = Depends
         _get_or_404(db, Vendor, data["vendor_id"], "廠商")
     elif "vendor_id" in data:
         data.pop("vendor_id")  # None 代表不變
+    if data.pop("clear_due_date", False):
+        e.due_date = None
+        data.pop("due_date", None)
+    elif "due_date" in data and data["due_date"] is None:
+        data.pop("due_date")  # None 代表不變
     for k, val in data.items():
         setattr(e, k, val)
     db.commit()

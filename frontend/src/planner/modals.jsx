@@ -29,6 +29,7 @@ export function ExpenseModal({ initial, onClose, onSaved }) {
   const [f, setF] = useState({
     category: "其他", title: "", budget_amount: 0, contract_amount: 0, paid_by: "shared", note: "",
     ...(initial || {}),
+    due_date: initial?.due_date || "",
   });
   const [busy, setBusy] = useState(false);
   const cats = useCategories();
@@ -41,6 +42,7 @@ export function ExpenseModal({ initial, onClose, onSaved }) {
         category: f.category, title: f.title.trim(), budget_amount: toInt(f.budget_amount),
         contract_amount: toInt(f.contract_amount), paid_by: f.paid_by, note: f.note,
       };
+      if (f.due_date) body.due_date = f.due_date; else if (!isNew) body.clear_due_date = true;
       const saved = isNew ? await createExpense(body) : await updateExpense(initial.id, body);
       onSaved(saved);
     } catch (e) {
@@ -59,8 +61,9 @@ export function ExpenseModal({ initial, onClose, onSaved }) {
       </div>
       <div className="form-group grid-2">
         <Field label="合約 / 實際金額（元）" hint={initial?.gift_order_id ? "名稱與合約金額請到「喜餅 → 訂購與費用」修改；此處可調整付款方。" : "簽約後的總價，分期在付款期程裡填"}><NumberInput disabled={!!initial?.gift_order_id} value={f.contract_amount} onChange={(v) => set("contract_amount", v)} /></Field>
+        <Field label="應付款日期" hint="整筆什麼時候要付；有拆分期的話每期另有自己的應付日"><DatePicker value={f.due_date} onChange={(v) => set("due_date", v)} placeholder="未定" /></Field>
       </div>
-      <Field label="備註"><textarea rows={3} value={f.note} onChange={(e) => set("note", e.target.value)} /></Field>
+      <Field label="備註" hint="會直接顯示在花費清單的項目底下"><textarea rows={3} value={f.note} onChange={(e) => set("note", e.target.value)} placeholder="例如：報價含稅、付款方式、要確認的事…" /></Field>
     </Modal>
   );
 }

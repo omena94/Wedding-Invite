@@ -60,6 +60,8 @@ def init_db() -> None:
                 "ALTER TABLE files ADD COLUMN IF NOT EXISTS thumb_name VARCHAR(80) NOT NULL DEFAULT ''",
                 "ALTER TABLE rsvps ADD COLUMN IF NOT EXISTS children_json TEXT NOT NULL DEFAULT '[]'",
                 # 2026-09-10 座位圖分「廳」：桌椅與座位指定都掛在某一廳底下，同一個人在不同廳可以各有位子
+                # 2026-09-10 花費項目加整筆的應付款日期
+                "ALTER TABLE expenses ADD COLUMN IF NOT EXISTS due_date DATE",
                 # 2026-09-10 籌備進度改為行事曆、備忘改為筆記
                 "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS topic VARCHAR(50) NOT NULL DEFAULT ''",
                 "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS due_time VARCHAR(5) NOT NULL DEFAULT ''",
