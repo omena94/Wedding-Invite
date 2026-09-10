@@ -394,19 +394,18 @@ export default function Seating() {
   };
 
   // ---------- 指定座位 ----------
-  const place = async (person, object_id, seat_index, force = false) => {
+  // 放人到椅子上。位子已經有人就直接換掉，原本的人改為未安排（2026-09-10 新人要求拿掉「這個位子已經有人」的確認視窗）
+  const place = async (person, object_id, seat_index) => {
+    const prev = (byIdRef.current[object_id]?.assignments || []).find((x) => x.seat_index === seat_index);
+    const replaced = prev && !(prev.rsvp_id === person.rsvp_id && prev.person_no === person.person_no) ? prev.display_name : "";
     try {
-      const l = await assignSeat({ object_id, seat_index, rsvp_id: person.rsvp_id, person_no: person.person_no, force });
+      const l = await assignSeat({ object_id, seat_index, rsvp_id: person.rsvp_id, person_no: person.person_no, force: true });
       setLayout(l);
       dropPick(person);
       setSeatSel({ object_id, seat_index });
+      if (replaced) flash(`${replaced} 改為未安排`);
     } catch (e) {
-      if (e.status === 409 && !force) {
-        const r = await Swal.fire({ icon: "question", title: "這個位子已經有人", text: e.message, showCancelButton: true, confirmButtonText: "覆蓋（原本的人改為未安排）", cancelButtonText: "取消", confirmButtonColor: "#B28F70" });
-        if (r.isConfirmed) return place(person, object_id, seat_index, true);
-      } else {
-        toastErr(e);
-      }
+      toastErr(e);
     }
   };
   const onSeatPointerDown = (e, o, i, a) => {
@@ -484,7 +483,7 @@ export default function Seating() {
       let l = null;
       for (let k = 0; k < queue.length; k++) {
         const person = queue[k];
-        l = await assignSeat({ object_id: o.id, seat_index: empties[k], rsvp_id: person.rsvp_id, person_no: person.person_no, force: false });
+        l = await assignSeat({ object_id: o.id, seat_index: empties[k], rsvp_id: person.rsvp_id, person_no: person.person_no, force: true });
       }
       if (l) setLayout(l);
       setPicked((list) => list.filter((x) => !queue.some((q) => pkey(q) === pkey(x))));
