@@ -33,10 +33,11 @@ def client():
 
 
 def test_expense_due_date(client):
-    r = client.post(P, json={"title": "婚禮攝影", "category": "婚禮攝影", "contract_amount": 16000, "note": "大偉哥", "due_date": "2027-03-13"})
+    r = client.post(P, json={"title": "婚禮攝影", "category": "婚禮攝影", "contract_amount": 16000, "note": "大偉哥", "due_date": "2027-03-13", "pay_method": "現金"})
     assert r.status_code == 201, r.text
     e = r.json()
-    assert e["due_date"] == "2027-03-13" and e["note"] == "大偉哥"
+    assert e["due_date"] == "2027-03-13" and e["note"] == "大偉哥" and e["pay_method"] == "現金"
+    assert client.patch(f"{P}/{e['id']}", json={"pay_method": ""}).json()["pay_method"] == ""
     # 帶 null 不變
     assert client.patch(f"{P}/{e['id']}", json={"note": "改備註", "due_date": None}).json()["due_date"] == "2027-03-13"
     assert client.patch(f"{P}/{e['id']}", json={"due_date": "2027-03-01"}).json()["due_date"] == "2027-03-01"

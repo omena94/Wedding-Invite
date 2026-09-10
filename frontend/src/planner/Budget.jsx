@@ -71,7 +71,7 @@ export default function Budget() {
           <div className="table-wrap">
             <table>
               <thead>
-                <tr><th>項目</th><th>由誰出</th><th>應付款日期</th><th style={{ textAlign: "right" }}>合約</th><th style={{ textAlign: "right" }}>已付</th><th style={{ textAlign: "right" }}>未付</th><th style={{ minWidth: 110 }}>進度</th><th></th></tr>
+                <tr><th>項目</th><th>由誰出</th><th>支付方式</th><th>應付款日期</th><th style={{ textAlign: "right" }}>合約</th><th style={{ textAlign: "right" }}>已付</th><th style={{ textAlign: "right" }}>未付</th><th style={{ minWidth: 110 }}>進度</th><th></th></tr>
               </thead>
               <tbody>
                 {list.map((e) => {
@@ -88,6 +88,7 @@ export default function Budget() {
                         {e.gift_order_id && <Link className="top-link" to="/gifts?tab=orders">查看喜餅訂購</Link>}
                       </td>
                       <td><span className="pill pill-groom">{PAID_BY[e.paid_by]}</span></td>
+                      <td className="muted-cell" style={{ whiteSpace: "nowrap" }}>{e.pay_method || "—"}</td>
                       <td className="muted-cell" style={{ whiteSpace: "nowrap" }}>{e.due_date ? <>{fmtDate(e.due_date)}{e.unpaid_total > 0 && dueTag(e.due_date) ? <span className="pill pill-warn" style={{ marginLeft: 4 }}>{dueTag(e.due_date).replace(/[（）]/g, "")}</span> : null}</> : "—"}</td>
                       <td className="amount">{money(e.contract_amount)}</td>
                       <td className="amount">{money(e.paid_total)}</td>
@@ -101,7 +102,7 @@ export default function Budget() {
                     </tr>,
                     isOpen && (
                       <tr key={`${e.id}-p`} className="pl-subrow">
-                        <td colSpan={10}>
+                        <td colSpan={11}>
                           {e.payments.length === 0 ? <span className="muted-cell">還沒有分期，按「+」新增定金、尾款等付款</span> : (
                             <table style={{ minWidth: 0 }}>
                               <tbody>

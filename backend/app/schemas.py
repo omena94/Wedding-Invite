@@ -437,6 +437,7 @@ class ExpenseIn(BaseModel):
     paid_by: PaidBy = "shared"
     note: str = Field(default="", max_length=5000)
     due_date: date | None = None  # 整筆的應付款日期
+    pay_method: str = Field(default="", max_length=30)
 
 
 class ExpensePatch(BaseModel):
@@ -450,6 +451,7 @@ class ExpensePatch(BaseModel):
     note: str | None = Field(default=None, max_length=5000)
     due_date: date | None = None   # None 代表不變
     clear_due_date: bool = False   # 要清掉日期時設 true
+    pay_method: str | None = Field(default=None, max_length=30)
 
 
 class PaymentIn(BaseModel):

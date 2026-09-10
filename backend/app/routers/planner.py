@@ -96,6 +96,7 @@ def _expense_out(e: Expense) -> dict:
         "paid_by": e.paid_by,
         "note": e.note,
         "due_date": e.due_date.isoformat() if e.due_date else None,
+        "pay_method": e.pay_method or "",
         "paid_total": paid,
         "unpaid_total": unpaid,
         "scheduled_unpaid": scheduled,

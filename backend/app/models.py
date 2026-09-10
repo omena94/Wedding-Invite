@@ -181,6 +181,7 @@ class Expense(Base):
     paid_by: Mapped[str] = mapped_column(String(20), default="shared")  # groom/bride/shared/family
     note: Mapped[str] = mapped_column(Text, default="")
     due_date: Mapped[date | None] = mapped_column(Date, nullable=True)  # 整筆的應付款日期（2026-09-10 新增；分期另有各自的應付日）
+    pay_method: Mapped[str] = mapped_column(String(30), default="")    # 支付方式（ATM／現金／信用卡…；2026-09-10 新增）
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
