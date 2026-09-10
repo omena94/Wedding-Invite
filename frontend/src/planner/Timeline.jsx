@@ -47,9 +47,9 @@ export default function Timeline() {
       (e.payments || []).forEach((p) => {
         const date = p.paid_date || p.due_date;
         if (!date) return;
-        out.push({ id: `p${p.id}`, pay: true, date, title: `${e.title}｜${p.title}`, amount: p.amount, done: !!p.paid_date, paid_date: p.paid_date, to: `/planner/budget?expense=${e.id}&payment=${p.id}` });
+        out.push({ id: `p${p.id}`, pay: true, date, title: `${e.title}｜${p.title}`, amount: p.amount, done: !!p.paid_date, paid_date: p.paid_date, to: `/budget?expense=${e.id}&payment=${p.id}` });
       });
-      if (e.due_date && e.unpaid_total > 0) out.push({ id: `e${e.id}`, pay: true, date: e.due_date, title: `${e.title}｜整筆應付`, amount: e.unpaid_total, done: false, to: `/planner/budget?expense=${e.id}` });
+      if (e.due_date && e.unpaid_total > 0) out.push({ id: `e${e.id}`, pay: true, date: e.due_date, title: `${e.title}｜整筆應付`, amount: e.unpaid_total, done: false, to: `/budget?expense=${e.id}` });
     });
     return out;
   }, [expenses]);
