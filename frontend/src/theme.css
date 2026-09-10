@@ -1060,7 +1060,9 @@ tbody tr:last-child td { border-bottom: none; }
 .cal-cell:hover { background: var(--milk-tea-50); }
 .cal-cell.out { background: var(--bg-card-subtle); }
 .cal-cell.out .cal-day { color: var(--milk-tea-300); }
-.cal-day { font-size: 12.5px; font-weight: 600; color: var(--milk-tea-700); padding: 2px 4px; }
+.cal-day { font-size: 12.5px; font-weight: 600; color: var(--milk-tea-700); padding: 2px 4px; border: none; background: none; font-family: inherit; cursor: pointer; }
+.cal-more { border: none; background: none; font-family: inherit; cursor: pointer; text-align: left; }
+.cal-more:hover { color: var(--milk-tea-900); text-decoration: underline; }
 .cal-cell.today .cal-day { display: inline-block; background: var(--milk-tea-700); color: #fff; border-radius: 999px; min-width: 22px; text-align: center; }
 .cal-evs { display: flex; flex-direction: column; gap: 3px; }
 .cal-ev { display: flex; gap: 4px; align-items: baseline; width: 100%; border: none; border-radius: 6px; padding: 2px 6px; font: inherit; font-size: 12px; line-height: 1.4; text-align: left; cursor: pointer; overflow: hidden; }

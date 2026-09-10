@@ -59,6 +59,7 @@ export default function Timeline() {
   const [topicFilter, setTopicFilter] = useState("");
   const [showDone, setShowDone] = useState(true);
   const [modal, setModal] = useState(null); // { event } 編輯 / { defaults } 新增
+  const [dayModal, setDayModal] = useState(null); // 某一天的完整清單（格子塞不下時點「還有 N 件」或日期數字）
   const mobile = useMediaQuery("(max-width: 760px)");
 
   const events = useMemo(() => (data || []).filter((t) => (!topicFilter || t.topic === topicFilter) && (showDone || !t.done)), [data, topicFilter, showDone]);
@@ -101,6 +102,25 @@ export default function Timeline() {
     if (!(await confirmDelete(t.title))) return;
     try { await deleteTask(t.id); reload(); } catch (e) { toastErr(e); }
   };
+
+  const listItem = (t) => t.pay ? (
+    <div key={t.id} className={`cal-list-item pay${t.done ? " done" : ""}`}>
+      <CircleDollarSign size={16} className="cal-pay-icon" />
+      <Link className="cal-list-body" to={t.to}>
+        <span className="cal-list-title">{t.title}</span>
+        <span className={`pill ${t.done ? "pill-yes" : "pill-warn"}`}>{t.done ? `已付 ${money(t.amount)}` : `應付 ${money(t.amount)}`}</span>
+      </Link>
+    </div>
+  ) : (
+    <div key={t.id} className={`cal-list-item${t.done ? " done" : ""}`}>
+      <Checkbox checked={t.done} onChange={() => toggleDone(t)} />
+      <button type="button" className="cal-list-body" onClick={() => { setDayModal(null); setModal({ event: t }); }}>
+        <span className="cal-list-title">{t.due_time && <span className="cal-ev-time">{t.due_time}</span>}{t.title}</span>
+        <TopicTag topic={t.topic} topics={topics} small />
+      </button>
+    </div>
+  );
+  const dayTitle = (date) => { const d = new Date(date + "T00:00:00"); return `${d.getMonth() + 1} 月 ${d.getDate()} 日（週${WEEKDAYS[d.getDay()]}）`; };
 
   const eventChip = (t) => {
     if (t.pay) {
@@ -150,23 +170,7 @@ export default function Timeline() {
                 {monthEvents.map(([c, list]) => (
                   <div key={c.date} className={`cal-list-day${c.date === today ? " today" : ""}`}>
                     <div className="cal-list-date">{c.day} 日 <span className="muted-cell">週{WEEKDAYS[new Date(c.date + "T00:00:00").getDay()]}</span>{c.date === today && <span className="pill pill-warn" style={{ marginLeft: 6 }}>今天</span>}</div>
-                    {list.map((t) => t.pay ? (
-                      <div key={t.id} className={`cal-list-item pay${t.done ? " done" : ""}`}>
-                        <CircleDollarSign size={16} className="cal-pay-icon" />
-                        <Link className="cal-list-body" to={t.to}>
-                          <span className="cal-list-title">{t.title}</span>
-                          <span className={`pill ${t.done ? "pill-yes" : "pill-warn"}`}>{t.done ? `已付 ${money(t.amount)}` : `應付 ${money(t.amount)}`}</span>
-                        </Link>
-                      </div>
-                    ) : (
-                      <div key={t.id} className={`cal-list-item${t.done ? " done" : ""}`}>
-                        <Checkbox checked={t.done} onChange={() => toggleDone(t)} />
-                        <button type="button" className="cal-list-body" onClick={() => setModal({ event: t })}>
-                          <span className="cal-list-title">{t.due_time && <span className="cal-ev-time">{t.due_time}</span>}{t.title}</span>
-                          <TopicTag topic={t.topic} topics={topics} small />
-                        </button>
-                      </div>
-                    ))}
+                    {list.map(listItem)}
                   </div>
                 ))}
               </div>
@@ -179,10 +183,10 @@ export default function Timeline() {
                 const shown = list.slice(0, 3);
                 return (
                   <div key={c.date} className={`cal-cell${c.inMonth ? "" : " out"}${c.date === today ? " today" : ""}`} role="gridcell" onClick={() => setModal({ defaults: { due_date: c.date } })} title="點一下在這天新增">
-                    <div className="cal-day">{c.day}</div>
+                    <button type="button" className="cal-day" title={list.length ? "看這天的全部" : undefined} onClick={(e) => { if (list.length) { e.stopPropagation(); setDayModal(c.date); } }}>{c.day}</button>
                     <div className="cal-evs">
                       {shown.map(eventChip)}
-                      {list.length > shown.length && <span className="cal-more">還有 {list.length - shown.length} 件</span>}
+                      {list.length > shown.length && <button type="button" className="cal-more" onClick={(e) => { e.stopPropagation(); setDayModal(c.date); }}>還有 {list.length - shown.length} 件，看全部</button>}
                     </div>
                   </div>
                 );
@@ -216,6 +220,12 @@ export default function Timeline() {
       </div>
 
       {modal && <EventModal initial={modal.event} defaults={modal.defaults} topics={topics} onClose={() => setModal(null)} onSaved={saved} onDeleted={saved} />}
+      {dayModal && (
+        <Modal title={dayTitle(dayModal)} onClose={() => setDayModal(null)}
+          footer={<><button type="button" className="btn btn-ghost" onClick={() => setDayModal(null)}>關閉</button><button type="button" className="btn btn-primary" onClick={() => { setDayModal(null); setModal({ defaults: { due_date: dayModal } }); }}><Plus size={14} /> 在這天新增</button></>}>
+          {(byDate[dayModal] || []).length === 0 ? <Empty>這天沒有安排</Empty> : <div className="cal-list-day">{(byDate[dayModal] || []).map(listItem)}</div>}
+        </Modal>
+      )}
     </div>
   );
 }
