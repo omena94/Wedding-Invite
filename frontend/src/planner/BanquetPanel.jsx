@@ -12,8 +12,12 @@ const readOpen = () => {
   try { return localStorage.getItem(OPEN_KEY) === "1"; } catch { return false; } // 預設收起（2026-09-08 新人要求）
 };
 
-export default function BanquetPanel({ compact = false }) {
+// onEstimate(total)：預估金額算出來或改參數後回報給花費頁，讓「實際合計」把婚宴算進去（2026-09-10 新人要求）
+export default function BanquetPanel({ compact = false, onEstimate }) {
   const { data, setData, loading, error } = useLoader(fetchBanquet, []);
+  useEffect(() => {
+    if (data && onEstimate) onEstimate(data.estimate?.total || 0);
+  }, [data, onEstimate]);
   const [f, setF] = useState(null);
   const [busy, setBusy] = useState(false);
   // 面板可收折（跟花費項目展開分期一樣）；記住上次開合，預算頁才不會每次都被它佔一大塊
