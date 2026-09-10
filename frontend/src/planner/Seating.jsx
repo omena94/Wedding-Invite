@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import Swal from "sweetalert2";
 import {
-  ArrowDownToLine, ArrowUpToLine, BoxSelect, Building2, Circle, Copy, DoorClosed, Eraser, Eye, Grid3x3, Image as ImageIcon, Maximize2, Minus, Plus, Printer,
+  ArrowDownToLine, ArrowUpToLine, BoxSelect, Building2, Circle, Copy, DoorClosed, Eraser, Expand, Eye, Grid3x3, Image as ImageIcon, Maximize2, Minus, Plus, Printer, Shrink,
   RectangleHorizontal, Redo2, Square, SquareDashedMousePointer, Star, Tag, Trash2, Type, Undo2, UserRound, Users, Wand2, ZoomIn, ZoomOut,
 } from "lucide-react";
 import {
@@ -55,6 +55,14 @@ export default function Seating() {
   const [view, setView] = useState({ zoom: 0.55, x: 24, y: 24 });
   const [dragChip, setDragChip] = useState(null);     // {x, y, name}
   const [hallModal, setHallModal] = useState(false);
+  // 2026-09-10 新人要求平面圖直接滿版：預設把側邊欄蓋掉、畫布撐滿視窗；按「回後台版面」可切回一般畫面，會記住選擇
+  const [fullscreen, setFullscreen] = useState(() => { try { return localStorage.getItem("seating_fullscreen") !== "0"; } catch { return true; } });
+  const toggleFullscreen = () => setFullscreen((v) => { try { localStorage.setItem("seating_fullscreen", v ? "0" : "1"); } catch { /* 無法儲存就算了 */ } return !v; });
+  useEffect(() => {
+    // 全螢幕時畫布尺寸變了，重新縮放到全部
+    const id = setTimeout(() => { if (layout && containerRef.current && !printMode) fitAll(); }, 50);
+    return () => clearTimeout(id);
+  }, [fullscreen]);
   const [showBg, setShowBg] = useState(true);   // 飯店平面圖底圖要不要顯示
   const [bgUrl, setBgUrl] = useState("");
   const [mapPreviewOpen,setMapPreviewOpen]=useState(false);
@@ -505,10 +513,20 @@ export default function Seating() {
       return { zoom, x: px - (px - v.x) * k, y: py - (py - v.y) * k };
     });
   };
-  const onWheel = (e) => {
-    e.preventDefault();
-    zoomAt(e.deltaY < 0 ? 1.12 : 1 / 1.12, e.clientX, e.clientY);
-  };
+  // 滾輪縮放：React 的 onWheel 是 passive，preventDefault 會被瀏覽器忽略並在 console 報錯，
+  // 所以自己用 passive:false 綁在畫布上，頁面才不會跟著捲動
+  const zoomAtRef = useRef(zoomAt);
+  zoomAtRef.current = zoomAt;
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const onWheel = (e) => {
+      e.preventDefault();
+      zoomAtRef.current(e.deltaY < 0 ? 1.12 : 1 / 1.12, e.clientX, e.clientY);
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [layout === null, printMode]);
   const fitAll = () => {
     const r = containerRef.current?.getBoundingClientRect();
     if (!r || !layout) return;
@@ -585,11 +603,12 @@ export default function Seating() {
   const activeHall = halls.find((h) => h.is_active);
 
   return (
-    <div className="se-page">
+    <div className={`se-page${fullscreen ? " se-full" : ""}`}>
       {mapPreviewOpen&&<SeatViewer layout={layout} fullscreen onClose={()=>setMapPreviewOpen(false)}/>}
-      <PageHead title="座位圖" sub={readonly ? "唯讀：點椅子看是誰，方便帶位" : "拖曳擺桌椅，把右邊的賓客拖到椅子上；也可以先點人再點椅子。廳別還沒定案可以先各排一套，再決定哪一廳正式使用"}
+      <PageHead title="座位圖" sub={fullscreen ? "" : readonly ? "唯讀：點椅子看是誰，方便帶位" : "拖曳擺桌椅，把右邊的賓客拖到椅子上；也可以先點人再點椅子。廳別還沒定案可以先各排一套，再決定哪一廳正式使用"}
         actions={
           <>
+            <button className="btn btn-ghost" onClick={toggleFullscreen} title={fullscreen ? "顯示側邊欄，回到一般的後台版面" : "把平面圖放大到整個視窗"}>{fullscreen ? <><Shrink size={14} /> 回後台版面</> : <><Expand size={14} /> 滿版</>}</button>
             <span className="se-hallpick">
               <Building2 size={14} />
               <Select compact aria-label="切換廳" value={String(hallId)} onChange={(v) => switchHall(v)}
@@ -659,7 +678,7 @@ export default function Seating() {
       )}
 
       <div className="se-shell">
-        <div className="se-canvas" ref={containerRef} onWheel={onWheel}>
+        <div className="se-canvas" ref={containerRef}>
           <svg onPointerDown={onBgPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}>
             <defs>
               {/* 格線用畫布單位畫，縮放時會跟著桌椅一起縮放 */}

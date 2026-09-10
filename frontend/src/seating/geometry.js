@@ -95,14 +95,20 @@ export function seatPositions(o) {
   return out;
 }
 
-/** 物件（含椅子）的外框，給「縮放至全部」用 */
+/** 物件（含椅子）的外框，給「縮放至全部」用。
+ * 依旋轉角度算實際佔的長方形，不用對角線當半徑：長牆那種又長又扁的物件才不會把外框撐到很大，
+ * 害整張圖縮得很小（2026-09-10 萬福廳範本的外牆就撞到這個問題）。 */
 export function bounds(objects) {
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  const margin = SEAT_GAP + SEAT_R + 20;
   objects.forEach((o) => {
     const { cx, cy, w, h } = center(o);
-    const r = Math.sqrt(w * w + h * h) / 2 + SEAT_GAP + SEAT_R + 20;
-    minX = Math.min(minX, cx - r); minY = Math.min(minY, cy - r);
-    maxX = Math.max(maxX, cx + r); maxY = Math.max(maxY, cy + r);
+    const a = ((o.rotation || 0) * Math.PI) / 180;
+    const cos = Math.abs(Math.cos(a)), sin = Math.abs(Math.sin(a));
+    const hw = w / 2 + margin, hh = h / 2 + margin;
+    const ex = hw * cos + hh * sin, ey = hw * sin + hh * cos;
+    minX = Math.min(minX, cx - ex); minY = Math.min(minY, cy - ey);
+    maxX = Math.max(maxX, cx + ex); maxY = Math.max(maxY, cy + ey);
   });
   if (!objects.length) return { minX: 0, minY: 0, maxX: 800, maxY: 500 };
   return { minX, minY, maxX, maxY };
