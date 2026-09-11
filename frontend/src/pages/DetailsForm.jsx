@@ -131,7 +131,7 @@ export default function DetailsForm() {
 
   return (
     <div className="container">
-      <GuestHeader title="為你留一席，也留一份美味" subtitle="確認同行人數、主餐與需要我們留意的事" brush/>
+      <GuestHeader title="入席 ‧ 共赴美好時光" subtitle="核對邀請資訊，確認同行人數、主餐與特殊飲食需求" brush/>
 
       <>{stageError?<LoadError error={stageError} retry={retry}/>:!stage&&<div className="loading" role="status">讀取回覆開放時間…</div>}</>
       <PreviewBanner stage={stage} closedLabels={stage && !stage.phase2_open ? ["第二階段"] : []}
