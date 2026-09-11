@@ -93,7 +93,8 @@ def wanfu_fixtures() -> list[dict]:
     # 不可通行的房間
     out.append(_zone("洗手間", 227, 262, 83, 61))
     out.append(_zone("洗手間", 345, 262, 60, 73))
-    out.append(_zone("禮盒區（收禮）", 405, 283, 95, 102))
+    # 禮盒區是賓客從大門進來、經西側的門進廳的房間，要可通行（只靠四周的牆與門口擋路），入口放在裡面才算得出路線
+    out.append(_zone("禮盒區（收禮）", 405, 283, 95, 102, blocked=False))
     # 陽台門（可通行的門，只是標示）、出餐口
     out.append(_zone("出陽台門", 70, 6, 30, 14, blocked=False))
     out.append(_zone("出陽台門", 413, 6, 30, 14, blocked=False))
