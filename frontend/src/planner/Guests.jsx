@@ -3,7 +3,7 @@ import Swal from "sweetalert2";
 import {
   Users, Utensils, Baby, Mail, PieChart,
   ClipboardList, Download, Trash2, Armchair, Salad, Pencil, MessageCircle,
-  Megaphone, Send, ChevronDown, Plus,
+  Megaphone, Send, ChevronDown, Plus, Save,
 } from "lucide-react";
 import RichTextEditor from '../components/RichTextEditor.jsx';
 import Select from "../components/Select.jsx";
@@ -521,32 +521,30 @@ function BroadcastPanel({ stats }) {
   const [testTo, setTestTo] = useState("");
   const [files, setFiles] = useState([]); // 附件 File[]
   const [busy, setBusy] = useState(false);
-  // 草稿存在後台設定裡（2026-09-11 新人要求改過的內容要留著，換裝置也一樣）：載入後改動 0.8 秒沒再動就自動儲存
+  // 草稿存在後台設定裡（2026-09-11 新人要求改過的內容要留着，換裝置也一樣）：載入時帶回，按「儲存草稿」才存
   const [draftState, setDraftState] = useState("loading"); // loading / saved / dirty / saving
-  const [loaded, setLoaded] = useState(false);
+  const [savedSnapshot, setSavedSnapshot] = useState(null);
+  const snapshot = () => JSON.stringify({ subject, body, target, testTo });
   useEffect(() => {
     fetchPlannerSettings().then(({ values }) => {
-      if (values.broadcast_subject) setSubject(values.broadcast_subject);
-      if (values.broadcast_body) setBody(values.broadcast_body);
-      if (values.broadcast_target) setTarget(values.broadcast_target);
-      if (values.broadcast_test_to) setTestTo(values.broadcast_test_to);
+      const s = values.broadcast_subject || DEFAULT_SUBJECT, b = values.broadcast_body || DEFAULT_BODY, t = values.broadcast_target || "pending", e = values.broadcast_test_to || "";
+      setSubject(s); setBody(b); setTarget(t); setTestTo(e);
+      setSavedSnapshot(JSON.stringify({ subject: s, body: b, target: t, testTo: e }));
       setDraftState("saved");
-    }).catch(() => setDraftState("saved")).finally(() => setLoaded(true));
+    }).catch(() => { setSavedSnapshot(snapshot()); setDraftState("saved"); });
   }, []);
-  useEffect(() => {
-    if (!loaded) return undefined;
-    setDraftState("dirty");
-    const id = setTimeout(async () => {
-      setDraftState("saving");
-      try {
-        await savePlannerSettings({ broadcast_subject: subject, broadcast_body: body, broadcast_target: target, broadcast_test_to: testTo });
-        setDraftState("saved");
-      } catch { setDraftState("dirty"); }
-    }, 800);
-    return () => clearTimeout(id);
-  }, [subject, body, target, testTo, loaded]);
+  const dirty = savedSnapshot !== null && snapshot() !== savedSnapshot;
+  const saveDraft = async () => {
+    setDraftState("saving");
+    try {
+      await savePlannerSettings({ broadcast_subject: subject, broadcast_body: body, broadcast_target: target, broadcast_test_to: testTo });
+      setSavedSnapshot(snapshot());
+      setDraftState("saved");
+      toastOk("信件草稿已儲存");
+    } catch (e) { setDraftState("saved"); toastErr(e); }
+  };
   const resetDraft = async () => {
-    const r = await Swal.fire({ icon: "question", title: "還原成預設的信件內容？", text: "主旨與內文會換回系統預設，您改過的會不見。", showCancelButton: true, confirmButtonText: "還原", cancelButtonText: "取消", confirmButtonColor: "#B28F70" });
+    const r = await Swal.fire({ icon: "question", title: "還原成預設的信件內容？", text: "主旨與內文會換回系統預設，記得按「儲存草稿」才會保存。", showCancelButton: true, confirmButtonText: "還原", cancelButtonText: "取消", confirmButtonColor: "#B28F70" });
     if (!r.isConfirmed) return;
     setSubject(DEFAULT_SUBJECT); setBody(DEFAULT_BODY);
   };
@@ -625,7 +623,7 @@ function BroadcastPanel({ stats }) {
       <div style={{ fontSize: 12.5, color: "var(--text-muted)", marginBottom: 14, display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
         <span>內文的 {"{name}"} 會自動帶入每位賓客的姓名</span>
         <span style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
-          <span>{draftState === "loading" ? "讀取草稿…" : draftState === "saving" ? "儲存中…" : draftState === "dirty" ? "有改動，稍後自動儲存" : "改動會自動儲存"}</span>
+          <span>{draftState === "loading" ? "讀取草稿…" : draftState === "saving" ? "儲存中…" : dirty ? "有尚未儲存的修改" : "已儲存"}</span>
           <button type="button" className="pl-linkbtn" onClick={resetDraft}>還原預設內容</button>
         </span>
       </div>
@@ -680,6 +678,7 @@ function BroadcastPanel({ stats }) {
           onChange={(e) => setTestTo(e.target.value)}
           style={{ flex: 1, minWidth: 200 }}
         />
+        <button className={`btn ${dirty ? "btn-primary" : "btn-ghost"}`} onClick={saveDraft} disabled={busy || draftState === "loading" || draftState === "saving"}><Save size={15} /> {draftState === "saving" ? "儲存中…" : "儲存草稿"}</button>
         <button className="btn btn-ghost" onClick={sendTest} disabled={busy}><Mail size={15} /> 寄測試信</button>
         <button className="btn btn-primary" onClick={sendAll} disabled={busy}><Send size={15} /> {busy ? "處理中…" : "開始群發"}</button>
       </div>
