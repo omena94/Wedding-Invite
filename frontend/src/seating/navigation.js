@@ -49,7 +49,8 @@ export function navigationGrid(layout, options = {}) {
     const p = point(id);
     if (p.x < clearance || p.y < clearance || p.x > w - clearance || p.y > h - clearance || obstacles.some(test=>test(p.x,p.y))) blocked[id] = 1;
   }
-  const nearest = (p, limit = step * 3) => {
+  // checkVisible=false：p 本身可能已在障礙物的保留範圍內（例如椅子緊貼舞台），這時只找最近的可通行格，不檢查連線
+  const nearest = (p, limit = step * 3, checkVisible = true) => {
     let found = -1, best = limit * limit;
     const x0 = Math.max(0, Math.floor((p.x - limit) / step)), x1 = Math.min(cols - 1, Math.ceil((p.x + limit) / step));
     const y0 = Math.max(0, Math.floor((p.y - limit) / step)), y1 = Math.min(rows - 1, Math.ceil((p.y + limit) / step));
@@ -57,7 +58,7 @@ export function navigationGrid(layout, options = {}) {
       const id = y * cols + x;
       if (blocked[id]) continue;
       const q = point(id), d = (p.x - q.x) ** 2 + (p.y - q.y) ** 2;
-      if (d < best && visible(p,q)) { best = d; found = id; }
+      if (d < best && (!checkVisible || visible(p,q))) { best = d; found = id; }
     }
     return found;
   };
@@ -94,13 +95,20 @@ export function routeToSeat(layout, { objectId, seatIndex, entranceId, grid, ...
   if(seatIndex!==undefined&&(!Number.isInteger(seatIndex)||!seats[seatIndex]))return fail('invalid-seat','這個座位已變更，請重新查詢桌次。');
   const seat = Number.isInteger(seatIndex) ? seats[seatIndex] : null;
   const targets = seat ? [seat] : seats.length ? seats : [{ x: center(table).cx, y: center(table).cy - center(table).h / 2, ox: 0, oy: -1 }];
-  const goals = new Set();
-  for (const p of targets) {
-    // 目標點：椅子外側一小段（不加保留距離，走道窄的長桌區才找得到落點）
-    const distance = SEAT_R + g.step * 1.5;
-    const id = g.nearest({ x: p.x + p.ox * distance, y: p.y + p.oy * distance }, g.step * 2);
-    if (id >= 0) goals.add(id);
-  }
+  // 目標點：椅子外側一小段（不加保留距離，走道窄的長桌區才找得到落點）
+  const goalsFor = (list, limit, checkVisible = true) => {
+    const set = new Set();
+    for (const p of list) {
+      const distance = SEAT_R + g.step * 1.5;
+      const id = g.nearest({ x: p.x + p.ox * distance, y: p.y + p.oy * distance }, limit, checkVisible);
+      if (id >= 0) set.add(id);
+    }
+    return set;
+  };
+  let goals = goalsFor(targets, g.step * 2);
+  // 椅子正前方被舞台、牆之類的保留範圍蓋住（例如 C1 面向舞台的那幾張）：放寬範圍再找，還是沒有就帶到同桌任一張椅子旁（2026-09-11）
+  if (!goals.size) goals = goalsFor(targets, g.step * 4, false);
+  if (!goals.size && seat && seats.length > 1) goals = goalsFor(seats, g.step * 3, false);
   if (!goals.size) return fail('blocked-seat', '座位旁的通道太窄，請找現場招待帶位。');
   const previous = new Int32Array(g.blocked.length).fill(-1);
   const queue = new Int32Array(g.blocked.length);
