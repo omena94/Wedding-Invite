@@ -724,6 +724,12 @@ export default function Seating() {
         <span className={s.unassigned ? "pill pill-warn" : "pill pill-yes"}>未安排 {s.unassigned}</span>
         {s.seats_total < s.people_total && <span className="pill pill-no">座位不夠：還差 {s.people_total - s.seats_total} 個</span>}
       </div>
+      {/* 動作列固定佔位（沒選人時顯示提示）：不然選到人時它才出現，會把畫布往下推，第二下就點不到同一張椅子（2026-09-11） */}
+      {picked.length === 0 && !readonly && (
+        <div className="se-selbar se-selbar-idle" role="note">
+          <span className="muted-cell">點右邊的賓客或畫布上有人的椅子來選人（會變藍色），再點一張椅子放進去；做錯了可以按提示的「復原」或 Ctrl+Z。</span>
+        </div>
+      )}
       {picked.length > 0 && (
         <div className="se-selbar" role="group" aria-label="已選取的賓客">
           <span><strong>已選 {picked.length} 位</strong>：{picked.map((x) => x.name).join("、")}</span>
