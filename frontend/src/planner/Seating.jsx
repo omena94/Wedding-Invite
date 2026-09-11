@@ -9,7 +9,7 @@ import {
 } from "lucide-react";
 import {
   assignGroup, assignSeat, autoAssignSeats, clearAllSeats, clearSeatObject, createSeatHall, createSeatHallFromPreset, createSeatObject,
-  deleteSeatHall, deleteSeatObject, fetchSeatHallBackgroundUrl, fetchSeating, fetchSeatPreview, moveSeatObjects, removeSeatHallBackground,
+  deleteSeatHall, deleteSeatObject, fetchSeatHallBackgroundUrl, fetchSeatPresets, fetchSeating, fetchSeatPreview, moveSeatObjects, removeSeatHallBackground,
   renameAssignment, resetSeatHallFixtures, unassignSeat, updateSeatHall, updateSeatObject, uploadSeatHallBackground,
 } from "../api.js";
 import { Checkbox } from "../components/Toggle.jsx";
@@ -1165,16 +1165,19 @@ function HallModal({ hall, halls, onClose, onLayout }) {
     const l = await run(() => createSeatHall({ name: n, copy_from: hall.id }), `已複製成「${n}」`);
     if (l) onClose();
   };
-  const loadPreset = async () => {
-    const r = await Swal.fire({ icon: "info", title: "載入飯店提供的「萬福廳」平面圖？", html: "會新增一個叫「萬福廳」的廳，照飯店的圖擺好 20 段長桌（每段兩側各 3 位，共 120 個座位）、舞台、入口、洗手間等，並把原圖放在底下當底圖。<br>現在這一廳不會被動到，之後可以隨時切換。", showCancelButton: true, confirmButtonText: "載入", cancelButtonText: "取消", confirmButtonColor: "#B28F70" });
+  // 可載入的飯店平面圖範本（萬福廳、2 樓大宴會廳…）由後端提供
+  const { data: presets } = useLoader(fetchSeatPresets, []);
+  const presetName = (key) => (presets || []).find((p) => p.key === key)?.name || "範本";
+  const loadPreset = async (p) => {
+    const r = await Swal.fire({ icon: "info", title: `載入飯店提供的「${p.name}」平面圖？`, html: `會新增一個叫「${p.name}」的廳，照飯店的圖擺好${p.summary}，並把原圖放在底下當底圖。<br>現在這一廳不會被動到，之後可以隨時切換。`, showCancelButton: true, confirmButtonText: "載入", cancelButtonText: "取消", confirmButtonColor: "#B28F70" });
     if (!r.isConfirmed) return;
-    const l = await run(() => createSeatHallFromPreset("wanfu"), "已載入萬福廳");
+    const l = await run(() => createSeatHallFromPreset(p.key), `已載入${p.name}`);
     if (l) onClose();
   };
   const resetFixtures = async () => {
-    const r = await Swal.fire({ icon: "question", title: "把飯店平面圖的固定物件放回這一廳？", html: "會依飯店平面圖放回外牆、柱子、洗手間、禮盒區的牆、陽台門、出餐口，並全部鎖定（不能拖、不能刪）。<br>這一廳裡舊的牆、柱、洗手間、禮盒區、出陽台門會先清掉再放；桌子、舞台、餐檯、入口與座位安排都不會動。", showCancelButton: true, confirmButtonText: "放回並鎖定", cancelButtonText: "取消", confirmButtonColor: "#B28F70" });
+    const r = await Swal.fire({ icon: "question", title: `把「${presetName(hall.preset_key)}」平面圖的固定物件放回這一廳？`, html: "會依飯店平面圖放回牆、柱、洗手間、投影布幕等固定物件，並全部鎖定（不能拖、不能刪）。<br>這一廳裡舊的牆、柱與同名的固定區域會先清掉再放；桌子、舞台、餐檯、入口與座位安排都不會動。", showCancelButton: true, confirmButtonText: "放回並鎖定", cancelButtonText: "取消", confirmButtonColor: "#B28F70" });
     if (!r.isConfirmed) return;
-    const l = await run(() => resetSeatHallFixtures(hall.id, "wanfu"), "固定物件已放回並鎖定");
+    const l = await run(() => resetSeatHallFixtures(hall.id, hall.preset_key), "固定物件已放回並鎖定");
     if (l) onClose();
   };
   const removeHall = async () => {
@@ -1213,8 +1216,8 @@ function HallModal({ hall, halls, onClose, onLayout }) {
       <div className="pl-list-title" style={{ fontSize: 13, marginTop: 16 }}>其他廳</div>
       <div className="helper-text" style={{ marginBottom: 8 }}>廳別還沒確定前可以同時留好幾套座位圖，各自排位；用頁首的下拉切換。</div>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-        <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={loadPreset}><Building2 size={13} /> 載入飯店提供的「萬福廳」平面圖</button>
-        <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={resetFixtures} title="依飯店平面圖放回牆、柱、洗手間、陽台門並鎖定；桌子與座位不動"><Lock size={13} /> 放回萬福廳的固定物件並鎖定</button>
+        {(presets || []).map((p) => <button type="button" key={p.key} className="btn btn-ghost btn-sm" disabled={busy} onClick={() => loadPreset(p)}><Building2 size={13} /> 載入飯店提供的「{p.name}」平面圖</button>)}
+        {hall.preset_key && <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={resetFixtures} title="依飯店平面圖放回牆、柱、洗手間等固定物件並鎖定；桌子與座位不動"><Lock size={13} /> 放回{presetName(hall.preset_key)}的固定物件並鎖定</button>}
         <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={addBlank}><Plus size={13} /> 新增空白廳</button>
         <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={copyHall}><Copy size={13} /> 複製這一廳</button>
         <button type="button" className="btn btn-ghost btn-sm" disabled={busy || halls.length <= 1} onClick={removeHall} style={{ color: "var(--rose-accent)" }} title={halls.length <= 1 ? "至少要留一個廳" : undefined}><Trash2 size={13} /> 刪除這一廳</button>

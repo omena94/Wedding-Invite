@@ -111,6 +111,12 @@ def test_wanfu_preset_has_twenty_segments_and_background(setup):
     assert client.get('/api/planner/seating', params={'hall': before['hall']['id']}, headers=headers).json()['summary']['tables'] == before['summary']['tables']
     bg = client.get(f"/api/planner/seating/halls/{layout['hall']['id']}/background", headers=headers)
     assert bg.status_code == 200 and bg.headers['content-type'].startswith('image/')
+    # 2 樓大宴會廳範本：10 張 12 位長桌 + 主桌 2 位 = 122 位；牆與投影布幕鎖定；記住範本
+    grand = client.post('/api/planner/seating/halls/preset', json={'key': 'grand'}, headers=headers).json()
+    assert grand['hall']['name'] == '2 樓大宴會廳' and grand['hall']['preset_key'] == 'grand' and grand['hall']['has_bg']
+    assert grand['summary']['seats_total'] == 122 and grand['summary']['tables'] == 11
+    assert all(o['meta'].get('locked') for o in grand['objects'] if o['kind'] == 'wall')
+    assert [p['key'] for p in client.get('/api/planner/seating/halls/presets', headers=headers).json()] == ['wanfu', 'grand']
     # 幫手看不到後台的廳管理，但能讀唯讀版
     helper = {'Authorization': 'Bearer ' + create_token('helper')}
     assert client.get('/api/admin/seating', params={'hall': layout['hall']['id']}, headers=helper).json()['hall']['name'] == '萬福廳'

@@ -260,6 +260,7 @@ class SeatHall(Base):
     bg_image: Mapped[str] = mapped_column(String(80), default="")    # uploads/ 裡的檔名；空 = 沒有底圖
     bg_opacity: Mapped[int] = mapped_column(Integer, default=55)      # 底圖透明度 10～100
     is_active: Mapped[bool] = mapped_column(Boolean, default=False)   # 賓客查桌、幫手帶位用這一廳
+    preset_key: Mapped[str] = mapped_column(String(30), default="")    # 由哪個範本載入（wanfu / grand），放回固定物件時要知道；空 = 自己畫的
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

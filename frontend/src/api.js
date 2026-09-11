@@ -220,6 +220,7 @@ export const fetchSeatPreview = (rsvpId, hall = null) => request(`/api/admin/sea
 export const setSeatingCanvas = (w, h, clearance = 20, hall = null) => request(`${SE}/canvas${qs({ hall })}`, { method: "PATCH", body: { w, h, clearance }, auth: true });
 export const fetchSeatHalls = () => request(`${SE}/halls`, { auth: true });
 export const createSeatHall = (data) => request(`${SE}/halls`, { method: "POST", body: data, auth: true });
+export const fetchSeatPresets = () => request(`${SE}/halls/presets`, { auth: true });
 export const createSeatHallFromPreset = (key) => request(`${SE}/halls/preset`, { method: "POST", body: { key }, auth: true });
 export const resetSeatHallFixtures = (id, key = "wanfu") => request(`${SE}/halls/${id}/fixtures`, { method: "POST", body: { key }, auth: true });
 export const updateSeatHall = (id, data) => request(`${SE}/halls/${id}`, { method: "PATCH", body: data, auth: true });

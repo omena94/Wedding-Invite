@@ -293,7 +293,7 @@ class SeatHallPatch(BaseModel):
 
 
 class SeatPresetIn(BaseModel):
-    key: Literal["wanfu"]
+    key: Literal["wanfu", "grand"]
 
 
 class SeatObjectIn(BaseModel):

@@ -28,7 +28,7 @@ from ..schemas import (
     SeatPresetIn,
     SeatRenameIn,
 )
-from ..seat_presets import PRESETS, install_fixtures, install_preset
+from ..seat_presets import PRESETS, install_fixtures, install_preset, preset_list
 from ..seating import (
     assignment_out,
     build_layout,
@@ -107,6 +107,12 @@ def create_hall(payload: SeatHallIn, db: Session = Depends(get_db)):
                               seats=o.seats, meta_json=o.meta_json, z_order=o.z_order, note=o.note))
     db.commit()
     return build_layout(db, hall)
+
+
+@router.get("/halls/presets")
+def get_presets():
+    """可載入的飯店平面圖範本清單（廳設定的按鈕用）。"""
+    return preset_list()
 
 
 @router.post("/halls/preset", status_code=201)

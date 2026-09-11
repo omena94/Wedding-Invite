@@ -89,6 +89,7 @@ def hall_out(h: SeatHall) -> dict:
         "bg_image": h.bg_image,
         "bg_opacity": h.bg_opacity,
         "is_active": bool(h.is_active),
+        "preset_key": h.preset_key or "",
     }
 
 
