@@ -42,7 +42,7 @@ export default function Budget() {
   const totals = useMemo(() => {
     const t = { contract: 0, paid: 0, unpaid: 0 };
     (data || []).forEach((e) => {
-      t.contract += e.contract_amount; t.paid += e.paid_total; t.unpaid += e.unpaid_total;
+      t.contract += e.effective_contract ?? e.contract_amount; t.paid += e.paid_total; t.unpaid += e.unpaid_total;
     });
     return t;
   }, [data]);
@@ -79,7 +79,7 @@ export default function Budget() {
         <div className="panel" key={cat}>
           <div className="panel-head">
             <div className="panel-title">{cat}</div>
-            <div className="muted-cell" style={{ fontSize: 12.5 }}>合約 {money(sub(list, "contract_amount"))} · 已付 {money(sub(list, "paid_total"))}</div>
+            <div className="muted-cell" style={{ fontSize: 12.5 }}>合約 {money(sub(list, "effective_contract"))} · 已付 {money(sub(list, "paid_total"))}</div>
           </div>
           <div className="table-wrap">
             <table>
@@ -88,7 +88,8 @@ export default function Budget() {
               </thead>
               <tbody>
                 {list.map((e) => {
-                  const pct = e.contract_amount ? Math.min(100, Math.round((e.paid_total / e.contract_amount) * 100)) : 0;
+                  const base = e.effective_contract ?? e.contract_amount;
+                  const pct = base ? Math.min(100, Math.round((e.paid_total / base) * 100)) : 0;
                   const isOpen = !!open[e.id];
                   return [
                     <tr key={e.id} id={`expense-${e.id}`} className={focusExpense === e.id && !focusPayment ? "row-flash" : undefined}>
@@ -104,7 +105,7 @@ export default function Budget() {
                       <td><span className="pill pill-groom">{PAID_BY[e.paid_by]}</span></td>
                       <td className="muted-cell" style={{ whiteSpace: "nowrap" }}>{e.pay_method || "—"}</td>
                       <td className="muted-cell" style={{ whiteSpace: "nowrap" }}>{e.due_date ? <>{fmtDate(e.due_date)}{e.unpaid_total > 0 && dueTag(e.due_date) ? <span className="pill pill-warn" style={{ marginLeft: 4 }}>{dueTag(e.due_date).replace(/[（）]/g, "")}</span> : null}</> : "—"}</td>
-                      <td className="amount">{money(e.contract_amount)}</td>
+                      <td className="amount">{e.unsigned ? <span className="muted-cell" title="合約金額還沒填（未簽約）：先付的錢照實計，不算尚欠">{e.paid_total || e.unpaid_total ? `${money(e.effective_contract)}` : "—"}<div style={{ fontSize: 11 }}>未簽約</div></span> : money(e.contract_amount)}</td>
                       <td className="amount">{money(e.paid_total)}</td>
                       <td className="amount">{e.unpaid_total ? money(e.unpaid_total) : "—"}{e.unscheduled_unpaid > 0 && <div className="muted-cell" style={{ fontSize: 11 }}>未排分期 {money(e.unscheduled_unpaid)}</div>}{e.overpaid_total > 0 && <div className="pill pill-warn">溢付 {money(e.overpaid_total)}</div>}</td>
                       <td><div className="bar-track" style={{ marginTop: 0 }}><div className="bar-fill" style={{ width: `${pct}%` }} /></div><div className="muted-cell" style={{ fontSize: 11 }}>{pct}%</div></td>
@@ -159,7 +160,7 @@ export default function Budget() {
 
 // 統計卡明細（2026-09-08 新人要求）：點卡片列出是哪些項目加出來的
 const DETAIL = {
-  contract: { title: "實際合計明細", rows: (list) => list.filter((e) => e.contract_amount > 0).map((e) => [e.title, e.category, e.contract_amount]) },
+  contract: { title: "實際合計明細", rows: (list) => list.filter((e) => (e.effective_contract ?? e.contract_amount) > 0).map((e) => [e.title, e.unsigned ? `${e.category} · 未簽約，以已付＋已排計` : e.category, e.effective_contract ?? e.contract_amount]) },
   paid: { title: "已付明細", rows: (list) => list.flatMap((e) => e.payments.filter((p) => p.paid_date).map((p) => [e.title, `${p.title} · ${fmtDate(p.paid_date)}${p.method ? ` · ${p.method}` : ""}`, p.amount])) },
   unpaid: { title: "合約尚欠明細", rows: (list) => list.filter((e) => e.unpaid_total > 0).map((e) => [e.title, e.unscheduled_unpaid > 0 ? `含未排分期 ${money(e.unscheduled_unpaid)}` : "已排分期未付", e.unpaid_total]) },
 };

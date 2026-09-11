@@ -86,7 +86,10 @@ def _expense_out(e: Expense, banquet_id: int | None = None) -> dict:
     payments = sorted(e.payments, key=lambda p: (p.sort_order, p.id))
     paid = sum(p.amount for p in payments if p.paid_date)
     scheduled = sum(p.amount for p in payments if not p.paid_date)
-    unpaid = max(0, e.contract_amount - paid)
+    # 合約金額 0 = 還沒簽約（例如先付試吃盒）：付多少算多少，不算尚欠也不算溢付（2026-09-11）
+    unsigned = e.contract_amount <= 0
+    effective = paid + scheduled if unsigned else e.contract_amount
+    unpaid = scheduled if unsigned else max(0, e.contract_amount - paid)
     return {
         "id": e.id,
         "vendor_id": e.vendor_id,
@@ -95,6 +98,8 @@ def _expense_out(e: Expense, banquet_id: int | None = None) -> dict:
         "title": e.title,
         "budget_amount": e.budget_amount,
         "contract_amount": e.contract_amount,
+        "unsigned": unsigned,               # 還沒簽約：合約金額 0
+        "effective_contract": effective,    # 拿來加總的金額：簽約金額，或未簽約時的已付＋已排
         "paid_by": e.paid_by,
         "note": e.note,
         "due_date": e.due_date.isoformat() if e.due_date else None,
@@ -103,8 +108,8 @@ def _expense_out(e: Expense, banquet_id: int | None = None) -> dict:
         "paid_total": paid,
         "unpaid_total": unpaid,
         "scheduled_unpaid": scheduled,
-        "unscheduled_unpaid": max(0, unpaid - scheduled),
-        "overpaid_total": max(0, paid - e.contract_amount),
+        "unscheduled_unpaid": 0 if unsigned else max(0, unpaid - scheduled),
+        "overpaid_total": 0 if unsigned else max(0, paid - e.contract_amount),
         "gift_order_id": e.gift_order.id if e.gift_order else None,
         "payments": [_payment_out(p, e) for p in payments],
         "created_at": e.created_at.isoformat() if e.created_at else None,
@@ -327,14 +332,11 @@ def patch_banquet(payload: BanquetPatch, db: Session = Depends(get_db)):
 def dashboard(db: Session = Depends(get_db)):
     sync_banquet_expense(db)
     budget_total = db.scalar(select(func.coalesce(func.sum(Expense.budget_amount), 0))) or 0
-    contract_total = db.scalar(select(func.coalesce(func.sum(Expense.contract_amount), 0))) or 0
-    paid_total = db.scalar(
-        select(func.coalesce(func.sum(Payment.amount), 0)).where(Payment.paid_date.is_not(None))
-    ) or 0
-    # 未建立尾款分期也計入尚欠；某筆溢付不可沖掉另一筆欠款。
-    paid_by_expense = dict(db.execute(select(Payment.expense_id, func.sum(Payment.amount))
-                                     .where(Payment.paid_date.is_not(None)).group_by(Payment.expense_id)).all())
-    unpaid_total = sum(max(0, e.contract_amount - paid_by_expense.get(e.id, 0)) for e in db.scalars(select(Expense)))
+    # 跟花費頁同一套算法：未簽約（合約 0）的項目以已付＋已排計；某筆溢付不可沖掉另一筆欠款
+    rows = [_expense_out(e) for e in db.scalars(select(Expense).options(*_EXPENSE_LOAD)).all()]
+    contract_total = sum(r["effective_contract"] for r in rows)
+    paid_total = sum(r["paid_total"] for r in rows)
+    unpaid_total = sum(r["unpaid_total"] for r in rows)
 
     upcoming = db.scalars(
         select(Payment)

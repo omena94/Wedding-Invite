@@ -43,3 +43,22 @@ def test_expense_due_date(client):
     assert client.patch(f"{P}/{e['id']}", json={"due_date": "2027-03-01"}).json()["due_date"] == "2027-03-01"
     assert client.patch(f"{P}/{e['id']}", json={"clear_due_date": True}).json()["due_date"] is None
     assert client.get(P).json()[0]["due_date"] is None
+
+
+def test_unsigned_expense_counts_paid_without_overpaid(client):
+    """合約 0（未簽約）先付試吃盒：不算溢付、不算尚欠，合計以已付計（2026-09-11）。"""
+    e = client.post(P, json={"title": "蒙恩喜餅", "category": "喜餅", "contract_amount": 0}).json()
+    client.post(f"{P}/{e['id']}/payments", json={"title": "試吃", "amount": 600, "paid_date": "2026-09-11"})
+    row = next(r for r in client.get(P).json() if r["id"] == e["id"])
+    assert row["unsigned"] and row["paid_total"] == 600 and row["overpaid_total"] == 0 and row["unpaid_total"] == 0
+    assert row["effective_contract"] == 600
+    # 排了一期還沒付：算尚欠
+    client.post(f"{P}/{e['id']}/payments", json={"title": "定金", "amount": 5000, "due_date": "2026-10-01"})
+    row = next(r for r in client.get(P).json() if r["id"] == e["id"])
+    assert row["unpaid_total"] == 5000 and row["effective_contract"] == 5600
+    # 簽約後填合約金額，回到一般算法
+    client.patch(f"{P}/{e['id']}", json={"contract_amount": 59500})
+    row = next(r for r in client.get(P).json() if r["id"] == e["id"])
+    assert not row["unsigned"] and row["unpaid_total"] == 59500 - 600
+    d = client.get("/api/planner/dashboard").json()["budget"]
+    assert d["contract_total"] >= 59500 and d["paid_total"] >= 600
