@@ -623,7 +623,7 @@ function BroadcastPanel({ stats }) {
       <div style={{ fontSize: 12.5, color: "var(--text-muted)", marginBottom: 14, display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
         <span>內文的 {"{name}"} 會自動帶入每位賓客的姓名</span>
         <span style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
-          <span>{draftState === "loading" ? "讀取草稿…" : draftState === "saving" ? "儲存中…" : dirty ? "有尚未儲存的修改" : "已儲存"}</span>
+          {dirty && <span>有尚未儲存的修改</span>}
           <button type="button" className="pl-linkbtn" onClick={resetDraft}>還原預設內容</button>
         </span>
       </div>
