@@ -28,7 +28,7 @@ from ..schemas import (
     SeatPresetIn,
     SeatRenameIn,
 )
-from ..seat_presets import PRESETS, install_preset
+from ..seat_presets import PRESETS, install_fixtures, install_preset
 from ..seating import (
     assignment_out,
     build_layout,
@@ -116,6 +116,18 @@ def create_hall_from_preset(payload: SeatPresetIn, db: Session = Depends(get_db)
         raise HTTPException(404, "沒有這個範本")
     hall = install_preset(db, payload.key)
     return build_layout(db, hall)
+
+
+@router.post("/halls/{hall_id}/fixtures")
+def reset_fixtures(hall_id: int, payload: SeatPresetIn, db: Session = Depends(get_db)):
+    """把範本的固定物件（牆、柱、洗手間、禮盒區、陽台門）放回這一廳並鎖定；桌椅與座位安排不動（2026-09-11）。"""
+    hall = _hall(db, hall_id)
+    if payload.key not in PRESETS:
+        raise HTTPException(404, "沒有這個範本")
+    n = install_fixtures(db, hall, payload.key)
+    layout = build_layout(db, hall)
+    layout["placed"] = n
+    return layout
 
 
 @router.patch("/halls/{hall_id}")
@@ -248,6 +260,10 @@ def create_object(payload: SeatObjectIn, db: Session = Depends(get_db)):
 def update_object(object_id: int, payload: SeatObjectPatch, db: Session = Depends(get_db)):
     o = _obj(db, object_id)
     data = payload.model_dump(exclude_unset=True)
+    # 鎖定的固定物件：位置、大小、角度不能改（只允許先把 meta.locked 改成 false 解鎖）
+    staying_locked = o.meta.get("locked") and not ("meta" in data and data["meta"] is not None and not data["meta"].get("locked"))
+    if staying_locked and any(k in data and data[k] is not None and data[k] != getattr(o, k) for k in ("x", "y", "w", "h", "rotation")):
+        raise HTTPException(400, "這是固定物件（牆、柱、洗手間…），不能移動或改大小；要調整請先在物件面板解除鎖定")
     if "meta" in data:
         o.meta_json = dump_meta(data.pop("meta"))
     for k, v in data.items():
@@ -272,7 +288,7 @@ def move_objects(items: list[SeatObjectMove], db: Session = Depends(get_db)):
     ids = [m.id for m in items]
     rows = {o.id: o for o in db.scalars(select(SeatObject).where(SeatObject.id.in_(ids))).all()} if ids else {}
     for m in items:
-        if m.id in rows:
+        if m.id in rows and not rows[m.id].meta.get("locked"):  # 鎖定的固定物件不動
             rows[m.id].x = m.x
             rows[m.id].y = m.y
     db.commit()
@@ -282,6 +298,8 @@ def move_objects(items: list[SeatObjectMove], db: Session = Depends(get_db)):
 @router.delete("/objects/{object_id}", status_code=204)
 def delete_object(object_id: int, db: Session = Depends(get_db)):
     o = _obj(db, object_id)
+    if o.meta.get("locked"):
+        raise HTTPException(400, "這是固定物件（牆、柱、洗手間…），不能刪除；要刪請先在物件面板解除鎖定")
     db.delete(o)
     db.commit()
     return None

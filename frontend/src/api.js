@@ -221,6 +221,7 @@ export const setSeatingCanvas = (w, h, clearance = 20, hall = null) => request(`
 export const fetchSeatHalls = () => request(`${SE}/halls`, { auth: true });
 export const createSeatHall = (data) => request(`${SE}/halls`, { method: "POST", body: data, auth: true });
 export const createSeatHallFromPreset = (key) => request(`${SE}/halls/preset`, { method: "POST", body: { key }, auth: true });
+export const resetSeatHallFixtures = (id, key = "wanfu") => request(`${SE}/halls/${id}/fixtures`, { method: "POST", body: { key }, auth: true });
 export const updateSeatHall = (id, data) => request(`${SE}/halls/${id}`, { method: "PATCH", body: data, auth: true });
 export const deleteSeatHall = (id) => request(`${SE}/halls/${id}`, { method: "DELETE", auth: true });
 export function uploadSeatHallBackground(id, file) {

@@ -4,13 +4,13 @@ import { useSearchParams } from "react-router-dom";
 import Swal from "sweetalert2";
 import {
   AlignCenterHorizontal, AlignCenterVertical, AlignEndHorizontal, AlignEndVertical, AlignHorizontalDistributeCenter, AlignStartHorizontal, AlignStartVertical, AlignVerticalDistributeCenter,
-  ArrowDownToLine, ArrowUpToLine, BoxSelect, Building2, Circle, Copy, DoorClosed, Eraser, Expand, Eye, Grid3x3, Image as ImageIcon, Maximize2, Minus, Plus, Printer, Shrink,
+  ArrowDownToLine, ArrowUpToLine, BoxSelect, Building2, Circle, Copy, DoorClosed, Eraser, Expand, Eye, Grid3x3, Image as ImageIcon, Lock, LockOpen, Maximize2, Minus, Plus, Printer, Shrink,
   RectangleHorizontal, Redo2, Square, SquareDashedMousePointer, Star, Tag, Trash2, Type, Undo2, UserRound, Users, Wand2, ZoomIn, ZoomOut,
 } from "lucide-react";
 import {
   assignGroup, assignSeat, autoAssignSeats, clearAllSeats, clearSeatObject, createSeatHall, createSeatHallFromPreset, createSeatObject,
   deleteSeatHall, deleteSeatObject, fetchSeatHallBackgroundUrl, fetchSeating, fetchSeatPreview, moveSeatObjects, removeSeatHallBackground,
-  renameAssignment, unassignSeat, updateSeatHall, updateSeatObject, uploadSeatHallBackground,
+  renameAssignment, resetSeatHallFixtures, unassignSeat, updateSeatHall, updateSeatObject, uploadSeatHallBackground,
 } from "../api.js";
 import { Checkbox } from "../components/Toggle.jsx";
 import Select from "../components/Select.jsx";
@@ -268,7 +268,7 @@ export default function Seating() {
   // ---------- 對齊 / 等距（2026-09-10 新人反映拖曳對不齊）----------
   // 以每個物件的外框（不含椅子）計算；等距是把中心點平均分布在最左（上）與最右（下）之間
   const alignSelected = (mode) => {
-    const items = [...selected].map((id) => byId[id]).filter(Boolean);
+    const items = [...selected].map((id) => byId[id]).filter((o) => o && !o.meta?.locked);
     if (items.length < 2) return;
     const boxes = items.map((o) => { const { cx, cy, w, h } = center(o); return { o, cx, cy, left: cx - w / 2, right: cx + w / 2, top: cy - h / 2, bottom: cy + h / 2 }; });
     const move = (b, dx, dy) => ({ id: b.o.id, x: Math.round(b.o.x + dx), y: Math.round(b.o.y + dy) });
@@ -293,7 +293,7 @@ export default function Seating() {
   };
   // 把選取的物件貼到格線上（座標湊成 10 的倍數）；範本載入的桌子座標不在格線上時，先貼齊再拖就對得齊
   const snapSelected = () => {
-    const items = [...selected].map((id) => byId[id]).filter(Boolean);
+    const items = [...selected].map((id) => byId[id]).filter((o) => o && !o.meta?.locked);
     if (!items.length) return;
     const after = items.map((o) => ({ id: o.id, x: snap(o.x, true), y: snap(o.y, true) }));
     pushHistory({ before: items.map((o) => ({ id: o.id, x: o.x, y: o.y })), after });
@@ -303,7 +303,9 @@ export default function Seating() {
   };
   const duplicate = (o) => pasteObjects([o]);
   const remove = async (ids) => {
-    const list = [...ids].map((id) => byId[id]).filter(Boolean);
+    const all = [...ids].map((id) => byId[id]).filter(Boolean);
+    const list = all.filter((o) => !o.meta?.locked);
+    if (all.length && !list.length) return toastErr(new Error("這是固定物件（牆、柱、洗手間…），不能刪除；要刪請先在物件面板解除鎖定"));
     if (!list.length) return;
     const seated = list.reduce((n, o) => n + (o.assignments?.length || 0), 0);
     const r = await Swal.fire({
@@ -350,7 +352,8 @@ export default function Seating() {
     setTab("object");
     setSeatSel(null);
     const start = {};
-    sel.forEach((id) => { const t = byId[id]; if (t) start[id] = { x: t.x, y: t.y }; });
+    sel.forEach((id) => { const t = byId[id]; if (t && !t.meta?.locked) start[id] = { x: t.x, y: t.y }; }); // 鎖定的固定物件不跟著拖（2026-09-11）
+    if (!Object.keys(start).length) return;
     drag.current = { type: "move", sx: e.clientX, sy: e.clientY, start, moved: false };
     containerRef.current.querySelector("svg").setPointerCapture(e.pointerId);
   };
@@ -618,7 +621,8 @@ export default function Seating() {
         const step = e.shiftKey ? GRID * 5 : GRID;
         const dx = e.key === "ArrowLeft" ? -step : e.key === "ArrowRight" ? step : 0;
         const dy = e.key === "ArrowUp" ? -step : e.key === "ArrowDown" ? step : 0;
-        const items = [...selected].map((id) => byId[id]).filter(Boolean);
+        const items = [...selected].map((id) => byId[id]).filter((o) => o && !o.meta?.locked);
+        if (!items.length) return;
         pushHistory({ before: items.map((o) => ({ id: o.id, x: o.x, y: o.y })), after: items.map((o) => ({ id: o.id, x: o.x + dx, y: o.y + dy })) });
         items.forEach((o) => patchLocal(o.id, { x: o.x + dx, y: o.y + dy }));
         moveSeatObjects(items.map((o) => ({ id: o.id, x: o.x + dx, y: o.y + dy }))).catch(toastErr);
@@ -776,7 +780,7 @@ export default function Seating() {
                     onSeatPointerDown={onSeatPointerDown} onSeatPointerUp={onSeatPointerUp} />
                 </g>
               ))}
-              {!readonly && selectedObj && <Handles o={selectedObj} zoom={view.zoom} onPointerDown={onHandlePointerDown} />}
+              {!readonly && selectedObj && !selectedObj.meta?.locked && <Handles o={selectedObj} zoom={view.zoom} onPointerDown={onHandlePointerDown} />}
               {marquee && marquee.w > 0 && (
                 <rect x={marquee.x} y={marquee.y} width={marquee.w} height={marquee.h} className="se-marquee" strokeWidth={1.5 / view.zoom} strokeDasharray={`${6 / view.zoom} ${4 / view.zoom}`} />
               )}
@@ -971,9 +975,24 @@ function ObjectPanel({ o, seatSel, readonly, selectedCount, onChange, onImmediat
     onChange({ meta: { ...o.meta, sides: next }, seats: next.top + next.bottom + next.left + next.right });
   };
   const names = Object.fromEntries((o.assignments || []).map((a) => [a.seat_index, a]));
+  const locked = !!o.meta?.locked;
   return (
     <div>
-      <div className="pl-list-sub" style={{ marginBottom: 8 }}>{KIND_LABEL[o.kind]}</div>
+      <div className="pl-list-sub" style={{ marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
+        {KIND_LABEL[o.kind]}
+        {!readonly && (locked
+          ? <span className="pill pill-groom" style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><Lock size={11} /> 固定物件，不能移動</span>
+          : o.meta?.fixture ? <span className="pill pill-warn" style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><LockOpen size={11} /> 已解除鎖定</span> : null)}
+      </div>
+      {!readonly && locked && (
+        <div className="helper-text" style={{ marginBottom: 10 }}>
+          這是飯店平面圖上的牆、柱、洗手間或門，照圖寫死，拖不動也不能刪。真的要調整可以
+          <button type="button" className="pl-linkbtn" style={{ display: "inline", padding: 0, marginLeft: 4 }} onClick={() => onImmediate({ meta: { ...o.meta, locked: false } })}>解除鎖定</button>。
+        </div>
+      )}
+      {!readonly && !locked && o.meta?.fixture && (
+        <button type="button" className="btn btn-ghost btn-sm" style={{ marginBottom: 10 }} onClick={() => onImmediate({ meta: { ...o.meta, locked: true } })}><Lock size={13} /> 重新鎖定</button>
+      )}
       {!readonly && (
         <>
           <Field label={o.kind === "label" ? "文字" : "名稱"}><input type="text" value={o.label} onChange={(e) => onChange({ label: e.target.value })} placeholder={o.kind === "chair" ? "（可不填）" : "例如 A1、主桌、舞台"} /></Field>
@@ -1146,6 +1165,12 @@ function HallModal({ hall, halls, onClose, onLayout }) {
     const l = await run(() => createSeatHallFromPreset("wanfu"), "已載入萬福廳");
     if (l) onClose();
   };
+  const resetFixtures = async () => {
+    const r = await Swal.fire({ icon: "question", title: "把飯店平面圖的固定物件放回這一廳？", html: "會依飯店平面圖放回外牆、柱子、洗手間、禮盒區的牆、陽台門、出餐口，並全部鎖定（不能拖、不能刪）。<br>這一廳裡舊的牆、柱、洗手間、禮盒區、出陽台門會先清掉再放；桌子、舞台、餐檯、入口與座位安排都不會動。", showCancelButton: true, confirmButtonText: "放回並鎖定", cancelButtonText: "取消", confirmButtonColor: "#B28F70" });
+    if (!r.isConfirmed) return;
+    const l = await run(() => resetSeatHallFixtures(hall.id, "wanfu"), "固定物件已放回並鎖定");
+    if (l) onClose();
+  };
   const removeHall = async () => {
     if (!(await confirmDelete(`「${hall.name}」整個廳（桌椅與座位安排會一起刪除）`))) return;
     const l = await run(() => deleteSeatHall(hall.id), `已刪除「${hall.name}」`);
@@ -1183,6 +1208,7 @@ function HallModal({ hall, halls, onClose, onLayout }) {
       <div className="helper-text" style={{ marginBottom: 8 }}>廳別還沒確定前可以同時留好幾套座位圖，各自排位；用頁首的下拉切換。</div>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
         <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={loadPreset}><Building2 size={13} /> 載入飯店提供的「萬福廳」平面圖</button>
+        <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={resetFixtures} title="依飯店平面圖放回牆、柱、洗手間、陽台門並鎖定；桌子與座位不動"><Lock size={13} /> 放回萬福廳的固定物件並鎖定</button>
         <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={addBlank}><Plus size={13} /> 新增空白廳</button>
         <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={copyHall}><Copy size={13} /> 複製這一廳</button>
         <button type="button" className="btn btn-ghost btn-sm" disabled={busy || halls.length <= 1} onClick={removeHall} style={{ color: "var(--rose-accent)" }} title={halls.length <= 1 ? "至少要留一個廳" : undefined}><Trash2 size={13} /> 刪除這一廳</button>

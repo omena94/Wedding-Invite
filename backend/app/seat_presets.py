@@ -64,6 +64,45 @@ def _entrance(label: str, cx_px, cy_px, rotation=0) -> dict:
             "rotation": rotation, "seats": 0, "z_order": -1, "meta": {}}
 
 
+def wanfu_fixtures() -> list[dict]:
+    """萬福廳的固定物件（2026-09-11 新人要求寫死不能移動）：外牆、洗手間、禮盒區的牆、柱子、陽台門、出餐口。
+    每個都標 meta.locked（編輯器不能拖、不能改大小、不能刪）與 meta.fixture（重新放回時認得出來）。"""
+    out: list[dict] = []
+    # 外牆四面（南側：吧檯區的牆到洗手間西牆，再由禮盒區接到右下走道）
+    out.append(_wall(28, 17, 516, 4))
+    out.append(_wall(28, 17, 4, 383))
+    out.append(_wall(543, 17, 4, 383))
+    out.append(_wall(28, 349, 199, 4))
+    # 洗手間兩間：四面牆（門口留在原圖的位置：第一間東側、第二間西側）
+    for x0, x1, y0, y1 in ((227, 310, 262, 323), (345, 405, 262, 335)):
+        out.append(_wall(x0, y0, x1 - x0, 4))
+        out.append(_wall(x0, y1, x1 - x0, 4))
+        out.append(_wall(x0, y0, 4, y1 - y0))
+        out.append(_wall(x1, y0, 4, y1 - y0 + 4))
+    # 禮盒區（收禮）：北牆、西牆（西側下方是進廳的門，留缺口）、南牆到大門
+    out.append(_wall(385, 283, 85, 4))
+    out.append(_wall(385, 283, 4, 60))
+    out.append(_wall(385, 385, 55, 4))
+    # 右下走道的南牆（禮盒區北牆延伸到右外牆）
+    out.append(_wall(470, 283, 75, 4))
+    # 柱子（原圖深灰色方塊）
+    for cx, cy in ((40, 26), (163, 25), (283, 24), (405, 25), (525, 25), (35, 148), (528, 134), (42, 270), (520, 270), (40, 345), (520, 378)):
+        out.append(_column(cx, cy))
+    out.append(_column(282, 153, 31))
+    # 不可通行的房間
+    out.append(_zone("洗手間", 227, 262, 83, 61))
+    out.append(_zone("洗手間", 345, 262, 60, 73))
+    out.append(_zone("禮盒區（收禮）", 385, 283, 85, 102))
+    # 陽台門（可通行的門，只是標示）、出餐口
+    out.append(_zone("出陽台門", 70, 6, 30, 14, blocked=False))
+    out.append(_zone("出陽台門", 413, 6, 30, 14, blocked=False))
+    out.append(_label("出餐口", 192, 322, 35))
+    for o in out:
+        o["meta"] = {**o.get("meta", {}), "locked": True, "fixture": True}
+        o["z_order"] = -2  # 墊在最底下
+    return out
+
+
 def wanfu_objects() -> list[dict]:
     out: list[dict] = []
     # 左側兩排：A（上）B（下），每排 4 段，段寬 35 px 從 x=87 開始
@@ -78,30 +117,14 @@ def wanfu_objects() -> list[dict]:
     out.append(_zone("舞台", 245, 68, 65, 52, kind="stage"))
     out.append(_zone("布置區", 222, 122, 33, 63, blocked=False))
     out.append(_zone("投影幕", 257, 125, 7, 55))
-    out.append(_column(282, 153, 31))
     out.append(_zone("keyboard 80×120", 270, 40, 25, 12, blocked=False))
-    # 牆面：外牆三面 + 南側（吧檯區）+ 洗手間西牆 + 右下走道南牆
-    out.append(_wall(28, 17, 516, 4))
-    out.append(_wall(28, 17, 4, 383))
-    out.append(_wall(543, 17, 4, 383))
-    out.append(_wall(28, 349, 199, 4))
-    out.append(_wall(227, 262, 4, 88))
-    out.append(_wall(470, 283, 75, 4))
-    # 柱子（原圖深灰色方塊）
-    for cx, cy in ((40, 26), (163, 25), (283, 24), (405, 25), (525, 25), (35, 148), (528, 134), (42, 270), (520, 270), (40, 345), (520, 378)):
-        out.append(_column(cx, cy))
-    # 不可通行的區域
-    out.append(_zone("洗手間", 227, 262, 83, 61))
-    out.append(_zone("洗手間", 345, 262, 60, 73))
-    out.append(_zone("禮盒區（收禮）", 385, 283, 85, 102))
+    # 可移動的家具與區域
     out.append(_zone("吧檯", 65, 313, 85, 14))
     out.append(_zone("櫃台 360×240", 60, 120, 45, 70))
     out.append(_zone("投影", 365, 253, 55, 9))
     out.append(_zone("candy bar", 532, 222, 15, 50, blocked=False))
-    # 文字
-    out.append(_label("出陽台門", 68, 22))
-    out.append(_label("出陽台門", 412, 22))
-    out.append(_label("出餐口", 192, 322, 35))
+    # 固定物件（牆、柱、洗手間、禮盒區、陽台門、出餐口）
+    out.extend(wanfu_fixtures())
     # 入口：賓客從右下大門進到禮盒區，再由禮盒區西側的門進廳；也可以走 candy bar 那條走道
     out.append(_entrance("入口（禮盒區）", 373, 362, rotation=90))
     out.append(_entrance("入口（candy bar）", 485, 268))
@@ -116,8 +139,27 @@ PRESETS = {
         "clearance": 12,
         "image": "wanfu.jpg",
         "objects": wanfu_objects,
+        "fixtures": wanfu_fixtures,
     },
 }
+
+
+def install_fixtures(db: Session, hall: SeatHall, key: str) -> int:
+    """把範本的固定物件放回某一廳：先清掉這一廳裡舊的固定物件（標了 fixture 的，以及沒標但是同名的洗手間／禮盒區／出陽台門／出餐口與所有牆、柱），
+    再放進鎖定版。桌椅、舞台、餐檯、入口與座位安排都不動。回傳放進去的數量。"""
+    preset = PRESETS[key]
+    fixture_labels = {"洗手間", "禮盒區（收禮）", "出陽台門", "出餐口"}
+    for o in list(db.query(SeatObject).filter(SeatObject.hall_id == hall.id).all()):
+        meta = o.meta
+        if meta.get("fixture") or o.kind in ("wall", "column") or (o.kind in ("zone", "label") and o.label in fixture_labels):
+            db.delete(o)
+    db.flush()
+    specs = preset["fixtures"]()
+    for spec in specs:
+        meta = spec.pop("meta", {})
+        db.add(SeatObject(hall_id=hall.id, meta_json=dump_meta(meta), **spec))
+    db.commit()
+    return len(specs)
 
 
 def install_preset(db: Session, key: str) -> SeatHall:

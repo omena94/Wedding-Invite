@@ -53,7 +53,7 @@ export function ObjectShape({ o, highlighted, highlightSeats, showNames, interac
   const names = seatNames
     ? Object.fromEntries(Object.entries(seatNames).map(([i, v]) => [i, { display_name: v.name, side: v.side || "", mine: v.mine }]))
     : Object.fromEntries((o.assignments || []).map((a) => [a.seat_index, a]));
-  const cls = ["seat-obj", `seat-${o.kind}`, highlighted ? "hi" : "", selected ? "selected" : ""].filter(Boolean).join(" ");
+  const cls = ["seat-obj", `seat-${o.kind}`, highlighted ? "hi" : "", selected ? "selected" : "", o.meta?.locked ? "locked" : ""].filter(Boolean).join(" ");
   const rot = o.rotation ? `rotate(${o.rotation} ${cx} ${cy})` : undefined;
   const fontSize = o.kind === "label" ? Math.max(11, Math.min(28, h * 0.5)) : o.kind === "stage" ? 16 : 13;
   // 入口的字要讓開左邊的門
