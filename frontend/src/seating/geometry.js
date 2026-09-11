@@ -3,8 +3,8 @@
 
 // 2026-09-11 椅子改小、貼近桌邊：萬福廳長桌區兩排只隔 130 單位（實際 260 公分），椅子畫太大會跟隔壁排擠在一起，
 // 走道看起來像沒有；縮到半徑 9、離桌邊 16 之後兩排之間留得出 20 單位的走道，椅子跟椅子之間也有空隙
-export const SEAT_R = 9;       // 椅子半徑
-export const SEAT_GAP = 16;    // 桌緣到椅子中心的距離
+export const SEAT_R = 8;       // 椅子半徑（2026-09-11 再縮，走道要更寬）
+export const SEAT_GAP = 13;    // 桌緣到椅子中心的距離（2026-09-11 再縮，兩排之間留 28 單位走道）
 
 export const KIND_LABEL = { round: "圓桌", rect: "長桌", chair: "椅子", zone: "區域", stage: "舞台", entrance: "入口", label: "文字", wall:'牆面',column:'柱體' };
 
