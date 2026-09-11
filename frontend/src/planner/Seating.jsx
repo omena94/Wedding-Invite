@@ -47,12 +47,6 @@ export default function Seating() {
   const pkey = (p) => `${p.rsvp_id}-${p.person_no}`;
   const togglePick = (person) => setPicked((list) => (list.some((x) => pkey(x) === pkey(person)) ? list.filter((x) => pkey(x) !== pkey(person)) : [...list, { rsvp_id: person.rsvp_id, person_no: person.person_no, name: person.name }]));
   const dropPick = (person) => setPicked((list) => list.filter((x) => pkey(x) !== pkey(person)));
-  // 選到的人所在的椅子（給畫布用對比色標出來）
-  const pickedSeats = useMemo(() => {
-    const set = new Set();
-    picked.forEach((p) => { for (const o of Object.values(byId)) { const a = (o.assignments || []).find((x) => x.rsvp_id === p.rsvp_id && x.person_no === p.person_no); if (a) { set.add(`${o.id}:${a.seat_index}`); break; } } });
-    return set;
-  }, [picked, byId]);
   const [showNames, setShowNames] = useState(false); // 2026-09-10 新人要求：平時不顯示名字，點到哪桌才顯示那桌的；勾這個才全部顯示
   const [grid, setGrid] = useState(true);
   const [onlyUnassigned, setOnlyUnassigned] = useState(false);
@@ -124,6 +118,12 @@ export default function Seating() {
   const byId = useMemo(() => Object.fromEntries(objects.map((o) => [o.id, o])), [objects]);
   // 名字位置：整張圖先排一遍，桌子靠太近時名字改放椅子上下，不會疊在一起
   const labelPlan = useMemo(() => planLabels(objects, nameGetter(null)), [objects]);
+  // 選到的人所在的椅子（給畫布用對比色標出來）；一定要放在 byId 之後，不然載入時會因為變數還沒定義而整頁白掉
+  const pickedSeats = useMemo(() => {
+    const set = new Set();
+    picked.forEach((p) => { for (const o of Object.values(byId)) { const a = (o.assignments || []).find((x) => x.rsvp_id === p.rsvp_id && x.person_no === p.person_no); if (a) { set.add(`${o.id}:${a.seat_index}`); break; } } });
+    return set;
+  }, [picked, byId]);
   const byIdRef = useRef(byId);   // pointerup 時一定讀到最新位置（避免拿到舊的 closure）
   byIdRef.current = byId;
   const selectedObj = selected.size === 1 ? byId[[...selected][0]] : null;
