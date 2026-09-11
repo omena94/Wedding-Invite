@@ -157,10 +157,14 @@ export default function Seating() {
     if (immediate) run();
     else saveTimers.current[id] = setTimeout(run, 400);
   };
+  // history 是 ref，按鈕的亮暗要靠這個計數器重新渲染（2026-09-11 新人反映按了沒反應：其實是沒東西可復原，但按鈕看不出來）
+  const [histVer, setHistVer] = useState(0);
+  const bumpHist = () => setHistVer((v) => v + 1);
   const pushHistory = (entry) => {
     history.current.undo.push(entry);
     if (history.current.undo.length > 50) history.current.undo.shift();
     history.current.redo = [];
+    bumpHist();
   };
   const applySnapshot = async (snap) => {
     // snap: [{id, ...fields}]
@@ -172,20 +176,22 @@ export default function Seating() {
   };
   const undo = async () => {
     const e = history.current.undo.pop();
-    if (!e) return;
+    if (!e) { flash("沒有可以復原的動作（重新整理後紀錄會清空）"); return; }
     history.current.redo.push(e);
-    try { if (e.undoFn) await e.undoFn(); else await applySnapshot(e.before); } catch (err) { toastErr(err); load(); }
+    bumpHist();
+    try { if (e.undoFn) await e.undoFn(); else await applySnapshot(e.before); flash(`已復原（還可再復原 ${history.current.undo.length} 步）`); } catch (err) { toastErr(err); load(); }
   };
   const redo = async () => {
     const e = history.current.redo.pop();
-    if (!e) return;
+    if (!e) { flash("沒有可以重做的動作"); return; }
     history.current.undo.push(e);
-    try { if (e.redoFn) await e.redoFn(); else await applySnapshot(e.after); } catch (err) { toastErr(err); load(); }
+    bumpHist();
+    try { if (e.redoFn) await e.redoFn(); else await applySnapshot(e.after); flash("已重做"); } catch (err) { toastErr(err); load(); }
   };
   // 座位操作也能復原（2026-09-10 新人反映常誤觸）：記一組 undo / redo，提示上放「復原」，Ctrl+Z 也通
   const recordSeat = (msg, undoFn, redoFn) => {
     pushHistory({ undoFn, redoFn });
-    flash(msg, async () => { history.current.undo = history.current.undo.filter((x) => x.undoFn !== undoFn); setHint(null); try { await undoFn(); } catch (err) { toastErr(err); load(); } });
+    flash(msg, async () => { history.current.undo = history.current.undo.filter((x) => x.undoFn !== undoFn); bumpHist(); setHint(null); try { await undoFn(); } catch (err) { toastErr(err); load(); } });
   };
   const seatOf = (person) => {
     for (const o of Object.values(byIdRef.current)) {
@@ -717,8 +723,8 @@ export default function Seating() {
           <button className="btn btn-ghost btn-sm" onClick={() => addObject('column')}>柱體</button>
           <button className="btn btn-ghost btn-sm" onClick={() => addObject("label")}><Type size={14} /> 文字</button>
           <span className="sep" />
-          <button className="btn btn-ghost btn-sm" onClick={undo} title="復原 (Ctrl+Z)"><Undo2 size={14} /></button>
-          <button className="btn btn-ghost btn-sm" onClick={redo} title="重做 (Ctrl+Shift+Z)"><Redo2 size={14} /></button>
+          <button className="btn btn-ghost btn-sm" onClick={undo} disabled={!history.current.undo.length} data-hist={histVer} title={history.current.undo.length ? `復原 (Ctrl+Z)，還有 ${history.current.undo.length} 步` : "沒有可以復原的動作"}><Undo2 size={14} /></button>
+          <button className="btn btn-ghost btn-sm" onClick={redo} disabled={!history.current.redo.length} title={history.current.redo.length ? `重做 (Ctrl+Shift+Z)，還有 ${history.current.redo.length} 步` : "沒有可以重做的動作"}><Redo2 size={14} /></button>
           <span className="sep" />
           <button className={`btn btn-sm ${marqueeMode ? "btn-primary" : "btn-ghost"}`} onClick={() => setMarqueeMode((m) => !m)} title="框選模式：在畫布上拖曳框住多個桌椅（平時按住 Shift 拖曳也可以）"><SquareDashedMousePointer size={14} /> 框選</button>
           <button className="btn btn-ghost btn-sm" onClick={selectAll} title="全選 (Ctrl+A)"><BoxSelect size={14} /> 全選</button>
