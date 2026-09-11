@@ -51,7 +51,9 @@ BANQUET_DEFAULTS = {
     "banquet_contract_amount": "0",
 }
 SEATING_KEYS = ("seating_canvas_w", "seating_canvas_h", "seating_clearance")
-ALL_KEYS = (PHASE2_KEY, SEAT_KEY, PHOTOS_KEY, *INFO_KEYS, *BANQUET_KEYS, *SEATING_KEYS)
+# 群發 Email 的草稿（2026-09-11 新人要求改過的內容要留著）：主旨、內文 HTML、寄送對象、測試信箱
+BROADCAST_KEYS = ("broadcast_subject", "broadcast_body", "broadcast_target", "broadcast_test_to")
+ALL_KEYS = (PHASE2_KEY, SEAT_KEY, PHOTOS_KEY, *INFO_KEYS, *BANQUET_KEYS, *SEATING_KEYS, *BROADCAST_KEYS)
 
 
 def get_setting(db: Session, key: str) -> str:

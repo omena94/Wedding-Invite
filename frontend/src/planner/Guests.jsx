@@ -10,7 +10,7 @@ import Select from "../components/Select.jsx";
 import {
   getToken,
   fetchStats, fetchRsvps, createRsvp, updateRsvp, deleteRsvp, exportCsvUrl,
-  sendBroadcast,
+  sendBroadcast, fetchPlannerSettings, savePlannerSettings,
 } from "../api.js";
 import { usePlanner } from "./context.js";
 import { Field, Modal, NumberInput, PageHead, confirmDelete, toastErr, toastOk } from "./ui.jsx";
@@ -521,6 +521,35 @@ function BroadcastPanel({ stats }) {
   const [testTo, setTestTo] = useState("");
   const [files, setFiles] = useState([]); // 附件 File[]
   const [busy, setBusy] = useState(false);
+  // 草稿存在後台設定裡（2026-09-11 新人要求改過的內容要留著，換裝置也一樣）：載入後改動 0.8 秒沒再動就自動儲存
+  const [draftState, setDraftState] = useState("loading"); // loading / saved / dirty / saving
+  const [loaded, setLoaded] = useState(false);
+  useEffect(() => {
+    fetchPlannerSettings().then(({ values }) => {
+      if (values.broadcast_subject) setSubject(values.broadcast_subject);
+      if (values.broadcast_body) setBody(values.broadcast_body);
+      if (values.broadcast_target) setTarget(values.broadcast_target);
+      if (values.broadcast_test_to) setTestTo(values.broadcast_test_to);
+      setDraftState("saved");
+    }).catch(() => setDraftState("saved")).finally(() => setLoaded(true));
+  }, []);
+  useEffect(() => {
+    if (!loaded) return undefined;
+    setDraftState("dirty");
+    const id = setTimeout(async () => {
+      setDraftState("saving");
+      try {
+        await savePlannerSettings({ broadcast_subject: subject, broadcast_body: body, broadcast_target: target, broadcast_test_to: testTo });
+        setDraftState("saved");
+      } catch { setDraftState("dirty"); }
+    }, 800);
+    return () => clearTimeout(id);
+  }, [subject, body, target, testTo, loaded]);
+  const resetDraft = async () => {
+    const r = await Swal.fire({ icon: "question", title: "還原成預設的信件內容？", text: "主旨與內文會換回系統預設，您改過的會不見。", showCancelButton: true, confirmButtonText: "還原", cancelButtonText: "取消", confirmButtonColor: "#B28F70" });
+    if (!r.isConfirmed) return;
+    setSubject(DEFAULT_SUBJECT); setBody(DEFAULT_BODY);
+  };
 
   const addFiles = (list) => {
     const merged = [...files, ...Array.from(list)];
@@ -593,7 +622,13 @@ function BroadcastPanel({ stats }) {
 
       {open && (
       <>
-      <div style={{ fontSize: 12.5, color: "var(--text-muted)", marginBottom: 14 }}>內文的 {"{name}"} 會自動帶入每位賓客的姓名</div>
+      <div style={{ fontSize: 12.5, color: "var(--text-muted)", marginBottom: 14, display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+        <span>內文的 {"{name}"} 會自動帶入每位賓客的姓名</span>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
+          <span>{draftState === "loading" ? "讀取草稿…" : draftState === "saving" ? "儲存中…" : draftState === "dirty" ? "有改動，稍後自動儲存" : "改動會自動儲存"}</span>
+          <button type="button" className="pl-linkbtn" onClick={resetDraft}>還原預設內容</button>
+        </span>
+      </div>
 
       <div className="form-group grid-2">
         <div>
