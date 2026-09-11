@@ -45,7 +45,8 @@ export default function SeatingMap({ layout, highlightIds, highlightSeats, showN
 
 // seatClass(o, i)：賓客互動地圖用，替某些椅子加額外 class（點到的、鄰座）
 // labelPlan：planLabels 算好的名字位置（Map "oid:idx" → placement）；沒給就用預設的外側位置
-export function ObjectShape({ o, highlighted, highlightSeats, showNames, interactive, selected, onSeatPointerDown, onSeatPointerUp, seatNames, dimNames, seatClass, labelPlan }) {
+// pickedSeats：後台「選到的人」所在的椅子（Set<"oid:idx">），用對比色標出來，跟搜尋標亮（金色）、桌子選取（外框）分開
+export function ObjectShape({ o, highlighted, highlightSeats, showNames, interactive, selected, onSeatPointerDown, onSeatPointerUp, seatNames, dimNames, seatClass, labelPlan, pickedSeats }) {
   const { cx, cy, w, h } = center(o);
   const seats = seatPositions(o);
   // seatNames 給的是 {index: {name, mine, side}}；編輯器則直接用 assignments
@@ -98,7 +99,7 @@ export function ObjectShape({ o, highlighted, highlightSeats, showNames, interac
       {seats.map((p, i) => {
         const a = names[i];
         const key = `${o.id}:${i}`;
-        const seatCls = ["seat-chair", a ? `taken side-${a.side || "none"}` : "empty", (highlightSeats && highlightSeats.has(key)) || (a && a.mine) ? "hi" : "", a && a.mine ? "mine" : "", seatClass ? seatClass(o, i) : ""].filter(Boolean).join(" ");
+        const seatCls = ["seat-chair", a ? `taken side-${a.side || "none"}` : "empty", (highlightSeats && highlightSeats.has(key)) || (a && a.mine) ? "hi" : "", a && a.mine ? "mine" : "", pickedSeats && pickedSeats.has(key) ? "picked" : "", seatClass ? seatClass(o, i) : ""].filter(Boolean).join(" ");
         const gap = SEAT_R + (a && a.mine ? 9 : 4); // 自己的位子外面有光暈，名字再推遠一點
         const lines = a ? nameLines(a.display_name) : [];
         const label = lines.length ? lines[0] : "";
@@ -107,6 +108,8 @@ export function ObjectShape({ o, highlighted, highlightSeats, showNames, interac
             onPointerDown={interactive ? (e) => onSeatPointerDown?.(e, o, i, a) : undefined}
             onPointerUp={interactive ? (e) => onSeatPointerUp?.(e, o, i, a) : undefined}
             style={interactive ? { cursor: "pointer" } : undefined}>
+            {/* 後台編輯時多一圈透明的大範圍，手抖一點也點得到（2026-09-10 新人反映點擊不靈敏） */}
+            {interactive && <circle cx={p.x} cy={p.y} r={SEAT_R + 9} fill="transparent" stroke="none" className="seat-hit" />}
             {/* 自己的位子：外面多一圈會呼吸的光暈，縮小看整張圖時也找得到 */}
             {a && a.mine && <circle cx={p.x} cy={p.y} r={SEAT_R + 6} className="seat-halo" />}
             <circle cx={p.x} cy={p.y} r={a && a.mine ? SEAT_R + 1 : SEAT_R} />

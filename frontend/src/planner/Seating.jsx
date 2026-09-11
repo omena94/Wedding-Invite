@@ -47,7 +47,12 @@ export default function Seating() {
   const pkey = (p) => `${p.rsvp_id}-${p.person_no}`;
   const togglePick = (person) => setPicked((list) => (list.some((x) => pkey(x) === pkey(person)) ? list.filter((x) => pkey(x) !== pkey(person)) : [...list, { rsvp_id: person.rsvp_id, person_no: person.person_no, name: person.name }]));
   const dropPick = (person) => setPicked((list) => list.filter((x) => pkey(x) !== pkey(person)));
-  const lastSeatClick = useRef(null); // 上一次點的是哪張有人的椅子：連續點同一張兩次 = 取消那個座位安排（2026-09-10 新人要求）
+  // 選到的人所在的椅子（給畫布用對比色標出來）
+  const pickedSeats = useMemo(() => {
+    const set = new Set();
+    picked.forEach((p) => { for (const o of Object.values(byId)) { const a = (o.assignments || []).find((x) => x.rsvp_id === p.rsvp_id && x.person_no === p.person_no); if (a) { set.add(`${o.id}:${a.seat_index}`); break; } } });
+    return set;
+  }, [picked, byId]);
   const [showNames, setShowNames] = useState(false); // 2026-09-10 新人要求：平時不顯示名字，點到哪桌才顯示那桌的；勾這個才全部顯示
   const [grid, setGrid] = useState(true);
   const [onlyUnassigned, setOnlyUnassigned] = useState(false);
@@ -70,9 +75,9 @@ export default function Seating() {
   const [mapPreviewOpen,setMapPreviewOpen]=useState(false);
   const [preview, setPreview] = useState(null);       // 預覽某組賓客在 /seat 看到的畫面 {rsvp_id, name}
   const [marqueeMode, setMarqueeMode] = useState(false); // 框選模式：拖背景是框選而不是平移（按住 Shift 也可）
-  const [hint, setHint] = useState(""); // 工具列上的小提示（複製／貼上用，不用彈窗，才不會擋住 Ctrl+V）
+  const [hint, setHint] = useState(null); // 工具列上的小提示 { text, undo }（不用彈窗，才不會擋住 Ctrl+V；有 undo 就多一顆「復原」）
   const hintTimer = useRef(null);
-  const flash = (msg) => { setHint(msg); clearTimeout(hintTimer.current); hintTimer.current = setTimeout(() => setHint(""), 2500); };
+  const flash = (msg, undoFn = null) => { setHint({ text: msg, undo: undoFn }); clearTimeout(hintTimer.current); hintTimer.current = setTimeout(() => setHint(null), undoFn ? 6000 : 2500); };
   const [marquee, setMarquee] = useState(null);       // 拖曳中的框 {x, y, w, h}（畫布座標）
   const [autoModal, setAutoModal] = useState(false);
 
@@ -169,13 +174,31 @@ export default function Seating() {
     const e = history.current.undo.pop();
     if (!e) return;
     history.current.redo.push(e);
-    await applySnapshot(e.before);
+    try { if (e.undoFn) await e.undoFn(); else await applySnapshot(e.before); } catch (err) { toastErr(err); load(); }
   };
   const redo = async () => {
     const e = history.current.redo.pop();
     if (!e) return;
     history.current.undo.push(e);
-    await applySnapshot(e.after);
+    try { if (e.redoFn) await e.redoFn(); else await applySnapshot(e.after); } catch (err) { toastErr(err); load(); }
+  };
+  // 座位操作也能復原（2026-09-10 新人反映常誤觸）：記一組 undo / redo，提示上放「復原」，Ctrl+Z 也通
+  const recordSeat = (msg, undoFn, redoFn) => {
+    pushHistory({ undoFn, redoFn });
+    flash(msg, async () => { history.current.undo = history.current.undo.filter((x) => x.undoFn !== undoFn); setHint(null); try { await undoFn(); } catch (err) { toastErr(err); load(); } });
+  };
+  const seatOf = (person) => {
+    for (const o of Object.values(byIdRef.current)) {
+      const a = (o.assignments || []).find((x) => x.rsvp_id === person.rsvp_id && x.person_no === person.person_no);
+      if (a) return a;
+    }
+    return null;
+  };
+  const putBack = async (person, seat) => {
+    // seat 為 null = 原本沒位子 → 移除；否則放回原位
+    if (seat) return setLayout(await assignSeat({ object_id: seat.object_id, seat_index: seat.seat_index, rsvp_id: person.rsvp_id, person_no: person.person_no, force: true }));
+    const a = seatOf(person);
+    if (a) setLayout(await unassignSeat(a.id));
   };
 
   // ---------- 新增 / 刪除 / 複製 ----------
@@ -341,7 +364,7 @@ export default function Seating() {
     if (!d) return;
     const dx = (e.clientX - d.sx) / view.zoom;
     const dy = (e.clientY - d.sy) / view.zoom;
-    if (Math.abs(e.clientX - d.sx) > 2 || Math.abs(e.clientY - d.sy) > 2) d.moved = true;
+    if (Math.abs(e.clientX - d.sx) > 8 || Math.abs(e.clientY - d.sy) > 8) d.moved = true; // 8px 內算點擊，手抖不會變成拖曳（2026-09-10）
     if (d.type === "pan") {
       setView((v) => ({ ...v, x: d.ox + (e.clientX - d.sx), y: d.oy + (e.clientY - d.sy) }));
     } else if (d.type === "marquee") {
@@ -379,7 +402,7 @@ export default function Seating() {
     drag.current = null;
     if (!d) return;
     if (d.type === "pan") {
-      if (!d.moved) { setSelected(new Set()); setSeatSel(null); lastSeatClick.current = null; }
+      if (!d.moved) { setSelected(new Set()); setSeatSel(null); }
       return;
     }
     if (d.type === "marquee") {
@@ -426,6 +449,9 @@ export default function Seating() {
       const seatEl = el && el.closest ? el.closest("[data-seat-index]") : null;
       if (seatEl) {
         await place(d.person, +seatEl.dataset.objectId, +seatEl.dataset.seatIndex);
+      } else if (d.fromSeat && containerRef.current && containerRef.current.contains(el)) {
+        // 從椅子拖到畫布空白處放開 = 取消這個座位（2026-09-10 取代「連點兩下取消」）
+        await unseat(d.assignment);
       }
     }
   };
@@ -434,13 +460,21 @@ export default function Seating() {
   // 放人到椅子上。位子已經有人就直接換掉，原本的人改為未安排（2026-09-10 新人要求拿掉「這個位子已經有人」的確認視窗）
   const place = async (person, object_id, seat_index) => {
     const prev = (byIdRef.current[object_id]?.assignments || []).find((x) => x.seat_index === seat_index);
-    const replaced = prev && !(prev.rsvp_id === person.rsvp_id && prev.person_no === person.person_no) ? prev.display_name : "";
+    const replaced = prev && !(prev.rsvp_id === person.rsvp_id && prev.person_no === person.person_no) ? prev : null;
+    const before = seatOf(person); // 這個人原本坐哪（可能沒有）
+    const beforeSeat = before ? { object_id: before.object_id, seat_index: before.seat_index } : null;
     try {
       const l = await assignSeat({ object_id, seat_index, rsvp_id: person.rsvp_id, person_no: person.person_no, force: true });
       setLayout(l);
       dropPick(person);
       setSeatSel({ object_id, seat_index });
-      if (replaced) flash(`${replaced} 改為未安排`);
+      const table = byIdRef.current[object_id];
+      const undoFn = async () => {
+        await putBack(person, beforeSeat);
+        if (replaced) setLayout(await assignSeat({ object_id, seat_index, rsvp_id: replaced.rsvp_id, person_no: replaced.person_no, force: true }));
+      };
+      const redoFn = async () => setLayout(await assignSeat({ object_id, seat_index, rsvp_id: person.rsvp_id, person_no: person.person_no, force: true }));
+      recordSeat(replaced ? `${person.name} 放到 ${table?.label || "桌"} ${seat_index + 1} 號，${replaced.display_name} 改為未安排` : `${person.name} 放到 ${table?.label || "桌"} ${seat_index + 1} 號`, undoFn, redoFn);
     } catch (e) {
       toastErr(e);
     }
@@ -448,16 +482,7 @@ export default function Seating() {
   const onSeatPointerDown = (e, o, i, a) => {
     e.stopPropagation();
     if (readonly) { setSelected(new Set([o.id])); setSeatSel({ object_id: o.id, seat_index: i }); setTab("object"); return; }
-    const key = `${o.id}:${i}`;
-    if (a && lastSeatClick.current === key) {
-      // 同一張有人的椅子連續點兩次：把這個人改成未安排（第一次點是選取，第二次就是取消安排）
-      lastSeatClick.current = null;
-      dropPick({ rsvp_id: a.rsvp_id, person_no: a.person_no });
-      unseat(a).then(() => toastOk(`已移除 ${a.display_name} 的座位`));
-      return;
-    }
-    lastSeatClick.current = a ? key : null;
-    if (picked.length) { place(picked[0], o.id, i); return; }
+    if (picked.length && !(a && picked.some((p) => p.rsvp_id === a.rsvp_id && p.person_no === a.person_no))) { place(picked[0], o.id, i); return; }
     setSelected(new Set([o.id]));
     setSeatSel({ object_id: o.id, seat_index: i });
     setTab("object");
@@ -471,7 +496,6 @@ export default function Seating() {
   const onPersonPointerDown = (e, person) => {
     if (readonly || person.seat) return;
     e.preventDefault();
-    lastSeatClick.current = null;
     drag.current = { type: "person", person, sx: e.clientX, sy: e.clientY, moved: false };
     e.currentTarget.setPointerCapture(e.pointerId);
   };
@@ -486,7 +510,13 @@ export default function Seating() {
     }
   };
   const unseat = async (a) => {
-    try { setLayout(await unassignSeat(a.id)); } catch (e) { toastErr(e); }
+    const person = { rsvp_id: a.rsvp_id, person_no: a.person_no, name: a.display_name };
+    const seat = { object_id: a.object_id, seat_index: a.seat_index };
+    try {
+      setLayout(await unassignSeat(a.id));
+      dropPick(person);
+      recordSeat(`已移除 ${a.display_name} 的座位`, async () => putBack(person, seat), async () => { const cur = seatOf(person); if (cur) setLayout(await unassignSeat(cur.id)); });
+    } catch (e) { toastErr(e); }
   };
   // 選取的人目前的座位指定（動作當下才查，避免拿到舊資料）
   const findAssignment = (person) => {
@@ -500,12 +530,15 @@ export default function Seating() {
   const unseatPicked = async () => {
     const seated = picked.map(findAssignment).filter(Boolean);
     if (!seated.length) return toastErr(new Error("選取的人都還沒有座位"));
+    const items = seated.map((a) => ({ person: { rsvp_id: a.rsvp_id, person_no: a.person_no, name: a.display_name }, seat: { object_id: a.object_id, seat_index: a.seat_index } }));
     try {
       let l = null;
       for (const a of seated) l = await unassignSeat(a.id); // 依序呼叫，每次回傳整份版面
       if (l) setLayout(l);
       setPicked([]);
-      toastOk(`已移除 ${seated.length} 位的座位`);
+      recordSeat(`已移除 ${seated.length} 位的座位`,
+        async () => { for (const it of items) await putBack(it.person, it.seat); },
+        async () => { for (const it of items) { const cur = seatOf(it.person); if (cur) setLayout(await unassignSeat(cur.id)); } });
     } catch (e) { toastErr(e); }
   };
   // 把選取的人依序放進畫布上選到的那桌的空位
@@ -516,6 +549,7 @@ export default function Seating() {
     const empties = Array.from({ length: o.seats || 0 }, (_, i) => i).filter((i) => !taken.has(i));
     if (!empties.length) return toastErr(new Error("這桌已經沒有空位"));
     const queue = picked.slice(0, empties.length);
+    const befores = queue.map((person) => { const a = seatOf(person); return a ? { object_id: a.object_id, seat_index: a.seat_index } : null; });
     try {
       let l = null;
       for (let k = 0; k < queue.length; k++) {
@@ -525,7 +559,9 @@ export default function Seating() {
       if (l) setLayout(l);
       setPicked((list) => list.filter((x) => !queue.some((q) => pkey(q) === pkey(x))));
       const left = picked.length - queue.length;
-      toastOk(left > 0 ? `已放入 ${queue.length} 位，還有 ${left} 位沒位子` : `已放入 ${queue.length} 位`);
+      recordSeat(left > 0 ? `已放入 ${queue.length} 位到「${o.label || "這桌"}」，還有 ${left} 位沒位子` : `已放入 ${queue.length} 位到「${o.label || "這桌"}」`,
+        async () => { for (let k = 0; k < queue.length; k++) await putBack(queue[k], befores[k]); },
+        async () => { for (let k = 0; k < queue.length; k++) setLayout(await assignSeat({ object_id: o.id, seat_index: empties[k], rsvp_id: queue[k].rsvp_id, person_no: queue[k].person_no, force: true })); });
     } catch (e) { toastErr(e); }
   };
   // 賓客清單點已入座的人：切換選取（未安排的人由 pointer 事件處理）
@@ -592,6 +628,7 @@ export default function Seating() {
     const onKey = (e) => {
       const tag = (e.target.tagName || "").toLowerCase();
       if (tag === "input" || tag === "textarea" || e.target.isContentEditable) return;
+      if ((e.key === "Delete" || e.key === "Backspace") && picked.length && picked.some(findAssignment)) { e.preventDefault(); unseatPicked(); return; }
       if ((e.key === "Delete" || e.key === "Backspace") && selected.size) { e.preventDefault(); remove(selected); }
       if (e.key === "Escape") { setSelected(new Set()); setPicked([]); setSeatSel(null); }
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") { e.preventDefault(); e.shiftKey ? redo() : undo(); }
@@ -690,7 +727,7 @@ export default function Seating() {
       {picked.length > 0 && (
         <div className="se-selbar" role="group" aria-label="已選取的賓客">
           <span><strong>已選 {picked.length} 位</strong>：{picked.map((x) => x.name).join("、")}</span>
-          <span className="muted-cell">點一張椅子會依序放入（下一位：{picked[0].name}）</span>
+          <span className="muted-cell">點一張椅子放入（下一位：{picked[0].name}）；已入座的可拖到空白處或按 Delete 移除</span>
           <span className="se-selbar-actions">
             {selectedObj && (selectedObj.kind === "round" || selectedObj.kind === "rect") && <button className="btn btn-primary btn-sm" onClick={fillTable}>放進「{selectedObj.label || "這桌"}」的空位</button>}
             {picked.some((x) => findAssignment(x)) && <button className="btn btn-ghost btn-sm" onClick={unseatPicked}><Trash2 size={12} /> 移除座位</button>}
@@ -735,7 +772,7 @@ export default function Seating() {
           {selected.size >= 1 && <button className="btn btn-ghost btn-sm" title="把選取的物件貼到格線上（座標湊成 10 的倍數）" onClick={snapSelected}><Grid3x3 size={14} /> 貼齊格線</button>}
           <span className="sep" />
           <button className="btn btn-primary btn-sm" onClick={() => setAutoModal(true)} title="把還沒有位子的人自動填進空位"><Wand2 size={14} /> 一鍵安排</button>
-          {hint && <span className="se-hint">{hint}</span>}
+          {hint && <span className="se-hint">{hint.text}{hint.undo && <button type="button" className="se-hint-undo" onClick={hint.undo}>復原</button>}</span>}
           <span className="sep" />
           <button className="btn btn-ghost btn-sm" onClick={() => zoomAt(1 / 1.25)}><ZoomOut size={14} /></button>
           <span className="muted-cell" style={{ fontSize: 12, minWidth: 40, textAlign: "center" }}>{Math.round(view.zoom * 100)}%</span>
@@ -769,8 +806,8 @@ export default function Seating() {
               {grid && <rect x="0" y="0" width={layout.canvas.w} height={layout.canvas.h} fill="url(#se-grid)" style={{ pointerEvents: "none" }} />}
               {objects.map((o) => (
                 <g key={o.id} onPointerDown={(e) => onObjPointerDown(e, o)} style={{ cursor: readonly ? "default" : "move" }}>
-                  <ObjectShape o={o} selected={selected.has(o.id)} showNames={showNames || selected.has(o.id) || searchTables.has(o.id)} interactive labelPlan={labelPlan}
-                    highlightSeats={highlightSeats}
+                  <ObjectShape o={o} selected={selected.has(o.id)} showNames={showNames || selected.has(o.id) || searchTables.has(o.id) || [...pickedSeats].some((k) => k.startsWith(`${o.id}:`))} interactive labelPlan={labelPlan}
+                    highlightSeats={highlightSeats} pickedSeats={pickedSeats}
                     onSeatPointerDown={onSeatPointerDown} onSeatPointerUp={onSeatPointerUp} />
                 </g>
               ))}
@@ -909,7 +946,7 @@ function GuestPanel({ guests, search, setSearch, sideFilter, setSideFilter, only
         <Checkbox checked={onlyUnassigned} onChange={setOnlyUnassigned}>只看未安排</Checkbox>
         <span className="muted-cell" style={{ fontSize: 12 }}>{guests.length} 組</span>
       </div>
-      {!readonly && <div className="helper-text" style={{ marginBottom: 8 }}>點人可多選（再點一次取消），選好後點椅子依序放入、或按上方「放進這桌」「移除座位」；也可以直接拖人到椅子上。畫布上同一張有人的椅子連續點兩次，就會取消那個座位安排。選了桌子後可按「整組入座」。</div>}
+      {!readonly && <div className="helper-text" style={{ marginBottom: 8 }}>點人可多選（再點一次取消），選到的人會變成藍色；選好後點椅子依序放入、或按上方「放進這桌」「移除座位」，也可以直接拖人到椅子上。要取消座位：把人從椅子拖到空白處，或選到後按 Delete。做錯了按提示上的「復原」或 Ctrl+Z。選了桌子後可按「整組入座」。</div>}
       {guests.length === 0 && <div className="empty-state" style={{ padding: 20 }}>沒有符合的賓客</div>}
       {guests.map((g) => (
         <div className="se-group" key={g.rsvp_id}>
