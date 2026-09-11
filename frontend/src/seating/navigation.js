@@ -18,7 +18,7 @@ function obstacleTest(o, margin) {
   const a=-(o.rotation||0)*Math.PI/180,cos=Math.cos(a),sin=Math.sin(a);
   const radiusSq=(w/2+margin)**2;
   return (x,y)=>{
-  if (o.kind === 'round' || o.kind === 'column') {
+  if (o.kind === 'round') {  // 柱子 2026-09-11 改為方形，走長方形的判斷
     if ((x-cx)**2+(y-cy)**2 <= radiusSq) return true;
   } else {
     const dx = x - cx, dy = y - cy;
