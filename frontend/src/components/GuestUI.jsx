@@ -2,8 +2,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Heart, Home, MapPin, Armchair, CalendarPlus, Check, Utensils, Images } from 'lucide-react';
 import { VENUE } from './EventDetails.jsx';
 
-export function GuestHeader({title, subtitle, english='OUR WEDDING · 2027.03.13'}) {
-  return <header className="guest-header"><a href="/" className="guest-brand">Alan <span>&</span> Omena</a><p className="guest-eyebrow">{english}</p><h1>{title}</h1>{subtitle&&<p>{subtitle}</p>}</header>;
+// brush：中文標題與副標改用辰宇落雁體（2026-09-11 新人指定餐點確認頁用；英文與按鈕不變）
+export function GuestHeader({title, subtitle, english='OUR WEDDING · 2027.03.13', brush=false}) {
+  return <header className={`guest-header${brush?' guest-header-brush':''}`}><a href="/" className="guest-brand">Alan <span>&</span> Omena</a><p className="guest-eyebrow">{english}</p><h1>{title}</h1>{subtitle&&<p>{subtitle}</p>}</header>;
 }
 export function GuestNav() {
   return <nav className="guest-nav" aria-label="婚禮導覽">{[['/','首頁',Home],['/rsvp','出席回覆',Heart],['/details','餐點確認',Utensils],['/seat','我的座位',Armchair],['/photos','婚紗照',Images]].map(([href,label,Icon])=><a key={href} href={href} aria-current={location.pathname===href?'page':undefined}><Icon size={19}/><span>{label}</span></a>)}</nav>;
