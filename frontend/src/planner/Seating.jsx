@@ -402,7 +402,7 @@ export default function Seating() {
     drag.current = null;
     if (!d) return;
     if (d.type === "pan") {
-      if (!d.moved) { setSelected(new Set()); setSeatSel(null); }
+      if (!d.moved) { setSelected(new Set()); setSeatSel(null); setPicked([]); } // 點空白處 = 取消桌子與人的選取（2026-09-11）
       return;
     }
     if (d.type === "marquee") {
@@ -539,29 +539,6 @@ export default function Seating() {
       recordSeat(`已移除 ${seated.length} 位的座位`,
         async () => { for (const it of items) await putBack(it.person, it.seat); },
         async () => { for (const it of items) { const cur = seatOf(it.person); if (cur) setLayout(await unassignSeat(cur.id)); } });
-    } catch (e) { toastErr(e); }
-  };
-  // 把選取的人依序放進畫布上選到的那桌的空位
-  const fillTable = async () => {
-    const o = selectedObj;
-    if (!o || !(o.kind === "round" || o.kind === "rect" || o.kind === "chair")) return toastErr(new Error("先在畫布上點選一張桌子"));
-    const taken = new Set((o.assignments || []).map((a) => a.seat_index));
-    const empties = Array.from({ length: o.seats || 0 }, (_, i) => i).filter((i) => !taken.has(i));
-    if (!empties.length) return toastErr(new Error("這桌已經沒有空位"));
-    const queue = picked.slice(0, empties.length);
-    const befores = queue.map((person) => { const a = seatOf(person); return a ? { object_id: a.object_id, seat_index: a.seat_index } : null; });
-    try {
-      let l = null;
-      for (let k = 0; k < queue.length; k++) {
-        const person = queue[k];
-        l = await assignSeat({ object_id: o.id, seat_index: empties[k], rsvp_id: person.rsvp_id, person_no: person.person_no, force: true });
-      }
-      if (l) setLayout(l);
-      setPicked((list) => list.filter((x) => !queue.some((q) => pkey(q) === pkey(x))));
-      const left = picked.length - queue.length;
-      recordSeat(left > 0 ? `已放入 ${queue.length} 位到「${o.label || "這桌"}」，還有 ${left} 位沒位子` : `已放入 ${queue.length} 位到「${o.label || "這桌"}」`,
-        async () => { for (let k = 0; k < queue.length; k++) await putBack(queue[k], befores[k]); },
-        async () => { for (let k = 0; k < queue.length; k++) setLayout(await assignSeat({ object_id: o.id, seat_index: empties[k], rsvp_id: queue[k].rsvp_id, person_no: queue[k].person_no, force: true })); });
     } catch (e) { toastErr(e); }
   };
   // 賓客清單點已入座的人：切換選取（未安排的人由 pointer 事件處理）
@@ -724,24 +701,6 @@ export default function Seating() {
         <span className={s.unassigned ? "pill pill-warn" : "pill pill-yes"}>未安排 {s.unassigned}</span>
         {s.seats_total < s.people_total && <span className="pill pill-no">座位不夠：還差 {s.people_total - s.seats_total} 個</span>}
       </div>
-      {/* 動作列固定佔位（沒選人時顯示提示）：不然選到人時它才出現，會把畫布往下推，第二下就點不到同一張椅子（2026-09-11） */}
-      {picked.length === 0 && !readonly && (
-        <div className="se-selbar se-selbar-idle" role="note">
-          <span className="muted-cell">點右邊的賓客或畫布上有人的椅子來選人（會變藍色），再點一張椅子放進去；做錯了可以按提示的「復原」或 Ctrl+Z。</span>
-        </div>
-      )}
-      {picked.length > 0 && (
-        <div className="se-selbar" role="group" aria-label="已選取的賓客">
-          <span><strong>已選 {picked.length} 位</strong>：{picked.map((x) => x.name).join("、")}</span>
-          <span className="muted-cell">點一張椅子放入（下一位：{picked[0].name}）；已入座的可拖到空白處或按 Delete 移除</span>
-          <span className="se-selbar-actions">
-            {selectedObj && (selectedObj.kind === "round" || selectedObj.kind === "rect") && <button className="btn btn-primary btn-sm" onClick={fillTable}>放進「{selectedObj.label || "這桌"}」的空位</button>}
-            {picked.some((x) => findAssignment(x)) && <button className="btn btn-ghost btn-sm" onClick={unseatPicked}><Trash2 size={12} /> 移除座位</button>}
-            <button className="btn btn-ghost btn-sm" onClick={() => setPicked([])}>取消選取</button>
-          </span>
-        </div>
-      )}
-
       {!readonly && (
         <div className="se-toolbar">
           <button className="btn btn-ghost btn-sm" onClick={() => addObject("round")}><Circle size={14} /> 圓桌</button>
@@ -952,7 +911,7 @@ function GuestPanel({ guests, search, setSearch, sideFilter, setSideFilter, only
         <Checkbox checked={onlyUnassigned} onChange={setOnlyUnassigned}>只看未安排</Checkbox>
         <span className="muted-cell" style={{ fontSize: 12 }}>{guests.length} 組</span>
       </div>
-      {!readonly && <div className="helper-text" style={{ marginBottom: 8 }}>點人可多選（再點一次取消），選到的人會變成藍色；選好後點椅子依序放入、或按上方「放進這桌」「移除座位」，也可以直接拖人到椅子上。要取消座位：把人從椅子拖到空白處，或選到後按 Delete。做錯了按提示上的「復原」或 Ctrl+Z。選了桌子後可按「整組入座」。</div>}
+      {!readonly && <div className="helper-text" style={{ marginBottom: 8 }}>點人可多選（再點一次取消），選到的人會變成藍色；選好後點椅子依序放入，也可以直接拖人到椅子上；點畫布空白處取消選取。要取消座位：把人從椅子拖到空白處，或選到後按 Delete。做錯了按提示上的「復原」或 Ctrl+Z。選了桌子後可按「整組入座」。</div>}
       {guests.length === 0 && <div className="empty-state" style={{ padding: 20 }}>沒有符合的賓客</div>}
       {guests.map((g) => (
         <div className="se-group" key={g.rsvp_id}>

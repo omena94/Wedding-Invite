@@ -1,8 +1,8 @@
 // 座位圖的幾何計算：每個物件的椅子（座位）畫在哪裡。後台編輯器與賓客端地圖共用。
 // 物件的 x, y 是未旋轉時的左上角；rotation 以中心點旋轉（度）。圓桌的 w 是直徑。
 
-export const SEAT_R = 11;      // 椅子半徑
-export const SEAT_GAP = 17;    // 桌緣到椅子中心的距離
+export const SEAT_R = 10;      // 椅子半徑（2026-09-11 由 11 改小，椅子之間留多一點空隙）
+export const SEAT_GAP = 21;    // 桌緣到椅子中心的距離（2026-09-11 由 17 拉開）
 
 export const KIND_LABEL = { round: "圓桌", rect: "長桌", chair: "椅子", zone: "區域", stage: "舞台", entrance: "入口", label: "文字", wall:'牆面',column:'柱體' };
 
