@@ -882,7 +882,7 @@ tbody tr:last-child td { border-bottom: none; }
 .guest-header h1 { font: 600 clamp(23px,5.6vw,30px)/1.6 'Noto Serif TC',serif; color: var(--milk-tea-900); margin-bottom: 10px; }
 .guest-header>p:last-child { font-size: 15px; color: var(--text-body); }
 /* 餐點確認頁：中文標題與副標用辰宇落雁體（跟首頁共用一個字型檔，2026-09-11 重裁為 539 字含這兩句）；英文、按鈕不動 */
-@font-face { font-family: 'ChenYuluoyan'; src: url('/fonts/chenyuluoyan-home.woff2') format('woff2'); font-weight: 100 900; font-display: swap; }
+@font-face { font-family: 'ChenYuluoyan'; src: url('/fonts/chenyuluoyan-v2.woff2') format('woff2'); font-weight: 100 900; font-display: swap; }
 .guest-header-brush h1 { font: 500 clamp(36px,8.6vw,48px)/1.45 'ChenYuluoyan', 'Noto Serif TC', serif; letter-spacing: .05em; }
 .guest-header-brush>p:last-child { font: clamp(20px,4.6vw,24px)/1.6 'ChenYuluoyan', 'Noto Serif TC', serif; letter-spacing: .03em; }
 .guest-nav { position: fixed; z-index: 50; bottom: 0; left: 50%; transform: translateX(-50%); width: min(100%,580px); padding: 9px 8px calc(8px + env(safe-area-inset-bottom)); display: grid; grid-template-columns: repeat(5,1fr); background: rgba(255,252,248,.97); border: 1px solid var(--border-soft); border-bottom: 0; border-radius: 20px 20px 0 0; box-shadow: 0 -3px 25px #5c4f440d; }

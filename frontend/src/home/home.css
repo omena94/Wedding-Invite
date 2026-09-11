@@ -1,6 +1,6 @@
 /* 2026-09-09 新人指定首頁用辰宇落雁體（ChenYuluoyan，OFL 授權，自託管；只裁首頁用到的字，約 220KB）。
    後台與其他賓客頁維持原字型。英文草寫（Alex Brush）與襯線（Cormorant Garamond）不變。 */
-@font-face { font-family: 'ChenYuluoyan'; src: url('/fonts/chenyuluoyan-home.woff2') format('woff2'); font-weight: 100 900; font-display: swap; }
+@font-face { font-family: 'ChenYuluoyan'; src: url('/fonts/chenyuluoyan-v2.woff2') format('woff2'); font-weight: 100 900; font-display: swap; }
 .wedding-home { font-family: 'Plus Jakarta Sans', 'ChenYuluoyan', 'PingFang TC', 'Microsoft JhengHei', sans-serif; }
 .wedding-home .guest-nav, .wedding-home .preview-banner { font-family: 'Plus Jakarta Sans', 'PingFang TC', 'Microsoft JhengHei', sans-serif; } /* 導覽列各頁一致，不用手寫字 */
 /* 全站的 p 等元素有自己的字型規則，首頁內文改為繼承容器的手寫字；後面的英文草寫／襯線規則仍會覆蓋 */
