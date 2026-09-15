@@ -343,6 +343,15 @@ class SeatAssignIn(BaseModel):
 class SeatAssignGroupIn(BaseModel):
     object_id: int
     rsvp_id: int
+    partial: bool = False   # 空位不夠時，只放得下幾位就先放幾位（預設擋下，讓新人自己決定）
+    move_all: bool = False  # 整組搬到這桌：原本坐別桌的也一起搬過來
+
+
+class SeatSwapIn(BaseModel):
+    """同一張桌子上兩個座位互換（清單裡上下拖對調座號用）；其中一邊是空位就是單純搬過去。"""
+    object_id: int
+    a: int = Field(ge=0)
+    b: int = Field(ge=0)
 
 
 class SeatRenameIn(BaseModel):

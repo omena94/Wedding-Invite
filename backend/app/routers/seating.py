@@ -27,6 +27,7 @@ from ..schemas import (
     SeatObjectPatch,
     SeatPresetIn,
     SeatRenameIn,
+    SeatSwapIn,
 )
 from ..seat_presets import PRESETS, install_fixtures, install_preset, preset_list
 from ..seating import (
@@ -374,21 +375,38 @@ def assign(payload: SeatAssignIn, db: Session = Depends(get_db)):
 
 @router.post("/assign-group")
 def assign_group(payload: SeatAssignGroupIn, db: Session = Depends(get_db)):
-    """把這組在這一廳還沒有位子的人，依序放進這張桌子的空位。"""
+    """把這組人放進這張桌子的空位（依座號順序）。
+
+    預設只放這一廳還沒有位子的人；move_all 則連坐在別桌的也一起搬過來。
+    空位不夠時預設擋下（409），前端會問要不要「先放得下的幾位」再帶 partial 重送。
+    """
     o = _obj(db, payload.object_id)
     hall = _hall_of(db, o)
     r = _rsvp(db, payload.rsvp_id)
-    taken = {a.seat_index for a in o.assignments}
-    free = [i for i in range(seat_count(o)) if i not in taken]
-    seated = {
-        (a.rsvp_id, a.person_no)
-        for a in db.scalars(select(SeatAssignment).where(SeatAssignment.rsvp_id == r.id, SeatAssignment.hall_id == hall.id)).all()
-    }
-    pending = [p for p in persons_for(r) if (r.id, p["person_no"]) not in seated]
+    label = o.label or "這桌"
+    mine = db.scalars(
+        select(SeatAssignment).where(SeatAssignment.rsvp_id == r.id, SeatAssignment.hall_id == hall.id)
+    ).all()
+    seated = {(a.rsvp_id, a.person_no): a for a in mine}
+    if payload.move_all:
+        # 這組全部重排到這桌：自己原本在這桌佔的位子也先讓出來，才算得出真正的空位
+        pending = list(persons_for(r))
+        to_remove = list(mine)
+    else:
+        pending = [p for p in persons_for(r) if (r.id, p["person_no"]) not in seated]
+        to_remove = []
     if not pending:
         raise HTTPException(400, "這組每個人都已經有位子了")
+    freed = {a.seat_index for a in to_remove if a.object_id == o.id}
+    taken = {a.seat_index for a in o.assignments} - freed
+    free = [i for i in range(seat_count(o)) if i not in taken]
     if not free:
-        raise HTTPException(400, "這張桌子沒有空位了")
+        raise HTTPException(400, f"「{label}」沒有空位了")
+    if len(pending) > len(free) and not payload.partial:
+        raise HTTPException(409, f"「{label}」只剩 {len(free)} 位，這組要放 {len(pending)} 位，放不下")
+    for a in to_remove:
+        db.delete(a)
+    db.flush()
     placed = 0
     for p, idx in zip(pending, free):
         db.add(SeatAssignment(hall_id=hall.id, object_id=o.id, seat_index=idx, rsvp_id=r.id, person_no=p["person_no"]))
@@ -398,6 +416,35 @@ def assign_group(payload: SeatAssignGroupIn, db: Session = Depends(get_db)):
     layout["placed"] = placed
     layout["left_over"] = len(pending) - placed
     return layout
+
+
+@router.post("/swap")
+def swap_seats(payload: SeatSwapIn, db: Session = Depends(get_db)):
+    """同一桌兩個座位互換。清單裡把人往上或往下拖，就是換座號；拖到空位就只是搬過去。"""
+    o = _obj(db, payload.object_id)
+    hall = _hall_of(db, o)
+    n = seat_count(o)
+    if not (0 <= payload.a < n and 0 <= payload.b < n):
+        raise HTTPException(400, "這張桌子沒有這個座位")
+    if payload.a == payload.b:
+        return build_layout(db, hall)
+    by_idx = {a.seat_index: a for a in o.assignments}
+    x, y = by_idx.get(payload.a), by_idx.get(payload.b)
+    if not x and not y:
+        raise HTTPException(400, "兩個都是空位，不用換")
+    # 兩邊都有人時先把其中一個挪到暫時的座號，避開「同桌同座號」的唯一限制
+    if x and y:
+        x.seat_index = -1
+        db.flush()
+        y.seat_index = payload.a
+        db.flush()
+        x.seat_index = payload.b
+    elif x:
+        x.seat_index = payload.b
+    else:
+        y.seat_index = payload.a
+    db.commit()
+    return build_layout(db, hall)
 
 
 def _natural_key(label: str):

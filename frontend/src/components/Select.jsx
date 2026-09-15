@@ -49,7 +49,7 @@ export default function Select({ value, onChange, options, placeholder = "請選
           e.preventDefault();setOpen(true);
           setActive(i=>e.key==='Home'?0:e.key==='End'?options.length-1:Math.max(0,Math.min(options.length-1,open?i+(e.key==='ArrowDown'?1:-1):Math.max(0,options.findIndex(o=>String(o.value)===String(value))))));
         }
-        if(open&&(e.key==='Enter'||e.key===' ')){e.preventDefault();if(options[active])pick(options[active].value);}
+        if(open&&(e.key==='Enter'||e.key===' ')){e.preventDefault();if(options[active]&&!options[active].disabled)pick(options[active].value);}
       }}
     >
       <button
@@ -78,8 +78,9 @@ export default function Select({ value, onChange, options, placeholder = "請選
                 id={`${listId}-${i}`}
                 role="option"
                 aria-selected={selected}
-                className={`ui-select-option${selected ? " selected" : ""}${active===i?' active':''}`}
-                onClick={() => pick(o.value)}
+                className={`ui-select-option${selected ? " selected" : ""}${active===i?' active':''}${o.disabled ? ' disabled' : ''}`}
+                aria-disabled={o.disabled || undefined}
+                onClick={() => !o.disabled && pick(o.value)}
               >
                 <span>{o.label}</span>
                 {selected && <Check size={15} />}

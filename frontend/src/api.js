@@ -239,8 +239,11 @@ export const moveSeatObjects = (items) => request(`${SE}/objects/move`, { method
 export const deleteSeatObject = (id) => request(`${SE}/objects/${id}`, { method: "DELETE", auth: true });
 export const clearSeatObject = (id) => request(`${SE}/objects/${id}/assignments`, { method: "DELETE", auth: true });
 export const assignSeat = (data) => request(`${SE}/assign`, { method: "PUT", body: data, auth: true });
-export const assignGroup = (object_id, rsvp_id) =>
-  request(`${SE}/assign-group`, { method: "POST", body: { object_id, rsvp_id }, auth: true });
+// opts: { partial: 空位不夠就先放得下的幾位, move_all: 整組搬到這桌（坐別桌的也一起搬） }
+export const assignGroup = (object_id, rsvp_id, opts = {}) =>
+  request(`${SE}/assign-group`, { method: "POST", body: { object_id, rsvp_id, ...opts }, auth: true });
+// 同一桌兩個座號互換（其中一邊是空位就是搬過去）
+export const swapSeats = (object_id, a, b) => request(`${SE}/swap`, { method: "POST", body: { object_id, a, b }, auth: true });
 export const renameAssignment = (id, display_name) =>
   request(`${SE}/assign/${id}`, { method: "PATCH", body: { display_name }, auth: true });
 export const unassignSeat = (id) => request(`${SE}/assign/${id}`, { method: "DELETE", auth: true });

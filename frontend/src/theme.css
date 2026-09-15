@@ -1208,3 +1208,52 @@ tbody tr:last-child td { border-bottom: none; }
 .seat-chair.picked .seat-no { fill: #fff; font-weight: 700; }
 .seat-chair.picked .seat-name { fill: #1d4ed8; font-weight: 700; }
 .seat-chair .seat-hit { pointer-events: all; }
+
+/* ============ 座位圖：安排座位模式（2026-09-15 以桌為單位的排位操作） ============ */
+.ui-select-option.disabled { opacity: 0.45; cursor: not-allowed; }
+.se-mode { display: inline-flex; border: 1px solid var(--border-soft); border-radius: 999px; padding: 2px; background: var(--bg-card); }
+.se-mode button { display: inline-flex; align-items: center; gap: 5px; border: none; background: none; font: inherit; font-size: 12.5px; color: var(--text-muted); padding: 5px 12px; border-radius: 999px; cursor: pointer; }
+.se-mode button.active { background: var(--milk-tea-700); color: #fff; font-weight: 600; }
+/* 排位模式的桌子：桌名下寫已坐/總位；坐滿的桌子換成淡綠、還沒人坐的維持白色 */
+.seat-count { fill: var(--text-muted); font-family: "Plus Jakarta Sans", sans-serif; font-weight: 600; letter-spacing: 0.5px; pointer-events: none; }
+.seat-obj.partial .seat-body { fill: #fbf4ea; }
+.seat-obj.full .seat-body { fill: #e9efe6; stroke: var(--sage-accent); }
+.seat-obj.full .seat-count { fill: #5f7a63; }
+.se-canvas-seat .seat-obj.selected .seat-body { fill: #e6ecfb; stroke: #1d4ed8; stroke-width: 3; stroke-dasharray: none; }
+.seat-obj.drop-target .seat-body { fill: #dbe5ff; stroke: #1d4ed8; stroke-width: 4; stroke-dasharray: none; }
+.seat-obj.drop-target .seat-chair circle:not(.seat-hit) { stroke: #1d4ed8; }
+/* 右側：座位表在上、賓客名單在下 */
+.se-panel-seat .se-panel-body { flex: 1 1 0; }
+.se-tablepanel { flex: 0 0 auto; max-height: 48%; display: flex; flex-direction: column; border-bottom: 2px solid var(--milk-tea-300); background: #fdfbf8; border-radius: 16px 16px 0 0; }
+.se-tablepanel-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 10px 12px 6px; font-size: 14px; color: var(--milk-tea-900); }
+.se-tablepanel-hint { padding: 0 12px 6px; margin: 0; }
+.se-trows { list-style: none; margin: 0; padding: 0 8px 8px; overflow-y: auto; flex: 1; min-height: 0; }
+.se-trow { border: 1px solid var(--border-soft); border-radius: 10px; background: #fff; margin-bottom: 4px; cursor: pointer; font-size: 13px; transition: border-color 0.12s, background 0.12s; }
+.se-trow.empty { background: transparent; border-style: dashed; }
+.se-trow:hover { border-color: var(--milk-tea-500); }
+.se-trow.cur { border-color: #1d4ed8; box-shadow: 0 0 0 2px rgba(29, 78, 216, 0.18); background: #fff; }
+.se-trow.dragging { opacity: 0.45; }
+.se-trow.over { border-color: #1d4ed8; border-style: solid; background: #e6ecfb; }
+.se-trow-main { display: flex; align-items: center; gap: 6px; padding: 7px 8px 7px 4px; min-height: 36px; }
+.se-trow-no { flex: 0 0 22px; text-align: center; font-size: 12px; font-weight: 600; color: var(--text-muted); }
+.se-trow-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; color: var(--milk-tea-900); font-weight: 500; }
+.se-trow-name.empty { color: var(--text-muted); font-weight: 400; }
+.se-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--milk-tea-500); flex: 0 0 auto; }
+.se-dot.side-bride { background: var(--rose-accent); }
+.se-trow-actions { display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: center; padding: 0 8px 8px 30px; cursor: default; }
+.se-trow-actions > div { flex: 1 1 120px; min-width: 120px; }
+.se-danger { color: var(--rose-accent) !important; }
+.se-grip { color: var(--milk-tea-300); flex: 0 0 auto; }
+.se-grip-row { display: inline-flex; padding: 6px 2px; cursor: grab; touch-action: none; border-radius: 6px; }
+.se-grip-row:hover { color: var(--milk-tea-700); background: var(--milk-tea-50); }
+/* 賓客卡片：標題列可拖到桌上；排好的卡片沉下去變淡 */
+.se-group-head.draggable { cursor: grab; touch-action: none; user-select: none; padding: 2px 0; margin: -2px 0; border-radius: 8px; }
+.se-group-head.draggable:hover { background: var(--milk-tea-50); }
+.se-group-name { display: inline-flex; align-items: center; gap: 4px; }
+.se-group.done { opacity: 0.72; }
+.se-group-ok { color: #5f7a63 !important; font-weight: 600 !important; }
+.se-group-add { margin-top: 6px; width: 100%; justify-content: center; }
+.se-group-note { margin-top: 6px; font-size: 12px; color: #5f7a63; text-align: center; }
+@media (max-width: 900px) {
+  .se-tablepanel { max-height: 40vh; }
+}
