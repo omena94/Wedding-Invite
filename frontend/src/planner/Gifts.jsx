@@ -192,7 +192,8 @@ export default function Gifts() {
       showCancelButton: true, confirmButtonText: "刪除", cancelButtonText: "取消", confirmButtonColor: "#9E5A54",
     });
     if (!r.isConfirmed) return;
-    const opts = r.value ? { replace_with: Number(r.value) } : { clear_plans: true };
+    // 沒有別款可選時 sweetalert2 的 value 會是 true（不是選項值），一律當成「清掉盒數」
+    const opts = others.length && r.value && r.value !== true ? { replace_with: Number(r.value) } : { clear_plans: true };
     try { await deleteGiftProduct(p.id, opts); reload(); } catch (e) { toastErr(e); }
   };
   const removeVendor = async (v) => {
