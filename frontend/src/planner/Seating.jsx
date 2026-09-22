@@ -19,6 +19,7 @@ import Select from "../components/Select.jsx";
 import { DEFAULTS, KIND_LABEL, SEAT_GAP, SEAT_R, bounds, center, defaultSides, seatPositions, sidesOf } from "../seating/geometry.js";
 import SeatingMap, { ObjectShape, nameGetter } from "../seating/SeatingMap.jsx";
 import { planLabels } from "../seating/labels.js";
+import { navigationGrid, routeToSeat } from "../seating/navigation.js";
 import SeatResult from "../seating/SeatResult.jsx";
 import SeatViewer from '../seating/SeatViewer.jsx';
 import { usePlanner } from "./context.js";
@@ -784,6 +785,21 @@ export default function Seating() {
     if (seatSel) set.add(`${seatSel.object_id}:${seatSel.seat_index}`);
     return set;
   }, [searchSeats, seatSel]);
+  // 路線健康檢查（2026-09-22 新人把入口拖到廳外的禁止區，預覽路線全部消失卻沒提示）：
+  // 每桌算一次路線，有算不出來的就在摘要列標出來。拖曳中不算，放開後 layout 變了才重算
+  const routeIssue = useMemo(() => {
+    if (!layout || drag.current) return null;
+    const tables = objects.filter(isTable);
+    if (!tables.length) return null;
+    if (!objects.some((o) => o.kind === "entrance")) return { text: "還沒有放「入口」，賓客頁不會有路線", kind: "warn" };
+    try {
+      const g = navigationGrid(layout, { clearance: layout.canvas?.clearance });
+      const bad = tables.map((t) => ({ t, r: routeToSeat(layout, { objectId: t.id, grid: g }) })).filter((x) => x.r.status !== "ok");
+      if (!bad.length) return null;
+      if (bad.length === tables.length) return { text: `每一桌都算不出路線：${bad[0].r.message} 請看入口是不是被拖到牆外或禁止區`, kind: "no" };
+      return { text: `${bad.map((x) => tableName(x.t)).join("、")} 算不出路線（${bad[0].r.message}）`, kind: "warn" };
+    } catch { return null; }
+  }, [layout?.objects, layout?.canvas]);
 
   if (err) return <ErrorBox error={err} />;
   if (!layout) return <Loading />;
@@ -829,6 +845,7 @@ export default function Seating() {
         <span>已安排 <strong>{s.assigned}</strong></span>
         <span className={s.unassigned ? "pill pill-warn" : "pill pill-yes"}>未安排 {s.unassigned}</span>
         {s.seats_total < s.people_total && <span className="pill pill-no">座位不夠：還差 {s.people_total - s.seats_total} 個</span>}
+        {routeIssue && <span className={`pill pill-${routeIssue.kind}`} title="賓客頁「我的座位」與預覽的路線都靠這個算">路線：{routeIssue.text}</span>}
       </div>
       {!readonly && (
         <div className="se-toolbar">
