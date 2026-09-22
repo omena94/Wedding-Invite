@@ -1263,3 +1263,13 @@ tbody tr:last-child td { border-bottom: none; }
 .veg-note-title { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; color: #5f7a63; margin-bottom: 6px; font-size: 15px; }
 .veg-note p { margin: 0; line-height: 1.75; font-size: 14.5px; }
 .veg-note strong { color: #4d6a52; }
+
+/* 賓客統計「細項分佈」（2026-09-22）：人數卡數字放大；餐點需求一張卡列主餐份數與兒童餐、座椅 */
+.mini .m-value-lg { font-size: 34px; line-height: 1.15; }
+.pl-breakdown .pl-meals { grid-column: span 2; }
+.pl-meal-row { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 8px; font-size: 13.5px; color: var(--text-body); }
+.pl-meal-row b { font-family: "Noto Serif TC", serif; font-size: 20px; font-weight: 700; color: var(--milk-tea-900); margin-right: 2px; }
+.pl-meal-row.sub { margin-top: 10px; padding-top: 8px; border-top: 1px dashed var(--border-soft); color: var(--text-muted); font-size: 12.5px; }
+.pl-meal-row.sub b { font-size: 16px; }
+.pl-meal-row span { display: inline-flex; align-items: center; gap: 4px; }
+@media (max-width: 720px) { .pl-breakdown .pl-meals { grid-column: 1 / -1; } }

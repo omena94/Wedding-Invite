@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import Swal from "sweetalert2";
 import {
   Users, Utensils, Baby, Mail, PieChart,
-  ClipboardList, Download, Trash2, Armchair, Salad, Pencil, MessageCircle,
+  ClipboardList, Download, Trash2, Armchair, Pencil, MessageCircle,
   Megaphone, Send, ChevronDown, Plus, Save,
 } from "lucide-react";
 import RichTextEditor from '../components/RichTextEditor.jsx';
@@ -677,24 +677,26 @@ function BroadcastPanel({ stats }) {
   );
 }
 
+const MAIN_DISHES = ["牛排", "雞腿排", "鮭魚排", "素食"]; // 跟 /details 表單同一份
+
 function Breakdown({ stats }) {
   if (!stats) return null;
   const g = stats.people_by_side.groom;
   const b = stats.people_by_side.bride;
-  const mainTotals = Object.entries(stats.main_course_totals || {});
+  const mainTotals = stats.main_course_totals || {};
   const totalAttend = stats.attending_responses || 0;
   const donePct = totalAttend ? Math.round((stats.details_done / totalAttend) * 100) : 0;
   return (
     <div className="panel">
       <div className="panel-head"><div className="panel-title"><PieChart size={18} /> 細項分佈</div></div>
-      <div className="mini-grid" style={{ marginBottom: 14 }}>
+      <div className="mini-grid pl-breakdown">
         <div className="mini">
           <div className="m-label">男方親友（人數）</div>
-          <div className="m-value">{g}</div>
+          <div className="m-value m-value-lg">{g}</div>
         </div>
         <div className="mini">
           <div className="m-label">女方親友（人數）</div>
-          <div className="m-value">{b}</div>
+          <div className="m-value m-value-lg">{b}</div>
         </div>
         <div className="mini">
           <div className="m-label">第二階段詳細填寫進度</div>
@@ -702,17 +704,17 @@ function Breakdown({ stats }) {
           <div className="bar-track"><div className="bar-fill" style={{ width: `${donePct}%`, background: "linear-gradient(135deg,var(--sage-accent),#5f7361)" }} /></div>
           <div className="footnote" style={{ textAlign: "left", marginTop: 6 }}>尚待填 {stats.details_pending} 組</div>
         </div>
-        <div className="mini">
-          <div className="m-label">兒童座椅 · 素食 · 兒童餐</div>
-          <div className="m-value" style={{ fontSize: 18, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><Armchair size={16} /> {stats.total_baby_chairs}</span>
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><Salad size={16} /> {stats.total_veg}</span>
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><Baby size={16} /> {stats.total_kids_meals}</span>
+        {/* 2026-09-22 新人要求：主餐份數併進這張卡，素食就是主餐「素食」的份數，不再另列 */}
+        <div className="mini pl-meals">
+          <div className="m-label">餐點需求</div>
+          <div className="pl-meal-row">
+            {MAIN_DISHES.map((d) => <span key={d}><b>{mainTotals[d] || 0}</b> {d}</span>)}
+          </div>
+          <div className="pl-meal-row sub">
+            <span title="兒童餐"><Baby size={15} /> <b>{stats.total_kids_meals}</b> 兒童餐</span>
+            <span title="兒童座椅"><Armchair size={15} /> <b>{stats.total_baby_chairs}</b> 兒童座椅</span>
           </div>
         </div>
-      </div>
-      <div className="footnote" style={{ textAlign: "left", marginTop: 6, display: "flex", alignItems: "center", gap: 6 }}>
-        <Utensils size={13} /> 主餐份數：{mainTotals.length ? mainTotals.map(([k, v]) => `${k} ×${v}`).join("　·　") : "尚未有人填詳細資料"}
       </div>
     </div>
   );
