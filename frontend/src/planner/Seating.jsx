@@ -268,9 +268,11 @@ export default function Seating() {
     try {
       for (let i = 0; i < items.length; i++) {
         const o = items[i];
+        // 複製出來的不當固定物件：鎖定與 fixture 標記不帶過去，不然複製到的牆刪不掉（2026-09-22 新人多出一段牆）
+        const { locked: _l, fixture: _f, ...meta } = o.meta || {};
         created.push(await createSeatObject({
           hall_id: hallId, kind: o.kind, label: labels[i], x: o.x + 40, y: o.y + 40, w: o.w, h: o.h,
-          rotation: o.rotation, seats: o.seats, meta: o.meta, z_order: o.z_order, note: o.note,
+          rotation: o.rotation, seats: o.seats, meta, z_order: o.z_order, note: o.note,
         }));
       }
     } catch (e) {
