@@ -134,6 +134,7 @@ async function multipart(path, fd, method = "POST") {
 const P = "/api/planner";
 const GIFTS = `${P}/gifts`;
 export const fetchGifts = () => request(GIFTS, { auth: true });
+export const deleteGiftProduct = (id) => request(`${GIFTS}/products/${id}`, { method: "DELETE", auth: true });
 export const saveGiftProduct = (id, data) => request(`${GIFTS}/products${id ? `/${id}` : ""}`, { method: id ? "PUT" : "POST", body: data, auth: true });
 export const saveGiftRecipient = (id, data) => request(`${GIFTS}/recipients${id ? `/${id}` : ""}`, { method: id ? "PUT" : "POST", body: data, auth: true });
 export const saveGiftOrder = (id, data) => request(`${GIFTS}/orders${id ? `/${id}` : ""}`, { method: id ? "PUT" : "POST", body: data, auth: true });

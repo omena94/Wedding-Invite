@@ -5,7 +5,7 @@ import { Check, ExternalLink, Gift, History, Package, Pencil, Plus, Store, Trash
 import Select from "../components/Select.jsx";
 import Toggle from "../components/Toggle.jsx";
 import { usePlanner } from "./context.js";
-import { createGiftDelivery, deleteGiftRecipient, deleteGiftVendor, fetchExpenses, fetchGifts, fetchRsvps, importGiftGuests, saveGiftRecipient, updateGiftDelivery } from "../api.js";
+import { createGiftDelivery, deleteGiftProduct, deleteGiftRecipient, deleteGiftVendor, fetchExpenses, fetchGifts, fetchRsvps, importGiftGuests, saveGiftRecipient, updateGiftDelivery } from "../api.js";
 import { fmtDate, money } from "../constants.js";
 import { DeliveryForm, GiftDialog, METHODS, OrderForm, ProductForm, RecipientForm, SIDES, STATES, VendorForm, options, today } from "./giftForms.jsx";
 import { PaymentModal, UploadModal } from "./modals.jsx";
@@ -173,6 +173,11 @@ export default function Gifts() {
     if (!(await confirmDelete(`${r.name} 的送餅安排${r.deliveries.length ? "（含簽收紀錄）" : ""}`))) return;
     try { await deleteGiftRecipient(r.id); reload(); } catch (e) { toastErr(e); }
   };
+  // 款式與盒數可直接增減（2026-09-22）：用到的款式後端會擋，提示改用停用
+  const removeProduct = async (p) => {
+    if (!(await confirmDelete(`喜餅款式「${p.name}」`))) return;
+    try { await deleteGiftProduct(p.id); reload(); } catch (e) { toastErr(e); }
+  };
   const removeVendor = async (v) => {
     if (!(await confirmDelete(`喜餅廠商「${v.name}」`))) return;
     try { await deleteGiftVendor(v.id); reload(); } catch (e) { toastErr(e); }
@@ -211,11 +216,11 @@ export default function Gifts() {
       <div className="panel"><div className="panel-head"><h2 className="panel-title">喜餅廠商</h2><span className="helper-text">可以不只一家；每家的訂購規則放在「注意事項」。</span></div>
         {!vendors.length ? <Empty>還沒有廠商。新增後，款式與訂購都可以指定是哪一家。</Empty> : <div className="gift-vendors">{vendors.map((v) => <VendorCard key={v.id} v={v} products={products} orders={orders} edit={() => setModal({ type: "vendor", initial: v })} remove={() => removeVendor(v)}/>)}</div>}
       </div>
-      <div className="panel"><div className="panel-head"><h2 className="panel-title">款式與盒數</h2><span className="helper-text">已訂含贈盒，不代表已到貨。</span></div>
+      <div className="panel"><div className="panel-head"><h2 className="panel-title">款式與盒數</h2><div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}><span className="helper-text">已訂含贈盒，不代表已到貨。</span><button className="btn btn-ghost btn-sm" onClick={() => setModal({ type: "product" })}><Plus size={13}/> 新增款式</button></div></div>
         {!products.length ? <Empty>新增喜餅款式後，就能安排盒數與登記訂購。</Empty> : <div className="gift-products">{products.map((p) => <div className="gift-product" key={p.id}>
           <div><strong>{p.name}{!p.active && "（停用）"}</strong>{p.vendor_name && <span className="pill pill-groom gift-mini-pill">{p.vendor_name}</span>}<p className="helper-text">{p.reference_price == null ? "尚無參考價格" : `參考每盒 ${money(p.reference_price)}`}</p></div>
           <div className="gift-product-counts"><span>需求 <b>{p.demand}</b></span><span>備用 <b>{p.reserve_qty}</b></span><span>已訂 <b>{p.supply}</b></span><span className={p.shortage ? "gift-warning" : ""}>缺口 <b>{p.shortage}</b></span></div>
-          <button className="btn btn-ghost btn-sm" aria-label={`編輯款式 ${p.name}`} onClick={() => setModal({ type: "product", initial: p })}><Pencil size={14}/>編輯</button>
+          <span className="gift-vendor-actions"><button className="btn btn-ghost btn-sm" aria-label={`編輯款式 ${p.name}`} onClick={() => setModal({ type: "product", initial: p })}><Pencil size={14}/>編輯</button><button className="btn btn-ghost btn-sm" aria-label={`刪除款式 ${p.name}`} title={p.demand + p.tentative + p.supply > 0 ? "有安排或訂購用到的款式不能刪，可改為停用" : "刪除這個款式"} disabled={p.demand + p.tentative + p.supply > 0} onClick={() => removeProduct(p)}><Trash2 size={14}/></button></span>
         </div>)}</div>}
       </div>
       {!orders.length ? <div className="panel"><Empty>報價確認後新增訂購，會建立或連結一筆花費。付款沿用既有訂金與尾款紀錄。</Empty></div> : orders.map((o) => <OrderCard key={o.id} o={o} edit={() => setModal({ type: "order", initial: o })} payment={(p) => setModal({ type: "payment", order: o, initial: p })} upload={() => setModal({ type: "upload", order: o })}/>)}

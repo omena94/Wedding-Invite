@@ -205,6 +205,19 @@ def delete_gift_vendor(vendor_id: int, db: Session = Depends(get_db)):
     return Response(status_code=204)
 
 
+@router.delete("/products/{product_id}", status_code=204, dependencies=[CoupleRequired])
+def delete_product(product_id: int, db: Session = Depends(get_db)):
+    """刪除款式（2026-09-22 新人要能在「款式與盒數」直接增減）。送餅安排或訂購用到的不能刪，只能停用。"""
+    p = get_row(db, GiftProduct, product_id)
+    if db.scalar(select(GiftPlan.id).where(GiftPlan.product_id == product_id).limit(1)):
+        raise HTTPException(400, "已有送餅安排用到這款，不能刪除；不再使用可以在編輯裡取消「顯示這個款式」")
+    if any(i["product_id"] == product_id for o in db.scalars(select(GiftOrder)) for i in json.loads(o.items_json)):
+        raise HTTPException(400, "已有訂購記到這款，不能刪除（要保留對帳）；不再使用可以停用")
+    db.delete(p)
+    commit(db)
+    return Response(status_code=204)
+
+
 @router.post("/products", status_code=201, dependencies=[CoupleRequired])
 def create_product(payload: ProductIn, db: Session = Depends(get_db)):
     if payload.vendor_id:

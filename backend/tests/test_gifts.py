@@ -384,3 +384,21 @@ def test_gift_vendors_crud_and_names_in_snapshot(setup):
     # 幫手不能管廠商
     helper = {"Authorization": "Bearer " + create_token("helper")}
     assert client.post(P + "/vendors", json={"name": "x"}, headers=helper).status_code == 403
+
+
+def test_delete_product_only_when_unused(setup):
+    """款式可以刪，但被送餅安排或訂購用到的要擋下。"""
+    client, db, vid, pid = setup
+    spare = client.post(P + "/products", json={"name": "多建的款式", "vendor_id": vid}).json()
+    assert client.delete(P + f"/products/{spare['id']}").status_code == 204
+    assert all(p["id"] != spare["id"] for p in client.get(P).json()["products"])
+    # 有安排用到
+    r = client.post(P + "/recipients", json={"request_key": uuid4().hex, "name": "阿姨", "items": [{"product_id": pid, "quantity": 1}], "method": "venue", "state": "confirmed"})
+    assert r.status_code == 201, r.text
+    assert client.delete(P + f"/products/{pid}").status_code == 400
+    # 有訂購用到（另建一款只給訂購用）
+    p2 = client.post(P + "/products", json={"name": "訂購用", "vendor_id": vid}).json()
+    assert client.post(P + "/orders", json=order_body(vid, p2["id"])).status_code == 201
+    assert client.delete(P + f"/products/{p2['id']}").status_code == 400
+    helper = {"Authorization": "Bearer " + create_token("helper")}
+    assert client.delete(P + f"/products/{pid}", headers=helper).status_code == 403
