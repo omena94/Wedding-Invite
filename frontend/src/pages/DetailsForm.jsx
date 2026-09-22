@@ -289,7 +289,7 @@ export default function DetailsForm() {
             {/* 2026-09-22 新人決定素食一律全素，不再問素食類型；改成說明，餐檯有標示食材可自行取用 */}
             <div className="veg-note" role="note">
               <div className="veg-note-title"><Leaf size={15} /> 關於素食餐點</div>
-              <p>素食套餐一律為<strong>全素</strong>（不含蛋、奶與五辛）。自助餐檯的每道餐點都會標示食材，若有符合您飲食習慣的餐點，也歡迎自行取用。</p>
+              <p>素食套餐一律為<strong>全素</strong>。自助餐檯的每道餐點都會標示食材，若有符合您飲食習慣的餐點，也歡迎自行取用。</p>
             </div>
             <div className="form-group">
               <label>食物過敏提醒</label>
