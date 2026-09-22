@@ -257,13 +257,14 @@ export default function DetailsForm() {
                 </div>
               );
             })}
-            <div className="form-group">
-              <label>兒童餐點</label>
+            {/* 跟上面的主餐同一種排法：名稱在左、下拉在右同寬（2026-09-22 新人要求） */}
+            <div className="form-group grid-2" style={{ alignItems: "center", marginBottom: 12 }}>
+              <label style={{ margin: 0 }}>兒童餐點</label>
               <Select aria-label="兒童餐點" value={form.kids_meal_count} onChange={(v) => set("kids_meal_count", v)}
-                options={range(0, Math.min(50, Math.max(form.kids_meal_count || 0, form.child_count)), (n) => (n === 0 ? "不需要兒童餐點" : `需要 ${n} 份兒童餐點`))} />
-              <div className="helper-text">
-                依小孩人數填寫，最多 {form.child_count} 份；若無需求也沒關係，現場自助吧的餐點小孩皆可享用
-              </div>
+                options={range(0, Math.min(50, Math.max(form.kids_meal_count || 0, form.child_count)), (n) => (n === 0 ? "不需要" : `${n} 份`))} />
+            </div>
+            <div className="helper-text" style={{ marginTop: -4 }}>
+              依小孩人數填寫，最多 {form.child_count} 份；若無需求也沒關係，現場自助吧的餐點小孩皆可享用
             </div>
           </section>
 
