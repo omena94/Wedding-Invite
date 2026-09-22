@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.orm.exc import StaleDataError
 
 from ..database import get_db
-from ..gift_schemas import DeliveryIn, DeliveryUpdate, OrderIn, ProductIn, RecipientIn
+from ..gift_schemas import DeliveryIn, DeliveryUpdate, GiftVendorIn, OrderIn, ProductIn, RecipientIn
 from ..models import (Expense, GiftDelivery, GiftOrder, GiftPlan, GiftProduct,
                       GiftRecipient, GiftRsvpLink, Payment, Rsvp, Vendor)
 from ..security import AdminRequired, CoupleRequired, require_staff
@@ -88,8 +88,29 @@ def order_out(db, row):
     return data
 
 
+GIFT_VENDOR_FIELDS = ("id", "name", "contact_name", "phone", "line_id", "website", "note")
+
+
+def vendor_out(v):
+    return {k: getattr(v, k) for k in GIFT_VENDOR_FIELDS}
+
+
+def gift_vendors(db):
+    """喜餅廠商 = vendors 表裡類別是「喜餅」的（後台其他地方已不顯示廠商，只有喜餅頁用）。"""
+    return list(db.scalars(select(Vendor).where(Vendor.category == "喜餅").order_by(Vendor.id)))
+
+
 def snapshot(db):
-    products = {p.id: row_dict(p) for p in db.scalars(select(GiftProduct).order_by(GiftProduct.id))}
+    vendors = {v.id: vendor_out(v) for v in gift_vendors(db)}
+    # 掛在非喜餅類別廠商上的舊資料也要顯示得出名字
+    def vendor_name(vid):
+        if vid is None:
+            return ""
+        if vid in vendors:
+            return vendors[vid]["name"]
+        v = db.get(Vendor, vid)
+        return v.name if v else ""
+    products = {p.id: {**row_dict(p), "vendor_name": vendor_name(p.vendor_id)} for p in db.scalars(select(GiftProduct).order_by(GiftProduct.id))}
     plans = defaultdict(list)
     deliveries = defaultdict(list)
     links = defaultdict(list)
@@ -120,7 +141,7 @@ def snapshot(db):
             elif r.state == "draft":
                 tentative[p.product_id] += p.quantity
         recipients.append(data)
-    orders = [order_out(db, o) for o in db.scalars(select(GiftOrder).order_by(GiftOrder.id.desc()))]
+    orders = [{**order_out(db, o), "vendor_name": vendor_name(o.vendor_id)} for o in db.scalars(select(GiftOrder).order_by(GiftOrder.id.desc()))]
     supply = defaultdict(int)
     for o in orders:
         for i in o["items"]:
@@ -129,7 +150,7 @@ def snapshot(db):
         pid = p["id"]
         p.update(demand=demand[pid], tentative=tentative[pid], delivered=sent[pid], supply=supply[pid],
                  shortage=max(0, demand[pid] + p["reserve_qty"] - supply[pid]))
-    return {"products": list(products.values()), "recipients": recipients, "orders": orders,
+    return {"vendors": list(vendors.values()), "products": list(products.values()), "recipients": recipients, "orders": orders,
             "summary": {"demand": sum(demand.values()), "tentative": sum(tentative.values()),
                         "remaining": sum(r["remaining"] for r in recipients),
                         "missing_address": sum(r["missing_address"] for r in recipients),
@@ -149,6 +170,39 @@ def overview(role: str = Depends(require_staff), db: Session = Depends(get_db)):
             product["reference_price"] = None
         data["summary"].update(total=0, paid=0, balance=0, estimate=0, estimate_incomplete=False)
     return data
+
+
+# ---------------- 喜餅廠商（2026-09-22 新人要能記不只一家） ----------------
+@router.post("/vendors", status_code=201, dependencies=[CoupleRequired])
+def create_gift_vendor(payload: GiftVendorIn, db: Session = Depends(get_db)):
+    v = Vendor(category="喜餅", status="candidate", **payload.model_dump())
+    db.add(v)
+    commit(db)
+    return vendor_out(v)
+
+
+@router.put("/vendors/{vendor_id}", dependencies=[CoupleRequired])
+def update_gift_vendor(vendor_id: int, payload: GiftVendorIn, db: Session = Depends(get_db)):
+    v = get_row(db, Vendor, vendor_id)
+    for k, val in payload.model_dump().items():
+        setattr(v, k, val)
+    v.category = "喜餅"
+    commit(db)
+    return vendor_out(v)
+
+
+@router.delete("/vendors/{vendor_id}", status_code=204, dependencies=[CoupleRequired])
+def delete_gift_vendor(vendor_id: int, db: Session = Depends(get_db)):
+    v = get_row(db, Vendor, vendor_id)
+    if db.scalar(select(GiftOrder.id).where(GiftOrder.vendor_id == vendor_id).limit(1)):
+        raise HTTPException(400, "這家廠商已有訂購紀錄，不能刪除")
+    if db.scalar(select(GiftProduct.id).where(GiftProduct.vendor_id == vendor_id).limit(1)):
+        raise HTTPException(400, "還有款式掛在這家廠商，請先把款式改到別家或刪掉")
+    for e in db.scalars(select(Expense).where(Expense.vendor_id == vendor_id)):
+        e.vendor_id = None  # 花費保留，只解除連結
+    db.delete(v)
+    commit(db)
+    return Response(status_code=204)
 
 
 @router.post("/products", status_code=201, dependencies=[CoupleRequired])

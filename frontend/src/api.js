@@ -141,6 +141,9 @@ export const createGiftDelivery = (id, data) => request(`${GIFTS}/recipients/${i
 export const updateGiftDelivery = (id, data) => request(`${GIFTS}/deliveries/${id}`, { method: "PATCH", body: data, auth: true });
 export const importGiftGuests = () => request(`${GIFTS}/recipients/import-guests`, { method: "POST", auth: true });
 export const deleteGiftRecipient = (id) => request(`${GIFTS}/recipients/${id}`, { method: "DELETE", auth: true });
+// 喜餅廠商（2026-09-22 起可多家）：名稱、聯絡方式、注意事項
+export const saveGiftVendor = (id, data) => request(`${GIFTS}/vendors${id ? `/${id}` : ""}`, { method: id ? "PUT" : "POST", body: data, auth: true });
+export const deleteGiftVendor = (id) => request(`${GIFTS}/vendors/${id}`, { method: "DELETE", auth: true });
 export async function downloadGiftCsv(method = "all") {
   const response = await fetch(`${GIFTS}/export.csv?method=${encodeURIComponent(method)}`, { headers: { Authorization: `Bearer ${getToken()}` } });
   if (!response.ok) throw new Error("喜餅清單匯出失敗，請確認登入後重試");

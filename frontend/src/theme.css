@@ -1273,3 +1273,15 @@ tbody tr:last-child td { border-bottom: none; }
 .pl-meal-row.sub b { font-size: 16px; }
 .pl-meal-row span { display: inline-flex; align-items: center; gap: 4px; }
 @media (max-width: 720px) { .pl-breakdown .pl-meals { grid-column: 1 / -1; } }
+
+/* 喜餅廠商卡片（2026-09-22 可多家） */
+.gift-vendors { display: grid; gap: 12px; }
+.gift-vendor { border: 1px solid var(--border-soft); border-radius: 14px; padding: 12px 14px; background: var(--bg-card-subtle); }
+.gift-vendor-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+.gift-vendor-head strong { font-size: 15px; }
+.gift-vendor-meta { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12.5px; margin-top: 4px; }
+.gift-vendor-meta a { display: inline-flex; align-items: center; gap: 3px; }
+.gift-vendor-actions { display: inline-flex; gap: 4px; flex-shrink: 0; }
+.gift-vendor-note { margin-top: 10px; }
+.gift-vendor-note summary { cursor: pointer; font-size: 13px; font-weight: 600; color: var(--milk-tea-700); }
+.gift-vendor-note .gift-note { margin-top: 8px; padding: 12px 14px; background: #fff; border: 1px solid var(--border-soft); border-radius: 10px; line-height: 1.7; }

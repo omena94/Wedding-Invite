@@ -24,6 +24,16 @@ class ProductIn(Form):
     active: bool = True
 
 
+class GiftVendorIn(BaseModel):
+    """喜餅廠商（2026-09-22 起可以不只一家）：沿用 vendors 表，類別固定「喜餅」，注意事項放 note。"""
+    name: str = Field(min_length=1, max_length=100)
+    contact_name: str = Field(default="", max_length=100)
+    phone: str = Field(default="", max_length=50)
+    line_id: str = Field(default="", max_length=100)
+    website: str = Field(default="", max_length=300)
+    note: str = Field(default="", max_length=8000)
+
+
 class PlanIn(BaseModel):
     product_id: int
     quantity: int = Field(ge=1, le=10000)

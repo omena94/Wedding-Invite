@@ -3,7 +3,7 @@ import { Plus, Trash2 } from "lucide-react";
 import Select from "../components/Select.jsx";
 import DatePicker from "../components/DatePicker.jsx";
 import { Checkbox } from "../components/Toggle.jsx";
-import { createGiftDelivery, saveGiftOrder, saveGiftProduct, saveGiftRecipient } from "../api.js";
+import { createGiftDelivery, saveGiftOrder, saveGiftProduct, saveGiftRecipient, saveGiftVendor } from "../api.js";
 import { money } from "../constants.js";
 import { Field, Modal, NumberInput, toInt } from "./ui.jsx";
 
@@ -42,12 +42,30 @@ function TextField({ label, value, onChange, placeholder, required, area = false
     : <input type="text" aria-label={label} value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} maxLength={300}/>}</Field>;
 }
 
-export function ProductForm({ initial, onClose, onSaved }) {
-  const [f, set] = useForm(initial || { name: "", reference_price: "", reserve_qty: 0, active: true, version: 1 });
+// 廠商選項：喜餅廠商清單，加「不指定」；款式若掛在舊的（非喜餅類別）廠商也列得出來
+const vendorOptions = (vendors, current) => [{ value: "", label: "不指定廠商" }, ...vendors.map((v) => ({ value: v.id, label: v.name })), ...(current && !vendors.some((v) => v.id === current.id) ? [{ value: current.id, label: current.name }] : [])];
+
+// 喜餅廠商：名稱、聯絡方式、注意事項（訂購規則、交期、修改期限…）
+export function VendorForm({ initial, onClose, onSaved }) {
+  const [f, set] = useForm(initial || { name: "", contact_name: "", phone: "", line_id: "", website: "", note: "" });
+  return <GiftDialog title={initial ? "編輯喜餅廠商" : "新增喜餅廠商"} onClose={onClose} onSaved={onSaved}
+    submit={() => saveGiftVendor(initial?.id, { name: f.name, contact_name: f.contact_name, phone: f.phone, line_id: f.line_id, website: f.website, note: f.note })}>
+    <TextField label="廠商名稱" value={f.name} onChange={(v) => set("name", v)} required placeholder="例如：蒙恩喜餅"/>
+    <div className="grid-2"><TextField label="聯絡人" value={f.contact_name} onChange={(v) => set("contact_name", v)}/><TextField label="電話" value={f.phone} onChange={(v) => set("phone", v)}/></div>
+    <div className="grid-2"><TextField label="LINE" value={f.line_id} onChange={(v) => set("line_id", v)}/><TextField label="網站" value={f.website} onChange={(v) => set("website", v)} placeholder="https://"/></div>
+    <Field label="注意事項" hint="訂購規則、優惠門檻、修改期限、交期、謝卡、保存期限…會原樣顯示在廠商卡片上，可分段換行">
+      <textarea aria-label="注意事項" value={f.note} onChange={(e) => set("note", e.target.value)} rows={12} maxLength={8000} style={{ fontSize: 13, lineHeight: 1.6 }}/>
+    </Field>
+  </GiftDialog>;
+}
+
+export function ProductForm({ initial, vendors = [], onClose, onSaved }) {
+  const [f, set] = useForm(initial ? { ...initial, vendor_id: initial.vendor_id ?? "" } : { name: "", vendor_id: vendors.length === 1 ? vendors[0].id : "", reference_price: "", reserve_qty: 0, active: true, version: 1 });
   return <GiftDialog title={initial ? "編輯喜餅款式" : "新增喜餅款式"} onClose={onClose} onSaved={onSaved}
-    submit={() => saveGiftProduct(initial?.id, { name: f.name,
+    submit={() => saveGiftProduct(initial?.id, { name: f.name, vendor_id: f.vendor_id === "" ? null : Number(f.vendor_id),
       reference_price: f.reference_price === "" || f.reference_price == null ? null : toInt(f.reference_price), reserve_qty: toInt(f.reserve_qty), active: f.active, version: f.version })}>
     <TextField label="款式名稱" value={f.name} onChange={(v) => set("name", v)} required placeholder="例如：經典綜合禮盒"/>
+    <Field label="廠商" hint="同一次訂購只能訂同一家的款式"><Select aria-label="廠商" value={f.vendor_id} onChange={(v) => set("vendor_id", v)} options={vendorOptions(vendors, initial?.vendor_id ? { id: initial.vendor_id, name: initial.vendor_name || "原廠商" } : null)}/></Field>
     <div className="grid-2"><Field label="參考單價（元）" hint="尚未報價可留空；不會改動已下訂價格"><NumberInput aria-label="參考單價" value={f.reference_price} onChange={(v) => set("reference_price", v)} placeholder="尚未報價"/></Field>
       <Field label="備用盒數"><NumberInput aria-label="備用盒數" value={f.reserve_qty} onChange={(v) => set("reserve_qty", v)}/></Field></div>
     {initial && <Checkbox checked={f.active} onChange={(v) => set("active", v)}>新增安排時顯示這個款式</Checkbox>}
@@ -118,9 +136,19 @@ export function DeliveryForm({ recipient, onClose, onSaved }) {
   </GiftDialog>;
 }
 
-export function OrderForm({ initial, products, expenses, orders, onClose, onSaved }) {
+export function OrderForm({ initial, products, vendors = [], expenses, orders, onClose, onSaved }) {
   const [f, set, setF] = useForm(() => ({ request_key: crypto.randomUUID(), version: 1, expense_id: "", title: "喜餅訂購", shipping: 0, other_cost: 0, discount: 0, budget_amount: 0, due_date: "", received_on: "", note: "", ...(initial || {}),
+    vendor_id: initial?.vendor_id ?? "",
     items: initial?.items.map(({ product_id, paid_qty, gift_qty, unit_price }) => ({ product_id, paid_qty, gift_qty, unit_price })) || [] }));
+  // 選了廠商就只列這家的款式（沒掛廠商的款式也列）；加款式時廠商還沒選，就跟著款式的廠商
+  const vendorId = f.vendor_id === "" ? null : Number(f.vendor_id);
+  const shownProducts = vendorId == null ? products : products.filter((p) => p.vendor_id == null || p.vendor_id === vendorId || f.items.some((i) => Number(i.product_id) === p.id));
+  const setItems = (items) => {
+    const patch = { items };
+    if (f.vendor_id === "") { const p = products.find((x) => items.some((i) => Number(i.product_id) === x.id) && x.vendor_id != null); if (p) patch.vendor_id = p.vendor_id; }
+    if (f.title === "喜餅訂購" && !initial) { const v = vendors.find((x) => x.id === Number(patch.vendor_id ?? f.vendor_id)); if (v) patch.title = `${v.name}訂購`; }
+    setF((old) => ({ ...old, ...patch }));
+  };
   const used = new Set(orders.filter((o) => o.id !== initial?.id).map((o) => o.expense_id));
   const available = expenses.filter((e) => !used.has(e.id));
   const total = f.items.reduce((sum, i) => sum + toInt(i.paid_qty) * toInt(i.unit_price), 0) + toInt(f.shipping) + toInt(f.other_cost) - toInt(f.discount);
@@ -128,11 +156,14 @@ export function OrderForm({ initial, products, expenses, orders, onClose, onSave
     submit={() => {
       if (f.items.some((i) => i.unit_price === "")) throw new Error("請填各款成交單價；免費項目請明確填 0");
       return saveGiftOrder(initial?.id, { request_key: f.request_key, version: f.version, expense_id: f.expense_id ? Number(f.expense_id) : null,
-        title: f.title, items: f.items.map((i) => ({ product_id: Number(i.product_id), paid_qty: toInt(i.paid_qty), gift_qty: toInt(i.gift_qty), unit_price: toInt(i.unit_price) })),
+        vendor_id: vendorId, title: f.title, items: f.items.map((i) => ({ product_id: Number(i.product_id), paid_qty: toInt(i.paid_qty), gift_qty: toInt(i.gift_qty), unit_price: toInt(i.unit_price) })),
         shipping: toInt(f.shipping), other_cost: toInt(f.other_cost), discount: toInt(f.discount), budget_amount: toInt(f.budget_amount), due_date: f.due_date || null, received_on: f.received_on || null, note: f.note });
     }}>
-    <TextField label="訂購名稱" value={f.title} onChange={(v) => set("title", v)} required/>
-    <ProductLines order products={products} items={f.items} onChange={(v) => set("items", v)}/>
+    <div className="grid-2"><TextField label="訂購名稱" value={f.title} onChange={(v) => set("title", v)} required/>
+      <Field label="廠商" hint={initial ? "已確認的訂購不能改廠商" : "一次訂購只能訂同一家"}>{initial
+        ? <input type="text" aria-label="廠商" value={initial.vendor_name || "未指定"} readOnly/>
+        : <Select aria-label="廠商" value={f.vendor_id} onChange={(v) => set("vendor_id", v)} options={vendorOptions(vendors)}/>}</Field></div>
+    <ProductLines order products={shownProducts} items={f.items} onChange={setItems}/>
     <div className="gift-line-numbers"><Field label="本訂購運費"><NumberInput aria-label="本訂購運費" value={f.shipping} onChange={(v) => set("shipping", v)}/></Field>
       <Field label="其他費用"><NumberInput aria-label="其他費用" value={f.other_cost} onChange={(v) => set("other_cost", v)}/></Field>
       <Field label="額外折扣"><NumberInput aria-label="額外折扣" value={f.discount} onChange={(v) => set("discount", v)}/></Field></div>

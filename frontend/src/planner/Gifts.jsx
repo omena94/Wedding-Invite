@@ -1,13 +1,13 @@
 import { useState } from "react";
 import Swal from "sweetalert2";
 import { Link, useSearchParams } from "react-router-dom";
-import { Check, Gift, History, Package, Pencil, Plus, Trash2, Truck, Users } from "lucide-react";
+import { Check, ExternalLink, Gift, History, Package, Pencil, Plus, Store, Trash2, Truck, Users } from "lucide-react";
 import Select from "../components/Select.jsx";
 import Toggle from "../components/Toggle.jsx";
 import { usePlanner } from "./context.js";
-import { createGiftDelivery, deleteGiftRecipient, fetchExpenses, fetchGifts, fetchRsvps, importGiftGuests, saveGiftRecipient, updateGiftDelivery } from "../api.js";
+import { createGiftDelivery, deleteGiftRecipient, deleteGiftVendor, fetchExpenses, fetchGifts, fetchRsvps, importGiftGuests, saveGiftRecipient, updateGiftDelivery } from "../api.js";
 import { fmtDate, money } from "../constants.js";
-import { DeliveryForm, GiftDialog, METHODS, OrderForm, ProductForm, RecipientForm, SIDES, STATES, options, today } from "./giftForms.jsx";
+import { DeliveryForm, GiftDialog, METHODS, OrderForm, ProductForm, RecipientForm, SIDES, STATES, VendorForm, options, today } from "./giftForms.jsx";
 import { PaymentModal, UploadModal } from "./modals.jsx";
 import { Empty, ErrorBox, Field, Loading, Modal, PageHead, confirmDelete, toInt, toastErr, toastOk, useLoader } from "./ui.jsx";
 
@@ -75,9 +75,27 @@ function DeliveryHistory({ recipient, onClose, onSaved }) {
   </Modal>;
 }
 
+// 喜餅廠商卡片（2026-09-22）：名稱、聯絡方式、注意事項（可收合），旁邊列這家的款式與訂購數
+function VendorCard({ v, products, orders, edit, remove }) {
+  const mine = products.filter((p) => p.vendor_id === v.id);
+  const count = orders.filter((o) => o.vendor_id === v.id).length;
+  const site = v.website && !/^https?:\/\//i.test(v.website) ? `https://${v.website}` : v.website;
+  return <article className="gift-vendor">
+    <div className="gift-vendor-head">
+      <div><strong>{v.name}</strong><div className="muted-cell gift-vendor-meta">
+        {v.contact_name && <span>{v.contact_name}</span>}{v.phone && <a className="gift-phone" href={`tel:${v.phone.replace(/[^\d+]/g, "")}`}>{v.phone}</a>}{v.line_id && <span>LINE {v.line_id}</span>}
+        {site && <a className="gift-phone" href={site} target="_blank" rel="noopener">官網 <ExternalLink size={11}/></a>}
+        <span>{mine.length ? `款式：${mine.map((p) => p.name).join("、")}` : "尚無款式"}{count ? ` · 訂購 ${count} 筆` : ""}</span>
+      </div></div>
+      <div className="gift-vendor-actions"><button className="btn btn-ghost btn-sm" onClick={edit}><Pencil size={13}/> 編輯</button><button className="btn btn-ghost btn-sm" onClick={remove} disabled={mine.length > 0 || count > 0} title={mine.length || count ? "有款式或訂購的廠商不能刪" : undefined}><Trash2 size={13}/></button></div>
+    </div>
+    {v.note ? <details className="gift-vendor-note"><summary>注意事項</summary><div className="gift-note">{v.note}</div></details> : <p className="helper-text">還沒有注意事項，按「編輯」可以把廠商的訂購規則貼進來。</p>}
+  </article>;
+}
+
 function OrderCard({ o, edit, payment, upload }) {
   return <article className="panel gift-order" id={`gift-order-${o.id}`}>
-    <div className="panel-head"><div><h2 className="panel-title">{o.title}</h2></div><button className="btn btn-ghost btn-sm" onClick={edit}><Pencil size={14}/>編輯訂購</button></div>
+    <div className="panel-head"><div><h2 className="panel-title">{o.title}</h2>{o.vendor_name && <span className="pill pill-groom gift-mini-pill">{o.vendor_name}</span>}</div><button className="btn btn-ghost btn-sm" onClick={edit}><Pencil size={14}/>編輯訂購</button></div>
     <div className="gift-order-money"><div><span>訂購總額</span><strong>{money(o.total)}</strong></div><div><span>已付</span><strong>{money(o.paid)}</strong></div><div><span>{o.balance < 0 ? "溢付待對帳" : "尚欠"}</span><strong>{money(Math.abs(o.balance))}</strong></div></div>
     {o.unscheduled > 0 && <p className="gift-warning">尚有 {money(o.unscheduled)} 未安排分期，已包含在尚欠金額。</p>}
     {o.scheduled > Math.max(0, o.balance) && <p className="gift-warning">未付分期超過尚欠金額，請核對付款安排。</p>}
@@ -155,6 +173,10 @@ export default function Gifts() {
     if (!(await confirmDelete(`${r.name} 的送餅安排${r.deliveries.length ? "（含簽收紀錄）" : ""}`))) return;
     try { await deleteGiftRecipient(r.id); reload(); } catch (e) { toastErr(e); }
   };
+  const removeVendor = async (v) => {
+    if (!(await confirmDelete(`喜餅廠商「${v.name}」`))) return;
+    try { await deleteGiftVendor(v.id); reload(); } catch (e) { toastErr(e); }
+  };
   const changeMethod = async (r, choice) => {
     const none = choice === "none";
     const method = none ? (METHODS[r.method] ? r.method : "tbd") : choice;
@@ -167,13 +189,13 @@ export default function Gifts() {
   };
   if (loading) return <Loading/>;
   if (error) return <><ErrorBox error={error}/><button className="btn" onClick={reload}>重新讀取</button></>;
-  const { summary: s, products, recipients, orders, guests, expenses } = data;
+  const { summary: s, products, recipients, orders, guests, expenses, vendors = [] } = data;
   // 篩選只留姓名搜尋與領取方式（2026-09-08 新人要求精簡，幫手現場好用）
   const filtered = recipients.filter((r) => (!method || r.method === method) && (!side || r.side === side) && `${r.name} ${r.contact_name}`.toLowerCase().includes(search.toLowerCase()));
   return <div className="gift-page">
     <PageHead title="喜餅" sub="把每一份心意送到，也把盒數、訂購與付款記清楚。"
       actions={role === "helper" ? null : tab === "recipients" ? <><button className="btn btn-primary" onClick={importGuests}><Users size={15}/>帶入所有賓客</button><button className="btn" onClick={() => setModal({ type: "recipient" })}><Plus size={15}/>新增送餅對象</button></>
-        : <><button className="btn" onClick={() => setModal({ type: "product" })}><Gift size={15}/>新增款式</button><button className="btn btn-primary" onClick={() => setModal({ type: "order" })}><Plus size={15}/>新增訂購</button></>}/>
+        : <><button className="btn" onClick={() => setModal({ type: "vendor" })}><Store size={15}/>新增廠商</button><button className="btn" onClick={() => setModal({ type: "product" })}><Gift size={15}/>新增款式</button><button className="btn btn-primary" onClick={() => setModal({ type: "order" })}><Plus size={15}/>新增訂購</button></>}/>
     {role !== "helper" && <div className="gift-tabs" role="group" aria-label="喜餅功能分頁"><button className={`btn ${tab === "recipients" ? "btn-primary" : "btn-ghost"}`} aria-pressed={tab === "recipients"} onClick={() => setParams({})}>送餅名單</button><button className={`btn ${tab === "orders" ? "btn-primary" : "btn-ghost"}`} aria-pressed={tab === "orders"} onClick={() => setParams({ tab: "orders" })}>訂購與費用</button></div>}
     {tab === "recipients" ? <>
       <div className="stats-grid"><Stat label="已確認送餅" value={`${s.demand} 盒`} sub={`另有 ${s.tentative} 盒待決定`}/><Stat label="未給" value={`${s.remaining} 盒`}/><Stat label="寄送缺地址" value={`${s.missing_address} 筆`}/>{role !== "helper" && <Stat label="喜餅需求估算" value={money(s.estimate)} sub={`${s.estimate_incomplete ? "部分款式尚無報價 · " : ""}含備用，不含運費與未確認優惠`}/>}</div>
@@ -186,18 +208,22 @@ export default function Gifts() {
       {filtered.length === 0 ? <div className="panel"><Empty>{recipients.length ? "沒有符合篩選的送餅安排" : "還沒有送餅對象，從賓客加入或直接新增親友。"}</Empty></div> : <div className="panel"><div className="table-wrap"><table className="gift-table"><thead><tr><th>簽收確認</th><th>送禮對象</th><th>盒數</th><th>領取方式</th><th>電話</th><th></th></tr></thead><tbody>{filtered.map((r) => <RecipientRow key={r.id} r={r} onMethod={changeMethod} onPickup={confirmPickup} onRemove={() => removeRecipient(r)} canManage={role !== "helper"} edit={() => setModal({ type: "recipient", initial: r })} deliver={() => setModal({ type: "delivery", recipient: r })} history={() => setModal({ type: "history", recipient: r })}/>)}</tbody></table></div></div>}
     </> : <>
       <div className="stats-grid"><Stat label="確認訂購金額" value={money(s.total)}/><Stat label="已付" value={money(s.paid)}/><Stat label="尚欠" value={money(s.balance)}/><Stat label="需求參考估算" value={money(s.estimate)} sub="含備用；未含運費與折扣"/></div>
+      <div className="panel"><div className="panel-head"><h2 className="panel-title">喜餅廠商</h2><span className="helper-text">可以不只一家；每家的訂購規則放在「注意事項」。</span></div>
+        {!vendors.length ? <Empty>還沒有廠商。新增後，款式與訂購都可以指定是哪一家。</Empty> : <div className="gift-vendors">{vendors.map((v) => <VendorCard key={v.id} v={v} products={products} orders={orders} edit={() => setModal({ type: "vendor", initial: v })} remove={() => removeVendor(v)}/>)}</div>}
+      </div>
       <div className="panel"><div className="panel-head"><h2 className="panel-title">款式與盒數</h2><span className="helper-text">已訂含贈盒，不代表已到貨。</span></div>
         {!products.length ? <Empty>新增喜餅款式後，就能安排盒數與登記訂購。</Empty> : <div className="gift-products">{products.map((p) => <div className="gift-product" key={p.id}>
-          <div><strong>{p.name}{!p.active && "（停用）"}</strong><p className="helper-text">{p.reference_price == null ? "尚無參考價格" : `參考每盒 ${money(p.reference_price)}`}</p></div>
+          <div><strong>{p.name}{!p.active && "（停用）"}</strong>{p.vendor_name && <span className="pill pill-groom gift-mini-pill">{p.vendor_name}</span>}<p className="helper-text">{p.reference_price == null ? "尚無參考價格" : `參考每盒 ${money(p.reference_price)}`}</p></div>
           <div className="gift-product-counts"><span>需求 <b>{p.demand}</b></span><span>備用 <b>{p.reserve_qty}</b></span><span>已訂 <b>{p.supply}</b></span><span className={p.shortage ? "gift-warning" : ""}>缺口 <b>{p.shortage}</b></span></div>
           <button className="btn btn-ghost btn-sm" aria-label={`編輯款式 ${p.name}`} onClick={() => setModal({ type: "product", initial: p })}><Pencil size={14}/>編輯</button>
         </div>)}</div>}
       </div>
       {!orders.length ? <div className="panel"><Empty>報價確認後新增訂購，會建立或連結一筆花費。付款沿用既有訂金與尾款紀錄。</Empty></div> : orders.map((o) => <OrderCard key={o.id} o={o} edit={() => setModal({ type: "order", initial: o })} payment={(p) => setModal({ type: "payment", order: o, initial: p })} upload={() => setModal({ type: "upload", order: o })}/>)}
     </>}
-    {modal?.type === "product" && <ProductForm initial={modal.initial} onClose={close} onSaved={saved}/>}
+    {modal?.type === "vendor" && <VendorForm initial={modal.initial} onClose={close} onSaved={saved}/>}
+    {modal?.type === "product" && <ProductForm initial={modal.initial} vendors={vendors} onClose={close} onSaved={saved}/>}
     {modal?.type === "recipient" && <RecipientForm initial={modal.initial} products={products} recipients={recipients} onClose={close} onSaved={saved}/>}
-    {modal?.type === "order" && <OrderForm initial={modal.initial} products={products} expenses={expenses} orders={orders} onClose={close} onSaved={saved}/>}
+    {modal?.type === "order" && <OrderForm initial={modal.initial} products={products} vendors={vendors} expenses={expenses} orders={orders} onClose={close} onSaved={saved}/>}
     {modal?.type === "delivery" && <DeliveryForm recipient={modal.recipient} onClose={close} onSaved={saved}/>}
     {modal?.type === "pickup" && <PickupDialog recipient={modal.recipient} role={role} onClose={close} onSaved={saved}/>}
     {modal?.type === "history" && <DeliveryHistory recipient={modal.recipient} onClose={close} onSaved={saved}/>}

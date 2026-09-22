@@ -352,3 +352,35 @@ def test_order_without_vendor(setup):
     updated = client.put(P + f"/orders/{order['id']}", json=edit)
     assert updated.status_code == 200, updated.text
     assert updated.json()["title"] == "改名的訂購"
+
+
+def test_gift_vendors_crud_and_names_in_snapshot(setup):
+    """2026-09-22 喜餅可有多家廠商：新增／編輯／刪除，款式與訂購帶廠商名稱；有款式或訂購的廠商不能刪。"""
+    client, db, vid, pid = setup
+    created = client.post(P + "/vendors", json={"name": "蒙恩喜餅", "website": "https://www.deaf.com.tw", "note": "滿一萬 95 折"})
+    assert created.status_code == 201, created.text
+    v2 = created.json()
+    overview = client.get(P).json()
+    assert [v["name"] for v in overview["vendors"]] == ["測試喜餅廠商", "蒙恩喜餅"]
+    assert overview["products"][0]["vendor_name"] == "測試喜餅廠商"
+    # 第二家的款式
+    p2 = client.post(P + "/products", json={"name": "幸福花嫁", "reference_price": 595, "vendor_id": v2["id"]})
+    assert p2.status_code == 201
+    # 訂購掛第二家；款式不是同一家會被擋
+    body = order_body(v2["id"], p2.json()["id"])
+    assert client.post(P + "/orders", json=body).status_code == 201
+    bad = order_body(v2["id"], pid)
+    assert client.post(P + "/orders", json=bad).status_code == 400
+    overview = client.get(P).json()
+    assert overview["orders"][0]["vendor_name"] == "蒙恩喜餅"
+    # 編輯注意事項
+    edited = client.put(P + f"/vendors/{v2['id']}", json={"name": "蒙恩喜餅", "note": "改過的注意事項"})
+    assert edited.status_code == 200 and edited.json()["note"] == "改過的注意事項"
+    # 有訂購的不能刪；有款式的不能刪；空的可以刪
+    assert client.delete(P + f"/vendors/{v2['id']}").status_code == 400
+    assert client.delete(P + f"/vendors/{vid}").status_code == 400
+    v3 = client.post(P + "/vendors", json={"name": "日興堂"}).json()
+    assert client.delete(P + f"/vendors/{v3['id']}").status_code == 204
+    # 幫手不能管廠商
+    helper = {"Authorization": "Bearer " + create_token("helper")}
+    assert client.post(P + "/vendors", json={"name": "x"}, headers=helper).status_code == 403
