@@ -62,6 +62,8 @@
 .home-signoff p { font: 21px/1.8 'ChenYuluoyan', 'Noto Serif TC', serif; margin: 16px 0; }
 .home-signoff > span { font: 30px 'Alex Brush', cursive; color: var(--milk-tea-700); }
 .home-signoff > span .amp { font: 26px 'Cormorant Garamond', Georgia, serif; }
+/* 2026-09-22 新人反映頁尾聯絡方式用手寫字看不清楚：改宋體、放大一點、顏色深一點 */
+.wedding-home .footnote { font: 14px/1.8 'Plus Jakarta Sans', 'Noto Serif TC', serif; color: var(--milk-tea-700); letter-spacing: .04em; }
 .wedding-reveal { opacity: 0; transform: translateY(24px); transition: opacity .7s var(--reveal-delay, 0ms), transform .7s cubic-bezier(.22,1,.36,1) var(--reveal-delay, 0ms); }
 .wedding-reveal[data-visible='true'], .wedding-reveal:focus-within { opacity: 1; transform: none; }
 
