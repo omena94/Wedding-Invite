@@ -1,7 +1,7 @@
 import { GuestHeader, GuestNav, LoadError, useGuestLoad, GuestReceipt, useDraft } from '../components/GuestUI.jsx';
 import { useEffect, useState } from "react";
 import Swal from "sweetalert2";
-import { Search, Users, Utensils, Baby, Salad, PenLine, Send, PartyPopper, Ruler } from "lucide-react";
+import { Search, Users, Utensils, Baby, Salad, PenLine, Send, PartyPopper, Ruler, Leaf } from "lucide-react";
 import Select, { range } from "../components/Select.jsx";
 import EmailInput from "../components/EmailInput.jsx";
 import PreviewBanner from "../components/PreviewBanner.jsx";
@@ -286,15 +286,10 @@ export default function DetailsForm() {
               <div className="section-header-title"><Salad size={18} /> 特殊飲食</div>
               <div className="section-header-en">Dietary</div>
             </div>
-            <div className="form-group">
-              <label>素食類型（若有選素食主餐）</label>
-              <Select aria-label="素食類型" value={form.veg_type} onChange={(v) => set("veg_type", v)}
-                options={[
-                  { value: "無", label: "無" },
-                  { value: "蛋奶素", label: "蛋奶素 (Lacto-Ovo)" },
-                  { value: "全素/純素", label: "全素 / 純素 (Vegan)" },
-                  { value: "鍋邊素", label: "鍋邊素" },
-                ]} />
+            {/* 2026-09-22 新人決定素食一律全素，不再問素食類型；改成說明，餐檯有標示食材可自行取用 */}
+            <div className="veg-note" role="note">
+              <div className="veg-note-title"><Leaf size={15} /> 關於素食餐點</div>
+              <p>素食套餐一律為<strong>全素</strong>（不含蛋、奶與五辛）。自助餐檯的每道餐點都會標示食材，若有符合您飲食習慣的餐點，也歡迎自行取用。</p>
             </div>
             <div className="form-group">
               <label>食物過敏提醒</label>

@@ -1257,3 +1257,9 @@ tbody tr:last-child td { border-bottom: none; }
 @media (max-width: 900px) {
   .se-tablepanel { max-height: 40vh; }
 }
+
+/* 第二階段表單：素食一律全素的說明框（2026-09-22 取代素食類型下拉） */
+.veg-note { background: #f1f5ec; border: 1px solid #d5e0cc; border-radius: 14px; padding: 14px 16px; margin-bottom: 16px; color: var(--text-body); }
+.veg-note-title { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; color: #5f7a63; margin-bottom: 6px; font-size: 15px; }
+.veg-note p { margin: 0; line-height: 1.75; font-size: 14.5px; }
+.veg-note strong { color: #4d6a52; }

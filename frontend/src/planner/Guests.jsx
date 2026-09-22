@@ -424,21 +424,10 @@ function EditModal({ row, onClose, onSaved }) {
           </div>
         )}
 
-        <div className="form-group grid-2">
-          <div>
-            <label>素食類型</label>
-            <Select value={f.veg_type} onChange={(v) => set("veg_type", v)}
-              options={[
-                { value: "無", label: "無" },
-                { value: "蛋奶素", label: "蛋奶素" },
-                { value: "全素/純素", label: "全素/純素" },
-                { value: "鍋邊素", label: "鍋邊素" },
-              ]} />
-          </div>
-          <div>
-            <label>飲食備註 / 過敏</label>
-            <input type="text" value={f.dietary_note} onChange={(e) => set("dietary_note", e.target.value)} />
-          </div>
+        <div className="form-group">
+          <label>飲食備註 / 過敏</label>
+          <input type="text" value={f.dietary_note} onChange={(e) => set("dietary_note", e.target.value)} />
+          {f.veg_type && f.veg_type !== "無" && <div className="helper-text">這組早先填過素食類型「{f.veg_type}」；素食餐點現在一律全素，這個欄位已不再詢問。</div>}
         </div>
 
         <div className="form-group">
@@ -693,7 +682,6 @@ function Breakdown({ stats }) {
   const g = stats.people_by_side.groom;
   const b = stats.people_by_side.bride;
   const max = Math.max(g, b, 1);
-  const vegTypes = Object.entries(stats.veg_types || {});
   const mainTotals = Object.entries(stats.main_course_totals || {});
   const totalAttend = stats.attending_responses || 0;
   const donePct = totalAttend ? Math.round((stats.details_done / totalAttend) * 100) : 0;
@@ -728,11 +716,6 @@ function Breakdown({ stats }) {
       </div>
       <div className="footnote" style={{ textAlign: "left", marginTop: 6, display: "flex", alignItems: "center", gap: 6 }}>
         <Utensils size={13} /> 主餐份數：{mainTotals.length ? mainTotals.map(([k, v]) => `${k} ×${v}`).join("　·　") : "尚未有人填詳細資料"}
-      </div>
-      <div className="footnote" style={{ textAlign: "left", marginTop: 4 }}>
-        {vegTypes.length
-          ? "素食類型：" + vegTypes.map(([k, v]) => `${k} ×${v} 組`).join("　·　")
-          : "目前沒有素食需求（或尚未填第二階段）"}
       </div>
     </div>
   );

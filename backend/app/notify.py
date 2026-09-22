@@ -87,8 +87,6 @@ def phase2_message(record, details_done: int, attending_groups: int) -> str:
         extras.append(f"兒童座椅 {record.baby_chair_count}")
     if extras:
         lines.append("🧸 " + "・".join(extras))
-    if record.veg_type and record.veg_type != "無":
-        lines.append(f"🥗 素食類型：{esc(record.veg_type)}")
     if record.dietary_note:
         lines.append(f"⚠️ 飲食備註:{esc(record.dietary_note)}")
     if record.remark:
