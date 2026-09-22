@@ -681,7 +681,6 @@ function Breakdown({ stats }) {
   if (!stats) return null;
   const g = stats.people_by_side.groom;
   const b = stats.people_by_side.bride;
-  const max = Math.max(g, b, 1);
   const mainTotals = Object.entries(stats.main_course_totals || {});
   const totalAttend = stats.attending_responses || 0;
   const donePct = totalAttend ? Math.round((stats.details_done / totalAttend) * 100) : 0;
@@ -692,12 +691,10 @@ function Breakdown({ stats }) {
         <div className="mini">
           <div className="m-label">男方親友（人數）</div>
           <div className="m-value">{g}</div>
-          <div className="bar-track"><div className="bar-fill" style={{ width: `${(g / max) * 100}%` }} /></div>
         </div>
         <div className="mini">
           <div className="m-label">女方親友（人數）</div>
           <div className="m-value">{b}</div>
-          <div className="bar-track"><div className="bar-fill" style={{ width: `${(b / max) * 100}%`, background: "linear-gradient(135deg,var(--rose-accent),#9E5A54)" }} /></div>
         </div>
         <div className="mini">
           <div className="m-label">第二階段詳細填寫進度</div>
