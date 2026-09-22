@@ -206,13 +206,34 @@ def delete_gift_vendor(vendor_id: int, db: Session = Depends(get_db)):
 
 
 @router.delete("/products/{product_id}", status_code=204, dependencies=[CoupleRequired])
-def delete_product(product_id: int, db: Session = Depends(get_db)):
-    """刪除款式（2026-09-22 新人要能在「款式與盒數」直接增減）。送餅安排或訂購用到的不能刪，只能停用。"""
+def delete_product(product_id: int, replace_with: int | None = Query(default=None), clear_plans: bool = Query(default=False), db: Session = Depends(get_db)):
+    """刪除款式（2026-09-22 新人要能在「款式與盒數」直接增減）。
+
+    送餅安排用到這款時：帶 replace_with 就把這些安排改成另一款（同一戶已有那款就把盒數加總），
+    帶 clear_plans 就清掉這些安排的盒數；兩個都沒帶回 409 讓前端問新人。訂購記到的一律不能刪（要留對帳）。
+    """
     p = get_row(db, GiftProduct, product_id)
-    if db.scalar(select(GiftPlan.id).where(GiftPlan.product_id == product_id).limit(1)):
-        raise HTTPException(400, "已有送餅安排用到這款，不能刪除；不再使用可以在編輯裡取消「顯示這個款式」")
     if any(i["product_id"] == product_id for o in db.scalars(select(GiftOrder)) for i in json.loads(o.items_json)):
-        raise HTTPException(400, "已有訂購記到這款，不能刪除（要保留對帳）；不再使用可以停用")
+        raise HTTPException(400, "已有訂購記到這款，不能刪除（要保留對帳）；不再使用可以在編輯裡停用")
+    plans = list(db.scalars(select(GiftPlan).where(GiftPlan.product_id == product_id)))
+    if plans:
+        if replace_with is not None:
+            if replace_with == product_id:
+                raise HTTPException(400, "不能改成同一款")
+            target = get_row(db, GiftProduct, replace_with)
+            for plan in plans:
+                same = db.scalar(select(GiftPlan).where(GiftPlan.recipient_id == plan.recipient_id, GiftPlan.product_id == target.id))
+                if same:
+                    same.quantity += plan.quantity
+                    db.delete(plan)
+                else:
+                    plan.product_id = target.id
+        elif clear_plans:
+            for plan in plans:
+                db.delete(plan)
+        else:
+            raise HTTPException(409, f"有 {len(plans)} 筆送餅安排用到這款")
+        db.flush()
     db.delete(p)
     commit(db)
     return Response(status_code=204)

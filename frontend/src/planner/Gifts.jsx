@@ -175,8 +175,25 @@ export default function Gifts() {
   };
   // 款式與盒數可直接增減（2026-09-22）：用到的款式後端會擋，提示改用停用
   const removeProduct = async (p) => {
-    if (!(await confirmDelete(`喜餅款式「${p.name}」`))) return;
-    try { await deleteGiftProduct(p.id); reload(); } catch (e) { toastErr(e); }
+    const used = recipients.filter((r) => r.items.some((i) => i.product_id === p.id));
+    if (!used.length) {
+      if (!(await confirmDelete(`喜餅款式「${p.name}」`))) return;
+      try { await deleteGiftProduct(p.id); reload(); } catch (e) { toastErr(e); }
+      return;
+    }
+    // 有人被安排這款：問要改成別款還是清掉盒數
+    const others = products.filter((x) => x.id !== p.id);
+    const r = await Swal.fire({
+      icon: "warning", title: `刪除「${p.name}」？`,
+      html: `送餅名單有 <b>${used.length}</b> 戶安排了這款。<br/>${others.length ? "可以把他們全部改成另一款，盒數不變；或清掉這些盒數再刪。" : "目前沒有別的款式可以換，刪除會清掉這些盒數。"}`,
+      input: others.length ? "radio" : undefined, // 用 sweetalert2 的 radio，不用原生 select（開發規範）
+      inputOptions: others.length ? Object.fromEntries([...others.map((x) => [String(x.id), `改成「${x.name}」`]), ["", "清掉這些盒數"]]) : undefined,
+      inputValue: others.length ? String(others[0].id) : undefined,
+      showCancelButton: true, confirmButtonText: "刪除", cancelButtonText: "取消", confirmButtonColor: "#9E5A54",
+    });
+    if (!r.isConfirmed) return;
+    const opts = r.value ? { replace_with: Number(r.value) } : { clear_plans: true };
+    try { await deleteGiftProduct(p.id, opts); reload(); } catch (e) { toastErr(e); }
   };
   const removeVendor = async (v) => {
     if (!(await confirmDelete(`喜餅廠商「${v.name}」`))) return;
@@ -220,7 +237,7 @@ export default function Gifts() {
         {!products.length ? <Empty>新增喜餅款式後，就能安排盒數與登記訂購。</Empty> : <div className="gift-products">{products.map((p) => <div className="gift-product" key={p.id}>
           <div><strong>{p.name}{!p.active && "（停用）"}</strong>{p.vendor_name && <span className="pill pill-groom gift-mini-pill">{p.vendor_name}</span>}<p className="helper-text">{p.reference_price == null ? "尚無參考價格" : `參考每盒 ${money(p.reference_price)}`}</p></div>
           <div className="gift-product-counts"><span>需求 <b>{p.demand}</b></span><span>備用 <b>{p.reserve_qty}</b></span><span>已訂 <b>{p.supply}</b></span><span className={p.shortage ? "gift-warning" : ""}>缺口 <b>{p.shortage}</b></span></div>
-          <span className="gift-vendor-actions"><button className="btn btn-ghost btn-sm" aria-label={`編輯款式 ${p.name}`} onClick={() => setModal({ type: "product", initial: p })}><Pencil size={14}/>編輯</button><button className="btn btn-ghost btn-sm" aria-label={`刪除款式 ${p.name}`} title={p.demand + p.tentative + p.supply > 0 ? "有安排或訂購用到的款式不能刪，可改為停用" : "刪除這個款式"} disabled={p.demand + p.tentative + p.supply > 0} onClick={() => removeProduct(p)}><Trash2 size={14}/></button></span>
+          <span className="gift-vendor-actions"><button className="btn btn-ghost btn-sm" aria-label={`編輯款式 ${p.name}`} onClick={() => setModal({ type: "product", initial: p })}><Pencil size={14}/>編輯</button><button className="btn btn-ghost btn-sm" aria-label={`刪除款式 ${p.name}`} title={p.supply > 0 ? "已有訂購記到這款，不能刪（要保留對帳）；可在編輯裡停用" : "刪除這個款式"} disabled={p.supply > 0} onClick={() => removeProduct(p)}><Trash2 size={14}/></button></span>
         </div>)}</div>}
       </div>
       {!orders.length ? <div className="panel"><Empty>報價確認後新增訂購，會建立或連結一筆花費。付款沿用既有訂金與尾款紀錄。</Empty></div> : orders.map((o) => <OrderCard key={o.id} o={o} edit={() => setModal({ type: "order", initial: o })} payment={(p) => setModal({ type: "payment", order: o, initial: p })} upload={() => setModal({ type: "upload", order: o })}/>)}

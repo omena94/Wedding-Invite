@@ -393,9 +393,19 @@ def test_delete_product_only_when_unused(setup):
     assert client.delete(P + f"/products/{spare['id']}").status_code == 204
     assert all(p["id"] != spare["id"] for p in client.get(P).json()["products"])
     # 有安排用到
-    r = client.post(P + "/recipients", json={"request_key": uuid4().hex, "name": "阿姨", "items": [{"product_id": pid, "quantity": 1}], "method": "venue", "state": "confirmed"})
+    r = client.post(P + "/recipients", json={"request_key": uuid4().hex, "name": "阿姨", "items": [{"product_id": pid, "quantity": 2}], "method": "venue", "state": "confirmed"})
     assert r.status_code == 201, r.text
-    assert client.delete(P + f"/products/{pid}").status_code == 400
+    # 沒說怎麼處理 → 409 告知有幾筆；改成另一款 → 安排跟著換、盒數保留；清掉 → 安排的盒數歸零
+    assert client.delete(P + f"/products/{pid}").status_code == 409
+    other = client.post(P + "/products", json={"name": "另一款", "vendor_id": vid}).json()
+    assert client.delete(P + f"/products/{pid}", params={"replace_with": other["id"]}).status_code == 204
+    snap = client.get(P).json()
+    aunt = next(x for x in snap["recipients"] if x["name"] == "阿姨")
+    assert [(i["product_id"], i["quantity"]) for i in aunt["items"]] == [(other["id"], 2)]
+    assert client.delete(P + f"/products/{other['id']}", params={"clear_plans": "true"}).status_code == 204
+    aunt = next(x for x in client.get(P).json()["recipients"] if x["name"] == "阿姨")
+    assert aunt["items"] == []
+    pid = client.post(P + "/products", json={"name": "綜合禮盒", "reference_price": 600, "reserve_qty": 5, "vendor_id": vid}).json()["id"]
     # 有訂購用到（另建一款只給訂購用）
     p2 = client.post(P + "/products", json={"name": "訂購用", "vendor_id": vid}).json()
     assert client.post(P + "/orders", json=order_body(vid, p2["id"])).status_code == 201
