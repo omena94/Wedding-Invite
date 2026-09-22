@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 // 2026-09-08 依新人要求移除「赴約前，你需要的都在這裡」入口區；第二階段與座位改放底部導覽
 import { ArrowRight, CalendarPlus, Heart, MailOpen } from 'lucide-react';
 import { GuestNav, LoadError, useGuestLoad, CalendarButtons } from '../components/GuestUI.jsx';
-import EventDetails, { VENUE } from '../components/EventDetails.jsx';
+import EventDetails from '../components/EventDetails.jsx';
 import PreviewBanner from '../components/PreviewBanner.jsx';
 import { fetchStage } from '../api.js';
 import { WEDDING_DATE_DISPLAY } from '../constants.js';
@@ -64,7 +64,7 @@ export default function Home() {
         <h1 ref={titleRef} tabIndex={-1}>重要的日子<br/><span>只想和最喜歡的你們好好聚聚</span></h1>
         <p className="home-couple">宣文 <span className="amp">&</span> 孟庭</p>
         <p className="home-couple-english">Alan <span className="amp">&</span> Omena</p>
-        <p className="home-wedding-date">{WEDDING_DATE_DISPLAY}<span>{VENUE.name}</span></p>
+        <p className="home-wedding-date">{WEDDING_DATE_DISPLAY}</p>{/* 2026-09-22 新人要求：首頁日期下面不再放場地名稱（婚禮資訊頁還有） */}
         <a className="btn-submit home-primary" href={action.href}>{action.action}<ArrowRight size={18}/></a>
       </div>
     </header>
