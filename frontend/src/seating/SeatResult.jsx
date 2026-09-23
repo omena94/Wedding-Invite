@@ -107,7 +107,6 @@ export default function SeatResult({ result, embedded = false }) {
               </div>
             </div>
           </div>
-          <div className="seat-guide">打開地圖，選擇您所在的入口，即可查看前往座位的路線。</div>
         </div>
       ))}
       {messageBlock}
