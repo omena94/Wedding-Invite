@@ -78,7 +78,7 @@ export default function SettingsPage() {
       <div className="panel">
         <div className="panel-head"><div className="panel-title"><Info size={18} /> 賓客頁面開關</div></div>
         <div className="pl-switch-list">
-          <Switch label="婚禮當天桌次查詢（/seat）" desc="開啟後賓客輸入姓名或電話就能看到桌號；桌號在「賓客」頁面編輯" value={values.seat_open === "1"} busy={!!busy}
+          <Switch label="婚禮當天桌次查詢（/seat）" desc="開啟後賓客輸入姓名、電話或 Email 就能看到自己的桌子與座位；座位在「座位圖」安排" value={values.seat_open === "1"} busy={!!busy}
             onChange={(v) => save({ seat_open: v ? "1" : "" }, "seat")} />
           <Switch label="婚紗照分享頁（/photos）" desc="只會顯示「文件庫」裡標記為公開的照片" value={values.photos_open === "1"} busy={!!busy}
             onChange={(v) => save({ photos_open: v ? "1" : "" }, "photos")} />

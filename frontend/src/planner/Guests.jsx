@@ -280,7 +280,6 @@ function AddGuestModal({ onClose, onSaved }) {
 function EditModal({ row, onClose, onSaved }) {
   const [f, setF] = useState({
     ...row,
-    table_no: row.table_no ?? "",
     main_course: { ...Object.fromEntries(EDIT_DISHES.map((d) => [d, 0])), ...(row.main_course || {}) },
     children: Array.from({ length: row.child_count || 0 }, (_, i) => ({
       height: row.children && row.children[i] && row.children[i].height != null ? row.children[i].height : "",
@@ -319,13 +318,11 @@ function EditModal({ row, onClose, onSaved }) {
         dietary_note: f.dietary_note || "",
         remark: f.remark || "",
         personal_note: f.personal_note || "",
-        table_no: f.table_no === "" ? null : parseInt(f.table_no, 10),
         children: Array.from({ length: f.child_count }, (_, i) => {
           const c = (f.children && f.children[i]) || {};
           return { height: c.height === "" || c.height == null ? null : parseInt(c.height, 10), pricing: c.pricing || "auto" };
         }),
         admin_note: f.admin_note || "",
-        is_test: f.is_test,
       });
       onSaved(updated);
     } catch (e) {
@@ -449,21 +446,10 @@ function EditModal({ row, onClose, onSaved }) {
           <div className="helper-text">婚禮當天這一戶用電話或 Email 查座位時，會在座位卡下面看到這段話；用姓名查的人看不到，只會提示改用電話再查。</div>
         </div>
 
-        <div className="form-group grid-2">
-          <div>
-            <label>桌號</label>
-            <NumberInput value={f.table_no} onChange={(v) => set("table_no", v)} placeholder="未安排" />
-          </div>
-          <div>
-            <label>內部備註</label>
-            <input type="text" value={f.admin_note} onChange={(e) => set("admin_note", e.target.value)} />
-          </div>
-        </div>
-
+        {/* 2026-09-23 舊的「桌號」欄位拿掉：座位一律在座位圖安排，這裡填了也不會連動 */}
         <div className="form-group">
-          <label>測試資料（不計入統計與匯出）</label>
-          <Select value={f.is_test} onChange={(v) => set("is_test", v === true || v === "true")}
-            options={[{ value: false, label: "否（正式資料）" }, { value: true, label: "是（測試用）" }]} />
+          <label>內部備註</label>
+          <input type="text" value={f.admin_note} onChange={(e) => set("admin_note", e.target.value)} />
         </div>
 
         <div className="edit-modal-actions">

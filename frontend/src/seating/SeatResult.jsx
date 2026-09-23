@@ -58,9 +58,7 @@ export default function SeatResult({ result, embedded = false }) {
     return (
       <section ref={cardRef} className="section-card seat-result">
         <div className="seat-result-title">{result.name}，歡迎您！</div>
-        {result.table_no !== null && result.table_no !== undefined
-          ? <><div className="seat-result-table">第 <strong>{result.table_no}</strong> 桌</div><p>請依桌牌入座，有問題請找招待</p></>
-          : <p>桌次還在安排中，請找現場招待帶位</p>}
+        <p>桌次還在安排中，請找現場招待帶位</p>
         {messageBlock}
       </section>
     );

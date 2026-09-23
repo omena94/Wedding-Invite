@@ -290,10 +290,21 @@ def export_csv(db: Session = Depends(get_db)):
         "姓名", "親友方", "出席", "日期偏好", "大人", "幼童", "小孩身高",
         "詳細已填", "主餐", "兒童餐點", "兒童座椅", "素食人數", "素食類型",
         "飲食備註", "賓客備註", "電話", "Email", "想說的話",
-        "桌號", "內部備註", "填表時間",
+        "桌次（座位圖）", "內部備註", "填表時間",
     ])
     side_map = {"groom": "男方", "bride": "女方"}
     date_map = {"both": "兩天都可以", "0306": "2027.03.06（週六）", "0313": "2027.03.13（週六）"}
+    # 2026-09-23 舊的手填桌號拿掉，匯出改列座位圖（正式使用的廳）上實際排的桌子
+    from ..seating import active_hall, seats_of_rsvp
+    hall = active_hall(db)
+    seat_labels = {}
+    for r in rows:
+        labels = []
+        for st in seats_of_rsvp(db, r, hall):
+            lab = f"{st['table_label']} {st['seat_no']} 號"
+            if lab not in labels:
+                labels.append(lab)
+        seat_labels[r.id] = "、".join(labels)
     for r in rows:
         main_str = "、".join(f"{k}x{v}" for k, v in r.main_course.items()) if r.details_completed else ""
         writer.writerow([
@@ -306,7 +317,7 @@ def export_csv(db: Session = Depends(get_db)):
             main_str, r.kids_meal_count,
             r.baby_chair_count, r.veg_count, r.veg_type, r.dietary_note,
             r.remark, r.phone, r.email, r.message,
-            r.table_no if r.table_no is not None else "",
+            seat_labels.get(r.id, ""),
             r.admin_note,
             r.created_at.strftime("%Y-%m-%d %H:%M") if r.created_at else "",
         ])
