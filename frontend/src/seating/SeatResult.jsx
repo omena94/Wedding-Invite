@@ -7,6 +7,28 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Map as MapIcon } from "lucide-react";
 import SeatViewer from "./SeatViewer.jsx";
 
+// 2026-09-23 新人設計的婚禮謝卡（Canva 匯出的 PDF 轉成 SVG，放在 public/cards）：
+// 正面是 Thank you 與名字日期，點一下翻到背面，背面留白區疊上新人留給這一戶的話。字數多時字級自動縮小
+function ThankCard({ message }) {
+  const [flipped, setFlipped] = useState(false);
+  const n = message.length;
+  const size = n > 260 ? "xs" : n > 170 ? "sm" : n > 100 ? "md" : "lg";
+  return (
+    <div className="tc-wrap">
+      <button type="button" className={`tc-card${flipped ? " flipped" : ""}`} onClick={() => setFlipped((v) => !v)} aria-label={flipped ? "翻回正面" : "翻開卡片看留言"}>
+        <div className="tc-face tc-front">
+          <img src="/cards/thankcard-front.svg" alt="Thank you for sharing our special day. Alan & Omena" draggable="false" />
+          <span className="tc-hint">點一下翻開</span>
+        </div>
+        <div className="tc-face tc-back">
+          <img src="/cards/thankcard-back.svg" alt="" draggable="false" />
+          <div className={`tc-text tc-${size}`}>{message}</div>
+        </div>
+      </button>
+    </div>
+  );
+}
+
 export default function SeatResult({ result, embedded = false }) {
   const [mapOpen, setMapOpen] = useState(false);
   const cardRef = useRef(null);
@@ -47,10 +69,7 @@ export default function SeatResult({ result, embedded = false }) {
   const tables = result.tables || [];
   // 新人當天留給這一戶的話（只有用電話或 Email 查到才有）；用姓名查到的提示再查一次。還沒排位的也要顯示
   const messageBlock = result.message ? (
-    <div className="seat-message">
-      <div className="seat-message-title">宣文與孟庭給你的話</div>
-      <p className="seat-message-text">{result.message}</p>
-    </div>
+    <ThankCard message={result.message} />
   ) : result.message_locked ? (
     <p className="seat-message-locked">我們留了一段話給你，用當初填的手機號碼或 Email 再查一次就看得到。</p>
   ) : null;
