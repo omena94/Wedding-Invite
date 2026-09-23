@@ -44,7 +44,8 @@ def seating_preview(rsvp_id: int, hall: int | None = Query(default=None), db: Se
     if not row:
         raise HTTPException(404, "找不到這組賓客")
     view = guest_seat_view(db, row, hall_or_active(db, hall))
-    return {"found": True, "name": row.name, "table_no": row.table_no, "attending": row.attending, **view}
+    return {"found": True, "name": row.name, "table_no": row.table_no, "attending": row.attending, **view,
+            "message": (row.personal_note or "").strip()}
 
 
 # ===== 登入 =====

@@ -136,3 +136,27 @@ def test_static_path_cannot_escape_build(setup):
     client,_=setup
     response=client.get('/%2e%2e%5cpackage.json')
     assert response.status_code==404
+
+
+def test_personal_note_only_with_phone_or_email(setup):
+    """2026-09-23 當天給賓客的話：後台可寫；賓客用電話或 Email 查才看得到，用姓名查只提示。"""
+    client,db=setup;create(client)
+    headers={'Authorization':'Bearer '+create_token()}
+    rid=client.get('/api/admin/rsvps',headers=headers).json()[0]['id']
+    r=client.patch(f'/api/admin/rsvps/{rid}',json={'personal_note':'謝謝你來'},headers=headers)
+    assert r.status_code==200 and r.json()['personal_note']=='謝謝你來'
+    staff={'Authorization':'Bearer '+create_token('helper')}
+    by_name=client.post('/api/seat/lookup',json={'query':'測試賓客'},headers=staff).json()
+    assert by_name['found'] and by_name['message']=='' and by_name['message_locked'] is True
+    by_phone=client.post('/api/seat/lookup',json={'query':'0912-345-678'},headers=staff).json()
+    assert by_phone['found'] and by_phone['message']=='謝謝你來' and by_phone['message_locked'] is False
+    by_email=client.post('/api/seat/lookup',json={'query':'GUEST@example.test'},headers=staff).json()
+    assert by_email['found'] and by_email['message']=='謝謝你來'
+    # 同名時補電話也算驗證
+    db.add(Rsvp(name='測試賓客',side='bride',phone='0987654321',email='another@example.test'));db.commit()
+    both=client.post('/api/seat/lookup',json={'query':'測試賓客','phone':'0912345678'},headers=staff).json()
+    assert both['found'] and both['message']=='謝謝你來'
+    # 沒寫的戶：不提示
+    client.patch(f'/api/admin/rsvps/{rid}',json={'personal_note':''},headers=headers)
+    none=client.post('/api/seat/lookup',json={'query':'0912345678'},headers=staff).json()
+    assert none['message']=='' and none['message_locked'] is False

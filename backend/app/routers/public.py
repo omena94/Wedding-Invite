@@ -8,6 +8,10 @@ from sqlalchemy.orm import Session
 
 from ..config import settings
 from ..contacts import normalize_phone, phone_column
+
+
+def phone_column_matches(stored: str, wanted: str) -> bool:
+    return bool(wanted) and normalize_phone(stored or "") == wanted
 from ..database import get_db
 from ..models import FileAsset, Rsvp
 from ..schemas import SeatLookupIn, SeatLookupOut
@@ -39,8 +43,12 @@ def seat_lookup(payload: SeatLookupIn, db: Session = Depends(get_db), role: str 
     q = payload.query.strip()
     conds = [func.lower(Rsvp.name) == q.lower()]
     phone = normalize_phone(q)
-    if re.fullmatch(r"09\d{8}", phone):
+    by_phone = bool(re.fullmatch(r"09\d{8}", phone))
+    by_email = "@" in q
+    if by_phone:
         conds.append(phone_column(Rsvp.phone) == phone)
+    if by_email:
+        conds.append(func.lower(Rsvp.email) == q.lower())  # 2026-09-23 起 Email 也能查（留言要用電話或 Email 才看得到）
     stmt = (
         select(Rsvp)
         .where(Rsvp.is_test.is_(False), Rsvp.attending.is_(True), or_(*conds))
@@ -55,7 +63,12 @@ def seat_lookup(payload: SeatLookupIn, db: Session = Depends(get_db), role: str 
     if not row:
         return SeatLookupOut(found=False)
     view = guest_seat_view(db, row)
-    return SeatLookupOut(found=True, name=row.name, table_no=row.table_no, **view)
+    # 新人留給這一戶的話：姓名誰都猜得到，所以要用電話（查詢欄或同名時補的電話）或 Email 對上才給
+    verified = (by_phone and phone_column_matches(row.phone, phone)) or (by_email and (row.email or "").lower() == q.lower()) \
+        or (payload.phone.strip() != "" and phone_column_matches(row.phone, normalize_phone(payload.phone)))
+    note = (row.personal_note or "").strip()
+    return SeatLookupOut(found=True, name=row.name, table_no=row.table_no, **view,
+                         message=note if verified else "", message_locked=bool(note) and not verified)
 
 
 @router.get("/photos")

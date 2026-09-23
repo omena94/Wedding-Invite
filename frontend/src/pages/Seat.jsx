@@ -52,7 +52,7 @@ export default function Seat() {
               <div className="section-header-en">Name or Phone</div>
             </div>
             <div className="form-group">
-              <input type="text" aria-label="姓名或手機號碼" value={q} onChange={(e) => { setQ(e.target.value); setError(""); setPhone("");setResult(null); }} placeholder="例如 王小明 或 0912345678" />
+              <input type="text" aria-label="姓名或手機號碼" value={q} onChange={(e) => { setQ(e.target.value); setError(""); setPhone("");setResult(null); }} placeholder="例如 王小明、0912345678 或 Email" />
             </div>
             {result?.needs_phone&&<div className="form-group"><p>有同名的賓客，請再輸入原先留的手機確認。</p><label htmlFor="seat-phone">手機號碼</label><input id="seat-phone" type="tel" autoComplete="tel" value={phone} onChange={e=>setPhone(e.target.value)}/></div>}
             {error && <p role="alert" style={{ color: "var(--rose-accent)", fontSize: 13.5 }}>{error}</p>}

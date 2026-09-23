@@ -59,6 +59,8 @@ def init_db() -> None:
                 "ALTER TABLE files ADD COLUMN IF NOT EXISTS sort_order INTEGER NOT NULL DEFAULT 0",
                 "ALTER TABLE files ADD COLUMN IF NOT EXISTS thumb_name VARCHAR(80) NOT NULL DEFAULT ''",
                 "ALTER TABLE rsvps ADD COLUMN IF NOT EXISTS children_json TEXT NOT NULL DEFAULT '[]'",
+                # 2026-09-23 當天給賓客的一段話
+                "ALTER TABLE rsvps ADD COLUMN IF NOT EXISTS personal_note TEXT NOT NULL DEFAULT ''",
                 # 2026-09-10 座位圖分「廳」：桌椅與座位指定都掛在某一廳底下，同一個人在不同廳可以各有位子
                 # 2026-09-11 廳記住是哪個範本載入的
                 "ALTER TABLE seat_halls ADD COLUMN IF NOT EXISTS preset_key VARCHAR(30) NOT NULL DEFAULT ''",

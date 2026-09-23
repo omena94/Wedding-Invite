@@ -44,6 +44,15 @@ export default function SeatResult({ result, embedded = false }) {
     );
   }
   const tables = result.tables || [];
+  // 新人當天留給這一戶的話（只有用電話或 Email 查到才有）；用姓名查到的提示再查一次。還沒排位的也要顯示
+  const messageBlock = result.message ? (
+    <div className="seat-message">
+      <div className="seat-message-title">宣文與孟庭給你的話</div>
+      <p className="seat-message-text">{result.message}</p>
+    </div>
+  ) : result.message_locked ? (
+    <p className="seat-message-locked">我們留了一段話給你，用當初填的手機號碼或 Email 再查一次就看得到。</p>
+  ) : null;
   if (tables.length === 0) {
     return (
       <section ref={cardRef} className="section-card seat-result">
@@ -51,6 +60,7 @@ export default function SeatResult({ result, embedded = false }) {
         {result.table_no !== null && result.table_no !== undefined
           ? <><div className="seat-result-table">第 <strong>{result.table_no}</strong> 桌</div><p>請依桌牌入座，有問題請找招待</p></>
           : <p>桌次還在安排中，請找現場招待帶位</p>}
+        {messageBlock}
       </section>
     );
   }
@@ -82,6 +92,7 @@ export default function SeatResult({ result, embedded = false }) {
           <div className="seat-guide">打開地圖，選擇您所在的入口，即可查看前往座位的路線。</div>
         </div>
       ))}
+      {messageBlock}
       {!embedded && hasMap && (
         <button type="button" className="btn-submit seat-open-map" onClick={() => setMapOpen(true)}>
           <MapIcon size={20} /> 打開地圖，看怎麼走

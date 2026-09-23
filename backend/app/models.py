@@ -65,6 +65,8 @@ class Rsvp(Base):
     main_course_json: Mapped[str] = mapped_column(Text, default="{}")  # 主餐份數 {"牛排":2,...}
     kids_meal_count: Mapped[int] = mapped_column(Integer, default=0)   # 兒童餐點份數
     remark: Mapped[str] = mapped_column(String(500), default="")       # 賓客備註
+    # 2026-09-23 新人當天留給這一戶的一段話：只在賓客用電話或 Email 查座位時顯示，可留空
+    personal_note: Mapped[str] = mapped_column(Text, default="")
     # 每個小孩的資料：[{"height": 95, "pricing": "auto"}, ...]
     #   height  身高（公分），賓客在第二階段填；None = 沒填
     #   pricing auto = 依身高分級 / free / half / full = 新人在後台手動指定

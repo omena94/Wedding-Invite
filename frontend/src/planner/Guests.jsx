@@ -140,6 +140,7 @@ export default function Guests() {
                       const extras = [];
                       if (r.kids_meal_count > 0) extras.push(`兒童餐×${r.kids_meal_count}`);
                       if (r.baby_chair_count > 0) extras.push(`座椅×${r.baby_chair_count}`);
+                      if ((r.personal_note || "").trim()) extras.push("💌 有當天的話");
                       if (r.veg_count > 0) extras.push(r.veg_type !== "無" ? r.veg_type : "素食");
                       const hs = (r.children || []).map((c) => (c.height != null ? c.height : "?"));
                       if (r.child_count > 0 && hs.some((h) => h !== "?")) extras.push(`身高 ${hs.join("/")}`);
@@ -317,6 +318,7 @@ function EditModal({ row, onClose, onSaved }) {
         veg_type: f.veg_type || "無",
         dietary_note: f.dietary_note || "",
         remark: f.remark || "",
+        personal_note: f.personal_note || "",
         table_no: f.table_no === "" ? null : parseInt(f.table_no, 10),
         children: Array.from({ length: f.child_count }, (_, i) => {
           const c = (f.children && f.children[i]) || {};
@@ -438,6 +440,13 @@ function EditModal({ row, onClose, onSaved }) {
         <div className="form-group">
           <label>想說的話</label>
           <textarea rows={2} value={f.message} onChange={(e) => set("message", e.target.value)} />
+        </div>
+
+        {/* 2026-09-23 當天留給這一戶的話：賓客在桌次查詢用電話或 Email 查到座位時才看得到 */}
+        <div className="form-group">
+          <label>當天給他們的一段話（可留空）</label>
+          <textarea rows={4} value={f.personal_note || ""} onChange={(e) => set("personal_note", e.target.value)} maxLength={2000} placeholder="例如：謝謝你們從台中專程北上…" />
+          <div className="helper-text">婚禮當天這一戶用電話或 Email 查座位時，會在座位卡下面看到這段話；用姓名查的人看不到，只會提示改用電話再查。</div>
         </div>
 
         <div className="form-group grid-2">

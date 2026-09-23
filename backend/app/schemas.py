@@ -161,6 +161,7 @@ class RsvpAdminUpdate(BaseModel):
     veg_type: str | None = Field(default=None, max_length=30)
     dietary_note: str | None = Field(default=None, max_length=300)
     remark: str | None = Field(default=None, max_length=500)
+    personal_note: str | None = Field(default=None, max_length=2000)  # 當天給這一戶的話
     children: list[ChildIn] | None = None
     # 後台管理
     manage_status: Literal["new", "contacted", "seated"] | None = None
@@ -189,6 +190,7 @@ class RsvpOut(BaseModel):
     veg_count: int
     veg_type: str
     dietary_note: str
+    personal_note: str = ""
     main_course: dict[str, int]
     kids_meal_count: int
     remark: str
@@ -260,6 +262,8 @@ class SeatLookupOut(BaseModel):
     tables: list[dict] = []         # 自己坐的每張桌：[{object_id, label, seats_total, mates:[{seat_no,name,mine}]}]
     map: dict | None = None         # {canvas, objects}（形狀與桌名）
     map_names: dict = {}            # 只有自己那幾桌的名字 {object_id: {seat_index: {name, mine}}}
+    message: str = ""               # 新人當天留給這一戶的話；只有用電話或 Email 查到才給
+    message_locked: bool = False    # 有留話但這次是用姓名查的：提示改用電話再查
 
 
 # =====================================================================
