@@ -13,10 +13,11 @@ export default function SeatResult({ result, embedded = false }) {
   const mineIds = useMemo(() => new Set((result?.seats || []).map((s) => s.object_id)), [result]);
   const hasMap = !!(result && result.found && result.attending !== false && (result.tables || []).length && result.map);
 
-  // 查到之後：自動打開全螢幕地圖（後台預覽不用）
+  // 查到之後：自動打開全螢幕地圖（後台預覽不用）。有新人留的話（或要提示改用電話查）時先不開，
+  // 讓賓客先看到座位卡和留言，再自己按「打開地圖」（2026-09-23 新人反映查完只看到地圖沒看到留言）
   useEffect(() => {
     if (!result) return;
-    setMapOpen(hasMap && !embedded);
+    setMapOpen(hasMap && !embedded && !result.message && !result.message_locked);
   }, [result, hasMap, embedded]);
   // 地圖關掉（或沒有地圖）時把結果卡捲到畫面最上面；瀏覽器「返回」會把捲動位置還原到最上面，所以要再捲一次
   useEffect(() => {
