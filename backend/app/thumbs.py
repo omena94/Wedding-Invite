@@ -5,7 +5,19 @@ from pathlib import Path
 log = logging.getLogger("thumbs")
 
 THUMB_MAX = 480
-IMAGE_EXT = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
+IMAGE_EXT = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic", ".heif"}
+
+
+def _register_heif() -> None:
+    """有裝 pillow-heif 就讓 Pillow 認得 HEIC/HEIF（iPhone 原檔），縮圖才做得出來（2026-09-28）。"""
+    try:
+        from pillow_heif import register_heif_opener
+        register_heif_opener()
+    except ImportError:
+        pass
+
+
+_register_heif()
 
 
 def is_image(filename: str) -> bool:

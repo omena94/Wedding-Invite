@@ -48,7 +48,7 @@ export default function Upload() {
     const picked = Array.from(list || []).filter((f) => f && f.size > 0);
     const next = picked.map((f) => ({
       id: `${Date.now()}-${Math.random().toString(36).slice(2)}`, file: f, progress: 0,
-      preview: /\.(jpe?g|png|webp|gif)$/i.test(f.name) ? URL.createObjectURL(f) : "",
+      preview: URL.createObjectURL(f), // 一律先試著顯示（iPhone Safari 連 HEIC 都能畫），畫不出來再退回檔名
       status: !OK_EXT.test(f.name) ? "error" : f.size > MAX_MB * 1024 * 1024 ? "error" : "picked",
       error: !OK_EXT.test(f.name) ? "不是照片檔" : f.size > MAX_MB * 1024 * 1024 ? `超過 ${MAX_MB}MB` : "",
     }));
@@ -132,7 +132,7 @@ export default function Upload() {
               <div className="up-preview-grid">
                 {picked.map((x) => (
                   <div key={x.id} className="up-preview">
-                    {x.preview ? <img src={x.preview} alt={x.file.name} /> : <div className="up-preview-none"><Camera size={20} /><small>{x.file.name}</small></div>}
+                    {x.preview ? <img src={x.preview} alt={x.file.name} onError={() => setItems((cur) => cur.map((y) => (y.id === x.id ? { ...y, preview: "" } : y)))} /> : <div className="up-preview-none"><Camera size={20} /><small>{x.file.name}</small></div>}
                     <button type="button" className="up-preview-x" onClick={() => removeItem(x.id)} aria-label={`不要傳 ${x.file.name}`}><X size={14} /></button>
                   </div>
                 ))}
