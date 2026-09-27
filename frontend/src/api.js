@@ -142,6 +142,8 @@ export const saveGiftOrder = (id, data) => request(`${GIFTS}/orders${id ? `/${id
 export const createGiftDelivery = (id, data) => request(`${GIFTS}/recipients/${id}/deliveries`, { method: "POST", body: data, auth: true });
 export const updateGiftDelivery = (id, data) => request(`${GIFTS}/deliveries/${id}`, { method: "PATCH", body: data, auth: true });
 export const importGiftGuests = () => request(`${GIFTS}/recipients/import-guests`, { method: "POST", auth: true });
+// 批次設定款式：勾選的戶全部改成某一款（product_id 空 = 改回款式未定）
+export const bulkGiftProduct = (recipient_ids, product_id) => request(`${GIFTS}/recipients/bulk-product`, { method: "POST", body: { recipient_ids, product_id }, auth: true });
 export const deleteGiftRecipient = (id) => request(`${GIFTS}/recipients/${id}`, { method: "DELETE", auth: true });
 // 喜餅廠商（2026-09-22 起可多家）：名稱、聯絡方式、注意事項
 export const saveGiftVendor = (id, data) => request(`${GIFTS}/vendors${id ? `/${id}` : ""}`, { method: id ? "PUT" : "POST", body: data, auth: true });

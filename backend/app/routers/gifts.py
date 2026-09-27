@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.orm.exc import StaleDataError
 
 from ..database import get_db
-from ..gift_schemas import DeliveryIn, DeliveryUpdate, GiftVendorIn, OrderIn, ProductIn, RecipientIn
+from ..gift_schemas import BulkProductIn, DeliveryIn, DeliveryUpdate, GiftVendorIn, OrderIn, ProductIn, RecipientIn
 from ..models import (Expense, GiftDelivery, GiftOrder, GiftPlan, GiftProduct,
                       GiftRecipient, GiftRsvpLink, Payment, Rsvp, Vendor)
 from ..security import AdminRequired, CoupleRequired, require_staff
@@ -122,6 +122,7 @@ def snapshot(db):
         links[link.recipient_id].append({"id": rsvp.id, "name": rsvp.name, "attending": rsvp.attending})
     recipients = []
     demand, tentative, sent = defaultdict(int), defaultdict(int), defaultdict(int)
+    unassigned_boxes = unassigned_households = 0  # 要送、但還沒套款式的戶
     for r in db.scalars(select(GiftRecipient).order_by(GiftRecipient.id.desc())):
         data = row_dict(r)
         counts = delivered_quantities(deliveries[r.id])
@@ -130,16 +131,19 @@ def snapshot(db):
                           "remaining": max(0, p.quantity - counts[p.product_id])} for p in plans[r.id]]
         data["rsvps"] = links[r.id]
         data["deliveries"] = [delivery_out(d) for d in deliveries[r.id]]
-        data["remaining"] = sum(i["remaining"] for i in data["items"]) if r.state == "confirmed" else 0
-        data["missing_address"] = r.state == "confirmed" and r.method == "mail" and not r.address.strip() and data["remaining"] > 0
-        data["change_method"] = (r.state == "confirmed" and r.method == "venue" and bool(links[r.id])
+        # 要送但還沒套款式的戶：還沒交付任何東西，未給＝自己的盒數
+        active = r.state != "cancelled"
+        data["remaining"] = (sum(i["remaining"] for i in data["items"]) if plans[r.id] else (r.box_count or 0)) if active else 0
+        if active and not plans[r.id]:
+            unassigned_boxes += r.box_count or 0
+            unassigned_households += 1
+        data["missing_address"] = active and r.method == "mail" and not r.address.strip() and data["remaining"] > 0
+        data["change_method"] = (active and r.method == "venue" and bool(links[r.id])
                                  and not any(x["attending"] for x in links[r.id]) and data["remaining"] > 0)
         for p in plans[r.id]:
-            if r.state == "confirmed":
+            if active:
                 demand[p.product_id] += p.quantity
                 sent[p.product_id] += counts[p.product_id]
-            elif r.state == "draft":
-                tentative[p.product_id] += p.quantity
         recipients.append(data)
     orders = [{**order_out(db, o), "vendor_name": vendor_name(o.vendor_id)} for o in db.scalars(select(GiftOrder).order_by(GiftOrder.id.desc()))]
     supply = defaultdict(int)
@@ -151,7 +155,8 @@ def snapshot(db):
         p.update(demand=demand[pid], tentative=tentative[pid], delivered=sent[pid], supply=supply[pid],
                  shortage=max(0, demand[pid] + p["reserve_qty"] - supply[pid]))
     return {"vendors": list(vendors.values()), "products": list(products.values()), "recipients": recipients, "orders": orders,
-            "summary": {"demand": sum(demand.values()), "tentative": sum(tentative.values()),
+            "summary": {"demand": sum(demand.values()) + unassigned_boxes, "tentative": sum(tentative.values()),
+                        "unassigned_boxes": unassigned_boxes, "unassigned_households": unassigned_households,
                         "remaining": sum(r["remaining"] for r in recipients),
                         "missing_address": sum(r["missing_address"] for r in recipients),
                         "total": sum(o["total"] for o in orders), "paid": sum(o["paid"] for o in orders),
@@ -262,8 +267,9 @@ def update_product(product_id: int, payload: ProductIn, db: Session = Depends(ge
 
 def save_recipient(db, payload, row=None):
     products_for(db, payload.items)
-    if payload.state == "confirmed" and not payload.items:
-        raise HTTPException(400, "已確認送餅至少需要一款喜餅；尚未決定可先存為待決定")
+    # 2026-09-27 拿掉「待決定」：狀態只剩要送／不送喜餅，要送不一定要先選款式（盒數記在 box_count）
+    if payload.state == "draft":
+        payload.state = "confirmed"
     if len(payload.rsvp_ids) != len(set(payload.rsvp_ids)):
         raise HTTPException(400, "請勿重複選取同一筆回覆")
     for rid in sorted(payload.rsvp_ids):
@@ -324,6 +330,36 @@ def update_recipient(recipient_id: int, payload: RecipientIn, db: Session = Depe
     return save_recipient(db, payload, get_row(db, GiftRecipient, recipient_id, payload.version))
 
 
+@router.post("/recipients/bulk-product", dependencies=[CoupleRequired])
+def bulk_product(payload: BulkProductIn, db: Session = Depends(get_db)):
+    """勾選的戶批次改款式：每戶的盒數沿用（已有安排就用原本的盒數，沒有就用 box_count）。
+    有交付紀錄的戶不動（會回報幾戶被略過）；不送喜餅的戶不動。product_id 空 = 清掉款式改回待決定。"""
+    product = get_row(db, GiftProduct, payload.product_id) if payload.product_id is not None else None
+    changed, skipped = 0, 0
+    for rid in sorted(set(payload.recipient_ids)):
+        r = get_row(db, GiftRecipient, rid)
+        if r.state == "cancelled":
+            skipped += 1
+            continue
+        plans = list(db.scalars(select(GiftPlan).where(GiftPlan.recipient_id == r.id)))
+        delivered = delivered_quantities(db.scalars(select(GiftDelivery).where(GiftDelivery.recipient_id == r.id)))
+        if any(delivered.values()):
+            skipped += 1
+            continue
+        qty = sum(p.quantity for p in plans) or (r.box_count or 1)
+        for p in plans:
+            db.delete(p)
+        db.flush()  # 先把刪除寫進去，不然同一戶同一款的唯一限制會撞到（新增會排在刪除前面）
+        if product is not None:
+            db.add(GiftPlan(recipient_id=r.id, product_id=product.id, quantity=max(1, qty)))
+            r.state = "confirmed"
+        r.box_count = max(1, qty)
+        r.version += 1
+        changed += 1
+    commit(db)
+    return {"changed": changed, "skipped": skipped, "product": product.name if product else ""}
+
+
 @router.delete("/recipients/{recipient_id}", status_code=204, dependencies=[CoupleRequired])
 def delete_recipient(recipient_id: int, db: Session = Depends(get_db)):
     """刪除送禮對象（新人用，前端會先確認）。連同送餅安排、回覆連結與交付紀錄一起刪除；
@@ -365,7 +401,7 @@ def import_guests(db: Session = Depends(get_db)):
             side=guest.side if guest.side in ("groom", "bride") else "other",
             contact_name=guest.name, phone=guest.phone or "", address="", owner="",
             method="tbd",
-            state="confirmed" if product else "draft",
+            state="confirmed", box_count=1,  # 2026-09-27 一律要送、預設 1 盒；款式之後批次套
             note="",  # 2026-09-08 新人要求不出席者不要自動加備註
         )
         db.add(row)

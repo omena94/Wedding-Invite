@@ -270,15 +270,18 @@ def test_import_guests_creates_one_box_each_and_is_repeatable(setup):
     assert len(current(client)["recipients"]) == 4  # 2 位帶入 + 1 位後來帶入 + 上面手動建的親送對象
 
 
-def test_import_guests_without_single_product_stays_draft(setup):
+def test_import_guests_without_single_product_is_confirmed_one_box(setup):
+    """2026-09-27 拿掉「待決定」：兩款以上時帶入的戶也是要送、1 盒、款式未定，盒數算進要送的盒數。"""
     client, db, vid, pid = setup
     client.post(P + "/products", json={"name": "第二款", "reference_price": 500, "vendor_id": vid})
     db.add(Rsvp(name="兩款未定的朋友", side="groom", attending=True))
     db.commit()
     result = client.post(P + "/recipients/import-guests").json()
     assert result["created"] == 1 and result["product"] is None
-    r = current(client)["recipients"][0]
-    assert r["state"] == "draft" and r["items"] == []
+    snap = current(client)
+    r = snap["recipients"][0]
+    assert r["state"] == "confirmed" and r["items"] == [] and r["box_count"] == 1 and r["remaining"] == 1
+    assert snap["summary"]["demand"] == 1 and snap["summary"]["unassigned_boxes"] == 1 and snap["summary"]["unassigned_households"] == 1
 
 
 def test_helper_can_view_list_and_confirm_pickup_but_not_manage(setup):
@@ -412,3 +415,29 @@ def test_delete_product_only_when_unused(setup):
     assert client.delete(P + f"/products/{p2['id']}").status_code == 400
     helper = {"Authorization": "Bearer " + create_token("helper")}
     assert client.delete(P + f"/products/{pid}", headers=helper).status_code == 403
+
+
+def test_box_count_and_bulk_product(setup):
+    """2026-09-27 盒數跟款式分開存（預設 1）；批次設定款式把勾選的戶改成同一款，盒數沿用；有交付紀錄的略過。"""
+    client, db, vid, pid = setup
+    a = client.post(P + "/recipients", json={"request_key": uuid4().hex, "name": "阿姨", "method": "venue", "state": "draft", "box_count": 3}).json()
+    b = client.post(P + "/recipients", json={"request_key": uuid4().hex, "name": "叔叔", "method": "venue", "state": "draft"}).json()
+    snap = client.get(P).json()
+    by = {x["name"]: x for x in snap["recipients"]}
+    assert by["阿姨"]["box_count"] == 3 and by["叔叔"]["box_count"] == 1
+    assert snap["summary"]["demand"] == 4 and snap["summary"]["unassigned_boxes"] == 4  # 要送的盒數直接算，款式未定另外提醒
+    r = client.post(P + "/recipients/bulk-product", json={"recipient_ids": [a["id"], b["id"]], "product_id": pid})
+    assert r.status_code == 200 and r.json()["changed"] == 2, r.text
+    snap = client.get(P).json()
+    by = {x["name"]: x for x in snap["recipients"]}
+    assert [(i["product_id"], i["quantity"]) for i in by["阿姨"]["items"]] == [(pid, 3)] and by["阿姨"]["state"] == "confirmed"
+    assert [(i["product_id"], i["quantity"]) for i in by["叔叔"]["items"]] == [(pid, 1)] and snap["summary"]["demand"] == 4
+    # 已經有款式的戶再批次套一次（同一款）也要能過：先刪再加不會撞唯一限制
+    assert client.post(P + "/recipients/bulk-product", json={"recipient_ids": [a["id"], b["id"]], "product_id": pid}).json()["changed"] == 2
+    # 改回款式未定：盒數留著、還是要送
+    assert client.post(P + "/recipients/bulk-product", json={"recipient_ids": [b["id"]], "product_id": None}).json()["changed"] == 1
+    by = {x["name"]: x for x in client.get(P).json()["recipients"]}
+    assert by["叔叔"]["items"] == [] and by["叔叔"]["state"] == "confirmed" and by["叔叔"]["box_count"] == 1
+    # 幫手不能批次
+    helper = {"Authorization": "Bearer " + create_token("helper")}
+    assert client.post(P + "/recipients/bulk-product", json={"recipient_ids": [a["id"]], "product_id": pid}, headers=helper).status_code == 403

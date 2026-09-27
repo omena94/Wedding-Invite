@@ -472,6 +472,8 @@ class GiftRecipient(Base):
     state: Mapped[str] = mapped_column(String(20), default="confirmed")
     due_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     note: Mapped[str] = mapped_column(String(1000), default="")
+    # 2026-09-27 這一戶要送幾盒（跟款式分開存，預設 1）：款式還沒定也看得到盒數，批次或編輯選了款式就套用到那款
+    box_count: Mapped[int] = mapped_column(Integer, default=1)
     version: Mapped[int] = mapped_column(Integer, default=1)
     __mapper_args__ = {"version_id_col": version}
 

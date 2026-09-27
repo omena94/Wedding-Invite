@@ -1322,3 +1322,9 @@ tbody tr:last-child td { border-bottom: none; }
 
 /* 下拉選單 portal 模式：掛在 body、固定定位，不受表格外框裁切（送餅名單用） */
 .ui-select-menu.portal { position: fixed; z-index: 400; right: auto; }
+
+/* 送餅名單：勾選欄與批次設定款式列（2026-09-27） */
+.gift-table th.gift-check-cell, .gift-table td.gift-check-cell { width: 36px; padding-right: 0; }
+.gift-bulk { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 10px; padding: 10px 12px; border-radius: 12px; background: var(--milk-tea-50); font-size: 13px; }
+.gift-bulk .ui-select { width: 220px; }
+@media (max-width: 760px) { .gift-table td.gift-check-cell { display: none; } }

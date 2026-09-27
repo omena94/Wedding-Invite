@@ -52,8 +52,15 @@ class RecipientIn(Form):
     state: Literal["draft", "confirmed", "cancelled"] = "confirmed"
     due_date: date | None = None
     note: str = Field(default="", max_length=1000)
+    box_count: int = Field(default=1, ge=0, le=10000)  # 這一戶要送幾盒（款式未定時也保留）
     rsvp_ids: list[int] = Field(default_factory=list, max_length=50)
     items: list[PlanIn] = Field(default_factory=list, max_length=50)
+
+
+class BulkProductIn(BaseModel):
+    """批次設定款式（2026-09-27）：勾選的戶全部改成某一款，盒數沿用各戶自己的；product_id 空 = 改回款式未定。"""
+    recipient_ids: list[int] = Field(min_length=1, max_length=1000)
+    product_id: int | None = None
 
 
 class DeliveryIn(Form):

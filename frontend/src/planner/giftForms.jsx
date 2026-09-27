@@ -10,7 +10,7 @@ import { Field, Modal, NumberInput, toInt } from "./ui.jsx";
 export const METHODS = { venue: "婚禮領取", mail: "寄送", personal: "親送" }; // 2026-09-08 新人決定只用這兩種
 export const PLAN_METHODS = { tbd: "尚未決定", ...METHODS }; // 送餅安排可先不決定（帶入賓客時不預設）
 export const SIDES = { groom: "男方親友", bride: "女方親友", other: "其他／共同親友" };
-export const STATES = { confirmed: "要送", draft: "待決定", cancelled: "不送喜餅" }; // 2026-09-08 「已取消」改稱「不送喜餅」：有些親友不拿喜餅
+export const STATES = { confirmed: "要送", cancelled: "不送喜餅" }; // 2026-09-27 拿掉「待決定」；「已取消」改稱「不送喜餅」
 export const options = (map) => Object.entries(map).map(([value, label]) => ({ value, label }));
 export const today = () => new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Taipei" }).format(new Date());
 
@@ -99,27 +99,27 @@ function ProductLines({ items, onChange, products, order = false }) {
 }
 
 export function RecipientForm({ initial, products, recipients, onClose, onSaved }) {
-  const [f, set] = useForm(() => ({ request_key: crypto.randomUUID(), name: "", kind: "household", side: "other", contact_name: "", phone: "", address: "", owner: "", method: "tbd", state: products.some((p) => p.active) ? "confirmed" : "draft", due_date: "", note: "", version: 1,
+  const [f, set] = useForm(() => ({ request_key: crypto.randomUUID(), name: "", kind: "household", side: "other", contact_name: "", phone: "", address: "", owner: "", method: "tbd", state: "confirmed", due_date: "", note: "", box_count: 1, version: 1,
     ...(initial || {}), rsvp_ids: initial?.rsvps.map((r) => r.id) || [],
     items: initial?.items.map(({ product_id, quantity }) => ({ product_id, quantity })) || (products.filter((p) => p.active).length === 1 ? [{ product_id: products.find((p) => p.active).id, quantity: 1 }] : []) }));
   const duplicates = recipients.filter((r) => r.id !== initial?.id && (r.name.trim() === f.name.trim() || (f.phone.trim() && r.phone.replace(/\D/g, "") === f.phone.replace(/\D/g, ""))));
   return <GiftDialog title={initial ? "編輯" : "新增送餅對象"} onClose={onClose} onSaved={onSaved}
     submit={() => saveGiftRecipient(initial?.id, { request_key: f.request_key, version: f.version, name: f.name, kind: f.kind, side: f.side, contact_name: f.contact_name, phone: f.phone, address: f.address, owner: f.owner,
-      // 2026-09-27 拿掉「安排狀態」欄位：不送喜餅的維持；其餘有款式盒數就是要送，沒有就是待決定
-      method: f.method, state: f.state === "cancelled" ? "cancelled" : (f.items.length ? "confirmed" : "draft"), due_date: f.due_date || null, note: f.note, rsvp_ids: f.rsvp_ids, items: f.items.map((i) => ({ product_id: Number(i.product_id), quantity: toInt(i.quantity) })) })}>
+      // 2026-09-27 拿掉「安排狀態」與「待決定」：不送喜餅的維持，其餘都是要送
+      method: f.method, state: f.state === "cancelled" ? "cancelled" : "confirmed", due_date: f.due_date || null, note: f.note, box_count: toInt(f.items.length ? f.items[0].quantity : (f.box_count ?? 1)), rsvp_ids: f.rsvp_ids, items: f.items.map((i) => ({ product_id: Number(i.product_id), quantity: toInt(i.quantity) })) })}>
     <p className="helper-text">以一人、一戶或一個部門登記，不影響婚宴人數。盒數由你指定。</p>
     <div className="grid-2"><TextField label="送禮對象" value={f.name} onChange={(v) => set("name", v)} required placeholder="例如：台中的阿姨、公司行政部"/></div>
     {duplicates.length > 0 && <p className="gift-warning">名單已有相同姓名或電話：{duplicates.map((r) => r.name).join("、")}。請確認是否為同一戶，系統不會自動合併。</p>}
     <div className="grid-2"><Field label="親友方"><Select aria-label="親友方" value={f.side} onChange={(v) => set("side", v)} options={options(SIDES)}/></Field></div>
     {/* 2026-09-27 新人要求拿掉「加入一款」：一戶只選一款加盒數（舊資料若有多款，其餘照舊保留） */}
     {(() => {
-      const first = f.items[0] || { product_id: "", quantity: f.qty ?? 1 };
+      const first = f.items[0] || { product_id: "", quantity: f.box_count ?? 1 };
       const rest = f.items.slice(1);
-      const qty = f.qty ?? first.quantity ?? 1; // 盒數隨時可改（2026-09-27）：還沒選款式時先記在表單裡，選了款式就一起存
+      const qty = f.items.length ? first.quantity : (f.box_count ?? 1); // 盒數跟款式分開存（2026-09-27）：款式未定時存在這一戶的 box_count，選了款式就套到那款
       const opts = [{ value: "", label: "尚未決定" }, ...products.filter((p) => p.active || p.id === Number(first.product_id)).map((p) => ({ value: p.id, label: p.name }))];
       return <div className="grid-2">
         <Field label="款式"><Select aria-label="款式" value={first.product_id || ""} onChange={(v) => set("items", v === "" ? rest : [{ product_id: Number(v), quantity: qty }, ...rest])} options={opts}/></Field>
-        <Field label="盒數" hint={first.product_id ? undefined : "選了款式後這個盒數才會算進統計"}><NumberInput aria-label="盒數" value={qty} onChange={(v) => { set("qty", v); if (first.product_id) set("items", [{ product_id: first.product_id, quantity: v }, ...rest]); }}/></Field>
+        <Field label="盒數" hint={first.product_id ? undefined : "款式還沒決定也會記住盒數；選了款式才算進統計"}><NumberInput aria-label="盒數" value={qty} onChange={(v) => { set("box_count", v); if (first.product_id) set("items", [{ product_id: first.product_id, quantity: v }, ...rest]); }}/></Field>
       </div>;
     })()}
     <div className="grid-2"><Field label="領取方式"><Select aria-label="領取方式" value={f.method} onChange={(v) => set("method", v)} options={options(PLAN_METHODS)}/></Field></div>
