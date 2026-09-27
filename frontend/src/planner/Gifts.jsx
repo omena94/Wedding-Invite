@@ -217,7 +217,8 @@ export default function Gifts() {
   const changeMethod = async (r, choice) => {
     const none = choice === "none";
     const method = none ? (METHODS[r.method] ? r.method : "tbd") : choice;
-    const state = none ? "cancelled" : r.state === "draft" && !r.items.length ? "draft" : "confirmed";
+    // 沒有盒數的戶（例如款式刪掉後）不能直接變「要送」，先存「待決定」；有盒數才算確認要送（2026-09-27）
+    const state = none ? "cancelled" : !r.items.length ? "draft" : "confirmed";
     try {
       await saveGiftRecipient(r.id, { request_key: r.request_key, version: r.version, name: r.name, kind: r.kind, side: r.side, contact_name: r.contact_name, phone: r.phone, address: r.address, owner: r.owner,
         method, state, due_date: r.due_date || null, note: r.note, rsvp_ids: r.rsvps.map((g) => g.id), items: r.items.map((i) => ({ product_id: i.product_id, quantity: i.quantity })) });
