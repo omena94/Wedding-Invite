@@ -43,16 +43,24 @@ export default function Upload() {
 
   useEffect(() => { try { localStorage.setItem("wedding_upload_name", name); } catch { /* 存不了就算了 */ } }, [name]);
 
+  // 2026-09-27 新人要求：選好先預覽，確認後才上傳，避免傳錯（HEIC 瀏覽器畫不出來就只顯示檔名）
   const addFiles = (list) => {
     const picked = Array.from(list || []).filter((f) => f && f.size > 0);
     const next = picked.map((f) => ({
       id: `${Date.now()}-${Math.random().toString(36).slice(2)}`, file: f, progress: 0,
-      status: !OK_EXT.test(f.name) ? "error" : f.size > MAX_MB * 1024 * 1024 ? "error" : "queued",
+      preview: /\.(jpe?g|png|webp|gif)$/i.test(f.name) ? URL.createObjectURL(f) : "",
+      status: !OK_EXT.test(f.name) ? "error" : f.size > MAX_MB * 1024 * 1024 ? "error" : "picked",
       error: !OK_EXT.test(f.name) ? "不是照片檔" : f.size > MAX_MB * 1024 * 1024 ? `超過 ${MAX_MB}MB` : "",
     }));
     setItems((cur) => [...cur, ...next]);
-    queueRef.current.push(...next.filter((x) => x.status === "queued").map((x) => x.id));
     if (fileRef.current) fileRef.current.value = "";
+  };
+  // 按「確認上傳」才把預覽中的照片排進佇列
+  const confirmUpload = () => {
+    const ids = items.filter((x) => x.status === "picked").map((x) => x.id);
+    if (!ids.length) return;
+    setItems((cur) => cur.map((x) => (x.status === "picked" ? { ...x, status: "queued" } : x)));
+    queueRef.current.push(...ids);
   };
 
   // 佇列：一次一張，傳完接下一張
@@ -77,12 +85,13 @@ export default function Upload() {
   };
   const removeItem = (id) => {
     queueRef.current = queueRef.current.filter((x) => x !== id);
-    setItems((cur) => cur.filter((x) => x.id !== id));
+    setItems((cur) => { const gone = cur.find((x) => x.id === id); if (gone && gone.preview) URL.revokeObjectURL(gone.preview); return cur.filter((x) => x.id !== id); });
   };
 
   const done = items.filter((x) => x.status === "done").length;
   const pending = items.filter((x) => x.status === "queued" || x.status === "uploading").length;
   const failed = items.filter((x) => x.status === "error").length;
+  const picked = items.filter((x) => x.status === "picked");
   const open = !!(stage && (stage.guest_upload_open || stage.preview));
 
   return (
@@ -114,17 +123,33 @@ export default function Upload() {
             <button type="button" className="btn-submit up-pick" onClick={() => fileRef.current?.click()}>
               <CloudUpload size={22} /> 選照片上傳
             </button>
-            <p className="helper-text" style={{ textAlign: "center", marginTop: 10 }}>可以一次選很多張，會照原檔上傳、不壓縮；每張最多 {MAX_MB}MB。傳完可以再選。</p>
+            <p className="helper-text" style={{ textAlign: "center", marginTop: 10 }}>可以一次選很多張，選好會先讓你看一遍，按「確認上傳」才會送出；照原檔上傳、不壓縮，每張最多 {MAX_MB}MB。</p>
           </section>
 
-          {items.length > 0 && (
+          {picked.length > 0 && (
+            <section className="section-card">
+              <div className="up-summary"><span>選了 {picked.length} 張，確認一下再上傳</span></div>
+              <div className="up-preview-grid">
+                {picked.map((x) => (
+                  <div key={x.id} className="up-preview">
+                    {x.preview ? <img src={x.preview} alt={x.file.name} /> : <div className="up-preview-none"><Camera size={20} /><small>{x.file.name}</small></div>}
+                    <button type="button" className="up-preview-x" onClick={() => removeItem(x.id)} aria-label={`不要傳 ${x.file.name}`}><X size={14} /></button>
+                  </div>
+                ))}
+              </div>
+              <button type="button" className="btn-submit up-confirm" onClick={confirmUpload}><CloudUpload size={20} /> 確認上傳這 {picked.length} 張</button>
+              <p className="helper-text" style={{ textAlign: "center", marginTop: 8 }}>傳錯了？按照片右上角的 × 拿掉，或再按上面「選照片上傳」補選。</p>
+            </section>
+          )}
+
+          {items.some((x) => x.status !== "picked") && (
             <section className="section-card">
               <div className="up-summary">
                 {pending > 0 ? <span>上傳中… 還有 {pending} 張</span> : <span><Check size={16} /> 已收到 {done} 張，謝謝你！</span>}
                 {failed > 0 && <span className="up-failed">{failed} 張失敗</span>}
               </div>
               <ul className="up-list">
-                {items.map((x) => (
+                {items.filter((x) => x.status !== "picked").map((x) => (
                   <li key={x.id} className={`up-item ${x.status}`}>
                     <div className="up-item-main">
                       <span className="up-item-name">{x.file.name}</span>

@@ -1378,3 +1378,10 @@ tbody tr:last-child td { border-bottom: none; }
 .gp-lightbox { position: fixed; inset: 0; z-index: 900; background: rgba(30, 20, 12, .92); display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; cursor: zoom-out; }
 .gp-lightbox img { max-width: 100%; max-height: 85vh; object-fit: contain; border-radius: 8px; }
 .gp-lightbox-cap { color: #fff; font-size: 13px; margin-top: 10px; text-align: center; }
+/* 上傳前預覽（2026-09-27） */
+.up-preview-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 4px 0 12px; }
+.up-preview { position: relative; aspect-ratio: 1; border-radius: 12px; overflow: hidden; background: #efe8df; border: 1px solid var(--border-soft); }
+.up-preview img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.up-preview-none { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; height: 100%; color: var(--text-muted); font-size: 10px; padding: 6px; word-break: break-all; text-align: center; }
+.up-preview-x { position: absolute; top: 6px; right: 6px; width: 28px; height: 28px; border-radius: 50%; border: none; background: rgba(61, 45, 32, .75); color: #fff; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
+.up-confirm { display: flex; align-items: center; justify-content: center; gap: 8px; }
