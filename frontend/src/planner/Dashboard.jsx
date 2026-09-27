@@ -1,10 +1,9 @@
 // 總覽：倒數、合約與付款、待辦、賓客摘要、目前階段（近期付款與廠商面板已於 2026-09-08 移除；2026-09-10 待辦不再顯示廠商名）
 import { Link } from "react-router-dom";
-import { CalendarClock, CalendarDays, Hourglass, Users, Utensils, Wallet, Settings as SettingsIcon } from "lucide-react";
+import { CalendarClock, CalendarDays, Hourglass, Users, Wallet, Settings as SettingsIcon } from "lucide-react";
 import { fetchDashboard, fetchStats } from "../api.js";
 import { WEDDING_DATE, daysUntil, fmtDate, fmtDateTime, money } from "../constants.js";
 
-const CHILD_MODE_LABEL = { free: "免費", half: "半價", full: "全價", custom: "自訂" };
 import { ErrorBox, Loading, PageHead, useLoader } from "./ui.jsx";
 
 export default function Dashboard() {
@@ -32,20 +31,7 @@ export default function Dashboard() {
         <Stat icon={<CalendarClock size={20} />} value={money(b.unpaid_total)} label="合約尚欠（含未排分期）" />
       </div>
 
-      {data.banquet && (() => {
-        const b = data.banquet;
-        const cc = b.estimate.child_counts;
-        return (
-          <div className="stats-grid" style={{ gridTemplateColumns: "repeat(3, 1fr)" }}>
-            <Stat icon={<Utensils size={20} />} value={money(b.estimate.total)}
-              label={`婚宴預估 · 大人 ${b.counts.adults} 位${b.counts.veg_adults ? `（素食 ${b.counts.veg_adults}）` : ""}、小孩 ${b.counts.children} 位`} />
-            <Stat icon={<Utensils size={20} />} value={`${cc.free} / ${cc.half} / ${cc.full}`}
-              label={`小孩 免費 / 半價 / 全價（依身高 ${b.params.child_free_below}、${b.params.child_half_below} cm）`} />
-            <Stat icon={<Utensils size={20} />} value={cc.unknown ? money(b.scenarios.full) : money(b.estimate.total)}
-              label={cc.unknown ? `未填身高 ${cc.unknown} 位（現在當${CHILD_MODE_LABEL[b.params.child_mode]}）· 若都全價` : "小孩身高都已填"} />
-          </div>
-        );
-      })()}
+      {/* 2026-09-27 新人要求拿掉婚宴預估、小孩免費／半價／全價那一列（花費頁的婚宴面板還有） */}
 
       <div className="pl-grid-2">
         <div className="panel">

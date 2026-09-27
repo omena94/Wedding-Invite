@@ -1341,3 +1341,10 @@ tbody tr:last-child td { border-bottom: none; }
 .tc-save { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; margin-top: 4px; }
 .tc-save-btn { display: inline-flex; align-items: center; gap: 6px; min-height: 42px; padding: 8px 16px; border-radius: 999px; border: 1.5px solid var(--milk-tea-300); background: #fff; color: var(--milk-tea-900); font: inherit; font-size: 14px; cursor: pointer; }
 .tc-save-btn:disabled { opacity: .6; cursor: default; }
+
+/* 設定頁：權限一覽表（2026-09-27） */
+.perm-table th:nth-child(n+2), .perm-table td.perm-cell { text-align: center; width: 84px; white-space: nowrap; }
+.perm-section td { background: var(--bg-card-subtle); font-weight: 600; color: var(--milk-tea-900); font-size: 13px; }
+.perm-yes { color: #5f7a63; font-weight: 600; }
+.perm-no { color: var(--text-muted); }
+.perm-part { color: #895a20; font-size: 12.5px; }

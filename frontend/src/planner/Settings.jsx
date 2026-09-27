@@ -12,6 +12,23 @@ const INFO_FIELDS = [
   { key: "info_notes", label: "其他提醒", rows: 4, hint: "禮金、小孩、攝影、婚禮遊戲…" },
 ];
 
+// 誰能做什麼（跟後端的權限設定對應；改了後端記得一起改這張表）
+const PERMISSIONS = [
+  { section: "賓客頁面（不用登入）" },
+  { name: "首頁、婚禮資訊、第一階段出席回覆", couple: true, helper: true, guest: true },
+  { name: "第二階段餐點確認", couple: true, helper: true, guest: "開放後", note: "設定頁的「第二階段開放時間」" },
+  { name: "桌次查詢與座位地圖", couple: true, helper: true, guest: "開放後", note: "設定頁的「桌次查詢」開關；用電話或 Email 查才看得到當天的話" },
+  { name: "婚紗照分享頁", couple: true, helper: true, guest: "開放後", note: "設定頁的「婚紗照」開關；未開放時登入者可預覽" },
+  { section: "後台" },
+  { name: "賓客名單：看名單、統計、編輯與刪除賓客、匯出 Excel", couple: true, helper: true, guest: false },
+  { name: "賓客名單：手動新增賓客、群發 Email", couple: true, helper: false, guest: false },
+  { name: "座位圖：看正式廳的座位、預覽賓客畫面（帶位用）", couple: true, helper: true, guest: false, note: "幫手是唯讀，看不到底圖與當天的話" },
+  { name: "座位圖：擺桌椅、安排座位、廳設定", couple: true, helper: false, guest: false },
+  { name: "喜餅：看送餅名單、勾簽收確認（分批、代領）", couple: true, helper: true, guest: false },
+  { name: "喜餅：帶入賓客、編輯送餅對象、廠商、款式、訂購與費用、匯出", couple: true, helper: false, guest: false },
+  { name: "總覽、花費、行事曆、筆記、活動環節、文件庫、照片、設定", couple: true, helper: false, guest: false },
+];
+
 export default function SettingsPage() {
   const { data, loading, error, setData } = useLoader(fetchPlannerSettings, []);
   const [values, setValues] = useState(null);
@@ -101,16 +118,20 @@ export default function SettingsPage() {
         ))}
       </div>
 
-      {/* 密碼說明 */}
+      {/* 權限一覽（2026-09-27 新人要求有地方看誰能做什麼）：對照後端的 CoupleRequired／AdminRequired 與賓客頁開關 */}
       <div className="panel">
-        <div className="panel-head"><div className="panel-title"><KeyRound size={18} /> 密碼與角色</div></div>
-        <div style={{ fontSize: 13.5, lineHeight: 1.8 }}>
-          <p>密碼不在網頁上改，而是在伺服器的 <code>backend/.env</code>：</p>
-          <ul style={{ paddingLeft: 20 }}>
-            <li><code>ADMIN_PASSWORD</code>：新人密碼，看得到全部。</li>
-            <li><code>HELPER_PASSWORD</code>：幫手密碼，給招待或伴郎伴娘，登入後只有「賓客」頁面，看不到花費、合約與設定。留空 = 不啟用。</li>
-          </ul>
-          <p className="muted-cell">改完要重啟後端（<code>sudo systemctl restart wedding</code>），步驟在 部署說明.md。</p>
+        <div className="panel-head"><div className="panel-title"><KeyRound size={18} /> 權限一覽</div><span className="helper-text">新人＝用新人密碼登入；幫手＝用幫手密碼登入（招待、伴郎伴娘）；賓客＝不用登入</span></div>
+        <div className="table-wrap"><table className="perm-table">
+          <thead><tr><th>功能</th><th>新人</th><th>幫手</th><th>賓客</th></tr></thead>
+          <tbody>
+            {PERMISSIONS.map((row) => (
+              row.section ? <tr key={row.section} className="perm-section"><td colSpan={4}>{row.section}</td></tr>
+              : <tr key={row.name}><td>{row.name}{row.note && <div className="muted-cell" style={{ fontSize: 11.5 }}>{row.note}</div>}</td>{[row.couple, row.helper, row.guest].map((v, i) => <td key={i} className="perm-cell">{v === true ? <span className="perm-yes">可以</span> : v === false ? <span className="perm-no">—</span> : <span className="perm-part">{v}</span>}</td>)}</tr>
+            ))}
+          </tbody>
+        </table></div>
+        <div style={{ fontSize: 13.5, lineHeight: 1.8, marginTop: 12 }}>
+          <p>密碼不在網頁上改，而是在伺服器的 <code>backend/.env</code>：<code>ADMIN_PASSWORD</code> 是新人密碼、<code>HELPER_PASSWORD</code> 是幫手密碼（留空 = 不啟用幫手）。改完要重啟後端（<code>sudo systemctl restart wedding</code>），步驟在 部署說明.md。</p>
         </div>
       </div>
     </div>
