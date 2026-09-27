@@ -113,12 +113,13 @@ export function RecipientForm({ initial, products, recipients, onClose, onSaved 
     <div className="grid-2"><Field label="親友方"><Select aria-label="親友方" value={f.side} onChange={(v) => set("side", v)} options={options(SIDES)}/></Field></div>
     {/* 2026-09-27 新人要求拿掉「加入一款」：一戶只選一款加盒數（舊資料若有多款，其餘照舊保留） */}
     {(() => {
-      const first = f.items[0] || { product_id: "", quantity: 1 };
+      const first = f.items[0] || { product_id: "", quantity: f.qty ?? 1 };
       const rest = f.items.slice(1);
+      const qty = f.qty ?? first.quantity ?? 1; // 盒數隨時可改（2026-09-27）：還沒選款式時先記在表單裡，選了款式就一起存
       const opts = [{ value: "", label: "尚未決定" }, ...products.filter((p) => p.active || p.id === Number(first.product_id)).map((p) => ({ value: p.id, label: p.name }))];
       return <div className="grid-2">
-        <Field label="款式"><Select aria-label="款式" value={first.product_id || ""} onChange={(v) => set("items", v === "" ? rest : [{ product_id: Number(v), quantity: first.quantity || 1 }, ...rest])} options={opts}/></Field>
-        <Field label="盒數"><NumberInput aria-label="盒數" value={first.quantity} onChange={(v) => set("items", first.product_id ? [{ product_id: first.product_id, quantity: v }, ...rest] : rest)}/></Field>
+        <Field label="款式"><Select aria-label="款式" value={first.product_id || ""} onChange={(v) => set("items", v === "" ? rest : [{ product_id: Number(v), quantity: qty }, ...rest])} options={opts}/></Field>
+        <Field label="盒數" hint={first.product_id ? undefined : "選了款式後這個盒數才會算進統計"}><NumberInput aria-label="盒數" value={qty} onChange={(v) => { set("qty", v); if (first.product_id) set("items", [{ product_id: first.product_id, quantity: v }, ...rest]); }}/></Field>
       </div>;
     })()}
     <div className="grid-2"><Field label="領取方式"><Select aria-label="領取方式" value={f.method} onChange={(v) => set("method", v)} options={options(PLAN_METHODS)}/></Field></div>
