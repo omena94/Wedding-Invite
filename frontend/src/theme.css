@@ -965,6 +965,9 @@ tbody tr:last-child td { border-bottom: none; }
 .gift-warning { color: #895a20; font-size: 13px; background: #fcf4e7; padding: 8px 10px; border-radius: 8px; }
 .gift-error { color: #9e4840; background: #fbefed; padding: 12px; border-radius: 10px; }
 .gift-cancelled { opacity: .65; }
+/* 送餅名單「不送喜餅」的列：整列半透明會變成獨立圖層，領取方式的下拉選單被下面幾列蓋住（2026-09-27）。改成只淡化列裡的內容，下拉不淡 */
+.gift-table tr.gift-cancelled { opacity: 1; }
+.gift-table tr.gift-cancelled td > *:not(.ui-select) { opacity: .65; }
 /* 送餅名單清單版：手機不硬擠欄位，改由 table-wrap 橫向捲動 */
 .gift-table { min-width: 940px; }
 .gift-table td, .gift-table th { vertical-align: top; white-space: nowrap; }
