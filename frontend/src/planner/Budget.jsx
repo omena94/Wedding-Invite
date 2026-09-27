@@ -41,8 +41,8 @@ export default function Budget() {
 
   const totals = useMemo(() => {
     // 2026-09-27 新人要求整頁都用細項加總：每筆花費的合約、未付都以底下的分期為準（見 itemsOf）
-    const t = { items: 0, paid: 0, unpaid: 0 };
-    (data || []).forEach((e) => { const v = itemsOf(e); t.items += v.total; t.paid += e.paid_total; t.unpaid += v.unpaid; });
+    const t = { items: 0, paid: 0, unpaid: 0, projected: 0 };
+    (data || []).forEach((e) => { const v = itemsOf(e); t.items += v.total; t.paid += e.paid_total; t.unpaid += v.unpaid; t.projected += projectedOf(e); });
     return t;
   }, [data]);
 
@@ -63,6 +63,8 @@ export default function Budget() {
         actions={<button className="btn btn-primary" onClick={() => setModal({ type: "expense" })}><Plus size={15} /> 新增花費</button>} />
 
       <div className="stats-grid">
+        {/* 2026-09-27 新人要求多一個「總計要花多少」：每筆取分期加總與合約金額（婚宴＝預估）較大者 */}
+        <Card label="預計總花費" onClick={() => setDetail("projected")} value={money(totals.projected)} sub="含婚宴預估；每筆取分期加總與合約金額較大者" />
         <Card label="實際合計" onClick={() => setDetail("contract")} value={money(totals.items)} sub="所有分期細項（已付＋未付）加總" />
         <Card label="已付" onClick={() => setDetail("paid")} value={money(totals.paid)} bar={totals.items ? Math.round((totals.paid / totals.items) * 100) : 0} />
         <Card label="尚欠" value={money(totals.unpaid)} sub="未付分期加總" onClick={() => setDetail("unpaid")} />
@@ -167,8 +169,14 @@ export function itemsOf(e) {
   return { total, unpaid: ps.filter((p) => !p.paid_date).reduce((a, p) => a + (p.amount || 0), 0), byItems: true };
 }
 
+// 這筆最後大概要花多少：分期加總與合約金額（未簽約用已付＋已排、婚宴用預估或簽約金額）取大者
+export function projectedOf(e) {
+  return Math.max(itemsOf(e).total || 0, e.effective_contract ?? e.contract_amount ?? 0);
+}
+
 // 統計卡明細（2026-09-08 新人要求）：點卡片列出是哪些項目加出來的
 const DETAIL = {
+  projected: { title: "預計總花費明細", rows: (list) => list.filter((e) => projectedOf(e) > 0).map((e) => { const it = itemsOf(e); const c = e.effective_contract ?? e.contract_amount ?? 0; return [e.title, it.byItems && it.total >= c ? `${e.payments.length} 期分期加總` : e.banquet ? "婚宴預估／簽約金額（分期還沒加滿）" : e.unsigned ? "未簽約，以已付＋已排計" : "合約金額（分期還沒加滿）", projectedOf(e)]; }) },
   contract: { title: "實際合計明細（分期細項）", rows: (list) => list.flatMap((e) => (e.payments || []).length ? e.payments.map((p) => [e.title, `${p.title} · ${p.paid_date ? `已付 ${fmtDate(p.paid_date)}` : p.due_date ? `未付，應付 ${fmtDate(p.due_date)}` : "未付"}`, p.amount]) : ((e.effective_contract ?? e.contract_amount) > 0 ? [[e.title, "還沒加分期，依合約金額算", e.effective_contract ?? e.contract_amount]] : [])) },
   paid: { title: "已付明細", rows: (list) => list.flatMap((e) => e.payments.filter((p) => p.paid_date).map((p) => [e.title, `${p.title} · ${fmtDate(p.paid_date)}${p.method ? ` · ${p.method}` : ""}`, p.amount])) },
   unpaid: { title: "尚欠明細（未付分期）", rows: (list) => list.flatMap((e) => (e.payments || []).length ? e.payments.filter((p) => !p.paid_date).map((p) => [e.title, `${p.title}${p.due_date ? ` · 應付 ${fmtDate(p.due_date)}` : ""}`, p.amount]) : (e.unpaid_total > 0 ? [[e.title, "還沒加分期，依合約金額算", e.unpaid_total]] : [])) },
