@@ -110,8 +110,16 @@ export function RecipientForm({ initial, products, recipients, onClose, onSaved 
     <div className="grid-2"><TextField label="送禮對象" value={f.name} onChange={(v) => set("name", v)} required placeholder="例如：台中的阿姨、公司行政部"/></div>
     {duplicates.length > 0 && <p className="gift-warning">名單已有相同姓名或電話：{duplicates.map((r) => r.name).join("、")}。請確認是否為同一戶，系統不會自動合併。</p>}
     <div className="grid-2"><Field label="親友方"><Select aria-label="親友方" value={f.side} onChange={(v) => set("side", v)} options={options(SIDES)}/></Field></div>
-    <ProductLines products={products} items={f.items} onChange={(v) => set("items", v)}/>
-    {!products.length && <p className="gift-warning">尚無喜餅款式，可先儲存為「待決定」，再到訂購分頁新增款式。</p>}
+    {/* 2026-09-27 新人要求拿掉「加入一款」：一戶只選一款加盒數（舊資料若有多款，其餘照舊保留） */}
+    {(() => {
+      const first = f.items[0] || { product_id: "", quantity: 1 };
+      const rest = f.items.slice(1);
+      const opts = [{ value: "", label: "尚未決定" }, ...products.filter((p) => p.active || p.id === Number(first.product_id)).map((p) => ({ value: p.id, label: p.name }))];
+      return <div className="grid-2">
+        <Field label="款式"><Select aria-label="款式" value={first.product_id || ""} onChange={(v) => set("items", v === "" ? rest : [{ product_id: Number(v), quantity: first.quantity || 1 }, ...rest])} options={opts}/></Field>
+        <Field label="盒數"><NumberInput aria-label="盒數" value={first.quantity} onChange={(v) => set("items", first.product_id ? [{ product_id: first.product_id, quantity: v }, ...rest] : rest)}/></Field>
+      </div>;
+    })()}
     <div className="grid-2"><Field label="領取方式"><Select aria-label="領取方式" value={f.method} onChange={(v) => set("method", v)} options={options(PLAN_METHODS)}/></Field></div>
     <div className="grid-2"><TextField label="聯絡／收件人" value={f.contact_name} onChange={(v) => set("contact_name", v)}/><TextField label="電話" value={f.phone} onChange={(v) => set("phone", v)}/></div>
     <TextField label="收件地址" value={f.address} onChange={(v) => set("address", v)} placeholder="寄送可稍後補，寄出前需填妥"/>
