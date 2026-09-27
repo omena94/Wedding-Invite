@@ -339,6 +339,7 @@ export default function SeatViewer({ layout, names, mineIds, fullscreen = false,
     const o = byId[m.oid];
     setFocus({ oid: m.oid, idx: m.idx });
     if (o) animateTo(boxFor([o], 60), 700);
+    setQuery(""); // 2026-09-27 點了人就清空搜尋框，可以直接再找下一個（找到的人會留在畫面上並列出同桌）
   };
 
   const seatClass = useCallback((o, i) => {
