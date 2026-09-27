@@ -11,7 +11,7 @@ import { resolve } from "path";
 //   seat.html    → 婚禮當天查桌次
 //   photos.html  → 婚紗照分享
 //   planner.html → 籌備後台（/planner、/planner/guests、/planner/vendors…）
-const PAGES = ["rsvp", "details", "info", "seat", "photos"];
+const PAGES = ["rsvp", "details", "info", "seat", "photos", "upload"]; // upload：婚禮當天賓客上傳照片（2026-09-27）
 
 // 開發模式（npm run dev）也要能用乾淨網址：/rsvp → rsvp.html、/planner/* → planner.html
 function cleanUrls() {

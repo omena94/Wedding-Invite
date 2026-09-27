@@ -1,7 +1,7 @@
 """FastAPI 進入點：同一個 port 同時提供 API 與 React 前端。
 
 網址分兩區：
-  賓客（公開）  /  /rsvp  /details  /info  /seat  /photos
+  賓客（公開）  /  /rsvp  /details  /info  /seat  /photos  /upload
   新人（登入）  /planner/...（單一 React 應用，前端自己處理子路由）
 """
 import logging
@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .config import FRONTEND_DIST, settings
 from .database import init_db
-from .routers import admin, gifts, photos, planner, public, rsvp, seating
+from .routers import admin, gifts, photos, planner, public, rsvp, seating, guest_photos
 
 logging.basicConfig(level=logging.INFO)
 
@@ -35,6 +35,7 @@ app.include_router(planner.router)
 app.include_router(seating.router)
 app.include_router(photos.router)
 app.include_router(gifts.router)
+app.include_router(guest_photos.router)
 
 
 @app.get("/api/health")

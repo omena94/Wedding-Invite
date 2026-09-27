@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Heart, Home, MapPin, Armchair, CalendarPlus, Check, Utensils, Images } from 'lucide-react';
+import { Home, MapPin, Armchair, CalendarPlus, Check, Utensils, Images, Camera } from 'lucide-react';
 import { VENUE } from './EventDetails.jsx';
 
 // brush：中文標題與副標改用辰宇落雁體（2026-09-11 新人指定餐點確認頁用；英文與按鈕不變）
@@ -7,7 +7,7 @@ export function GuestHeader({title, subtitle, english='OUR WEDDING · 2027.03.13
   return <header className={`guest-header${brush?' guest-header-brush':''}`}><a href="/" className="guest-brand">Alan <span>&</span> Omena</a><p className="guest-eyebrow">{english}</p><h1>{title}</h1>{subtitle&&<p>{subtitle}</p>}</header>;
 }
 export function GuestNav() {
-  return <nav className="guest-nav" aria-label="婚禮導覽">{[['/','首頁',Home],['/rsvp','出席回覆',Heart],['/details','餐點確認',Utensils],['/seat','我的座位',Armchair],['/photos','婚紗照',Images]].map(([href,label,Icon])=><a key={href} href={href} aria-current={location.pathname===href?'page':undefined}><Icon size={19}/><span>{label}</span></a>)}</nav>;
+  return <nav className="guest-nav" aria-label="婚禮導覽">{[['/','首頁',Home],['/details','餐點確認',Utensils],['/seat','我的座位',Armchair],['/upload','當天照片',Camera],['/photos','婚紗照',Images]].map(([href,label,Icon])=><a key={href} href={href} aria-current={location.pathname===href?'page':undefined}><Icon size={19}/><span>{label}</span></a>)}</nav>;
 }
 export function LoadError({error,retry}) { return <div className="guest-error" role="alert"><p>{error?.message||error||'資料暫時無法讀取'}</p><button type="button" className="btn" onClick={retry}>重新讀取</button></div>; }
 export function useGuestLoad(loader) {

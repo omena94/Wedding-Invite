@@ -53,8 +53,9 @@ BANQUET_DEFAULTS = {
 SEATING_KEYS = ("seating_canvas_w", "seating_canvas_h", "seating_clearance")
 # 群發 Email 的草稿（2026-09-11 新人要求改過的內容要留著）：主旨、內文 HTML、寄送對象、測試信箱
 BROADCAST_KEYS = ("broadcast_subject", "broadcast_body", "broadcast_target", "broadcast_test_to")
+GUEST_UPLOAD_KEY = "guest_upload_open"  # 2026-09-27 婚禮當天賓客上傳照片（/upload）
 PERMISSION_KEY = "role_permissions"  # 2026-09-27 各角色能用的功能（JSON），見 permissions.py
-ALL_KEYS = (PHASE2_KEY, SEAT_KEY, PHOTOS_KEY, *INFO_KEYS, *BANQUET_KEYS, *SEATING_KEYS, *BROADCAST_KEYS, PERMISSION_KEY)
+ALL_KEYS = (PHASE2_KEY, SEAT_KEY, PHOTOS_KEY, GUEST_UPLOAD_KEY, *INFO_KEYS, *BANQUET_KEYS, *SEATING_KEYS, *BROADCAST_KEYS, PERMISSION_KEY)
 
 
 def get_setting(db: Session, key: str) -> str:
@@ -229,6 +230,7 @@ def public_stage(db: Session, preview: bool = False) -> dict:
         "phase2_open_at": dt.astimezone(TAIPEI).isoformat() if dt else "",
         "seat_open": is_on(db, SEAT_KEY),
         "photos_open": is_on(db, PHOTOS_KEY),
+        "guest_upload_open": is_on(db, GUEST_UPLOAD_KEY),
         # 第二階段表單提示用：飯店依身高計費的門檻
         "child_free_below": bp["child_free_below"],
         "child_half_below": bp["child_half_below"],

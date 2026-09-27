@@ -33,6 +33,7 @@ PERMISSIONS = [
     ("program", "活動環節"),
     ("files", "文件庫"),
     ("photos", "照片"),
+    ("guest_photos", "當天照片（賓客上傳的原檔：看、下載、刪除、開關）"),
     ("settings", "設定（含這張權限表）"),
 ]
 ALL = [k for k, _ in PERMISSIONS]
@@ -55,7 +56,12 @@ def load_permissions(db: Session) -> dict[str, list[str]]:
             for role in ("couple", "helper"):
                 if isinstance(saved.get(role), list):
                     data[role] = [k for k in saved[role] if k in ALL]
-        except (ValueError, AttributeError):
+            # 存檔之後才新增的功能鑰匙，預設給新人（不然新功能上線新人自己會看不到）
+            known = set(saved.get("known") or (list(saved.get("couple") or []) + list(saved.get("helper") or [])))
+            for k in ALL:
+                if k not in known and k not in data["couple"]:
+                    data["couple"].append(k)
+        except (ValueError, AttributeError, TypeError):
             pass
     for k in COUPLE_LOCKED:
         if k not in data["couple"]:

@@ -222,6 +222,18 @@ export const deleteGame = (id) => request(`${P}/program/games/${id}`, { method: 
 // ===== 座位圖 =====
 // 座位圖分「廳」（2026-09-10）：hall 是廳的 id，不帶就是「正式使用」的那一廳
 const SE = `${P}/seating`;
+// 當天照片（賓客上傳）：後台看、刪、下載（2026-09-27）
+export const fetchGuestPhotos = () => request("/api/planner/guest-photos", { auth: true });
+export const deleteGuestPhoto = (id) => request(`/api/planner/guest-photos/${id}`, { method: "DELETE", auth: true });
+export const guestPhotoThumbUrl = (id) => `/api/planner/guest-photos/${id}/thumb`;
+export const guestPhotoFileUrl = (id) => `/api/planner/guest-photos/${id}/file`;
+export async function downloadGuestPhotosZip() {
+  const res = await fetch("/api/planner/guest-photos/archive.zip", { headers: { Authorization: `Bearer ${getToken()}` } });
+  if (!res.ok) throw new Error(res.status === 404 ? "還沒有照片" : "打包失敗");
+  const url = URL.createObjectURL(await res.blob());
+  const a = document.createElement("a"); a.href = url; a.download = "wedding-day-photos.zip"; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
 // 登入後拿自己的角色與能用的功能鑰匙（2026-09-27 權限改由設定頁調）
 export const fetchMe = () => request("/api/admin/me", { auth: true });
 export const fetchSeating = (readonly = false, hall = null) => request(`${readonly ? "/api/admin/seating" : SE}${qs({ hall })}`, { auth: true });

@@ -30,6 +30,7 @@ const PERM_ROWS = [
   ["program", "活動環節"],
   ["files", "文件庫"],
   ["photos", "照片"],
+  ["guest_photos", "當天照片（賓客上傳的原檔：看、下載、刪除、開關）"],
   ["settings", "設定（含這張權限表）"],
 ];
 const DEFAULT_PERMS = { couple: PERM_ROWS.map(([k]) => k), helper: ["guests_view", "guests_edit", "seating_view", "gifts_view", "gifts_pickup"] };
@@ -108,6 +109,8 @@ export default function SettingsPage() {
         <div className="pl-switch-list">
           <Switch label="婚禮當天桌次查詢（/seat）" desc="開啟後賓客輸入姓名、電話或 Email 就能看到自己的桌子與座位；座位在「座位圖」安排" value={values.seat_open === "1"} busy={!!busy}
             onChange={(v) => save({ seat_open: v ? "1" : "" }, "seat")} />
+          <Switch label="婚禮當天照片上傳（/upload）" desc="開啟後賓客不用登入就能把當天拍的照片（原檔）傳給你們；在後台「當天照片」看與下載" value={values.guest_upload_open === "1"} busy={!!busy}
+            onChange={(v) => save({ guest_upload_open: v ? "1" : "0" }, "upload")} />
           <Switch label="婚紗照分享頁（/photos）" desc="只會顯示「文件庫」裡標記為公開的照片" value={values.photos_open === "1"} busy={!!busy}
             onChange={(v) => save({ photos_open: v ? "1" : "" }, "photos")} />
         </div>
@@ -139,6 +142,7 @@ export default function SettingsPage() {
             <tr><td>首頁、婚禮資訊、第一階段出席回覆</td><td className="perm-cell"><span className="perm-yes">可以</span></td><td className="perm-cell"><span className="perm-yes">可以</span></td><td className="perm-cell"><span className="perm-yes">可以</span></td></tr>
             <tr><td>第二階段餐點確認<div className="muted-cell" style={{ fontSize: 11.5 }}>由上方「第二階段開放時間」決定</div></td><td className="perm-cell"><span className="perm-yes">可以</span></td><td className="perm-cell"><span className="perm-yes">可以</span></td><td className="perm-cell"><span className={`pill ${stage.phase2_open ? "pill-yes" : "pill-no"}`}>{stage.phase2_open ? "開放中" : "未開放"}</span></td></tr>
             <tr><td>桌次查詢與座位地圖<div className="muted-cell" style={{ fontSize: 11.5 }}>用電話或 Email 查才看得到當天的話</div></td><td className="perm-cell"><span className="perm-yes">可以</span></td><td className="perm-cell"><span className="perm-yes">可以</span></td><td className="perm-cell"><Checkbox checked={values.seat_open === "1"} disabled={!!busy} onChange={(v) => save({ seat_open: v ? "1" : "0" }, "seat")}>{values.seat_open === "1" ? "開放中" : "關閉"}</Checkbox></td></tr>
+            <tr><td>當天照片上傳（/upload）<div className="muted-cell" style={{ fontSize: 11.5 }}>賓客傳原檔給你們，看不到彼此的照片</div></td><td className="perm-cell"><span className="perm-yes">可以</span></td><td className="perm-cell"><span className="perm-yes">可以</span></td><td className="perm-cell"><Checkbox checked={values.guest_upload_open === "1"} disabled={!!busy} onChange={(v) => save({ guest_upload_open: v ? "1" : "0" }, "upload")}>{values.guest_upload_open === "1" ? "開放中" : "關閉"}</Checkbox></td></tr>
             <tr><td>婚紗照分享頁</td><td className="perm-cell"><span className="perm-yes">可以</span></td><td className="perm-cell"><span className="perm-yes">可以</span></td><td className="perm-cell"><Checkbox checked={values.photos_open === "1"} disabled={!!busy} onChange={(v) => save({ photos_open: v ? "1" : "0" }, "photos")}>{values.photos_open === "1" ? "開放中" : "關閉"}</Checkbox></td></tr>
             <tr className="perm-section"><td colSpan={4}>後台</td></tr>
             {PERM_ROWS.map(([key, label]) => (
@@ -154,7 +158,7 @@ export default function SettingsPage() {
           </tbody>
         </table></div>
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginTop: 12 }}>
-          <button className="btn btn-primary" disabled={!!busy || !permsDirty} onClick={() => save({ role_permissions: JSON.stringify(perms) }, "perms")}><Save size={15} /> {busy === "perms" ? "儲存中…" : "儲存權限"}</button>
+          <button className="btn btn-primary" disabled={!!busy || !permsDirty} onClick={() => save({ role_permissions: JSON.stringify({ ...perms, known: PERM_ROWS.map(([k]) => k) }) }, "perms")}><Save size={15} /> {busy === "perms" ? "儲存中…" : "儲存權限"}</button>
           <button className="btn btn-ghost" disabled={!!busy} onClick={() => setPerms({ couple: [...DEFAULT_PERMS.couple], helper: [...DEFAULT_PERMS.helper] })}>還原預設</button>
           {permsDirty && <span className="pill pill-warn">有尚未儲存的修改</span>}
           <span className="helper-text">勾好按儲存，幫手下次載入頁面就會生效；新人的「設定」拿不掉，避免把自己鎖在外面。</span>

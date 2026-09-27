@@ -56,3 +56,16 @@ def test_defaults_and_editing(setup):
     c.patch("/api/planner/settings", json={"role_permissions": "not json"}, headers=couple)
     assert c.get("/api/planner/expenses", headers=couple).status_code == 200
     assert c.get("/api/planner/expenses", headers=helper).status_code == 403
+
+
+def test_new_keys_default_to_couple(setup):
+    """存過權限表之後才新增的功能，新人預設拿得到（known 清單裡沒有的鑰匙）。"""
+    c, couple, helper = setup
+    c.patch("/api/planner/settings", json={"role_permissions": json.dumps({"couple": ["settings", "budget"], "helper": [], "known": ["settings", "budget"]})}, headers=couple)
+    perms = c.get("/api/admin/me", headers=couple).json()["permissions"]
+    assert "guest_photos" in perms and "calendar" in perms and "budget" in perms
+    assert "guest_photos" not in c.get("/api/admin/me", headers=helper).json()["permissions"]
+    # 舊格式（沒有 known）：只把沒出現在任何一欄的鑰匙給新人
+    c.patch("/api/planner/settings", json={"role_permissions": json.dumps({"couple": ["settings"], "helper": ["calendar"]})}, headers=couple)
+    perms = c.get("/api/admin/me", headers=couple).json()["permissions"]
+    assert "calendar" not in perms and "guest_photos" in perms

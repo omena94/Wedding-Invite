@@ -532,3 +532,17 @@ class GiftOrder(Base):
     history_json: Mapped[str] = mapped_column(Text, default="[]")
     version: Mapped[int] = mapped_column(Integer, default=1)
     __mapper_args__ = {"version_id_col": version}
+
+
+class GuestPhoto(Base):
+    """婚禮當天賓客上傳的照片（2026-09-27）：原檔存 upload_dir/guest/，另有縮圖；只有新人在後台看得到。"""
+    __tablename__ = "guest_photos"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    stored_name: Mapped[str] = mapped_column(String(80), unique=True)   # 磁碟上的檔名（uuid + 副檔名）
+    original_name: Mapped[str] = mapped_column(String(255))
+    size: Mapped[int] = mapped_column(Integer, default=0)
+    content_type: Mapped[str] = mapped_column(String(80), default="")
+    uploader: Mapped[str] = mapped_column(String(60), default="")      # 賓客自填的名字，可空
+    thumb_name: Mapped[str] = mapped_column(String(80), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
