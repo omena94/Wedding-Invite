@@ -17,7 +17,6 @@ import { planLabels } from "./labels.js";
 import { seatLookup } from "../api.js";
 import { bounds, seatPositions } from "./geometry.js";
 import { entrancesOf, navigationGrid, routeToSeat } from './navigation.js';
-import Select from '../components/Select.jsx';
 
 const PAD = 40;
 const MIN_ZOOM_OUT = 1.6; // 最多再縮到整張圖的 1/1.6
@@ -428,7 +427,7 @@ export default function SeatViewer({ layout, names, mineIds, fullscreen = false,
       </button>
       <p className="seatviewer-route-summary" role="status">{guideText}</p>
       <div className="seatviewer-drawer-content" hidden={!expanded && !query}>
-      {entrances.length>0 && <label className="seatviewer-entrance-select">從哪個入口出發<Select aria-label="出發入口" value={entranceId ?? entrances[0].id} options={entrances.map(o=>({value:o.id,label:o.label||'入口'}))} onChange={setEntranceId}/></label>}
+      {/* 2026-09-27 新人要求拿掉「從哪個入口出發」的下拉（只有一個大門，路線一律從第一個入口算） */}
       {route.steps.length>0&&<ol className="seatviewer-steps">{route.steps.map((s,i)=><li key={i}>{s}</li>)}</ol>}
       {searchResults}
       {!focusInfo && (
