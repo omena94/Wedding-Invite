@@ -7,24 +7,21 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Map as MapIcon } from "lucide-react";
 import SeatViewer from "./SeatViewer.jsx";
 
-// 2026-09-23 新人設計的婚禮謝卡（Canva 匯出的 PDF 轉成 SVG，放在 public/cards）：
-// 正面是 Thank you 與名字日期，點一下翻到背面，背面留白區疊上新人留給這一戶的話。字數多時字級自動縮小
+// 2026-09-23 新人設計的婚禮謝卡（Canva 匯出的 PDF 轉成 SVG，放在 public/cards）。
+// 2026-09-27 改成正面、背面上下直接排開（不用翻），怕有人不知道要點：背面留白區疊上新人留給這一戶的話，字數多時字級自動縮小
 function ThankCard({ message }) {
-  const [flipped, setFlipped] = useState(false);
   const n = message.length;
   const size = n > 260 ? "xs" : n > 170 ? "sm" : n > 100 ? "md" : "lg";
   return (
-    <div className="tc-wrap">
-      <button type="button" className={`tc-card${flipped ? " flipped" : ""}`} onClick={() => setFlipped((v) => !v)} aria-label={flipped ? "翻回正面" : "翻開卡片看留言"}>
-        <div className="tc-face tc-front">
-          <img src="/cards/thankcard-front.svg" alt="Thank you for sharing our special day. Alan & Omena" draggable="false" />
-          <span className="tc-hint">點一下翻開</span>
-        </div>
-        <div className="tc-face tc-back">
-          <img src="/cards/thankcard-back.svg" alt="" draggable="false" />
-          <div className={`tc-text tc-${size}`}>{message}</div>
-        </div>
-      </button>
+    <div className="tc-wrap tc-stack">
+      <div className="tc-heading">我有話要說</div>
+      <div className="tc-face tc-static">
+        <img src="/cards/thankcard-front.svg" alt="Thank you for sharing our special day. Alan & Omena" draggable="false" />
+      </div>
+      <div className="tc-face tc-static">
+        <img src="/cards/thankcard-back.svg" alt="" draggable="false" />
+        <div className={`tc-text tc-${size}`}>{message}</div>
+      </div>
     </div>
   );
 }

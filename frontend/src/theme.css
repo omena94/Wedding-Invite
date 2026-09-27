@@ -1328,3 +1328,8 @@ tbody tr:last-child td { border-bottom: none; }
 .gift-bulk { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 10px; padding: 10px 12px; border-radius: 12px; background: var(--milk-tea-50); font-size: 13px; }
 .gift-bulk .ui-select { width: 220px; }
 @media (max-width: 760px) { .gift-table td.gift-check-cell { display: none; } }
+
+/* 謝卡改為正面、背面上下排開（2026-09-27），不翻面 */
+.tc-stack { display: grid; gap: 14px; }
+.tc-face.tc-static { position: relative; inset: auto; aspect-ratio: 298 / 419; width: 100%; }
+.tc-heading { font-family: "Noto Serif TC", serif; font-weight: 600; font-size: 18px; letter-spacing: 2px; color: var(--milk-tea-900); text-align: center; margin-bottom: -2px; }
