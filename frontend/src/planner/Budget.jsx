@@ -40,9 +40,11 @@ export default function Budget() {
   }, [data]);
 
   const totals = useMemo(() => {
-    const t = { contract: 0, paid: 0, unpaid: 0 };
+    // 2026-09-27 新人要求「實際合計」改用細項加總：把每筆花費底下的分期（已付＋未付）全部加起來，不看合約金額
+    const t = { contract: 0, items: 0, paid: 0, unpaid: 0 };
     (data || []).forEach((e) => {
       t.contract += e.effective_contract ?? e.contract_amount; t.paid += e.paid_total; t.unpaid += e.unpaid_total;
+      t.items += (e.payments || []).reduce((a, p) => a + (p.amount || 0), 0);
     });
     return t;
   }, [data]);
@@ -64,8 +66,8 @@ export default function Budget() {
         actions={<button className="btn btn-primary" onClick={() => setModal({ type: "expense" })}><Plus size={15} /> 新增花費</button>} />
 
       <div className="stats-grid">
-        <Card label="實際合計" onClick={() => setDetail("contract")} value={money(totals.contract)} sub="含婚宴（依人數預估或簽約金額）" />
-        <Card label="已付" onClick={() => setDetail("paid")} value={money(totals.paid)} bar={totals.contract ? Math.round((totals.paid / totals.contract) * 100) : 0} />
+        <Card label="實際合計" onClick={() => setDetail("contract")} value={money(totals.items)} sub="所有分期細項（已付＋未付）加總" />
+        <Card label="已付" onClick={() => setDetail("paid")} value={money(totals.paid)} bar={totals.items ? Math.round((totals.paid / totals.items) * 100) : 0} />
         <Card label="合約尚欠" value={money(totals.unpaid)} sub="包含尚未安排分期的尾款" onClick={() => setDetail("unpaid")} />
       </div>
       {detail && <DetailModal kind={detail} expenses={data || []} onClose={() => setDetail(null)} />}
@@ -160,7 +162,7 @@ export default function Budget() {
 
 // 統計卡明細（2026-09-08 新人要求）：點卡片列出是哪些項目加出來的
 const DETAIL = {
-  contract: { title: "實際合計明細", rows: (list) => list.filter((e) => (e.effective_contract ?? e.contract_amount) > 0).map((e) => [e.title, e.unsigned ? `${e.category} · 未簽約，以已付＋已排計` : e.category, e.effective_contract ?? e.contract_amount]) },
+  contract: { title: "實際合計明細（分期細項）", rows: (list) => list.flatMap((e) => (e.payments || []).map((p) => [e.title, `${p.title} · ${p.paid_date ? `已付 ${fmtDate(p.paid_date)}` : p.due_date ? `未付，應付 ${fmtDate(p.due_date)}` : "未付"}`, p.amount])) },
   paid: { title: "已付明細", rows: (list) => list.flatMap((e) => e.payments.filter((p) => p.paid_date).map((p) => [e.title, `${p.title} · ${fmtDate(p.paid_date)}${p.method ? ` · ${p.method}` : ""}`, p.amount])) },
   unpaid: { title: "合約尚欠明細", rows: (list) => list.filter((e) => e.unpaid_total > 0).map((e) => [e.title, e.unscheduled_unpaid > 0 ? `含未排分期 ${money(e.unscheduled_unpaid)}` : "已排分期未付", e.unpaid_total]) },
 };
