@@ -29,3 +29,24 @@ def make_thumb(src: Path, dst: Path, max_px: int = THUMB_MAX) -> bool:
     except Exception as e:  # 壞檔、HEIC 等讀不了的格式
         log.warning("縮圖失敗 %s：%s", src.name, e)
         return False
+
+
+def make_thumb_bytes(data: bytes, max_px: int = THUMB_MAX) -> bytes | None:
+    """跟 make_thumb 一樣，但吃 bytes、回 JPEG bytes（照片存 S3 時用）。讀不了的格式回 None。"""
+    import io
+    try:
+        from PIL import Image, ImageOps
+    except ImportError:  # pragma: no cover
+        return None
+    try:
+        with Image.open(io.BytesIO(data)) as im:
+            im = ImageOps.exif_transpose(im)
+            im.thumbnail((max_px, max_px))
+            if im.mode not in ("RGB", "L"):
+                im = im.convert("RGB")
+            out = io.BytesIO()
+            im.save(out, "JPEG", quality=82, optimize=True)
+            return out.getvalue()
+    except Exception as e:
+        log.warning("縮圖失敗：%s", e)
+        return None

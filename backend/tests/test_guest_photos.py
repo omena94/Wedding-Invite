@@ -16,6 +16,7 @@ from app.database import Base, get_db
 from app.main import app
 from app.security import create_token
 from app.stage import set_setting
+from app import storage
 
 
 def _png():
@@ -33,8 +34,10 @@ def setup(monkeypatch, tmp_path):
     app.dependency_overrides[get_db] = lambda: db
     from app import config
     monkeypatch.setattr(config.settings, "upload_dir", str(tmp_path))
+    storage.reset_store()
     c = TestClient(app)
     yield c, db, tmp_path
+    storage.reset_store()
     app.dependency_overrides.clear()
     c.close()
     db.close()
@@ -79,3 +82,47 @@ def test_upload_gate_original_kept_and_admin_views(setup):
     assert c.delete(f"/api/planner/guest-photos/{pid}", headers=couple).status_code == 204
     assert c.get("/api/planner/guest-photos", headers=couple).json()["count"] == 1
     assert not any(p.read_bytes() == png and "IMG" in p.name for p in (tmp / "guest").iterdir())
+
+
+class _FakeS3:
+    """假的 boto3 S3 client：記在記憶體裡，驗證我們呼叫的方式對不對。"""
+    def __init__(self):
+        self.objects = {}
+    def put_object(self, Bucket, Key, Body, **kw):
+        self.objects[(Bucket, Key)] = bytes(Body)
+    def head_object(self, Bucket, Key):
+        if (Bucket, Key) not in self.objects:
+            raise Exception("404")
+    def get_object(self, Bucket, Key):
+        data = self.objects[(Bucket, Key)]
+        class Body:
+            def iter_chunks(self, n):
+                for i in range(0, len(data), n):
+                    yield data[i:i + n]
+        return {"Body": Body()}
+    def delete_object(self, Bucket, Key):
+        self.objects.pop((Bucket, Key), None)
+
+
+def test_s3_backend_used_when_configured(setup, monkeypatch):
+    c, db, tmp = setup
+    couple = {"Authorization": "Bearer " + create_token()}
+    fake = _FakeS3()
+    monkeypatch.setattr(storage.S3Store, "__init__", lambda self, bucket, region, ak, sk, prefix="": (setattr(self, "bucket", bucket), setattr(self, "prefix", prefix), setattr(self, "client", fake)) and None)
+    from app import config
+    monkeypatch.setattr(config.settings, "s3_bucket", "wedding-test-bucket")
+    storage.reset_store()
+    png = _png()
+    r = c.post("/api/guest-photos", files={"file": ("s3.png", png, "image/png")}, data={"uploader": "雲端"}, headers=couple)
+    assert r.status_code == 201, r.text
+    keys = sorted(k for (_, k) in fake.objects)
+    assert len(keys) == 2 and all(k.startswith("guest/") for k in keys) and any("thumb_" in k for k in keys)
+    assert not (tmp / "guest").exists() or not list((tmp / "guest").iterdir())  # 主機上沒有留檔
+    lst = c.get("/api/planner/guest-photos", headers=couple).json()
+    assert lst["storage"] == "s3" and lst["count"] == 1
+    pid = lst["items"][0]["id"]
+    assert c.get(f"/api/planner/guest-photos/{pid}/file", headers=couple).content == png
+    z = c.get("/api/planner/guest-photos/archive.zip", headers=couple)
+    assert zipfile.ZipFile(io.BytesIO(z.content)).read(zipfile.ZipFile(io.BytesIO(z.content)).namelist()[0]) == png
+    assert c.delete(f"/api/planner/guest-photos/{pid}", headers=couple).status_code == 204
+    assert fake.objects == {}

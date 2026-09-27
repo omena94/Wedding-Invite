@@ -34,6 +34,12 @@ class Settings(BaseSettings):
     # 上傳檔案（合約、收據、婚紗照）存放目錄。留空 = backend/uploads（不在 Git 裡）
     upload_dir: str = ""
     max_upload_mb: int = 20
+    # 當天照片存 S3（2026-09-27）：填了 s3_bucket 就用 S3，沒填就存主機的 uploads/guest/
+    s3_bucket: str = ""
+    s3_region: str = "ap-northeast-1"
+    s3_prefix: str = "guest"
+    aws_access_key_id: str = ""
+    aws_secret_access_key: str = ""
 
     @property
     def upload_path(self) -> Path:
