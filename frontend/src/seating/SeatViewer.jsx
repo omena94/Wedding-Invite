@@ -14,6 +14,7 @@ import { createPortal } from "react-dom";
 import { LocateFixed, Maximize2, Minus, Plus, Search, X } from "lucide-react";
 import { ObjectShape, nameGetter } from "./SeatingMap.jsx";
 import { planLabels } from "./labels.js";
+import { seatLookup } from "../api.js";
 import { bounds, seatPositions } from "./geometry.js";
 import { entrancesOf, navigationGrid, routeToSeat } from './navigation.js';
 import Select from '../components/Select.jsx';
@@ -333,7 +334,25 @@ export default function SeatViewer({ layout, names, mineIds, fullscreen = false,
   // 打的是電話（去掉符號後 4 碼以上的數字）就比對電話尾碼；後台預覽才有電話，賓客端只比對姓名
   const qDigits = q.replace(/\D/g, "");
   const byPhone = qDigits.length >= 4 && qDigits.length === q.replace(/[-+()]/g, "").length;
-  const matches = useMemo(() => (q ? everyone.filter((p) => norm(p.name).includes(q) || (byPhone && p.phone && p.phone.includes(qDigits))).slice(0, 30) : []), [q, qDigits, byPhone, everyone]);
+  const nameMatches = useMemo(() => (q ? everyone.filter((p) => norm(p.name).includes(q) || (byPhone && p.phone && p.phone.includes(qDigits))).slice(0, 30) : []), [q, qDigits, byPhone, everyone]);
+  // 賓客端用電話找人（2026-09-27）：地圖上沒有大家的電話（不外流），改請伺服器查那一戶坐哪，再跳過去
+  const [phoneHits, setPhoneHits] = useState({ q: "", list: [], busy: false });
+  useEffect(() => {
+    if (preview || !byPhone || qDigits.length < 9) { setPhoneHits({ q: "", list: [], busy: false }); return undefined; }
+    let alive = true;
+    setPhoneHits({ q: qDigits, list: [], busy: true });
+    const t = setTimeout(async () => {
+      try {
+        const r = await seatLookup(qDigits);
+        if (!alive) return;
+        const list = r && r.found ? (r.seats || []).map((st) => ({ oid: st.object_id, idx: st.seat_no - 1, name: st.display_name || r.name, phone: "", mine: false, label: st.table_label || "桌" })) : [];
+        setPhoneHits({ q: qDigits, list, busy: false });
+      } catch { if (alive) setPhoneHits({ q: qDigits, list: [], busy: false }); }
+    }, 350);
+    return () => { alive = false; clearTimeout(t); };
+  }, [preview, byPhone, qDigits]);
+  const matches = useMemo(() => (nameMatches.length || !phoneHits.list.length ? nameMatches : phoneHits.list), [nameMatches, phoneHits]);
+  const phoneSearching = !preview && byPhone && phoneHits.busy;
   const foundKeys = useMemo(() => new Set(matches.map((m) => `${m.oid}:${m.idx}`)), [matches]);
   const jumpTo = (m) => {
     const o = byId[m.oid];
@@ -374,7 +393,7 @@ export default function SeatViewer({ layout, names, mineIds, fullscreen = false,
   const searchResults = q ? (
     <div className="seatviewer-results">
       {matches.length === 0
-        ? <div className="seatviewer-hint">{preview ? `找不到「${query}」，這一廳還沒有安排這位賓客的座位` : `找不到「${query}」，請確認是第一階段填的名字`}</div>
+        ? <div className="seatviewer-hint">{phoneSearching ? "查詢中…" : preview ? `找不到「${query}」，這一廳還沒有安排這位賓客的座位` : byPhone ? (qDigits.length < 9 ? "請輸入完整的手機號碼" : `找不到「${query}」，請確認是第一階段填的手機號碼`) : `找不到「${query}」，請確認是第一階段填的名字`}</div>
         : (
           <>
             <div className="seatviewer-hint">找到 {matches.length} 位，點一下就跳到他的位子</div>
