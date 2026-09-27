@@ -64,7 +64,7 @@ export default function Budget() {
 
       <div className="stats-grid">
         {/* 2026-09-27 新人要求只留兩張：總應支付（每筆取分期加總與合約金額較大者，婚宴用預估）與已支付 */}
-        <Card label="總應支付金額" onClick={() => setDetail("projected")} value={money(totals.projected)} sub="含婚宴預估；每筆取分期加總與合約金額較大者" />
+        <Card label="總應支付金額" onClick={() => setDetail("projected")} value={money(totals.projected)} />
         <Card label="已支付金額" onClick={() => setDetail("paid")} value={money(totals.paid)} bar={totals.projected ? Math.round((totals.paid / totals.projected) * 100) : 0} sub={`尚欠 ${money(Math.max(0, totals.projected - totals.paid))}`} />
       </div>
       {detail && <DetailModal kind={detail} expenses={data || []} onClose={() => setDetail(null)} />}
