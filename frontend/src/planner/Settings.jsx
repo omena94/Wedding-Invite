@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { CalendarClock, Info, KeyRound, Save } from "lucide-react";
 import DateTimePicker from "../components/DateTimePicker.jsx";
-import Toggle from "../components/Toggle.jsx";
+import Toggle, { Checkbox } from "../components/Toggle.jsx";
 import { fetchPlannerSettings, savePlannerSettings } from "../api.js";
 import { fmtDateTime, isoToLocal, localToISO } from "../constants.js";
 import { ErrorBox, Field, Loading, PageHead, toastErr, toastOk, useLoader } from "./ui.jsx";
@@ -12,34 +12,45 @@ const INFO_FIELDS = [
   { key: "info_notes", label: "其他提醒", rows: 4, hint: "禮金、小孩、攝影、婚禮遊戲…" },
 ];
 
-// 誰能做什麼（跟後端的權限設定對應；改了後端記得一起改這張表）
-const PERMISSIONS = [
-  { section: "賓客頁面（不用登入）" },
-  { name: "首頁、婚禮資訊、第一階段出席回覆", couple: true, helper: true, guest: true },
-  { name: "第二階段餐點確認", couple: true, helper: true, guest: "開放後", note: "設定頁的「第二階段開放時間」" },
-  { name: "桌次查詢與座位地圖", couple: true, helper: true, guest: "開放後", note: "設定頁的「桌次查詢」開關；用電話或 Email 查才看得到當天的話" },
-  { name: "婚紗照分享頁", couple: true, helper: true, guest: "開放後", note: "設定頁的「婚紗照」開關；未開放時登入者可預覽" },
-  { section: "後台" },
-  { name: "賓客名單：看名單、統計、編輯與刪除賓客、匯出 Excel", couple: true, helper: true, guest: false },
-  { name: "賓客名單：手動新增賓客、群發 Email", couple: true, helper: false, guest: false },
-  { name: "座位圖：看正式廳的座位、預覽賓客畫面（帶位用）", couple: true, helper: true, guest: false, note: "幫手是唯讀，看不到底圖與當天的話" },
-  { name: "座位圖：擺桌椅、安排座位、廳設定", couple: true, helper: false, guest: false },
-  { name: "喜餅：看送餅名單、勾簽收確認（分批、代領）", couple: true, helper: true, guest: false },
-  { name: "喜餅：帶入賓客、編輯送餅對象、廠商、款式、訂購與費用、匯出", couple: true, helper: false, guest: false },
-  { name: "總覽、花費、行事曆、筆記、活動環節、文件庫、照片、設定", couple: true, helper: false, guest: false },
+// 功能鑰匙（跟後端 permissions.py 的 PERMISSIONS 一致；新人的「設定」拿不掉）
+const PERM_ROWS = [
+  ["guests_view", "賓客名單：看名單、統計、匯出 Excel"],
+  ["guests_edit", "賓客名單：編輯與刪除賓客"],
+  ["guests_create", "賓客名單：手動新增賓客"],
+  ["broadcast", "賓客名單：群發 Email"],
+  ["seating_view", "座位圖：看正式廳的座位、預覽賓客畫面（帶位用）"],
+  ["seating_edit", "座位圖：擺桌椅、安排座位、廳設定"],
+  ["gifts_view", "喜餅：看送餅名單"],
+  ["gifts_pickup", "喜餅：勾簽收確認（分批、代領）"],
+  ["gifts_manage", "喜餅：帶入賓客、編輯送餅對象、廠商、款式、訂購與費用、匯出"],
+  ["dashboard", "總覽"],
+  ["budget", "花費（含婚宴預估）"],
+  ["calendar", "行事曆"],
+  ["notes", "筆記"],
+  ["program", "活動環節"],
+  ["files", "文件庫"],
+  ["photos", "照片"],
+  ["settings", "設定（含這張權限表）"],
 ];
+const DEFAULT_PERMS = { couple: PERM_ROWS.map(([k]) => k), helper: ["guests_view", "guests_edit", "seating_view", "gifts_view", "gifts_pickup"] };
+const parsePerms = (raw) => {
+  try { const v = JSON.parse(raw || ""); return { couple: Array.isArray(v.couple) ? v.couple : DEFAULT_PERMS.couple, helper: Array.isArray(v.helper) ? v.helper : DEFAULT_PERMS.helper }; }
+  catch { return { ...DEFAULT_PERMS }; }
+};
 
 export default function SettingsPage() {
   const { data, loading, error, setData } = useLoader(fetchPlannerSettings, []);
   const [values, setValues] = useState(null);
   const [busy, setBusy] = useState("");
+  const [perms, setPerms] = useState(null); // 權限矩陣（新人／幫手各自的鑰匙）
 
   useEffect(() => {
-    if (data) setValues(v => v || data.values);
+    if (data) { setValues(v => v || data.values); setPerms((p) => p || parsePerms(data.values.role_permissions)); }
   }, [data]);
 
   if (error) return <ErrorBox error={error} />;
-  if (loading || !values) return <Loading />;
+  if (loading || !values || !perms) return <Loading />;
+  const permsDirty = JSON.stringify(perms) !== JSON.stringify(parsePerms(values.role_permissions));
 
   const stage = data.stage;
   const set = (k, v) => setValues((x) => ({ ...x, [k]: v }));
@@ -118,18 +129,36 @@ export default function SettingsPage() {
         ))}
       </div>
 
-      {/* 權限一覽（2026-09-27 新人要求有地方看誰能做什麼）：對照後端的 CoupleRequired／AdminRequired 與賓客頁開關 */}
+      {/* 權限（2026-09-27）：登入方式不變，但每個角色能用什麼改在這裡勾；賓客欄是各頁的開放開關 */}
       <div className="panel">
-        <div className="panel-head"><div className="panel-title"><KeyRound size={18} /> 權限一覽</div><span className="helper-text">新人＝用新人密碼登入；幫手＝用幫手密碼登入（招待、伴郎伴娘）；賓客＝不用登入</span></div>
+        <div className="panel-head"><div className="panel-title"><KeyRound size={18} /> 權限</div><span className="helper-text">新人＝新人密碼登入；幫手＝幫手密碼登入（招待、伴郎伴娘）；賓客＝不用登入</span></div>
         <div className="table-wrap"><table className="perm-table">
           <thead><tr><th>功能</th><th>新人</th><th>幫手</th><th>賓客</th></tr></thead>
           <tbody>
-            {PERMISSIONS.map((row) => (
-              row.section ? <tr key={row.section} className="perm-section"><td colSpan={4}>{row.section}</td></tr>
-              : <tr key={row.name}><td>{row.name}{row.note && <div className="muted-cell" style={{ fontSize: 11.5 }}>{row.note}</div>}</td>{[row.couple, row.helper, row.guest].map((v, i) => <td key={i} className="perm-cell">{v === true ? <span className="perm-yes">可以</span> : v === false ? <span className="perm-no">—</span> : <span className="perm-part">{v}</span>}</td>)}</tr>
+            <tr className="perm-section"><td colSpan={4}>賓客頁面（不用登入）</td></tr>
+            <tr><td>首頁、婚禮資訊、第一階段出席回覆</td><td className="perm-cell"><span className="perm-yes">可以</span></td><td className="perm-cell"><span className="perm-yes">可以</span></td><td className="perm-cell"><span className="perm-yes">可以</span></td></tr>
+            <tr><td>第二階段餐點確認<div className="muted-cell" style={{ fontSize: 11.5 }}>由上方「第二階段開放時間」決定</div></td><td className="perm-cell"><span className="perm-yes">可以</span></td><td className="perm-cell"><span className="perm-yes">可以</span></td><td className="perm-cell"><span className={`pill ${stage.phase2_open ? "pill-yes" : "pill-no"}`}>{stage.phase2_open ? "開放中" : "未開放"}</span></td></tr>
+            <tr><td>桌次查詢與座位地圖<div className="muted-cell" style={{ fontSize: 11.5 }}>用電話或 Email 查才看得到當天的話</div></td><td className="perm-cell"><span className="perm-yes">可以</span></td><td className="perm-cell"><span className="perm-yes">可以</span></td><td className="perm-cell"><Checkbox checked={values.seat_open === "1"} disabled={!!busy} onChange={(v) => save({ seat_open: v ? "1" : "0" }, "seat")}>{values.seat_open === "1" ? "開放中" : "關閉"}</Checkbox></td></tr>
+            <tr><td>婚紗照分享頁</td><td className="perm-cell"><span className="perm-yes">可以</span></td><td className="perm-cell"><span className="perm-yes">可以</span></td><td className="perm-cell"><Checkbox checked={values.photos_open === "1"} disabled={!!busy} onChange={(v) => save({ photos_open: v ? "1" : "0" }, "photos")}>{values.photos_open === "1" ? "開放中" : "關閉"}</Checkbox></td></tr>
+            <tr className="perm-section"><td colSpan={4}>後台</td></tr>
+            {PERM_ROWS.map(([key, label]) => (
+              <tr key={key}><td>{label}</td>
+                {["couple", "helper"].map((role) => {
+                  const locked = role === "couple" && key === "settings";
+                  const on = locked || perms[role].includes(key);
+                  return <td key={role} className="perm-cell"><Checkbox checked={on} disabled={locked} onChange={(v) => setPerms((p) => ({ ...p, [role]: v ? [...p[role], key] : p[role].filter((k) => k !== key) }))} /></td>;
+                })}
+                <td className="perm-cell"><span className="perm-no">—</span></td>
+              </tr>
             ))}
           </tbody>
         </table></div>
+        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginTop: 12 }}>
+          <button className="btn btn-primary" disabled={!!busy || !permsDirty} onClick={() => save({ role_permissions: JSON.stringify(perms) }, "perms")}><Save size={15} /> {busy === "perms" ? "儲存中…" : "儲存權限"}</button>
+          <button className="btn btn-ghost" disabled={!!busy} onClick={() => setPerms({ couple: [...DEFAULT_PERMS.couple], helper: [...DEFAULT_PERMS.helper] })}>還原預設</button>
+          {permsDirty && <span className="pill pill-warn">有尚未儲存的修改</span>}
+          <span className="helper-text">勾好按儲存，幫手下次載入頁面就會生效；新人的「設定」拿不掉，避免把自己鎖在外面。</span>
+        </div>
         <div style={{ fontSize: 13.5, lineHeight: 1.8, marginTop: 12 }}>
           <p>密碼不在網頁上改，而是在伺服器的 <code>backend/.env</code>：<code>ADMIN_PASSWORD</code> 是新人密碼、<code>HELPER_PASSWORD</code> 是幫手密碼（留空 = 不啟用幫手）。改完要重啟後端（<code>sudo systemctl restart wedding</code>），步驟在 部署說明.md。</p>
         </div>

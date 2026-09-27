@@ -37,8 +37,8 @@ const freeSeats = (o) => {
 };
 
 export default function Seating() {
-  const { role } = usePlanner();
-  const readonly = role !== "couple";
+  const { can } = usePlanner();
+  const readonly = !can("seating_edit"); // 2026-09-27 沒有「擺桌椅、安排座位」鑰匙就是唯讀（帶位用）
   const [params, setParams] = useSearchParams();
   const printMode = params.get("print") === "1";
   // 2026-09-10 座位圖分廳：網址 ?hall= 是正在看的廳；沒帶就是「正式使用」的那一廳（賓客查桌看的）

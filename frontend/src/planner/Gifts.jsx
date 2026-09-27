@@ -152,10 +152,11 @@ function PickupDialog({ recipient: r, role, onClose, onSaved }) {
 export default function Gifts() {
   const [params, setParams] = useSearchParams();
   const tab = params.get("tab") === "orders" ? "orders" : "recipients";
-  const { role } = usePlanner();
+  const { role, can } = usePlanner();
+  const manage = can("gifts_manage"); // 2026-09-27 依設定頁的鑰匙，不再看角色
   const { data, loading, error, reload } = useLoader(async () => {
-    // 幫手拿不到花費（403），只載名單與賓客
-    if (role === "helper") { const [gifts, guests] = await Promise.all([fetchGifts(), fetchRsvps()]); return { ...gifts, guests, expenses: [] }; }
+    // 沒有管理鑰匙拿不到花費（403），只載名單與賓客
+    if (!manage) { const [gifts, guests] = await Promise.all([fetchGifts(), fetchRsvps()]); return { ...gifts, guests, expenses: [] }; }
     const [gifts, guests, expenses] = await Promise.all([fetchGifts(), fetchRsvps(), fetchExpenses()]);
     return { ...gifts, guests, expenses };
   });
@@ -248,23 +249,23 @@ export default function Gifts() {
   const filtered = recipients.filter((r) => (!method || r.method === method) && (!side || r.side === side) && `${r.name} ${r.contact_name}`.toLowerCase().includes(search.toLowerCase()));
   return <div className="gift-page">
     <PageHead title="喜餅" sub="把每一份心意送到，也把盒數、訂購與付款記清楚。"
-      actions={role === "helper" ? null : tab === "recipients" ? <><button className="btn btn-primary" onClick={importGuests}><Users size={15}/>帶入所有賓客</button><button className="btn" onClick={() => setModal({ type: "recipient" })}><Plus size={15}/>新增送餅對象</button></>
+      actions={!manage ? null : tab === "recipients" ? <><button className="btn btn-primary" onClick={importGuests}><Users size={15}/>帶入所有賓客</button><button className="btn" onClick={() => setModal({ type: "recipient" })}><Plus size={15}/>新增送餅對象</button></>
         : <><button className="btn" onClick={() => setModal({ type: "vendor" })}><Store size={15}/>新增廠商</button><button className="btn btn-primary" onClick={() => setModal({ type: "order" })}><Plus size={15}/>新增訂購</button></>}/>
-    {role !== "helper" && <div className="gift-tabs" role="group" aria-label="喜餅功能分頁"><button className={`btn ${tab === "recipients" ? "btn-primary" : "btn-ghost"}`} aria-pressed={tab === "recipients"} onClick={() => setParams({})}>送餅名單</button><button className={`btn ${tab === "orders" ? "btn-primary" : "btn-ghost"}`} aria-pressed={tab === "orders"} onClick={() => setParams({ tab: "orders" })}>訂購與費用</button></div>}
+    {manage && <div className="gift-tabs" role="group" aria-label="喜餅功能分頁"><button className={`btn ${tab === "recipients" ? "btn-primary" : "btn-ghost"}`} aria-pressed={tab === "recipients"} onClick={() => setParams({})}>送餅名單</button><button className={`btn ${tab === "orders" ? "btn-primary" : "btn-ghost"}`} aria-pressed={tab === "orders"} onClick={() => setParams({ tab: "orders" })}>訂購與費用</button></div>}
     {tab === "recipients" ? <>
-      <div className="stats-grid"><Stat label="要送的盒數" value={`${s.demand} 盒`} sub={s.unassigned_boxes ? `其中 ${s.unassigned_boxes} 盒（${s.unassigned_households} 戶）還沒套款式` : "款式都已套好"}/><Stat label="未給" value={`${s.remaining} 盒`}/><Stat label="寄送缺地址" value={`${s.missing_address} 筆`}/>{role !== "helper" && <Stat label="喜餅需求估算" value={money(s.estimate)} sub={`${s.estimate_incomplete ? "部分款式尚無報價 · " : ""}含備用，不含運費與未確認優惠`}/>}</div>
+      <div className="stats-grid"><Stat label="要送的盒數" value={`${s.demand} 盒`} sub={s.unassigned_boxes ? `其中 ${s.unassigned_boxes} 盒（${s.unassigned_households} 戶）還沒套款式` : "款式都已套好"}/><Stat label="未給" value={`${s.remaining} 盒`}/><Stat label="寄送缺地址" value={`${s.missing_address} 筆`}/>{manage && <Stat label="喜餅需求估算" value={money(s.estimate)} sub={`${s.estimate_incomplete ? "部分款式尚無報價 · " : ""}含備用，不含運費與未確認優惠`}/>}</div>
       <div className="panel"><div className="toolbar gift-toolbar"><input type="text" aria-label="搜尋送禮對象" placeholder="搜尋姓名" value={search} onChange={(e) => setSearch(e.target.value)}/>
         <Select compact aria-label="篩選領取方式" value={method} onChange={setMethod} options={[{ value: "", label: "全部" }, ...options(METHODS)]}/>
         <Select compact aria-label="篩選親友方" value={side} onChange={setSide} options={[{ value: "", label: "全部親友" }, ...options(SIDES)]}/>
         </div>
-        {role !== "helper" && checked.size > 0 && <div className="gift-bulk">
+        {manage && checked.size > 0 && <div className="gift-bulk">
           <span>已勾選 <b>{checked.size}</b> 戶</span>
           <Select compact aria-label="批次設定款式" value={bulkProduct} onChange={setBulkProduct} options={[{ value: "", label: "款式未定" }, ...products.filter((p) => p.active).map((p) => ({ value: p.id, label: p.name }))]}/>
           <button className="btn btn-primary btn-sm" onClick={applyBulk}>套用款式</button>
           <button className="btn btn-ghost btn-sm" onClick={() => setChecked(new Set())}>取消勾選</button>
         </div>}
       </div>
-      {filtered.length === 0 ? <div className="panel"><Empty>{recipients.length ? "沒有符合篩選的送餅安排" : "還沒有送餅對象，從賓客加入或直接新增親友。"}</Empty></div> : <div className="panel"><div className="table-wrap"><table className="gift-table"><thead><tr>{role !== "helper" && <th className="gift-check-cell"><Checkbox checked={filtered.length > 0 && filtered.every((r) => checked.has(r.id))} onChange={(v) => setChecked(v ? new Set(filtered.map((r) => r.id)) : new Set())} /></th>}<th>簽收確認</th><th>送禮對象</th><th>盒數</th><th>領取方式</th><th>電話</th><th></th></tr></thead><tbody>{filtered.map((r) => <RecipientRow key={r.id} r={r} onMethod={changeMethod} onPickup={confirmPickup} onRemove={() => removeRecipient(r)} canManage={role !== "helper"} checked={checked.has(r.id)} onCheck={(v) => setChecked((s) => { const n = new Set(s); v ? n.add(r.id) : n.delete(r.id); return n; })} edit={() => setModal({ type: "recipient", initial: r })} deliver={() => setModal({ type: "delivery", recipient: r })} history={() => setModal({ type: "history", recipient: r })}/>)}</tbody></table></div></div>}
+      {filtered.length === 0 ? <div className="panel"><Empty>{recipients.length ? "沒有符合篩選的送餅安排" : "還沒有送餅對象，從賓客加入或直接新增親友。"}</Empty></div> : <div className="panel"><div className="table-wrap"><table className="gift-table"><thead><tr>{manage && <th className="gift-check-cell"><Checkbox checked={filtered.length > 0 && filtered.every((r) => checked.has(r.id))} onChange={(v) => setChecked(v ? new Set(filtered.map((r) => r.id)) : new Set())} /></th>}<th>簽收確認</th><th>送禮對象</th><th>盒數</th><th>領取方式</th><th>電話</th><th></th></tr></thead><tbody>{filtered.map((r) => <RecipientRow key={r.id} r={r} onMethod={changeMethod} onPickup={confirmPickup} onRemove={() => removeRecipient(r)} canManage={manage} checked={checked.has(r.id)} onCheck={(v) => setChecked((s) => { const n = new Set(s); v ? n.add(r.id) : n.delete(r.id); return n; })} edit={() => setModal({ type: "recipient", initial: r })} deliver={() => setModal({ type: "delivery", recipient: r })} history={() => setModal({ type: "history", recipient: r })}/>)}</tbody></table></div></div>}
     </> : <>
       <div className="stats-grid"><Stat label="確認訂購金額" value={money(s.total)}/><Stat label="已付" value={money(s.paid)}/><Stat label="尚欠" value={money(s.balance)}/><Stat label="需求參考估算" value={money(s.estimate)} sub="含備用；未含運費與折扣"/></div>
       <div className="panel"><div className="panel-head"><h2 className="panel-title">喜餅廠商</h2><span className="helper-text">可以不只一家；每家的訂購規則放在「注意事項」。</span></div>

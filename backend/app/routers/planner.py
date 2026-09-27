@@ -55,7 +55,9 @@ from ..stage import (
     set_setting,
 )
 
-router = APIRouter(prefix="/api/planner", tags=["planner"], dependencies=[CoupleRequired])
+from ..permissions import PlannerPerm  # noqa: E402  2026-09-27 依路徑對應的功能鑰匙檢查（設定頁可調）
+
+router = APIRouter(prefix="/api/planner", tags=["planner"], dependencies=[PlannerPerm])
 
 
 # ---------------------------------------------------------------------

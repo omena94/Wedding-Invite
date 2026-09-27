@@ -20,7 +20,11 @@ from ..models import (Expense, GiftDelivery, GiftOrder, GiftPlan, GiftProduct,
 from ..security import AdminRequired, CoupleRequired, require_staff
 
 # 2026-09-08 起幫手也能進來：看名單、在婚禮現場勾「已領取」；管理款式／安排／訂購／匯出仍限新人（各端點另加 CoupleRequired）
-router = APIRouter(prefix="/api/planner/gifts", tags=["gifts"], dependencies=[AdminRequired])
+from ..permissions import require_perm  # noqa: E402
+
+# 2026-09-27 改用設定頁可調的鑰匙：看名單 gifts_view、簽收 gifts_pickup、其餘管理 gifts_manage
+GiftsView, GiftsPickup, GiftsManage = Depends(require_perm("gifts_view")), Depends(require_perm("gifts_pickup")), Depends(require_perm("gifts_manage"))
+router = APIRouter(prefix="/api/planner/gifts", tags=["gifts"], dependencies=[GiftsView])
 METHODS = {"tbd": "尚未決定", "venue": "婚禮領取", "mail": "寄送", "personal": "親送"}
 
 
@@ -178,7 +182,7 @@ def overview(role: str = Depends(require_staff), db: Session = Depends(get_db)):
 
 
 # ---------------- 喜餅廠商（2026-09-22 新人要能記不只一家） ----------------
-@router.post("/vendors", status_code=201, dependencies=[CoupleRequired])
+@router.post("/vendors", status_code=201, dependencies=[GiftsManage])
 def create_gift_vendor(payload: GiftVendorIn, db: Session = Depends(get_db)):
     v = Vendor(category="喜餅", status="candidate", **payload.model_dump())
     db.add(v)
@@ -186,7 +190,7 @@ def create_gift_vendor(payload: GiftVendorIn, db: Session = Depends(get_db)):
     return vendor_out(v)
 
 
-@router.put("/vendors/{vendor_id}", dependencies=[CoupleRequired])
+@router.put("/vendors/{vendor_id}", dependencies=[GiftsManage])
 def update_gift_vendor(vendor_id: int, payload: GiftVendorIn, db: Session = Depends(get_db)):
     v = get_row(db, Vendor, vendor_id)
     for k, val in payload.model_dump().items():
@@ -196,7 +200,7 @@ def update_gift_vendor(vendor_id: int, payload: GiftVendorIn, db: Session = Depe
     return vendor_out(v)
 
 
-@router.delete("/vendors/{vendor_id}", status_code=204, dependencies=[CoupleRequired])
+@router.delete("/vendors/{vendor_id}", status_code=204, dependencies=[GiftsManage])
 def delete_gift_vendor(vendor_id: int, db: Session = Depends(get_db)):
     v = get_row(db, Vendor, vendor_id)
     if db.scalar(select(GiftOrder.id).where(GiftOrder.vendor_id == vendor_id).limit(1)):
@@ -210,7 +214,7 @@ def delete_gift_vendor(vendor_id: int, db: Session = Depends(get_db)):
     return Response(status_code=204)
 
 
-@router.delete("/products/{product_id}", status_code=204, dependencies=[CoupleRequired])
+@router.delete("/products/{product_id}", status_code=204, dependencies=[GiftsManage])
 def delete_product(product_id: int, replace_with: int | None = Query(default=None), clear_plans: bool = Query(default=False), db: Session = Depends(get_db)):
     """刪除款式（2026-09-22 新人要能在「款式與盒數」直接增減）。
 
@@ -244,7 +248,7 @@ def delete_product(product_id: int, replace_with: int | None = Query(default=Non
     return Response(status_code=204)
 
 
-@router.post("/products", status_code=201, dependencies=[CoupleRequired])
+@router.post("/products", status_code=201, dependencies=[GiftsManage])
 def create_product(payload: ProductIn, db: Session = Depends(get_db)):
     if payload.vendor_id:
         get_row(db, Vendor, payload.vendor_id)
@@ -254,7 +258,7 @@ def create_product(payload: ProductIn, db: Session = Depends(get_db)):
     return row_dict(p)
 
 
-@router.put("/products/{product_id}", dependencies=[CoupleRequired])
+@router.put("/products/{product_id}", dependencies=[GiftsManage])
 def update_product(product_id: int, payload: ProductIn, db: Session = Depends(get_db)):
     p = get_row(db, GiftProduct, product_id, payload.version)
     if payload.vendor_id:
@@ -313,7 +317,7 @@ def save_recipient(db, payload, row=None):
     return {"id": row.id, "version": row.version}
 
 
-@router.post("/recipients", status_code=201, dependencies=[CoupleRequired])
+@router.post("/recipients", status_code=201, dependencies=[GiftsManage])
 def create_recipient(payload: RecipientIn, db: Session = Depends(get_db)):
     old = db.scalar(select(GiftRecipient).where(GiftRecipient.request_key == payload.request_key))
     if old:
@@ -325,12 +329,12 @@ def create_recipient(payload: RecipientIn, db: Session = Depends(get_db)):
         raise HTTPException(409, "此對象已加入，請重新整理名單")
 
 
-@router.put("/recipients/{recipient_id}", dependencies=[CoupleRequired])
+@router.put("/recipients/{recipient_id}", dependencies=[GiftsManage])
 def update_recipient(recipient_id: int, payload: RecipientIn, db: Session = Depends(get_db)):
     return save_recipient(db, payload, get_row(db, GiftRecipient, recipient_id, payload.version))
 
 
-@router.post("/recipients/bulk-product", dependencies=[CoupleRequired])
+@router.post("/recipients/bulk-product", dependencies=[GiftsManage])
 def bulk_product(payload: BulkProductIn, db: Session = Depends(get_db)):
     """勾選的戶批次改款式：每戶的盒數沿用（已有安排就用原本的盒數，沒有就用 box_count）。
     有交付紀錄的戶不動（會回報幾戶被略過）；不送喜餅的戶不動。product_id 空 = 清掉款式改回待決定。"""
@@ -360,7 +364,7 @@ def bulk_product(payload: BulkProductIn, db: Session = Depends(get_db)):
     return {"changed": changed, "skipped": skipped, "product": product.name if product else ""}
 
 
-@router.delete("/recipients/{recipient_id}", status_code=204, dependencies=[CoupleRequired])
+@router.delete("/recipients/{recipient_id}", status_code=204, dependencies=[GiftsManage])
 def delete_recipient(recipient_id: int, db: Session = Depends(get_db)):
     """刪除送禮對象（新人用，前端會先確認）。連同送餅安排、回覆連結與交付紀錄一起刪除；
     用途是清掉重複或誤建的對象，正常結案請用「不送喜餅」而不是刪除。"""
@@ -376,7 +380,7 @@ def delete_recipient(recipient_id: int, db: Session = Depends(get_db)):
     return Response(status_code=204)
 
 
-@router.post("/recipients/import-guests", dependencies=[CoupleRequired])
+@router.post("/recipients/import-guests", dependencies=[GiftsManage])
 def import_guests(db: Session = Depends(get_db)):
     """把所有還沒加入送餅名單的賓客回覆各建一筆送餅安排（每戶 1 盒）。
 
@@ -415,7 +419,7 @@ def import_guests(db: Session = Depends(get_db)):
     return {"created": created, "skipped": skipped, "product": product.name if product else None, "names": names}
 
 
-@router.post("/recipients/{recipient_id}/deliveries", status_code=201)
+@router.post("/recipients/{recipient_id}/deliveries", status_code=201, dependencies=[GiftsPickup])
 def create_delivery(recipient_id: int, payload: DeliveryIn, db: Session = Depends(get_db)):
     row = get_row(db, GiftRecipient, recipient_id)
     digest = hashlib.sha256(payload.model_dump_json(exclude={"version"}).encode()).hexdigest()
@@ -445,7 +449,7 @@ def create_delivery(recipient_id: int, payload: DeliveryIn, db: Session = Depend
     return delivery_out(d)
 
 
-@router.patch("/deliveries/{delivery_id}", dependencies=[CoupleRequired])
+@router.patch("/deliveries/{delivery_id}", dependencies=[GiftsManage])
 def update_delivery(delivery_id: int, payload: DeliveryUpdate, db: Session = Depends(get_db)):
     initial = db.get(GiftDelivery, delivery_id)
     if initial is None:
@@ -516,7 +520,7 @@ def save_order(db, payload, row=None):
     return order_out(db, row)
 
 
-@router.post("/orders", status_code=201, dependencies=[CoupleRequired])
+@router.post("/orders", status_code=201, dependencies=[GiftsManage])
 def create_order(payload: OrderIn, db: Session = Depends(get_db)):
     old = db.scalar(select(GiftOrder).where(GiftOrder.request_key == payload.request_key))
     if old:
@@ -528,7 +532,7 @@ def create_order(payload: OrderIn, db: Session = Depends(get_db)):
         raise HTTPException(409, "訂購已登記或花費已被連結，請重新整理")
 
 
-@router.put("/orders/{order_id}", dependencies=[CoupleRequired])
+@router.put("/orders/{order_id}", dependencies=[GiftsManage])
 def update_order(order_id: int, payload: OrderIn, db: Session = Depends(get_db)):
     return save_order(db, payload, get_row(db, GiftOrder, order_id, payload.version))
 
@@ -539,7 +543,7 @@ def csv_cell(value):
     return "'" + s if s.lstrip().startswith(("=", "+", "-", "@")) or s.startswith(("\t", "\r", "\n")) else s
 
 
-@router.get("/export.csv", dependencies=[CoupleRequired])
+@router.get("/export.csv", dependencies=[GiftsManage])
 def export_gifts(method: str = Query("all", pattern="^(all|mail|venue|personal|products)$"), db: Session = Depends(get_db)):
     data = snapshot(db)
     output = io.StringIO()

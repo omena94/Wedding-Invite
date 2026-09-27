@@ -1,11 +1,11 @@
 // 籌備後台：單一 React 應用，網址 /planner/...
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { BrowserRouter, NavLink, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import {
   LayoutDashboard, Users, Wallet, CalendarDays, FolderOpen,
   Settings as SettingsIcon, LogOut, Lock, LogIn, Home as HomeIcon, Armchair, Images, Gift, NotebookPen, PartyPopper,
 } from "lucide-react";
-import { adminLogin, clearToken, getRole, getToken, setRole, setToken } from "../api.js";
+import { adminLogin, clearToken, getRole, getToken, setRole, setToken, fetchMe } from "../api.js";
 import Dashboard from "./Dashboard.jsx";
 import Guests from "./Guests.jsx";
 import Budget from "./Budget.jsx";
@@ -20,30 +20,42 @@ import Program from "./Program.jsx";
 import GameEdit from "./GameEdit.jsx";
 
 import { PlannerContext } from "./context.js";
+import { Loading } from "./ui.jsx";
 
 // 2026-09-08 依新人要求移除「廠商」與「比價」頁；2026-09-10 其他頁的廠商欄位也一併移除（後端資料與 API 保留）
+// 2026-09-27 每一頁對應一把鑰匙（perm）；角色能用哪些鑰匙由設定頁的權限表決定
 const NAV = [
-  { to: "/", label: "總覽", icon: LayoutDashboard, end: true },
-  { to: "/guests", label: "賓客名單", icon: Users, helper: true }, // 2026-09-08 依新人要求改名為「賓客名單」
-  { to: "/seating", label: "座位圖", icon: Armchair, helper: true },
-  { to: "/gifts", label: "喜餅", icon: Gift, helper: true }, // 幫手：看名單、勾已領取
-  { to: "/budget", label: "花費", icon: Wallet }, // 2026-09-08 依新人要求移除「預算」概念，只記實際金額
-  { to: "/timeline", label: "行事曆", icon: CalendarDays }, // 2026-09-10 原「籌備進度」改為月曆
-  { to: "/memos", label: "筆記", icon: NotebookPen }, // 2026-09-10 原「備忘」改為筆記：標題、內容、主題、已處理、釘選
-  { to: "/program", label: "活動環節", icon: PartyPopper }, // 2026-09-09 婚禮當天流程與點子，只在後台
-  { to: "/files", label: "文件庫", icon: FolderOpen },
-  { to: "/photos", label: "照片", icon: Images },
-  { to: "/settings", label: "設定", icon: SettingsIcon },
+  { to: "/", label: "總覽", icon: LayoutDashboard, end: true, perm: ["dashboard"] },
+  { to: "/guests", label: "賓客名單", icon: Users, perm: ["guests_view"] }, // 2026-09-08 依新人要求改名為「賓客名單」
+  { to: "/seating", label: "座位圖", icon: Armchair, perm: ["seating_view", "seating_edit"] },
+  { to: "/gifts", label: "喜餅", icon: Gift, perm: ["gifts_view"] },
+  { to: "/budget", label: "花費", icon: Wallet, perm: ["budget"] }, // 2026-09-08 依新人要求移除「預算」概念，只記實際金額
+  { to: "/timeline", label: "行事曆", icon: CalendarDays, perm: ["calendar"] }, // 2026-09-10 原「籌備進度」改為月曆
+  { to: "/memos", label: "筆記", icon: NotebookPen, perm: ["notes"] }, // 2026-09-10 原「備忘」改為筆記：標題、內容、主題、已處理、釘選
+  { to: "/program", label: "活動環節", icon: PartyPopper, perm: ["program"] }, // 2026-09-09 婚禮當天流程與點子，只在後台
+  { to: "/files", label: "文件庫", icon: FolderOpen, perm: ["files"] },
+  { to: "/photos", label: "照片", icon: Images, perm: ["photos"] },
+  { to: "/settings", label: "設定", icon: SettingsIcon, perm: ["settings"] },
 ];
 
 export default function PlannerApp() {
   const [authed, setAuthed] = useState(!!getToken());
   const [role, setRoleState] = useState(getRole());
+  const [perms, setPerms] = useState(null); // null = 還沒載入
 
   const logout = () => {
     clearToken();
     setAuthed(false);
+    setPerms(null);
   };
+  // 登入後向後端問「我能用什麼」；token 失效會被 request 清掉，這時回登入頁
+  useEffect(() => {
+    if (!authed) return;
+    let alive = true;
+    fetchMe().then((m) => { if (alive) { setRoleState(m.role); setPerms(new Set(m.permissions)); } }).catch(() => { if (alive) { if (!getToken()) setAuthed(false); else setPerms(new Set()); } });
+    return () => { alive = false; };
+  }, [authed]);
+  const can = (...keys) => !!perms && keys.some((k) => perms.has(k));
 
   if (!authed) {
     return (
@@ -56,25 +68,28 @@ export default function PlannerApp() {
     );
   }
 
+  if (!perms) return <div className="pl-shell"><main className="pl-main"><Loading /></main></div>;
+  const home = NAV.find((n) => can(...n.perm))?.to || "/guests";
+
   return (
-    <PlannerContext.Provider value={{ role, logout }}>
+    <PlannerContext.Provider value={{ role, perms, can, logout }}>
       <BrowserRouter basename="/planner" future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-        <Shell role={role} onLogout={logout}>
+        <Shell role={role} can={can} onLogout={logout}>
           <Routes>
-            <Route path="/" element={<CoupleOnly role={role}><Dashboard /></CoupleOnly>} />
-            <Route path="/guests" element={<Guests />} />
-            <Route path="/seating" element={<Seating />} />
-            <Route path="/gifts" element={<Gifts />} />
-            <Route path="/budget" element={<CoupleOnly role={role}><Budget /></CoupleOnly>} />
-            <Route path="/timeline" element={<CoupleOnly role={role}><Timeline /></CoupleOnly>} />
-            <Route path="/memos" element={<CoupleOnly role={role}><Memos /></CoupleOnly>} />
-            <Route path="/program" element={<CoupleOnly role={role}><Program /></CoupleOnly>} />
-            <Route path="/program/games/new" element={<CoupleOnly role={role}><GameEdit /></CoupleOnly>} />
-            <Route path="/program/games/:id" element={<CoupleOnly role={role}><GameEdit /></CoupleOnly>} />
-            <Route path="/files" element={<CoupleOnly role={role}><Files /></CoupleOnly>} />
-            <Route path="/photos" element={<CoupleOnly role={role}><Photos /></CoupleOnly>} />
-            <Route path="/settings" element={<CoupleOnly role={role}><SettingsPage /></CoupleOnly>} />
-            <Route path="*" element={<Navigate to={role === "helper" ? "/guests" : "/"} replace />} />
+            <Route path="/" element={<Allowed ok={can("dashboard")} home={home}><Dashboard /></Allowed>} />
+            <Route path="/guests" element={<Allowed ok={can("guests_view")} home={home}><Guests /></Allowed>} />
+            <Route path="/seating" element={<Allowed ok={can("seating_view", "seating_edit")} home={home}><Seating /></Allowed>} />
+            <Route path="/gifts" element={<Allowed ok={can("gifts_view")} home={home}><Gifts /></Allowed>} />
+            <Route path="/budget" element={<Allowed ok={can("budget")} home={home}><Budget /></Allowed>} />
+            <Route path="/timeline" element={<Allowed ok={can("calendar")} home={home}><Timeline /></Allowed>} />
+            <Route path="/memos" element={<Allowed ok={can("notes")} home={home}><Memos /></Allowed>} />
+            <Route path="/program" element={<Allowed ok={can("program")} home={home}><Program /></Allowed>} />
+            <Route path="/program/games/new" element={<Allowed ok={can("program")} home={home}><GameEdit /></Allowed>} />
+            <Route path="/program/games/:id" element={<Allowed ok={can("program")} home={home}><GameEdit /></Allowed>} />
+            <Route path="/files" element={<Allowed ok={can("files")} home={home}><Files /></Allowed>} />
+            <Route path="/photos" element={<Allowed ok={can("photos")} home={home}><Photos /></Allowed>} />
+            <Route path="/settings" element={<Allowed ok={can("settings")} home={home}><SettingsPage /></Allowed>} />
+            <Route path="*" element={<Navigate to={home} replace />} />
           </Routes>
         </Shell>
       </BrowserRouter>
@@ -82,14 +97,15 @@ export default function PlannerApp() {
   );
 }
 
-function CoupleOnly({ role, children }) {
-  if (role === "helper") return <Navigate to="/guests" replace />;
+// 沒有這把鑰匙就導回第一個能用的頁
+function Allowed({ ok, home, children }) {
+  if (!ok) return <Navigate to={home} replace />;
   return children;
 }
 
-function Shell({ role, onLogout, children }) {
+function Shell({ role, can, onLogout, children }) {
   const location = useLocation();
-  const items = NAV.filter((n) => role !== "helper" || n.helper);
+  const items = NAV.filter((n) => can(...n.perm));
   return (
     <div className="pl-shell">
       <aside className="pl-side">

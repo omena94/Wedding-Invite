@@ -9,7 +9,9 @@ from ..schemas import PhotoPublishIn, PhotoReorderIn
 from ..security import CoupleRequired
 from ..stage import PHOTOS_KEY, is_on
 
-router = APIRouter(prefix="/api/planner/photos", tags=["photos"], dependencies=[CoupleRequired])
+from ..permissions import require_perm  # noqa: E402
+
+router = APIRouter(prefix="/api/planner/photos", tags=["photos"], dependencies=[Depends(require_perm("photos"))])
 
 
 def photo_out(f: FileAsset) -> dict:

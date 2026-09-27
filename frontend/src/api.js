@@ -222,6 +222,8 @@ export const deleteGame = (id) => request(`${P}/program/games/${id}`, { method: 
 // ===== 座位圖 =====
 // 座位圖分「廳」（2026-09-10）：hall 是廳的 id，不帶就是「正式使用」的那一廳
 const SE = `${P}/seating`;
+// 登入後拿自己的角色與能用的功能鑰匙（2026-09-27 權限改由設定頁調）
+export const fetchMe = () => request("/api/admin/me", { auth: true });
 export const fetchSeating = (readonly = false, hall = null) => request(`${readonly ? "/api/admin/seating" : SE}${qs({ hall })}`, { auth: true });
 export const fetchSeatPreview = (rsvpId, hall = null) => request(`/api/admin/seating/preview/${rsvpId}${qs({ hall })}`, { auth: true });
 export const setSeatingCanvas = (w, h, clearance = 20, hall = null) => request(`${SE}/canvas${qs({ hall })}`, { method: "PATCH", body: { w, h, clearance }, auth: true });

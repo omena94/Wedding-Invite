@@ -44,7 +44,9 @@ from ..seating import (
 )
 from ..security import CoupleRequired
 
-router = APIRouter(prefix="/api/planner/seating", tags=["seating"], dependencies=[CoupleRequired])
+from ..permissions import require_perm  # noqa: E402
+
+router = APIRouter(prefix="/api/planner/seating", tags=["seating"], dependencies=[Depends(require_perm("seating_edit"))])
 
 HallQuery = Query(default=None, description="哪一廳；不填 = 正式使用的那一廳")
 BG_EXT = {".jpg", ".jpeg", ".png", ".webp"}

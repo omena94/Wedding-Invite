@@ -19,7 +19,7 @@ const SIDE_LABEL = { groom: "男方", bride: "女方" };
 
 /* ---------- 賓客名單（原 /admin）---------- */
 export default function Guests() {
-  const { logout: onLogout, role } = usePlanner();
+  const { logout: onLogout, can } = usePlanner();
   const [adding, setAdding] = useState(false); // 手動新增賓客視窗
   const [stats, setStats] = useState(null);
   const [rows, setRows] = useState([]);
@@ -80,7 +80,7 @@ export default function Guests() {
   return (
     <div>
       <PageHead title="賓客名單" sub="出席統計、第二階段進度、群發通知、匯出 Excel"
-        actions={role === "couple" ? <button className="btn btn-primary" onClick={() => setAdding(true)}><Plus size={15} /> 手動新增賓客</button> : null} />
+        actions={can("guests_create") ? <button className="btn btn-primary" onClick={() => setAdding(true)}><Plus size={15} /> 手動新增賓客</button> : null} />
       {adding && <AddGuestModal onClose={() => setAdding(false)} onSaved={() => { setAdding(false); toastOk("已新增賓客"); load(); }} />}
 
       {loading ? (
@@ -90,7 +90,7 @@ export default function Guests() {
       ) : (
         <>
           <StatsCards stats={stats} />
-          <BroadcastPanel stats={stats} />
+          {can("broadcast") && <BroadcastPanel stats={stats} />}
           <Breakdown stats={stats} />
 
           <div className="panel">

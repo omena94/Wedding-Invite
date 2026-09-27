@@ -24,20 +24,21 @@ from ..schemas import (
     SideBreakdown,
     Stats,
 )
-from ..security import AdminRequired, CoupleRequired, create_token, login_role
+from ..permissions import load_permissions, require_perm, role_permissions
+from ..security import AdminRequired, CoupleRequired, create_token, login_role, require_staff
 from ..seating import build_layout, guest_seat_view, hall_or_active
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
 
 # ===== 座位圖（唯讀；幫手當天帶位用）=====
-@router.get("/seating", dependencies=[AdminRequired])
+@router.get("/seating", dependencies=[Depends(require_perm("seating_view", "seating_edit"))])
 def seating_readonly(hall: int | None = Query(default=None), db: Session = Depends(get_db)):
     """幫手看的座位圖；?hall= 可切換廳，不帶就是正式使用的那一廳。"""
     return build_layout(db, hall_or_active(db, hall))
 
 
-@router.get("/seating/preview/{rsvp_id}", dependencies=[AdminRequired])
+@router.get("/seating/preview/{rsvp_id}", dependencies=[Depends(require_perm("seating_view", "seating_edit"))])
 def seating_preview(rsvp_id: int, hall: int | None = Query(default=None), db: Session = Depends(get_db)):
     """某組賓客在 /seat 查到的畫面內容（不受「桌次查詢」開關影響，給後台預覽用；可指定正在編輯的廳）。"""
     row = db.get(Rsvp, rsvp_id)
@@ -46,6 +47,12 @@ def seating_preview(rsvp_id: int, hall: int | None = Query(default=None), db: Se
     view = guest_seat_view(db, row, hall_or_active(db, hall))
     return {"found": True, "name": row.name, "table_no": row.table_no, "attending": row.attending, **view,
             "message": (row.personal_note or "").strip()}
+
+
+# ===== 我是誰、能做什麼（2026-09-27）=====
+@router.get("/me")
+def me(role: str = Depends(require_staff), db: Session = Depends(get_db)):
+    return {"role": role, "permissions": sorted(role_permissions(db, role))}
 
 
 # ===== 登入 =====
@@ -63,7 +70,7 @@ MAX_ATTACH_TOTAL = 10 * 1024 * 1024  # 10MB
 MAX_ATTACH_COUNT = 3
 
 
-@router.post("/broadcast", dependencies=[CoupleRequired])
+@router.post("/broadcast", dependencies=[Depends(require_perm("broadcast"))])
 async def send_broadcast(
     subject: str = Form(..., max_length=200),
     body: str = Form(..., max_length=30000),  # HTML 內容，放寬長度
@@ -120,7 +127,7 @@ async def send_broadcast(
 
 
 # ===== 名單（可搜尋/篩選）=====
-@router.get("/rsvps", response_model=list[RsvpOut], dependencies=[AdminRequired])
+@router.get("/rsvps", response_model=list[RsvpOut], dependencies=[Depends(require_perm("guests_view"))])
 def list_rsvps(
     db: Session = Depends(get_db),
     search: str = Query(default=""),
@@ -148,7 +155,7 @@ def list_rsvps(
 
 
 # ===== 統計（Redis 快取）=====
-@router.get("/stats", response_model=Stats, dependencies=[AdminRequired])
+@router.get("/stats", response_model=Stats, dependencies=[Depends(require_perm("guests_view"))])
 def get_stats(db: Session = Depends(get_db)):
     cached = cache.get_cached_stats()
     if cached:
@@ -211,7 +218,7 @@ def get_stats(db: Session = Depends(get_db)):
 
 
 # ===== 手動新增（新人用；沒有 Email／電話的賓客也能算進喜宴）=====
-@router.post("/rsvps", response_model=RsvpOut, status_code=201, dependencies=[CoupleRequired])
+@router.post("/rsvps", response_model=RsvpOut, status_code=201, dependencies=[Depends(require_perm("guests_create"))])
 def create_rsvp_manual(payload: RsvpAdminCreate, db: Session = Depends(get_db)):
     data = payload.model_dump()
     conds = []
@@ -232,7 +239,7 @@ def create_rsvp_manual(payload: RsvpAdminCreate, db: Session = Depends(get_db)):
 
 
 # ===== 更新（可修正賓客資料 / 排桌 / 狀態 / 備註）=====
-@router.patch("/rsvps/{rsvp_id}", response_model=RsvpOut, dependencies=[AdminRequired])
+@router.patch("/rsvps/{rsvp_id}", response_model=RsvpOut, dependencies=[Depends(require_perm("guests_edit"))])
 def update_rsvp(rsvp_id: int, payload: RsvpAdminUpdate, db: Session = Depends(get_db)):
     record = db.get(Rsvp, rsvp_id)
     if not record:
@@ -263,7 +270,7 @@ def update_rsvp(rsvp_id: int, payload: RsvpAdminUpdate, db: Session = Depends(ge
 
 
 # ===== 刪除 =====
-@router.delete("/rsvps/{rsvp_id}", status_code=204, dependencies=[AdminRequired])
+@router.delete("/rsvps/{rsvp_id}", status_code=204, dependencies=[Depends(require_perm("guests_edit"))])
 def delete_rsvp(rsvp_id: int, db: Session = Depends(get_db)):
     record = db.get(Rsvp, rsvp_id)
     if not record:
@@ -274,7 +281,7 @@ def delete_rsvp(rsvp_id: int, db: Session = Depends(get_db)):
 
 
 # ===== 匯出 CSV（Excel 可直接開）=====
-@router.get("/export.csv", dependencies=[AdminRequired])
+@router.get("/export.csv", dependencies=[Depends(require_perm("guests_view"))])
 def export_csv(db: Session = Depends(get_db)):
     # 匯出不含測試資料
     rows = list(
