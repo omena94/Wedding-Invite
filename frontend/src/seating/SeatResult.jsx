@@ -4,7 +4,7 @@
 //      紅色虛線指路、點椅子看旁邊坐誰；關掉就回到這張卡
 // 賓客頁 /seat 與後台「預覽賓客畫面」共用；後台的手機框用 embedded（地圖直接嵌在卡片裡，不全螢幕）。
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Map as MapIcon } from "lucide-react";
+import { Map as MapIcon, ChevronDown } from "lucide-react";
 import SeatViewer from "./SeatViewer.jsx";
 
 // 2026-09-23 新人設計的婚禮謝卡（Canva 匯出的 PDF 轉成 SVG，放在 public/cards）。
@@ -14,7 +14,7 @@ function ThankCard({ message }) {
   const size = n > 260 ? "xs" : n > 170 ? "sm" : n > 100 ? "md" : "lg";
   return (
     <div className="tc-wrap tc-stack">
-      <div className="tc-heading">我有話要說</div>
+      <div className="tc-heading">我有話要說<ChevronDown size={22} className="tc-arrow" aria-hidden="true" /></div>
       <div className="tc-face tc-static">
         <img src="/cards/thankcard-front.svg" alt="Thank you for sharing our special day. Alan & Omena" draggable="false" />
       </div>

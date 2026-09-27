@@ -1332,4 +1332,7 @@ tbody tr:last-child td { border-bottom: none; }
 /* 謝卡改為正面、背面上下排開（2026-09-27），不翻面 */
 .tc-stack { display: grid; gap: 14px; }
 .tc-face.tc-static { position: relative; inset: auto; aspect-ratio: 298 / 419; width: 100%; }
-.tc-heading { font-family: "Noto Serif TC", serif; font-weight: 600; font-size: 18px; letter-spacing: 2px; color: var(--milk-tea-900); text-align: center; margin-bottom: -2px; }
+.tc-heading { display: flex; flex-direction: column; align-items: center; gap: 2px; font-family: "Noto Serif TC", serif; font-weight: 600; font-size: 18px; letter-spacing: 2px; color: var(--milk-tea-900); text-align: center; margin-bottom: -2px; }
+.tc-arrow { color: var(--milk-tea-700); animation: tcArrow 1.6s ease-in-out infinite; }
+@keyframes tcArrow { 0%, 100% { transform: translateY(0); opacity: .7; } 50% { transform: translateY(5px); opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .tc-arrow { animation: none; } }
