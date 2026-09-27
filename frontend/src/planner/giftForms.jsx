@@ -59,8 +59,8 @@ export function VendorForm({ initial, onClose, onSaved }) {
   </GiftDialog>;
 }
 
-export function ProductForm({ initial, vendors = [], onClose, onSaved }) {
-  const [f, set] = useForm(initial ? { ...initial, vendor_id: initial.vendor_id ?? "" } : { name: "", vendor_id: vendors.length === 1 ? vendors[0].id : "", reference_price: "", reserve_qty: 0, active: true, version: 1 });
+export function ProductForm({ initial, vendors = [], defaultVendorId = null, onClose, onSaved }) {
+  const [f, set] = useForm(initial ? { ...initial, vendor_id: initial.vendor_id ?? "" } : { name: "", vendor_id: defaultVendorId ?? (vendors.length === 1 ? vendors[0].id : ""), reference_price: "", reserve_qty: 0, active: true, version: 1 });
   return <GiftDialog title={initial ? "編輯喜餅款式" : "新增喜餅款式"} onClose={onClose} onSaved={onSaved}
     submit={() => saveGiftProduct(initial?.id, { name: f.name, vendor_id: f.vendor_id === "" ? null : Number(f.vendor_id),
       reference_price: f.reference_price === "" || f.reference_price == null ? null : toInt(f.reference_price), reserve_qty: toInt(f.reserve_qty), active: f.active, version: f.version })}>

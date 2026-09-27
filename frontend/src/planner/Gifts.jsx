@@ -1,7 +1,7 @@
 import { useState } from "react";
 import Swal from "sweetalert2";
 import { Link, useSearchParams } from "react-router-dom";
-import { Check, ExternalLink, Gift, History, Package, Pencil, Plus, Store, Trash2, Truck, Users } from "lucide-react";
+import { Check, ExternalLink, History, Package, Pencil, Plus, Store, Trash2, Truck, Users } from "lucide-react";
 import Select from "../components/Select.jsx";
 import Toggle from "../components/Toggle.jsx";
 import { usePlanner } from "./context.js";
@@ -76,7 +76,17 @@ function DeliveryHistory({ recipient, onClose, onSaved }) {
 }
 
 // 喜餅廠商卡片（2026-09-22）：名稱、聯絡方式、注意事項（可收合），旁邊列這家的款式與訂購數
-function VendorCard({ v, products, orders, edit, remove }) {
+// 一款喜餅（列在廠商卡片裡）：名稱、參考價、需求／備用／已訂／缺口、編輯與刪除
+function ProductRow({ p, edit, remove }) {
+  return <div className="gift-product" key={p.id}>
+    <div><strong>{p.name}{!p.active && "（停用）"}</strong><p className="helper-text">{p.reference_price == null ? "尚無參考價格" : `參考每盒 ${money(p.reference_price)}`}</p></div>
+    <div className="gift-product-counts"><span>需求 <b>{p.demand}</b></span><span>備用 <b>{p.reserve_qty}</b></span><span>已訂 <b>{p.supply}</b></span><span className={p.shortage ? "gift-warning" : ""}>缺口 <b>{p.shortage}</b></span></div>
+    <span className="gift-vendor-actions"><button className="btn btn-ghost btn-sm" aria-label={`編輯款式 ${p.name}`} onClick={edit}><Pencil size={14}/>編輯</button><button className="btn btn-ghost btn-sm" aria-label={`刪除款式 ${p.name}`} title={p.supply > 0 ? "已有訂購記到這款，不能刪（要保留對帳）；可在編輯裡停用" : "刪除這個款式"} disabled={p.supply > 0} onClick={remove}><Trash2 size={14}/></button></span>
+  </div>;
+}
+
+// 喜餅廠商卡片：資料、注意事項，以及這家的款式（2026-09-27 新人要求款式跟廠商合併在一起）
+function VendorCard({ v, products, orders, edit, remove, addProduct, editProduct, removeProduct }) {
   const mine = products.filter((p) => p.vendor_id === v.id);
   const count = orders.filter((o) => o.vendor_id === v.id).length;
   const site = v.website && !/^https?:\/\//i.test(v.website) ? `https://${v.website}` : v.website;
@@ -85,11 +95,15 @@ function VendorCard({ v, products, orders, edit, remove }) {
       <div><strong>{v.name}</strong><div className="muted-cell gift-vendor-meta">
         {v.contact_name && <span>{v.contact_name}</span>}{v.phone && <a className="gift-phone" href={`tel:${v.phone.replace(/[^\d+]/g, "")}`}>{v.phone}</a>}{v.line_id && <span>LINE {v.line_id}</span>}
         {site && <a className="gift-phone" href={site} target="_blank" rel="noopener">官網 <ExternalLink size={11}/></a>}
-        <span>{mine.length ? `款式：${mine.map((p) => p.name).join("、")}` : "尚無款式"}{count ? ` · 訂購 ${count} 筆` : ""}</span>
+        {count > 0 && <span>訂購 {count} 筆</span>}
       </div></div>
       <div className="gift-vendor-actions"><button className="btn btn-ghost btn-sm" onClick={edit}><Pencil size={13}/> 編輯</button><button className="btn btn-ghost btn-sm" onClick={remove} disabled={mine.length > 0 || count > 0} title={mine.length || count ? "有款式或訂購的廠商不能刪" : undefined}><Trash2 size={13}/></button></div>
     </div>
     {v.note ? <details className="gift-vendor-note"><summary>注意事項</summary><div className="gift-note">{v.note}</div></details> : <p className="helper-text">還沒有注意事項，按「編輯」可以把廠商的訂購規則貼進來。</p>}
+    <div className="gift-vendor-products">
+      <div className="gift-vendor-products-head"><span>款式與盒數</span><span className="helper-text">已訂含贈盒，不代表已到貨。</span><button className="btn btn-ghost btn-sm" onClick={addProduct}><Plus size={13}/> 新增款式</button></div>
+      {mine.length ? mine.map((p) => <ProductRow key={p.id} p={p} edit={() => editProduct(p)} remove={() => removeProduct(p)}/>) : <p className="helper-text">這家還沒有款式。</p>}
+    </div>
   </article>;
 }
 
@@ -218,7 +232,7 @@ export default function Gifts() {
   return <div className="gift-page">
     <PageHead title="喜餅" sub="把每一份心意送到，也把盒數、訂購與付款記清楚。"
       actions={role === "helper" ? null : tab === "recipients" ? <><button className="btn btn-primary" onClick={importGuests}><Users size={15}/>帶入所有賓客</button><button className="btn" onClick={() => setModal({ type: "recipient" })}><Plus size={15}/>新增送餅對象</button></>
-        : <><button className="btn" onClick={() => setModal({ type: "vendor" })}><Store size={15}/>新增廠商</button><button className="btn" onClick={() => setModal({ type: "product" })}><Gift size={15}/>新增款式</button><button className="btn btn-primary" onClick={() => setModal({ type: "order" })}><Plus size={15}/>新增訂購</button></>}/>
+        : <><button className="btn" onClick={() => setModal({ type: "vendor" })}><Store size={15}/>新增廠商</button><button className="btn btn-primary" onClick={() => setModal({ type: "order" })}><Plus size={15}/>新增訂購</button></>}/>
     {role !== "helper" && <div className="gift-tabs" role="group" aria-label="喜餅功能分頁"><button className={`btn ${tab === "recipients" ? "btn-primary" : "btn-ghost"}`} aria-pressed={tab === "recipients"} onClick={() => setParams({})}>送餅名單</button><button className={`btn ${tab === "orders" ? "btn-primary" : "btn-ghost"}`} aria-pressed={tab === "orders"} onClick={() => setParams({ tab: "orders" })}>訂購與費用</button></div>}
     {tab === "recipients" ? <>
       <div className="stats-grid"><Stat label="已確認送餅" value={`${s.demand} 盒`} sub={`另有 ${s.tentative} 盒待決定`}/><Stat label="未給" value={`${s.remaining} 盒`}/><Stat label="寄送缺地址" value={`${s.missing_address} 筆`}/>{role !== "helper" && <Stat label="喜餅需求估算" value={money(s.estimate)} sub={`${s.estimate_incomplete ? "部分款式尚無報價 · " : ""}含備用，不含運費與未確認優惠`}/>}</div>
@@ -232,19 +246,18 @@ export default function Gifts() {
     </> : <>
       <div className="stats-grid"><Stat label="確認訂購金額" value={money(s.total)}/><Stat label="已付" value={money(s.paid)}/><Stat label="尚欠" value={money(s.balance)}/><Stat label="需求參考估算" value={money(s.estimate)} sub="含備用；未含運費與折扣"/></div>
       <div className="panel"><div className="panel-head"><h2 className="panel-title">喜餅廠商</h2><span className="helper-text">可以不只一家；每家的訂購規則放在「注意事項」。</span></div>
-        {!vendors.length ? <Empty>還沒有廠商。新增後，款式與訂購都可以指定是哪一家。</Empty> : <div className="gift-vendors">{vendors.map((v) => <VendorCard key={v.id} v={v} products={products} orders={orders} edit={() => setModal({ type: "vendor", initial: v })} remove={() => removeVendor(v)}/>)}</div>}
-      </div>
-      <div className="panel"><div className="panel-head"><h2 className="panel-title">款式與盒數</h2><div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}><span className="helper-text">已訂含贈盒，不代表已到貨。</span><button className="btn btn-ghost btn-sm" onClick={() => setModal({ type: "product" })}><Plus size={13}/> 新增款式</button></div></div>
-        {!products.length ? <Empty>新增喜餅款式後，就能安排盒數與登記訂購。</Empty> : <div className="gift-products">{products.map((p) => <div className="gift-product" key={p.id}>
-          <div><strong>{p.name}{!p.active && "（停用）"}</strong>{p.vendor_name && <span className="pill pill-groom gift-mini-pill">{p.vendor_name}</span>}<p className="helper-text">{p.reference_price == null ? "尚無參考價格" : `參考每盒 ${money(p.reference_price)}`}</p></div>
-          <div className="gift-product-counts"><span>需求 <b>{p.demand}</b></span><span>備用 <b>{p.reserve_qty}</b></span><span>已訂 <b>{p.supply}</b></span><span className={p.shortage ? "gift-warning" : ""}>缺口 <b>{p.shortage}</b></span></div>
-          <span className="gift-vendor-actions"><button className="btn btn-ghost btn-sm" aria-label={`編輯款式 ${p.name}`} onClick={() => setModal({ type: "product", initial: p })}><Pencil size={14}/>編輯</button><button className="btn btn-ghost btn-sm" aria-label={`刪除款式 ${p.name}`} title={p.supply > 0 ? "已有訂購記到這款，不能刪（要保留對帳）；可在編輯裡停用" : "刪除這個款式"} disabled={p.supply > 0} onClick={() => removeProduct(p)}><Trash2 size={14}/></button></span>
-        </div>)}</div>}
+        {!vendors.length ? <Empty>還沒有廠商。新增廠商後，在廠商卡片上新增這家的款式。</Empty> : <div className="gift-vendors">{vendors.map((v) => <VendorCard key={v.id} v={v} products={products} orders={orders} edit={() => setModal({ type: "vendor", initial: v })} remove={() => removeVendor(v)}
+          addProduct={() => setModal({ type: "product", vendorId: v.id })} editProduct={(p) => setModal({ type: "product", initial: p })} removeProduct={removeProduct}/>)}</div>}
+        {/* 沒掛廠商的舊款式（或廠商被改掉的）：留一區讓新人改到某一家 */}
+        {products.some((p) => !vendors.some((v) => v.id === p.vendor_id)) && <div className="gift-vendor-products" style={{ marginTop: 14 }}>
+          <div className="gift-vendor-products-head"><span>未指定廠商的款式</span><span className="helper-text">按「編輯」選一家廠商，就會併到那家的卡片。</span></div>
+          {products.filter((p) => !vendors.some((v) => v.id === p.vendor_id)).map((p) => <ProductRow key={p.id} p={p} edit={() => setModal({ type: "product", initial: p })} remove={() => removeProduct(p)}/>)}
+        </div>}
       </div>
       {!orders.length ? <div className="panel"><Empty>報價確認後新增訂購，會建立或連結一筆花費。付款沿用既有訂金與尾款紀錄。</Empty></div> : orders.map((o) => <OrderCard key={o.id} o={o} edit={() => setModal({ type: "order", initial: o })} payment={(p) => setModal({ type: "payment", order: o, initial: p })} upload={() => setModal({ type: "upload", order: o })}/>)}
     </>}
     {modal?.type === "vendor" && <VendorForm initial={modal.initial} onClose={close} onSaved={saved}/>}
-    {modal?.type === "product" && <ProductForm initial={modal.initial} vendors={vendors} onClose={close} onSaved={saved}/>}
+    {modal?.type === "product" && <ProductForm initial={modal.initial} vendors={vendors} defaultVendorId={modal.vendorId ?? null} onClose={close} onSaved={saved}/>}
     {modal?.type === "recipient" && <RecipientForm initial={modal.initial} products={products} recipients={recipients} onClose={close} onSaved={saved}/>}
     {modal?.type === "order" && <OrderForm initial={modal.initial} products={products} vendors={vendors} expenses={expenses} orders={orders} onClose={close} onSaved={saved}/>}
     {modal?.type === "delivery" && <DeliveryForm recipient={modal.recipient} onClose={close} onSaved={saved}/>}
