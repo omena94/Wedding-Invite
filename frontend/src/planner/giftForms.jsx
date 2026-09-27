@@ -105,7 +105,8 @@ export function RecipientForm({ initial, products, recipients, onClose, onSaved 
   const duplicates = recipients.filter((r) => r.id !== initial?.id && (r.name.trim() === f.name.trim() || (f.phone.trim() && r.phone.replace(/\D/g, "") === f.phone.replace(/\D/g, ""))));
   return <GiftDialog title={initial ? "編輯" : "新增送餅對象"} onClose={onClose} onSaved={onSaved}
     submit={() => saveGiftRecipient(initial?.id, { request_key: f.request_key, version: f.version, name: f.name, kind: f.kind, side: f.side, contact_name: f.contact_name, phone: f.phone, address: f.address, owner: f.owner,
-      method: f.method, state: f.state, due_date: f.due_date || null, note: f.note, rsvp_ids: f.rsvp_ids, items: f.items.map((i) => ({ product_id: Number(i.product_id), quantity: toInt(i.quantity) })) })}>
+      // 2026-09-27 拿掉「安排狀態」欄位：不送喜餅的維持；其餘有款式盒數就是要送，沒有就是待決定
+      method: f.method, state: f.state === "cancelled" ? "cancelled" : (f.items.length ? "confirmed" : "draft"), due_date: f.due_date || null, note: f.note, rsvp_ids: f.rsvp_ids, items: f.items.map((i) => ({ product_id: Number(i.product_id), quantity: toInt(i.quantity) })) })}>
     <p className="helper-text">以一人、一戶或一個部門登記，不影響婚宴人數。盒數由你指定。</p>
     <div className="grid-2"><TextField label="送禮對象" value={f.name} onChange={(v) => set("name", v)} required placeholder="例如：台中的阿姨、公司行政部"/></div>
     {duplicates.length > 0 && <p className="gift-warning">名單已有相同姓名或電話：{duplicates.map((r) => r.name).join("、")}。請確認是否為同一戶，系統不會自動合併。</p>}
@@ -123,7 +124,6 @@ export function RecipientForm({ initial, products, recipients, onClose, onSaved 
     <div className="grid-2"><Field label="領取方式"><Select aria-label="領取方式" value={f.method} onChange={(v) => set("method", v)} options={options(PLAN_METHODS)}/></Field></div>
     <div className="grid-2"><TextField label="聯絡／收件人" value={f.contact_name} onChange={(v) => set("contact_name", v)}/><TextField label="電話" value={f.phone} onChange={(v) => set("phone", v)}/></div>
     <TextField label="收件地址" value={f.address} onChange={(v) => set("address", v)} placeholder="寄送可稍後補，寄出前需填妥"/>
-    <Field label="安排狀態"><Select aria-label="安排狀態" value={f.state} onChange={(v) => set("state", v)} options={options(STATES)}/></Field>
     <TextField label="備註" value={f.note} onChange={(v) => set("note", v)} area/>
   </GiftDialog>;
 }

@@ -7,7 +7,7 @@ import Toggle from "../components/Toggle.jsx";
 import { usePlanner } from "./context.js";
 import { createGiftDelivery, deleteGiftProduct, deleteGiftRecipient, deleteGiftVendor, fetchExpenses, fetchGifts, fetchRsvps, importGiftGuests, saveGiftRecipient, updateGiftDelivery } from "../api.js";
 import { fmtDate, money } from "../constants.js";
-import { DeliveryForm, GiftDialog, METHODS, OrderForm, ProductForm, RecipientForm, SIDES, STATES, VendorForm, options, today } from "./giftForms.jsx";
+import { DeliveryForm, GiftDialog, METHODS, OrderForm, ProductForm, RecipientForm, SIDES, VendorForm, options, today } from "./giftForms.jsx";
 import { PaymentModal, UploadModal } from "./modals.jsx";
 import { Empty, ErrorBox, Field, Loading, Modal, PageHead, confirmDelete, toInt, toastErr, toastOk, useLoader } from "./ui.jsx";
 
@@ -35,7 +35,7 @@ function RecipientRow({ r, edit, deliver, history, onMethod, onPickup, onRemove,
       {r.change_method && <span className="gift-warning gift-warning-inline">已回覆不出席，請改寄送或家人代領</span>}
       {takers && <div className="muted-cell" style={{ fontSize: 11.5, marginTop: 3 }}>{takers}</div>}</td>
     <td>{r.items.length ? r.items.map((i) => <div key={i.product_id}><strong>{i.quantity}</strong> 盒{i.delivered > 0 && <span className="muted-cell gift-given" style={{ fontSize: 11.5 }}>（已給 {i.delivered}）</span>}</div>) : <span className="muted-cell">未定</span>}</td>
-    <td className="gift-method-cell">{canManage ? <Select compact aria-label={`${r.name} 領取方式`} value={r.state === "cancelled" ? "none" : METHODS[r.method] ? r.method : ""} placeholder="尚未決定" options={[...options(METHODS), { value: "none", label: "不送喜餅" }]} onChange={(v) => onMethod(r, v)}/> : (r.state === "cancelled" ? "不送喜餅" : METHODS[r.method] || "尚未決定")}{r.due_date && <div className="muted-cell" style={{ fontSize: 11.5 }}>預計 {fmtDate(r.due_date)}</div>}{r.contact_name && r.contact_name !== r.name && <div className="muted-cell" style={{ fontSize: 11.5 }}>聯絡人 {r.contact_name}</div>}</td>
+    <td className="gift-method-cell">{canManage ? <Select compact portal aria-label={`${r.name} 領取方式`} value={r.state === "cancelled" ? "none" : METHODS[r.method] ? r.method : ""} placeholder="尚未決定" options={[...options(METHODS), { value: "none", label: "不送喜餅" }]} onChange={(v) => onMethod(r, v)}/> : (r.state === "cancelled" ? "不送喜餅" : METHODS[r.method] || "尚未決定")}{r.due_date && <div className="muted-cell" style={{ fontSize: 11.5 }}>預計 {fmtDate(r.due_date)}</div>}{r.contact_name && r.contact_name !== r.name && <div className="muted-cell" style={{ fontSize: 11.5 }}>聯絡人 {r.contact_name}</div>}</td>
     <td>{r.phone ? <a className="gift-phone" href={`tel:${r.phone.replace(/[^\d+]/g, "")}`}>{r.phone}</a> : <span className="muted-cell">—</span>}</td>
     <td className="row-actions">{canManage && <>
       <button className="btn btn-ghost btn-sm" onClick={edit}><Pencil size={13}/> 編輯</button>{" "}

@@ -1319,3 +1319,6 @@ tbody tr:last-child td { border-bottom: none; }
 .gift-vendor-products-head .btn { margin-left: auto; }
 .gift-vendor-products .gift-product { padding: 10px 0; }
 .gift-vendor-products .gift-product:first-of-type { border-top: none; }
+
+/* 下拉選單 portal 模式：掛在 body、固定定位，不受表格外框裁切（送餅名單用） */
+.ui-select-menu.portal { position: fixed; z-index: 400; right: auto; }
