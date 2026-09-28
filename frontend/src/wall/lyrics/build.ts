@@ -70,7 +70,7 @@ export function buildLyrics(src: string, au: AudioData, offset = 0): Lyrics {
     const text = l.words?.length ? l.words.map((w) => w.w).join('').replace(/\s+/g, ' ').trim() : l.text;
     if (!text || !LETTER.test(text)) continue;
     const next = lines.slice(i + 1).find((x) => x.t > l.t + 0.05)?.t ?? au.duration;
-    const words = l.words?.some((w) => w.w.trim()) ? fromTags(l, next) : estimate(text, l.t, next, au);
+    const words = l.words?.some((w) => w.w.trim()) ? fromTags(l, next, au) : estimate(text, l.t, next, au);
     if (!words.length) continue;
     out.push({ text, start: words[0]!.start, end: words[words.length - 1]!.end, words });
   }
@@ -78,11 +78,12 @@ export function buildLyrics(src: string, au: AudioData, offset = 0): Lyrics {
 }
 
 /**
- * 加強版 LRC：標了時間的就照標的用；最後一段唱到結尾標記（沒有的話唱 0.6 秒、不超過下一行）。
+ * 加強版 LRC：標了時間的就照標的用；最後一段唱到結尾標記。沒有結尾標記（後台「對字」最後一下可以不按）的話，
+ * 最後一段照唱的速度推算（大約八分音符一個音節，跟自動推算一樣），不超過下一行。
  * 一個標記後面可以是一個字，也可以是一段（新人可以只標「窗外飛過著／宣告戀愛／的蜻蜓」三段）：
  * 一段裡有好幾個字就把這段的時間依音節平均分給每個字，大螢幕才會一個字一個字亮，而不是整段一起亮。
  */
-function fromTags(l: LrcLine, next: number) {
+function fromTags(l: LrcLine, next: number, au: AudioData) {
   const tags = l.words!;
   const res: { w: string; start: number; end: number }[] = [];
   let floor = -Infinity;
@@ -90,9 +91,10 @@ function fromTags(l: LrcLine, next: number) {
     if (!tags[k]!.w.trim()) continue;
     // 手打的時間偶爾會倒退（打錯一位數）：往後推，至少不讓字倒著亮
     const start = Math.max(tags[k]!.t, floor);
-    const end = Math.max(start + 0.05, tags[k + 1]?.t ?? Math.min(next - 0.05, start + 0.6));
     const units = lyricUnits(tags[k]!.w).filter((u) => u.w.trim());
     const total = units.reduce((s, u) => s + Math.max(1, u.syl), 0) || 1;
+    const syl = Math.min(0.42, Math.max(0.16, au.beatPeriod(start) / 2));
+    const end = Math.max(start + 0.05, tags[k + 1]?.t ?? Math.min(next - 0.05, start + Math.max(0.6, total * syl * 1.1)));
     let acc = 0;
     for (const u of units) {
       const t0 = start + ((end - start) * acc) / total;
