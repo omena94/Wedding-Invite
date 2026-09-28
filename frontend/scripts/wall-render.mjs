@@ -189,6 +189,9 @@ try {
             return { pixels: n, maxDiff: max, box: [x0, y0, x1, y1] };
           }, [a, b]);
           console.log('確定性差異：', JSON.stringify(report.detDiff));
+          // GPU 的捨入雜訊：零星幾十個像素、只差 1～2 階（255 階裡），肉眼看不出來，連最簡單的 karaoke 都偶爾會有。
+          // 這種當成通過（記在 json 的 detNoise）；超過就是版面真的不確定（字型換了、狀態沒重設…），差異會大很多
+          if (report.detDiff.pixels <= 60 && report.detDiff.maxDiff <= 2) { report.deterministic = true; report.detNoise = true; }
         }
         report.perf = +(await page.evaluate(([f, n]) => window.__wall.perf(f, n), [cs.t[2], 240])).toFixed(2);
       }
@@ -203,7 +206,7 @@ try {
     mkdirSync(outDir, { recursive: true });
     writeFileSync(path.join(outDir, `${outName}.jpg`), Buffer.from(b64, "base64"));
     writeFileSync(path.join(outDir, `${outName}.json`), JSON.stringify(report, null, 1));
-    console.log(`QA ${outName}：效能 ${report.perf} ms／格、確定性 ${report.deterministic ? '通過' : '不通過（同一時間點畫兩次不一樣）'}、錯誤 ${report.errors.length} 個`);
+    console.log(`QA ${outName}：效能 ${report.perf} ms／格、確定性 ${report.deterministic ? (report.detNoise ? '通過（只有 GPU 捨入雜訊）' : '通過') : '不通過（同一時間點畫兩次不一樣）'}、錯誤 ${report.errors.length} 個`);
     console.log(path.join(outDir, `${outName}.jpg`));
   } else if (mode === 'profile') {
     // CPU 剖析：畫 n 格，列出最花時間的函式（找效能瓶頸用）
