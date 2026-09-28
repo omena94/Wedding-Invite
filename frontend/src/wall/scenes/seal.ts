@@ -206,7 +206,8 @@ export default class Seal extends Scene {
     const w = COL.x1 - COL.x;
     if (m) {
       const short = Array.from(m.text).length <= 8;
-      this.fit = fitMsg(c, m.text, FAM_MSG, w, 380, { min: 48, max: 104, lineHeight: 1.32, maxLines: short ? 1 : 6 });
+      // 字級用「右欄高度扣掉印與署名」算（554 − 24 − 印 176 = 354）：印與署名永遠在留言下面，不會壓到最後一行
+      this.fit = fitMsg(c, m.text, FAM_MSG, w, 350, { min: 48, max: 104, lineHeight: 1.32, maxLines: short ? 1 : 6 });
       this.sigSize = Math.round(clamp(this.fit.size * 0.52, 40, 50));
       // 留言在上、印（與左邊的署名）在留言下面，整塊在右欄（y 170～724）裡上下置中：短留言不會只擠在最上面，印也不會壓到最後一行
       const blockH = this.fit.height + 24 + PRINT;

@@ -165,13 +165,13 @@ export default class Brush extends Scene {
     let s = 44, cols: Tok[][] = [];
     // 一行（直的）放得下幾格；標點可以掛在行尾一格，但「！！！」這種連續標點會一直掛下去、超出紙：也要算進去
     const cells = (col: Tok[]) => col.reduce((a, tk) => a + tk.adv, 0);
-    for (let size = 100; size >= 44; size -= 2) {
+    // 字級從格子寬的七成往下找（先夾好再排：排完才夾字級，斷行就對不上了，標點會掛出紙外）
+    for (let size = Math.floor(Math.min(100, CW * 0.7)); size >= 44; size -= 2) {
       const cap = colH / (size * 1.06);
       const cs = breakCols(toks(text, size), cap);
       s = size; cols = cs;
       if (cs.length + 1 <= NCOL && cs.every((col) => cells(col) <= cap + 0.1)) break;
     }
-    if (s > CW * 0.7) { s = CW * 0.7; cols = breakCols(toks(text, s), colH / (s * 1.06)); }
     const used = cols.length + 1;
     const first = Math.floor((NCOL - used) / 2); // 從右邊數第幾行開始
     const colX = (i: number) => SHEET.x1 - CW * (first + i + 0.5);
