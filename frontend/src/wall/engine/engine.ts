@@ -15,7 +15,7 @@ import { Compositor, FSPass, W, H, PW, PH, SS_TAP, makeRT, clearRT } from './gl'
 import { DEFAULT_POST, Post, type PostParams } from './post';
 import { Hud } from './hud';
 import { Overlay } from './overlay';
-import type { Frame, Scene, SceneClass, SceneCtx, PostOverrides, SongInfo, LiveInfo } from './scene';
+import type { Frame, Scene, SceneClass, SceneCtx, PostOverrides, SongInfo, LiveInfo, PlateSpecDecl } from './scene';
 import { loadFonts } from './type';
 import { loadStrokeFonts } from './stroke';
 import { LIN } from './palette';
@@ -40,7 +40,7 @@ interface Loaded { entry: TimelineEntry; scene: Scene | null; ready: Promise<voi
 
 // Scene modules are discovered lazily so a missing/broken scene never breaks the build.
 // 檔名 _ 開頭（_motifs.ts）或含 -（sparkler-glsl.ts 這種輔助檔）的不是版面。
-const modules = import.meta.glob<{ default: SceneClass }>('../scenes/*.ts');
+const modules = import.meta.glob<{ default: SceneClass; spec?: PlateSpecDecl }>('../scenes/*.ts');
 export const SCENES = Object.keys(modules)
   .map((p) => /\/([\w-]+)\.ts$/.exec(p)![1]!)
   .filter((n) => !n.startsWith('_') && !n.includes('-'));
@@ -54,6 +54,8 @@ export class Engine {
   post!: Post;
   comp = new Compositor();
   classes = new Map<string, SceneClass>();
+  /** 版面檔自己宣告的排程參數（export const spec）。 */
+  specs = new Map<string, PlateSpecDecl>();
   loaded = new Map<string, Loaded>();
   timeline: TimelineEntry[] = [];
   /** 開發模式：壞掉的場景畫暗紅色，錯誤訊息印出來。 */
@@ -96,10 +98,16 @@ export class Engine {
   }
 
   /** 載字型、所有版面模組、後製與 HUD。開機時呼叫一次。 */
-  async init() {
+  async init(only?: string[]) {
     await Promise.all([loadFonts(), loadStrokeFonts()]);
-    await Promise.all(SCENES.map(async (name) => {
-      try { this.classes.set(name, (await modules[`../scenes/${name}.ts`]!()).default); }
+    // only：只載指定的版面（加上片頭卡與保底的 karaoke），開發截圖用
+    const names = only ? SCENES.filter((n) => n === 'title' || n === 'karaoke' || only.includes(n)) : SCENES;
+    await Promise.all(names.map(async (name) => {
+      try {
+        const mod = await modules[`../scenes/${name}.ts`]!();
+        this.classes.set(name, mod.default);
+        if (mod.spec) this.specs.set(name, mod.spec);
+      }
       catch (err) { this.errors.push(`[${name}] ${String((err as Error)?.stack ?? err)}`); console.error(`scene module ${name} failed`, err); }
     }));
     this.post = new Post();

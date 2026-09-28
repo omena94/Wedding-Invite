@@ -17,6 +17,14 @@ export const HEX = {
   rose: '#F0788A', // 點綴色：只給愛心
   paper: '#F1E7D8', // 亮版面的紙（預設奶茶色）
   sepia: '#3B2C20', // 紙上的墨（深咖啡，亮版面的字與線）
+  // 固定色（不跟主題換）：芃芃、QQ 是橘色的博美，換到薰衣草主題也不能變紫色的狗
+  fur: '#E0944F', // 博美的橘毛
+  cream: '#F4E4CA', // 淺奶油色的毛、白胸口
+  collar: '#C8453B', // QQ 的紅項圈
+  ball: '#D8E24A', // 黃綠色網球（狗狗最愛的那顆）
+  denim: '#58789A', // 牛仔褲
+  gingham: '#86A98B', // 孟庭的綠格紋上衣
+  leash: '#4F86C6', // 遛狗的藍色牽繩
 };
 
 export type PaletteKey = keyof typeof HEX;

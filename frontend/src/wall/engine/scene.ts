@@ -140,3 +140,28 @@ export abstract class Scene {
 }
 
 export type SceneClass = new (ctx: SceneCtx) => Scene;
+
+/**
+ * 版面自己宣告的排程參數：在版面檔裡 `export const spec: PlateSpecDecl = {...}`，導演（director.ts）會讀，
+ * 加新版面不用改導演。沒寫的欄位用預設值（任何能量、4～8 小節、有沒有留言都能排、權重 1、類別 type）。
+ */
+export interface PlateSpecDecl {
+  /** 適合的段落能量範圍（0..1）：副歌高、抒情段低。 */
+  energy?: [number, number];
+  /** 偏好的長度（小節數）。 */
+  bars?: [number, number];
+  /** 紙底（亮）的版面：導演會讓亮暗交替。 */
+  paper?: boolean;
+  /** 一次展示很多則留言：留言少於這個數字就不排。 */
+  minMessages?: number;
+  /** 沒有主打留言也能排（只有歌詞或邀請）。預設 true。 */
+  lyricsOnly?: boolean;
+  /** 被挑中的相對機率（預設 1）。 */
+  weight?: number;
+  /** 變化款數（params.variant = 0..n-1）。 */
+  variants?: number;
+  /** 類別：couple = 手繪新人互動動畫，type = 文字／圖像版面。導演會讓兩類交替。 */
+  group?: 'couple' | 'type';
+  /** 系列（sport、dog、doc、ins…）：同一系列不要連著出現。 */
+  family?: string;
+}

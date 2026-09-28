@@ -26,6 +26,14 @@
     `--popup 7@3.0` 在 3 秒排一張即時小卡；`--song "檔名.mp3"` 選測試歌；`--scale 0.75` 省電畫質。
   - 聯絡表：`sheet --scene slam --from 20 --to 32 --n 12 --cols 4 --out ../wall-out/slam.png`
   - 效能：`perf --scene stars --from 20`（平均每格毫秒，含 GPU 同步）。**目標 < 12 ms**（會場筆電多半是內顯，要留餘裕）。
+  - **標準驗收 `qa`（每個版面交件前一定要跑、一定要打開圖看）**：
+    `node scripts/wall-render.mjs qa --scene <名字>`（變化款：`--params '{"variant":1}'`，檔名自動加 `.v1`）。
+    十種情境（長留言、短留言、英文、只有愛心、最長 60 字、沒有留言、純音樂、慢歌、只有 2 小節、新人留言＋三張即時小卡）×
+    3～6 個時間點拼成一張總表 `wall-out/qa/<名字>.jpg`，另外檢查確定性（同一時間點畫兩次要一模一樣）與效能。
+    總表每格只有 320×180，細節（字有沒有爆框、有沒有被小卡蓋到、跟唱有沒有對上）要再用 `stills` 截全尺寸的看。
+    需要標準測試音檔：`WALL_DEV_AUDIO_DIR` 指到放 `Test Band - Fast Pop.mp3`、`Test Band - Slow Ballad.mp3`（含 .lrc）的資料夾。
+  - 指定 `--scene` 時只會載入那個版面（加上 `title`、`karaoke`），別人寫到一半的版面不會影響你；要載全部加 `--all-scenes`。
+  - 很多人同時在跑截圖時，`perf` 的數字會偏高：超過 12 ms 先單獨再跑一次 `perf` 確認。
   - 導演排出來的時間軸：`timeline`。
   - 測試歌沒有 `.lrc` 時，會用自己編的佔位歌詞（`dummyLrc`，每兩小節一句）。
 - 瀏覽器即時看：`npm run dev` 之後開 `http://localhost:5173/wall?dev=1`（要先設 `WALL_DEV_AUDIO_DIR` 再啟動 vite）。
@@ -78,6 +86,21 @@ export default class MyPlate extends Scene {
 }
 ```
 
+**排程參數**寫在版面檔裡，導演會自己讀（不用改 `director.ts`）：
+
+```ts
+import type { PlateSpecDecl } from '../engine/scene';
+export const spec: PlateSpecDecl = {
+  energy: [0.4, 1],   // 適合的段落能量（副歌高、抒情段低）
+  bars: [4, 8],       // 偏好的長度（小節）
+  paper: true,        // 亮版面
+  group: 'couple',    // couple = 手繪新人互動；type = 文字／圖像（預設）
+  family: 'sport',    // 系列：同系列不會連著出現（見 CATALOG.md）
+  variants: 2,        // 變化款數（params.variant）
+  weight: 1,          // 相對機率
+};
+```
+
 規則：
 
 - **確定性**：輸出只能是 `f.t`（和 `ctx.params`、種子亂數 `mulberry32(seed)`、`hash(...)`）的函數。不要用 `Math.random()`、`Date.now()`、`performance.now()`。
@@ -86,7 +109,9 @@ export default class MyPlate extends Scene {
   要發光的東西（火花、燒紅的字）：LineBatch 顏色乘 2～6，或畫在另一個 Layer2D 用 `comp.draw(..., { mode: 'add', tint: [1.9,1.9,1.9] })` 疊上去。
 - **資源要還**：`Layer2D`、`LineBatch`、`makeRT()` 一律 `this.track(...)`；自己建的 three.js 幾何／材質在 `dispose()` 釋放（記得呼叫 `super.dispose()`）。
   shader pass 用 `shared()`。自己寫 `ShaderMaterial` 並用了 `GLSL_COMMON` 的話，uniforms 要展開 `...THEME_UNIFORMS`（不然 C_* 是黑的）。
-- 效能：每格 < 12 ms。Canvas2D 層每張上傳 2～4 ms，**一個版面最多 2～3 張**（發光層可以用低解析度 `new Layer2D(W, H, 0.5)`）。排版在 `init()` 做。
+- 效能：每格 < 12 ms。**Canvas2D 層一律用 fast 上傳**：`new Layer2D(W, H, SCALE, { fast: true })`（發光層可以用低解析度 `new Layer2D(W, H, 0.5, { fast: true })`）。
+  預設的上傳方式一張要十幾毫秒；fast 的層只能交給 `comp.draw`（它會自動解碼），自己的 shader 要取樣的話得自己解預乘、轉線性。
+  一個版面最多 2～3 張 Canvas2D 層，排版在 `init()` 做；每格只重畫會變的部分（不變的底圖畫一次就好，不要每格 `clear()` 重畫整張）。
 - 可以回傳的後製參數：`exposure, bloom, bloomThreshold, bloomKnee, bloomRadius, halation, ca, grain, vignette, hud, frame（裁切角標，只給片頭卡）,
   qr（角落 QR，自己畫了大 QR 才設 0）, popups（即時小卡透明度，滿版大字時可調低，別設 0）, **popupAvoid**（重要文字的範圍 `[x,y,w,h][]`，
   即時小卡挑位置時避開；回傳整個窗格會用到的範圍，render 的回傳型別標成 `PostOverrides`）, paper（亮版面設 1：HUD 與小卡改成深色字）,
@@ -95,7 +120,10 @@ export default class MyPlate extends Scene {
 - **即時留言小卡**會在畫面四角、左右中段、上下正中隨機出現（卡寬 470，右側的格子從 x = 1378 開始）。版面最好在右側（x ≥ 1380）或上下角留一點空間，並回傳 `popupAvoid`。
 - 版面裡的字不要進右下角 HUD 區（`HUD_SAFE`：x ≥ 1360、y ≥ 830），離四邊至少 96 px（投影機會裁邊）。
 - 轉場：窗格相接就是硬切（大部分在小節線上），這是預設。要自己做轉場設 `handlesTransition = true` 並用 `f.under`／`f.tin`。
-- 只改自己的檔（`scenes/<名字>.ts`、`scenes/<名字>-*.ts`）。引擎、`_motifs.ts`、導演、其他版面：需要改就在回報裡寫清楚，由主導者改。
+- 固定色（不跟主題換）：`fur`（博美橘毛）、`cream`（奶油色毛、白胸口）、`collar`（紅項圈）、`ball`（網球黃綠）、`denim`（牛仔褲）、
+  `gingham`（孟庭的綠格紋）、`leash`（藍牽繩）。只給手繪角色與道具用，不發光。
+- 手繪的新人與狗狗一律用 `scenes/_couple.ts`（見檔頭說明與 TREATMENT.md 的「角色」），不要自己另外畫一套人。
+- 只改自己的檔（`scenes/<名字>.ts`、`scenes/<名字>-*.ts`；一批版面共用的輔助可以放 `scenes/_<批次代號>.ts`，例如 `_doc.ts`）。引擎、`_motifs.ts`、導演、其他版面：需要改就在回報裡寫清楚，由主導者改。
 
 ## 工具箱
 

@@ -16,6 +16,10 @@ import type { Msg } from './engine/scene';
 export interface PlateSpec {
   /** scenes/<name>.ts */
   name: string;
+  /** 類別：couple = 手繪新人互動，type = 文字／圖像。 */
+  group?: 'couple' | 'type';
+  /** 系列（同一系列不要連著出現）。 */
+  family?: string;
   /** 適合的段落能量範圍（0..1）。 */
   energy: [number, number];
   /** 偏好的長度（小節數）。 */
@@ -56,6 +60,8 @@ export class Director {
   private startAt = 0;
   private idx = 0;
   private history: string[] = [];
+  /** 整晚最近用過的版面（換歌不清空）：兩百個版面要輪得開，不要上一首剛看過的又出現。 */
+  private recent: string[] = [];
   private lastInvite = -Infinity;
   /** 外部可以強制下一個窗格用哪個版面（開發模式、截圖用）。 */
   force: { scene: string; params?: Record<string, any> } | null = null;
@@ -92,7 +98,7 @@ export class Director {
     let scene: string, params: Record<string, any> = {}, bars: [number, number] = [4, 8];
     let msg: Msg | null = null;
     const energy = au.energyAt(Math.min(dur - 0.01, from + 4));
-    const avail = PLATES.filter((p) => this.engine.classes.has(p.name));
+    const avail = this.plates();
 
     if (this.force) {
       scene = this.force.scene; params = { ...(this.force.params ?? {}) };
@@ -112,10 +118,17 @@ export class Director {
         (p.minMessages === undefined || this.pool.count >= p.minMessages) &&
         (msg || p.lyricsOnly) && (msg || lyricsNow || p.name !== 'karaoke') &&
         !this.history.slice(-2).includes(p.name));
-      const lastPaper = PLATES.find((p) => p.name === this.history[this.history.length - 1])?.paper;
+      const specOf = (n: string | undefined) => avail.find((p) => p.name === n);
+      const lastPaper = specOf(this.history[this.history.length - 1])?.paper;
+      // 同一類（新人互動／文字圖像）已經連續兩個，第三個盡量換另一類
+      const g1 = specOf(this.history[this.history.length - 1])?.group, g2 = specOf(this.history[this.history.length - 2])?.group;
+      const sameTwice = g1 !== undefined && g1 === g2 ? g1 : null;
       const pool = (ok.length ? ok : avail.filter((p) => p.name !== this.history[this.history.length - 1])).map((p) => ({
         // 同一首歌已經用過的版面機率降到三成：一首歌裡盡量每個窗格都不一樣
-        p, w: (p.weight ?? 1) * (p.paper && lastPaper ? 0.25 : 1) * (p.name === 'karaoke' && ok.length > 1 ? 0.2 : 1) * (this.history.includes(p.name) ? 0.3 : 1),
+        p, w: (p.weight ?? 1) * (p.paper && lastPaper ? 0.25 : 1) * (p.name === 'karaoke' && ok.length > 1 ? 0.2 : 1)
+          * (this.history.includes(p.name) ? 0.3 : this.recent.includes(p.name) ? 0.4 : 1) * (sameTwice && (p.group ?? 'type') === sameTwice ? 0.15 : 1)
+          // 同一系列（例如都是運動、都是紙本文件）不要連著出現
+          * (p.family && p.family === specOf(this.history[this.history.length - 1])?.family ? 0.2 : 1),
       }));
       let r = this.rnd(2) * pool.reduce((s, x) => s + x.w, 0);
       let spec = pool[0]?.p ?? { name: 'karaoke', energy: [0, 1], bars: [4, 8] } as PlateSpec;
@@ -139,8 +152,25 @@ export class Director {
     if (dur - end < 5) end = dur;
     const e: TimelineEntry = { id: `s${this.song.info.id}-w${this.idx}-${scene}`, scene, start: from, end, params };
     this.history.push(scene);
+    this.recent.push(scene);
+    if (this.recent.length > 60) this.recent.shift();
     this.idx++;
     return e;
+  }
+
+  /**
+   * 可以排的版面：有載到的版面模組（title 是片頭卡，另外排）。參數以版面檔的 export const spec 為準，
+   * 其次是上面的 PLATES，都沒有就用預設值。
+   */
+  private plates(): PlateSpec[] {
+    const out: PlateSpec[] = [];
+    for (const name of this.engine.classes.keys()) {
+      if (name === 'title') continue;
+      const base = PLATES.find((p) => p.name === name);
+      const decl = this.engine.specs.get(name) ?? {};
+      out.push({ energy: [0, 1], bars: [4, 8], lyricsOnly: true, weight: 1, group: 'type', ...base, ...decl, name });
+    }
+    return out;
   }
 
   /** 正在畫面上（或排好了）的留言 id：主打不要跟它們重複。 */

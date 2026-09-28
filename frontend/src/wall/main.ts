@@ -458,7 +458,8 @@ function showStart() {
 async function boot() {
   if (!DEV && !getToken()) return showLogin();
   gate.innerHTML = `<div class="gate-card"><h1>準備中…</h1><p id="gate-status" class="gate-status">載入字型與畫面</p></div>`;
-  await engine.init();
+  // 開發／截圖用：&only=a,b 只載這幾個版面（版面有兩百個，全部載入 QA 會很慢）
+  await engine.init(DEV && Q.get('only') ? Q.get('only')!.split(',') : undefined);
   if (engine.errors.length) console.error(engine.errors.join('\n'));
   if (DEV) await devInit();
   else {
