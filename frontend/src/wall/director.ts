@@ -120,13 +120,12 @@ export class Director {
         !this.history.slice(-2).includes(p.name));
       const specOf = (n: string | undefined) => avail.find((p) => p.name === n);
       const lastPaper = specOf(this.history[this.history.length - 1])?.paper;
-      // 同一類（新人互動／文字圖像）已經連續兩個，第三個盡量換另一類
-      const g1 = specOf(this.history[this.history.length - 1])?.group, g2 = specOf(this.history[this.history.length - 2])?.group;
-      const sameTwice = g1 !== undefined && g1 === g2 ? g1 : null;
+      // 手繪新人互動是點綴（新人說「一點點、有些場景有就好」）：剛出現過就先不要再來
+      const coupleRecently = [1, 2].some((k) => specOf(this.history[this.history.length - k])?.group === 'couple');
       const pool = (ok.length ? ok : avail.filter((p) => p.name !== this.history[this.history.length - 1])).map((p) => ({
         // 同一首歌已經用過的版面機率降到三成：一首歌裡盡量每個窗格都不一樣
         p, w: (p.weight ?? 1) * (p.paper && lastPaper ? 0.25 : 1) * (p.name === 'karaoke' && ok.length > 1 ? 0.2 : 1)
-          * (this.history.includes(p.name) ? 0.3 : this.recent.includes(p.name) ? 0.4 : 1) * (sameTwice && (p.group ?? 'type') === sameTwice ? 0.15 : 1)
+          * (this.history.includes(p.name) ? 0.3 : this.recent.includes(p.name) ? 0.4 : 1) * (coupleRecently && p.group === 'couple' ? 0.1 : 1)
           // 同一系列（例如都是運動、都是紙本文件）不要連著出現
           * (p.family && p.family === specOf(this.history[this.history.length - 1])?.family ? 0.2 : 1),
       }));

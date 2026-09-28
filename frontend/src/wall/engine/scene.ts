@@ -160,7 +160,7 @@ export interface PlateSpecDecl {
   weight?: number;
   /** 變化款數（params.variant = 0..n-1）。 */
   variants?: number;
-  /** 類別：couple = 手繪新人互動動畫，type = 文字／圖像版面。導演會讓兩類交替。 */
+  /** 類別：couple = 手繪新人互動動畫（點綴，導演不會讓它連續出現），type = 文字／圖像版面。 */
   group?: 'couple' | 'type';
   /** 系列（sport、dog、doc、ins…）：同一系列不要連著出現。 */
   family?: string;
