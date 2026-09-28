@@ -77,7 +77,11 @@ export class FSPass {
   mesh: THREE.Mesh;
   scene = new THREE.Scene();
   cam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
-  constructor(frag: string, uniforms: Record<string, THREE.IUniform> = {}, opts: { blending?: THREE.Blending; transparent?: boolean } = {}) {
+  /**
+   * opts.over：預乘的「蓋上去」混合（One / OneMinusSrcAlpha）——半透明的層疊在已經畫好的畫面上（紙上的墨、字的陰影）。
+   * 好幾個版面各自手動設這組參數，統一放這裡。
+   */
+  constructor(frag: string, uniforms: Record<string, THREE.IUniform> = {}, opts: { blending?: THREE.Blending; transparent?: boolean; over?: boolean } = {}) {
     this.mat = new THREE.RawShaderMaterial({
       glslVersion: THREE.GLSL3,
       vertexShader: `precision highp float;\nin vec3 position;\n${FS_VERT}`,
@@ -89,6 +93,12 @@ export class FSPass {
       blending: opts.blending ?? THREE.NoBlending,
       transparent: opts.transparent ?? false,
     });
+    if (opts.over) {
+      const m = this.mat;
+      m.blending = THREE.CustomBlending; m.transparent = true;
+      m.blendEquation = THREE.AddEquation; m.blendSrc = THREE.OneFactor; m.blendDst = THREE.OneMinusSrcAlphaFactor;
+      m.blendSrcAlpha = THREE.OneFactor; m.blendDstAlpha = THREE.OneMinusSrcAlphaFactor;
+    }
     this.mesh = new THREE.Mesh(fullscreenGeometry(), this.mat);
     this.mesh.frustumCulled = false;
     this.scene.add(this.mesh);

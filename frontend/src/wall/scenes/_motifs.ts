@@ -174,3 +174,11 @@ export const signature = (name: string) => `—— ${name || '一位賓客'}`;
 
 /** 一段留言共有幾個字（逐字出現的總數）。 */
 export const msgChars = (fit: FitResult) => fit.lines.reduce((s, l) => s + Array.from(l).length, 0);
+
+/**
+ * 有主打留言時歌詞的字級（MV 融合原則：留言是焦點，歌詞小一級但仍 ≥ 48 px）。
+ * msgSize：留言排出來的字級；沒有留言傳 null，歌詞當主角用 solo。
+ */
+export function lyricSizeFor(msgSize: number | null, solo = 64): number {
+  return msgSize === null ? solo : Math.max(48, Math.min(56, Math.round(msgSize * 0.7)));
+}

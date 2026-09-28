@@ -107,6 +107,10 @@ export const spec: PlateSpecDecl = {
   瀏覽器每次畫出來會差一點點（確定性偶發不過，也比較慢）。不要用 `document.fonts.check` 觸發重畫（它查的字族不一定會載到）。
   懷疑字型時間差時，可用 `scratchpad/detcheck.mjs <版面> <次數>`（環境變數 `FONT_DELAY=6000` 故意延遲字型）重現。
 - fast 的 Layer2D 貼圖要在自己的 shader 裡取樣：`fastLayer(texture(tex, uv))`（`GLSL_COMMON` 內建，解預乘、轉線性）。
+- 半透明的全螢幕層疊在畫好的畫面上：`new FSPass(frag, uniforms, { over: true })`（預乘 One／OneMinusSrcAlpha）。
+- 有留言時歌詞的字級：`lyricSizeFor(留言字級)`（`_motifs.ts`，留言是焦點、歌詞小一級但 ≥ 48 px）。
+- **畫面上任何字（標籤、符號如 ∩、全形括號）都要在 `init()` 先 `await loadText(...)`**：引擎只預載 scenes 檔裡寫死的中文，
+  符號與組出來的字串沒載到，第一格會用備援字型，確定性就不過。
 - 斜的、旋轉的 `fillText` 每格都要重新光柵化，很貴：會動的斜字先畫到 init 做好的圖層再旋轉貼上。
 - 已知問題：`LineBatch` 3D 模式（`screen2D: false`）把 mesh.matrix 設成非單位矩陣時線畫不出來；先自己把座標投影到畫面、用 2D 模式畫。
 - **有 mipmap 的貼圖在迴圈或分支裡取樣，一律用 `textureLod`**（自己算好 mip 層）：那裡的螢幕導數沒有定義，
