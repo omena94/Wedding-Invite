@@ -38,6 +38,12 @@ const live: LiveInfo = {
   get count() { return pool.count; },
   url: wishUrl,
   shortUrl: `${location.host}/wish`,
+  // 新人要求右下角有個小時鐘（2026-09-28）。截圖／驗收模式固定時間，同一格畫兩次才會一樣
+  get clock() {
+    if (EXPORT) return '19:30';
+    const d = new Date();
+    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  },
 };
 const engine = new Engine(canvas, live);
 engine.debug = DEV;

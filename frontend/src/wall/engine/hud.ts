@@ -41,7 +41,7 @@ export class Hud {
     const qr = clamp(st.qr), frame = clamp(st.frame), op = clamp(st.opacity);
     const ink = st.paper > 0.5;
     // 簽章：這些都沒變就沿用上一張貼圖
-    const sig = [op.toFixed(2), qr.toFixed(2), frame.toFixed(3), ink, this.live.count, this.live.url].join('|');
+    const sig = [op.toFixed(2), qr.toFixed(2), frame.toFixed(3), ink, this.live.count, this.live.url, this.live.clock ?? ''].join('|');
     if (sig === this.sig) return L.texture;
     this.sig = sig;
     L.clear();
@@ -70,7 +70,7 @@ export class Hud {
     c.restore();
   }
 
-  /** 右下角：QR code，左邊兩行說明與留言數（mono 的機器聲音）。 */
+  /** 右下角：QR code，左邊是小時鐘、兩行說明與留言數（留言數的數字放大，2026-09-28 新人要求）。 */
   private qrBlock(c: CanvasRenderingContext2D, k: number, ink: boolean) {
     c.save();
     c.globalAlpha *= k;
@@ -79,18 +79,37 @@ export class Hud {
     c.textAlign = 'right';
     c.textBaseline = 'alphabetic';
     const tx = x - 22;
+    // 小時鐘：最上面一行，低調的 mono 小字
+    if (this.live.clock) {
+      c.font = font(F.mono(500), 17);
+      c.letterSpacing = '2px';
+      c.fillStyle = ink ? rgba('sepia', 0.55) : rgba('bone', 0.5);
+      c.fillText(this.live.clock, tx, y + 16);
+      c.letterSpacing = '0px';
+    }
     c.fillStyle = ink ? rgba('sepia', 0.95) : rgba('bone', 0.92);
     c.font = font(F.hei(700), 26);
     c.fillText('掃描留言給新人', tx, y + 60);
     c.font = font(F.mono(500), 17);
     c.fillStyle = ink ? rgba('sepia', 0.7) : rgba('bone', 0.62);
     c.fillText(this.live.shortUrl, tx, y + 94);
-    // 留言數：訊號色的小數字，像儀器讀數
-    c.font = font(F.mono(500), 15);
-    c.letterSpacing = '2px';
-    c.fillStyle = ink ? rgba('blood', 1) : rgba('signal', 0.95);
+    // 留言數：「已收到」「則祝福」小字，中間的數字放大（訊號色，像儀器讀數）
     const n = this.live.count;
-    c.fillText(n > 0 ? `已收到 ${String(n).padStart(3, '0')} 則祝福` : '第一則祝福等你來寫', tx, y + QR_SIZE - 4);
+    const base = y + QR_SIZE - 2;
+    c.fillStyle = ink ? rgba('blood', 1) : rgba('signal', 0.95);
+    if (n > 0) {
+      c.font = font(F.hei(500), 17);
+      c.fillText('則祝福', tx, base);
+      let xx = tx - c.measureText('則祝福').width - 10;
+      c.font = font(F.archivo(100, 800), 46);
+      c.fillText(String(n), xx, base + 2);
+      xx -= c.measureText(String(n)).width + 10;
+      c.font = font(F.hei(500), 17);
+      c.fillText('已收到', xx, base);
+    } else {
+      c.font = font(F.hei(500), 17);
+      c.fillText('第一則祝福等你來寫', tx, base);
+    }
     c.restore();
   }
 }

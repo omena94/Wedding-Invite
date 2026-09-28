@@ -45,6 +45,8 @@ export interface LiveInfo {
   readonly url: string;
   /** 顯示用的短網址（不含 https://）。 */
   readonly shortUrl: string;
+  /** 現在時間「HH:MM」（右下角小小的時鐘；截圖／驗收時固定，畫面才可重現）。 */
+  readonly clock?: string;
 }
 
 export interface SceneCtx {
