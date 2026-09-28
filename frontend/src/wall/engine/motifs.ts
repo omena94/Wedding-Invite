@@ -105,7 +105,7 @@ export function drawHeart(c: CanvasRenderingContext2D, x: number, y: number, siz
 }
 
 /**
- * fillText，但文字裡的 ♥ 用點綴色（玫瑰）畫：愛心是唯一可以用點綴色的東西，混在字裡也要看得出來。
+ * fillText，但文字裡的 ♥ 換成 drawHeart 的愛心、用點綴色（玫瑰）畫：愛心是唯一可以用點綴色的東西，混在字裡也要看得出來。
  * 用目前的 font／fillStyle；位置照整串量（字距不會跑掉）。
  */
 export function fillWithHearts(c: CanvasRenderingContext2D, s: string, x: number, y: number, heart = rgba('rose')) {
@@ -115,8 +115,16 @@ export function fillWithHearts(c: CanvasRenderingContext2D, s: string, x: number
   for (const part of s.split(/(♥)/)) {
     if (!part) continue;
     const px = x + c.measureText(s.slice(0, i)).width;
-    c.fillStyle = part === '♥' ? heart : base;
-    c.fillText(part, px, y);
+    if (part === '♥') {
+      // 風格聖經：愛心只用我們自己畫的那顆（drawHeart），不用字型裡的 ♥；位置、大小照字型那顆的框
+      const m = c.measureText('♥');
+      const h = m.actualBoundingBoxAscent + m.actualBoundingBoxDescent;
+      const cy = y - (m.actualBoundingBoxAscent - m.actualBoundingBoxDescent) / 2;
+      drawHeart(c, px + m.width / 2, cy, Math.min(m.width, h * 1.15) * 0.92, heart);
+    } else {
+      c.fillStyle = base;
+      c.fillText(part, px, y);
+    }
     i += part.length;
   }
   c.fillStyle = base;
