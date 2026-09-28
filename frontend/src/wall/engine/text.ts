@@ -112,7 +112,8 @@ function wrapNice(c: CanvasRenderingContext2D, text: string, maxWidth: number, l
   for (const tk of toks) at.push(at[at.length - 1]! + tk.length);
   const brk = (j: number) => {
     if (BREAK_AFTER.test(toks[j - 1]!)) return 0;
-    if (bounds.has(at[j]!) || toks[j - 1]!.endsWith(' ')) return (0.12 * maxWidth) ** 2;
+    // 詞與詞之間可以斷，但比斷在標點後差很多（「今天／來，」雖然沒拆詞，讀起來還是比「今天來，／」差）
+    if (bounds.has(at[j]!) || toks[j - 1]!.endsWith(' ')) return (0.28 * maxWidth) ** 2;
     return (0.45 * maxWidth) ** 2;
   };
   // best[k][j]：前 j 個單位排成 k 行的最小成本
@@ -175,8 +176,32 @@ export function fitText(c: CanvasRenderingContext2D, text: string, family: strin
     const r = tryAt(mid);
     if (r.ok) { best = r; lo = mid; } else hi = mid;
   }
-  const r = tryAt(Math.floor(best.ok ? best.size : min));
+  let r = tryAt(Math.floor(best.ok ? best.size : min));
+  // 最大字級剛好只能把一個詞拆開（「今天來，吃／飽喝足」）：字縮小一點（最多 12%），找得到斷在標點或詞與詞之間的就用那個
+  if (r.lines.length > 1 && badBreaks(text, r.lines) > 0) {
+    for (let s = r.size - 1; s >= Math.max(min, Math.floor(r.size * 0.88)); s--) {
+      const t = tryAt(s);
+      if (t.ok && badBreaks(text, t.lines) === 0) { r = t; break; }
+    }
+  }
   return { size: r.size, lines: r.lines, lineHeight: r.lineHeight, width: r.width, height: r.height };
+}
+
+/** 斷行裡有幾處把一個詞拆開（不是斷在標點後、空白、或中文斷詞的詞與詞之間）。 */
+export function badBreaks(text: string, lines: string[]): number {
+  if (!wordSeg) wordSeg = new Intl.Segmenter('zh-Hant', { granularity: 'word' });
+  const bounds = new Set<number>();
+  for (const s of wordSeg.segment(text)) bounds.add(s.index);
+  let at = 0, bad = 0;
+  for (let k = 0; k < lines.length; k++) {
+    const i = text.indexOf(lines[k]!, at);
+    if (i < 0) return 0; // 版面自己改過字（例如加了引號），判斷不了就當沒問題
+    at = i + lines[k]!.length;
+    if (k === lines.length - 1) break;
+    const next = text.slice(at).search(/\S/) + at;
+    if (!BREAK_AFTER.test(lines[k]!) && !/\s/.test(text[at] ?? '') && !bounds.has(next)) bad++;
+  }
+  return bad;
 }
 
 // ---------------------------------------------------------------- 詞組

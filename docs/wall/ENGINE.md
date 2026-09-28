@@ -103,6 +103,8 @@ export const spec: PlateSpecDecl = {
 
 規則：
 
+- **有 mipmap 的貼圖在迴圈或分支裡取樣，一律用 `textureLod`**（自己算好 mip 層）：那裡的螢幕導數沒有定義，
+  ANGLE／D3D11 在 GPU 很忙時偶爾會挑到不同的 mip 層，同一格畫兩次會差一點點（QA 的確定性檢查會偶發不過）。
 - **確定性**：輸出只能是 `f.t`（和 `ctx.params`、種子亂數 `mulberry32(seed)`、`hash(...)`）的函數。不要用 `Math.random()`、`Date.now()`、`performance.now()`。
   逐格閃爍用 `frameIdx(t)`。
 - `render()` 必須整張覆蓋 `out`（HalfFloat 線性 HDR）。顏色是 **linear**；> ~0.92 才會發光（婚禮版門檻比 pdoom 高，紙白的字與 QR 不發光）。
@@ -145,6 +147,12 @@ export const spec: PlateSpecDecl = {
 - `motifs.ts` / `scenes/_motifs.ts`：火花 `sparkHead`、`sparkParticles`、`sparkHead2D`；愛心 `drawHeart`、`heartPoints`；
   **歌詞的聲音** `lyricAt`、`layoutLyric`、`drawLyric`；**留言的聲音** `layoutMessage`、`drawMessage`、`signature`、`msgChars`；
   `COUPLE_EN`、`COUPLE_ZH`、`DATE_DOTS`、`beatAfter`、`barAfter`。
+- **`scenes/_couple.ts`（手繪的新人與狗狗，完整說明在檔頭）**：`drawPerson(c, 'alan'|'omena', pose, {x, y, h, dir, view, outfit, ink, t, reveal})`、
+  `drawDog(c, 'penpen'|'qq', dogPose, {...})` 回傳關節的畫面座標（手、嘴、項圈…）接道具與牽繩；`h` 是場景尺度（宣文的身高），同一場景的角色傳同一個值。
+  姿勢庫 `POSE`（側面）、`FRONT`（正面）、`DOG`，動作用 `beatSwing(t, 拍點)` 算進度，「那一下」（擊球、出手、接到）落在拍點；走路 `walk(f.beat / 2)` 一拍一步。
+  `inkFor(paper)` 取線色（暗版面 bone、亮版面 sepia）；手繪原語 `inkLine／inkPath／inkShape／inkPoly／inkRect／inkEllipse／hatch`（boiling line）；
+  道具 `racket／shuttle／tennisBall／pan／plate／champagne／bouquet／umbrella／leash／sign／bubble…`；`lyricOnPath` 讓歌詞沿著曲線跟唱；`paperBG()` 亮版面的紙。
+  範例：`badminton`、`fetch`、`waltz`、`cooking`。
 
 ## 參考
 
