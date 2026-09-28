@@ -31,7 +31,7 @@ PERMISSIONS = [
     ("notes", "筆記"),
     ("program", "活動環節"),
     ("files", "文件庫"),
-    ("photos", "照片"),
+    ("photos", "婚紗照"),
     ("guest_photos", "當天照片（賓客上傳的原檔：看、下載、刪除、開關）"),
     ("settings", "設定（含這張權限表）"),
 ]

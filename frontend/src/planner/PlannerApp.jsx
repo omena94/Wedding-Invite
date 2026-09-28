@@ -33,7 +33,7 @@ const NAV = [
   { to: "/memos", label: "筆記", icon: NotebookPen, perm: ["notes"] }, // 2026-09-10 原「備忘」改為筆記：標題、內容、主題、已處理、釘選
   { to: "/program", label: "活動環節", icon: PartyPopper, perm: ["program"] }, // 2026-09-09 婚禮當天流程與點子，只在後台
   { to: "/files", label: "文件庫", icon: FolderOpen, perm: ["files"] },
-  { to: "/photos", label: "照片", icon: Images, perm: ["photos"] },
+  { to: "/photos", label: "婚紗照", icon: Images, perm: ["photos"] }, // 2026-09-28 新人要求改名
   { to: "/day-photos", label: "當天照片", icon: Camera, perm: ["guest_photos"] }, // 2026-09-27 賓客上傳的原檔
   { to: "/settings", label: "設定", icon: SettingsIcon, perm: ["settings"] },
 ];
