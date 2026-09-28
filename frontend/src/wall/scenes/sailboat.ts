@@ -104,7 +104,7 @@ void main() {
   // 帆的邊（繩邊）
   float edge = min(min(vPx.x, ${SW}.0 - vPx.x), min(vPx.y, ${SH}.0 - vPx.y));
   float rope = pxLine(edge, 1.6, 2.6);
-  vec3 col = mix(cloth, C_SEPIA, max(seam, batten * 0.5));
+  vec3 col = mix(cloth, C_SEPIA, max(seam, batten * 0.28));
   // 字：fast 的 Layer2D（預乘、sRGB）要自己解；貼圖的 x 由左（後緣）往右（桅杆）
   vec4 tx = texture(uTex, vec2(1.0 - vUV.x, vUV.y));
   vec3 ink = tx.a > 0.0 ? toLinear(tx.rgb / tx.a) : vec3(0.0);

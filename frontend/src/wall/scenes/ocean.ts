@@ -82,10 +82,10 @@ vec2 printAt(vec2 p) {
     float inText = 1.0 - smoothstep(-10.0, 70.0, max(q.x, q.y));
     dark = mix(dark, 1.04, inText * uClearK);
     // 刻線跟著浪頭的形狀走，越往下越平（遠離浪頭，線慢慢拉直）
-    float u = mix(d, p.y - ${WALL.base}.0 + 40.0, smoothstep(40.0, 360.0, d)) / 11.0;
+    float u = mix(d, p.y - ${WALL.base}.0 + 40.0, smoothstep(40.0, 360.0, d)) / 14.0;
     // 浪身深處是一大片墨（木刻的大色塊，畫面才有地方呼吸），只留稀疏的刻線（四條留一條）
     float deep = smoothstep(150.0, 260.0, d);
-    float carve = pxLine(abs(fract(u / 4.0) - 0.5) * 44.0, 0.6, 1.3) * 0.8 * (1.0 - inText * uClearK);
+    float carve = pxLine(abs(fract(u / 3.0) - 0.5) * 42.0, 0.6, 1.3) * 0.7 * (1.0 - inText * uClearK);
     ink = max(pxLine(d, 1.9, 3.0), mix(hatch(u, dark), 1.0 - carve, deep));
     tone = smoothstep(10.0, 60.0, d);
   } else if (p.y > b2) {
@@ -305,8 +305,8 @@ export default class Ocean extends Scene {
     if (!lyrics.has) {
       c.save();
       c.globalAlpha = inK;
-      c.font = font(LYR_STYLE.family, 40);
-      c.fillStyle = rgba('sepia', 0.7);
+      c.font = font(LYR_STYLE.family, 34);
+      c.fillStyle = rgba('sepia', 0.55);
       c.fillText(this.title, LYR_X, base);
       c.restore();
       return;
@@ -445,7 +445,8 @@ export default class Ocean extends Scene {
     for (let n = n0; n <= n1; n++) {
       const x0 = n * WALL.lam - ph, y0 = this.wallY(x0, ph, amp) + 2;
       const r = hash(n, this.seed);
-      this.claw(segs, x0, y0, 1, 96 + 50 * r, 0.35 + 0.65 * curlK + 0.1 * r);
+      // 捲的程度有上限：捲過頭會變成一個圈，不像浪爪
+      this.claw(segs, x0, y0, 1, 96 + 50 * r, 0.32 + 0.4 * curlK + 0.08 * r);
       // 泡沫：最近三拍，每拍從這一爪噴出一把
       const bi = Math.floor(au.beatAt(t));
       for (let b = bi - 2; b <= bi; b++) {
@@ -466,7 +467,7 @@ export default class Ocean extends Scene {
     }
     // 前景白浪的浪尖：往左捲（兩道浪一左一右，對著彼此）
     const fx = FORE_PEAK.x, fy = this.foreY(fx, this.phF) + 2;
-    this.claw(segs, fx, fy, -1, 128, 0.45 + 0.55 * curlK);
+    this.claw(segs, fx, fy, -1, 128, 0.4 + 0.35 * curlK);
     // 先畫墨色的邊（粗一點），再畫紙白的指頭：相鄰的指頭會黏在一起，像一整片浪花
     for (const [ax, ay, bx, by, w] of segs) lb.seg2(ax, ay, bx, by, w + 3.4, ink, 1);
     for (const [ax, ay, bx, by, w] of segs) lb.seg2(ax, ay, bx, by, w, pap, 1);

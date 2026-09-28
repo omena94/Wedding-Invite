@@ -268,9 +268,10 @@ export default class Puddle extends Scene {
     // 路燈：右上方一盞（倒影裡一團暖光）
     const lx = 1250, ly = 196;
     const lg = c.createRadialGradient(lx, ly, 0, lx, ly, 150);
-    lg.addColorStop(0, rgba('ember', 0.95));
-    lg.addColorStop(0.08, rgba('signal', 0.7));
-    lg.addColorStop(0.3, rgba('signal', 0.14));
+    // 路燈是配角：一小團暖光，不要搶留言
+    lg.addColorStop(0, rgba('ember', 0.7));
+    lg.addColorStop(0.07, rgba('signal', 0.42));
+    lg.addColorStop(0.3, rgba('signal', 0.08));
     lg.addColorStop(1, rgba('signal', 0));
     c.fillStyle = lg;
     c.fillRect(lx - 160, ly - 160, 320, 320);
