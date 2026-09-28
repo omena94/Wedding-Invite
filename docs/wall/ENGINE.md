@@ -103,6 +103,9 @@ export const spec: PlateSpecDecl = {
 
 規則：
 
+- **字的特效（模糊暈墨、挖字、濾鏡）在 `init()` 做一次成字模，之後只貼圖**：每次重畫都開新畫布、用 `filter` 重新光柵化同一個字，
+  瀏覽器每次畫出來會差一點點（確定性偶發不過，也比較慢）。不要用 `document.fonts.check` 觸發重畫（它查的字族不一定會載到）。
+  懷疑字型時間差時，可用 `scratchpad/detcheck.mjs <版面> <次數>`（環境變數 `FONT_DELAY=6000` 故意延遲字型）重現。
 - **有 mipmap 的貼圖在迴圈或分支裡取樣，一律用 `textureLod`**（自己算好 mip 層）：那裡的螢幕導數沒有定義，
   ANGLE／D3D11 在 GPU 很忙時偶爾會挑到不同的 mip 層，同一格畫兩次會差一點點（QA 的確定性檢查會偶發不過）。
 - **確定性**：輸出只能是 `f.t`（和 `ctx.params`、種子亂數 `mulberry32(seed)`、`hash(...)`）的函數。不要用 `Math.random()`、`Date.now()`、`performance.now()`。
