@@ -162,6 +162,8 @@ float engrave(vec2 uv, float darkness, float freq, float angle) {
 // ---- colour ----
 vec3 toSRGB(vec3 c) { return mix(12.92 * c, 1.055 * pow(max(c, 0.0), vec3(1.0 / 2.4)) - 0.055, step(0.0031308, c)); }
 vec3 toLinear(vec3 c) { return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(0.04045, c)); }
+// fast Layer2D（預乘、sRGB 編碼）的貼圖在自己的 shader 裡取樣時用：解預乘、轉線性、再預乘（comp.draw 會自動做，自己的 shader 要自己做）
+vec4 fastLayer(vec4 c) { return c.a > 0.0 ? vec4(toLinear(c.rgb / c.a) * c.a, c.a) : vec4(0.0); }
 /** 仙女棒的熱度色階：0 = 底色，0.5 = 金，1 = 白熱。 */
 vec3 heat(float x) {
   x = sat(x);

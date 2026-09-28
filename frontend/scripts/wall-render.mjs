@@ -26,8 +26,12 @@ const CACHE = path.join(tmpdir(), 'wedding-wall-cache');
 mkdirSync(CACHE, { recursive: true });
 
 // 好幾個人（或助手）可能同時在截圖：port 隨機起跳，被占用就往後找
-const server = await createServer({ root: ROOT, logLevel: 'error', server: { port: 5400 + Math.floor(Math.random() * 400), strictPort: false, hmr: false } });
-await server.listen();
+// Windows 會保留一段一段的 port（Hyper-V），碰到就 EACCES，不是「被占用」：換一個隨機 port 再試
+let server;
+for (let k = 0; ; k++) {
+  server = await createServer({ root: ROOT, logLevel: 'error', server: { port: 5400 + Math.floor(Math.random() * 3000), strictPort: false, hmr: false } });
+  try { await server.listen(); break; } catch (e) { await server.close(); if (k >= 8 || !/EACCES|EADDRINUSE/.test(String(e?.code ?? e))) throw e; }
+}
 const url = (server.resolvedUrls?.local?.[0] ?? `http://localhost:${server.config.server.port}/`).replace(/\/$/, '');
 
 const browser = await chromium.launch({
@@ -165,11 +169,13 @@ try {
       if (cs.label.startsWith('A')) {
         const t0 = cs.t[2];
         await page.evaluate((tt) => window.__wall.still(tt), t0);
-        const a = await page.screenshot({ clip: { x: 0, y: 0, width: 1920, height: 1080 } });
+        // 直接比畫布的像素（不比頁面截圖：Chrome 截圖／合成的時機本身有 ±1 色階的雜訊，會誤判）
+        const grab = () => page.evaluate(() => document.getElementById('c').toDataURL('image/png'));
+        const a = await grab();
         await page.evaluate((tt) => window.__wall.still(tt), cs.t[4]);
         await page.evaluate((tt) => window.__wall.still(tt), t0);
-        const b = await page.screenshot({ clip: { x: 0, y: 0, width: 1920, height: 1080 } });
-        report.deterministic = a.equals(b);
+        const b = await grab();
+        report.deterministic = a === b;
         report.perf = +(await page.evaluate(([f, n]) => window.__wall.perf(f, n), [cs.t[2], 240])).toFixed(2);
       }
     }
