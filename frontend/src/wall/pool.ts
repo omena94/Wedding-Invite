@@ -23,6 +23,8 @@ export class MessagePool {
   onRemove: (id: number) => void = () => {};
 
   get count() { return this.list.length; }
+  /** 還在排隊等當主打的新留言有幾則。 */
+  get freshCount() { return this.fresh.length; }
   get all(): readonly Msg[] { return this.list; }
   get(id: number) { return this.byId.get(id); }
 

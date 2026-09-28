@@ -134,6 +134,8 @@ export class Director {
       for (const x of pool) { r -= x.w; if (r <= 0) { spec = x.p; break; } }
       scene = spec.name;
       bars = spec.bars;
+      // 還有新留言在排隊：窗格短一點（最多 8 小節），新留言才不用等太久才上螢幕
+      if (this.pool.freshCount > 0) bars = [bars[0], Math.max(bars[0], Math.min(bars[1], 8))];
       if (spec.variants) params.variant = Math.floor(this.rnd(3) * spec.variants);
     }
     if (msg) { params.message = msg; this.pool.markShown(msg.id); }

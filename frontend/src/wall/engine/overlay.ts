@@ -78,6 +78,8 @@ export class Overlay {
     const h = PAD + 30 + lines.length * TEXT_SIZE * LINE_H + 12 + (msg.name ? 40 : 6) + PAD * 0.6;
     // 同時在畫面上的卡用「實際大小」比，不只比格子編號：四行的長卡會往下長到隔壁格子的位置
     const others = this.popups.filter((p) => p.t1 > t0 - 0.6 && p.t0 < t1 + 0.6).map((p) => ({ slot: p.slot, r: slotRect(p.slot, p.h) }));
+    // 同一時間最多一張（畫面只要一個焦點；main.ts 也會先看 busy()，這裡再擋一次，截圖工具直接呼叫也一樣）
+    if (others.length && !cover) return false;
     const hits = (a: Rect, b: Rect, gap = 12) => a[0] < b[0] + b[2] + gap && b[0] < a[0] + a[2] + gap && a[1] < b[1] + b[3] + gap && b[1] < a[1] + a[3] + gap;
     const free = SLOTS.map((_, i) => i).filter((i) => others.every((o) => o.slot !== i && !hits(slotRect(i, h), o.r)));
     if (!free.length) return false;

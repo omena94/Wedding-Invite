@@ -10,7 +10,7 @@
 - **中文**。拉丁字照 pdoom 自帶 TTF；中文、韓文、簡體用 Google Fonts（依字分片下載）。
 - **每首歌換配色主題**（`src/wall/themes.ts`）：訊號色一家子（signal / ember / blood）、點綴色、紙色會變。**不要把顏色寫死**，
   一律用色票（Canvas2D 的 `rgba('signal')`、GLSL 的 `C_SIGNAL`、LineBatch 的 `LIN.signal`）。
-- 即時留言小卡（`engine/overlay.ts`）與右下角 QR（`engine/hud.ts`）由引擎畫，版面不用管。
+- 右下角 QR（`engine/hud.ts`）由引擎畫，版面不用管。**即時留言小卡已停用**（2026-09-28 新人要求留言要融在版面裡）：新留言由導演排成下一個窗格的主打，所以主打留言就是版面的焦點（見 TREATMENT.md「MV 融合原則」）。
 
 ## 怎麼跑、怎麼看
 
@@ -28,7 +28,7 @@
   - 效能：`perf --scene stars --from 20`（平均每格毫秒，含 GPU 同步）。**目標 < 12 ms**（會場筆電多半是內顯，要留餘裕）。
   - **標準驗收 `qa`（每個版面交件前一定要跑、一定要打開圖看）**：
     `node scripts/wall-render.mjs qa --scene <名字>`（變化款：`--params '{"variant":1}'`，檔名自動加 `.v1`）。
-    十種情境（長留言、短留言、英文、只有愛心、最長 60 字、沒有留言、純音樂、慢歌、只有 2 小節、新人留言＋三張即時小卡）×
+    十種情境（長留言、短留言、英文、只有愛心、最長 60 字、沒有留言、純音樂、慢歌、只有 2 小節、新人留言）×
     3～6 個時間點拼成一張總表 `wall-out/qa/<名字>.jpg`，另外檢查確定性（同一時間點畫兩次要一模一樣）與效能。
     總表每格只有 320×180，細節（字有沒有爆框、有沒有被小卡蓋到、跟唱有沒有對上）要再用 `stills` 截全尺寸的看。
     需要標準測試音檔：`WALL_DEV_AUDIO_DIR` 指到放 `Test Band - Fast Pop.mp3`、`Test Band - Slow Ballad.mp3`（含 .lrc）的資料夾。
@@ -119,7 +119,6 @@ export const spec: PlateSpecDecl = {
   即時小卡挑位置時避開；回傳整個窗格會用到的範圍，render 的回傳型別標成 `PostOverrides`）, paper（亮版面設 1：HUD 與小卡改成深色字）,
   fade, flash, shake:[x,y], zoom, invert`。預設值在 `engine/post.ts`。
 - **亮版面**（紙底）一定要回傳 `paper: 1`。
-- **即時留言小卡**會在畫面四角、左右中段、上下正中隨機出現（卡寬 470，右側的格子從 x = 1378 開始）。版面最好在右側（x ≥ 1380）或上下角留一點空間，並回傳 `popupAvoid`。
 - 版面裡的字不要進右下角 HUD 區（`HUD_SAFE`：x ≥ 1360、y ≥ 830），離四邊至少 96 px（投影機會裁邊）。
 - 轉場：窗格相接就是硬切（大部分在小節線上），這是預設。要自己做轉場設 `handlesTransition = true` 並用 `f.under`／`f.tin`。
 - 固定色（不跟主題換）：`fur`（博美橘毛）、`cream`（奶油色毛、白胸口）、`collar`（紅項圈）、`ball`（網球黃綠）、`denim`（牛仔褲）、

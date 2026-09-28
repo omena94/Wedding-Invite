@@ -126,7 +126,7 @@ try {
       { label: 'G 純音樂（沒有歌詞）', song: FAST, message: 3, theme: 'gold', from: 20, to: 32, t: [21, 25, 31.7], lrc: '' },
       { label: 'H 慢歌', song: SLOW, message: 3, theme: 'gold', from: 20, to: 40, t: [21, 26, 32, 39.6] },
       { label: 'I 2 小節', song: FAST, message: 3, theme: 'coral', from: 50, to: 53.64, t: [50.2, 51.5, 53.4] },
-      { label: 'J 新人留言＋三張即時小卡', song: FAST, message: 1, theme: 'gold', from: 20, to: 36.4, t: [23, 27], popups: [[7, 21], [11, 21.3], [16, 21.6]] },
+      { label: 'J 新人留言', song: FAST, message: 1, theme: 'gold', from: 20, to: 36.4, t: [23, 27] },
     ];
     // --params '{"variant":2}'：每個情境都帶這些參數（測變化款）；輸出檔名加上 --tag（預設 v2 這種）
     const extra = opt('params') ? JSON.parse(opt('params')) : {};

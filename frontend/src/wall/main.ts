@@ -114,9 +114,6 @@ function startRuntime(rt: SongRuntime, startAt: number) {
   applyTheme(rt.info.theme);
   engine.setSong(rt);
   director.startSong(rt, startAt);
-  // 還沒出卡的新留言留到下一首（歌尾最後幾秒送出的留言以前會在這裡被清掉，永遠等不到「新留言」小卡）
-  popupWait.clear();
-  nextRandomPopup = startAt + 14;
   t = startAt;
 }
 
@@ -180,14 +177,18 @@ async function prevSong() {
   await playIndex(indexOfSong(cur.row.id) - 1);
 }
 
-// ------------------------------------------------------------------ 留言與即時小卡
-const popupQueue: Msg[] = [];
-/** 新留言第一次試著出卡的時間（畫面上沒有不蓋字的空位就等；等超過 8 秒才准蓋到版面的字）。 */
-const popupWait = new Map<number, number>();
-let nextRandomPopup = 14;
-pool.onArrive = (m) => popupQueue.push(m);
+// ------------------------------------------------------------------ 留言
+// 2026-09-28 新人：「親友的留言要直接結合在模板裡，不要放一堆卡，不要太突兀」。
+// 所以不再跳即時小卡：新留言排進主打（pool.nextHero 新留言優先），還沒開始的窗格馬上重排，
+// 下一個窗格的版面就會用它當主角（版面自己的方式：星座、報紙頭條、信紙…）。
+pool.onArrive = () => {
+  const au = engine.song?.audio;
+  if (!au) return;
+  // 快開始的窗格（2.5 秒內）已經在準備了，留著；之後的重排
+  const next = engine.timeline.filter((e) => e.start > t).sort((a, b) => a.start - b.start)[0];
+  engine.drop(next && next.start - t < 2.5 ? next.start + 0.01 : t + 0.01);
+};
 pool.onRemove = (id) => {
-  engine.overlay.remove(id, t);
   // 主打這則的窗格：下一拍切走（之後的窗格重排）
   const au = engine.song?.audio;
   if (!au) return;
@@ -197,34 +198,7 @@ pool.onRemove = (id) => {
     engine.drop(at);
     if (hit.start < at) engine.cut(hit.id, at); else engine.drop(hit.start);
   }
-  const qi = popupQueue.findIndex((m) => m.id === id);
-  if (qi >= 0) popupQueue.splice(qi, 1);
 };
-
-function schedulePopups() {
-  const au = engine.song?.audio;
-  if (!au) return;
-  const end = au.duration;
-  // 新留言：下一拍跳出來（歌快結束了就等下一首）
-  if (popupQueue.length && t < end - 6) {
-    const at = au.nextBeat(t + 0.25);
-    const m = popupQueue[0]!;
-    // 換歌時歌曲時間會歸零：記的時間比現在晚就從現在重新算
-    const since = popupWait.get(m.id);
-    if (since === undefined || since > t) popupWait.set(m.id, t);
-    const waited = t - popupWait.get(m.id)!;
-    if (engine.overlay.schedule(m, at, true, engine.lastPost.popupAvoid, waited > 8)) { pool.markShown(m.id); popupQueue.shift(); popupWait.delete(m.id); }
-  }
-  // 舊留言：每隔 12～28 秒隨機冒一則出來（留言太少、畫面上已經有兩張就不冒）
-  if (t >= nextRandomPopup && t < end - 8) {
-    nextRandomPopup = t + 12 + 16 * hash(t, pool.count);
-    if (pool.count >= 3 && engine.overlay.busy(t) < 2) {
-      const hero = new Set(engine.timeline.filter((e) => e.end > t && e.params?.message).map((e) => e.params.message.id as number));
-      const m = pool.nextPopup(hash(t * 7, 3), hero, Math.min(120, pool.count * 8));
-      if (m && engine.overlay.schedule(m, au.nextBeat(t + 0.25), false, engine.lastPost.popupAvoid)) pool.markShown(m.id);
-    }
-  }
-}
 
 // ------------------------------------------------------------------ 輪詢後端
 let feedFails = 0;
@@ -275,7 +249,6 @@ function tick() {
     if (playing && !silent && cur && (t >= cur.endAt - 0.03 || player.el.ended)) { void nextSong(); }
     else if (playing && silent && t > 239) startSilent();
     director.update(t);
-    if (playing) schedulePopups();
     engine.gc(t);
     engine.render(t, 1 / 60);
   }
@@ -365,6 +338,8 @@ async function devInit() {
     instrumental: false, theme: Q.get('theme') ?? '', start_at: 0, end_at: 0, updated_at: 'dev',
   }));
   await pool.sync(DEV_MESSAGES, true);
+  // 開發用：看導演排了什麼（測試新留言有沒有排進下一個窗格）
+  (window as any).__wallDbg = { t: () => t, timeline: () => engine.timeline.map((e) => ({ scene: e.scene, start: e.start, end: e.end, msg: e.params?.message?.id ?? null })) };
   if (Q.has('sim')) {
     let k = 0;
     setInterval(() => { const m = DEV_LIVE[k % DEV_LIVE.length]!; k++; void pool.sync([...DEV_MESSAGES, ...DEV_LIVE.slice(0, k).map((x, i) => ({ ...x, id: 100 + i }))]); void m; }, 9000);
