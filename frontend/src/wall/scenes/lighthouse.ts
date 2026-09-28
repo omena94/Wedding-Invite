@@ -15,7 +15,7 @@ import { clamp, ease, prog, hash, smoothstep } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
 import { Lyrics, type Line } from '../engine/lyrics';
 import { lyricAt, drawLyric, layoutLyric, beatAfter, signature, COUPLE_ZH, type LyricStyle, type LyricLayout } from './_motifs';
-import { no3, INVITE_SMALL, preloadText, fitFew } from './_t19';
+import { no3, INVITE_SMALL, preloadText, fitWithSig } from './_t19';
 import { FRAG_LIGHTHOUSE, beamDir, beamAt, facing, CAM, LAMP } from './lighthouse-glsl';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'light', paper: false, energy: [0.2, 0.8], bars: [4, 8] };
@@ -76,7 +76,9 @@ export default class Lighthouse extends Scene {
     // ---- 留言排版：靠左、瑞士網格；署名在最後一行下面靠右
     const c = this.layer.ctx;
     // 沒有留言時霧裡的標語是配角（焦點是歌詞的船隊），字小一級
-    const fit = m ? fitFew(c, text, MSG_FAM, BOX.w, BOX.h, { min: 48, max: 108, lineHeight: 1.34, maxLines: 5 }) : fixedLines(c, NO_MSG, MSG_FAM, BOX.w, 60);
+    // 有留言：字級依「框高扣掉署名那一列」找（fitWithSig），署名一定在最後一行下面、不會壓到地平線的船
+    const blk = m ? fitWithSig(c, text, MSG_FAM, BOX.w, BOX.h + 96, { min: 48, max: 108, lineHeight: 1.34, maxLines: 5 }, { ratio: 0.5, min: 44, max: 56 }) : null;
+    const fit = blk ? blk.fit : fixedLines(c, NO_MSG, MSG_FAM, BOX.w, 60);
     this.size = fit.size;
     const top = BOX.y + fit.size;
     this.glyphs = [];
@@ -107,11 +109,11 @@ export default class Lighthouse extends Scene {
 
     const lastY = top + (fit.lines.length - 1) * fit.lineHeight;
     const maxW = fit.width;
-    if (m) {
-      const size = Math.max(44, Math.round(fit.size * 0.5));
+    if (m && blk) {
+      const size = blk.sigSize;
       c.font = font(SIG_FAM, size);
       const w = c.measureText(sigText).width;
-      this.sig = { text: sigText, x: Math.min(BOX.x + BOX.w - w, BOX.x + Math.max(maxW, w + 120) - w), y: lastY + fit.size * 0.35 + size * 1.08, size, t: last + 0.3, fam: SIG_FAM };
+      this.sig = { text: sigText, x: Math.min(BOX.x + BOX.w - w, BOX.x + Math.max(maxW, w + 120) - w), y: lastY + blk.sigDy, size, t: last + 0.3, fam: SIG_FAM };
     } else {
       this.sig = { text: sigText, x: BOX.x, y: lastY + fit.size * 1.15, size: 30, t: last + 0.3, fam: F.hei(500) };
     }

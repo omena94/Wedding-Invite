@@ -18,7 +18,7 @@ import { clamp, ease, prog, hash, lerp, noise1, springStep, TAU } from '../engin
 import { fitText, type FitResult } from '../engine/text';
 import { Lyrics, type Line } from '../engine/lyrics';
 import { lyricAt, drawLyric, layoutLyric, beatAfter, signature, type LyricStyle, type LyricLayout } from './_motifs';
-import { no3, INVITE_SMALL, preloadText, fitFew } from './_t19';
+import { no3, INVITE_SMALL, preloadText, fitWithSig } from './_t19';
 import { FRAG_CAMPFIRE, FIRE, BENCH, TONGUES } from './campfire-glsl';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'light', paper: false, energy: [0.3, 0.95], bars: [4, 8] };
@@ -83,10 +83,11 @@ export default class Campfire extends Scene {
     this.label = `營火 CAMPFIRE${m ? '  ·  ' + no3(m.n) : ''}${m?.couple ? '  ·  FROM THE COUPLE' : ''}`;
     await preloadText(this.ctx, `${text}${sigText}${this.label}${NOTE}${song.title}${song.artist}♪—A+O${m?.couple ? 'FROM THE COUPLE' : ''}`);
 
-    // ---- 留言排版（署名的空間先扣掉）
+    // ---- 留言排版：字級依「框高扣掉署名那一列」找，署名一定在最後一行下面（fitWithSig）
     const c = this.layer.ctx;
-    const fit: FitResult = m
-      ? fitFew(c, text, MSG_FAM, BOX.w, BOX.h - 90, { min: 48, max: 124, lineHeight: 1.3, maxLines: 6 })
+    const blk = m ? fitWithSig(c, text, MSG_FAM, BOX.w, BOX.h, { min: 48, max: 124, lineHeight: 1.3, maxLines: 6 }, { ratio: 0.52, min: 44, max: 64 }) : null;
+    const fit: FitResult = blk
+      ? blk.fit
       : fixedLines(c, NO_MSG, MSG_FAM, BOX.w, 64, 1.3); // 沒有留言：標語是配角，焦點是圓木上的歌詞
     this.size = fit.size;
     const top = BOX.y + fit.size;
@@ -121,11 +122,11 @@ export default class Campfire extends Scene {
     });
     const last = this.sparks.length ? Math.max(...this.sparks.map((sp) => sp.ta)) : this.t0;
     const lastY = top + (fit.lines.length - 1) * fit.lineHeight;
-    if (m) {
-      const size = Math.max(44, Math.round(fit.size * 0.52));
+    if (m && blk) {
+      const size = blk.sigSize;
       c.font = font(MSG_FAM, size);
       const w = c.measureText(sigText).width;
-      this.sig = { text: sigText, x: Math.max(BOX.x, Math.min(BOX.x + BOX.w - w, BOX.x + fit.width - w + 30)), y: lastY + fit.size * 0.35 + size * 1.08, size, t: last + 0.5 * B, fam: MSG_FAM };
+      this.sig = { text: sigText, x: Math.max(BOX.x, Math.min(BOX.x + BOX.w - 50 - w, BOX.x + fit.width - w)), y: lastY + blk.sigDy, size, t: last + 0.5 * B, fam: MSG_FAM };
     } else {
       this.sig = { text: sigText, x: BOX.x, y: lastY + fit.size * 0.95 + 24, size: 30, t: last + 0.5 * B, fam: F.hei(500) };
     }

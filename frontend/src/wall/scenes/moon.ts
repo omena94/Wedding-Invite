@@ -17,7 +17,7 @@ import { clamp, ease, prog, lerp, smoothstep, polylineLengths, pointAtLength, TA
 import { fitText, charCount } from '../engine/text';
 import type { Line } from '../engine/lyrics';
 import { sparkHead, sparkParticles, lyricAt, beatAfter, signature, drawHeart, COUPLE_ZH, DATE_DOTS } from './_motifs';
-import { glyphStates, glyphColor, alongPath, no3, INVITE_SMALL, preloadText, type PathGlyph } from './_t19';
+import { glyphStates, glyphColor, alongPath, no3, INVITE_SMALL, preloadText, fitWithSig, type PathGlyph } from './_t19';
 import { FRAG_MOON } from './moon-glsl';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'light', paper: false, energy: [0, 0.7], bars: [4, 8] };
@@ -151,15 +151,16 @@ export default class Moon extends Scene {
       const R = this.R;
       // 框：月面內接的扁長方形（寬 1.46R 時上下緣還在月面內），下面留一列給署名
       const bw = R * 1.46, bh = R * 1.16 - 40;
-      let fit = fitText(c, m.text, MSG_FAM, bw, bh, { min: 46, max: 110, lineHeight: 1.28, maxLines: 7 });
+      // 字級依「框高扣掉署名那一列」找（fitWithSig）：署名一定在最後一行下面、不重疊
+      const sigO = { ratio: 0.46, min: 38, max: 52 };
+      let blk = fitWithSig(c, m.text, MSG_FAM, bw, bh + 40, { min: 46, max: 110, lineHeight: 1.28, maxLines: 7 }, sigO);
       // 短短一句（「新婚快樂！！！」）不要被折成兩行：一行穿過月面正中間（那裡最寬），夠大就用一行
       if (charCount(m.text) <= 12) {
-        const one = fitText(c, m.text, MSG_FAM, R * 1.7, bh, { min: 44, max: 120, lineHeight: 1.3, maxLines: 1 });
-        if (one.lines.length === 1 && one.size >= 58) fit = one;
+        const one = fitWithSig(c, m.text, MSG_FAM, R * 1.7, bh + 40, { min: 44, max: 120, lineHeight: 1.3, maxLines: 1 }, sigO);
+        if (one.fit.lines.length === 1 && one.fit.size >= 58) blk = one;
       }
-      const ss = Math.max(38, Math.round(fit.size * 0.46));
-      const blockH = fit.height + ss * 1.35;
-      const top = C.y - R * 0.03 - blockH / 2 + fit.size * 0.86;
+      const fit = blk.fit, ss = blk.sigSize;
+      const top = C.y - R * 0.03 - blk.height / 2 + fit.size;
       let order = 0;
       fit.lines.forEach((ln, i) => {
         const lay = layout(ln, MSG_FAM, fit.size);
@@ -174,7 +175,7 @@ export default class Moon extends Scene {
       c.font = font(SIG_FAM, ss);
       const sw = c.measureText(sigText).width;
       let sx = C.x + fit.width / 2 - sw;
-      const sy = lastY + ss * 1.3;
+      const sy = lastY + blk.sigDy;
       const maxX = C.x + Math.sqrt(Math.max(0, (R * 0.9) ** 2 - (sy - C.y) ** 2));
       if (sx + sw > maxX) sx = maxX - sw;
       this.glyphs.push({ ch: sigText, x: sx, y: sy, w: sw, fam: SIG_FAM, size: ss, col: 'sepia', a: 0.72, order: order + 2 });
@@ -245,10 +246,13 @@ export default class Moon extends Scene {
     u.uT!.value = t;
     this.bg.render(renderer, out);
 
-    // ---- 月相表（不會變：畫一次；換主題時重畫）
-    const sig = `${HEX.bone}${HEX.ink2}${HEX.ash}`;
-    if (sig !== this.baseSig) { this.baseSig = sig; this.drawBase(); }
-    comp.draw(renderer, this.base.texture, out, { opacity: inK * 0.75 });
+    // ---- 不會變的一層：月相表（換主題時重畫）＋月面上已經顯影完的留言。
+    // 留言顯影完、退場之前都不會變：畫一次就好。GPU 畫布每格重畫幾十個大字，字形快取的狀態會讓同一格畫兩次
+    // 差一兩個色階（確定性檢查偶爾抓到），也省每格的繪製與上傳。
+    const still = t >= this.tDev + this.devSpan + 0.35 && t < this.tExit;
+    const sig = `${HEX.bone}${HEX.ink2}${HEX.ash}${HEX.sepia}${HEX.rose}|${still ? 1 : 0}`;
+    if (sig !== this.baseSig) { this.baseSig = sig; this.drawBase(still ? phi : null, t); }
+    comp.draw(renderer, this.base.texture, out, { opacity: inK });
 
     const L = this.layer, HL = this.hot;
     L.clear(); HL.clear();
@@ -268,27 +272,8 @@ export default class Moon extends Scene {
     c.strokeStyle = rgba('signal', 0.8); c.lineWidth = 1.4;
     c.beginPath(); c.arc(COL.x, yk, COL.r + 7, 0, TAU); c.stroke();
 
-    // ---- 月面上的字：滿月的那一拍起逐字顯影；退場時被明暗交界吃掉
-    if (t >= this.tDev) {
-      const n = Math.max(1, this.glyphs.length - 1);
-      const Lx = Math.sin(phi), Lz = -Math.cos(phi);
-      for (const g of this.glyphs) {
-        const ti = this.tDev + this.devSpan * Math.min(1, g.order / n);
-        const a = prog(t, ti, ti + 0.3, ease.outCubic);
-        if (a <= 0) continue;
-        // 字所在的月面有沒有被照到（跟 shader 同一個公式）：只在退場時有差
-        const dx = (g.x + g.w / 2 - C.x) / R, dy = (g.y - g.size * 0.35 - C.y) / R;
-        const nz = Math.sqrt(Math.max(0, 1 - dx * dx - dy * dy));
-        const lit = smoothstep(-0.02, 0.1, dx * Lx + nz * Lz);
-        const alpha = g.a * a * lit;
-        if (alpha <= 0.01) continue;
-        c.font = font(g.fam, g.size);
-        c.letterSpacing = `${g.spacing ?? 0}px`;
-        if (g.ch === '♥') drawHeart(c, g.x + g.w / 2, g.y - g.size * 0.36, g.size * 0.84, rgba('rose', alpha));
-        else { c.fillStyle = rgba(g.col, alpha); c.fillText(g.ch, g.x, g.y + (1 - a) * 6); }
-        c.letterSpacing = '0px';
-      }
-    }
+    // ---- 月面上的字：滿月的那一拍起逐字顯影；退場時被明暗交界吃掉（顯影完、退場前在不會變的那一層）
+    if (t >= this.tDev && !still) this.drawGlyphs(c, t, phi);
 
     // ---- 軌道虛線：拍點上往前流一格
     const beat = au.beatAt(t);
@@ -312,10 +297,33 @@ export default class Moon extends Scene {
     return { bloom: 0.7, vignette: 0.55, zoom: push, popupAvoid: this.avoid };
   }
 
-  /** 月相表：八個小月亮＋標籤＋欄頭。 */
-  private drawBase() {
+  /** 月面上的字（逐字顯影；lit 跟 shader 同一個公式，只在退場時有差）。 */
+  private drawGlyphs(c: CanvasRenderingContext2D, t: number, phi: number) {
+    const R = this.R;
+    const n = Math.max(1, this.glyphs.length - 1);
+    const Lx = Math.sin(phi), Lz = -Math.cos(phi);
+    for (const g of this.glyphs) {
+      const ti = this.tDev + this.devSpan * Math.min(1, g.order / n);
+      const a = prog(t, ti, ti + 0.3, ease.outCubic);
+      if (a <= 0) continue;
+      const dx = (g.x + g.w / 2 - C.x) / R, dy = (g.y - g.size * 0.35 - C.y) / R;
+      const nz = Math.sqrt(Math.max(0, 1 - dx * dx - dy * dy));
+      const lit = smoothstep(-0.02, 0.1, dx * Lx + nz * Lz);
+      const alpha = g.a * a * lit;
+      if (alpha <= 0.01) continue;
+      c.font = font(g.fam, g.size);
+      c.letterSpacing = `${g.spacing ?? 0}px`;
+      if (g.ch === '♥') drawHeart(c, g.x + g.w / 2, g.y - g.size * 0.36, g.size * 0.84, rgba('rose', alpha));
+      else { c.fillStyle = rgba(g.col, alpha); c.fillText(g.ch, g.x, g.y + (1 - a) * 6); }
+      c.letterSpacing = '0px';
+    }
+  }
+
+  /** 不會變的一層：月相表（八個小月亮＋標籤，畫淡一點）＋顯影完的留言（phi 不是 null 時）。 */
+  private drawBase(phi: number | null, t: number) {
     const B = this.base, c = B.ctx;
     B.clear();
+    c.globalAlpha = 0.75;
     c.strokeStyle = rgba('bone', 0.12); c.lineWidth = 1;
     // 欄的中線（細）：小月亮串在上面
     c.beginPath(); c.moveTo(COL.x, COL.y0 - 30); c.lineTo(COL.x, COL.y0 + 7 * COL.dy + 30); c.stroke();
@@ -326,6 +334,8 @@ export default class Moon extends Scene {
       c.fillText(name, COL.x + COL.r + 14, y + 6);
       c.letterSpacing = '0px';
     });
+    c.globalAlpha = 1;
+    if (phi !== null) this.drawGlyphs(c, t, phi);
     B.upload();
   }
 

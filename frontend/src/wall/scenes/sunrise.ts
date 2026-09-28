@@ -16,7 +16,7 @@ import { clamp, ease, prog, lerp, mulberry32 } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
 import type { Line } from '../engine/lyrics';
 import { layoutLyric, drawLyric, beatAfter, signature, type LyricStyle, type LyricLayout } from './_motifs';
-import { paperSignal, no3, INVITE_SMALL, preloadText, fitFew } from './_t19';
+import { paperSignal, no3, INVITE_SMALL, preloadText, fitWithSig, type MsgBlock } from './_t19';
 import { FRAG_SUNRISE, N_RAYS, N_CIRC } from './sunrise-glsl';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'light', paper: true, energy: [0.25, 0.9], bars: [4, 8] };
@@ -110,19 +110,22 @@ export default class Sunrise extends Scene {
     const c = this.layer.ctx;
     const tagH = m?.couple ? 34 : 0;
     let blockW = 0, blockH = 0;
+    let blk: MsgBlock | null = null;
     if (m) {
-      this.fit = fitFew(c, text, MSG_FAM, CLOUD.w, CLOUD.h - tagH, { min: 48, max: 110, lineHeight: 1.26, maxLines: 4 });
+      // 字級依「框高扣掉署名那一列」找（fitWithSig）：署名一定在最後一行下面、不重疊
+      blk = fitWithSig(c, text, MSG_FAM, CLOUD.w, CLOUD.h - tagH + 66, { min: 48, max: 110, lineHeight: 1.26, maxLines: 4 }, { ratio: 0.5, min: 40, max: 48 });
+      this.fit = blk.fit;
     } else {
       // 沒有留言：雲上的標語是配角（焦點是光芒上的歌詞），字小一級
       this.fit = fitText(c, text, MSG_FAM, CLOUD.w, 120, { min: 48, max: 58, lineHeight: 1.28, maxLines: 2 });
     }
     const fit = this.fit;
-    const sigSize = clamp(fit.size * 0.5, 40, 48);
+    const sigSize = blk ? blk.sigSize : 40;
     const sigText = m ? signature(m.name) : '';
     const sigW = m ? measure(sigText, MSG_FAM, sigSize) : 0;
     const inviteH = m ? 0 : 50;
     blockW = Math.max(fit.width, sigW);
-    blockH = tagH + fit.height + (m ? 20 + sigSize : inviteH);
+    blockH = tagH + (blk ? blk.height : fit.height + inviteH);
     const top = CLOUD.cy - blockH / 2;
     const n = fit.lines.reduce((a, l) => a + Array.from(l).length, 0);
     // 字在雲停下來之後一小節內一個個印上去
@@ -131,12 +134,12 @@ export default class Sunrise extends Scene {
     let k = 0;
     fit.lines.forEach((ln, i) => {
       const lay: TextLayout = layout(ln, MSG_FAM, fit.size);
-      const x0 = CLOUD.cx - lay.width / 2, y = top + tagH + fit.size * 0.9 + i * fit.lineHeight;
+      const x0 = CLOUD.cx - lay.width / 2, y = top + tagH + fit.size + i * fit.lineHeight;
       for (const g of lay.glyphs) this.glyphs.push({ ch: g.ch, x: x0 + g.x, y, t: tm0 + (dur * k++) / Math.max(1, n) });
     });
     const textR = CLOUD.cx + fit.width / 2;
     if (m) {
-      this.sig = { text: sigText, x: Math.max(textR, CLOUD.cx + sigW / 2) - sigW, y: top + tagH + fit.height + 20 + sigSize * 0.88, size: sigSize, t: tm0 + dur + 0.2 };
+      this.sig = { text: sigText, x: Math.max(textR, CLOUD.cx + sigW / 2) - sigW, y: top + tagH + fit.height + (blk?.sigDy ?? 0), size: sigSize, t: tm0 + dur + 0.2 };
       if (m.couple) this.tag = { text: 'FROM THE COUPLE · 新人', x: CLOUD.cx - blockW / 2, y: top + 16 };
     } else {
       this.invite = { x: CLOUD.cx, y: top + fit.height + 40 };

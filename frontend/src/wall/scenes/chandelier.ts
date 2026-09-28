@@ -19,7 +19,7 @@ import { clamp, ease, prog, hash, pulse, TAU } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
 import type { Line } from '../engine/lyrics';
 import { lyricAt, beatAfter, signature, COUPLE_EN } from './_motifs';
-import { glyphStates, glyphColor, no3, INVITE_SMALL, preloadText, fitFew, type GlyphState } from './_t19';
+import { glyphStates, glyphColor, no3, INVITE_SMALL, preloadText, fitFew, fitWithSig, type GlyphState } from './_t19';
 import { buildModel, CEIL, HOOP, LYRIC_ARC, type Model, type StrandDef } from './chandelier-model';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'light', paper: false, energy: [0.35, 1], bars: [4, 8] };
@@ -32,7 +32,6 @@ const LYR = { size: 50, min: 48, maxW: 1060, x0: 150, x1: 1320 };
 /** 留言的框（吊燈下方，最下面一行留給署名）：整個畫面最大的字。 */
 const MSG = { x: 150, y: 604, w: 1180, h: 356 };
 const MSG_FAM = F.ming(700);
-const SIG_MAX = 958;
 const LYR_FAM = F.archivo(100, 700);
 const NAME_FAM = F.serif(600);
 const LABEL = '亮度：足以照亮每一句祝福';
@@ -143,6 +142,13 @@ export default class Chandelier extends Scene {
   label = '';
   label2 = '';
   tRev = 0.6;
+  /**
+   * 留言另外一層：全部就位之後只畫一次、之後每格重用貼圖。
+   * 為什麼：GPU 畫布每格重畫幾十個大字，字形快取的狀態會讓同一格畫兩次差一兩個色階（確定性檢查偶爾抓到），也省上傳時間。
+   */
+  msgL = this.track(new Layer2D(W, H, undefined, { fast: true }));
+  msgStatic = false;
+  tStatic = Infinity;
   /** 歌詞墜子的字級：有留言時小一級（留言是焦點），沒有留言時歌詞就是焦點、大一點。 */
   lyrSize = this.msg ? LYR.size : 60;
 
@@ -156,14 +162,15 @@ export default class Chandelier extends Scene {
     const text = m ? m.text : EMPTY;
     await preloadText(this.ctx, `${text}${signature(m?.name ?? '')}${this.label}${this.label2}${INVITE_SMALL}${song.title}${COUPLE_EN}FROM THE COUPLE`);
     const c = this.layer.ctx;
-    // 有留言時框的下面留一行給署名（署名的基線不能低於 SIG_MAX，離下緣要 96 px 以上）
-    const boxH = MSG.h - 58;
+    // 有留言：字級依「框高扣掉署名那一列」找（fitWithSig），署名一定在最後一行下面，整塊（含署名）在框裡垂直置中。
     // 沒有留言時邀請是配角（比歌詞小一點）
-    this.fit = fitFew(c, text, MSG_FAM, MSG.w, boxH, { min: 48, max: m ? 116 : 56, lineHeight: 1.28, maxLines: 4 });
+    const blk = m ? fitWithSig(c, text, MSG_FAM, MSG.w, MSG.h, { min: 48, max: 116, lineHeight: 1.28, maxLines: 4 }, { ratio: 0.45, min: 40, max: 48 }) : null;
+    this.fit = blk ? blk.fit : fitFew(c, text, MSG_FAM, MSG.w, MSG.h - 58, { min: 48, max: 56, lineHeight: 1.28, maxLines: 4 });
     const fit = this.fit;
     // 留言塊在吊燈正下方置中（塊內靠左），寬的時候貼齊左右界線
     const bx = clamp(CX - fit.width / 2, MSG.x, MSG.x + MSG.w - fit.width);
-    const y0 = MSG.y + (boxH - fit.height) / 2 + fit.size * 0.9;
+    const blockH = blk ? blk.height : fit.height + 58;
+    const y0 = MSG.y + (MSG.h - blockH) / 2 + fit.size;
     const lastY = y0 + (fit.lines.length - 1) * fit.lineHeight;
     // 一個字一個字滴下來：第二拍開始，一小節內全部就位
     const bar = beat * 4;
@@ -176,14 +183,18 @@ export default class Chandelier extends Scene {
       for (const g of lay.glyphs) this.glyphs.push({ ch: g.ch, x: bx + g.x, y: y0 + li * fit.lineHeight, w: g.w, t0: tm0 + (i++) * stag });
     });
     const tEnd = tm0 + (n - 1) * stag + 0.34;
-    if (m) {
-      const ss = clamp(Math.round(fit.size * 0.45), 40, 48);
+    if (m && blk) {
+      const ss = blk.sigSize;
       const sw = (c.font = font(F.hand(400), ss), c.measureText(signature(m.name)).width);
-      this.sig = { text: signature(m.name), x: Math.max(MSG.x, bx + fit.width - sw), y: Math.min(SIG_MAX, lastY + fit.size * 0.3 + ss * 1.25), t0: tEnd + 0.15, size: ss };
+      // 署名只放在最後一行下面（不再夾到固定高度：夾上去就會壓到最後一行）
+      this.sig = { text: signature(m.name), x: Math.max(MSG.x, bx + fit.width - sw), y: lastY + blk.sigDy, t0: tEnd + 0.15, size: ss };
       this.coupleTag = m.couple;
     } else {
       this.inviteY = y0 + (fit.lines.length - 1) * fit.lineHeight + 58;
     }
+    // 留言全部就位（落地的閃光、署名／邀請的淡入都結束）之後就不會再變
+    const lastT0 = this.glyphs.length ? this.glyphs[this.glyphs.length - 1]!.t0 : tm0;
+    this.tStatic = Math.max(lastT0 + 0.62, m ? this.sig.t0 + 0.52 : lastT0 + 0.82);
   }
 
   // ---------------------------------------------------------------- 工具
@@ -474,10 +485,17 @@ export default class Chandelier extends Scene {
         this.drawPendants(c, cur.line, glyphStates(cur.line, t), alpha * glob * pk, t, ease.outBack(Math.min(kNew, pk)), false);
       }
     }
-    this.drawMessage(c, t, glob);
+    const ML = this.msgL;
+    if (t < this.tStatic || !this.msgStatic) {
+      ML.clear();
+      this.drawMessage(ML.ctx, t, 1);
+      ML.upload();
+      this.msgStatic = t >= this.tStatic;
+    }
 
     L.render(renderer, out, cam);
     comp.draw(renderer, Ly.upload(), out);
+    comp.draw(renderer, ML.texture, out, { opacity: glob });
     for (const g of this.glints) {
       const [x, y] = this.proj(g.x, g.y, g.z);
       this.star(x, y, Math.min(1, g.I));
@@ -542,7 +560,8 @@ export default class Chandelier extends Scene {
         const w = tk.adv[ci - tk.ci0]!;
         if (ch.trim()) {
           c.fillStyle = still || !gs ? rgba('bone', 1) : glyphColor(gs[ci]?.p ?? 0);
-          c.fillText(ch, x, base);
+          // 字的位置對齊整數像素：GPU 畫布的字形快取對小數位置有好幾種版本，同一格畫兩次偶爾差一兩個色階（確定性檢查會抓到）
+          c.fillText(ch, Math.round(x), Math.round(base));
         }
         x += w;
       }
@@ -563,7 +582,7 @@ export default class Chandelier extends Scene {
       const dy = -46 * (1 - ease.outBack(u, 2.2));
       c.globalAlpha = clamp(u * 3) * glob;
       c.fillStyle = g.ch === '♥' ? rgba('rose') : rgba('bone', 0.96);
-      c.fillText(g.ch, g.x, g.y + dy);
+      c.fillText(g.ch, Math.round(g.x), Math.round(g.y + dy));
       // 落地的那一刻閃一下
       const tl = g.t0 + 0.2;
       if (t >= tl && t < tl + 0.4) this.glowAt(g.x + g.w / 2, g.y - fit.size * 0.78, 0.4 * pulse(t, tl, 0.07));
@@ -574,7 +593,7 @@ export default class Chandelier extends Scene {
       if (k > 0) {
         c.globalAlpha = k * glob;
         c.font = font(F.hand(400), this.sig.size); c.fillStyle = rgba('ash', 0.95);
-        c.fillText(this.sig.text, this.sig.x + 16 * (1 - k), this.sig.y);
+        c.fillText(this.sig.text, Math.round(this.sig.x + 16 * (1 - k)), Math.round(this.sig.y));
         if (this.coupleTag) {
           c.font = font(F.mono(500), 15); c.letterSpacing = '3px'; c.fillStyle = rgba('signal', 0.85);
           c.fillText('FROM THE COUPLE', MSG.x, this.sig.y - 4);

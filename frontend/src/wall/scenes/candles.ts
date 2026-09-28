@@ -13,7 +13,7 @@ import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, hash, noise1, springStep, lerp } from '../engine/util';
 import { fitText } from '../engine/text';
 import { sparkHead, sparkParticles, lyricAt, drawLyric, layoutLyric, beatAfter, signature, drawMessage, type LyricStyle } from './_motifs';
-import { no3, INVITE_SMALL, preloadText, fitFew } from './_t19';
+import { no3, INVITE_SMALL, preloadText, fitWithSig } from './_t19';
 import { makeRig, U, N, EDGE_Z, CANDLE_Z, candleX, wickTop } from './candles-rig';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'light', paper: false, energy: [0, 0.6], bars: [4, 12], lyricsOnly: true };
@@ -104,17 +104,18 @@ export default class Candles extends Scene {
       // 手寫體用粗的那一款：繡在布上也要遠遠一眼讀得到
       const fam = F.hand(700);
       // 很短的留言（「♥♥♥」、「恭喜！」）可以更大：愛心這個字形本來就比字小一圈
-      const fit = fitFew(c, m.text, fam, 1140, 280, { min: 48, max: Array.from(m.text).length <= 4 ? 150 : 116, lineHeight: 1.26, maxLines: 5 });
+      // 字級依「可用高度扣掉署名那一列」找（fitWithSig）：署名一定在最後一行下面，整塊也放得進前擺的貼圖
+      const blk = fitWithSig(c, m.text, fam, 1140, 360, { min: 48, max: Array.from(m.text).length <= 4 ? 150 : 116, lineHeight: 1.26, maxLines: 5 }, { ratio: 0.5, min: 44, max: 62 });
+      const fit = blk.fit;
       const sig = signature(m.name);
-      const sigSize = clamp(fit.size * 0.5, 44, 62);
-      const groupH = fit.height + fit.size * 0.42 + sigSize;
-      top = 18 + Math.max(0, (360 - groupH) * 0.32);
-      const base = top + fit.size * 0.9;
+      const sigSize = blk.sigSize;
+      top = 18 + Math.max(0, (360 - blk.height) * 0.32);
+      const base = top + fit.size;
       drawMessage(c, fit, fam, x0, base, { color: rgba('bone') });
       c.font = font(fam, sigSize);
       const sw = c.measureText(sig).width;
       const sx = Math.min(x0 + 1140, Math.max(x0 + fit.width, x0 + sw)) - sw;
-      const sy = base + (fit.lines.length - 1) * fit.lineHeight + fit.size * 0.42 + sigSize;
+      const sy = base + (fit.lines.length - 1) * fit.lineHeight + blk.sigDy;
       c.fillStyle = mixRgba('bone', 'ash', 0.35);
       c.fillText(sig, sx, sy);
       if (m.couple) {
