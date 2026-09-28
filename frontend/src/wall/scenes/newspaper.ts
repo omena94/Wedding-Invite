@@ -15,7 +15,7 @@ import { F, font, loadText } from '../engine/type';
 import { mixRgba, rgba } from '../engine/palette';
 import { clamp, ease, hash, prog, pulse, frameIdx } from '../engine/util';
 import { wrap } from '../engine/text';
-import { lyricAt, drawLyric, layoutLyric, beatAfter, COUPLE_ZH, DATE_DOTS } from './_motifs';
+import { lyricAt, drawLyric, layoutLyric, beatAfter, fillWithHearts, COUPLE_ZH, DATE_DOTS } from './_motifs';
 import { sigInk, paperLyric, makeCanvas, freeCanvas, xfRect, ensureBake, themeKey, fitMsg, yieldFrame, type Rect } from './_t1';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'doc', paper: true, energy: [0.45, 1], bars: [4, 8], weight: 1 };
@@ -27,10 +27,10 @@ const PG = { w: 1500, h: 1040 };
 /** 放好的時候：中心在螢幕上的位置、角度。 */
 const REST = { x: 842, y: 552, rot: -0.026 };
 /** 頭條、副標（歌詞）、網點照片（紙面座標）。 */
-const HEAD = { x: 34, y: 262, w: 1140, h: 300 };
-const BAND = { y: 574, h: 168 };
-const SUB = { x: 34, label: 600, base: 660, maxW: 1130 };
-const PHOTO = { x: 1210, y: 250, w: 256, h: 420 };
+const HEAD = { x: 40, y: 170, w: 1140, h: 400 };
+const BAND = { y: 590, h: 150 };
+const SUB = { x: 40, label: 616, base: 676, maxW: 1130 };
+const PHOTO = { x: 1214, y: 176, w: 252, h: 400 };
 
 const COPY = '【本報訊】宣文與孟庭今日正式結為連理。據現場目擊者指出，兩人過去數年間多次被發現一起吃早餐、遛狗、打羽球，且狀況穩定。對此，雙方家長表示「早就知道了」。記者在喜宴會場訪問多位賓客，受訪者一致表示菜很好吃、新娘很美、新郎笑得合不攏嘴。氣象單位預測，今晚降愛機率百分之百，請民眾隨身攜帶面紙。另據了解，兩隻博美犬芃芃與 QQ 亦已到場祝賀，精神良好。本報將持續追蹤報導。';
 const TEXT = '號外愛的日報中華民國年月日星期第號每份元本報記者現場報導現場連線正在播放今日天氣晴時多雲偶陣愛降愛機率快訊兩枚戒指今日正式扣在一起示意圖攝影本報資料室新人發表談話獨家大螢幕開放留言掃描右下角把祝福寫上大螢幕間奏中本曲為純音樂請自行哼唱一位賓客全體賓客' + COPY;
@@ -39,7 +39,7 @@ const NEWS_FRAG = /* glsl */ `
 uniform sampler2D pageTex; uniform sampler2D bandTex; uniform sampler2D bake;
 uniform vec4 xf;      // 報紙中心（螢幕像素，y 向下）、角度、縮放
 uniform vec2 blur;    // 這一格轉了多少（弧度）、縮放了多少（log）：沿著它取樣做動態模糊
-uniform float ringA; uniform float ringB; uniform float dotK; uniform float shadowK;
+uniform float ringA; uniform float ringB; uniform float dotK; uniform float shadowK; uniform vec3 lamp;
 const vec2 PG = vec2(${PG.w}.0, ${PG.h}.0);
 const vec4 BANDR = vec4(0.0, ${BAND.y}.0, ${PG.w}.0, ${BAND.h}.0);
 const vec4 PH = vec4(${PHOTO.x}.0, ${PHOTO.y}.0, ${PHOTO.w}.0, ${PHOTO.h}.0);
@@ -103,7 +103,7 @@ vec4 pageAt(vec2 pp, float lod) {
   }
   if (pp.x > PH.x && pp.y > PH.y && pp.x < PH.x + PH.z && pp.y < PH.y + PH.w) {
     float ink = halftone(pp, photoDark(pp));
-    col = mix(col, mix(C_SEPIA, C_INK, 0.5), ink * 0.92);
+    col = mix(col, mix(C_SEPIA, C_INK, 0.5), ink * 0.6);
   }
   // 摺線：下緣一條暗線
   col *= 1.0 - 0.25 * smoothstep(PG.y - 10.0, PG.y, pp.y);
@@ -130,14 +130,16 @@ void main() {
   acc /= float(n);
   vec3 col = desk * (1.0 - acc.a) + acc.rgb;
   col *= 0.8 + 0.4 * bk.r;
-  col *= 0.97 + 0.05 * (vUv.y * 0.6 + (1.0 - vUv.x) * 0.4);
+  // 燈：一盞燈照在頭條上，四周暗下去（跟其他紙本版面同一種光）
+  vec2 lp = (sp - lamp.xy) / lamp.z;
+  col *= 0.74 + 0.3 * exp(-dot(lp, lp));
   fragColor = vec4(col, 1.0);
 }`;
 
 const PASS = () => new FSPass(NEWS_FRAG, {
   pageTex: { value: null }, bandTex: { value: null }, bake: { value: null },
   xf: { value: new THREE.Vector4() }, blur: { value: new THREE.Vector2() },
-  ringA: { value: 0 }, ringB: { value: 0 }, dotK: { value: 1 }, shadowK: { value: 1 },
+  ringA: { value: 0 }, ringB: { value: 0 }, dotK: { value: 1 }, shadowK: { value: 1 }, lamp: { value: new THREE.Vector3(760, 420, 1100) },
 });
 
 export default class Newspaper extends Scene {
@@ -190,83 +192,72 @@ export default class Newspaper extends Scene {
     // 新聞紙（比紙色灰一點）
     c.fillStyle = mixRgba('paper', 'ash', 0.14);
     c.fillRect(0, 0, PG.w, PG.h);
-    // 左耳：號外（訊號色實底、字反白）
-    c.fillStyle = sigInk(1);
-    c.fillRect(34, 40, 260, 140);
+    // MV 化：報頭、號外都縮小（配角），天氣欄拿掉；頭條（留言）是整版最大的字
+    // 號外：小小的訊號色標籤
+    c.fillStyle = sigInk(0.95);
+    c.fillRect(40, 44, 128, 52);
     c.fillStyle = mixRgba('paper', 'ash', 0.14);
-    c.font = font(F.hei(900), 84); c.letterSpacing = '8px'; c.fillText('號外', 52, 140);
-    c.font = font(F.mono(600), 16); c.letterSpacing = '8px'; c.fillText('EXTRA', 58, 168);
+    c.font = font(F.hei(900), 34); c.letterSpacing = '6px'; c.fillText('號外', 56, 83);
     c.letterSpacing = '0px';
-    // 右耳：天氣
-    c.strokeStyle = ink(0.8); c.lineWidth = 1.6; c.strokeRect(PG.w - 294, 40, 260, 140);
-    c.fillStyle = INK;
-    c.font = font(F.hei(700), 22); c.letterSpacing = '4px'; c.fillText('今日天氣', PG.w - 276, 78);
-    c.font = font(F.hei(500), 18); c.letterSpacing = '1px'; c.fillText('晴時多雲偶陣愛', PG.w - 276, 110);
-    c.font = font(F.archivo(100, 900), 44); c.fillText('100%', PG.w - 276, 160);
-    c.font = font(F.hei(500), 14); c.fillText('降愛機率', PG.w - 150, 160);
     // 報頭
     c.textAlign = 'center';
-    c.font = font(F.ming(900), 124); c.letterSpacing = '30px'; c.fillText('愛的日報', PG.w / 2 + 15, 150);
+    c.fillStyle = ink(0.8);
+    c.font = font(F.ming(900), 62); c.letterSpacing = '22px'; c.fillText('愛的日報', PG.w / 2 + 11, 90);
     c.letterSpacing = '0px';
-    c.font = font(F.serif(600, true), 26); c.fillText('The Love Daily · Special Edition', PG.w / 2, 184);
     // 日期列（上粗下細的雙線）
     const [yy = '2027', mm = '03', dd = '13'] = DATE_DOTS.split(' · ');
     const wk = '日一二三四五六'[new Date(Date.UTC(Number(yy), Number(mm) - 1, Number(dd))).getUTCDay()]!;
     const roc = String(Number(yy) - 1911).split('').map((d) => '〇一二三四五六七八九'[Number(d)]).join('');
-    c.fillStyle = INK; c.fillRect(34, 198, PG.w - 68, 4); c.fillRect(34, 238, PG.w - 68, 1.4);
-    c.font = font(F.hei(500), 17); c.letterSpacing = '3px';
-    c.textAlign = 'left'; c.fillText(`中華民國${roc}年${Number(mm)}月${Number(dd)}日　星期${wk}`, 40, 227);
-    c.textAlign = 'center'; c.fillText(`第 ${String(m?.n ?? 0).padStart(4, '0')} 號 · 號外`, PG.w / 2, 227);
-    c.textAlign = 'right'; c.fillText('每份 ∞ 元', PG.w - 40, 227);
+    c.fillStyle = ink(0.7); c.fillRect(40, 112, PG.w - 80, 3); c.fillRect(40, 146, PG.w - 80, 1.2);
+    c.fillStyle = ink(0.55);
+    c.font = font(F.hei(500), 16); c.letterSpacing = '3px';
+    c.textAlign = 'left'; c.fillText(`中華民國${roc}年${Number(mm)}月${Number(dd)}日　星期${wk}`, 46, 136);
+    c.textAlign = 'right'; c.fillText('每份 ∞ 元', PG.w - 46, 136);
     c.textAlign = 'left'; c.letterSpacing = '0px';
 
     // 頭條：留言（放得下就越大越好）
     const head = m ? m.text : '大螢幕開放留言！';
     const kicker = m?.couple ? '新人發表談話' : m ? '獨家' : '快訊';
     c.fillStyle = sigInk(1);
-    c.font = font(F.hei(900), 24); c.letterSpacing = '6px'; c.fillText(`【${kicker}】`, HEAD.x - 6, HEAD.y + 4);
+    c.font = font(F.hei(900), 22); c.letterSpacing = '6px'; c.fillText(`【${kicker}】`, HEAD.x - 6, HEAD.y + 22);
     c.letterSpacing = '0px';
-    const fit = fitMsg(c, head, F.hei(900), HEAD.w, HEAD.h - 24, { min: 60, max: 210, lineHeight: 1.14, maxLines: 4, oneLine: 110 });
+    const fit = fitMsg(c, head, F.hei(900), HEAD.w, HEAD.h - 40, { min: 60, max: 220, lineHeight: 1.14, maxLines: 4, oneLine: 110 });
     c.fillStyle = INK;
     c.font = font(F.hei(900), fit.size);
-    const top = HEAD.y + 24 + (HEAD.h - 24 - fit.height) / 2 + fit.size * 0.88;
-    fit.lines.forEach((ln, i) => {
-      let x = HEAD.x;
-      for (const part of ln.split(/(♥)/)) {
-        if (!part) continue;
-        c.fillStyle = part === '♥' ? rgba('rose') : INK;
-        c.fillText(part, x, top + i * fit.lineHeight);
-        x += c.measureText(part).width;
-      }
-    });
+    const top = HEAD.y + 40 + (HEAD.h - 40 - fit.height) / 2 + fit.size * 0.88;
+    c.fillStyle = INK;
+    fit.lines.forEach((ln, i) => fillWithHearts(c, ln, HEAD.x, top + i * fit.lineHeight));
     // 副標欄的框線（字在 band 圖層）
     c.fillStyle = ink(0.8); c.fillRect(HEAD.x, BAND.y, HEAD.w, 2);
     // 署名
     const who = m ? (m.couple ? COUPLE_ZH : m.name || '一位賓客') : '大螢幕';
-    c.fillStyle = INK;
+    c.fillStyle = ink(0.75);
     c.font = font(F.hei(700), 24); c.letterSpacing = '3px';
     const by = m ? `本報記者　${who}　現場報導` : '請掃描右下角 QR code，把祝福寫上大螢幕';
-    c.fillText(by, HEAD.x, 784);
+    c.fillText(by, HEAD.x, 786);
     c.letterSpacing = '0px';
     c.fillStyle = ink(0.7); c.fillRect(HEAD.x, 800, HEAD.w, 1.2);
-    // 內文：四欄冷面的新聞稿
+    // 內文：四欄冷面的新聞稿——景深外的背景紋理：畫得淡、再模糊一點（鏡頭推近頭條時，它們是失焦的）
+    c.save();
+    c.filter = 'blur(1.6px)';
     c.font = font(F.ming(400), 17);
     const colW = (HEAD.w - 3 * 24) / 4;
     const lines = wrap(c, COPY + COPY, colW);
     let li = 0;
     for (let k = 0; k < 4; k++) {
       const x = HEAD.x + k * (colW + 24);
-      for (let y = 830; y < PG.h - 16; y += 27) { const l = lines[li++ % lines.length]!; c.fillStyle = ink(0.86); c.fillText(l, x, y); }
-      if (k < 3) { c.fillStyle = ink(0.35); c.fillRect(x + colW + 11, 814, 1, PG.h - 830); }
+      for (let y = 832; y < PG.h - 16; y += 27) { const l = lines[li++ % lines.length]!; c.fillStyle = ink(0.5); c.fillText(l, x, y); }
+      if (k < 3) { c.fillStyle = ink(0.2); c.fillRect(x + colW + 11, 814, 1, PG.h - 830); }
     }
-    // 右欄：網點照片的框、圖說、快訊
-    c.strokeStyle = ink(0.8); c.lineWidth = 1.2; c.strokeRect(PHOTO.x - 1, PHOTO.y - 1, PHOTO.w + 2, PHOTO.h + 2);
-    c.fillStyle = INK;
+    c.restore();
+    // 右欄：網點照片的框、圖說
+    c.strokeStyle = ink(0.5); c.lineWidth = 1.2; c.strokeRect(PHOTO.x - 1, PHOTO.y - 1, PHOTO.w + 2, PHOTO.h + 2);
+    c.fillStyle = ink(0.55);
     c.font = font(F.hei(500), 15); c.letterSpacing = '1px';
-    const cap = wrap(c, '▲ 兩枚戒指今日正式扣在一起（示意圖）。攝影／本報資料室', PHOTO.w);
+    const cap = wrap(c, '▲ 兩枚戒指今日正式扣在一起（示意圖）', PHOTO.w);
     cap.forEach((l, i) => c.fillText(l, PHOTO.x, PHOTO.y + PHOTO.h + 26 + i * 22));
-    c.fillStyle = ink(0.8); c.fillRect(PHOTO.x, 760, PHOTO.w, 2);
-    c.fillStyle = ink(0.35); c.fillRect(PHOTO.x - 18, 250, 1, PG.h - 270);
+    c.letterSpacing = '0px';
+    c.fillStyle = ink(0.25); c.fillRect(PHOTO.x - 18, 176, 1, PG.h - 196);
 
     this.tex?.dispose();
     const tx = (this.tex = new THREE.CanvasTexture(pg.cv));

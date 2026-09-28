@@ -1,11 +1,11 @@
-// 里程表（機器 A）：一塊雕刻紋的金屬儀表板，上面是一排排滾輪計數器，鏡頭斜斜地貼著看（像微距的產品照，遠的地方有一點景深）。
+// 里程表（機器 A）：一塊雕刻紋的金屬儀表板，鏡頭斜斜地貼著看（像微距的產品照，遠的地方有一點景深）。
 // 畫法：全螢幕 shader（odometer-glsl.ts）從鏡頭射線打到板子上，再畫圓柱滾輪；每個滾輪的位置（轉到哪一格、轉多快）在 CPU 算（純函數）。
-//  - 上排三個小計數器：「今晚收到的祝福」（切進來時從少一點的數字一路滾到現在的則數）、「本曲心跳」（這首歌第幾拍：
-//    每一拍最右邊那一格滾一格、正好落在拍點上，進位時左邊一格跟著滾）、「BPM」。最右邊那一格是反色的，像真的里程表。
-//  - 中間一排大滾輪是歌詞：一句（太長就分頁）在唱之前「嘩」地一起轉上來，停在差一點點的位置（還沒卡進去、三成亮）；
+// MV 融合原則：一個焦點。
+//  - 焦點是一塊主題色的金屬銘牌，主打留言刻在上面（思源宋體，畫面最大的字）：第一拍之後一個詞組一拍，剛刻好的字燒紅、冷卻成墨色；右下署名。
+//  - 銘牌上面一排中等的滾輪是歌詞：一句（太長就分頁）在唱之前「嘩」地一起轉上來，停在差一點點的位置（還沒卡進去、三成亮）；
 //    唱到的那一刻「喀」一聲卡進定位（彈簧），亮成訊號色；唱完變紙白。
-//  - 下面是一塊主題色的金屬銘牌，主打留言刻在上面：第一拍之後一個詞組一拍，剛刻好的字燒紅、冷卻成墨色；右下署名。
-//    沒有留言：銘牌刻邀請。
+//  - 左上角一個小計數器「本曲心跳」：每一拍最右邊那一格滾一格、正好落在拍點上，進位時左邊一格跟著滾（最右邊那一格反色，像真的里程表）。
+//  - 沒有留言：拿掉銘牌，歌詞滾輪放大到畫面中間（焦點是歌詞）；純音樂又沒有留言：銘牌刻邀請、滾輪轉上歌名。
 //  - 每個小節線一道反光掃過整塊板子；鏡頭每兩小節換個角度（緩進小節線），整段慢慢推近。
 import * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
@@ -13,7 +13,7 @@ import { FSPass, Layer2D, W, H } from '../engine/gl';
 import { F, font, loadText } from '../engine/type';
 import { clamp, ease, lerp, prog, hash, springStep } from '../engine/util';
 import { fitText, phrases, type FitResult } from '../engine/text';
-import { beatAfter, barAfter, signature, COUPLE_EN, COUPLE_ZH, DATE_DOTS } from './_motifs';
+import { beatAfter, barAfter, signature, COUPLE_ZH, DATE_DOTS } from './_motifs';
 import { fillWithHearts } from '../engine/motifs';
 import { GlyphAtlas, cuePages, windowLines, COL, type GlyphReq, type CuePage } from './_t7';
 import { FRAG_ODO, NB } from './odometer-glsl';
@@ -21,23 +21,22 @@ import { FRAG_ODO, NB } from './odometer-glsl';
 export const spec: PlateSpecDecl = { group: 'type', family: 'machine', paper: false, energy: [0.3, 0.9], bars: [4, 8] };
 
 // ---------------------------------------------------------------- 版面（板子上的座標，px，y 往下；預設鏡頭下就是螢幕像素）
-const PANEL = { x0: 104, y0: 104, x1: 1356, y1: 944 };
-/** 滾輪組：x0 = 第一個輪面中心左邊的間距起點、中心 y、間距、輪面寬、半徑、每格角度、窗半高、滾輪數。 */
+const PANEL = { x0: 96, y0: 96, x1: 1824, y1: 984 };
+/** 滾輪組：x0 = 第一個輪面的左邊、中心 y、間距、輪面寬、半徑、每格角度、窗半高、滾輪數、在 state 的起點、字寬。 */
 interface Bank { x0: number; cy: number; pitch: number; face: number; R: number; slot: number; winH: number; n: number; si: number; gw: number }
-const SMALL = { pitch: 58, face: 52, R: 58, slot: 1.0, winH: 36 };
-const WISH: Bank = { x0: 152, cy: 220, ...SMALL, n: 4, si: 0, gw: 44 };
-const BEATS: Bank = { x0: 540, cy: 220, ...SMALL, n: 5, si: 4, gw: 44 };
-const BPM: Bank = { x0: 1010, cy: 220, ...SMALL, n: 3, si: 9, gw: 44 };
-/** 歌詞：13 個大滾輪（字級約 80 px）。 */
-const LYR: Bank = { x0: 150, cy: 452, pitch: 92, face: 86, R: 122, slot: 1.02, winH: 96, n: 13, si: 12, gw: 88 };
-/** 銘牌。 */
-const PLATE = { x: 150, y: 588, w: 1150, h: 310 };
-/** 銘牌上：編號那一列的高度、署名那一列的高度。 */
-const P_TOP = 64, P_SIG = 62;
+/** 左上角的小計數器：本曲心跳（配角，字約 36 px）。 */
+const BEATS: Bank = { x0: 150, cy: 168, pitch: 40, face: 36, R: 40, slot: 1.0, winH: 25, n: 5, si: 0, gw: 32 };
+/** 歌詞滾輪：有留言時中等（字約 56 px，比留言小一級）；沒有留言時歌詞是焦點，放大（字約 84 px）。 */
+const LYR_MID: Bank = { x0: 150, cy: 300, pitch: 66, face: 62, R: 84, slot: 1.02, winH: 64, n: 20, si: 5, gw: 60 };
+const LYR_BIG: Bank = { x0: 150, cy: 520, pitch: 96, face: 90, R: 124, slot: 1.02, winH: 98, n: 16, si: 5, gw: 88 };
+/** 銘牌（主打留言）：畫面最大的一塊，下緣停在右下角 QR 區上面。 */
+const PLATE = { x: 150, y: 408, w: 1480, h: 404 };
+/** 銘牌上：上邊留白、署名那一列的高度。 */
+const P_TOP = 34, P_SIG = 74;
 const LAB = { x: PANEL.x0, y: PANEL.y0, w: PANEL.x1 - PANEL.x0, h: PANEL.y1 - PANEL.y0 };
 const FOCAL = 540 / Math.tan((15 * Math.PI) / 180);
 /** 鏡頭繞著轉的點（板子中心）。 */
-const PIV = { x: 730 - 960, y: 540 - 540 };
+const PIV = { x: 900 - 960, y: 540 - 520 };
 
 const F_LYR = F.archivo(100, 800);
 /** 滾輪上「路過」的亂數字：字號加上這個數，shader 就畫成暗的（不是這一格要顯示的字）。 */
@@ -45,14 +44,15 @@ const FILL = 10000;
 const F_DIG = F.archivo(75, 700);
 const F_MSG = F.ming(700);
 const INVITE = '這塊銘牌還空著：掃描右下角 QR code，把你的祝福刻上來。';
-const TEXT = `今晚收到的祝福則本曲心跳下每分鐘現在唱到純音樂${INVITE}新人＊本表只進不退，無法歸零。`;
+const NOTE = '＊本表只進不退，無法歸零。';
+const TEXT = `本曲心跳下${INVITE}${NOTE}`;
 
 interface Cam { yaw: number; pitch: number; dist: number }
 const CAMS: Cam[] = [
-  { yaw: -0.12, pitch: 0.15, dist: 1.03 },
-  { yaw: 0.1, pitch: 0.12, dist: 1.02 },
-  { yaw: -0.06, pitch: 0.18, dist: 1.04 },
-  { yaw: 0.13, pitch: 0.16, dist: 1.03 },
+  { yaw: -0.12, pitch: 0.14, dist: 1.02 },
+  { yaw: 0.09, pitch: 0.11, dist: 1.01 },
+  { yaw: -0.06, pitch: 0.17, dist: 1.03 },
+  { yaw: 0.12, pitch: 0.15, dist: 1.02 },
 ];
 
 const BG = () => new FSPass(FRAG_ODO, {
@@ -88,6 +88,9 @@ export default class Odometer extends Scene {
   state = this.track(new THREE.DataTexture(this.data, 32, 2, THREE.RGBAFormat, THREE.FloatType));
   /** 絹印標籤（畫一次）與銘牌上的刻字（刻一個詞組才重畫一次）。 */
   lab = this.track(new Layer2D(LAB.w, LAB.h, undefined, { fast: true }));
+  /** 歌詞滾輪用哪一組尺寸（有銘牌：中；沒有：大）。 */
+  LYR: Bank = { ...LYR_MID };
+  hasPlate = true;
   plate = this.track(new Layer2D(PLATE.w, PLATE.h, undefined, { fast: true }));
   msg: Msg | null = this.ctx.params.message ?? null;
   drums: Drum[] = [];
@@ -95,8 +98,6 @@ export default class Odometer extends Scene {
   pages: CuePage[] = [];
   beat = 0.5;
   tBoot = 0;
-  count = 0;
-  bpm = 100;
   /** 銘牌：排好的字、每個詞組刻上去的時間。 */
   fit: FitResult | null = null;
   chunks: { line: number; from: number; to: number; t: number }[] = [];
@@ -105,24 +106,22 @@ export default class Odometer extends Scene {
   plateFam = F_MSG;
   camTimes: number[] = [];
   sheens: number[] = [];
-  avoid: [number, number, number, number][] = [];
   private plateKey = '';
 
   override async init() {
-    const { audio: au, lyrics, song, live } = this.ctx;
+    const { audio: au, lyrics, song } = this.ctx;
     const s = this.ctx.start, e = this.ctx.end;
     this.beat = au.beatPeriod(s + 0.1);
     this.tBoot = beatAfter(au, s + 0.25);
-    this.count = Math.min(9999, Math.max(0, live.count));
-    let bpm = au.bpm || 100;
-    while (bpm > 180) bpm /= 2;
-    while (bpm < 60) bpm *= 2;
-    this.bpm = Math.round(bpm);
     const lines = windowLines(lyrics, s, e);
     const m = this.msg;
     const body = m ? m.text : INVITE;
     this.sigText = m ? signature(m.name) : '';
-    await loadText(TEXT + lines.map((l) => l.text).join('') + body + this.sigText + COUPLE_EN + COUPLE_ZH + (song.title ?? ''));
+    await loadText(TEXT + lines.map((l) => l.text).join('') + body + this.sigText + COUPLE_ZH + (song.title ?? ''));
+    // 沒有留言、有歌詞：拿掉銘牌，歌詞放大
+    const lyricPages = cuePages(lines, LYR_BIG.n, 1, true).filter((p) => p.t1 > s - 0.3 && p.t0 < e - 0.2);
+    this.hasPlate = !!m || !lyricPages.length;
+    this.LYR = { ...(this.hasPlate ? LYR_MID : LYR_BIG) };
 
     const reqs: GlyphReq[] = [];
     for (const ch of Array.from(lines.map((l) => l.text).join('') + (song.title ?? '') + COUPLE_ZH)) reqs.push({ ch, family: F_LYR });
@@ -136,37 +135,45 @@ export default class Odometer extends Scene {
     u.uAtlas!.value = this.atlas.tex;
     u.uState!.value = this.state;
     (u.uAG!.value as THREE.Vector2).set(this.atlas.cols, this.atlas.rows);
-    [WISH, BEATS, BPM, LYR].forEach((b, i) => {
+    this.pages = cuePages(lines, this.LYR.n, 1, true).filter((p) => p.t1 > s - 0.3 && p.t0 < e - 0.2);
+    // 滾輪只放用得到的數量（多出來的空滾輪很吵）；沒有銘牌時整排置中
+    const L = this.LYR;
+    const title = song.title && Array.from(song.title).length <= L.n ? song.title : COUPLE_ZH;
+    const need = this.pages.length ? Math.max(...this.pages.map((p) => p.rows[0]!.length)) : Array.from(title).length;
+    L.n = Math.max(6, Math.min(L.n, need));
+    if (!this.hasPlate) L.x0 = Math.round(PLATE.x + (PLATE.w - L.n * L.pitch) / 2);
+    const empty: Bank = { ...BEATS, n: 0 };
+    [BEATS, L, empty, empty].forEach((b, i) => {
       (u.uBA!.value as THREE.Vector4[])[i]!.set(b.x0, b.cy, b.pitch, b.face);
       (u.uBB!.value as THREE.Vector4[])[i]!.set(b.R, b.slot, b.winH, b.n);
       (u.uBC!.value as THREE.Vector4[])[i]!.set(b.si, b.gw, 0, 0);
     });
     u.uLab!.value = this.lab.texture;
     u.uPlate!.value = this.plate.texture;
+    (u.uPlateR!.value as THREE.Vector4).set(PLATE.x, PLATE.y, this.hasPlate ? PLATE.w : 0, PLATE.h);
 
-    this.pages = cuePages(lines, LYR.n, 1, true).filter((p) => p.t1 > s - 0.3 && p.t0 < e - 0.2);
     this.buildLyrics();
-    // 純音樂（這個窗格沒有歌詞）：大滾輪轉上歌名（太長就轉上新人的名字）
-    if (!this.pages.length) this.titleDrums(song.title && Array.from(song.title).length <= LYR.n ? song.title : COUPLE_ZH);
-    this.layoutPlate(body);
+    // 純音樂（這個窗格沒有歌詞）：滾輪轉上歌名（太長就轉上新人的名字）
+    if (!this.pages.length) this.titleDrums(title);
+    if (this.hasPlate) this.layoutPlate(body);
     this.drawLabels();
     this.ctx.renderer.initTexture(this.lab.upload());
     for (let k = 2; ; k += 2) { const tb = barAfter(au, s + 0.1, k); if (tb > e - 0.6) break; this.camTimes.push(tb); }
     for (let k = 0; ; k++) { const tb = barAfter(au, s + 0.05, k); if (tb > e) break; this.sheens.push(tb); }
-    this.avoid = this.computeAvoid();
   }
 
   // ---------------------------------------------------------------- 歌詞滾輪
   private buildLyrics() {
     const s = this.ctx.start, A = this.atlas;
     const fill = A.ofFamily(F_LYR);
-    for (let j = 0; j < LYR.n; j++) this.drums.push({ segs: [], anchors: new Map([[0, -1]]), fill, cols: [[-1e9, COL.DIM]], seed: hash(j, this.ctx.params.seed ?? 1) * 1e6 });
-    const slotOf = new Array(LYR.n).fill(0);
+    const N = this.LYR.n;
+    for (let j = 0; j < N; j++) this.drums.push({ segs: [], anchors: new Map([[0, -1]]), fill, cols: [[-1e9, COL.DIM]], seed: hash(j, this.ctx.params.seed ?? 1) * 1e6 });
+    const slotOf = new Array(N).fill(0);
     /** 每個滾輪上現在的字什麼時候唱完：還在唱的字不能被轉走。 */
-    const busy = new Array(LYR.n).fill(-1e9);
+    const busy = new Array(N).fill(-1e9);
     for (const pg of this.pages) {
       const row = pg.rows[0]!;
-      for (let j = 0; j < LYR.n; j++) {
+      for (let j = 0; j < N; j++) {
         const d = this.drums[j]!;
         const ci = row[j];
         const cue = ci !== undefined ? pg.cues[ci]! : null;
@@ -206,7 +213,7 @@ export default class Odometer extends Scene {
   /** 沒有歌詞的窗格：第一拍前把一串字轉上來（紙白，不用跟唱）。 */
   private titleDrums(text: string) {
     const A = this.atlas, chars = Array.from(text);
-    const x0 = Math.max(0, Math.floor((LYR.n - chars.length) / 2));
+    const x0 = Math.max(0, Math.floor((this.LYR.n - chars.length) / 2));
     chars.forEach((ch, i) => {
       const g = A.get(F_LYR, ch), d = this.drums[x0 + i];
       if (!d || g < 0) return;
@@ -226,7 +233,7 @@ export default class Odometer extends Scene {
     const e = this.ctx.end;
     const c = this.plate.ctx;
     // 留言的框：編號下面到署名那一列上面（署名自己一列，不會壓到最後一行）
-    this.fit = fitText(c, body, F_MSG, PLATE.w - 150, PLATE.h - P_TOP - P_SIG, { min: 44, max: 84, lineHeight: 1.26, maxLines: 4 });
+    this.fit = fitText(c, body, F_MSG, PLATE.w - 150, PLATE.h - P_TOP - P_SIG, { min: 44, max: 124, lineHeight: 1.24, maxLines: 4 });
     // 一個詞組一拍（詞組多就半拍），從第一拍的下一拍開始
     const ph = phrases(body.replace(/\s+/g, ' '), 6);
     const t0 = beatAfter(au, this.tBoot + 0.2);
@@ -267,12 +274,6 @@ export default class Odometer extends Scene {
     const L = this.plate, c = L.ctx;
     L.clear();
     c.textBaseline = 'alphabetic';
-    // 銘牌的固定字：左上的編號
-    c.fillStyle = 'rgb(0,255,0)';
-    c.font = font(F.mono(500), 18); c.letterSpacing = '4px';
-    const m = this.msg;
-    c.fillText(m ? (m.couple ? 'FROM THE COUPLE  ·  新人' : `No.${String(m.n).padStart(3, '0')}`) : 'No.———', 50, 48);
-    c.letterSpacing = '0px';
     const x0 = 60, y0 = P_TOP + (PLATE.h - P_TOP - P_SIG - fit.height) / 2 + fit.size * 0.9;
     c.font = font(F_MSG, fit.size);
     const lines = fit.lines.map((l) => Array.from(l));
@@ -290,7 +291,7 @@ export default class Odometer extends Scene {
     pass(hot, (k) => `rgba(0,0,255,${heatOf(k.t).toFixed(3)})`);
     c.globalCompositeOperation = 'source-over';
     if (sigOn) {
-      c.font = font(F_MSG, Math.max(40, fit.size * 0.62));
+      c.font = font(F_MSG, Math.max(44, Math.min(60, fit.size * 0.55)));
       c.textAlign = 'right';
       c.fillStyle = 'rgb(0,255,0)';
       c.fillText(this.sigText, PLATE.w - 60, PLATE.h - 24);
@@ -300,37 +301,22 @@ export default class Odometer extends Scene {
     L.upload();
   }
 
-  // ---------------------------------------------------------------- 標籤（畫一次，紅色版＝絹印白漆）
+  // ---------------------------------------------------------------- 標籤（畫一次，紅色版＝絹印白漆）：整個畫面只有兩小群小字
   private drawLabels() {
     const c = this.lab.ctx;
     this.lab.clear();
     c.fillStyle = 'rgb(255,0,0)';
     c.textBaseline = 'alphabetic';
     const ox = -LAB.x, oy = -LAB.y;
-    const lab = (x: number, y: number, zh: string, en: string) => {
-      c.font = font(F.hei(700), 20); c.letterSpacing = '4px';
-      c.fillText(zh, x + ox, y + oy);
-      const w = c.measureText(zh).width;
-      c.font = font(F.mono(500), 14); c.letterSpacing = '3px';
-      c.fillText(en, x + ox + w + 12, y + oy - 1);
-      c.letterSpacing = '0px';
-    };
-    const top = WISH.cy - WISH.winH - 26;
-    lab(WISH.x0, top, '今晚收到的祝福', 'WISHES');
-    lab(BEATS.x0, top, '本曲心跳', 'HEARTBEATS');
-    lab(BPM.x0, top, '每分鐘', 'BPM');
-    c.font = font(F.hei(700), 26);
-    c.fillText('則', WISH.x0 + WISH.n * WISH.pitch + 14 + ox, WISH.cy + 10 + oy);
-    c.fillText('下', BEATS.x0 + BEATS.n * BEATS.pitch + 14 + ox, BEATS.cy + 10 + oy);
-    const ly = LYR.cy - LYR.winH - 26;
-    lab(LYR.x0, ly, this.pages.length ? '現在唱到' : '純音樂', this.pages.length ? 'NOW SINGING' : 'INSTRUMENTAL');
-    // 板子的銘文（歌詞窗的右上）與冷面註腳（銘牌下）
-    c.font = font(F.mono(500), 14); c.letterSpacing = '5px';
-    c.textAlign = 'right';
-    c.fillText(`LOVE ODOMETER  ·  ${COUPLE_EN.toUpperCase()}  ·  ${DATE_DOTS}`, LYR.x0 + LYR.n * LYR.pitch - 10 + ox, ly - 1 + oy);
+    // 計數器右邊：「下」＋一行小字
+    c.font = font(F.hei(500), 20); c.letterSpacing = '4px';
+    c.fillText('下', BEATS.x0 + BEATS.n * BEATS.pitch + 10 + ox, BEATS.cy + 8 + oy);
+    c.font = font(F.mono(500), 13); c.letterSpacing = '4px';
+    c.fillText(`本曲心跳 HEARTBEATS  ·  LOVE ODOMETER  ·  ${DATE_DOTS}`, BEATS.x0 + BEATS.n * BEATS.pitch + 50 + ox, BEATS.cy + 6 + oy);
+    // 冷面註腳：銘牌下（沒有銘牌時在歌詞下）
     c.font = font(F.hei(500), 15); c.letterSpacing = '3px';
-    c.fillText('＊本表只進不退，無法歸零。', PLATE.x + PLATE.w + ox, PLATE.y + PLATE.h + 28 + oy);
-    c.textAlign = 'left';
+    const ny = this.hasPlate ? PLATE.y + PLATE.h + 30 : this.LYR.cy + this.LYR.winH + 48;
+    c.fillText(NOTE, (this.hasPlate ? PLATE.x : this.LYR.x0) + ox, ny + oy);
     c.letterSpacing = '0px';
   }
 
@@ -360,30 +346,6 @@ export default class Odometer extends Scene {
     return { pos, m };
   }
 
-  private project(cam: { pos: THREE.Vector3; m: THREE.Matrix4 }, x: number, y: number) {
-    const v = new THREE.Vector3(x - 960, 540 - y, 0).sub(cam.pos).applyMatrix4(cam.m.clone().transpose());
-    return { x: 960 + (FOCAL * v.x) / -v.z, y: 540 - (FOCAL * v.y) / -v.z };
-  }
-
-  private computeAvoid(): [number, number, number, number][] {
-    const rects = [
-      [LYR.x0 - 16, LYR.cy - LYR.winH - 50, LYR.x0 + LYR.n * LYR.pitch + 16, LYR.cy + LYR.winH + 14],
-      [PLATE.x - 8, PLATE.y - 8, PLATE.x + PLATE.w + 8, PLATE.y + PLATE.h + 8],
-    ];
-    const cams = [...CAMS, ...CAMS.map((c) => ({ yaw: c.yaw * 1.4, pitch: c.pitch + 0.1, dist: c.dist * 0.93 }))];
-    return rects.map(([x0, y0, x1, y1]) => {
-      let a = Infinity, b = Infinity, c2 = -Infinity, d = -Infinity;
-      for (const cm of cams) {
-        const cam = this.camera(cm);
-        for (const [x, y] of [[x0!, y0!], [x1!, y0!], [x0!, y1!], [x1!, y1!]]) {
-          const p = this.project(cam, x, y);
-          a = Math.min(a, p.x); b = Math.min(b, p.y); c2 = Math.max(c2, p.x); d = Math.max(d, p.y);
-        }
-      }
-      return [a, b, c2 - a, d - b] as [number, number, number, number];
-    });
-  }
-
   // ---------------------------------------------------------------- 每一格
   /** 數字滾輪：值 v（連續）→ 第 j 位（0 = 個位）的位置；低位從 9 滾到 0 時才帶著高位滾（真的里程表）。 */
   private digitPos(v: number, j: number) {
@@ -404,18 +366,13 @@ export default class Odometer extends Scene {
     const { renderer, audio: au } = this.ctx;
     const t = f.t, s = this.ctx.start;
     const dg = (slot: number) => this.digits[((slot % 10) + 10) % 10]!;
-    // 上排計數器：切進來時從少一點的數字滾到現在的值，落在第一拍
     const blurOf = (fn: (tt: number) => number) => Math.abs(fn(t + 0.008) - fn(t - 0.008)) / 0.016 * 0.03;
-    const wishV = (tt: number) => lerp(Math.max(0, this.count - 36), this.count, ease.outCubic(prog(tt, s + 0.05, this.tBoot + 0.05)));
-    const bpmV = (tt: number) => lerp(Math.max(0, this.bpm - 24), this.bpm, ease.outCubic(prog(tt, s + 0.05, this.tBoot + 0.12)));
     const beatV = (tt: number) => {
       const b = Math.max(0, au.beatAt(tt)), n = Math.floor(b), fr = b - n;
       const r = clamp(0.2 / au.beatPeriod(tt), 0.1, 0.6);
       return n + 1 + ease.inOutCubic(clamp((fr - (1 - r)) / r));
     };
-    for (let j = 0; j < WISH.n; j++) { const pj = (tt: number) => this.digitPos(wishV(tt), WISH.n - 1 - j); this.writeDrum(WISH.si + j, pj(t), dg, COL.BONE, blurOf(pj), 0); }
-    for (let j = 0; j < BEATS.n; j++) { const pj = (tt: number) => this.digitPos(beatV(tt), BEATS.n - 1 - j); this.writeDrum(BEATS.si + j, pj(t), dg, COL.BONE, blurOf(pj), j === BEATS.n - 1 ? 1 : 0); }
-    for (let j = 0; j < BPM.n; j++) { const pj = (tt: number) => this.digitPos(bpmV(tt), BPM.n - 1 - j); this.writeDrum(BPM.si + j, pj(t), dg, COL.BONE, blurOf(pj), 0); }
+    for (let j = 0; j < BEATS.n; j++) { const pj = (tt: number) => this.digitPos(beatV(tt), BEATS.n - 1 - j); this.writeDrum(BEATS.si + j, pj(t), dg, COL.ASH, blurOf(pj), j === BEATS.n - 1 ? 1 : 0); }
     // 歌詞滾輪
     this.drums.forEach((d, j) => {
       const pf = (tt: number) => posAt(d, tt);
@@ -425,24 +382,26 @@ export default class Odometer extends Scene {
       // 亂數字只在轉動的時候看得到（停住時上下一格是空白）
       const rolling = d.segs.some((sg) => sg.kind === 'roll' && t >= sg.ta && t < sg.tb);
       const glyph = (slot: number) => { const g = d.anchors.get(slot) ?? -1; return g >= FILL && !rolling ? -1 : g; };
-      this.writeDrum(LYR.si + j, pos, glyph, code, blurOf(pf), 0);
+      this.writeDrum(this.LYR.si + j, pos, glyph, code, blurOf(pf), 0);
     });
     this.state.needsUpdate = true;
-    this.drawPlate(t);
+    if (this.hasPlate) this.drawPlate(t);
 
     const cam = this.camera(this.camAt(t));
     const u = this.bg.u;
     (u.uCP!.value as THREE.Vector3).copy(cam.pos);
     (u.uCR!.value as THREE.Matrix3).setFromMatrix4(cam.m);
-    // 對焦在歌詞那一排
-    const fc = new THREE.Vector3(LYR.x0 + LYR.n * LYR.pitch * 0.5 - 960, 540 - LYR.cy, 0).distanceTo(cam.pos);
+    // 對焦在焦點上：有銘牌對銘牌，沒有對歌詞
+    const L = this.LYR;
+    const fp = this.hasPlate ? { x: PLATE.x + PLATE.w / 2, y: PLATE.y + PLATE.h / 2 } : { x: L.x0 + (L.n * L.pitch) / 2, y: L.cy };
+    const fc = new THREE.Vector3(fp.x - 960, 540 - fp.y, 0).distanceTo(cam.pos);
     u.uFocus!.value = fc;
     const lastSheen = this.sheens.filter((tb) => tb <= t).pop();
     u.uSheen!.value = lastSheen !== undefined ? lerp(-300, 1900, prog(t, lastSheen, lastSheen + 0.9, ease.outCubic)) : -9999;
     u.uIn!.value = prog(t, s, s + 0.3, ease.outCubic);
     u.uKick!.value = f.a.kick;
     this.bg.render(renderer, out);
-    return { bloom: 0.7, vignette: 0.55, halation: 0.25, popupAvoid: this.avoid };
+    return { bloom: 0.65, vignette: 0.6, halation: 0.22 };
   }
 }
 

@@ -9,8 +9,13 @@
 //  - 花飾接起來的那一拍：中央的婚戒沿著戒圈一圈一圈刻出來；仙女棒飛到簽名欄，把名字簽上去，然後熄掉。
 //  - 之後：每個小節線戒指轉一小格（停住、再轉），大鼓讓金屬箔閃一道光往下跑，每四小節仙女棒回來繞花飾一圈；
 //    鏡頭慢慢推近，最後一拍加速推進切走。
-// 歌詞：鈔票下緣內側有一條「微縮防偽文字」，印的就是正在唱的那句；桌面上用放大鏡的引線把它放大成大字跟唱（照跟唱規則）。
+// 歌詞：寫在鈔票下方的桌面上（跟桌面同一個平面、一樣吃光），照跟唱規則逐字亮。
 // 沒有主打留言：鈔票是一張「樣張」——祝福欄寫著邀請，花飾描完那一拍蓋上訊號色的「樣張 SPECIMEN」。
+//
+// MV 融合原則（2026-09-28 檢修）：鈔票是擺在桌上的一張真的紙——鏡頭斜斜地看（上緣遠、左邊近）、暖色主光從左上來、
+// 影子落在右下；切進來時鏡頭從遠一點、斜一點的位置一下子推到定位，之後整個窗格很慢地繞、慢慢推近。
+// 配角砍掉一半以上：只留行名（小）、一行冷面小字與序號、簽名欄，徽章外圈只留一行弧形字；總裁簽名、英文副標、微縮字、放大鏡圖解都拿掉，
+// 留言是整張紙上唯一的大字。
 import * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides } from '../engine/scene';
 import { Layer2D, makeRT, W, H } from '../engine/gl';
@@ -19,21 +24,20 @@ import { F, font, layout, loadText } from '../engine/type';
 import { rgba } from '../engine/palette';
 import { clamp, ease, lerp, prog, pulse, TAU } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
-import { Lyrics, type Line } from '../engine/lyrics';
 import { sparkHead, sparkParticles, lyricAt, drawLyric, layoutLyric, beatAfter, COUPLE_EN, COUPLE_ZH, DATE_DOTS } from './_motifs';
-import { NOTE, INNER, MED, ARC_R, THREAD_X, rosettePoint, makeBakePass, makeMainPass } from './banknote-art';
+import { INNER, MED, ARC_R, rosettePoint, makeBakePass, makeMainPass } from './banknote-art';
 
 type P2 = { x: number; y: number };
-/** 主打留言的框（雕版大字）。右邊留給安全線與徽章。 */
-const HERO = { x: 198, y: 322, w: 900, h: 262 };
-/** 簽名欄：祝福人（左）與準備銀行總裁（右）。 */
-const SIG = { x: 198, base: 652, w: 400, rule: 664 };
-const GOV = { x: 690, base: 652, w: 380 };
-/** 鈔票下緣內側的微縮文字、與桌面上放大的那一行。 */
-const MICRO = { y: 736, x0: INNER.x0 + 6, x1: INNER.x1 - 6 };
-const MAG = { x: 150, maxW: 1180, base: 918 };
-/** 會動的字（歌詞、微縮文字）只畫在這一條，上傳比整張畫布便宜三倍多。 */
-const STRIP = { y: 700, h: 300 };
+/** 主打留言的框（雕版大字，平面座標）。右邊留給安全線與徽章。上面的抬頭縮小了，框往上長。 */
+const HERO = { x: 198, y: 272, w: 900, h: 312 };
+/** 簽名欄（祝福人）。 */
+const SIG = { x: 198, base: 668, w: 440, rule: 680 };
+/** 桌面上的歌詞（平面座標）：鈔票下緣之下，左邊對齊留言。 */
+const LYR = { x: 190, base: 930, maxW: 1060 };
+/** 歌詞只畫在這一條（平面座標），shader 照鏡頭取樣。 */
+const STRIP = { y: 826, h: 150 };
+/** 鏡頭的焦距（px）：跟「距離」一樣時，對準的那一點是 1:1。 */
+const CAM_F = 1800;
 
 /** 戒指固定的傾斜：先繞 x 轉 45°（兩只看起來一樣大），再歪一點。 */
 const TILT = new THREE.Matrix4().makeRotationZ(-0.16).multiply(new THREE.Matrix4().makeRotationX(Math.PI / 4));
@@ -50,7 +54,7 @@ export default class Banknote extends Scene {
   bake = shared('banknote.bake', bakeStore);
   /** 這個窗格所有「印上去」的字：R/G/B 編碼類別與印出來的時間（見 banknote-art.ts）。只畫一次、上傳一次。 */
   mask = this.track(new Layer2D());
-  strip = this.track(new Layer2D(W, STRIP.h));
+  strip = this.track(new Layer2D(W, STRIP.h, undefined, { fast: true }));
   glow = this.track(new LineBatch(3072, { screen2D: true, blend: 'add' }));
   msg: Msg | null = this.ctx.params.message ?? null;
   fit: FitResult | null = null;
@@ -60,8 +64,11 @@ export default class Banknote extends Scene {
   sigBox = { x0: 0, x1: 0, y: 0 };
   heroPeriod = 4;
   seed = 1;
-  /** 即時小卡要避開的範圍（init 算好，每格回傳）。 */
-  avoid: [number, number, number, number][] = [];
+  /** 歌詞字級：有留言時比留言小一級（≥ 48），沒有留言時歌詞是焦點。 */
+  lyrSize = 60;
+  /** 鏡頭：平面座標 → 螢幕的單應矩陣與它的反矩陣（每格算一次）。 */
+  camM = new THREE.Matrix3();
+  camInv = new THREE.Matrix3();
 
   override async init() {
     const { audio: au, start: s, end: e } = this.ctx;
@@ -82,21 +89,23 @@ export default class Banknote extends Scene {
     T.dev0 = T.ros1; T.dev1 = T.ros1 + clamp(P * 1.6, 0.7, 1.4);
 
     const m = this.msg;
-    await loadText(`愛情準備銀行憑票即付祝福壹則準備銀行總裁祝福人新人簽名處樣張微縮防偽文字放大倍把你的祝福印上下一張鈔票掃描右下角寫下幾秒後就會在大螢幕${COUPLE_ZH}${m ? m.text + m.name : ''}一位賓客∞０１２３４５６７８９`);
+    await loadText(`愛情準備銀行憑票即付祝福壹則祝福人新人簽名處樣張把你的祝福印上下一張鈔票掃描右下角寫下幾秒後就會在大螢幕${COUPLE_ZH}${m ? m.text + m.name : ''}一位賓客∞０１２３４５６７８９`);
 
     // ---- 排留言（雕版大字，思源宋體）
     const c = this.mask.ctx;
     const heroFam = F.ming(700);
     if (m) {
-      this.fit = fitText(c, m.text, heroFam, HERO.w, HERO.h, { min: 44, max: 136, lineHeight: 1.3, maxLines: 4 });
+      this.fit = fitText(c, m.text, heroFam, HERO.w, HERO.h, { min: 48, max: 136, lineHeight: 1.3, maxLines: 4 });
     } else {
-      // 邀請的斷行自己決定（「印上」不能拆開）：第一行短，右邊空出來蓋「樣張」印章
+      // 邀請的斷行自己決定（「印上」不能拆開）：第一行短，右邊空出來蓋「樣張」印章。
+      // 沒有留言時焦點是歌詞，邀請比歌詞小一點
       const inv = ['把你的祝福，', '印上下一張鈔票'];
       c.font = font(heroFam, 100);
-      const size = Math.min(92, Math.floor((100 * HERO.w * 0.8) / Math.max(...inv.map((l) => c.measureText(l).width))));
+      const size = Math.min(58, Math.floor((100 * HERO.w * 0.8) / Math.max(...inv.map((l) => c.measureText(l).width))));
       this.fit = { size, lines: inv, lineHeight: size * 1.3, width: 0, height: size * 2.3 };
     }
     const fit = this.fit;
+    this.lyrSize = m ? clamp(Math.round(fit.size * 0.7), 48, 58) : 68;
     // 窗格是在前一個窗格播放時預先建的：排版、畫字、上傳之間讓出主執行緒，正在播的畫面才不會掉格
     await yieldFrame();
     // 網線週期跟字級走：字越大線越疏，小字也還讀得到
@@ -136,31 +145,20 @@ export default class Banknote extends Scene {
     c.textBaseline = 'alphabetic';
     // 固定的字：切進來的第一拍內，十六分音符一組壓上去
     const q = (k: number) => s + k * Math.min(P / 4, 0.16);
-    text('∞', INNER.x0 + 40, INNER.y0 + 112, F.serif(600), 132, 'eng', q(0));
-    text('∞', INNER.x1 - 36, INNER.y0 + 92, F.serif(600), 96, 'eng', q(1), { align: 'right' });
-    text('愛情準備銀行', 360, 196, F.ming(900), 54, 'plain', q(0), { track: 14 });
-    text('THE LOVE RESERVE BANK', 362, 238, F.serif(600), 21, 'plain', q(1), { track: 7 });
-    text('憑票即付　祝福壹則', HERO.x, 292, F.hei(500), 22, 'plain', q(2), { track: 7 });
-    c.font = font(F.hei(500), 22); c.letterSpacing = '7px';
-    const legW = c.measureText('憑票即付　祝福壹則').width;
-    c.letterSpacing = '0px';
-    text('PAYABLE TO THE BEARER ON DEMAND', HERO.x + legW + 22, 291, F.mono(500), 13, 'plain', q(3), { track: 2.5 });
-    this.arcText(c, 'LOVE RESERVE NOTE', ARC_R, F.serif(600), 30, 0.2, 'top', ink('plain', q(1)));
-    this.arcText(c, 'IN LOVE WE TRUST', ARC_R + 10, F.serif(400, true), 25, 0.14, 'bottom', ink('plain', q(2)));
-    // 金屬箔上重複的小 ∞（真的鈔票箔上也有重複的小圖案）：跟外框一起印
-    for (let y = NOTE.y + 44; y < NOTE.y + NOTE.h - 20; y += 58) text('∞', THREAD_X, y, F.serif(600), 15, 'plain', q(2), { align: 'center' });
+    // 面額 ∞ 只留左上一個、縮小；行名縮到比留言小兩級（不要搶焦點），底下一行冷面小字
+    text('∞', INNER.x0 + 40, INNER.y0 + 98, F.serif(600), 92, 'eng', q(0));
+    text('愛情準備銀行', 330, 190, F.ming(900), 36, 'plain', q(0), { track: 12 });
+    text('憑票即付　祝福壹則', 332, 224, F.hei(500), 17, 'plain', q(1), { track: 6 });
+    // 徽章外圈只留一行弧形字（花飾本身已經夠華麗）
+    this.arcText(c, 'LOVE RESERVE NOTE', ARC_R, F.serif(600), 26, 0.2, 'top', ink('plain', q(1)));
     // 簽名欄的線與標籤
     c.fillStyle = ink('plain', q(3));
     c.fillRect(SIG.x, SIG.rule, SIG.w, 1.4);
-    c.fillRect(GOV.x, SIG.rule, GOV.w, 1.4);
-    text(m ? (m.couple ? '新人　FROM THE COUPLE' : '祝福人　SIGNATURE') : '簽名處　SIGN HERE', SIG.x, SIG.rule + 24, F.hei(500), 15, 'plain', q(3), { track: 3 });
-    text('準備銀行總裁　GOVERNORS', GOV.x, SIG.rule + 24, F.hei(500), 15, 'plain', q(3), { track: 3 });
-    // 總裁簽名：預先印好的（手寫字）
-    this.fitLine(c, COUPLE_ZH, F.hand(700), 46, GOV.w - 20, (size) => text(COUPLE_ZH, GOV.x + 6, GOV.base, F.hand(700), size, 'plain', q(3)));
+    text(m ? (m.couple ? '新人　FROM THE COUPLE' : '祝福人') : '簽名處', SIG.x, SIG.rule + 22, F.hei(500), 14, 'plain', q(3), { track: 3 });
 
     // 主打留言：一拍一行、一個字一個字壓上去（愛心用點綴色）
     const top = HERO.y + (HERO.h - fit.height) / 2 + fit.size * 0.9;
-    const heroY = m ? top : HERO.y + fit.size * 0.95;
+    const heroY = m ? top : HERO.y + fit.size * 0.95 + 24;
     fit.lines.forEach((ln, i) => {
       const lay = layout(ln, heroFam, fit.size);
       c.font = font(heroFam, fit.size);
@@ -171,20 +169,24 @@ export default class Banknote extends Scene {
     });
     if (!m) {
       // 邀請：小字補充（一般的墨）
-      const y = heroY + (fit.lines.length - 1) * fit.lineHeight + 64;
-      text('掃描右下角 QR code，寫下祝福，', HERO.x, y, F.hei(500), 30, 'plain', beat(fit.lines.length));
-      text('幾秒後就會印在大螢幕上。', HERO.x, y + 44, F.hei(500), 30, 'plain', beat(fit.lines.length) + P / 2);
+      const y = heroY + (fit.lines.length - 1) * fit.lineHeight + 62;
+      text('掃描右下角 QR code，寫下祝福，', HERO.x, y, F.hei(500), 24, 'plain', beat(fit.lines.length), { track: 2 });
+      text('幾秒後就會印在大螢幕上。', HERO.x, y + 38, F.hei(500), 24, 'plain', beat(fit.lines.length) + P / 2, { track: 2 });
     }
     // 序號最後六位：留言編號（沒有留言：這首歌的編號，前面加星號——補發的「星號券」）
     const num = m ? String(m.n).padStart(6, '0') : `★${String(this.ctx.song.index).padStart(5, '0')}`;
     // 整串靠右對齊在留言框的右緣（不要壓到金屬帶）：前綴跟固定的字一起印，號碼一格一格打上去
-    c.font = font(F.mono(500), 25);
-    const dw = c.measureText('0').width, serX = HERO.x + HERO.w - dw * Array.from(num).length;
-    text('AO 20270313', serX - 14, 238, F.mono(500), 25, 'acc', q(2), { align: 'right' });
-    c.font = font(F.mono(500), 25);
+    c.font = font(F.mono(500), 20);
+    // 照每個字的實際寬度排（★ 比數字寬，用固定字寬會壓到下一個數字）
+    const cw = Array.from(num).map((ch) => c.measureText(ch).width);
+    const serX = HERO.x + HERO.w - cw.reduce((x, w) => x + w, 0);
+    text('AO 20270313', serX - 12, 224, F.mono(500), 20, 'acc', q(2), { align: 'right' });
+    c.font = font(F.mono(500), 20);
+    let sx = serX;
     Array.from(num).forEach((ch, i) => {
       c.fillStyle = ink('acc', serT0 + i * (P / 4));
-      c.fillText(ch, serX + i * dw, 238);
+      c.fillText(ch, sx, 224);
+      sx += cw[i]!;
     });
     // 祝福人簽名（手寫字，由左往右寫——shader 用 uSig 的範圍照 x 算時間）
     if (m) {
@@ -196,37 +198,12 @@ export default class Banknote extends Scene {
       });
     }
     // 樣張：訊號色的斜印章
-    if (!m) this.specimen(c, ink('acc', T.stamp));
-    this.avoid = this.popupAvoid(heroY, fit);
+    if (!m) this.specimen(c, ink('acc', T.stamp), HERO.x + 690, heroY + fit.size * 0.25);
     // 字全部排好：先上傳（避免窗格第一格卡頓）
     await yieldFrame();
     this.mask.upload();
     this.ctx.renderer.initTexture(this.mask.texture);
     this.ensureBake();
-  }
-
-  /**
-   * 即時小卡要避開的地方（整個窗格）：留言到簽名那一塊、中央的婚戒、這個窗格有歌詞的話加上放大的歌詞那一條。
-   * 上緣的行名、序號、花飾外圈的字讓小卡蓋（左上、正上、右上三格通常是空的），戒指與要讀的字不給蓋。
-   */
-  private popupAvoid(heroY: number, fit: FitResult): [number, number, number, number][] {
-    const c = this.strip.ctx;
-    c.font = font(F.ming(700), fit.size);
-    const heroW = Math.max(...fit.lines.map((l) => c.measureText(l).width), this.msg ? SIG.w : 700);
-    const top = heroY - fit.size * 0.95;
-    const out: [number, number, number, number][] = [
-      [HERO.x - 10, top - 8, heroW + 20, SIG.rule + 30 - top],
-      // 婚戒本身（斜 45° 之後大約上下各 60 px）；肖像圓的上緣讓給右上角的小卡，三行以內的卡片放得下
-      [MED.x - 140, MED.y - 68, 280, 150],
-    ];
-    const { lyrics, start, end } = this.ctx;
-    const lines = lyrics.linesIn(start - 0.4, end);
-    if (lines.length) {
-      const st = { family: F.archivo(100, 800), size: 66, minSize: 48, maxWidth: MAG.maxW };
-      const w = Math.max(...lines.map((l) => Math.max(...layoutLyric(c, l, st).rows.map((r) => r.width))));
-      out.push([MAG.x - 16, 818, Math.min(w, MAG.maxW) + 32, 180]);
-    }
-    return out;
   }
 
   /** 字放不下 maxW 就縮字級（最小 45%）。 */
@@ -268,10 +245,10 @@ export default class Banknote extends Scene {
   }
 
   /** 「樣張 SPECIMEN」斜印章（雙線框）。 */
-  private specimen(c: CanvasRenderingContext2D, fill: string) {
+  private specimen(c: CanvasRenderingContext2D, fill: string, x: number, y: number) {
     c.save();
     // 蓋在邀請第一行右邊的空白（第一行比較短），不要壓到要讀的字
-    c.translate(912, 372);
+    c.translate(x, y);
     c.rotate(-0.1);
     c.fillStyle = fill;
     c.strokeStyle = fill;
@@ -295,7 +272,7 @@ export default class Banknote extends Scene {
 
   // ------------------------------------------------------------------ 每一格
   override render(f: Frame, out: THREE.WebGLRenderTarget): PostOverrides {
-    const { renderer, comp, audio: au } = this.ctx;
+    const { renderer, audio: au } = this.ctx;
     const t = f.t, s = this.ctx.start, e = this.ctx.end, T = this.T, P = T.P;
     this.ensureBake();
     const u = this.main.u;
@@ -324,29 +301,73 @@ export default class Banknote extends Scene {
     (u.uThread!.value as THREE.Vector3).set(INNER.y0 + (t - kick.t) / 0.42 * (INNER.y1 - INNER.y0), kick.k * Math.exp(-(t - kick.t) / 0.5), 0);
     const head = this.head(t);
     (u.uSpark!.value as THREE.Vector3).set(head?.p.x ?? 0, head?.p.y ?? 0, head ? head.k : 0);
+    // 鏡頭：平面 → 螢幕（shader 用反矩陣把每個像素換回平面座標）
+    this.camera(t);
+    (u.uInv!.value as THREE.Matrix3).copy(this.camInv);
+    // 桌面上的歌詞：畫在平面座標的一條上，shader 照鏡頭取樣（跟桌面一起透視、一起吃光）
+    this.drawStrip(t);
+    u.uLyr!.value = this.strip.upload();
+    (u.uLyrY!.value as THREE.Vector2).set(STRIP.y, STRIP.h);
     this.main.render(renderer, out);
 
-    // ---- 微縮文字與放大的歌詞
-    this.drawStrip(t);
-    comp.draw(renderer, this.strip.upload(), out, { scale: [1, H / STRIP.h], offset: [0, 0.5 + (STRIP.y - H / 2) / STRIP.h] });
-
-    // ---- 仙女棒
+    // ---- 仙女棒（在平面上走，換成螢幕座標再畫）
     this.glow.clear();
     if (head) {
-      sparkParticles(this.glow, t, (tb) => this.head(tb)?.p ?? null, { rate: 120, life: 0.42, speed: 250, seed: this.seed, intensity: 1.1, width: 1.8 });
-      sparkHead(this.glow, head.p.x, head.p.y, t, 1.15, head.k);
+      const hp = this.toScreen(head.p);
+      sparkParticles(this.glow, t, (tb) => { const q = this.head(tb); return q ? this.toScreen(q.p) : null; }, { rate: 120, life: 0.42, speed: 250, seed: this.seed, intensity: 1.1, width: 1.8 });
+      sparkHead(this.glow, hp.x, hp.y, t, 1.15, head.k);
     }
     if (this.glow.count) this.glow.render(renderer, out);
 
-    // 鏡頭：整個窗格慢慢推近，最後一拍加速推進切走；大鼓輕輕一下
-    const zoom = 1 + 0.018 * f.p + 0.022 * prog(t, e - P, e, ease.inCubic) + 0.004 * f.a.kick;
+    // 推鏡由鏡頭自己做；這裡只留最後一拍加速推進切走、大鼓輕輕一下
+    const zoom = 1 + 0.022 * prog(t, e - P, e, ease.inCubic) + 0.004 * f.a.kick;
     const stamp = T.stamp > 0 ? pulse(t, T.stamp, 0.07) : 0;
     const clink = pulse(t, T.dev0, 0.08);
     return {
-      paper: 1, popupAvoid: this.avoid, bloom: 0.55, bloomThreshold: 0.98, bloomKnee: 0.12, halation: 0.12, vignette: 0.26, grain: 0.05,
+      paper: 1, bloom: 0.55, bloomThreshold: 0.98, bloomKnee: 0.12, halation: 0.12, vignette: 0.34, grain: 0.05,
       zoom, flash: 0.05 * stamp + 0.03 * clink,
       shake: [Math.sin(t * 91) * 7 * stamp, Math.cos(t * 77) * 5 * stamp],
     };
+  }
+
+  // ------------------------------------------------------------------ 鏡頭
+  /**
+   * 一台針孔相機看著桌面（平面座標 = 版面座標，y 向下）：上緣離鏡頭遠（傾斜）、左邊（留言那側）近一點、紙在桌上微微斜放。
+   * 切進來的一拍多從遠一點、斜一點的位置一下子推到定位（outExpo），之後整個窗格很慢地繞、慢慢推近。
+   * 算出平面 → 螢幕的單應矩陣 camM 與反矩陣 camInv。
+   */
+  private camera(t: number) {
+    const { start: s, end: e } = this.ctx, P = this.T.P;
+    const k = 1 - ease.outExpo(prog(t, s, s + clamp(P * 2, 0.7, 1.3)));
+    const w = clamp((t - s) / Math.max(1e-3, e - s));
+    const rx = 0.2 + 0.08 * k;
+    const ry = 0.075 - 0.035 * w + 0.06 * k;
+    const rz = -0.018 + 0.01 * w - 0.02 * k;
+    // 鏡頭對準的平面點（留言與徽章之間偏左），與距離（慢推：越來越近）
+    const cx = 905 + 70 * k - 30 * w, cy = 540 - 16 * k;
+    const D = CAM_F * (1 + 0.12 * k - 0.035 * w);
+    const cX = Math.cos(rx), sX = Math.sin(rx), cY = Math.cos(ry), sY = Math.sin(ry), cZ = Math.cos(rz), sZ = Math.sin(rz);
+    // R = Rz·Ry·Rx 作用在平面的兩個軸上：r1 = R·x̂，r2 = R·ŷ（Rx 把 ŷ 轉成 (0, cX, −sX)：上緣往遠處倒）
+    const r1 = [cY * cZ, cY * sZ, sY];
+    const a = sX * sY, b = cX, c = -sX * cY;
+    const r2 = [a * cZ - b * sZ, a * sZ + b * cZ, c];
+    const f = CAM_F, X0 = W / 2, Y0 = H / 2;
+    // A：(u, v, 1) → 齊次螢幕座標；再把平面座標平移到對準點（u = x − cx）
+    const A = [
+      [f * r1[0]! + X0 * r1[2]!, f * r2[0]! + X0 * r2[2]!, X0 * D],
+      [f * r1[1]! + Y0 * r1[2]!, f * r2[1]! + Y0 * r2[2]!, Y0 * D],
+      [r1[2]!, r2[2]!, D],
+    ];
+    const m = A.map((r) => [r[0]!, r[1]!, r[2]! - cx * r[0]! - cy * r[1]!]);
+    this.camM.set(m[0]![0]!, m[0]![1]!, m[0]![2]!, m[1]![0]!, m[1]![1]!, m[1]![2]!, m[2]![0]!, m[2]![1]!, m[2]![2]!);
+    this.camInv.copy(this.camM).invert();
+  }
+
+  /** 平面座標 → 這一格的螢幕座標。 */
+  private toScreen(p: P2): P2 {
+    const e = this.camM.elements;
+    const w = e[2]! * p.x + e[5]! * p.y + e[8]!;
+    return { x: (e[0]! * p.x + e[3]! * p.y + e[6]!) / w, y: (e[1]! * p.x + e[4]! * p.y + e[7]!) / w };
   }
 
   // ------------------------------------------------------------------ 時間函數（shader 與仙女棒共用，保證同步）
@@ -431,121 +452,38 @@ export default class Banknote extends Scene {
     return k > 0 ? { p: { x: this.sigBox.x1 + 12 * (1 - k), y: this.sigBox.y }, k } : null;
   }
 
-  // ------------------------------------------------------------------ 微縮文字＋放大鏡＋跟唱
+  // ------------------------------------------------------------------ 桌面上的歌詞
   private drawStrip(t: number) {
     const L = this.strip, c = L.ctx;
     L.clear();
     c.save();
     c.translate(0, -STRIP.y);
     const s = this.ctx.start;
-    const fadeIn = prog(t, s + 0.1, s + 0.5);
-    c.globalAlpha = fadeIn;
+    c.globalAlpha = prog(t, s + 0.1, s + 0.5);
     const lyrics = this.ctx.lyrics;
     const ly = lyricAt(lyrics, t);
-    const fallback = `${COUPLE_EN.toUpperCase()}  ·  ${DATE_DOTS}`;
-    // 間奏：沒有下一句，或下一句還在 2.5 秒以後——這時放大的那行換成新人名字與日期（跟歌詞交叉淡換）
+    // 間奏：沒有下一句，或下一句還在 2.5 秒以後——這時換成新人名字與日期（安靜的典雅字，跟歌詞交叉淡換）
     const next = lyrics.nextLine(t);
     const interlude = !next ? 1 : prog(next.start - t, 1.8, 2.6);
     const fbA = interlude * (ly ? (t > ly.line.end ? 1 - ly.k : 0) : 1);
-    // 放大的那一行：有歌詞就跟唱；沒有就放新人名字與日期（安靜的典雅字）
-    const st = { family: F.archivo(100, 800), size: 66, minSize: 48, maxWidth: MAG.maxW, active: rgba('blood'), sung: rgba('sepia', 0.95), unsung: rgba('sepia', 0.26) };
-    c.font = font(F.serif(600), 44);
-    c.letterSpacing = '12px';
-    const fbW = c.measureText(fallback).width;
-    c.letterSpacing = '0px';
-    // 放大鏡引線要指到的範圍：有歌詞用歌詞的寬，沒有就用名字日期那行的寬（兩者都淡掉時引線也跟著淡）
-    let magW = fbW, magTop = MAG.base - 44;
-    const magA = Math.max(ly?.k ?? 0, fbA);
-    let micro = fallback;
     if (ly) {
+      const st = { family: F.archivo(100, 800), size: this.lyrSize, minSize: 48, maxWidth: LYR.maxW, active: rgba('blood'), sung: rgba('sepia', 0.92), unsung: rgba('sepia', 0.26) };
       const lay = layoutLyric(c, ly.line, st);
-      const y0 = MAG.base - (lay.height - lay.size) * 0.5;
-      magW = Math.max(...lay.rows.map((r) => r.width));
-      magTop = y0 - lay.size * 0.86;
+      // 折成兩行時第一行往上長，最後一行的基線固定
       c.save();
-      c.translate(MAG.x, y0);
+      c.translate(LYR.x, LYR.base - (lay.height - lay.size));
       drawLyric(c, ly.line, t, st, lay, ly.k);
       c.restore();
-      micro = ly.line.text;
     }
     if (fbA > 0.001) {
       c.save();
       c.globalAlpha *= fbA;
-      c.font = font(F.serif(600), 44);
-      c.letterSpacing = '12px';
-      c.fillStyle = rgba('sepia', 0.72);
-      c.fillText(fallback, MAG.x, MAG.base - 8);
+      c.font = font(F.serif(600), 36);
+      c.letterSpacing = '10px';
+      c.fillStyle = rgba('sepia', 0.6);
+      c.fillText(`${COUPLE_EN.toUpperCase()}  ·  ${DATE_DOTS}`, LYR.x, LYR.base - 6);
       c.restore();
     }
-    // 微縮文字：同一句一直重複，其中一段被放大鏡框起來（那一段也照跟唱上色）
-    c.font = font(F.mono(500), 10.5);
-    c.letterSpacing = '0.6px';
-    const unit = `${micro}  ✦  `;
-    const uw = c.measureText(unit).width;
-    const cx = MAG.x + Math.min(magW, MAG.maxW) / 2;
-    const bx0 = cx - c.measureText(micro).width / 2;
-    c.save();
-    c.beginPath(); c.rect(MICRO.x0, MICRO.y - 14, MICRO.x1 - MICRO.x0, 20); c.clip();
-    c.fillStyle = rgba('sepia', 0.62);
-    for (let x = bx0 - Math.ceil((bx0 - MICRO.x0) / uw) * uw; x < MICRO.x1; x += uw) {
-      if (Math.abs(x - bx0) < 1) continue;
-      c.fillText(unit, x, MICRO.y);
-    }
-    // 被框起來的那一段
-    if (ly) {
-      const sung = this.sungChars(ly.line, t);
-      const chars = Array.from(micro);
-      let x = bx0;
-      chars.forEach((ch, i) => {
-        c.fillStyle = i < Math.floor(sung) ? rgba('sepia', 0.95) : i < sung ? rgba('blood') : rgba('sepia', 0.4);
-        c.fillText(ch, x, MICRO.y);
-        x += c.measureText(ch).width;
-      });
-    } else {
-      c.fillStyle = rgba('sepia', 0.9);
-      c.fillText(micro, bx0, MICRO.y);
-    }
-    // 框起來那段後面的分隔符（跟其他重複的段落一樣的節奏）
-    c.fillStyle = rgba('sepia', 0.62);
-    c.fillText(unit.slice(micro.length), bx0 + c.measureText(micro).width, MICRO.y);
     c.restore();
-    c.letterSpacing = '0px';
-    // 放大鏡的框與引線（像技術圖版的放大圖）
-    const bw = c.measureText(micro).width + 10;
-    const bxa = bx0 - 6, bxb = bxa + bw;
-    c.strokeStyle = rgba('sepia', 0.55);
-    c.lineWidth = 1;
-    c.strokeRect(bxa, MICRO.y - 12.5, bw, 17);
-    const lk = prog(t, s + 0.2, s + 0.8, ease.outCubic);
-    c.strokeStyle = rgba('sepia', 0.4 * Math.max(0.35, magA));
-    const ax = MAG.x - 14, bxm = MAG.x + magW + 14, ay = magTop - 18;
-    c.beginPath();
-    c.moveTo(bxa, MICRO.y + 4.5); c.lineTo(lerp(bxa, ax, lk), lerp(MICRO.y + 4.5, ay, lk));
-    c.moveTo(bxb, MICRO.y + 4.5); c.lineTo(lerp(bxb, bxm, lk), lerp(MICRO.y + 4.5, ay, lk));
-    c.stroke();
-    // 放大圖的兩個上角：小小的 L 角標，讓「這一段被放大到這裡」一眼看得懂
-    if (lk > 0.98) {
-      c.strokeStyle = rgba('sepia', 0.55 * Math.max(0.35, magA));
-      c.beginPath();
-      c.moveTo(ax, ay + 16); c.lineTo(ax, ay); c.lineTo(ax + 16, ay);
-      c.moveTo(bxm - 16, ay); c.lineTo(bxm, ay); c.lineTo(bxm, ay + 16);
-      c.stroke();
-    }
-    // 放大圖的小標
-    c.font = font(F.mono(500), 13);
-    c.letterSpacing = '2.5px';
-    c.fillStyle = rgba('sepia', 0.55 * lk);
-    c.fillText('MICROPRINT  ×40', MAG.x, 984);
-    c.font = font(F.hei(500), 14);
-    c.fillText('微縮防偽文字．放大', MAG.x + 190, 984);
-    c.letterSpacing = '0px';
-    c.restore();
-  }
-
-  /** 這一行唱到第幾個字（含小數，以 Array.from 的字為單位）：照 Lyrics 的逐字進度，反白不會跑在歌聲前面。 */
-  private sungChars(line: Line, t: number) {
-    const k = Lyrics.lineCharProgress(line, t);
-    const whole = Math.floor(k);
-    return Array.from(line.text.slice(0, whole)).length + (k - whole);
   }
 }

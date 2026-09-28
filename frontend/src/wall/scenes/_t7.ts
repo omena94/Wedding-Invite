@@ -47,7 +47,7 @@ export const windowLines = (lyrics: Lyrics, s: number, e: number, pad = 1.5) => 
 
 // ---------------------------------------------------------------- 斷成格子列
 const isWordCh = (ch: string) => /[\p{Script=Latin}\p{N}'’\-&@#+]/u.test(ch);
-const NO_START = new Set(Array.from('、。，．,.!?！？：；:;）)」』】〕〉》…～~%％”’"'));
+const NO_START = new Set(Array.from('、。，．,.!?！？：；:;）)」』】〕〉》…～~%％”’"♥'));
 
 /**
  * 把字（code point 陣列）斷成每列最多 cols 格：回傳每列的字位置。英文字不拆（除非一個字就比一列長）、

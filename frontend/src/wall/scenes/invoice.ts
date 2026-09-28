@@ -7,31 +7,35 @@
 //  - 右邊是「交易明細」：一台小印表機，歌詞一行一行從出紙口印出來（一行一個品項，×1 ∞），整條紙跟著往上推；
 //    剛印的那行先淡淡出現（三成的墨），唱到的字變熱（訊號色）、唱完冷卻成墨色——感熱紙本來就是「加熱才顯色」，剛好就是跟唱。
 // 純音樂：明細改成每個小節印一行「♪ 第 N 小節 ×1 ∞」。沒有留言：品名印邀請。新人的留言：賣方買方都是新人。
-// 畫法：左邊的發票（不會變的字）開場畫在一張離屏畫布上；明細的紙條、對獎的數字、章每格畫；桌面是紙 shader 的木紋。
+// MV 化（2026-09-28）：焦點是發票上手寫的留言（整張發票最大的字）；對獎號碼、明細是配角，發票上的細項（日期時間、隨機碼、
+// 賣方買方）都拿掉了。鏡頭從斜上方看著收銀台（透視、景深、一盞燈），明細紙條只看得到最新的兩行，更上面的往遠處淡出去。
+// 畫法：左邊的發票（不會變的字）開場畫在一張離屏畫布上；明細的紙條、對獎的數字、章每格畫；鏡頭與桌面（木紋）在 tablePass。
 import * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
-import { Layer2D, W, H } from '../engine/gl';
+import { Layer2D, W, H, SCALE } from '../engine/gl';
 import { F, font, layout, loadText, measure } from '../engine/type';
 import { rgba } from '../engine/palette';
 import { clamp, ease, hash, lerp, prog, pulse, frameIdx } from '../engine/util';
 import type { FitResult } from '../engine/text';
 import type { Line } from '../engine/lyrics';
-import { lyricAt, drawLyric, layoutLyric, beatAfter, COUPLE_ZH, DATE_DOTS, type LyricLayout } from './_motifs';
-import { WEDDING_TIME_FROM } from '../../constants.js';
-import { sigInk, ink, paper, heatInk, paperLyric, makeCanvas, freeCanvas, shadowSprite, drawShadow, drawBarcode, barsIn, xfRect, paperPass, ensureBake, themeKey, inkStamp, fitMsg, yieldFrame, type Rect } from './_t1';
+import { lyricAt, drawLyric, layoutLyric, beatAfter, fillWithHearts, COUPLE_ZH, DATE_DOTS, type LyricLayout } from './_motifs';
+import {
+  sigInk, ink, paper, heatInk, paperLyric, makeCanvas, freeCanvas, shadowSprite, drawShadow, drawBarcode, barsIn, ensureBake, themeKey, inkStamp, fitMsg, yieldFrame,
+  tablePass, setTableCam, fitCam, lerpCam, TABLE_F, type TableCam, type Rect,
+} from './_t1';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'doc', paper: true, energy: [0.25, 0.9], bars: [4, 8], weight: 1 };
 
 type Ctx2 = CanvasRenderingContext2D;
 
 /** 左邊的發票（螢幕座標的左上角、寬、高、角度）。 */
-const SLIP = { x: 150, y: 70, w: 570, h: 912, rot: -0.022 };
+const SLIP = { x: 170, y: 70, w: 700, h: 950, rot: -0.026 };
 /** 發票上的位置（發票座標）。 */
-const NUM = { base: 228, size: 64 };
-const BOX = { y: 250, w: 48, h: 58, gap: 6 };
-const ITEM = { x: 22, y: 570, w: 526, h: 272 };
-/** 右邊的明細：紙條的左右、出紙口的高度。 */
-const DET = { x0: 800, x1: 1336, slot: 846, pad: 22 };
+const NUM = { base: 186, size: 56 };
+const BOX = { y: 210, w: 46, h: 54, gap: 6 };
+const ITEM = { x: 34, y: 420, w: 632, h: 420 };
+/** 右邊的明細（桌面座標）：紙條的左右、出紙口的高度；紙條只露出出紙口上面這麼高（再上去淡出）。 */
+const DET = { x0: 980, x1: 1500, slot: 820, pad: 22, show: 330 };
 const ROW_GAP = 26;
 
 const TEXT = '愛情統一發票祝福證明聯年月格式隨機碼總計賣方買方品名數量單價金額本期特別獎號碼開獎中對中獎獎金一輩子的幸福交易明細本曲純音樂第小節一位賓客全體賓客掃描右下角把祝福寫上大螢幕新人明細機出紙口間奏';
@@ -40,8 +44,8 @@ const TEXT = '愛情統一發票祝福證明聯年月格式隨機碼總計賣方
 interface Block { kind: 'head' | 'line' | 'bar'; line?: Line; label?: string; lay?: LyricLayout; h: number; top: number; at: number }
 
 export default class Invoice extends Scene {
-  layer = this.track(new Layer2D(W, H, undefined, { fast: true }));
-  pass = shared('invoice.paper', () => paperPass(DESK_GLSL));
+  layer = this.track(new Layer2D(W, H, SCALE * 1.25, { fast: true }));
+  pass = shared('invoice.table', () => tablePass(DESK_GLSL));
   msg: Msg | null = this.ctx.params.message ?? null;
   seed = Number(this.ctx.params.seed ?? 1);
   art: ReturnType<typeof makeCanvas> | null = null;
@@ -63,7 +67,9 @@ export default class Invoice extends Scene {
   feed: number[] = [];
   digitT: number[] = [];
   tWin = Infinity;
-  avoid: Rect[] = [];
+  camA!: TableCam;
+  camB!: TableCam;
+  focusPts: [number, number][] = [];
 
   override async init() {
     const { audio: au, lyrics, start: s, end: e, song } = this.ctx;
@@ -78,7 +84,7 @@ export default class Invoice extends Scene {
     await loadText(TEXT + this.buyer + this.body + this.period + COUPLE_ZH + (song.title ?? '') + lines.map((l) => l.text).join(''));
     const B = (this.B = au.beatPeriod(s + 0.1));
     const c = this.layer.ctx;
-    this.fit = fitMsg(c, this.body, F.hand(700), ITEM.w, ITEM.h, { min: 44, max: m ? 96 : 60, lineHeight: 1.26, maxLines: 5 });
+    this.fit = fitMsg(c, this.body, F.hand(700), ITEM.w, ITEM.h, { min: 44, max: m ? 118 : 70, lineHeight: 1.24, maxLines: 5 });
 
     // ---- 切進來：從上面一格一格吐下來（十六分音符一格），落在第一個夠晚的拍點
     this.land = beatAfter(au, s + Math.max(0.45, B * 0.9));
@@ -98,10 +104,14 @@ export default class Invoice extends Scene {
     this.buildBlocks(c, s, e);
     await yieldFrame();
     this.drawArt();
-    this.avoid = [
-      xfRect([ITEM.x - 6, ITEM.y - 40, ITEM.w + 12, ITEM.h + 90], SLIP.x, SLIP.y, SLIP.rot),
-      [DET.x0 - 10, 90, DET.x1 - DET.x0 + 20, DET.slot - 60],
-    ];
+    // 鏡頭：從斜上方看收銀台，對著發票的留言與明細最新的那一行；推到最近時兩者都在安全範圍內
+    const cs = Math.cos(SLIP.rot), sn = Math.sin(SLIP.rot);
+    const toDesk = (u: number, v: number) => [SLIP.x + cs * u - sn * v, SLIP.y + sn * u + cs * v] as [number, number];
+    const [mx0, my0] = toDesk(ITEM.x, ITEM.y), [mx1, my1] = toDesk(ITEM.x + ITEM.w, ITEM.y + ITEM.h + 70);
+    const keep: Rect[] = [[mx0, my0, mx1 - mx0, my1 - my0], [DET.x0, DET.slot - 150, DET.x1 - DET.x0, 140]];
+    this.focusPts = [toDesk(ITEM.x + ITEM.w / 2, ITEM.y + ITEM.h / 2), [DET.x0 + 200, DET.slot - 60]];
+    this.camB = fitCam({ tu: 870, tv: 640, dist: TABLE_F * 0.86, tilt: 0.32, yaw: 0.05, roll: -0.03 }, keep);
+    this.camA = { ...this.camB, dist: this.camB.dist * 1.1, tv: this.camB.tv - 40, yaw: 0.1, roll: -0.06 };
   }
 
   override dispose() { freeCanvas(this.art); freeCanvas(this.stamp); freeCanvas(this.sh); this.art = this.stamp = null; super.dispose(); }
@@ -109,17 +119,17 @@ export default class Invoice extends Scene {
   private buildBlocks(c: Ctx2, s: number, e: number) {
     const { lyrics, audio: au } = this.ctx;
     const maxW = DET.x1 - DET.x0 - DET.pad * 2;
-    this.blocks = [{ kind: 'head', h: 150, top: 0, at: -Infinity }];
+    this.blocks = [{ kind: 'head', h: 90, top: 0, at: -Infinity }];
     if (lyrics.has) {
       for (const l of lyrics.linesIn(s - 40, e + 1)) {
-        const lay = layoutLyric(c, l, paperLyric(F.archivo(100, 800), 54, maxW));
+        const lay = layoutLyric(c, l, paperLyric(F.archivo(100, 800), 52, maxW));
         this.blocks.push({ kind: 'line', line: l, lay, h: lay.height + 58, top: 0, at: l.start - 0.35 });
       }
     } else {
       // 純音樂：從窗格前兩小節開始，每個小節一行
       for (const bt of barsIn(au, s - 2 * au.beatPeriod(s) * 4, e)) {
         const k = Math.round(au.barAt(bt)) + 1;
-        this.blocks.push({ kind: 'bar', label: `♪ 第 ${k} 小節`, h: 48 + 58, top: 0, at: bt });
+        this.blocks.push({ kind: 'bar', label: `♪ 第 ${k} 小節`, h: 40 + 50, top: 0, at: bt });
       }
     }
     let y = 0;
@@ -138,48 +148,37 @@ export default class Invoice extends Scene {
     c.beginPath(); c.moveTo(0, 8);
     for (let x = 0; x <= SLIP.w; x += 12) c.lineTo(x + 6, (x / 12) % 2 ? 0 : 8);
     c.lineTo(SLIP.w, SLIP.h); c.lineTo(0, SLIP.h); c.closePath(); c.fill();
+    // 表頭與號碼：配角（小、低對比）；號碼是對獎的主角之一，中等大小
     c.textAlign = 'center';
-    c.fillStyle = ink(0.95);
-    c.font = font(F.hei(900), 38); c.letterSpacing = '6px'; c.fillText('愛情統一發票', W2 + 3, 58);
-    c.font = font(F.hei(700), 26); c.letterSpacing = '16px'; c.fillText('祝福證明聯', W2 + 8, 98);
+    c.fillStyle = ink(0.75);
+    c.font = font(F.hei(900), 28); c.letterSpacing = '8px'; c.fillText('愛情統一發票', W2 + 4, 62);
+    c.fillStyle = ink(0.5);
+    c.font = font(F.hei(500), 18); c.letterSpacing = '4px'; c.fillText('祝福證明聯 · ' + this.period, W2 + 2, 100);
     c.letterSpacing = '0px';
-    c.font = font(F.archivo(100, 900), 54); c.fillText(this.period, W2, 160);
-    c.font = font(F.archivo(100, 900), NUM.size); c.fillText(`AO-${this.digits}`, W2, NUM.base);
+    c.fillStyle = ink(0.85);
+    c.font = font(F.archivo(100, 900), NUM.size); c.fillText('AO-' + this.digits, W2, NUM.base);
     // 對獎的八個空格
     const bw = 8 * BOX.w + 7 * BOX.gap, bx = W2 - bw / 2;
-    c.strokeStyle = ink(0.55); c.lineWidth = 1.4; c.setLineDash([5, 4]);
+    c.strokeStyle = ink(0.4); c.lineWidth = 1.3; c.setLineDash([5, 4]);
     for (let i = 0; i < 8; i++) { c.beginPath(); c.roundRect(bx + i * (BOX.w + BOX.gap), BOX.y, BOX.w, BOX.h, 6); c.stroke(); }
     c.setLineDash([]);
-    c.font = font(F.hei(500), 15); c.letterSpacing = '3px'; c.fillStyle = ink(0.62);
+    c.font = font(F.hei(500), 15); c.letterSpacing = '3px'; c.fillStyle = ink(0.45);
     c.fillText('▲ 本期特別獎號碼', W2, BOX.y + BOX.h + 26);
     c.letterSpacing = '0px';
-    // 細項
-    c.font = font(F.mono(500), 19); c.fillStyle = ink(0.9);
-    const [hh = '12', mi = '00'] = String(WEDDING_TIME_FROM).split(':');
-    c.fillText(`${DATE_DOTS.split(' · ').join('-')} ${hh}:${mi}:00  格式 25`, W2, 366);
-    c.fillText(`隨機碼 ${this.digits.slice(4)}      總計 ∞`, W2, 394);
-    c.font = font(F.hei(500), 19);
-    let who = `賣方 ${this.seller}　買方 ${this.buyer}`;
-    while (Array.from(who).length > 8 && measure(who, F.hei(500), 19) > SLIP.w - 40) who = Array.from(who).slice(0, -2).join('') + '…';
-    c.fillText(who, W2, 422);
-    drawBarcode(c, 60, 440, SLIP.w - 120, 46, this.seed + 3);
-    // 撕線與品名欄
-    c.strokeStyle = ink(0.45); c.lineWidth = 1.4; c.setLineDash([8, 6]);
-    c.beginPath(); c.moveTo(14, 512); c.lineTo(SLIP.w - 14, 512); c.stroke(); c.setLineDash([]);
+    drawBarcode(c, 110, 318, SLIP.w - 220, 36, this.seed + 3, ink(0.55));
+    // 撕線
+    c.strokeStyle = ink(0.3); c.lineWidth = 1.2; c.setLineDash([8, 6]);
+    c.beginPath(); c.moveTo(20, 390); c.lineTo(SLIP.w - 20, 390); c.stroke(); c.setLineDash([]);
     c.textAlign = 'left';
-    c.font = font(F.hei(700), 16); c.letterSpacing = '4px'; c.fillStyle = ink(0.7);
-    c.fillText(this.msg?.couple ? '品名　新人的話' : this.msg ? '品名　祝福一則' : '品名　（候補）', ITEM.x, 548);
-    c.textAlign = 'right'; c.fillText('金額', SLIP.w - ITEM.x, 548);
-    c.letterSpacing = '0px';
-    c.fillStyle = ink(0.35); c.fillRect(ITEM.x, 558, ITEM.w, 1.2);
-    c.font = font(F.mono(600), 22); c.fillStyle = ink(0.95);
-    c.fillText('數量 1　單價 ∞　金額 ∞', SLIP.w - ITEM.x, 892);
+    // 署名（買方）與金額：留言下面一行
+    c.font = font(F.hand(700), 34); c.fillStyle = ink(0.8);
+    let sig = '—— ' + this.buyer;
+    while (Array.from(sig).length > 4 && measure(sig, F.hand(700), 34) > 380) sig = Array.from(sig).slice(0, -2).join('') + '…';
+    c.fillText(sig, ITEM.x, ITEM.y + ITEM.h + 56);
+    c.textAlign = 'right';
+    c.font = font(F.mono(600), 20); c.fillStyle = ink(0.5);
+    c.fillText('金額 ∞', SLIP.w - ITEM.x, ITEM.y + ITEM.h + 54);
     c.textAlign = 'left';
-    // 署名（買方）：在金額那一行的左邊
-    c.font = font(F.hand(700), 32); c.fillStyle = ink(0.8);
-    let sig = `—— ${this.buyer}`;
-    while (Array.from(sig).length > 4 && measure(sig, F.hand(700), 32) > 220) sig = Array.from(sig).slice(0, -2).join('') + '…';
-    c.fillText(sig, ITEM.x, 894);
     // 中獎章（先畫好，蓋的時候整張疊上去）：底下先墊一張紙色的小貼紙，章才不會跟細項的小字攪在一起
     this.stamp = inkStamp(330, 160, this.seed + 21, (sc) => {
       const col = sigInk(0.95);
@@ -196,7 +195,7 @@ export default class Invoice extends Scene {
   // ------------------------------------------------------------------ 畫
   override render(f: Frame, out: THREE.WebGLRenderTarget): PostOverrides {
     const { renderer } = this.ctx;
-    const t = f.t, s = this.ctx.start, e = this.ctx.end;
+    const t = f.t, s = this.ctx.start;
     if (this.artKey !== themeKey()) this.drawArt();
     const L = this.layer;
     L.clear();
@@ -220,19 +219,28 @@ export default class Invoice extends Scene {
     this.drawSlip(c, t);
     c.restore();
 
-    const P = this.pass.u;
-    P.layer!.value = L.upload();
-    P.bake!.value = ensureBake(renderer);
-    P.tone!.value = 0.16;
-    P.t!.value = t;
-    this.pass.render(renderer, out);
-    const amp = 12 * pulse(t, this.tWin, 0.06) + 2.5 * this.digitT.reduce((a, d) => a + pulse(t, d, 0.04), 0);
+    // ---- 合成：鏡頭、景深、燈
+    const cam = this.cam(t);
+    const P = this.pass;
+    P.u.layer!.value = L.upload();
+    P.u.bake!.value = ensureBake(renderer);
+    P.u.tone!.value = 0.24;
+    setTableCam(P, cam, { aperture: 60, sharp: 0.02, focus: this.focusPts, lamp: [cam.tu - 60, cam.tv - 40, 1050] });
+    P.render(renderer, out);
+    const amp = 10 * pulse(t, this.tWin, 0.06) + 2 * this.digitT.reduce((a, d) => a + pulse(t, d, 0.04), 0);
     const ph = frameIdx(t);
     return {
-      paper: 1, popupAvoid: this.avoid, bloom: 0.2, bloomThreshold: 1.6, halation: 0.04, vignette: 0.26, grain: 0.05, ca: 0.4,
+      paper: 1, bloom: 0.2, bloomThreshold: 1.6, halation: 0.04, vignette: 0.3, grain: 0.05, ca: 0.4,
       shake: [amp * (hash(ph, 7) - 0.5) * 2, amp * (hash(ph, 8) - 0.5) * 2],
-      zoom: 1 + 0.02 * pulse(t, this.tWin, 0.1) + 0.015 * prog(t, e - 1, e, ease.inCubic),
+      zoom: 1 + 0.015 * pulse(t, this.tWin, 0.1),
     };
+  }
+
+  /** 鏡頭：切進來高一點、遠一點，整個窗格慢慢推近；發票落定那一下往前一點點。 */
+  private cam(t: number): TableCam {
+    const s = this.ctx.start, e = this.ctx.end;
+    const c = lerpCam(this.camA, this.camB, ease.inOutCubic(prog(t, s, e)));
+    return { ...c, dist: c.dist * (1 - 0.012 * pulse(t, this.land, 0.12)) };
   }
 
   /** 發票上會變的：剛印好的熱、對獎的數字、對中的劃線、品名（留言）、中獎章。 */
@@ -245,15 +253,9 @@ export default class Invoice extends Scene {
     c.font = font(F.hand(700), fit.size);
     fit.lines.forEach((ln, i) => {
       const y = top + i * fit.lineHeight;
-      // ♥ 用點綴色
-      if (!ln.includes('♥')) { c.fillStyle = heatInk(heat); c.fillText(ln, ITEM.x, y); return; }
-      let x = ITEM.x;
-      for (const part of ln.split(/(♥)/)) {
-        if (!part) continue;
-        c.fillStyle = part === '♥' ? rgba('rose') : heatInk(heat);
-        c.fillText(part, x, y);
-        x += c.measureText(part).width;
-      }
+      // ♥ 用我們自己畫的愛心（點綴色）
+      c.fillStyle = heatInk(heat);
+      fillWithHearts(c, ln, ITEM.x, y);
     });
     // 對獎：號碼先亂跳，落在拍點上；對中的那一位在發票號碼下面劃一條訊號色的線
     const bw = 8 * BOX.w + 7 * BOX.gap, bx = W2 - bw / 2;
@@ -265,7 +267,7 @@ export default class Invoice extends Scene {
       const dt = this.digitT[i]!;
       const cx = bx + i * (BOX.w + BOX.gap) + BOX.w / 2;
       if (t < dt - 0.32) {
-        c.font = font(F.archivo(100, 700), 34); c.fillStyle = ink(0.18); c.fillText('?', cx, BOX.y + 42);
+        c.font = font(F.archivo(100, 700), 30); c.fillStyle = ink(0.15); c.fillText('?', cx, BOX.y + 38);
         continue;
       }
       const ch = this.digits[i]!;
@@ -276,14 +278,14 @@ export default class Invoice extends Scene {
         c.save();
         c.beginPath(); c.rect(cx - BOX.w / 2, BOX.y, BOX.w, BOX.h); c.clip();
         c.font = font(F.archivo(100, 900), 40); c.fillStyle = ink(0.5);
-        c.fillText(String(r), cx, BOX.y + 44 + (u - 0.5) * 24);
+        c.fillText(String(r), cx, BOX.y + 40 + (u - 0.5) * 24);
         c.restore();
         continue;
       }
       const pop = 1 + 0.25 * pulse(t, dt, 0.05);
       c.save();
-      c.translate(cx, BOX.y + 44); c.scale(pop, pop);
-      c.font = font(F.archivo(100, 900), 40); c.fillStyle = heatInk(1 - clamp((t - dt) / 0.8));
+      c.translate(cx, BOX.y + 40); c.scale(pop, pop);
+      c.font = font(F.archivo(100, 900), 36); c.fillStyle = heatInk(1 - clamp((t - dt) / 0.8), 0.85);
       c.fillText(ch, 0, 0);
       c.restore();
       // 發票號碼上對應的那一位：底下劃線（很快地由左往右劃）
@@ -291,7 +293,7 @@ export default class Invoice extends Scene {
       const ux = nx0 + measure(this.digits.slice(0, i), F.archivo(100, 900), NUM.size);
       const u = prog(t, dt, dt + 0.08, ease.outCubic);
       c.fillStyle = sigInk(0.95);
-      c.fillRect(ux + 2, NUM.base + 8, (dw - 4) * u, 5);
+      c.fillRect(ux + 2, NUM.base + 7, (dw - 4) * u, 4);
     }
     c.textAlign = 'left';
     // 中獎章
@@ -299,8 +301,8 @@ export default class Invoice extends Scene {
       const kk = prog(t, this.tWin, this.tWin + 0.07, ease.outQuad);
       const sc = lerp(1.35, 1, kk);
       c.save();
-      // 蓋在細項那幾行上：先墊紙色的貼紙（章落下的那一刻貼上去），「中獎」兩個字才讀得清楚
-      c.translate(W2 + 60, 392); c.rotate(-0.15 + (hash(this.seed, 5) - 0.5) * 0.08); c.scale(sc * 0.86, sc * 0.86);
+      // 蓋在對獎號碼旁邊：先墊紙色的貼紙（章落下的那一刻貼上去），「中獎」兩個字才讀得清楚
+      c.translate(W2 + 150, 300); c.rotate(-0.15 + (hash(this.seed, 5) - 0.5) * 0.08); c.scale(sc * 0.72, sc * 0.72);
       c.globalAlpha = kk;
       c.fillStyle = ink(0.12); c.beginPath(); c.roundRect(-160, -72, 330, 152, 16); c.fill();
       c.fillStyle = paper(0.97); c.beginPath(); c.roundRect(-166, -78, 332, 152, 16); c.fill();
@@ -313,7 +315,6 @@ export default class Invoice extends Scene {
 
   /** 右邊的明細機：出紙口在下面，紙條往上長；最新的一行貼著出紙口。 */
   private drawDetails(c: Ctx2, t: number) {
-    const { song } = this.ctx;
     // 目前印到第幾段：出現時間已經到的最後一段；換段時紙條往上推（很短的緩動）
     let cur = 0;
     for (let i = 0; i < this.blocks.length; i++) if (this.blocks[i]!.at <= t) cur = i;
@@ -323,8 +324,8 @@ export default class Invoice extends Scene {
     const bottom = lerp(prev.top + prev.h, b.top + b.h, push);
     const Y = (py: number) => DET.slot - 18 - (bottom - py);
     const x0 = DET.x0, x1 = DET.x1, w = x1 - x0;
-    // 紙條（從畫面上緣之外一直到出紙口）
-    const paperTop = Math.max(-40, Y(-20));
+    // 紙條：只露出出紙口上面 DET.show 這麼高（再上去淡出），畫面上一次只看得到最新的兩行
+    const paperTop = Math.max(DET.slot - DET.show - 60, Y(-20));
     c.save();
     c.fillStyle = ink(0.12); c.fillRect(x0 + 8, paperTop + 10, w, DET.slot - paperTop);
     c.fillStyle = paper(); c.fillRect(x0, paperTop, w, DET.slot - paperTop + 4);
@@ -335,29 +336,24 @@ export default class Invoice extends Scene {
       for (let x = 0; x <= w; x += 12) c.lineTo(x0 + x + 6, paperTop - ((x / 12) % 2 ? 7 : 0));
       c.lineTo(x1, paperTop); c.closePath(); c.fill();
     }
-    c.beginPath(); c.rect(x0, -50, w, DET.slot + 50); c.clip();
+    c.beginPath(); c.rect(x0 - 20, DET.slot - DET.show - 70, w + 40, DET.show + 70); c.clip();
     for (let i = 0; i <= cur; i++) {
       const bl = this.blocks[i]!;
       const y0 = Y(bl.top);
       if (y0 + bl.h < -20) continue;
       if (bl.kind === 'head') {
-        c.textAlign = 'center'; c.fillStyle = ink(0.95);
-        c.font = font(F.hei(900), 34); c.letterSpacing = '12px'; c.fillText('交易明細', x0 + w / 2 + 6, y0 + 52);
-        c.font = font(F.mono(500), 14); c.letterSpacing = '4px'; c.fillStyle = ink(0.6); c.fillText('DETAILS · 本曲點唱明細', x0 + w / 2, y0 + 80);
-        c.font = font(F.hei(500), 20); c.letterSpacing = '1px'; c.fillStyle = ink(0.85);
-        let nm = song.title ? `《${song.title}》` : '今晚的歌';
-        while (Array.from(nm).length > 4 && measure(nm, F.hei(500), 20, 1) > w - 60) nm = Array.from(nm).slice(0, -2).join('') + '…》';
-        c.fillText(nm, x0 + w / 2, y0 + 116);
+        c.textAlign = 'center'; c.fillStyle = ink(0.6);
+        c.font = font(F.hei(700), 22); c.letterSpacing = '10px'; c.fillText('交易明細', x0 + w / 2 + 5, y0 + 44);
         c.letterSpacing = '0px'; c.textAlign = 'left';
         dashed(c, x0 + 14, x1 - 14, y0 + bl.h + ROW_GAP / 2);
         continue;
       }
       if (bl.kind === 'bar') {
         const hot = 1 - clamp((t - bl.at) / 0.9);
-        c.fillStyle = heatInk(hot); c.font = font(F.hei(700), 48);
-        c.fillText(bl.label!, x0 + DET.pad, y0 + 50);
+        c.fillStyle = heatInk(hot, 0.7); c.font = font(F.hei(700), 36);
+        c.fillText(bl.label!, x0 + DET.pad, y0 + 46);
       } else {
-        const st = paperLyric(F.archivo(100, 800), 54, w - DET.pad * 2);
+        const st = paperLyric(F.archivo(100, 800), 52, w - DET.pad * 2);
         c.save(); c.translate(x0 + DET.pad, y0 + st.size * 0.9);
         drawLyric(c, bl.line!, t, st, bl.lay!, 1);
         c.restore();
@@ -368,6 +364,16 @@ export default class Invoice extends Scene {
       dashed(c, x0 + 14, x1 - 14, y0 + bl.h + ROW_GAP / 2);
     }
     c.restore();
+    // 紙條上緣淡出（像往上捲走、失焦）：把上緣的一段挖成漸層透明
+    {
+      const gy0 = DET.slot - DET.show - 70, gy1 = DET.slot - DET.show + 110;
+      const m = c.createLinearGradient(0, gy0, 0, gy1);
+      m.addColorStop(0, 'rgba(0,0,0,1)'); m.addColorStop(1, 'rgba(0,0,0,0)');
+      c.save();
+      c.globalCompositeOperation = 'destination-out';
+      c.fillStyle = m; c.fillRect(x0 - 30, gy0 - 10, w + 60, gy1 - gy0 + 10);
+      c.restore();
+    }
     // 印表機：出紙口（深色的機身、一條縫、剛印的時候縫亮一下）
     const printing = this.blocks[cur]!.at > -Infinity ? pulse(t, this.blocks[cur]!.at, 0.18) : 0;
     c.fillStyle = ink(0.14); c.beginPath(); c.roundRect(x0 - 18, DET.slot + 12, w + 52, 120, 18); c.fill();
@@ -376,9 +382,6 @@ export default class Invoice extends Scene {
     c.fillStyle = ink(0.7); c.beginPath(); c.roundRect(x0 - 16, DET.slot + 22, w + 32, 80, 12); c.fill();
     c.fillStyle = ink(0.55); c.fillRect(x0 - 6, DET.slot + 8, w + 12, 6);
     c.fillStyle = sigInk(0.35 + 0.65 * printing); c.fillRect(x0 + 4, DET.slot + 9, w - 8, 3);
-    c.fillStyle = paper(0.7); c.font = font(F.mono(600), 13); c.letterSpacing = '5px';
-    c.fillText('明細機 · RECEIPT PRINTER', x0 + 4, DET.slot + 68);
-    c.letterSpacing = '0px';
     // 指示燈：跟著大鼓閃
     const kick = this.ctx.audio.hit('kick', t, 0.1);
     c.fillStyle = sigInk(0.4 + 0.6 * kick);

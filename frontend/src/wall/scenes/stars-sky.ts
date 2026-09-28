@@ -1,30 +1,30 @@
-// 星圖版面（stars.ts）的天空：投影、背景 shader（經緯網、星野、銀河的版畫線、黃道、圖框）。
+// 星圖版面（stars.ts）的天空：投影與背景 shader。
 //
-// 投影照古星圖的「圓錐投影」：北天極放在畫面上方很遠的地方，所以赤緯圈是一圈圈緩緩的大弧、赤經線從極點放射下來，
-// 一眼就是一張星圖而不是方格紙。鏡頭平移＝天空繞北天極轉（周日運動），星星沿著赤緯圈慢慢滑過去，經緯線的刻度也跟著走。
+// 2026-09-29 依新人「太亂、背景看不清楚」重做成電影畫面的夜空：拿掉滿版的圖框、刻度帶與整片經緯網，
+// 改成「真的夜空」＋一點點星圖的影子——
+//  - 天空由上往下從深墨漸到地平線附近微微的暖光（遠方城市的光害），下緣兩層山稜剪影（有視差，鏡頭平移時近的跑得比遠的快）；
+//  - 星野分兩層：很多很淡的小星（空氣感）、少數亮星（有柔光，hi-hat 一打一小撮會閃）；銀河只是一道很淡的雲氣；
+//  - 星圖的經緯網只在星座附近淡淡浮出來（像望遠鏡視野裡的疊圖），離星座越遠越淡，留言後面完全沒有；
+//  - 留言後面的天空暗一點、星星少一點（不加框），字才清楚。
+//
+// 投影照古星圖的「圓錐投影」：北天極在畫面上方很遠的地方，鏡頭平移＝天空繞北天極轉（周日運動）。
 // 座標都是「靜止座標」（窗格開始時的螢幕 px，y 向下）；Sky.fwd() 換成這一格的螢幕位置，shader 做反方向的換算。
 import * as THREE from 'three';
-import { FSPass, W, H } from '../engine/gl';
+import { FSPass, H } from '../engine/gl';
 
 export type P2 = { x: number; y: number };
 
-/** 赤緯每度幾 px。10° 一圈 = 160 px，網格不會太密、字也放得下。 */
+/** 赤緯每度幾 px。10° 一圈 = 160 px。 */
 export const K_DEC = 16;
 /** 赤經每小時轉幾弧度（在星座附近一小時約 230 px，跟赤緯的格子差不多方）。 */
 export const K_RA = 0.13;
 /** 北天極（靜止時）在畫面上方多遠：越遠赤緯圈越平。 */
 const POLE_Y = -1350;
 
-/** 右下角 HUD（QR）的缺角：圖框繞過它，QR 像放在星圖角落的圖例框裡（HUD_SAFE 是 x ≥ 1360、y ≥ 830，再留一點空）。 */
-export const NOTCH = { x: 1344, y: 816 };
-/** 圖框：外框線、內框線離畫面邊緣幾 px（兩條線之間是黑白相間的刻度帶，跟古地圖一樣）。 */
-export const FRAME_OUT = 58;
-export const FRAME_IN = 72;
-
-/** 黃道（靜止座標的曲線，歌詞沿著它寫）：左下往右上緩緩升起，右端在 HUD 上方，不會碰到 QR。 */
-export const eclY = (x: number) => 868 - 0.036 * (x - 150) - 13 * Math.sin((Math.PI * (x - 150)) / 1500);
+/** 黃道（靜止座標的曲線，歌詞沿著它寫）：左下往右上緩緩升起。off 讓沒有留言的窗格把它整條抬高（歌詞當主角）。 */
+export const eclY = (x: number, off = 0) => 868 + off - 0.036 * (x - 150) - 13 * Math.sin((Math.PI * (x - 150)) / 1500);
 const ECL_GLSL = /* glsl */ `
-float eclY(float x) { return 868.0 - 0.036 * (x - 150.0) - 13.0 * sin(PI * (x - 150.0) / 1500.0); }
+float eclY(float x) { return 868.0 + eclOff - 0.036 * (x - 150.0) - 13.0 * sin(PI * (x - 150.0) / 1500.0); }
 float eclDY(float x) { return -0.036 - 13.0 * PI / 1500.0 * cos(PI * (x - 150.0) / 1500.0); }`;
 
 export class Sky {
@@ -34,7 +34,7 @@ export class Sky {
   ra0: number;
   /** 這一格天空轉了多少（弧度，正的是往右＝往西轉，跟真的星空一樣）。 */
   phi = 0;
-  /** 讓 center 這個點剛好落在赤經 raC 小時、赤緯 decC 度（星座的座標彩蛋要跟格線上的刻度對得起來）。 */
+  /** 讓 center 這個點剛好落在赤經 raC 小時、赤緯 decC 度（星座的座標彩蛋要跟格線對得起來）。 */
   constructor(center: P2, poleX: number, raC: number, decC: number) {
     this.pole = { x: poleX, y: POLE_Y };
     const dx = center.x - poleX, dy = center.y - POLE_Y;
@@ -47,52 +47,45 @@ export class Sky {
     const vx = x - this.pole.x, vy = y - this.pole.y, c = Math.cos(this.phi), s = Math.sin(this.phi);
     return { x: this.pole.x + vx * c + vy * s, y: this.pole.y - vx * s + vy * c };
   }
-  radec(x: number, y: number) {
-    const vx = x - this.pole.x, vy = y - this.pole.y;
-    return { ra: this.ra0 - Math.atan2(vx, vy) / K_RA, dec: 90 - (Math.hypot(vx, vy) - this.rPole) / K_DEC };
-  }
-  /** 赤經（小時）赤緯（度）→ 靜止座標。 */
-  fromRaDec(ra: number, dec: number): P2 {
-    const th = (this.ra0 - ra) * K_RA, d = this.rPole + (90 - dec) * K_DEC;
-    return { x: this.pole.x + d * Math.sin(th), y: this.pole.y + d * Math.cos(th) };
-  }
-  /** 赤經 h 小時那條線（螢幕上）與水平線 y 的交點 x。 */
-  raLineAtY(h: number, y: number): number | null {
-    const a = (this.ra0 - h) * K_RA + this.phi, cs = Math.cos(a);
-    if (cs < 0.2) return null;
-    return this.pole.x + ((y - this.pole.y) / cs) * Math.sin(a);
-  }
-  /** 赤緯 dec 度那一圈（螢幕上）與垂直線 x 的交點 y（取下半圈）。 */
-  decCircleAtX(dec: number, x: number): number | null {
-    const d = this.rPole + (90 - dec) * K_DEC, dx = x - this.pole.x;
-    if (Math.abs(dx) >= d) return null;
-    return this.pole.y + Math.sqrt(d * d - dx * dx);
-  }
-}
-
-/** 羅馬數字（古星圖的赤經時數寫成 IIIʰ）。 */
-export function roman(n: number): string {
-  if (n <= 0) return '0';
-  const t: [number, string][] = [[10, 'X'], [9, 'IX'], [5, 'V'], [4, 'IV'], [1, 'I']];
-  let s = '';
-  for (const [v, r] of t) while (n >= v) { s += r; n -= v; }
-  return s;
 }
 
 /**
- * 背景：暗底上的「白線版畫」星圖（pdoom 的 ascent 是紙上的黑線版畫，這裡反過來，墨底上刻紙白的細線）。
- * 很便宜的一個全螢幕 pass：經緯網＋刻度、格子裡用雜湊排的背景星（亮的有十字光芒、hi-hat 時一小撮會閃）、
- * 銀河用沿著星河走向的版畫細線（線寬隨雲氣濃淡變）、黃道與刻度、圖框與黑白相間的刻度帶（跟著赤經赤緯走）。
+ * 背景：一個全螢幕 pass（便宜）。天空漸層與地平線的暖光、銀河的雲氣、兩層星野、星座附近的經緯網、很淡的黃道、
+ * 兩層山稜剪影（近的邊緣稍微虛，像鏡頭對焦在天上）。
  */
 export const makeSkyPass = () => new FSPass(/* glsl */ `
-  uniform float t, k, iris, hat, hatIdx;
-  uniform vec2 irisC, pole, seedOff;
+  uniform float t, k, hat, hatIdx;
+  uniform vec2 pole, seedOff;
   uniform float phi, rPole, kDec, kRA, ra0;
-  uniform vec4 quiet;   // 圖例（留言）後面讓星圖安靜一點的範圍：x0, y0, x1, y1（y 向下）
+  uniform vec4 quiet;   // 留言的範圍（螢幕 px，y 向下）：x0, y0, x1, y1。後面的天空暗一點、星星少一點
+  uniform vec3 chart;   // 星座附近浮出經緯網：中心 x, y、半徑
   uniform vec3 mw;      // 銀河：法線角度、位置、半寬
+  uniform float eclOff, eclK; // 黃道的上下位移、亮度
+  uniform vec2 ridge;   // 山稜的水平位移（遠、近）：鏡頭平移的視差
   ${ECL_GLSL}
 
   vec2 unrot(vec2 w, float a) { float c = cos(a), s = sin(a); return vec2(w.x * c - w.y * s, w.x * s + w.y * c); }
+
+  // 一格一顆星：cell 格子大小、p 出現的機率、回傳亮度（含柔光）。只看自己這一格，所以星的位置留在格子中間，光暈不會被切掉。
+  float starField(vec2 r, float cell, float p, float bMin, float bMax, float glowK, out float spikeOut) {
+    vec2 c = floor(r / cell + seedOff * 500.0);
+    vec2 h2 = hash22(c);
+    float present = step(1.0 - p, hash12(c + 17.3));
+    vec2 sp = (c + 0.25 + 0.5 * h2) * cell - seedOff * 500.0 * cell;
+    float b = pow(hash12(c + 3.1), 3.2);
+    float rad = 0.45 + 1.5 * b * glowK;
+    vec2 o = r - sp;
+    float L = length(o);
+    float disc = 1.0 - smoothstep(rad - 0.5, rad + 0.5, L);
+    float halo = exp(-L / (0.9 + 2.6 * b)) * 0.35 * glowK;
+    // 最亮的幾顆有很細的十字（鏡頭的繞射，不是雕版的光芒）
+    vec2 ao = abs(o);
+    float sl = 4.0 + 9.0 * b;
+    spikeOut = present * step(0.93, b) * glowK * (pxLine(ao.x, 0.1, 0.6) * max(0.0, 1.0 - ao.y / sl) + pxLine(ao.y, 0.1, 0.6) * max(0.0, 1.0 - ao.x / sl));
+    // hi-hat 一打，一成的亮星閃一下；平常很慢地呼吸
+    float tw = 1.0 + hat * 2.4 * step(0.9, hash12(c + hatIdx * 1.37)) * glowK + 0.16 * sin(t * (1.3 + 2.6 * h2.x) + h2.y * 6.28);
+    return present * (disc + halo) * mix(bMin, bMax, b) * tw;
+  }
 
   void main() {
     vec2 q = vec2(FRAG_PX.x, ${H}.0 - FRAG_PX.y);          // 螢幕 px，y 向下（跟 Canvas2D 一樣）
@@ -102,78 +95,69 @@ export const makeSkyPass = () => new FSPass(/* glsl */ `
     float dec = 90.0 - (d - rPole) / kDec;
     float ra = ra0 - atan(v.x, v.y) / kRA;
 
-    // 底：墨色，極淡的紙紋
-    vec3 col = C_INK + (C_INK2 - C_INK) * (0.45 + 0.35 * snoise(q / 640.0 + 3.1));
+    // ---- 山稜（螢幕座標＋視差位移）：遠的一層淡一點（空氣透視）、近的一層最暗，邊緣稍微虛
+    float xf = q.x + ridge.x, xn = q.x + ridge.y;
+    float yFar = 962.0 + 24.0 * sin(xf / 340.0 + 1.3) + 15.0 * sin(xf / 131.0 + 0.4) + 6.0 * snoise(vec2(xf / 85.0, 3.3));
+    float yNear = 1024.0 + 30.0 * sin(xn / 430.0 + 4.1) + 12.0 * sin(xn / 167.0 + 2.2) + 5.0 * snoise(vec2(xn / 58.0, 8.1));
+    float aFar = smoothstep(-1.0, 1.0, q.y - yFar);
+    float aNear = smoothstep(-3.0, 3.0, q.y - yNear);
 
-    // 圖框：內框（星圖範圍）＝整張減掉右下角 QR 的缺角
-    vec2 ctr = vec2(${W / 2}.0, ${H / 2}.0);
-    float big = 4000.0;
-    float dIn = max(sdBox(q - ctr, ctr - ${FRAME_IN}.0), -sdBox(q - vec2(${NOTCH.x}.0 + big, ${NOTCH.y}.0 + big), vec2(big)));
-    float dOut = max(sdBox(q - ctr, ctr - ${FRAME_OUT}.0), -sdBox(q - vec2(${NOTCH.x + FRAME_IN - FRAME_OUT}.0 + big, ${NOTCH.y + FRAME_IN - FRAME_OUT}.0 + big), vec2(big)));
-    float inside = 1.0 - smoothstep(-1.0, 1.0, dIn);
-    float quietK = 1.0 - 0.72 * (smoothstep(quiet.x - 60.0, quiet.x, q.x) * smoothstep(quiet.z + 60.0, quiet.z, q.x) * smoothstep(quiet.y - 60.0, quiet.y, q.y) * smoothstep(quiet.w + 60.0, quiet.w, q.y));
-    float open = 1.0 - smoothstep(iris - 180.0, iris, length(q - irisC));
-    float sky = inside * open * k;
+    // ---- 天空：上面最深，往地平線慢慢亮一點、帶一點暖（遠方城市的光）
+    float hy = q.y / ${H}.0;
+    vec3 col = mix(C_INK * 0.7, C_INK2 * 1.15, smoothstep(0.05, 0.95, hy));
+    float airglow = exp(-max(0.0, yFar - q.y) / 190.0);
+    col += mix(C_BLOOD, C_SIGNAL, 0.25) * airglow * 0.03;
+    col *= 0.94 + 0.06 * snoise(q / 760.0 + 3.1);
 
-    // ---- 經緯網：赤緯每 10°、赤經每 1 小時一條細線；線上每 1° / 10 分一個小刻度
-    float dd = abs(fract(dec / 10.0 + 0.5) - 0.5) * 10.0 * kDec;
-    float dr = abs(fract(ra + 0.5) - 0.5) * kRA * d;
-    float grid = (pxLine(dd, 0.3, 1.1) + pxLine(dr, 0.3, 1.1)) * 0.10;
-    float tk = pxLine(abs(fract(dec + 0.5) - 0.5) * kDec, 0.25, 0.9) * (1.0 - smoothstep(3.0, 4.0, dr));
-    tk += pxLine(abs(fract(ra * 6.0 + 0.5) - 0.5) / 6.0 * kRA * d, 0.25, 0.9) * (1.0 - smoothstep(3.0, 4.0, dd));
-    grid += tk * 0.10;
-    // 半格（5°、30 分）用點線
-    float dd5 = abs(fract(dec / 10.0) - 0.5) * 10.0 * kDec;
-    float dr5 = abs(fract(ra) - 0.5) * kRA * d;
-    grid += pxLine(dd5, 0.3, 1.0) * step(fract(ra * 36.0), 0.3) * 0.07 + pxLine(dr5, 0.3, 1.0) * step(fract(dec * 1.5), 0.3) * 0.07;
+    // 留言後面：天空暗一點、星星與雲氣退開（很寬的柔邊，不是框）
+    vec2 qc = (quiet.xy + quiet.zw) * 0.5, qh = max((quiet.zw - quiet.xy) * 0.5, vec2(0.0));
+    float qd = sdBox(q - qc, qh);
+    float quietM = 1.0 - smoothstep(-30.0, 140.0, qd);
+    // 大氣消光：越靠近地平線星越暗
+    float ext = 0.3 + 0.7 * smoothstep(yFar + 10.0, yFar - 260.0, q.y);
+    float skyM = (1.0 - aFar) * k;
 
-    // ---- 銀河：沿著星河走向的版畫細線，線寬跟著雲氣濃淡；中間一道暗帶
+    // ---- 銀河：一道很淡的雲氣，中間一條暗的塵帶
     vec2 mwN = vec2(cos(mw.x), sin(mw.x));
     vec2 mwT = vec2(-mwN.y, mwN.x);
-    float n = dot(r, mwN) - mw.y + 80.0 * sin(dot(r, mwT) / 460.0 + seedOff.x * 6.0);
+    float n = dot(r, mwN) - mw.y + 70.0 * sin(dot(r, mwT) / 520.0 + seedOff.x * 6.0);
     float band = exp(-n * n / (mw.z * mw.z));
-    float cloud = fbm(r / 260.0 + seedOff * 40.0, 3) * 0.5 + 0.5;
-    float rift = smoothstep(0.0, 0.35, abs(n / mw.z + 0.18 + 0.25 * snoise(r / 380.0 + 7.0)));
-    float dens = band * smoothstep(0.3, 0.8, cloud) * mix(0.25, 1.0, rift);
-    float eng = hatch((n + 7.0 * snoise(r / 150.0)) / 5.0, dens * 0.6);
-    float stip = step(hash12(floor(r / 2.5) + seedOff * 97.0), dens * 0.045);
-    float milky = (eng * 0.075 + stip * 0.16) * quietK;
+    float cloud = fbm(r / 420.0 + seedOff * 40.0, 2) * 0.5 + 0.5;
+    float rift = smoothstep(0.05, 0.45, abs(n / mw.z + 0.15 + 0.3 * snoise(r / 420.0 + 7.0)));
+    float dens = band * smoothstep(0.25, 0.85, cloud) * mix(0.3, 1.0, rift);
+    col += mix(C_BONE, C_ASH, 0.5) * dens * 0.028 * (1.0 - 0.7 * quietM) * ext * skyM;
 
-    // ---- 背景星：每 34 px 一格最多一顆，亮的少、暗的多；亮的刻十字光芒。hi-hat 一打，一小撮星星閃一下
-    vec2 cell = floor(r / 34.0 + seedOff * 500.0);
-    vec2 h2 = hash22(cell);
-    float present = step(0.58, hash12(cell + 17.3));
-    vec2 sp = (cell + 0.22 + 0.56 * h2) * 34.0 - seedOff * 500.0 * 34.0;
-    float b = pow(hash12(cell + 3.1), 3.6);
-    float rad = 0.5 + 2.0 * b;
-    vec2 o = abs(r - sp);
-    float disc = 1.0 - smoothstep(rad - 0.55, rad + 0.55, length(o));
-    float sl = rad * 3.6;
-    float spike = step(0.72, b) * (pxLine(o.x, 0.15, 0.7) * step(o.y, sl) * (1.0 - o.y / sl) + pxLine(o.y, 0.15, 0.7) * step(o.x, sl) * (1.0 - o.x / sl));
-    float tw = 1.0 + hat * 2.8 * step(0.9, hash12(cell + hatIdx * 1.37)) + 0.14 * sin(t * (1.7 + 3.0 * h2.x) + h2.y * 6.28);
-    float star = present * (disc + spike * 0.6) * (0.14 + 0.55 * b) * tw * mix(1.0, 0.45, 1.0 - quietK);
+    // ---- 星野：很多很淡的小星（銀河裡更密）＋少數亮星
+    float sp1, sp2;
+    float fine = starField(r, 15.0, 0.3 + 0.4 * dens, 0.04, 0.26, 0.0, sp1);
+    float bright = starField(r + 7.0, 70.0, 0.3, 0.14, 0.7, 1.0, sp2);
+    float stars = (fine + bright + sp2 * 0.25) * (1.0 - 0.8 * quietM) * ext * skyM;
+    col += C_BONE * stars;
 
-    // ---- 黃道：一條比經緯線亮的細線，下側每 12 px 一個刻度、每 60 px 一個長刻度
+    // ---- 經緯網：只在星座附近浮出來（赤緯每 10°、赤經每 1 小時），越遠越淡
+    float dd = abs(fract(dec / 10.0 + 0.5) - 0.5) * 10.0 * kDec;
+    float dr = abs(fract(ra + 0.5) - 0.5) * kRA * d;
+    float grid = pxLine(dd, 0.25, 1.0) + pxLine(dr, 0.25, 1.0);
+    float cm = 1.0 - smoothstep(chart.z * 0.25, chart.z, length(q - chart.xy));
+    col += C_BONE * grid * 0.032 * cm * (1.0 - quietM) * skyM;
+
+    // ---- 黃道：一條很淡的細線，兩端淡出（歌詞沿著它寫）
     float ey = eclY(r.x), es = eclDY(r.x);
     float ed = (r.y - ey) / sqrt(1.0 + es * es);
-    float ecl = pxLine(abs(ed), 0.4, 1.3) * 0.28;
-    float tlen = abs(fract(r.x / 60.0 + 0.5) - 0.5) * 60.0 < 1.2 ? 9.0 : 4.5;
-    ecl += pxLine(abs(fract(r.x / 12.0 + 0.5) - 0.5) * 12.0, 0.25, 0.9) * step(0.0, ed) * step(ed, tlen) * 0.2;
+    float ecl = pxLine(abs(ed), 0.35, 1.2) * smoothstep(40.0, 260.0, q.x) * smoothstep(1900.0, 1600.0, q.x);
+    col += C_BONE * ecl * 0.1 * eclK * skyM;
 
-    col += C_BONE * ((grid * quietK + milky + ecl) * sky + star * sky);
-
-    // ---- 圖框：兩條線中間是黑白相間的刻度帶（上下邊跟著赤經每 10 分、左右邊跟著赤緯每 1° 換色，天空轉，刻度帶也走）
-    float fr = pxLine(abs(dIn), 0.35, 1.1) * 0.34 + pxLine(abs(dOut), 0.5, 1.4) * 0.5;
-    vec2 gdir = vec2(dFdx(dIn), dFdy(dIn));
-    float horiz = step(abs(gdir.x), abs(gdir.y));
-    float parity = mod(floor(mix(dec, ra * 6.0, horiz)), 2.0);
-    float inBand = step(3.5, dIn) * step(dIn, ${FRAME_IN - FRAME_OUT - 3.5}) * step(dOut, -0.5);
-    fr += inBand * parity * 0.26;
-    col += C_BONE * fr * k;
+    // ---- 山稜剪影：遠山的稜線有一點點月光，近山全黑；兩層之間一條很薄的霧
+    vec3 farCol = mix(C_INK2 * 0.6, C_INK * 0.9, smoothstep(yFar, yFar + 120.0, q.y)) + mix(C_BLOOD, C_SIGNAL, 0.25) * airglow * 0.012;
+    col = mix(col, farCol * k, aFar);
+    col += C_BONE * pxLine(abs(q.y - yFar), 0.3, 1.3) * 0.03 * k * (1.0 - aNear);
+    col += C_ASH * exp(-abs(q.y - yNear + 16.0) / 26.0) * 0.01 * k * (1.0 - aNear) * aFar;
+    col = mix(col, C_INK * 0.28 * k, aNear);
     fragColor = vec4(col, 1.0);
   }`, {
-  t: { value: 0 }, k: { value: 1 }, iris: { value: 4000 }, hat: { value: 0 }, hatIdx: { value: 0 },
-  irisC: { value: new THREE.Vector2() }, pole: { value: new THREE.Vector2() }, seedOff: { value: new THREE.Vector2() },
+  t: { value: 0 }, k: { value: 1 }, hat: { value: 0 }, hatIdx: { value: 0 },
+  pole: { value: new THREE.Vector2() }, seedOff: { value: new THREE.Vector2() },
   phi: { value: 0 }, rPole: { value: 700 }, kDec: { value: K_DEC }, kRA: { value: K_RA }, ra0: { value: 0 },
-  quiet: { value: new THREE.Vector4() }, mw: { value: new THREE.Vector3(0, 0, 200) },
+  quiet: { value: new THREE.Vector4(-9999, -9999, -9998, -9998) }, chart: { value: new THREE.Vector3(0, 0, 1) },
+  mw: { value: new THREE.Vector3(0, 0, 200) }, eclOff: { value: 0 }, eclK: { value: 1 }, ridge: { value: new THREE.Vector2() },
 });

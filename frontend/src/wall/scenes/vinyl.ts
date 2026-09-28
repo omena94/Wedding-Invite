@@ -1,54 +1,54 @@
 // 黑膠唱片（照 pdoom 的 spacetime「字排在圓環上、唱到才點亮」與 loom「一條線被火花一路寫出來」）。
-// 俯視一張轉動的黑膠：細線溝紋、反光扇形、圓心標籤（歌名、歌手、SIDE A · 2027 · 03 · 13 · ALAN & OMENA）。
+// 一張轉動的黑膠擺在唱盤上，旁邊放著唱片封套裡的 liner notes 紙卡；一台相機斜斜往下看、很慢地搖與推（像 MV 的桌面特寫），
+// 一盞暖燈照在唱針與紙卡之間，遠端暗下去、微微失焦。
 //  - 歌詞刻在溝紋上（一條往內捲的螺旋），唱針固定在正上方：唱片的轉動「鎖」在歌聲上，
 //    每個字正好在被唱到的那一刻轉到唱針底下、亮起來（訊號色、發光），唱完冷卻成紙白，轉到左邊淡掉。
-//    所以字永遠在正上方被讀到、不會倒過來；唱針隨著螺旋慢慢往內走（唱臂跟著擺）。
-//  - 要讓字由左往右讀、又讓唱針依序讀到，唱片只能逆時針轉——左下角的註腳一本正經地說明這件事。
+//    溝紋上只看得到正在唱的那一句（下一句快開始才浮出來），其他的溝是空的——背景要能呼吸。
+//  - 要讓字由左往右讀、又讓唱針依序讀到，唱片只能逆時針轉——左下角的小註腳一本正經地說明這件事。
 //  - 唱針是仙女棒的火花：拖著一段剛讀過、還在發燙的溝。
-//  - 主打留言是唱片封套的「liner notes」：一張紙卡在第一拍從右邊滑出來。沒有留言時是一張空白的卡，邀請大家掃 QR。
+//  - 主打留言印在 liner notes 紙卡上：一張真的紙在第一拍滑進來、落到桌上（影子收近），跟著桌面一起有透視與燈光。
+//    留言是整個畫面最大、最清楚的字；沒有留言時是一張寫著邀請的卡（焦點交給歌詞）。
 //  - 純音樂（這個窗格沒有人唱）：溝紋改刻留言（短的）或新人的名字，唱針用閱讀的速度讀過去；卡片改成唱片的製作名單。
-//  - 轉速標籤依 BPM 選 33⅓ 或 45（冷面：真的轉得比較慢，是慢動作）。
+//  - 轉速依 BPM 選 33⅓ 或 45（印在標籤上）。
 import * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides } from '../engine/scene';
-import { FSPass, Layer2D, W, H, SCALE, scaleContext2D } from '../engine/gl';
+import { FSPass, Layer2D, makeRT, W, H, SCALE } from '../engine/gl';
 import { LineBatch } from '../engine/lines';
 import { F, font, layout, loadText } from '../engine/type';
-import { LIN, rgba, mixRgba } from '../engine/palette';
+import { LIN, rgba } from '../engine/palette';
 import { clamp, ease, lerp, prog, pulse, noise1, TAU } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
 import { sparkHead, sparkParticles, beatAfter, signature, drawHeart, COUPLE_EN, COUPLE_ZH, DATE_DOTS } from './_motifs';
-import { FRAG_VINYL } from './vinyl-glsl';
+import { FRAG_VINYL, FRAG_DOF } from './vinyl-glsl';
 
-// ---------------------------------------------------------------- 版面幾何（邏輯像素，y 向下）
-/** 唱片圓心與半徑：下緣出畫面，上方留給唱臂，右邊留給卡片。 */
-const C = { x: 740, y: 770 };
-const R_REC = 650;
+type P2 = { x: number; y: number };
+
+// ---------------------------------------------------------------- 桌面上的東西（桌面座標：邏輯 px，y 向下）
+/** 唱片圓心與半徑：下緣出畫面，上方留給唱臂，右邊放紙卡。 */
+const C = { x: 600, y: 790 };
+const R_REC = 640;
 /** 圓心標籤半徑（真的唱片約三分之一）。 */
 const R_LAB = 205;
 /** 窗格開始時，唱針底下那個字的基線半徑；之後沿著螺旋往內。 */
 const R0 = 466;
-/** 溝紋上的字級（歌詞至少 48 px）。 */
-const SIZE = 64;
-/** 唱針尖在字的基線外多遠：停在字頂上方，唱頭才不會蓋住正在唱的字。 */
-const STY = 74;
-/** 唱臂軸心（右上角，卡片上方）。 */
-const PIVOT = { x: 1650, y: 128 };
+/** 唱臂軸心（右上角，紙卡上方）。 */
+const PIVOT = { x: 1640, y: 128 };
 /** 刻字的那一層只涵蓋圓環附近（上傳比整張小一半以上）。 */
-const TR = { x: 130, y: 96, w: 1210, h: 724 };
-/** 卡片（liner notes）停住的位置與寬度；高度看內容，一定在 HUD（y ≥ 830）上面。 */
-const CARD = { x: 1238, w: 612, top: 238, bottom: 818 };
-/** 卡片圖層蓋住的範圍（含轉動與影子）與卡片圖留給影子的邊。 */
-const CARD_R = { x: 1160, y: 150, w: 760, h: 760 };
-const CARD_M = 70;
-/** 左上角曲目資訊＋左下角註腳的圖層範圍。 */
-const INFO_R = { x: 96, y: 90, w: 640, h: 910 };
-/** 圓環上的字看得到的角度（從正上方算，度）：右邊（還沒唱的）與左邊（唱過的）各自淡出。 */
-const VIS = { r0: 50, r1: 78, l0: 56, l1: 86 };
-const DEG = Math.PI / 180;
-/** 左上角曲目資訊的左緣。 */
+const TR = { x: 40, y: 170, w: 1190, h: 660 };
+/** 紙卡：中心、寬、最高多高（高度看內容）。透視之後右緣約在螢幕 x 1800、下緣在 QR（y ≥ 830）上面。 */
+const CARD = { x: 1400, y: 525, w: 540, maxH: 556, top: 244 };
+/** 紙卡的字畫得比桌面細兩倍：相機推近時放大才不會糊。 */
+const CARD_PX = 2;
+/** 燈照在桌面上的中心。 */
+const LAMP = { x: 1050, y: 330 };
+/** 螢幕上的小字（曲目、註腳）的圖層範圍。 */
+const INFO_R = { x: 96, y: 90, w: 900, h: 910 };
 const INFO_X = 128;
-/** 真的黑膠外徑 150 mm：唱針位置的讀數用。 */
-const MM = 150 / R_REC;
+/** 圓環上的字看得到的角度（從正上方算，度）：右邊（還沒唱的）與左邊（唱過的）各自淡出。 */
+const VIS = { r0: 50, r1: 78, l0: 52, l1: 82 };
+const DEG = Math.PI / 180;
+/** 景深：最大模糊半徑（邏輯 px）、比唱針遠多少開始糊。 */
+const DOF_R = 4.5;
 
 /** 歌詞的聲音：壓窄的 Archivo（中文、韓文自動接思源黑體）。 */
 const FAM_LYRIC = F.archivo(75, 800);
@@ -56,16 +56,73 @@ const FAM_LYRIC = F.archivo(75, 800);
 const FAM_MSG = F.hand(700);
 
 const FOOTNOTE = '＊本唱片逆時針播放，以便由左至右閱讀。';
-const CARD_NOTE = '＊本面祝福建議以最大音量播放。';
 const INVITE = ['這一面還空著。', '掃描右下角 QR code，', '把你的祝福刻進下一首歌。'];
-const INVITE_NOTE = '＊收到的祝福會出現在接下來的歌裡。';
 
 const BG = () => new FSPass(FRAG_VINYL, {
+  uHinv: { value: new THREE.Matrix3() }, uDepth: { value: new THREE.Vector3(0, 0, 1) }, uFocus: { value: new THREE.Vector2(1, 10) },
+  uLamp: { value: new THREE.Vector2(LAMP.x, LAMP.y) },
   uC: { value: new THREE.Vector2(C.x, C.y) }, uR: { value: R_REC }, uRl: { value: R_LAB }, uTh: { value: 0 }, uFan: { value: 0 },
   uFanK: { value: 1 }, uIn: { value: 1 }, uHat: { value: 0 },
   uS: { value: new THREE.Vector2() }, uE: { value: new THREE.Vector2() }, uP: { value: new THREE.Vector2(PIVOT.x, PIVOT.y) }, uLift: { value: 0 },
   uLab: { value: null }, uTxt: { value: null }, uTR: { value: new THREE.Vector4(TR.x, TR.y, TR.w, TR.h) },
+  uCard: { value: null }, uCardG: { value: new THREE.Vector4() }, uCardS: { value: new THREE.Vector2(1, 1) }, uCardK: { value: new THREE.Vector3() },
 });
+const DOF = () => new FSPass(FRAG_DOF, { uScn: { value: null }, uMaxR: { value: DOF_R }, uTexel: { value: new THREE.Vector2(1 / W, 1 / H) } });
+
+// ---------------------------------------------------------------- 相機：桌面 → 螢幕
+/**
+ * 針孔相機斜斜往下看桌面。桌面是一個平面，所以「桌面 → 螢幕」是一個 3×3 的單應矩陣：
+ * shader 拿它的反矩陣把每個螢幕像素換回桌面座標（唱片、紙卡、唱臂一起有透視），
+ * 火花（LineBatch 畫在螢幕上）則用 proj() 把桌面上的點換到螢幕。
+ */
+class TableCam {
+  f = 1700;
+  private rx = [1, 0, 0];
+  private ry = [0, 1, 0];
+  private rz = [0, 0, 1];
+  private D = 1700;
+  private T: P2 = { x: 0, y: 0 };
+  private S: P2 = { x: 0, y: 0 };
+  /**
+   * th：視線偏離正上方幾度；phi：桌面上「遠端」的方向（度，y 向下，180 = 左邊）；
+   * s：對準的那一點放大幾倍（推鏡頭）；T：對準桌面上的哪一點，S：那一點在螢幕上的位置。
+   */
+  set(th: number, phi: number, s: number, T: P2, S: P2) {
+    const t = th * DEG, p = phi * DEG, c = Math.cos(t), sn = Math.sin(t);
+    // Rodrigues：相機三個軸繞桌面上的軸 u（垂直於遠端方向）轉 th
+    const ux = -Math.sin(p), uy = Math.cos(p);
+    const rot = (vx: number, vy: number, vz: number, o: number[]) => {
+      const dot = ux * vx + uy * vy;
+      o[0] = vx * c + uy * vz * sn + ux * dot * (1 - c);
+      o[1] = vy * c - ux * vz * sn + uy * dot * (1 - c);
+      o[2] = vz * c + (ux * vy - uy * vx) * sn;
+    };
+    rot(1, 0, 0, this.rx); rot(0, 1, 0, this.ry); rot(0, 0, 1, this.rz);
+    this.D = this.f / s;
+    this.T = T; this.S = S;
+  }
+  private z(x: number, y: number) { return this.rz[0]! * (x - this.T.x) + this.rz[1]! * (y - this.T.y) + this.D; }
+  proj(x: number, y: number): P2 {
+    const X = x - this.T.x, Y = y - this.T.y, z = this.z(x, y);
+    return { x: this.S.x + (this.f * (this.rx[0]! * X + this.rx[1]! * Y)) / z, y: this.S.y + (this.f * (this.ry[0]! * X + this.ry[1]! * Y)) / z };
+  }
+  /** 桌面上這一點在螢幕上放大幾倍（字級換算、景深用）。 */
+  mag(x: number, y: number) { return this.f / this.z(x, y); }
+  /** 螢幕 → 桌面（shader 的 uHinv）。 */
+  inverse(m: THREE.Matrix3) {
+    const { f, rx, ry, rz, D, T, S } = this;
+    const row = (a: number, b: number, cc: number) => [a, b, cc - a * T.x - b * T.y] as const;
+    const r1 = row(f * rx[0]! + S.x * rz[0]!, f * rx[1]! + S.x * rz[1]!, S.x * D);
+    const r2 = row(f * ry[0]! + S.y * rz[0]!, f * ry[1]! + S.y * rz[1]!, S.y * D);
+    const r3 = row(rz[0]!, rz[1]!, D);
+    return m.set(r1[0], r1[1], r1[2], r2[0], r2[1], r2[2], r3[0], r3[1], r3[2]).invert();
+  }
+  /** 1 / 放大率 = dot(xy, p) + z（shader 的 uDepth）。 */
+  depth(v: THREE.Vector3) {
+    const { f, rz, D, T } = this;
+    return v.set(rz[0]! / f, rz[1]! / f, (D - rz[0]! * T.x - rz[1]! * T.y) / f);
+  }
+}
 
 // ---------------------------------------------------------------- 唱針讀到哪裡：時間 → 弧長
 /**
@@ -121,14 +178,17 @@ function cleanKnots(k: [number, number][], vMax: number): [number, number][] {
   return out;
 }
 
-/** 圓環上的一個字（字元）。s = 左緣在螺旋上的弧長。 */
-interface RG { ch: string; fam: string; s: number; w: number; main: boolean }
+/**
+ * 圓環上的一個字（字元）。s = 左緣在螺旋上的弧長；dim = 亮度（新人名字當配角時比較暗）；
+ * ln = 第幾句歌詞（-1：不是歌詞，一直看得到）。
+ */
+interface RG { ch: string; fam: string; s: number; w: number; size: number; dim: number; ln: number }
 
 /**
  * 把一小段字（新人的名字、日期）一再重複排在弧長 from～to 之間，排不下的字不排。
  * 只排一次版再平移：layout() 逐字量前綴，長字串會很慢。
  */
-function tile(unit: string, fam: string, size: number, from: number, to: number, main: boolean): RG[] {
+function tile(unit: string, fam: string, size: number, from: number, to: number, dim: number): RG[] {
   const lay = layout(unit, fam, size);
   const out: RG[] = [];
   if (lay.width <= 0) return out;
@@ -136,7 +196,7 @@ function tile(unit: string, fam: string, size: number, from: number, to: number,
     for (const g of lay.glyphs) {
       if (!g.ch.trim()) continue;
       if (o + g.x + g.w > to) return out;
-      out.push({ ch: g.ch, fam, s: o + g.x, w: g.w, main });
+      out.push({ ch: g.ch, fam, s: o + g.x, w: g.w, size, dim, ln: -1 });
     }
   }
   return out;
@@ -152,24 +212,29 @@ function rpmFor(bpm: number) {
 
 export default class Vinyl extends Scene {
   bg = shared('vinyl.bg', BG);
-  /** 刻在溝紋上的字（遮罩，交給 shader 上色、讓溝紋從字裡穿過去）。 */
-  txt = this.track(new Layer2D(TR.w, TR.h));
-  /** 左上角曲目資訊與左下角註腳：只有唱針讀數（0.5 mm 一格）變了才重畫；進場只調合成時的透明度。 */
-  info = this.track(new Layer2D(INFO_R.w, INFO_R.h));
-  /** 卡片：只蓋住右邊一塊；紙、內文、署名在 init 先各畫成一張，滑動時每格只是轉一下、貼上去。 */
-  cardL = this.track(new Layer2D(CARD_R.w, CARD_R.h));
-  cardParts: HTMLCanvasElement[] = [];
-  /** 上一次畫的曲目資訊／卡片的樣子（一樣就不重畫、不重新上傳）。 */
-  infoKey = '';
-  cardKey = '';
+  dof = shared('vinyl.dof', DOF);
+  /** 主 pass 先畫到這裡（alpha = 景深模糊量），再由景深 pass 貼到輸出。 */
+  scn = this.track(makeRT(W, H, { depthBuffer: false }));
+  /** 刻在溝紋上的字（遮罩，交給 shader 上色、讓溝紋從字裡穿過去）。fast 上傳：每格都要重畫、重傳。 */
+  txt = this.track(new Layer2D(TR.w, TR.h, SCALE, { fast: true }));
+  /** 螢幕上的兩小群字（左上角曲目、左下角註腳）：init 畫一次。 */
+  info = this.track(new Layer2D(INFO_R.w, INFO_R.h, SCALE, { fast: true }));
   glow = this.track(new LineBatch(3000, { screen2D: true, blend: 'add' }));
   msg: Msg | null = this.ctx.params.message ?? null;
   labelTex: THREE.CanvasTexture | null = null;
+  cardTex: THREE.CanvasTexture | null = null;
+  cam = new TableCam();
+  hinv = new THREE.Matrix3();
 
   rpm = 45;
   vIdle = 200;
   head!: HeadCurve;
   glyphs: RG[] = [];
+  /** 每句歌詞的時間（溝紋上只看得到正在唱的那一句）。 */
+  lines: { start: number; end: number }[] = [];
+  /** 溝紋上主要文字的字級（桌面 px）與唱針尖在字的基線外多遠（停在字頂上方，唱頭才不會蓋住正在唱的字）。 */
+  sz = 60;
+  sty = 70;
   /** 窗格開始時唱針的弧長位置（螺旋的起點）與螺旋每弧度往內幾 px。 */
   P0 = 0;
   k = 0;
@@ -180,39 +245,41 @@ export default class Vinyl extends Scene {
   /** 卡片：'msg' 留言、'invite' 空白邀請、'credits' 製作名單（留言刻在溝紋上時）。 */
   cardKind: 'msg' | 'invite' | 'credits' = 'invite';
   cardFit: FitResult | null = null;
+  /** 紙卡的寬高（桌面 px）：留言用大卡；邀請、製作名單不是焦點，用小一點的卡。 */
+  cardW: number = CARD.w;
   cardH = 400;
-  titleFit: FitResult | null = null;
   tDrop = 0;
   beat = 0.5;
-  /** 即時留言小卡要避開的範圍（整個窗格都一樣，init 算好）。 */
-  avoid: [number, number, number, number][] = [];
 
   override async init() {
     const { audio: au, lyrics, song, start, end } = this.ctx;
-    // 刻字層是遮罩（各色版代表不同意思），不要做 sRGB 解碼
-    this.txt.texture.colorSpace = THREE.NoColorSpace;
     this.beat = au.beatPeriod(start);
     this.tDrop = beatAfter(au, start + 0.05);
     this.rpm = rpmFor(au.bpm);
     // 慢動作的轉速（真的 45 轉，字會糊成一片）：約十分之一，換成圓環上的 px/s
     this.vIdle = (this.rpm / 60) * TAU * 0.105 * R0;
     const name = this.msg ? (this.msg.name || '一位賓客') : '';
-    await loadText(`${song.title}${song.artist}${COUPLE_ZH}${FOOTNOTE}${CARD_NOTE}${INVITE.join('')}${INVITE_NOTE}${name}作詞收錄監製《》面婚禮現場錄音℗`);
+    await loadText(`${song.title}${song.artist}${COUPLE_ZH}${FOOTNOTE}${INVITE.join('')}${name}作詞收錄監製《》面婚禮現場錄音℗`);
     const inWin = lyrics.lines.filter((l) => l.end > start - 10 && l.start < end + 10);
     await loadText(inWin.map((l) => l.text).join(''));
 
-    // 這個窗格裡有沒有人在唱：有就刻歌詞；沒有就刻留言（短的）或新人的名字
+    // 紙卡先排：歌詞的字級要看留言的字級（歌詞一定比留言小一級）
     const singing = lyrics.lines.some((l) => l.words.some((w) => w.end > start + 0.2 && w.start < end - 0.3));
+    this.cardKind = this.msg ? 'msg' : 'invite';
+    if (!singing && this.msg && this.messageFitsRing(this.msg)) this.cardKind = 'credits';
+    this.layoutCard();
+    // 相機走完整個窗格，唱針那裡最小會放大幾倍：溝紋上的字在螢幕上至少 50 px
+    let magMin = Infinity;
+    for (const u of [0, 0.5, 1]) { this.camAt(start + 1.3 + u * Math.max(0, end - start - 1.3)); magMin = Math.min(magMin, this.cam.mag(C.x, C.y - R0 - 30)); }
+    const minSz = Math.ceil(50 / magMin);
+    const msgSz = this.cardKind === 'msg' && this.cardFit ? this.cardFit.size : 999;
+    this.sz = clamp(Math.round(msgSz * 0.86), minSz, Math.max(minSz, 60));
+
     let knots: [number, number][] = [];
-    if (singing) {
-      knots = this.buildLyrics(inWin);
-      this.cardKind = this.msg ? 'msg' : 'invite';
-    } else if (this.msg && this.buildMessageRing(this.msg, (k) => (knots = k))) {
-      this.cardKind = 'credits';
-    } else {
-      knots = this.buildNames();
-      this.cardKind = this.msg ? 'msg' : 'invite';
-    }
+    if (singing) knots = this.buildLyrics(inWin);
+    else if (this.cardKind === 'credits') knots = this.buildMessageRing(this.msg!, minSz);
+    else knots = this.buildNames(minSz);
+    this.sty = this.sz + 10;
     this.head = new HeadCurve(cleanKnots(knots, 1500), this.vIdle);
     this.P0 = this.head.at(start);
     // 螺旋：整個窗格唱針往內走的量（一圈約一行字高，最多 110 px）
@@ -220,51 +287,28 @@ export default class Vinyl extends Scene {
     const dr = Math.min(110, (72 * S) / (TAU * R0));
     this.k = dr / (S / (R0 - dr / 2));
     // 唱臂長度：螺旋中段時唱針剛好在正上方
-    const rMid = R0 - dr / 2 + STY;
+    const rMid = R0 - dr / 2 + this.sty;
     this.armL = Math.hypot(PIVOT.x - C.x, PIVOT.y - (C.y - rMid));
-    this.fillGaps();
+    this.glyphs.sort((a, b) => a.s - b.s);
     this.labelTex = this.buildLabel();
-    this.layoutCard();
-    // 歌名：一行最大 54 px；要兩行就壓到 42 px，整塊才不會往下擠到圓環左邊的字
-    const tc = this.info.ctx, title = song.title || '今晚的歌';
-    this.titleFit = fitText(tc, title, F.archivo(100, 800), 470, 60, { min: 28, max: 54, lineHeight: 1.04, maxLines: 1 });
-    if (this.titleFit.width > 470 || this.titleFit.size < 34) this.titleFit = fitText(tc, title, F.archivo(100, 800), 470, 90, { min: 26, max: 42, lineHeight: 1.06, maxLines: 2 });
-    this.buildCard();
-    this.avoid = this.popupAvoid();
-  }
-
-  /**
-   * 即時留言小卡不要蓋的地方：溝紋上正在讀的那一段（唱針左右約 55°，含唱針往內走的範圍）、
-   * liner notes 卡片、左上角的歌名、圓心標籤。這樣留下來最空的是左下角（只蓋到註腳與唱過、正在淡出的字），
-   * 小卡會優先挑那裡；左邊中段會蓋到剛唱完的半句，所以也算進讀字的範圍。
-   */
-  private popupAvoid(): [number, number, number, number][] {
-    const out: [number, number, number, number][] = [];
-    const rTop = R0 + STY + 12, rIn = R0 - 115, a = 55 * DEG;
-    out.push([C.x - rTop * Math.sin(a) - 10, C.y - rTop - 30, 2 * rTop * Math.sin(a) + 20, rTop - rIn * Math.cos(a) + 40]);
-    if (this.cardH) {
-      const top = clamp(515 - this.cardH / 2, CARD.top, CARD.bottom - this.cardH);
-      out.push([CARD.x - 12, top - 12, CARD.w + 24, this.cardH + 24]);
-    }
-    const Y = this.infoY();
-    out.push([INFO_X - 10, 104, 480, Y.readout + 12 - 104]);
-    out.push([C.x - R_LAB, C.y - R_LAB, 2 * R_LAB, 2 * R_LAB]);
-    return out.map(([x, y, w, h]) => [Math.round(x), Math.round(y), Math.round(w), Math.round(h)]);
+    this.cardTex = this.buildCard();
+    this.drawInfo();
   }
 
   // ---------------------------------------------------------------- 溝紋上要刻什麼
   /** 歌詞：每行依序排在螺旋上，行與行之間空出間奏的長度（間奏越長、空白的溝越長，像唱片上曲與曲之間）。 */
   private buildLyrics(lines: { text: string; start: number; end: number; words: { w: string; start: number; end: number; o: number }[] }[]): [number, number][] {
     const knots: [number, number][] = [];
+    const size = this.sz;
     let prevEndT = NaN, prevEndX = 0;
     for (const line of lines) {
-      const lay = layout(line.text, FAM_LYRIC, SIZE);
+      const lay = layout(line.text, FAM_LYRIC, size);
       const cps = Array.from(line.text);
       const u2c: number[] = [];
       let u = 0;
       cps.forEach((ch, i) => { for (let q = 0; q < ch.length; q++) u2c[u + q] = i; u += ch.length; });
       u2c[u] = cps.length;
-      const base = Number.isNaN(prevEndT) ? 0 : prevEndX + Math.max(SIZE * 1.3, this.vIdle * Math.max(0, line.start - prevEndT));
+      const base = Number.isNaN(prevEndT) ? 0 : prevEndX + Math.max(size * 1.3, this.vIdle * Math.max(0, line.start - prevEndT));
       let right = base;
       line.words.forEach((w, j) => {
         const c0 = u2c[w.o] ?? 0, c1 = Math.max(c0 + 1, u2c[w.o + w.w.length] ?? cps.length);
@@ -278,72 +322,61 @@ export default class Vinyl extends Scene {
         right = x1;
         this.sung.push([w.start, t1]);
       });
-      for (const g of lay.glyphs) if (g.ch.trim()) this.glyphs.push({ ch: g.ch, fam: FAM_LYRIC, s: base + g.x, w: g.w, main: true });
+      const ln = this.lines.length;
+      this.lines.push({ start: line.start, end: line.end });
+      for (const g of lay.glyphs) if (g.ch.trim()) this.glyphs.push({ ch: g.ch, fam: FAM_LYRIC, s: base + g.x, w: g.w, size, dim: 1, ln });
       prevEndT = line.end;
       prevEndX = Math.max(right, base + lay.width);
     }
     return knots;
   }
 
+  /** 純音樂時，留言刻得上溝紋嗎（一秒要讀超過 6.5 個字、或一整圈都放不下就不刻，放在卡片上）。 */
+  private messageFitsRing(m: Msg) {
+    const lay = layout(m.text, FAM_MSG, 66);
+    const usable = this.ctx.end - this.beat - 1.2 - (this.tDrop + this.beat * 0.5);
+    return lay.glyphs.length / Math.max(0.1, usable) <= 6.5 && lay.width <= R0 * 2.4;
+  }
+
   /**
-   * 純音樂＋留言：留言刻在溝紋上，第一拍之後用閱讀的速度讀過去，接著署名。
-   * 太長（一秒要讀超過 6.5 個字、或一整圈都放不下）就不刻，改放在卡片上。
+   * 純音樂＋短留言：留言是溝紋上的主角（比平常的歌詞大一點），第一拍之後用閱讀的速度讀過去，接著署名。
+   * 讀完一遍、一顆愛心，再從頭讀——像唱片的鎖溝一直轉。
    */
-  private buildMessageRing(m: Msg, set: (k: [number, number][]) => void): boolean {
+  private buildMessageRing(m: Msg, minSz: number): [number, number][] {
     const { end } = this.ctx;
-    const lay = layout(m.text, FAM_MSG, SIZE);
+    const size = this.sz = Math.max(66, minSz);
+    const lay = layout(m.text, FAM_MSG, size);
     const n = lay.glyphs.length;
     const t0 = this.tDrop + this.beat * 0.5;
-    const usable = end - this.beat - 1.2 - t0;
-    const rate = n / Math.max(0.1, usable);
-    if (rate > 6.5 || lay.width > R0 * 2.4) return false;
-    // 一秒讀 3.5 個字左右（至少要在窗格結束前讀完一遍）；讀完署名、一顆愛心，再從頭讀——像唱片的鎖溝一直轉
+    const rate = n / Math.max(0.1, end - this.beat - 1.2 - t0);
     const v = (Math.max(3.5, rate) * lay.width) / n;
-    const sig = layout(signature(m.name), F.hand(400), SIZE * 0.75);
-    const sx = lay.width + SIZE * 0.6, hx = sx + sig.width + SIZE * 0.7;
-    const cycle = hx + SIZE * 0.8 + SIZE * 0.9;
+    const sig = layout(signature(m.name), F.hand(400), size * 0.72);
+    const sx = lay.width + size * 0.6, hx = sx + sig.width + size * 0.7;
+    const cycle = hx + size * 0.8 + size * 0.9;
     const reps = Math.ceil(((end - t0) * v + R0 * 2) / cycle) + 1;
     for (let k = 0; k < reps; k++) {
       const o = k * cycle;
-      for (const g of lay.glyphs) if (g.ch.trim()) this.glyphs.push({ ch: g.ch, fam: FAM_MSG, s: o + g.x, w: g.w, main: true });
-      for (const g of sig.glyphs) if (g.ch.trim()) this.glyphs.push({ ch: g.ch, fam: F.hand(400), s: o + sx + g.x, w: g.w, main: true });
-      this.glyphs.push({ ch: '♥', fam: FAM_MSG, s: o + hx, w: SIZE * 0.8, main: true });
+      for (const g of lay.glyphs) if (g.ch.trim()) this.glyphs.push({ ch: g.ch, fam: FAM_MSG, s: o + g.x, w: g.w, size, dim: 1, ln: -1 });
+      for (const g of sig.glyphs) if (g.ch.trim()) this.glyphs.push({ ch: g.ch, fam: F.hand(400), s: o + sx + g.x, w: g.w, size: size * 0.72, dim: 0.8, ln: -1 });
+      this.glyphs.push({ ch: '♥', fam: FAM_MSG, s: o + hx, w: size * 0.8, size, dim: 1, ln: -1 });
     }
     this.sung.push([t0, end]);
-    set([[t0, 0], [t0 + (reps * cycle) / v, reps * cycle]]);
-    return true;
-  }
-
-  /** 沒有歌詞也沒有（刻得下的）留言：刻新人的名字與日期，用閒置轉速一路讀過去。 */
-  private buildNames(): [number, number][] {
-    const { start, end } = this.ctx;
-    const unit = `${COUPLE_EN.toUpperCase()}  ·  ${COUPLE_ZH}  ·  ${DATE_DOTS}  ·  `;
-    const x0 = R0 * 2, x1 = x0 + this.vIdle * (end - start);
-    this.glyphs.push(...tile(unit, FAM_LYRIC, SIZE, 0, x1 + R0 * 2, true));
-    this.sung.push([start, end]);
-    return [[start, x0], [end, x1]];
+    return [[t0, 0], [t0 + (reps * cycle) / v, reps * cycle]];
   }
 
   /**
-   * 溝紋上的空白（間奏、窗格開頭結尾）太長時，淡淡地刻上新人的名字，像唱片曲間的小字，
-   * 不然整段溝是空的。只填窗格裡看得到的範圍。
+   * 沒有歌詞也沒有（刻得下的）留言：刻新人的名字與日期，用閒置轉速一路讀過去。
+   * 旁邊的紙卡上有留言時，名字只是配角（小一號、暗一點）。
    */
-  private fillGaps() {
+  private buildNames(minSz: number): [number, number][] {
     const { start, end } = this.ctx;
-    const lo = this.head.at(start) - R0 * 1.8, hi = this.head.at(end) + R0 * 1.8;
-    this.glyphs.sort((a, b) => a.s - b.s);
-    const unit = `${COUPLE_EN.toUpperCase()}  ·  ${DATE_DOTS}  ·  `;
-    const pad = SIZE * 1.1;
-    const edges: [number, number][] = [];
-    let cur = lo;
-    for (const g of this.glyphs) {
-      if (g.s + g.w < lo || g.s > hi) continue;
-      if (g.s - cur > pad * 2 + SIZE * 3) edges.push([cur + pad, g.s - pad]);
-      cur = Math.max(cur, g.s + g.w);
-    }
-    if (hi - cur > pad * 2 + SIZE * 3) edges.push([cur + pad, hi]);
-    for (const [a, b] of edges) this.glyphs.push(...tile(unit, FAM_LYRIC, SIZE * 0.62, a, b, false));
-    this.glyphs.sort((a, b) => a.s - b.s);
+    const second = this.cardKind === 'msg';
+    const size = this.sz = second ? Math.max(minSz * 0.86, 44) : this.sz;
+    const unit = `${COUPLE_EN.toUpperCase()}  ·  ${COUPLE_ZH}  ·  ${DATE_DOTS}  ·  `;
+    const x0 = R0 * 2, x1 = x0 + this.vIdle * (end - start);
+    this.glyphs.push(...tile(unit, FAM_LYRIC, size, 0, x1 + R0 * 2, second ? 0.45 : 1));
+    this.sung.push([start, end]);
+    return [[start, x0], [end, x1]];
   }
 
   // ---------------------------------------------------------------- 螺旋
@@ -362,18 +395,33 @@ export default class Vinyl extends Scene {
     const h = Math.sqrt(Math.max(0, rs * rs - a * a));
     const mx = C.x + (a * dx) / D, my = C.y + (a * dy) / D;
     const p1 = { x: mx + (h * dy) / D, y: my - (h * dx) / D }, p2 = { x: mx - (h * dy) / D, y: my + (h * dx) / D };
-    const ang = (p: { x: number; y: number }) => Math.atan2(p.x - C.x, -(p.y - C.y));
+    const ang = (p: P2) => Math.atan2(p.x - C.x, -(p.y - C.y));
     const p = Math.abs(ang(p1)) < Math.abs(ang(p2)) ? p1 : p2;
     return { x: p.x, y: p.y, a: ang(p) };
   }
 
-  /** t 時的唱針與唱片狀態。 */
+  /** t 時的唱針與唱片狀態（桌面座標）。 */
   private stateAt(t: number) {
     const P = this.head.at(t);
     const ps = this.psi(P - this.P0);
     const rb = this.rAt(ps);
-    const st = this.stylus(rb + STY);
+    const st = this.stylus(rb + this.sty);
     return { P, ps, rb, st, th: st.a - ps };
+  }
+
+  // ---------------------------------------------------------------- 鏡頭
+  /**
+   * 這一格的相機：整個窗格很慢地繞一點、推近一點（窗格越長走越多，短窗格只走一小段，不會變成甩鏡頭）；
+   * 切進來時從高一點、偏一點的地方落定（進場的動作），最後一拍半加速推近。
+   */
+  private camAt(t: number) {
+    const s = this.ctx.start, e = this.ctx.end;
+    const amt = clamp((e - s) / 16, 0.35, 1);
+    const p = ease.inOutQuad(clamp((t - s) / Math.max(0.1, e - s))) - 0.5;
+    const kin = 1 - prog(t, s, s + 1.25, ease.outCubic);
+    const kout = prog(t, e - this.beat * 1.5, e, ease.inCubic);
+    this.cam.set(19.5 - 3 * amt * p + 6 * kin, 201 + 10 * amt * p - 7 * kin, 1 + 0.06 * amt * p - 0.06 * kin + 0.035 * kout,
+      { x: 905 + 16 * amt * p, y: 540 }, { x: 930, y: 540 });
   }
 
   // ---------------------------------------------------------------- 標籤（init 時畫一次，shader 裡轉）
@@ -457,44 +505,136 @@ export default class Vinyl extends Scene {
     tex.generateMipmaps = true;
     tex.minFilter = THREE.LinearMipmapLinearFilter;
     tex.magFilter = THREE.LinearFilter;
+    tex.anisotropy = Math.min(4, this.ctx.renderer.capabilities.getMaxAnisotropy());
     tex.flipY = true;
     this.track({ dispose: () => { tex.dispose(); cv.width = cv.height = 0; } });
     return tex;
   }
 
-  // ---------------------------------------------------------------- 卡片排版
+  // ---------------------------------------------------------------- 紙卡
+  /** 卡片的內容排版與高度（桌面 px）。上緣一行極小的標記，內文、署名；沒有標題列、編號、註腳。 */
   private layoutCard() {
-    const c = this.cardL.ctx, inner = CARD.w - 72;
+    const c = this.txt.ctx;
+    this.cardW = this.cardKind === 'msg' ? CARD.w : this.cardKind === 'credits' ? 440 : 470;
+    const inner = this.cardW - 2 * 40;
     if (this.cardKind === 'msg' && this.msg) {
-      // 標頭 + 分隔線 ≈ 92，署名 ≈ 72，註腳 ≈ 70
-      const maxBody = CARD.bottom - CARD.top - 92 - 72 - 70;
-      this.cardFit = fitClauses(c, this.msg.text, F.hand(400), inner, maxBody, { min: 44, max: 104, lineHeight: 1.34, maxLines: 6 });
-      this.cardH = 92 + this.cardFit.height + 72 + 70;
+      // 上 40 + 標記 42、下：署名 64 + 36
+      const maxBody = CARD.maxH - 40 - 42 - 64 - 36;
+      this.cardFit = fitClauses(c, this.msg.text, FAM_MSG, inner, maxBody, { min: 44, max: 96, lineHeight: 1.3, maxLines: 6 });
+      this.cardH = 40 + 42 + this.cardFit.height + 64 + 36;
     } else if (this.cardKind === 'credits') {
-      this.cardH = 92 + 3 * 58 + 70;
+      this.cardH = 40 + 42 + 3 * 46 + 30;
     } else {
-      this.cardH = 92 + 76 + 2 * 50 + 70 + 70;
+      this.cardH = 40 + 42 + 44 + 22 + 2 * 42 + 34 + 30;
     }
+  }
+
+  /**
+   * 紙卡上的字畫成一張遮罩（黑底；r = 內文、g = 署名、b = 愛心），shader 在紙上用墨色／點綴色印出來。
+   * init 畫一次（有 mipmap 與各向異性過濾：斜看的紙上的字才不會糊或閃）。
+   */
+  private buildCard(): THREE.CanvasTexture {
+    const w = this.cardW, h = this.cardH, pad = 40, LS = CARD_PX * SCALE;
+    const cv = document.createElement('canvas');
+    cv.width = Math.round(w * LS); cv.height = Math.round(h * LS);
+    const c = cv.getContext('2d')!;
+    c.scale(LS, LS);
+    c.fillStyle = '#000'; c.fillRect(0, 0, w, h);
+    c.textBaseline = 'alphabetic';
+    const m = this.msg;
+    const BODY = 'rgb(255,0,0)', SIG = 'rgb(0,255,0)', HEART = 'rgb(0,0,255)';
+    // 極小的標記：像封套背面印的一行字（低對比）
+    c.font = font(F.serif(500, true), 21);
+    c.fillStyle = 'rgba(255,0,0,0.5)';
+    c.fillText(m?.couple ? 'liner notes — from the couple' : 'liner notes', pad, pad + 14);
+    const y0 = pad + 42;
+    if (this.cardKind === 'msg' && m && this.cardFit) {
+      const fit = this.cardFit;
+      c.font = font(FAM_MSG, fit.size);
+      c.fillStyle = BODY;
+      fit.lines.forEach((ln, i) => fillHearts(c, ln, pad, y0 + fit.size * 0.92 + i * fit.lineHeight, fit.size, HEART));
+      c.font = font(F.hand(400), 38);
+      c.textAlign = 'right';
+      c.fillStyle = SIG;
+      c.fillText(signature(m.name), w - pad, y0 + fit.height + 54);
+      c.textAlign = 'left';
+    } else if (this.cardKind === 'credits' && m) {
+      const rows: [string, string][] = [['作詞', m.name || '一位賓客'], ['收錄', `《${this.ctx.song.title || '今晚的歌'}》A 面`], ['監製', COUPLE_ZH]];
+      rows.forEach(([k, v], i) => {
+        const yy = y0 + 30 + i * 46;
+        c.font = font(F.hei(500), 17); c.letterSpacing = '6px'; c.fillStyle = 'rgba(255,0,0,0.6)';
+        c.fillText(k, pad, yy - 3); c.letterSpacing = '0px';
+        const vf = fitText(c, v, F.hand(400), w - 2 * pad - 84, 36, { min: 20, max: 28, maxLines: 1 });
+        c.font = font(F.hand(400), vf.size); c.fillStyle = BODY;
+        c.fillText(vf.lines[0] ?? v, pad + 84, yy);
+      });
+    } else {
+      // 沒有留言時焦點是歌詞：邀請的字比溝紋上的歌詞小一級
+      c.font = font(F.hand(700), 42); c.fillStyle = BODY;
+      c.fillText(INVITE[0]!, pad, y0 + 40);
+      c.font = font(F.hand(400), 29); c.fillStyle = 'rgba(255,0,0,0.85)';
+      c.fillText(INVITE[1]!, pad, y0 + 40 + 22 + 34);
+      c.fillText(INVITE[2]!, pad, y0 + 40 + 22 + 76);
+      // 指向右下角 QR 的細箭頭
+      const ax = w - pad - 30, ay = y0 + 40 + 22 + 88;
+      c.strokeStyle = 'rgba(255,0,0,0.7)'; c.lineWidth = 1.6;
+      c.beginPath(); c.moveTo(ax, ay); c.lineTo(ax + 26, ay + 26); c.moveTo(ax + 26, ay + 26); c.lineTo(ax + 26, ay + 13); c.moveTo(ax + 26, ay + 26); c.lineTo(ax + 13, ay + 26); c.stroke();
+    }
+    const tex = new THREE.CanvasTexture(cv);
+    tex.colorSpace = THREE.NoColorSpace;
+    tex.generateMipmaps = true;
+    tex.minFilter = THREE.LinearMipmapLinearFilter;
+    tex.magFilter = THREE.LinearFilter;
+    tex.anisotropy = Math.min(8, this.ctx.renderer.capabilities.getMaxAnisotropy());
+    tex.flipY = true;
+    this.track({ dispose: () => { tex.dispose(); cv.width = cv.height = 0; } });
+    return tex;
+  }
+
+  /**
+   * 紙卡這一格在桌面上的樣子：切進來的那一拍從右邊滑進來、落到桌上（離桌面的高度收到 0、影子收近）、晃一下停好；
+   * 最後半秒滑出去。回傳中心、轉角、高度，與在不在畫面上。
+   */
+  private cardAt(t: number) {
+    const s = this.ctx.start, e = this.ctx.end;
+    const c0 = s + 0.04, dt = Math.max(0, t - c0);
+    const cin = prog(t, c0, c0 + 0.7, ease.outExpo);
+    const cout = prog(t, e - 0.5, e - 0.05, ease.inCubic);
+    const settle = dt >= 1.4 ? 1 : 1 - Math.exp(-6 * dt) * Math.cos(9 * dt);
+    const slide = Math.min(1, 1 - cin + cout);
+    const top = Math.max(CARD.top, CARD.y - this.cardH / 2);
+    return {
+      x: CARD.x + (CARD.w - this.cardW) / 2 + slide * 820, y: top + this.cardH / 2 - slide * 40,
+      rot: lerp(-6, -1.6, clamp(settle, 0, 1.2)) * DEG,
+      lift: Math.min(1, (1 - cin) * 1.4 + cout),
+      on: slide < 1,
+    };
   }
 
   // ---------------------------------------------------------------- 每一格
   override render(f: Frame, out: THREE.WebGLRenderTarget): PostOverrides {
     const { renderer, comp, audio: au } = this.ctx;
     const t = f.t, s = this.ctx.start, e = this.ctx.end, beat = this.beat;
-    // 進場：字與曲目資訊幾乎馬上出現（跨過切點還在唱的那一行不能消失），唱片的反光慢一點亮起來
+    // 進場：字幾乎馬上出現（跨過切點還在唱的那一行不能消失），唱片的反光慢一點亮起來
     const inK = prog(t, s, s + 0.35, ease.outCubic), textK = prog(t, s, s + 0.12);
     // 唱臂：一開始懸著，第一拍落下（影子收近）；最後一拍抬起來
     const lift = Math.max(1 - prog(t, s, this.tDrop, ease.inOutCubic), prog(t, e - beat * 0.9, e - beat * 0.1, ease.inOutCubic) * 0.8);
     const down = t >= this.tDrop && lift < 0.2;
     const st = this.stateAt(t);
     const touch = pulse(t, this.tDrop, 0.12);
+    this.camAt(t);
+    const cam = this.cam;
 
-    // shader：唱片、標籤、刻字、唱臂
+    // shader：唱片、標籤、刻字、紙卡、唱臂（桌面座標，相機換到螢幕）
     const u = this.bg.u;
+    cam.inverse(u.uHinv!.value as THREE.Matrix3);
+    cam.depth(u.uDepth!.value as THREE.Vector3);
+    // 對焦在唱針（正在唱的字）與紙卡之間：比唱針遠的地方才開始糊
+    (u.uFocus!.value as THREE.Vector2).set(cam.mag(st.st.x, st.st.y) - 0.02, 1 / 0.08);
     u.uTh!.value = st.th;
     // 反光扇形：每小節轉四分之一圈（逆時針，跟唱片同向），下拍時剛好有一片掃過正上方的唱針
     u.uFan!.value = -0.5 * Math.PI * f.bar + 0.35;
-    u.uFanK!.value = inK * (0.85 + 0.35 * f.a.kick + 0.4 * touch);
+    u.uFanK!.value = inK * (0.8 + 0.3 * f.a.kick + 0.4 * touch);
     u.uIn!.value = inK;
     u.uHat!.value = f.a.hat;
     (u.uS!.value as THREE.Vector2).set(st.st.x, st.st.y);
@@ -503,51 +643,60 @@ export default class Vinyl extends Scene {
     u.uLift!.value = lift;
     u.uLab!.value = this.labelTex;
     u.uTxt!.value = this.drawRing(t, st, textK * (1 - prog(t, e - 0.25, e)));
-    this.bg.render(renderer, out);
+    const cd = this.cardAt(t);
+    u.uCard!.value = this.cardTex;
+    (u.uCardG!.value as THREE.Vector4).set(cd.x, cd.y, cd.rot, cd.lift);
+    (u.uCardS!.value as THREE.Vector2).set(this.cardW / 2, this.cardH / 2);
+    const sigK = this.cardKind === 'msg' ? prog(t, this.tDrop + beat, this.tDrop + beat + 0.4) : 1;
+    (u.uCardK!.value as THREE.Vector3).set(1, sigK, cd.on ? 1 : 0);
+    this.bg.render(renderer, this.scn);
+    this.dof.u.uScn!.value = this.scn.texture;
+    this.dof.render(renderer, out);
 
-    // 火花：唱針尖；後面拖著一段剛讀過、還在發燙的溝
+    // 火花：唱針尖；後面拖著一段剛讀過、還在發燙的溝（桌面上的點換到螢幕）
     this.glow.clear();
     const singing = this.sung.some(([a, b]) => t >= a - 0.02 && t <= b + 0.1);
     const I = (singing ? 1 : 0.55) * (down ? 1 : 0) * (1 + 0.5 * f.a.kick + 1.2 * touch);
+    const sp = cam.proj(st.st.x, st.st.y);
     if (I > 0) {
       this.trail(t, st, I);
-      const hp = (tb: number) => { if (tb < this.tDrop) return null; const q = this.stateAt(tb).st; return { x: q.x, y: q.y }; };
+      const hp = (tb: number) => { if (tb < this.tDrop) return null; const q = this.stateAt(tb).st; return cam.proj(q.x, q.y); };
       // 落針的那一瞬間噴一小把火星，之後唱的時候多、間奏時少
       const rate = (tb: number) => (tb < this.tDrop + 0.08 ? 360 : this.sung.some(([a, b]) => tb >= a && tb <= b) ? 80 : 26);
       sparkParticles(this.glow, t, hp, { rate, rateMax: 360, life: 0.38, speed: 210, seed: 11, intensity: 0.9 });
-      sparkHead(this.glow, st.st.x, st.st.y, t, 1 + 0.3 * touch, I);
+      sparkHead(this.glow, sp.x, sp.y, t, 1 + 0.3 * touch, I);
     }
     // 落針：一道光從針尖沿著那一圈溝往兩邊跑出去，半秒內散掉
     const rip = prog(t, this.tDrop, this.tDrop + 0.55, ease.outCubic);
     if (rip > 0 && rip < 1) {
       const rs = Math.hypot(st.st.x - C.x, st.st.y - C.y), span = 0.75 * rip, fade = (1 - rip) * 2.2, sg = LIN.signal, n = 30;
       for (const dir of [-1, 1]) {
+        let prev = cam.proj(C.x + Math.sin(st.st.a) * rs, C.y - Math.cos(st.st.a) * rs);
         for (let i = 0; i < n; i++) {
-          const u0 = i / n, u1 = (i + 1) / n, a0 = st.st.a + dir * span * u0, a1 = st.st.a + dir * span * u1;
+          const u1 = (i + 1) / n, a1 = st.st.a + dir * span * u1;
+          const q = cam.proj(C.x + Math.sin(a1) * rs, C.y - Math.cos(a1) * rs);
           const k = fade * (0.15 + 0.85 * u1 * u1);
-          this.glow.seg2(C.x + Math.sin(a0) * rs, C.y - Math.cos(a0) * rs, C.x + Math.sin(a1) * rs, C.y - Math.cos(a1) * rs, 1.4, [sg[0] * k, sg[1] * k, sg[2] * k], 1);
+          this.glow.seg2(prev.x, prev.y, q.x, q.y, 1.4, [sg[0] * k, sg[1] * k, sg[2] * k], 1);
+          prev = q;
         }
       }
     }
     if (this.glow.count) this.glow.render(renderer, out);
 
-    // 曲目資訊（唱針讀數變了才重畫）與卡片（沒變就不重畫）
-    this.drawInfoLayer(st);
-    comp.draw(renderer, this.info.texture, out, { opacity: textK, ...subRect(INFO_R) });
-    if (this.drawCardLayer(t) < 1) comp.draw(renderer, this.cardL.texture, out, subRect(CARD_R));
+    // 螢幕上的兩小群字（像片頭的小字，不跟著桌面動）
+    comp.draw(renderer, this.info.texture, out, { opacity: textK * (1 - prog(t, e - 0.3, e)) * 0.95, ...subRect(INFO_R) });
     const kick = f.a.kick;
     // 每個小節線輕輕推一下鏡頭（很小，像唱盤跟著低音震）
     const db = pulse(t, au.timeOfBar(Math.floor(f.bar)), 0.14);
     return {
-      popupAvoid: this.avoid,
-      bloom: 0.7, vignette: 0.5, halation: 0.22,
-      zoom: 1 + 0.018 * f.p + 0.004 * kick + 0.006 * db + 0.008 * touch,
+      bloom: 0.7, vignette: 0.55, halation: 0.22,
+      zoom: 1 + 0.004 * kick + 0.005 * db + 0.008 * touch,
       shake: [2.5 * touch * noise1(t * 40, 1), 2.5 * touch * noise1(t * 43, 2)] as [number, number],
     };
   }
 
   /** 唱臂：從軸心伸到唱頭座後端（唱頭座往唱片中心偏一點角度，像真的唱臂）。 */
-  private armGeom(sp: { x: number; y: number }) {
+  private armGeom(sp: P2) {
     const ux = PIVOT.x - sp.x, uy = PIVOT.y - sp.y, L = Math.hypot(ux, uy);
     const dx = ux / L, dy = uy / L;
     const off = -22 * DEG, len = 74;
@@ -557,16 +706,16 @@ export default class Vinyl extends Scene {
 
   /** 剛讀過的溝：唱針尖往回（逆時針方向）一小段弧，越舊越冷。 */
   private trail(t: number, st: ReturnType<Vinyl['stateAt']>, I: number) {
-    const n = 40, span = 1.4, sg = LIN.signal, em = LIN.ember;
-    let prev: { x: number; y: number } | null = null;
+    const n = 40, span = 1.4, sg = LIN.signal, em = LIN.ember, cam = this.cam;
+    let prev: P2 | null = null;
     for (let i = 0; i <= n; i++) {
       const tb = t - (span * i) / n;
       if (tb < this.tDrop) break;
       const P = this.head.at(tb);
       const ps = this.psi(P - this.P0);
-      const r = this.rAt(ps) + STY;
+      const r = this.rAt(ps) + this.sty;
       const a = ps + st.th;
-      const p = { x: C.x + Math.sin(a) * r, y: C.y - Math.cos(a) * r };
+      const p = cam.proj(C.x + Math.sin(a) * r, C.y - Math.cos(a) * r);
       if (prev) {
         const k = Math.exp(-(t - tb) / 0.4) * I;
         this.glow.seg2(prev.x, prev.y, p.x, p.y, 1.5 + 1.2 * k, [lerp(sg[0], em[0], k) * 2.2 * k, lerp(sg[1], em[1], k) * 2.2 * k, lerp(sg[2], em[2], k) * 2.2 * k], 1);
@@ -575,7 +724,10 @@ export default class Vinyl extends Scene {
     }
   }
 
-  /** 把圓環上的字畫進遮罩層（r = 唱過、g = 熱度、b = 愛心、a = 不透明度），回傳貼圖。 */
+  /**
+   * 把圓環上的字畫進遮罩層（r = 唱過、g = 熱度、b = 愛心、a = 不透明度），回傳貼圖。
+   * 只畫正在唱的那一句：下一句在開始前一下子浮出來，唱完的那句轉到左邊、停一下就淡掉。
+   */
   private drawRing(t: number, st: ReturnType<Vinyl['stateAt']>, alpha: number): THREE.Texture {
     const L = this.txt, c = L.ctx;
     L.clear();
@@ -591,23 +743,29 @@ export default class Vinyl extends Scene {
     for (let i = a0; i < gl.length; i++) {
       const g = gl[i]!;
       if (g.s > hi) break;
+      let lk = 1;
+      if (g.ln >= 0) {
+        const ln = this.lines[g.ln]!;
+        lk = prog(t, ln.start - 0.45, ln.start - 0.1) * (1 - prog(t, ln.end + 1.0, ln.end + 1.7));
+        if (lk <= 0.004) continue;
+      }
       const sc = g.s + g.w / 2;
       const ps = this.psi(sc - this.P0);
       const r = this.rAt(ps);
       const a = ps + st.th;
       const ad = a / DEG;
-      const vis = alpha * prog(ad, -VIS.l1, -VIS.l0, ease.inOutQuad) * (1 - prog(ad, VIS.r0, VIS.r1, ease.inOutQuad));
+      const vis = alpha * lk * g.dim * prog(ad, -VIS.l1, -VIS.l0, ease.inOutQuad) * (1 - prog(ad, VIS.r0, VIS.r1, ease.inOutQuad));
       if (vis <= 0.004) continue;
-      const size = g.main ? SIZE : SIZE * 0.62;
+      const size = g.size;
       if (fkey !== g.fam + size) { fkey = g.fam + size; c.font = font(g.fam, size); }
       const lit = clamp((P - g.s) / g.w);
-      const heat = !g.main ? 0 : lit < 1 ? 1 : Math.exp(-(P - g.s - g.w) / 110);
+      const heat = g.dim < 1 ? 0 : lit < 1 ? 1 : Math.exp(-(P - g.s - g.w) / 110);
       const wRef = g.w;
       c.save();
       c.translate(C.x + Math.sin(a) * r, C.y - Math.cos(a) * r);
       c.rotate(a);
       const x0 = -wRef / 2, split = x0 + lit * wRef;
-      const unsungA = (g.main ? 0.3 : 0.16) * vis, sungA = (g.main ? 1 : 0.42) * vis;
+      const unsungA = 0.3 * vis, sungA = vis;
       if (g.ch === '♥') {
         // 愛心只用自己畫的那顆、只用點綴色（b 版 = 1），讀到之前一樣淡
         c.globalAlpha = lit > 0.5 ? sungA : unsungA;
@@ -627,7 +785,7 @@ export default class Vinyl extends Scene {
         c.save();
         if (lit < 1) { c.beginPath(); c.rect(x0 - 8, -size * 1.3, split - x0 + 8, size * 1.8); c.clip(); }
         c.globalAlpha = sungA;
-        c.fillStyle = `rgb(255,${Math.round(heat * 255)},0)`;
+        c.fillStyle = `rgb(255,${Math.round(Math.sqrt(heat) * 255)},0)`;
         c.fillText(g.ch, x0, 0);
         c.restore();
       }
@@ -637,226 +795,30 @@ export default class Vinyl extends Scene {
     return L.upload();
   }
 
-  /** 左上角曲目資訊每一行的基線（跟圓環左邊的字保持距離：兩行歌名時整塊縮緊）。 */
-  private infoY() {
-    const tf = this.titleFit!;
-    const title = 126 + 24 + tf.size;
-    const last = title + (tf.lines.length - 1) * tf.lineHeight;
-    const artist = last + (tf.lines.length > 1 ? 42 : 38);
-    const rule = artist + 22;
-    const rpm = rule + 32;
-    return { title, artist, rule, rpm, readout: rpm + 34 };
-  }
-
-  // ---------------------------------------------------------------- 卡片、曲目資訊、註腳
+  // ---------------------------------------------------------------- 螢幕上的小字
   /**
-   * 卡片這一格的樣子。卡片在切進來的那一拍（窗格一定切在拍點上）滑出來、晃一下停好，唱針在下一拍落下：
-   * 兩件事各佔一拍。只有樣子變了才重畫、重新上傳。回傳滑出的程度（1 = 在畫面外，不用合成）。
+   * 整個畫面只有兩小群小字（≤ 16 px、低對比）：左上角是這首歌（標籤上的字在轉、看不清楚），
+   * 左下角是一本正經的註腳。init 畫一次、上傳一次。
    */
-  private drawCardLayer(t: number): number {
-    const s = this.ctx.start, e = this.ctx.end;
-    const c0 = s + 0.04, dt = Math.max(0, t - c0);
-    const cin = prog(t, c0, c0 + 0.62, ease.outExpo);
-    const cout = prog(t, e - 0.5, e - 0.05, ease.inCubic);
-    const settle = dt >= 1.4 ? 1 : 1 - Math.exp(-6 * dt) * Math.cos(9 * dt);
-    const slide = Math.min(1, 1 - cin + cout);
-    const rot = lerp(-5, -1.2, clamp(settle, 0, 1.2)) * DEG;
-    const bodyK = prog(t, c0 + 0.2, c0 + 0.7);
-    const sigK = this.cardKind === 'msg' ? prog(t, this.tDrop + this.beat, this.tDrop + this.beat + 0.4) : 1;
-    const key = `${slide.toFixed(4)}|${rot.toFixed(4)}|${bodyK.toFixed(2)}|${sigK.toFixed(2)}`;
-    if (slide >= 1 || key === this.cardKey) return slide;
-    this.cardKey = key;
-    const L = this.cardL, c = L.ctx;
-    L.clear();
-    const w = CARD.w, h = this.cardH, M = CARD_M;
-    const top = clamp(515 - h / 2, CARD.top, CARD.bottom - h);
-    const x = CARD.x + slide * (W - CARD.x + 60);
-    const [paper, body, sig] = this.cardParts;
-    c.save();
-    c.translate(-CARD_R.x, -CARD_R.y);
-    c.translate(x + w / 2, top + h / 2);
-    c.rotate(rot);
-    c.translate(-w / 2 - M, -h / 2 - M);
-    c.drawImage(paper!, 0, 0, w + 2 * M, h + 2 * M);
-    c.globalAlpha = bodyK;
-    c.drawImage(body!, 0, 0, w + 2 * M, h + 2 * M);
-    c.globalAlpha = sigK;
-    c.drawImage(sig!, 0, 0, w + 2 * M, h + 2 * M);
-    c.restore();
-    L.upload();
-    return slide;
-  }
-
-  /**
-   * 曲目資訊層：唱針位置的讀數（跟著螺旋往內走）取到 0.5 mm，變了才重畫、重新上傳（一個窗格幾十次，不是每格）。
-   */
-  private drawInfoLayer(st: ReturnType<Vinyl['stateAt']>) {
-    const r = `${(Math.round((st.rb + STY) * MM * 2) / 2).toFixed(1)}`;
-    if (r === this.infoKey) return;
-    this.infoKey = r;
+  private drawInfo() {
+    const { song } = this.ctx;
     const L = this.info, c = L.ctx;
     L.clear();
     c.save(); c.translate(-INFO_R.x, -INFO_R.y);
-    this.drawInfo(c, r);
-    c.restore();
-    L.upload();
-  }
-
-  /**
-   * 左上角：曲目資訊（歌名、歌手、轉速、唱針讀數）；左下角：冷面註腳。
-   * 小字的讀數墊一塊墨色的底（pdoom 的標籤做法）：唱片外緣的亮邊與刻度會從這裡穿過去。
-   */
-  private drawInfo(c: CanvasRenderingContext2D, readout: string) {
-    const { song, audio: au } = this.ctx;
-    const X = INFO_X, Y = this.infoY();
-    c.save();
     c.textBaseline = 'alphabetic';
-    c.font = font(F.mono(500), 15);
-    c.letterSpacing = '4px';
-    c.fillStyle = rgba('ash', 0.9);
-    c.fillText(`NOW PLAYING  ·  SIDE A  ·  TRACK ${String(song.index).padStart(2, '0')}`, X, 126);
-    c.letterSpacing = '0px';
-    const tf = this.titleFit!;
-    c.font = font(F.archivo(100, 800), tf.size);
-    c.fillStyle = rgba('bone', 0.96);
-    tf.lines.forEach((ln, i) => c.fillText(ln, X, Y.title + i * tf.lineHeight));
-    if (song.artist) {
-      const af = fitText(c, song.artist, F.serif(400, true), 400, 40, { min: 20, max: 32, maxLines: 1 });
-      c.font = font(F.serif(400, true), af.size);
-      c.fillStyle = rgba('ash', 0.95);
-      c.fillText(af.lines[0] ?? '', X, Y.artist);
-    }
-    c.fillStyle = rgba('bone', 0.22);
-    c.fillRect(X, Y.rule, 250, 1);
-    // 轉速：45 或 33⅓（分數自己排，Plex Mono 沒有 ⅓ 這個字）
-    const y = Y.rpm;
-    const label = (x0: number, yb: number, w: number, hh: number) => { c.fillStyle = rgba('ink', 0.86); c.fillRect(x0 - 8, yb - hh + 4, w + 16, hh + 6); };
-    const big0 = this.rpm === 45 ? '45' : '33', bpmTxt = `  ${Math.round(au.bpm)} BPM`;
-    c.font = font(F.mono(500), 22);
-    let lw = c.measureText(big0).width + 3 + (this.rpm === 45 ? 0 : 17) + c.measureText(' RPM').width;
-    c.font = font(F.mono(400), 14); c.letterSpacing = '2px'; lw += c.measureText(bpmTxt).width; c.letterSpacing = '0px';
-    label(X, y, lw, 28);
-    c.font = font(F.mono(500), 22);
-    c.fillStyle = rgba('signal');
-    let x = X;
-    const big = this.rpm === 45 ? '45' : '33';
-    c.fillText(big, x, y); x += c.measureText(big).width + 3;
-    if (this.rpm !== 45) {
-      c.font = font(F.mono(500), 11);
-      c.fillText('1', x, y - 10);
-      c.save(); c.translate(x + 7, y - 7); c.rotate(-1.05); c.fillRect(-8, -0.6, 16, 1.2); c.restore();
-      c.fillText('3', x + 8, y + 1);
-      x += 17;
-    }
-    c.font = font(F.mono(500), 22);
-    c.fillText(' RPM', x, y); x += c.measureText(' RPM').width;
-    c.font = font(F.mono(400), 14);
-    c.letterSpacing = '2px';
-    c.fillStyle = rgba('ash', 0.85);
-    c.fillText(`  ${Math.round(au.bpm)} BPM`, x, y - 1);
-    // 唱針位置（真的唱片外徑 150 mm 換算）
     c.font = font(F.mono(500), 14);
     c.letterSpacing = '3px';
-    const rt = `STYLUS  r ${readout} mm`;
-    label(X, Y.readout, c.measureText(rt).width, 20);
-    c.fillStyle = rgba('ash', 0.9);
-    c.fillText(rt, X, Y.readout);
+    c.fillStyle = rgba('ash', 0.55);
+    let line = `NOW PLAYING   ${song.title || '今晚的歌'}${song.artist ? `  ·  ${song.artist}` : ''}`;
+    while (Array.from(line).length > 12 && c.measureText(line).width > 760) line = Array.from(line).slice(0, -2).join('') + '…';
+    c.fillText(line, INFO_X, 126);
     c.letterSpacing = '2px';
-    // 註腳
-    c.font = font(F.mono(400), 15);
-    c.fillStyle = rgba('ash', 0.72);
-    c.fillText(FOOTNOTE, X, H - 108);
+    c.font = font(F.hei(500), 15);
+    c.fillStyle = rgba('ash', 0.45);
+    c.fillText(FOOTNOTE, INFO_X, H - 110);
     c.letterSpacing = '0px';
     c.restore();
-  }
-
-  /**
-   * liner notes 卡片的三張圖（紙＋標頭＋註腳、內文、署名）：紙色、墨色字。
-   * 在 init 畫一次（紙的影子用 shadowBlur 很貴，不能每格畫），之後每格只是轉一下貼上去。
-   */
-  private buildCard() {
-    const w = CARD.w, h = this.cardH, M = CARD_M, pad = 36;
-    const mk = () => {
-      const cv = document.createElement('canvas');
-      cv.width = Math.round((w + 2 * M) * SCALE); cv.height = Math.round((h + 2 * M) * SCALE);
-      const c = scaleContext2D(cv.getContext('2d')!, SCALE);
-      c.translate(M, M);
-      c.textBaseline = 'alphabetic';
-      return { cv, c };
-    };
-    const P = mk(), B = mk(), S = mk();
-    this.cardParts = [P.cv, B.cv, S.cv];
-    this.track({ dispose: () => { for (const cv of this.cardParts) cv.width = cv.height = 0; } });
-    const m = this.msg;
-    // 紙：壓在唱片上的影子、紙色（往墨色靠一點：整張紙白的卡在暗版面上太刺眼）、很淡的光
-    let c = P.c;
-    c.save();
-    c.shadowColor = 'rgba(0,0,0,0.55)'; c.shadowBlur = 34; c.shadowOffsetX = 14; c.shadowOffsetY = 18;
-    c.fillStyle = mixRgba('paper', 'sepia', 0.07);
-    c.fillRect(0, 0, w, h);
-    c.restore();
-    const gr = c.createLinearGradient(0, 0, w, h);
-    gr.addColorStop(0, 'rgba(255,255,255,0.05)'); gr.addColorStop(1, 'rgba(0,0,0,0.07)');
-    c.fillStyle = gr; c.fillRect(0, 0, w, h);
-    // 標頭
-    c.font = font(F.mono(500), 15);
-    c.letterSpacing = '4px';
-    c.fillStyle = rgba('sepia', 0.8);
-    c.fillText('LINER NOTES', pad, pad + 16);
-    c.textAlign = 'right';
-    const no = m ? `No.${String(m.n).padStart(3, '0')}` : 'No.———';
-    if (m?.couple) { c.fillStyle = rgba('blood'); c.fillText(`FROM THE COUPLE  ·  ${no}`, w - pad, pad + 16); }
-    else c.fillText(this.cardKind === 'credits' ? `A1  ·  ${no}` : no, w - pad, pad + 16);
-    c.textAlign = 'left';
-    c.letterSpacing = '0px';
-    c.fillStyle = rgba('sepia', 0.4);
-    c.fillRect(pad, pad + 34, w - 2 * pad, 1);
-    c.fillRect(pad, pad + 38, w - 2 * pad, 0.6);
-    // 註腳
-    c.fillStyle = rgba('sepia', 0.35);
-    c.fillRect(pad, h - pad - 30, w - 2 * pad, 0.8);
-    c.font = font(F.mono(400), 13);
-    c.letterSpacing = '1px';
-    c.fillStyle = rgba('sepia', 0.62);
-    c.fillText(this.cardKind === 'invite' ? INVITE_NOTE : CARD_NOTE, pad, h - pad - 6);
-    c.letterSpacing = '0px';
-    // 內文
-    c = B.c;
-    const y0 = pad + 34 + 22;
-    if (this.cardKind === 'msg' && m && this.cardFit) {
-      const fit = this.cardFit;
-      c.font = font(F.hand(400), fit.size);
-      c.fillStyle = rgba('sepia', 0.95);
-      fit.lines.forEach((ln, i) => fillHearts(c, ln, pad, y0 + fit.size + i * fit.lineHeight, fit.size));
-      // 署名：另一張圖，晚一拍才出現
-      const sc = S.c;
-      sc.font = font(F.hand(400), 36);
-      sc.textAlign = 'right';
-      sc.fillStyle = rgba('sepia', 0.78);
-      sc.fillText(signature(m.name), w - pad, y0 + fit.height + 22 + 38);
-    } else if (this.cardKind === 'credits' && m) {
-      const rows: [string, string][] = [['作詞', m.name || '一位賓客'], ['收錄', `《${this.ctx.song.title || '今晚的歌'}》A 面`], ['監製', COUPLE_ZH]];
-      rows.forEach(([k, v], i) => {
-        const yy = y0 + 44 + i * 58;
-        c.font = font(F.hei(500), 20); c.letterSpacing = '6px'; c.fillStyle = rgba('sepia', 0.6);
-        c.fillText(k, pad, yy - 4); c.letterSpacing = '0px';
-        const vf = fitText(c, v, F.hand(400), w - 2 * pad - 96, 50, { min: 24, max: 40, maxLines: 1 });
-        c.font = font(F.hand(400), vf.size); c.fillStyle = rgba('sepia', 0.95);
-        c.fillText(vf.lines[0] ?? v, pad + 96, yy);
-      });
-    } else {
-      c.font = font(F.hand(700), 60); c.fillStyle = rgba('sepia', 0.95);
-      c.fillText(INVITE[0]!, pad, y0 + 64);
-      c.font = font(F.hand(400), 38); c.fillStyle = rgba('sepia', 0.85);
-      c.fillText(INVITE[1]!, pad, y0 + 64 + 62);
-      c.fillText(INVITE[2]!, pad, y0 + 64 + 112);
-      // 留白的橫線（像等人來寫）與指向右下角 QR 的細箭頭
-      c.fillStyle = rgba('sepia', 0.25);
-      c.fillRect(pad, y0 + 64 + 150, w - 2 * pad - 70, 1);
-      const ax = w - pad - 34, ay = y0 + 64 + 150;
-      c.strokeStyle = rgba('sepia', 0.7); c.lineWidth = 1.4;
-      c.beginPath(); c.moveTo(ax, ay); c.lineTo(ax + 30, ay + 30); c.moveTo(ax + 30, ay + 30); c.lineTo(ax + 30, ay + 16); c.moveTo(ax + 30, ay + 30); c.lineTo(ax + 16, ay + 30); c.stroke();
-    }
+    L.upload();
   }
 }
 
@@ -869,17 +831,17 @@ function subRect(r: { x: number; y: number; w: number; h: number }) {
 }
 
 /**
- * 畫一行字，裡面的 ♥ 換成自己畫的愛心（點綴色）：字型裡的愛心顏色跟著字走，不符合「愛心只用點綴色」。
+ * 畫一行字，裡面的 ♥ 換成自己畫的愛心（點綴色；紙卡的遮罩用 b 版）：字型裡的愛心顏色跟著字走，不符合「愛心只用點綴色」。
  * 愛心佔的寬度照字型的 ♥ 量（斷行時就是這樣量的）。
  */
-function fillHearts(c: CanvasRenderingContext2D, text: string, x: number, y: number, size: number) {
+function fillHearts(c: CanvasRenderingContext2D, text: string, x: number, y: number, size: number, heart?: string) {
   if (!text.includes('♥')) { c.fillText(text, x, y); return; }
   const parts = text.split('♥');
   const hw = c.measureText('♥').width;
   parts.forEach((part, i) => {
     if (part) c.fillText(part, x, y);
     x += c.measureText(part).width;
-    if (i < parts.length - 1) { drawHeart(c, x + hw / 2, y - size * 0.34, size * 0.72); x += hw; }
+    if (i < parts.length - 1) { drawHeart(c, x + hw / 2, y - size * 0.34, size * 0.72, heart); x += hw; }
   });
 }
 

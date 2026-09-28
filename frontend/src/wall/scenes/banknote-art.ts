@@ -6,9 +6,12 @@
 //    所以每首歌換主題（紙色、墨色、訊號色）時不用重算。整晚共用一張（shared()）。
 //  - MAIN：每一格都畫的：取 BAKE 與這個窗格的文字遮罩（兩次取樣），再加上會動的玫瑰花飾（跟音樂呼吸、
 //    仙女棒描過才出現）與交扣的戒指（光線步進，只在徽章的圓裡算）。
+// 鏡頭（MV 融合原則：鈔票是桌上一張真的紙，不是正面貼滿畫面的介面）：MAIN 先用反投影矩陣 uInv 把螢幕像素換回
+// 「桌面平面」座標（= 原本的版面座標），所有東西都在平面座標上算——花飾、戒指的細線直接在透視下算，不會像先畫再貼圖那樣被糊兩次。
+// 桌面、鈔票的影子、暖色主光（左上來、右下暗下去）也在這裡；歌詞是桌面上的一條字（uLyr），一樣跟著透視與光線。
 // 注意：迴圈裡不能用 fwidth / dFdx（Windows 的 ANGLE → D3D11 編譯器會直接拒絕），所以花飾的線用固定寬度的反鋸齒。
 import * as THREE from 'three';
-import { FSPass, H } from '../engine/gl';
+import { FSPass, W, H } from '../engine/gl';
 
 /** 鈔票的紙（邏輯像素，y 向下）。下緣停在右下角 QR 區（y ≥ 830）之上，整張鈔票的四個角都看得到。 */
 export const NOTE = { x: 70, y: 36, w: 1780, h: 790 };
@@ -112,7 +115,8 @@ void main() {
   float ribbon = hatch((dy + 16.0 * sin(p.x * 0.017 + dy * 0.021)) / 9.0, 0.15) * smoothstep(175.0, 70.0, abs(dy));
   ribbon = max(ribbon, 0.75 * hatch((dy - 16.0 * sin(p.x * 0.017 + 2.1 - dy * 0.021)) / 9.0, 0.12) * smoothstep(175.0, 70.0, abs(dy)));
   ribbon *= smoothstep(${INNER.x0}.0, ${INNER.x0 + 90}.0, p.x) * smoothstep(${THREAD_X - 20}.0, ${THREAD_X - 160}.0, p.x);
-  float tint = max(lathe, ribbon) * inNote;
+  // 留言後面的緞帶壓到很淡：字後面的紙要乾淨（MV 融合原則：字要清楚）
+  float tint = max(lathe, ribbon * 0.4) * inNote;
   fragColor = vec4(sat(frame), sat(tint), sat(fib), sat(sec));
 }`;
 
@@ -133,6 +137,9 @@ uniform vec2 uSig; uniform vec2 uSigT; // 簽名的左右（x0, x1）與寫的�
 uniform vec3 uThread;                // 金屬箔的閃光：位置（y）、強度、-
 uniform vec2 uShadow;                // 鈔票的影子偏移
 uniform vec3 uSpark;                 // 仙女棒的位置與亮度：紙是亮的，只靠加亮的火花看不清楚，這裡再墊一圈有顏色的光
+uniform mat3 uInv;                   // 鏡頭：螢幕 px → 桌面平面座標（齊次）
+uniform sampler2D uLyr;              // 桌面上的歌詞（fast Layer2D：預乘、sRGB 編碼）
+uniform vec2 uLyrY;                  // 歌詞那一條在平面上的 y 起點與高度
 
 // ---- 交扣的婚戒（物件座標：一個單位 = ${MED.unit} px，y 向上）
 const float RM = 0.47;
@@ -148,22 +155,35 @@ vec3 ringsN(vec3 p) {
 }
 
 void main() {
-  vec2 p = pxDown();
-  vec4 bk = texture(uBake, vUv);
-  vec4 mk = texture(uMask, vUv);
+  // 螢幕 → 桌面平面（鏡頭有傾斜、有透視）；之後所有東西都用平面座標 p 算
+  vec3 hq = uInv * vec3(pxDown(), 1.0);
+  vec2 p = hq.xy / hq.z;
+  vec2 uv = vec2(p.x / ${W}.0, 1.0 - p.y / ${H}.0);
+  vec4 bk = texture(uBake, uv);
+  vec4 mk = texture(uMask, uv);
   vec2 nc = NOTE_R.xy + NOTE_R.zw * 0.5, nh = NOTE_R.zw * 0.5;
   float fib = bk.b;
 
   // ---- 桌面與鈔票的紙
   float dPaper = sdRBox(p, nc, nh, 12.0);
-  float inPaper = 1.0 - smoothstep(-0.8, 0.8, dPaper);
+  // 邊緣反鋸齒跟著透視走（遠端一個平面 px 比螢幕 px 小）
+  float aaP = max(fwidth(dPaper), 0.4);
+  float inPaper = 1.0 - smoothstep(-aaP, aaP, dPaper);
+  // 影子：主光從左上來，影子落在右下，柔一點（紙離桌面有一點點高）
   float dSh = sdRBox(p, nc + uShadow, nh, 12.0);
-  float shadow = (1.0 - smoothstep(-6.0, 26.0, dSh)) * 0.22 + (1.0 - smoothstep(-2.0, 5.0, dSh)) * 0.08;
-  vec3 desk = mix(C_PAPER, C_SEPIA, 0.13) * (0.93 + 0.08 * fib) * (1.0 - shadow);
-  vec3 paper = C_PAPER * (0.975 + 0.045 * fib);
-  // 紙的邊緣一點點磨損的暗
-  paper *= 1.0 - 0.05 * smoothstep(-10.0, 0.0, dPaper);
+  float shadow = (1.0 - smoothstep(-14.0, 48.0, dSh)) * 0.3 + (1.0 - smoothstep(-2.0, 7.0, dSh)) * 0.1;
+  // 桌面：比紙深一階的暖色（紙才浮得出來），拉長的纖維紋；超出烘焙範圍也要有，所以用程序雜訊
+  float grain = 0.5 + 0.3 * snoise(p * vec2(0.0035, 0.024)) + 0.14 * snoise(p * 0.019 + 3.0);
+  vec3 desk = mix(C_PAPER, C_SEPIA, 0.22) * (0.93 + 0.08 * grain) * (1.0 - shadow);
+  vec3 paper = C_PAPER * (0.965 + 0.045 * fib);
+  // 紙的邊緣一點點磨損的暗；紙不是完全平的，有很淡的起伏
+  paper *= (1.0 - 0.05 * smoothstep(-10.0, 0.0, dPaper)) * (1.0 + 0.018 * snoise(p / 430.0 + 1.7));
   vec3 col = mix(desk, paper, inPaper);
+  // 暖色主光：左上最亮、往右下慢慢暗下去（紙最亮處不超過原本的紙色，不比 bone 刺眼）
+  vec2 lq = (p - vec2(380.0, 200.0)) / 1150.0;
+  float light = 0.66 + 0.36 * exp(-0.5 * dot(lq, lq));
+  // 紙上緣之外的桌面是鏡頭遠處：再暗一點，空間才有深度
+  light *= mix(0.84, 1.0, smoothstep(-160.0, 260.0, p.y));
 
   float ink = 0.0;       // 墨色（sepia）
   float tint = 0.0;      // 套色（淺的訊號色）
@@ -281,10 +301,11 @@ void main() {
     float body = (1.0 - smoothstep(5.5, 6.5, dx)) * inPaper;
     float diag = hatch((p.x + p.y) / 3.4, 0.3);
     float sheenY = 0.5 + 0.5 * sin(p.y * 0.021 + uT * 0.8);   // 箔面的明暗慢慢流動
-    tint = max(tint, body * (0.6 + 0.4 * sheenY) * uNote);
+    // 箔壓淡一點：它是紙上的配角，不要像一條分隔線搶眼
+    tint = max(tint, body * (0.42 + 0.28 * sheenY) * uNote);
     // 箔蓋住底下的印刷：先把墨擦掉，再畫箔自己的紋路
     ink *= 1.0 - body * 0.85;
-    ink = max(ink, (body * diag * 0.38 * smoothstep(0.5, 3.5, dx) + lAA(dx - 6.0, 0.9) * 0.75 * inPaper) * uNote);
+    ink = max(ink, (body * diag * 0.26 * smoothstep(0.5, 3.5, dx) + lAA(dx - 6.0, 0.9) * 0.75 * inPaper) * uNote);
     float gl = exp(-pow((p.y - uThread.x) / 38.0, 2.0)) * uThread.y;
     hot = max(hot, gl * body);
   }
@@ -328,6 +349,14 @@ void main() {
   col = mix(col, C_SEPIA, sat(ink) * 0.94);
   col = mix(col, C_BLOOD, sat(acc) * 0.95);
   col = mix(col, C_ROSE * 0.85, sat(rose));
+  // 桌面上的歌詞：跟桌面同一個平面，一樣吃主光
+  if (p.y > uLyrY.x && p.y < uLyrY.x + uLyrY.y) {
+    vec4 lc = texture(uLyr, vec2(p.x / ${W}.0, 1.0 - (p.y - uLyrY.x) / uLyrY.y));
+    vec3 lin = lc.a > 0.0 ? toLinear(lc.rgb / lc.a) * lc.a : vec3(0.0);
+    col = col * (1.0 - lc.a) + lin;
+  }
+  col *= light;
+  // 燙的東西自己會發光，不吃主光
   col = mix(col, C_SIGNAL * 1.75, sat(hot));
   fragColor = vec4(col, 1.0);
 }`;
@@ -341,6 +370,8 @@ export const makeMainPass = () => new FSPass(MAIN_FRAG, {
   uPeriod: { value: 4 },
   uSig: { value: new THREE.Vector2(0, 1) }, uSigT: { value: new THREE.Vector2(0, 1) },
   uThread: { value: new THREE.Vector3(-999, 0, 0) },
-  uShadow: { value: new THREE.Vector2(7, 12) },
+  uShadow: { value: new THREE.Vector2(12, 20) },
   uSpark: { value: new THREE.Vector3(0, 0, 0) },
+  uInv: { value: new THREE.Matrix3() },
+  uLyr: { value: null }, uLyrY: { value: new THREE.Vector2(0, 1) },
 });

@@ -54,7 +54,7 @@ void main() {
   float mp = 1.0 - smoothstep(-aa, aa, dp);
   float lightG = 1.0 - 0.35 * clamp((q.x - uPanel.x) / (ph.x * 2.0), 0.0, 1.0) - 0.25 * clamp((q.y - uPanel.y) / (ph.y * 2.0), 0.0, 1.0);
   float eng = hatch((q.x * 0.42 + q.y) / 5.0, 0.16 + 0.08 * snoise(q * 0.004));
-  vec3 plate = (C_INK2 * 1.5 + C_GRAPHITE * 0.05) * lightG + C_GRAPHITE * 0.09 * eng;
+  vec3 plate = (C_INK2 * 1.5 + C_GRAPHITE * 0.05) * lightG + C_GRAPHITE * 0.05 * eng;
   plate += C_BONE * 0.05 * exp(-pow((q.x + q.y * 0.35 - uSheen) / 140.0, 2.0));
   // 斜角：外緣一圈亮邊、內一圈暗邊
   plate += C_BONE * 0.09 * (1.0 - smoothstep(0.0, 2.2 * aa, abs(dp + 1.0))) * step(q.y, pc.y + ph.y * 0.3);
@@ -77,9 +77,9 @@ void main() {
     col = mix(col, C_BONE * 0.62, l * mp);
   }
 
-  // 銘牌：主題色的金屬（訊號色的暗部），刻字填墨；剛刻好的字燒紅
-  vec2 pu = (q - uPlateR.xy) / uPlateR.zw;
-  {
+  // 銘牌：主題色的金屬（訊號色的暗部），刻字填墨；剛刻好的字燒紅（沒有銘牌時寬度是 0）
+  vec2 pu = (q - uPlateR.xy) / max(uPlateR.zw, vec2(1.0));
+  if (uPlateR.z > 1.0) {
     vec2 c2 = uPlateR.xy + uPlateR.zw * 0.5;
     float d2 = sdBox(q - c2, uPlateR.zw * 0.5 - 10.0) - 10.0;
     float m2 = 1.0 - smoothstep(-aa, aa, d2);

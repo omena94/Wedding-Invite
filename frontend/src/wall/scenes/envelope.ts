@@ -8,36 +8,41 @@
 //  - 最後一個小節線：信紙右上角蓋一個「已讀」的小章。
 // 歌詞寫在信封下半部（封口下面）：信紙抽出來的時候信封跟著往下，歌詞一直都在，照跟唱規則逐字亮。
 // 沒有留言：信紙寫邀請；新人的留言：信是新人寫給大家的（「親愛的各位：」）。
+// MV 化（2026-09-28）：焦點是抽出來的信紙上手寫的留言；背景的信堆失焦、變淡；信紙的信頭小字拿掉。
+// 鏡頭從斜上方看著桌上的信（透視、景深、一盞燈），信紙抽出來時鏡頭跟著往上、慢慢推近。
 // 畫法：信堆（背景的信封）、信封本體、封口的外側與內襯、封蠟、信紙都在開場畫成離屏畫布；每格只是把它們放到對的位置
 // （封口翻開是垂直方向的縮放，cos 從 1 到 -1；負的時候畫內襯）。
 import * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
-import { Layer2D, W, H } from '../engine/gl';
+import { Layer2D, W, H, SCALE } from '../engine/gl';
 import { F, font, loadText } from '../engine/type';
 import { mixRgba, rgba } from '../engine/palette';
 import { clamp, ease, hash, lerp, mulberry32, prog, pulse, frameIdx, TAU } from '../engine/util';
 import type { FitResult } from '../engine/text';
-import { lyricAt, drawLyric, layoutLyric, beatAfter, heartPoints, COUPLE_ZH, DATE_DOTS } from './_motifs';
-import { sigInk, ink, paper, paperLyric, makeCanvas, freeCanvas, shadowSprite, drawShadow, barsIn, paperPass, ensureBake, themeKey, inkStamp, arcText, fitMsg, yieldFrame, type Rect } from './_t1';
+import { lyricAt, drawLyric, layoutLyric, beatAfter, heartPoints, fillWithHearts, COUPLE_ZH, DATE_DOTS } from './_motifs';
+import {
+  sigInk, ink, paper, paperLyric, makeCanvas, freeCanvas, shadowSprite, drawShadow, barsIn, ensureBake, themeKey, inkStamp, arcText, fitMsg, yieldFrame,
+  tablePass, setTableCam, fitCam, lerpCam, TABLE_F, type TableCam, type Rect,
+} from './_t1';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'doc', paper: true, energy: [0.15, 0.8], bars: [4, 8], weight: 1 };
 
 type Ctx2 = CanvasRenderingContext2D;
 
-/** 信封（信封座標：左上角 0,0）。放好時左上角在螢幕 (X, Y0)，信紙抽出來之後整個往下移 DROP。 */
-const ENV = { w: 1040, h: 560, x: 300, y: 250, flap: 290 };
+/** 信封（信封座標：左上角 0,0）。放好時左上角在桌面 (x, y)；信紙抽出來時信封往下移 DROP，鏡頭跟著往上看信紙。 */
+const ENV = { w: 1040, h: 560, x: 300, y: 300, flap: 290 };
 const DROP = 200;
 /** 信紙：寬、露出來之後的上緣（螢幕）；信紙座標的內容位置。 */
-const LET = { w: 960, top: 80, h: 520 };
-const LMSG = { x: 56, y: 104, w: 850, h: 214 };
+const LET = { w: 1000, top: 40, h: 520 };
+const LMSG = { x: 50, y: 86, w: 900, h: 290 };
 /** 歌詞（信封座標）。 */
-const LYR = { x: 60, base: 440, maxW: 920 };
+const LYR = { x: 60, base: 400, maxW: 920 };
 
 const TEXT = '親愛的各位宣文孟庭收喜宴會場第桌到達喜宴郵局寄件人一位賓客已讀掃描右下角把祝福寫上大螢幕間奏中本曲為純音樂請自行哼唱此刻正在播放的歌';
 
 export default class Envelope extends Scene {
   layer = this.track(new Layer2D(W, H, undefined, { fast: true }));
-  pass = shared('envelope.paper', () => paperPass());
+  pass = shared('envelope.table', () => tablePass());
   msg: Msg | null = this.ctx.params.message ?? null;
   seed = Number(this.ctx.params.seed ?? 1);
   artKey = '';
@@ -56,7 +61,9 @@ export default class Envelope extends Scene {
   // 時間
   B = 0.5;
   land = 0; tStamp = 0; tCrack = 0; tOpen = 0; tPull: [number, number] = [0, 0]; tRead = Infinity;
-  avoid: Rect[] = [];
+  camA!: TableCam;
+  camB!: TableCam;
+  focusPts: [number, number][] = [];
 
   override async init() {
     const { audio: au, lyrics, start: s, end: e } = this.ctx;
@@ -76,7 +83,14 @@ export default class Envelope extends Scene {
     if (bars.length) this.tRead = bars[bars.length - 1]!;
     await yieldFrame();
     this.buildArt(others);
-    this.avoid = [[ENV.x + (ENV.w - LET.w) / 2 - 10, LET.top - 10, LET.w + 20, 380], [ENV.x + LYR.x - 10, ENV.y + LYR.base - 70, LYR.maxW + 20, DROP + 170]];
+    // 鏡頭：信封落在桌上時對著信封；信紙抽出來之後對著信紙與歌詞之間；兩個鏡位都保證留言與歌詞在安全範圍內
+    const lx = ENV.x + (ENV.w - LET.w) / 2;
+    const msgR: Rect = [lx + LMSG.x, LET.top + LMSG.y - 10, LMSG.w + 30, LMSG.h + 60];
+    const lyrA: Rect = [ENV.x + LYR.x - 10, ENV.y + LYR.base - 64, LYR.maxW + 20, 130];
+    const lyrB: Rect = [lyrA[0], lyrA[1] + DROP, lyrA[2], lyrA[3]];
+    this.focusPts = [[lx + LMSG.x + LMSG.w / 2, LET.top + LMSG.y + LMSG.h / 2], [ENV.x + LYR.x + 300, ENV.y + DROP + LYR.base]];
+    this.camA = fitCam({ tu: ENV.x + ENV.w / 2, tv: ENV.y + ENV.h / 2 + 20, dist: TABLE_F * 0.86, tilt: 0.3, yaw: 0.04, roll: -0.02 }, [lyrA]);
+    this.camB = fitCam({ tu: ENV.x + ENV.w / 2, tv: (msgR[1] + lyrB[1] + lyrB[3]) / 2, dist: TABLE_F * 0.82, tilt: 0.32, yaw: 0.02, roll: -0.01 }, [msgR, lyrB]);
   }
 
   override dispose() {
@@ -93,7 +107,9 @@ export default class Envelope extends Scene {
 
     // ---- 信堆：背景幾封信的正面（郵票、郵戳、手寫地址），一半在畫面外
     const d = (this.desk = makeCanvas(W, H, 1));
-    const piles: [number, number, number][] = [[250, 170, 0.22], [1690, 420, -0.18], [330, 930, -0.12], [1620, 90, 0.1]];
+    // 背景的信是配角：失焦（模糊）、淡一點、少一點
+    const piles: [number, number, number][] = [[250, 170, 0.22], [1690, 420, -0.18], [330, 930, -0.12]];
+    d.c.filter = 'blur(3px)';
     piles.forEach(([cx, cy, rot], i) => {
       const c = d.c;
       c.save();
@@ -106,10 +122,10 @@ export default class Envelope extends Scene {
       drawPostage(c, w / 2 - 150, -h / 2 + 30, 110, 132, i);
       drawPostmark(c, w / 2 - 170, -h / 2 + 110, rnd);
       // 手寫的收件人、寄件人
-      c.fillStyle = ink(0.85);
-      c.font = font(F.hand(700), 52); c.fillText(`${COUPLE_ZH} 收`, -170, 40);
-      c.font = font(F.hand(400), 28); c.fillText(`喜宴會場　第 ${1 + Math.floor(rnd() * 20)} 桌`, -150, 96);
-      c.font = font(F.hand(400), 24); c.fillStyle = ink(0.6);
+      c.fillStyle = ink(0.55);
+      c.font = font(F.hand(700), 44); c.fillText(`${COUPLE_ZH} 收`, -170, 40);
+      c.font = font(F.hand(400), 26); c.fillText(`喜宴會場　第 ${1 + Math.floor(rnd() * 20)} 桌`, -150, 92);
+      c.font = font(F.hand(400), 24); c.fillStyle = ink(0.4);
       c.fillText(others[i] ? `寄件人：${others[i]}` : '寄件人：一位賓客', -w / 2 + 40, -h / 2 + 56);
       c.restore();
     });
@@ -171,28 +187,18 @@ export default class Envelope extends Scene {
     c.fillStyle = sigInk(0.25);
     for (let y = 70; y < LET.h; y += 58) c.fillRect(40, y + 12, LET.w - 80, 1);
     c.fillStyle = sigInk(0.6); c.fillRect(0, 0, LET.w, 6);
-    c.fillStyle = ink(0.5); c.font = font(F.mono(500), 12); c.letterSpacing = '4px';
-    c.fillText(`LOVE LETTER · 喜帖回函 · ${m ? 'No.' + String(m.n).padStart(3, '0') : 'STANDBY'} · ${DATE_DOTS.split(' · ').join('.')}`, 56, 34);
-    c.letterSpacing = '0px';
-    c.fillStyle = ink(0.92);
-    c.font = font(F.hand(700), 44);
-    c.fillText(m?.couple ? '親愛的各位：' : `親愛的 ${COUPLE_ZH}：`, 56, 82);
+    c.fillStyle = ink(0.7);
+    c.font = font(F.hand(700), 34);
+    c.fillText(m?.couple ? '親愛的各位：' : `親愛的 ${COUPLE_ZH}：`, 56, 64);
     const body = m ? m.text : '掃描右下角 QR code，把祝福寫上大螢幕。';
-    this.fit = fitMsg(c, body, F.hand(700), LMSG.w, LMSG.h, { min: 44, max: 92, lineHeight: 1.28, maxLines: 4 });
+    this.fit = fitMsg(c, body, F.hand(700), LMSG.w, LMSG.h, { min: 44, max: 104, lineHeight: 1.26, maxLines: 4 });
     const fit = this.fit;
     c.font = font(F.hand(700), fit.size);
     const top = LMSG.y + (LMSG.h - fit.height) / 2 + fit.size * 0.88;
-    fit.lines.forEach((ln, i) => {
-      let x = LMSG.x + 30;
-      for (const part of ln.split(/(♥)/)) {
-        if (!part) continue;
-        c.fillStyle = part === '♥' ? rgba('rose') : ink(0.92);
-        c.fillText(part, x, top + i * fit.lineHeight);
-        x += c.measureText(part).width;
-      }
-    });
+    c.fillStyle = ink(0.92);
+    fit.lines.forEach((ln, i) => fillWithHearts(c, ln, LMSG.x + 30, top + i * fit.lineHeight));
     c.fillStyle = ink(0.8); c.font = font(F.hand(700), 38); c.textAlign = 'right';
-    c.fillText(`—— ${m ? (m.couple ? COUPLE_ZH : m.name || '一位賓客') : '大螢幕'}`, LET.w - 60, 356);
+    c.fillText(`—— ${m ? (m.couple ? COUPLE_ZH : m.name || '一位賓客') : '大螢幕'}`, LET.w - 60, LMSG.y + LMSG.h + 50);
     c.textAlign = 'left';
 
     // ---- 到達戳、已讀章
@@ -213,7 +219,7 @@ export default class Envelope extends Scene {
       sc.lineWidth = 4; sc.beginPath(); sc.roundRect(-72, -44, 144, 88, 12); sc.stroke();
       sc.textAlign = 'center';
       sc.font = font(F.hei(900), 40); sc.letterSpacing = '10px'; sc.fillText('已讀', 6, 8);
-      sc.font = font(F.mono(600), 12); sc.letterSpacing = '3px'; sc.fillText('READ · ♥', 2, 32);
+      sc.font = font(F.mono(600), 12); sc.letterSpacing = '3px'; sc.fillText('READ', 2, 32);
       sc.letterSpacing = '0px';
     }, 1.25, 0.5);
   }
@@ -294,18 +300,20 @@ export default class Envelope extends Scene {
     if (cs >= 0) { this.drawFlap(c, cs); this.drawSeal(c, t, true, cs); }
     c.restore();
 
-    const P = this.pass.u;
-    P.layer!.value = L.upload();
-    P.bake!.value = ensureBake(renderer);
-    P.tone!.value = 0.14;
-    P.t!.value = t;
-    this.pass.render(renderer, out);
+    // ---- 合成：鏡頭、景深、燈。鏡頭跟著信紙抽出來往上移
+    const cam0 = lerpCam(this.camA, this.camB, ease.inOutCubic(clamp((t - this.tPull[0]) / Math.max(0.5, this.tPull[1] + 0.6 - this.tPull[0]))));
+    const cam = { ...cam0, dist: cam0.dist * (1.03 - 0.012 * pulse(t, this.land, 0.12) - 0.03 * ease.inOutCubic(prog(t, this.tPull[1], e))) };
+    const P = this.pass;
+    P.u.layer!.value = L.upload();
+    P.u.bake!.value = ensureBake(renderer);
+    P.u.tone!.value = 0.2;
+    setTableCam(P, cam, { aperture: 56, sharp: 0.02, focus: this.focusPts, lamp: [cam.tu, cam.tv - 60, 1000] });
+    P.render(renderer, out);
     const amp = 8 * pulse(t, this.land, 0.06) + 9 * pulse(t, this.tStamp, 0.06) + 5 * pulse(t, this.tCrack, 0.05) + 7 * pulse(t, this.tRead, 0.06);
     const ph = frameIdx(t);
     return {
-      paper: 1, popupAvoid: this.avoid, bloom: 0.2, bloomThreshold: 1.6, halation: 0.04, vignette: 0.28, grain: 0.05, ca: 0.4,
+      paper: 1, bloom: 0.2, bloomThreshold: 1.6, halation: 0.04, vignette: 0.3, grain: 0.05, ca: 0.4,
       shake: [amp * (hash(ph, 1) - 0.5) * 2, amp * (hash(ph, 2) - 0.5) * 2],
-      zoom: 1 + 0.02 * pulse(t, this.land, 0.1) + 0.025 * prog(t, this.tPull[1], e, ease.inOutCubic),
     };
   }
 
@@ -363,7 +371,7 @@ export default class Envelope extends Scene {
     const { lyrics } = this.ctx;
     const ly = lyricAt(lyrics, t);
     if (ly) {
-      const st = paperLyric(F.archivo(100, 800), 58, LYR.maxW, { lineHeight: 1.12 });
+      const st = paperLyric(F.archivo(100, 800), 50, LYR.maxW, { lineHeight: 1.12 });
       const lay = layoutLyric(c, ly.line, st);
       const inK = ease.outExpo(prog(t, ly.line.start - 0.35, ly.line.start + 0.15));
       c.save();

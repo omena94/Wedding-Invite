@@ -1,5 +1,6 @@
-// 星圖版面（stars.ts）的星座：留言拆成「一個字一顆星」、在一塊區域裡用種子排出一個像真的星座的形狀、
-// 每顆星旁邊的小字標在最空的方向。全部在 init() 算一次（窗格的留言已經定了），之後每一格只換算位置。
+// 星圖版面（stars.ts）的星座：留言拆成「一個字一顆星」、在一塊區域裡用種子排出一個像真的星座的形狀。
+// 全部在 init() 算一次（窗格的留言已經定了），之後每一格只換算位置。
+// （2026-09-29 起星旁不再標字：字跟留言重複又把星座弄得很亂；留言的字會跟著自己的星一起亮，看得出對應。）
 import { clamp, mulberry32 } from '../engine/util';
 import type { P2 } from './stars-sky';
 
@@ -137,59 +138,4 @@ export function buildConstellation(n: number, z: Zone, seed: number): StarPt[] {
   const mx = (x0 + x1) / 2, my = (y0 + y1) / 2;
   for (const p of pts) { p.x = cx + (p.x - mx) * s; p.y = cy + (p.y - my) * s; }
   return pts;
-}
-
-export interface Tag { dx: number; dy: number; align: CanvasTextAlign }
-
-/**
- * 每顆星的小字放哪：八個方向裡挑一個離連線最遠、不壓到別的星與別的字的。
- * w / h 是字的寬高，r 是星的半徑（含光芒）；safe 是字不能超出的範圍。回傳相對星的位移（字的基線對齊點）與對齊方式。
- */
-export function placeTags(pts: StarPt[], size: (i: number) => { w: number; h: number; r: number }, safe: Zone): Tag[] {
-  const n = pts.length;
-  const dirs: number[][] = pts.map(() => []);
-  pts.forEach((p, i) => {
-    if (p.from < 0) return;
-    const q = pts[p.from]!;
-    dirs[i]!.push(Math.atan2(q.y - p.y, q.x - p.x));
-    dirs[p.from]!.push(Math.atan2(p.y - q.y, p.x - q.x));
-  });
-  const boxes: { x0: number; y0: number; x1: number; y1: number }[] = [];
-  const out: Tag[] = [];
-  // 右、右下、下、左下、左、左上、上、右上
-  const cand = [0, 0.785, 1.571, 2.356, 3.142, -2.356, -1.571, -0.785];
-  for (let i = 0; i < n; i++) {
-    const p = pts[i]!, { w, h, r } = size(i);
-    let best: { tag: Tag; box: { x0: number; y0: number; x1: number; y1: number }; score: number } | null = null;
-    for (const a of cand) {
-      const ca = Math.cos(a), sa = Math.sin(a);
-      const gap = r + 9;
-      // 盒子的中心：沿著方向推出去，推到盒子邊緣離星 gap 遠
-      const bx = p.x + ca * (gap + w / 2 * Math.abs(ca)), by = p.y + sa * (gap + h / 2 * Math.abs(sa));
-      const box = { x0: bx - w / 2, y0: by - h / 2, x1: bx + w / 2, y1: by + h / 2 };
-      let score = 0;
-      // 離連線的方向越遠越好
-      for (const d of dirs[i]!) { let da = Math.abs(a - d) % (Math.PI * 2); if (da > Math.PI) da = Math.PI * 2 - da; score += Math.min(da, 1.6) * 2; if (da < 0.5) score -= 6; }
-      // 壓到別的星、別的字、別的連線就扣分
-      for (let k = 0; k < n; k++) {
-        if (k === i) continue;
-        const q = pts[k]!;
-        const dx = Math.max(box.x0 - q.x, 0, q.x - box.x1), dy = Math.max(box.y0 - q.y, 0, q.y - box.y1);
-        if (Math.hypot(dx, dy) < 12) score -= 8;
-        if (q.from >= 0) {
-          const f = pts[q.from]!;
-          if (segDist({ x: bx, y: by }, q, f) < Math.max(w, h) * 0.55) score -= 3;
-        }
-      }
-      for (const b of boxes) if (box.x0 < b.x1 + 4 && box.x1 > b.x0 - 4 && box.y0 < b.y1 + 2 && box.y1 > b.y0 - 2) score -= 10;
-      // 出了安全範圍（離畫面邊緣 96 px，再扣掉天空轉動的位移）重扣
-      if (box.x0 < safe.x0 || box.x1 > safe.x1 || box.y0 < safe.y0 || box.y1 > safe.y1) score -= 40;
-      // 稍微偏好右邊與下面（閱讀順序）
-      score += ca * 0.4 + sa * 0.2;
-      if (!best || score > best.score) best = { tag: { dx: bx - p.x - w / 2, dy: by - p.y + h * 0.36, align: 'left' }, box, score };
-    }
-    boxes.push(best!.box);
-    out.push(best!.tag);
-  }
-  return out;
 }

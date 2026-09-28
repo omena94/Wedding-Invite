@@ -1,10 +1,11 @@
-// 收音機（機器 A，亮版面）：五〇年代的桌上型收音機正面，畫成紙上的版畫線稿（墨線＋斜線陰影）。
-//  - 上面是調頻刻度窗：FM 88～108，刻度上印著電台名（其他賓客的名字＋「台」），主打留言是「FM 103.13」那一台。
-//    指針在拍點上一台一台跳（彈簧落定），第三拍對準主打那一台；刻度窗右邊的「魔眼」（調諧指示）對準時收成一條縫。
-//    之後每四小節微調一下。兩個旋鈕跟著指針轉。
-//  - 左下是喇叭網（織布，shader 畫的）：歌詞從布後面透出來（逐字跟唱、唱到的字彈一下），大鼓一打，喇叭把布往外推。
-//  - 右下是一張「點歌卡」：第一拍滑進來，點播人是留言的名字，想說的話（主打留言，霞鶩文楷）一個詞組一拍寫上去，最後署名；
-//    窗格最後一個小節線蓋上「已播出」的章。沒有留言時是一張空白的點歌卡，邀請大家掃 QR。
+// 收音機（機器 A，亮版面）：五〇年代的桌上型收音機，畫成紙上的版畫線稿（墨線＋斜線陰影），旁邊斜靠著一張手寫的點歌卡。
+// MV 融合原則：一個焦點。
+//  - 焦點是那張點歌卡：第一拍從右邊滑進來、靠在收音機上（有影子），主打留言用霞鶩文楷一個詞組一拍「寫」上去（畫面最大的字），
+//    最後署名；窗格最後一個小節線蓋上「已播出」的章。
+//  - 收音機是配角：上面的調頻刻度窗印著電台名，指針在拍點上一台一台跳（彈簧落定），第三拍對準主打那一台（FM 103.13），
+//    「魔眼」對準時收成一條縫；喇叭網（織布）後面透出歌詞（逐字跟唱、唱到的字彈一下，比留言小一級），大鼓一打喇叭把布往外推。
+//  - 沒有留言：點歌卡縮成一張小便條（邀請大家掃 QR），歌詞放大成焦點。
+//  - 鏡頭整段慢慢推近。
 // 這個版面是紙：底色是主題的紙色，線與字是墨色（sepia），指針與正在唱的字是訊號色。
 import * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
@@ -15,7 +16,7 @@ import { LIN, rgba } from '../engine/palette';
 import { clamp, ease, lerp, prog, hash, springStep, TAU } from '../engine/util';
 import { fitText, phrases, type FitResult } from '../engine/text';
 import { Lyrics } from '../engine/lyrics';
-import { beatAfter, barAfter, signature, lyricAt, COUPLE_EN, COUPLE_ZH, DATE_DOTS } from './_motifs';
+import { beatAfter, barAfter, signature, lyricAt, COUPLE_EN, COUPLE_ZH } from './_motifs';
 import { fillWithHearts } from '../engine/motifs';
 import { layoutWordRows } from './_t7';
 import { FRAG_RADIO } from './radio-glsl';
@@ -23,23 +24,25 @@ import { FRAG_RADIO } from './radio-glsl';
 export const spec: PlateSpecDecl = { group: 'type', family: 'machine', paper: true, energy: [0, 0.75], bars: [4, 8] };
 
 // ---------------------------------------------------------------- 版面（px，y 往下）
-const CAB = { x: 118, y: 108, w: 1226, h: 852 };
-const DIAL = { x: 290, y: 150, w: 880, h: 150 };
+const CAB = { x: 110, y: 150, w: 900, h: 790 };
+const DIAL = { x: 236, y: 188, w: 648, h: 128 };
 /** 刻度：88～108 MHz 排在這一段。 */
-const SC = { x0: 330, x1: 1060, y: 232 };
-const EYE = { x: 1112, y: 224, r: 30 };
-const KNOB_L = { x: 206, y: 225, r: 46 };
-const KNOB_R = { x: 1256, y: 225, r: 46 };
-const GRILLE = { x: 168, y: 350, w: 574, h: 572 };
-const CARD = { x: 784, y: 344, w: 530, h: 580 };
-/** 點歌卡的圖層（比卡片大一圈，放得下轉一點點的卡片與影子）。 */
-const CL = { x: CARD.x - 30, y: CARD.y - 30, w: CARD.w + 60, h: CARD.h + 60 };
+const SC = { x0: 266, x1: 790, y: 262 };
+const EYE = { x: 842, y: 252, r: 26 };
+const KNOB_L = { x: 172, y: 252, r: 38 };
+const KNOB_R = { x: 948, y: 252, r: 38 };
+const GRILLE = { x: 160, y: 386, w: 800, h: 504 };
+/** 點歌卡：有留言時是焦點（大）；沒有留言時是一張小便條。 */
+const CARD_BIG = { x: 930, y: 168, w: 840, h: 640 };
+const CARD_SMALL = { x: 1130, y: 520, w: 600, h: 280 };
 const FEAT = 103.13;
+/** 點歌卡上：表頭的高度、署名那一列的高度。 */
+const CARD_TOP = 78, CARD_SIG = 110;
 
 const F_LYR = F.archivo(100, 800);
 const F_MSG = F.hand(400);
-const INVITE = '這一台還在等你的點播。掃描右下角 QR code，把想說的話寄到節目裡。';
-const TEXT = `點歌卡點播人想說的話頻道已播出心頻調頻婚禮點歌台新人台（你的名字）新人想說的話現正播放《》伴郎台伴娘台芃芃台喜宴台同學台${INVITE}`;
+const INVITE = '這一台還在等你點歌：掃描右下角 QR code，把想說的話寄到節目裡。';
+const TEXT = `點歌卡已播出點歌台新人台現正播放《》伴郎台伴娘台芃芃台喜宴台同學台${INVITE}`;
 
 const fx = (f: number) => SC.x0 + ((f - 88) / 20) * (SC.x1 - SC.x0);
 
@@ -58,8 +61,10 @@ export default class Radio extends Scene {
   cab = this.track(new Layer2D(W, H, undefined, { fast: true }));
   /** 喇叭網後面的歌詞（內容變了才重畫）。 */
   txt = this.track(new Layer2D(GRILLE.w, GRILLE.h, undefined, { fast: true }));
-  /** 點歌卡（寫字時才重畫）。 */
-  card = this.track(new Layer2D(CL.w, CL.h, undefined, { fast: true }));
+  /** 點歌卡（寫字時才重畫）：圖層比卡片大一圈，放得下轉一點點的卡片與影子。 */
+  CARD = { ...CARD_BIG };
+  CL = { x: 0, y: 0, w: 1, h: 1 };
+  card!: Layer2D;
   lines = this.track(new LineBatch(256, { screen2D: true, blend: 'normal' }));
   glow = this.track(new LineBatch(64, { screen2D: true, blend: 'add' }));
   msg: Msg | null = this.ctx.params.message ?? null;
@@ -72,7 +77,6 @@ export default class Radio extends Scene {
   chunks: { line: number; from: number; to: number; t: number }[] = [];
   sigT = Infinity;
   stampT = Infinity;
-  avoid: [number, number, number, number][] = [];
   private txtKey = '';
   private cardKey = '';
 
@@ -83,6 +87,9 @@ export default class Radio extends Scene {
     this.tBoot = beatAfter(au, s + 0.15);
     this.tCard = this.tBoot;
     const m = this.msg;
+    this.CARD = { ...(m ? CARD_BIG : CARD_SMALL) };
+    this.CL = { x: this.CARD.x - 40, y: this.CARD.y - 40, w: this.CARD.w + 80, h: this.CARD.h + 80 };
+    this.card = this.track(new Layer2D(this.CL.w, this.CL.h, undefined, { fast: true }));
     this.stations = this.makeStations();
     const inWin = lyrics.lines.filter((l) => l.end > s - 1 && l.start < e + 1);
     await loadText(TEXT + this.stations.map((x) => x.name).join('') + (m ? m.text + m.name + signature(m.name) : '') + inWin.map((l) => l.text).join('') + (song.title ?? '') + COUPLE_ZH);
@@ -108,19 +115,14 @@ export default class Radio extends Scene {
     if (m && lastBar > this.sigT + this.beat && bars >= 3.5) this.stampT = lastBar;
     this.drawCabinet();
     this.ctx.renderer.initTexture(this.cab.upload());
-    this.avoid = [
-      [GRILLE.x - 10, GRILLE.y - 10, GRILLE.w + 20, GRILLE.h + 20],
-      [CARD.x - 16, CARD.y - 16, CARD.w + 32, CARD.h + 32],
-      [DIAL.x, DIAL.y, DIAL.w, DIAL.h],
-    ];
   }
 
   /** 電台：主打留言那一台在 103.13；其他台是別的賓客（名字＋「台」），不夠就用固定的台。 */
   private makeStations(): Station[] {
     const m = this.msg;
     const others: Msg[] = (this.ctx.params.messages ?? []).filter((x: Msg) => x.name && (!m || x.id !== m.id));
-    const fixed = ['伴郎台', '伴娘台', '芃芃台', '喜宴台', '同學台', 'QQ台'];
-    const freqs = [89.1, 91.9, 94.7, 97.5, 100.1, 106.5];
+    const fixed = ['伴郎台', '芃芃台', '喜宴台', 'QQ台'];
+    const freqs = [89.9, 93.7, 97.3, 107.1];
     const short = (n: string) => { const cs = Array.from(n.replace(/\s+/g, '')); return (cs.length > 3 ? cs.slice(0, 3).join('') : cs.join('')) + '台'; };
     const out: Station[] = freqs.map((f, i) => ({ f, name: others[i] ? (others[i]!.couple ? '新人台' : short(others[i]!.name)) : fixed[i]!, hot: false }));
     out.push({ f: FEAT, name: m ? (m.couple ? '新人台' : short(m.name || '賓客')) : '點歌台', hot: true });
@@ -145,8 +147,11 @@ export default class Radio extends Scene {
     const { audio: au } = this.ctx;
     const e = this.ctx.end;
     const c = this.card.ctx;
-    // 想說的話的框：「想說的話」標籤下面到署名上面
-    this.fit = fitText(c, body, F_MSG, CARD.w - 90, CARD.h - 196 - 96, { min: 44, max: 60, lineHeight: 1.24, maxLines: 7 });
+    // 字的框：表頭下面到署名上面（沒有留言的小便條：整張都是字、小一點）
+    const CARD = this.CARD;
+    this.fit = this.msg
+      ? fitText(c, body, F_MSG, CARD.w - 110, CARD.h - CARD_TOP - CARD_SIG, { min: 44, max: 118, lineHeight: 1.22, maxLines: 7 })
+      : fitText(c, body, F_MSG, CARD.w - 90, CARD.h - CARD_TOP - 30, { min: 30, max: 40, lineHeight: 1.3, maxLines: 4 });
     const ph = phrases(body.replace(/\s+/g, ' '), 6);
     const t0 = beatAfter(au, this.tCard + 0.3);
     const n = ph.length + (this.msg ? 1 : 0);
@@ -173,7 +178,7 @@ export default class Radio extends Scene {
 
   /** 畫點歌卡（卡片座標：CL 的左上角為原點）。寫字用左到右的遮罩「寫」出來，每個詞組 0.28 秒。 */
   private drawCard(t: number) {
-    const fit = this.fit!;
+    const fit = this.fit!, CARD = this.CARD, CL = this.CL;
     const WR = 0.28;
     const wp = (t0: number) => clamp((t - t0) / WR);
     const prog0 = this.chunks.map((k) => Math.round(wp(k.t) * 20)).join('');
@@ -184,54 +189,40 @@ export default class Radio extends Scene {
     const L = this.card, c = L.ctx, m = this.msg;
     L.clear();
     c.save();
-    // 卡片稍微歪一點，影子落在機殼上
+    // 卡片稍微歪一點，影子落在收音機與紙上
     c.translate(CL.w / 2, CL.h / 2);
-    c.rotate(-0.018);
+    c.rotate(m ? 0.014 : -0.03);
     c.translate(-CARD.w / 2, -CARD.h / 2);
-    c.fillStyle = rgba('sepia', 0.16);
-    c.filter = 'blur(10px)';
-    c.fillRect(10, 14, CARD.w, CARD.h);
+    c.fillStyle = rgba('sepia', 0.2);
+    c.filter = 'blur(14px)';
+    c.fillRect(14, 20, CARD.w, CARD.h);
     c.filter = 'none';
     c.fillStyle = rgba('bone');
     c.fillRect(0, 0, CARD.w, CARD.h);
-    c.strokeStyle = rgba('sepia', 0.35); c.lineWidth = 1;
+    c.strokeStyle = rgba('sepia', 0.25); c.lineWidth = 1;
     c.strokeRect(0.5, 0.5, CARD.w - 1, CARD.h - 1);
-    // 表頭：訊號色的一條線、「點歌卡」、編號
-    c.fillStyle = rgba('signal', 0.9);
-    c.fillRect(0, 74, CARD.w, 2.5);
+    // 表頭：一條訊號色的細線、小小的「點歌卡 · FM 103.13」
+    c.fillStyle = rgba('signal', 0.85);
+    c.fillRect(0, 58, CARD.w, 2);
     c.textBaseline = 'alphabetic';
-    c.fillStyle = rgba('sepia');
-    c.font = font(F.hei(900), 34);
-    c.fillText('點歌卡', 34, 54);
-    c.font = font(F.mono(500), 14); c.letterSpacing = '3px'; c.fillStyle = rgba('sepia', 0.7);
-    c.fillText('REQUEST · FM 103.13', 166, 52);
-    c.textAlign = 'right';
-    c.fillText(m ? `No.${String(m.n).padStart(3, '0')}` : 'No.———', CARD.w - 30, 52);
-    c.textAlign = 'left';
+    c.font = font(F.hei(500), 20); c.letterSpacing = '5px'; c.fillStyle = rgba('sepia', 0.55);
+    c.fillText(m?.couple ? '新人點歌  ·  FM 103.13' : '點歌卡  ·  FM 103.13', 36, 40);
     c.letterSpacing = '0px';
-    // 點播人
-    c.font = font(F.hei(500), 17); c.fillStyle = rgba('sepia', 0.65);
-    c.fillText('點播人', 34, 124);
-    c.font = font(F.hand(700), 38); c.fillStyle = rgba('sepia');
-    c.fillText(m ? (m.couple ? COUPLE_ZH : m.name || '一位賓客') : '（你的名字）', 108, 126);
-    c.fillStyle = rgba('sepia', 0.25);
-    c.fillRect(104, 134, CARD.w - 138, 1);
-    c.font = font(F.hei(500), 17); c.fillStyle = rgba('sepia', 0.65);
-    c.fillText(m?.couple ? '新人想說的話' : '想說的話', 34, 176);
     // 橫線（卡片的格線）
-    const y0 = 196 + fit.size;
-    c.fillStyle = rgba('sepia', 0.14);
-    for (let i = 0; i < 7; i++) c.fillRect(34, y0 + i * fit.lineHeight + 10, CARD.w - 68, 1);
-    // 想說的話：一個詞組一個詞組「寫」上去
+    const y0 = CARD_TOP + (m ? (CARD.h - CARD_TOP - CARD_SIG - fit.height) / 2 : 10) + fit.size;
+    c.fillStyle = rgba('sepia', 0.1);
+    for (let i = 0; i < fit.lines.length; i++) c.fillRect(36, y0 + i * fit.lineHeight + fit.size * 0.18, CARD.w - 72, 1);
+    // 留言：一個詞組一個詞組「寫」上去
     c.font = font(F_MSG, fit.size);
-    c.fillStyle = m ? rgba('sepia') : rgba('sepia', 0.6);
+    c.fillStyle = m ? rgba('sepia') : rgba('sepia', 0.72);
     const lines = fit.lines.map((l) => Array.from(l));
+    const x0 = m ? 52 : 40;
     for (const k of this.chunks) {
       const r = wp(k.t);
       if (r <= 0) continue;
       const arr = lines[k.line]!;
       const pre = arr.slice(0, k.from).join(''), part = arr.slice(k.from, k.to).join('');
-      const x = 38 + c.measureText(pre).width, y = y0 + k.line * fit.lineHeight, w = c.measureText(part).width;
+      const x = x0 + c.measureText(pre).width, y = y0 + k.line * fit.lineHeight, w = c.measureText(part).width;
       c.save();
       c.beginPath(); c.rect(x - 4, y - fit.size * 1.1, (w + 8) * r, fit.size * 1.5); c.clip();
       fillWithHearts(c, part, x, y, rgba('rose'));
@@ -240,31 +231,28 @@ export default class Radio extends Scene {
     // 署名
     if (m && t >= this.sigT) {
       const r = wp(this.sigT);
-      c.font = font(F.hand(700), 40);
+      c.font = font(F.hand(700), Math.max(46, Math.min(64, fit.size * 0.6)));
       c.textAlign = 'right';
-      const sg = signature(m.name), w = c.measureText(sg).width;
-      c.save(); c.beginPath(); c.rect(CARD.w - 34 - w - 4, CARD.h - 84, (w + 8) * r, 70); c.clip();
-      c.fillText(sg, CARD.w - 34, CARD.h - 32);
+      const sg = signature(m.couple ? COUPLE_ZH : m.name), w = c.measureText(sg).width;
+      c.save(); c.beginPath(); c.rect(CARD.w - 48 - w - 4, CARD.h - 104, (w + 8) * r, 90); c.clip();
+      c.fillText(sg, CARD.w - 48, CARD.h - 40);
       c.restore();
       c.textAlign = 'left';
     }
     // 已播出的章（訊號色，歪的，蓋下去那一下比較大）
     if (stampK > 0) {
       c.save();
-      c.translate(CARD.w - 120, 128);
+      c.translate(CARD.w - 110, 118);
       c.rotate(-0.22);
       const sc = 1.25 - 0.25 * stampK;
       c.scale(sc, sc);
-      c.globalAlpha = 0.85 * stampK;
+      c.globalAlpha = 0.8 * stampK;
       c.strokeStyle = rgba('signal'); c.lineWidth = 4;
-      c.beginPath(); c.arc(0, 0, 52, 0, TAU); c.stroke();
-      c.lineWidth = 1.5; c.beginPath(); c.arc(0, 0, 44, 0, TAU); c.stroke();
+      c.beginPath(); c.arc(0, 0, 50, 0, TAU); c.stroke();
+      c.lineWidth = 1.5; c.beginPath(); c.arc(0, 0, 42, 0, TAU); c.stroke();
       c.fillStyle = rgba('signal');
-      c.font = font(F.hei(900), 26); c.textAlign = 'center';
-      c.fillText('已播出', 0, 10);
-      c.font = font(F.mono(500), 10); c.letterSpacing = '2px';
-      c.fillText('ON AIR', 0, 30);
-      c.letterSpacing = '0px';
+      c.font = font(F.hei(900), 24); c.textAlign = 'center';
+      c.fillText('已播出', 0, 9);
       c.restore();
     }
     c.restore();
@@ -335,13 +323,13 @@ export default class Radio extends Scene {
       c.fillRect(x - (big ? 1 : 0.5), SC.y - (big ? 18 : 9), big ? 2 : 1, big ? 18 : 9);
     }
     c.fillRect(SC.x0, SC.y, SC.x1 - SC.x0, 1.5);
-    c.font = font(F.mono(500), 19); c.textAlign = 'center'; c.textBaseline = 'alphabetic';
-    for (let f = 88; f <= 108; f += 4) c.fillText(String(f), fx(f), SC.y + 30);
+    c.font = font(F.mono(500), 17); c.textAlign = 'center'; c.textBaseline = 'alphabetic'; c.fillStyle = ink(0.7);
+    for (let f = 88; f <= 108; f += 4) c.fillText(String(f), fx(f), SC.y + 28);
     // 電台名（主打那一台粗一點）
     c.textAlign = 'center';
     for (const st of this.stations) {
-      c.font = font(F.hei(st.hot ? 900 : 500), st.hot ? 21 : 18);
-      c.fillStyle = ink(st.hot ? 1 : 0.72);
+      c.font = font(F.hei(st.hot ? 900 : 500), st.hot ? 20 : 17);
+      c.fillStyle = ink(st.hot ? 0.95 : 0.55);
       c.fillText(st.name, fx(st.f), SC.y - 34);
       c.fillRect(fx(st.f) - 0.5, SC.y - 28, 1, 6);
     }
@@ -353,19 +341,11 @@ export default class Radio extends Scene {
       c.strokeStyle = ink(0.35); c.lineWidth = 1;
       for (let a = 0; a < TAU; a += TAU / 48) { c.beginPath(); c.moveTo(k.x + Math.cos(a) * (k.r - 7), k.y + Math.sin(a) * (k.r - 7)); c.lineTo(k.x + Math.cos(a) * k.r, k.y + Math.sin(a) * k.r); c.stroke(); }
     }
-    c.font = font(F.mono(500), 12); c.letterSpacing = '3px'; c.fillStyle = ink(0.7); c.textAlign = 'center';
-    c.fillText('VOLUME', KNOB_L.x, KNOB_L.y + KNOB_L.r + 30);
-    c.fillText('TUNING', KNOB_R.x, KNOB_R.y + KNOB_R.r + 30);
     // 魔眼的框
     c.beginPath(); c.arc(EYE.x, EYE.y, EYE.r + 6, 0, TAU); c.strokeStyle = ink(0.9); c.lineWidth = 2; c.stroke();
-    // 廠牌：刻度窗與喇叭之間
-    c.font = font(F.serif(600, true), 30); c.letterSpacing = '1px'; c.fillStyle = ink(0.95);
-    c.fillText(`${COUPLE_EN}`, (CAB.x + CAB.x + CAB.w) / 2, 336);
-    c.font = font(F.mono(500), 12); c.letterSpacing = '5px'; c.fillStyle = ink(0.65);
-    c.textAlign = 'left';
-    c.fillText('心頻 HEART · FM', DIAL.x, 334);
-    c.textAlign = 'right';
-    c.fillText(`MODEL ${DATE_DOTS}`, DIAL.x + DIAL.w, 334);
+    // 廠牌：刻度窗與喇叭之間，一行斜體
+    c.font = font(F.serif(600, true), 26); c.letterSpacing = '1px'; c.fillStyle = ink(0.75); c.textAlign = 'center';
+    c.fillText(`${COUPLE_EN}`, CAB.x + CAB.w / 2, 360);
     c.textAlign = 'left';
     c.letterSpacing = '0px';
     // 喇叭網的框：外一圈粗線、內一圈細線、上緣一點斜線陰影
@@ -381,21 +361,23 @@ export default class Radio extends Scene {
     const ly = lyricAt(lyrics, t);
     const c = this.txt.ctx;
     const PAD = 44;
+    const big = !this.msg;
     if (!ly) {
       const key = 'idle';
       if (key === this.txtKey) return;
       this.txtKey = key;
       this.txt.clear();
       c.textAlign = 'center'; c.textBaseline = 'alphabetic';
-      c.font = font(F.archivo(100, 800), 64); c.fillStyle = rgba('bone', 0.4);
+      c.font = font(F.archivo(100, 800), 56); c.fillStyle = rgba('bone', 0.36);
       c.fillText('FM 103.13', GRILLE.w / 2, GRILLE.h / 2 - 10);
-      c.font = font(F.hei(700), 30); c.fillStyle = rgba('bone', 0.32);
-      c.fillText(`現正播放《${song.title || '今晚的歌'}》`, GRILLE.w / 2, GRILLE.h / 2 + 50);
+      c.font = font(F.hei(700), 28); c.fillStyle = rgba('bone', 0.3);
+      c.fillText(`現正播放《${song.title || '今晚的歌'}》`, GRILLE.w / 2, GRILLE.h / 2 + 46);
       c.textAlign = 'left';
       this.txt.upload();
       return;
     }
-    const lay = layoutWordRows(c, ly.line, F_LYR, GRILLE.w - PAD * 2, GRILLE.h - PAD * 2, { min: 56, max: 118, maxRows: 4, lh: 1.14 });
+    // 有留言時歌詞是第二順位（比留言小一級）；沒有留言時歌詞是焦點
+    const lay = layoutWordRows(c, ly.line, F_LYR, GRILLE.w - PAD * 2, GRILLE.h - PAD * 2, big ? { min: 60, max: 132, maxRows: 4, lh: 1.14 } : { min: 48, max: 74, maxRows: 4, lh: 1.16 });
     // 內容：每個字的狀態＋正在唱的字彈到哪（量化，一樣就不重畫）
     const pops = lay.words.map((b) => {
       const p = Lyrics.wordProgress(b.word, t);
@@ -462,11 +444,12 @@ export default class Radio extends Scene {
     this.lines.render(renderer, out);
     this.glow.render(renderer, out);
 
-    // 點歌卡：第一拍從右邊滑進來
+    // 點歌卡：第一拍從右邊滑進來（最後一點點用彈簧落定）
     this.drawCard(t);
     const slide = 1 - ease.outExpo(prog(t, this.tCard - 0.28, this.tCard + 0.35));
-    this.blit(this.card.texture, CL.x + slide * 760, CL.y, CL.w, CL.h, out);
-    return { paper: 1, bloom: 0.45, vignette: 0.28, halation: 0.12, grain: 0.05, popupAvoid: this.avoid };
+    this.blit(this.card.texture, this.CL.x + slide * 1000, this.CL.y, this.CL.w, this.CL.h, out);
+    // 鏡頭：整段慢慢推近
+    return { paper: 1, bloom: 0.45, vignette: 0.32, halation: 0.12, grain: 0.05, zoom: 1 + 0.03 * ease.inOutCubic(f.p) };
   }
 }
 

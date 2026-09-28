@@ -11,6 +11,7 @@ import { FSPass, makeRT, W, H, scaleContext2D } from '../engine/gl';
 import { HEX, LIN, rgba } from '../engine/palette';
 import { clamp, hash, mulberry32 } from '../engine/util';
 import { font } from '../engine/type';
+import { drawHeart } from '../engine/motifs';
 import type { AudioData } from '../engine/audio';
 import type { LyricStyle } from './_motifs';
 import { fitText, type FitResult } from '../engine/text';
@@ -54,6 +55,17 @@ export function fitMsg(c: Ctx2, text: string, family: string, w: number, h: numb
   c.font = font(family, one.size);
   if (one.lines.length === 1 && c.measureText(text).width <= w * 1.001 && one.size >= (o.oneLine ?? o.max * 0.6)) return one;
   return fitText(c, text, family, w, h, o);
+}
+
+/**
+ * 在一個 ♥ 字的位置畫我們自己的愛心（風格聖經：不用字型裡的 ♥）：用目前的 font 量那個字的框，愛心放在框中間。
+ * 逐字畫字的版面（打字、列印、寫字）遇到 ♥ 就呼叫這個，跟 fillWithHearts 的大小一致。
+ */
+export function heartGlyph(c: Ctx2, x: number, y: number, fill = rgba('rose')) {
+  const m = c.measureText('♥');
+  const h = m.actualBoundingBoxAscent + m.actualBoundingBoxDescent;
+  const cy = y - (m.actualBoundingBoxAscent - m.actualBoundingBoxDescent) / 2;
+  drawHeart(c, x + m.width / 2, cy, Math.min(m.width, h * 1.15) * 0.92, fill);
 }
 
 // ---------------------------------------------------------------- 畫布
@@ -342,4 +354,163 @@ export function paperPass(extra = 'vec3 deskArt(vec2 p, vec3 desk) { return desk
       col *= 0.97 + 0.05 * (vUv.y * 0.6 + (1.0 - vUv.x) * 0.4);
       fragColor = vec4(col, 1.0);
     }`, { layer: { value: null }, bake: { value: null }, tone: { value: 0.1 }, fib: { value: 1 }, t: { value: 0 }, ...extraUniforms });
+}
+
+// ---------------------------------------------------------------- 桌面上的鏡頭（MV 化）
+// 紙本版面不要是「一張正對鏡頭的平面截圖」：紙擺在桌上，鏡頭從斜上方看（透視）、慢慢推近，
+// 焦點在留言上，太遠、太近的地方失焦（景深），一盞燈照在焦點附近（光池），四周自然暗下去。
+// 版面照舊把紙與字畫在「桌面座標」（跟以前的螢幕座標一樣，1920×1080）的一張 Canvas2D 上，
+// 鏡頭在 tablePass 的 shader 裡做：每個螢幕像素打一條光線到桌面（z = 0）、算出桌面座標與深度，
+// 深度離焦點越遠就用越大的圓盤取樣模糊。tilt = 0、dist = TABLE_F、對準中心時跟以前的畫面一模一樣。
+
+/** 鏡頭的焦距（像素）：約 35° 的垂直視角，透視不誇張。 */
+export const TABLE_F = (H / 2) / Math.tan((35 * Math.PI) / 180 / 2);
+
+export interface TableCam {
+  /** 對準桌面上的哪一點（桌面座標）。 */
+  tu: number; tv: number;
+  /** 鏡頭到那一點的距離（TABLE_F = 一比一）。 */
+  dist: number;
+  /** 俯角：0 = 正上方往下看；越大越像坐在桌前看（上方往遠處退）。弧度。 */
+  tilt: number;
+  /** 繞桌面法線轉（紙在畫面裡看起來反方向轉）。弧度。 */
+  yaw: number;
+  /** 鏡頭自己歪一點。弧度。 */
+  roll?: number;
+}
+type V3 = [number, number, number];
+const rotZ = (v: V3, a: number): V3 => [v[0] * Math.cos(a) - v[1] * Math.sin(a), v[0] * Math.sin(a) + v[1] * Math.cos(a), v[2]];
+
+/** 鏡頭的位置與三個方向（右、畫面往下、前）。 */
+export function camBasis(c: TableCam): { C: V3; R: V3; D: V3; F: V3 } {
+  let R: V3 = [1, 0, 0];
+  let D: V3 = [0, Math.cos(c.tilt), -Math.sin(c.tilt)];
+  let F: V3 = [0, -Math.sin(c.tilt), -Math.cos(c.tilt)];
+  R = rotZ(R, c.yaw); D = rotZ(D, c.yaw); F = rotZ(F, c.yaw);
+  const r = c.roll ?? 0;
+  if (r) {
+    const cr = Math.cos(r), sr = Math.sin(r);
+    const R2: V3 = [R[0] * cr + D[0] * sr, R[1] * cr + D[1] * sr, R[2] * cr + D[2] * sr];
+    const D2: V3 = [D[0] * cr - R[0] * sr, D[1] * cr - R[1] * sr, D[2] * cr - R[2] * sr];
+    R = R2; D = D2;
+  }
+  const C: V3 = [c.tu - F[0] * c.dist, c.tv - F[1] * c.dist, -F[2] * c.dist];
+  return { C, R, D, F };
+}
+
+/** 桌面座標 → 螢幕座標（z = 深度）。 */
+export function project(c: TableCam, u: number, v: number) {
+  const b = camBasis(c);
+  const q: V3 = [u - b.C[0], v - b.C[1], -b.C[2]];
+  const z = q[0] * b.F[0] + q[1] * b.F[1] + q[2] * b.F[2];
+  return { x: W / 2 + (TABLE_F * (q[0] * b.R[0] + q[1] * b.R[1] + q[2] * b.R[2])) / z, y: H / 2 + (TABLE_F * (q[0] * b.D[0] + q[1] * b.D[1] + q[2] * b.D[2])) / z, z };
+}
+export const lerpCam = (a: TableCam, b: TableCam, k: number): TableCam => ({
+  tu: a.tu + (b.tu - a.tu) * k, tv: a.tv + (b.tv - a.tv) * k, dist: Math.exp(Math.log(a.dist) + (Math.log(b.dist) - Math.log(a.dist)) * k),
+  tilt: a.tilt + (b.tilt - a.tilt) * k, yaw: a.yaw + (b.yaw - a.yaw) * k, roll: (a.roll ?? 0) + ((b.roll ?? 0) - (a.roll ?? 0)) * k,
+});
+
+/** 螢幕上可以放字的範圍：離四邊 96 px，而且不能進右下角 QR 區。 */
+const SAFE = { x0: 96, y0: 96, x1: W - 96, y1: H - 96, qx: 1360, qy: 830 };
+/** 一個桌面座標的矩形投影到螢幕後，是否完全在安全範圍內。 */
+export function rectSafe(c: TableCam, r: Rect) {
+  const pts = [[r[0], r[1]], [r[0] + r[2], r[1]], [r[0], r[1] + r[3]], [r[0] + r[2], r[1] + r[3]]].map(([u, v]) => project(c, u!, v!));
+  const x0 = Math.min(...pts.map((p) => p.x)), x1 = Math.max(...pts.map((p) => p.x));
+  const y0 = Math.min(...pts.map((p) => p.y)), y1 = Math.max(...pts.map((p) => p.y));
+  if (x0 < SAFE.x0 || y0 < SAFE.y0 || x1 > SAFE.x1 || y1 > SAFE.y1) return false;
+  return !(x1 > SAFE.qx && y1 > SAFE.qy);
+}
+/**
+ * 把鏡頭往後拉（dist 變大）到所有重要的字（桌面座標的矩形）都在安全範圍內為止。
+ * 推近的鏡頭在留言很長、換行很多時會把字推出畫面；用這個保證任何長度都讀得到。
+ */
+export function fitCam(c: TableCam, rects: Rect[], maxDist = TABLE_F * 1.6): TableCam {
+  const ok = (d: number) => rects.every((r) => rectSafe({ ...c, dist: d }, r));
+  if (ok(c.dist)) return c;
+  let lo = c.dist, hi = maxDist;
+  if (!ok(hi)) return { ...c, dist: hi };
+  for (let i = 0; i < 18; i++) { const m = (lo + hi) / 2; if (ok(m)) hi = m; else lo = m; }
+  return { ...c, dist: hi };
+}
+
+/**
+ * 桌面鏡頭的合成 pass：光線打到桌面 → 桌面座標 → 取 Canvas2D 層（景深模糊）＋ 桌面（紙纖維）＋ 燈光。
+ * 層是 fast 的 Layer2D，範圍是桌面座標 0..W × 0..H（可以是比較高的解析度）。
+ * extra：版面自己的桌面圖樣 `vec3 deskArt(vec2 p, vec3 desk)`（p 是桌面座標）。
+ */
+export function tablePass(extra = 'vec3 deskArt(vec2 p, vec3 desk) { return desk; }', extraUniforms: Record<string, THREE.IUniform> = {}) {
+  return new FSPass(/* glsl */ `
+    uniform sampler2D layer; uniform sampler2D bake; uniform float tone; uniform float fib; uniform float t;
+    uniform vec3 camC; uniform vec3 camR; uniform vec3 camD; uniform vec3 camF;
+    uniform float focusZ; uniform float aperture; uniform float sharp;
+    uniform vec3 lamp; // 燈照在桌面的哪裡（u, v）與光池半徑
+    ${extra}
+    vec4 L(vec2 p) {
+      vec2 uv = vec2(p.x / ${W}.0, 1.0 - p.y / ${H}.0);
+      if (uv.x < 0.0 || uv.y < 0.0 || uv.x > 1.0 || uv.y > 1.0) return vec4(0.0);
+      // 層沒有 mipmap，而且這裡在迴圈裡：一律 textureLod（見 ENGINE.md）
+      vec4 c = textureLod(layer, uv, 0.0);
+      c.rgb = c.a > 0.0 ? toLinear(c.rgb / c.a) * c.a : vec3(0.0);
+      return c;
+    }
+    void main() {
+      vec2 sp = vec2(vUv.x * ${W}.0, (1.0 - vUv.y) * ${H}.0);
+      vec3 d = camF * ${TABLE_F.toFixed(3)} + camR * (sp.x - ${W / 2}.0) + camD * (sp.y - ${H / 2}.0);
+      float tt = camC.z / max(-d.z, 1e-4);
+      vec2 p = camC.xy + tt * d.xy;
+      float z = tt * ${TABLE_F.toFixed(3)};
+      // 景深：離焦平面越遠圓盤越大（sharp 以內都是清楚的）；半徑換成桌面座標
+      float coc = aperture * max(0.0, abs(z - focusZ) / z - sharp);
+      float r = min(coc, 14.0) * z / ${TABLE_F.toFixed(3)};
+      vec4 acc = L(p);
+      if (r > 0.45) {
+        float a0 = hash12(sp) * 6.2832;
+        for (int i = 0; i < 12; i++) {
+          float fi = float(i) + 0.5;
+          float ang = fi * 2.39996 + a0;
+          acc += L(p + vec2(cos(ang), sin(ang)) * r * sqrt(fi / 12.0));
+        }
+        acc /= 13.0;
+      }
+      // 桌面：紙纖維用鏡像鋪滿（沒有接縫）
+      vec2 m = abs(mod(p / vec2(${W}.0, ${H}.0) + 1.0, 2.0) - 1.0);
+      vec4 bk = texture(bake, vec2(m.x, 1.0 - m.y));
+      vec3 desk = mix(C_PAPER, C_SEPIA, tone) * (0.93 + 0.14 * bk.g);
+      desk = deskArt(p, desk);
+      vec3 col = desk * (1.0 - acc.a) + acc.rgb;
+      col *= mix(1.0, 0.8 + 0.4 * bk.r, fib);
+      // 燈：焦點附近亮、四周暗下去（紙最亮也不超過紙色本身太多，不刺眼）
+      float ld = length(p - lamp.xy) / lamp.z;
+      col *= 0.74 + 0.3 * exp(-ld * ld);
+      fragColor = vec4(col, 1.0);
+    }`, {
+    layer: { value: null }, bake: { value: null }, tone: { value: 0.12 }, fib: { value: 1 }, t: { value: 0 },
+    camC: { value: new THREE.Vector3() }, camR: { value: new THREE.Vector3() }, camD: { value: new THREE.Vector3() }, camF: { value: new THREE.Vector3() },
+    focusZ: { value: 1 }, aperture: { value: 40 }, sharp: { value: 0.03 }, lamp: { value: new THREE.Vector3(960, 540, 900) },
+    ...extraUniforms,
+  });
+}
+
+/**
+ * 把鏡頭、焦點、燈設給 tablePass。
+ * focus：一定要清楚的點（桌面座標，例如留言中心、歌詞中心）：焦平面放在它們中間，清楚的深度範圍涵蓋全部，
+ * 其他更遠、更近的地方才失焦。沒給就對焦在鏡頭對準的那一點。
+ */
+export function setTableCam(p: FSPass, c: TableCam, o: { aperture?: number; sharp?: number; lamp?: [number, number, number]; focus?: [number, number][] } = {}) {
+  const b = camBasis(c);
+  (p.u.camC!.value as THREE.Vector3).set(...b.C);
+  (p.u.camR!.value as THREE.Vector3).set(...b.R);
+  (p.u.camD!.value as THREE.Vector3).set(...b.D);
+  (p.u.camF!.value as THREE.Vector3).set(...b.F);
+  let fz = c.dist, sharp = o.sharp ?? 0.03;
+  if (o.focus?.length) {
+    const zs = o.focus.map(([u, v]) => project(c, u, v).z);
+    const z0 = Math.min(...zs), z1 = Math.max(...zs);
+    fz = (z0 + z1) / 2;
+    sharp += (z1 - z0) / 2 / fz;
+  }
+  p.u.focusZ!.value = fz;
+  p.u.aperture!.value = o.aperture ?? 40;
+  p.u.sharp!.value = sharp;
+  (p.u.lamp!.value as THREE.Vector3).set(...(o.lamp ?? [c.tu, c.tv, 900]));
 }

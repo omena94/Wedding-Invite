@@ -56,9 +56,22 @@ uniform vec2 uAG;
 uniform vec3 cameraPosition;
 uniform vec3 uLight;
 uniform float uRad;
+uniform float uCream;   // 1 = 奶油色的牌、墨色的字（主打留言用）；0 = 黑牌白字
+uniform vec2 uPool;     // 燈的光圈中心（世界座標 x, y）與半徑在 uPoolR
+uniform float uPoolR;
 out vec4 fragColor;
 ${GLYPH_GLSL}
 ${CODE_GLSL}
+/** 奶油色牌上的墨：唱完／留言＝深墨、還沒唱＝三成、正在唱＝訊號色的暗部（淺底上看得清楚）。 */
+vec3 creamInk(float k, vec3 card) {
+  if (k < 1.5) return mix(card, C_SEPIA, 0.3);
+  if (k < 2.5) return C_SEPIA * 0.85;
+  if (k < 3.5) return C_BLOOD * 0.9;
+  if (k < 4.5) return mix(card, C_SEPIA, 0.72);
+  if (k < 5.5) return C_ROSE * 0.75;
+  if (k < 6.5) return C_BLOOD;
+  return mix(card, C_SEPIA, 0.4);
+}
 void main() {
   vec2 uv = vUV;
   float gi = vG.x, code = vG.z;
@@ -78,19 +91,25 @@ void main() {
   float dif = 0.42 + 0.7 * max(dot(n, L), 0.0);
   float spec = pow(max(dot(reflect(-L, n), V), 0.0), 36.0);
   // 牌面：上半片上面亮一點、下半片暗一點（燈從上面來），很淡的紋理
-  vec3 card = (C_INK2 * 1.5 + C_GRAPHITE * 0.06) * (uv.y < 0.5 ? mix(1.2, 1.0, uv.y * 2.0) : mix(0.85, 0.7, (uv.y - 0.5) * 2.0));
-  card *= 0.94 + 0.06 * snoise(lp * 0.05);
+  float halfK = uv.y < 0.5 ? mix(1.2, 1.0, uv.y * 2.0) : mix(0.85, 0.7, (uv.y - 0.5) * 2.0);
+  vec3 card = uCream > 0.5 ? C_PAPER * 0.74 * mix(halfK, 1.0, 0.5) : (C_INK2 * 1.5 + C_GRAPHITE * 0.06) * halfK;
+  card *= uCream > 0.5 ? 0.985 + 0.015 * snoise(lp * 0.04) : 0.94 + 0.06 * snoise(lp * 0.05);
+  // 空白的牌暗一點：牌的質感還在，但不搶字
+  if (gi < -0.5 && vG.x < -0.5 && vG.y < -0.5) card *= uCream > 0.5 ? 0.5 : 0.7;
+  // 燈的光圈：光圈外的牌暗下去（像一盞燈只照在這台機器上）
+  float pool = exp(-pow(length(vWP.xy - uPool) / uPoolR, 2.0));
+  card *= mix(0.55, 1.05, pool);
   float a = glyphAt(gi, uv);
-  vec3 ink = codeCol(code);
+  vec3 ink = uCream > 0.5 ? creamInk(code, card) : codeCol(code);
   vec3 col = mix(card * dif, ink * mix(1.0, dif, 0.35), a);
-  col += C_BONE * spec * 0.1 * (1.0 - a * 0.5);
+  col += C_BONE * spec * (uCream > 0.5 ? 0.05 : 0.1) * (1.0 - a * 0.5);
   // 翻下來的那片在下半片投的影子（越接近垂直越暗、越靠近轉軸越暗）
   if (piece > 0.5 && piece < 1.5) col *= 1.0 - 0.62 * sin(vTh) * (1.0 - smoothstep(0.0, 0.85, vS));
   // 轉軸的縫
   float hy = abs(uv.y - 0.5) * sz.y;
   col *= 1.0 - 0.88 * (1.0 - smoothstep(0.7, 2.2, hy));
-  // 牌緣一圈細細的光
-  col += C_BONE * 0.05 * (1.0 - smoothstep(0.0, 2.2, -d));
+  // 牌緣一圈細細的光（奶油色的牌是一圈暗邊）
+  col += (uCream > 0.5 ? -C_SEPIA * 0.08 : C_BONE * 0.05) * (1.0 - smoothstep(0.0, 2.2, -d));
   fragColor = vec4(col * cov, 1.0);
 }`;
 
@@ -115,6 +134,7 @@ export class CardBatch {
       uniforms: {
         ...THEME_UNIFORMS, uAtlas: { value: atlas }, uAG: { value: new THREE.Vector2(...grid) },
         uLight: { value: new THREE.Vector3(-0.3, 0.75, 0.6) }, uRad: { value: radius }, cameraPosition: { value: new THREE.Vector3() },
+        uCream: { value: 0 }, uPool: { value: new THREE.Vector2(0, 0) }, uPoolR: { value: 1e5 },
       },
       side: THREE.DoubleSide, depthTest: true, depthWrite: true,
     });
@@ -165,6 +185,8 @@ uniform vec4 uDot;           // 冒號的兩顆點：x, y1, y2, 亮度（< 0 = �
 uniform vec3 uLight;
 uniform vec3 cameraPosition;
 uniform float uIn;
+uniform vec2 uPool;
+uniform float uPoolR;
 out vec4 fragColor;
 void main() {
   vec3 n = normalize(vN);
@@ -172,8 +194,9 @@ void main() {
   vec3 V = normalize(cameraPosition - vWP);
   float dif = 0.3 + 0.8 * max(dot(n, L), 0.0);
   float spec = pow(max(dot(reflect(-L, n), V), 0.0), 18.0);
-  // 機殼：七〇年代桌鐘的奶油色塑膠（紙色，跟著主題），不發光
-  vec3 body = C_PAPER * 0.36;
+  // 機殼：暖黑的烤漆（奶油色的牌放在上面才是焦點）；燈的光圈外暗下去
+  vec3 body = C_INK2 * 2.2 + C_GRAPHITE * 0.06;
+  body *= mix(0.45, 1.1, exp(-pow(length(vWP.xy - uPool) / uPoolR, 2.0)));
   vec3 col;
   if (n.z > 0.5) {
     vec2 lp = vec2(vUV.x * uSize.x, (1.0 - vUV.y) * uSize.y);
@@ -222,6 +245,7 @@ export function boxMaterial(w: number, h: number) {
       uWin: { value: Array.from({ length: MAX_WIN }, () => new THREE.Vector4()) }, uNWin: { value: 0 },
       uDot: { value: new THREE.Vector4(0, 0, 0, -1) }, uLight: { value: new THREE.Vector3(-0.3, 0.75, 0.6) },
       cameraPosition: { value: new THREE.Vector3() }, uIn: { value: 1 },
+      uPool: { value: new THREE.Vector2(0, 0) }, uPoolR: { value: 1e5 },
     },
   });
 }

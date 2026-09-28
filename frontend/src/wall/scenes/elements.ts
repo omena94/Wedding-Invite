@@ -1,12 +1,12 @@
-// 元素週期表（亮）：一張印在奶茶色紙上的週期表海報，右上角是真的 118 個元素（細線、小字、族別淡淡上色）。
-//  - 主打留言的每個字是一個「元素」：從第一拍起，表上的某一格在拍點前亮起（訊號色），一塊元素方塊從那格飛出來，
-//    邊飛邊變大，落地前翻面——背面是原本的元素符號（Au、Ne…），正面是留言的字——正好在拍點上落定。
-//    方塊左上角是原子序：從留言編號開始（No.042 的第一個字是 42 號）。標點與空白不做方塊，跟在前一格後面。
-//  - 右下方的「圖例」：一格大方塊「囍」，名稱是留言的署名、原子序是留言編號、原子量 1314.520（一生一世我愛你），
-//    旁邊用細線標註每一欄是什麼——一本正經的冷面笑話。
-//  - 歌詞在左上的「現場歌詞」欄，照跟唱規則（亮版面：唱到的字是訊號色的暗部，底下一道螢光筆）。
-//  - 全部落定後，每一拍有一格的邊框亮一下，像有人拿筆一個字一個字指著讀。
-//  - 沒有留言：方塊拼出「宣文♥孟庭」，下面邀請大家掃 QR（你的祝福也能成為一種元素）。純音樂：歌詞欄寫「本表配樂」與歌名。
+// 元素週期表（亮）：一張奶茶色紙上的週期表海報。MV 版：表是背景（右上、淡、微微失焦，像離鏡頭比較遠），
+// 焦點是下方用「元素方塊」拼出來的主打留言；鏡頭整個窗格慢慢往前推。
+//  - 主打留言的每個字是一個「元素」：從第一拍起，表上的某一格在拍點前亮起（訊號色），一塊方塊從那格飛出來，
+//    邊飛邊變大、從模糊的背景飛到清楚的前景，落地前翻面——背面是原本的元素符號（Au、Ne…），正面是留言的字——正好在拍點上落定。
+//    方塊左上角小小的原子序從留言編號開始（No.042 的第一個字是 42 號）。標點與空白不做方塊，跟在前一格後面。
+//  - 歌詞在左上（比留言小一級），照跟唱規則（亮版面：唱到的字是訊號色的暗部，底下一道螢光筆）。
+//  - 署名在方塊的右下；全部落定後，每一拍有一格的邊框亮一下，像有人拿筆一個字一個字指著讀。
+//  - 小字只有兩群：左上的刊頭一行、左下的冷面註腳（原子量 1314.520＝一生一世我愛你）。
+//  - 沒有留言：歌詞放大成焦點，方塊小小地拼出「宣文♥孟庭」、下面一行邀請。純音樂：左上寫這張表的配樂（歌名）。
 import * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
 import { Layer2D, W, H } from '../engine/gl';
@@ -15,8 +15,8 @@ import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, lerp, prog, pulse, hash } from '../engine/util';
 import { tokens } from '../engine/text';
 import { Lyrics } from '../engine/lyrics';
-import { lyricAt, layoutLyric, beatAfter, drawHeart, COUPLE_ZH, DATE_DOTS } from './_motifs';
-import { Paper, stagger, bbox, pad3, mono, tag, type Rect } from './_t11';
+import { lyricAt, layoutLyric, beatAfter, drawHeart, signature, fillWithHearts, COUPLE_ZH } from './_motifs';
+import { Paper, stagger, mono, tag } from './_t11';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'science', paper: true, energy: [0.3, 0.9], bars: [4, 8], weight: 1 };
 
@@ -50,72 +50,81 @@ function family(z: number): 's' | 'd' | 'p' | 'n' | 'f' {
   if (c >= 12 || z === 1) return 'p';
   return 'd';
 }
-/** 表的位置與格子大小（右上角）。 */
-const TB = { x: 944, y: 112, cell: 48 };
+/** 表的位置與格子大小（右上角，背景）。 */
+const TB = { x: 1062, y: 92, cell: 42 };
 const cellXY = (z: number) => { const { r, c } = cellOf(z); return { x: TB.x + c * TB.cell, y: TB.y + r * TB.cell }; };
 
 // ---------------------------------------------------------------- 版面
-const TITLE = '祝福元素週期表';
-const LYR = { x: 124, y: 392, w: 740, size: 76 };
-/** 留言方塊排在這裡（x < 1360：右下角 QR 上面不放字）。 */
-const TILES = { x: 124, y: 604, w: 1210, h: 318 };
-/** 圖例（大方塊＋標註）。 */
-const KEY = { x: 1408, y: 612, s: 196 };
-const FOOT = '＊原子序依祝福送達順序編排。本元素性質穩定，半衰期：永久。';
+const MAST = 'PERIODIC TABLE OF WISHES　·　祝福元素週期表';
+/** 有留言：歌詞在左上（表的左邊）；方塊在下面一整條（最下緣 820：鏡頭推近以後也不碰右下角 QR）。 */
+const LYR_M = { x: 124, y: 316, w: 860 };
+const TILES_M = { x: 124, y: 556, w: 1560, h: 262 };
+/** 沒有留言：歌詞放大在中間偏下，方塊小小一排在更下面。 */
+const LYR_N = { x: 124, y: 600, w: 1560, size: 104 };
+const TILES_N = { x: 124, y: 700, w: 1200, h: 100 };
+const FOOT = '＊原子序依祝福送達順序編排；原子量 1314.520（一生一世我愛你）。';
 const INVITE = '掃描右下角 QR code，你的祝福也能成為一種新元素。';
 const FAM_TILE = F.archivo(100, 700);
+/** 鏡頭推近的最大倍率（字離邊與 QR 的距離是照這個算的）。 */
+const PUSH = 0.02;
 
-interface Tile { ch: string; tile: boolean; x: number; y: number; z: number; land: number; num: number }
+/** 一塊方塊。英文一個單字一塊（長方形，寬是字寬、高跟中文方塊一樣）：一個字母一格太碎，讀不出單字。r = 寬 ÷ 高。 */
+interface Tile { ch: string; tile: boolean; x: number; y: number; z: number; land: number; num: number; r: number }
 
 export default class Elements extends Scene {
   paper = shared('t11.paper', () => new Paper());
-  /** 不會變的：週期表、標題、註腳（init 畫一次）。 */
+  /** 不會變的：週期表（微微失焦）、刊頭、註腳（init 畫一次）。 */
   base = this.track(new Layer2D(W, H, undefined, { fast: true }));
-  /** 每格重畫：亮起的格子、飛行中與落定的方塊、歌詞、圖例。 */
+  /** 每格重畫：亮起的格子、飛行中與落定的方塊、歌詞、署名。 */
   layer = this.track(new Layer2D(W, H, undefined, { fast: true }));
   msg: Msg | null = this.ctx.params.message ?? null;
   seed = ((this.ctx.params.seed ?? 1) * 977 + (this.msg?.id ?? 0) * 131) >>> 0;
   tiles: Tile[] = [];
   S = 60; T = 78;
   dur = 0.4;
-  tFirst = 0; tLast = 0; tKey = 0;
-  name = '';
-  num = 0;
+  tFirst = 0; tLast = 0;
+  lyrSize = 64;
+  sig = '';
+  sigX = 0; sigY = 0;
   lyricsInWindow = false;
-  avoid: Rect[] = [];
   bottom = 0;
 
   override async init() {
     const { audio: au, lyrics, song } = this.ctx;
     const s = this.ctx.start, e = this.ctx.end, m = this.msg;
     const text = m ? m.text : COUPLE_ZH.replace(/\s*&\s*/, '♥');
-    this.name = m ? (m.couple ? '新郎新娘' : m.name || '一位賓客') : '你？';
-    this.num = m ? m.n : 0;
-    await loadText(`${text}${TITLE}${FOOT}${INVITE}${this.name}${song.title}${song.artist}囍現場歌詞本表配樂圖例原子序原子量元素名稱符號一個字寫的人第幾則祝福一生一世我愛你`);
-    const c = this.layer.ctx;
+    this.sig = m ? (m.couple ? '—— 新郎新娘' : signature(m.name)) : '';
+    await loadText(`${text}${MAST}${FOOT}${INVITE}${this.sig}${song.title}${song.artist}本表配樂`);
+    const box = m ? TILES_M : TILES_N;
 
-    // ---- 排方塊：找最大的字級，方塊邊長 = 字級 × 1.3，英文字不拆、標點跟在前一格後面
+    // ---- 排方塊：找最大的字級，方塊邊長 = 字級 × 1.3；中文一字一塊、英文一個單字一塊，標點跟在前一格後面
     const toks = tokens(text);
     const narrow = (ch: string) => !/[\p{L}\p{N}♥]/u.test(ch);
+    const mc = this.layer.ctx;
     const place = (S: number) => {
       const T = Math.round(S * 1.3), g = Math.round(T * 0.1), lh = T + Math.round(T * 0.2);
-      const adv = (ch: string) => (ch === ' ' ? T * 0.42 : narrow(ch) ? S * 0.78 : T + g);
-      const lines: { ch: string; x: number }[][] = [[]];
+      mc.font = font(FAM_TILE, S);
+      // 一個單位：英文單字（連在一起的拉丁字母、數字）是一塊，其他一字一個
+      const units = (tk: string) => { const out: string[] = []; for (const part of tk.split(/([\p{Script=Latin}\p{N}'’\-&]+)/u)) { if (!part) continue; if (/^[\p{Script=Latin}\p{N}'’\-&]+$/u.test(part)) out.push(part); else out.push(...Array.from(part)); } return out; };
+      const width = (u: string) => (u === ' ' ? T * 0.42 : narrow(u) ? S * 0.78 : Array.from(u).length > 1 ? Math.max(T, mc.measureText(u).width + T * 0.34) : T);
+      const lines: { ch: string; x: number; w: number }[][] = [[]];
       let x = 0;
       for (const tk of toks) {
-        const chars = Array.from(tk);
-        const w = chars.reduce((a, ch) => a + adv(ch), 0);
-        const wTrim = w - (tk.endsWith(' ') ? adv(' ') : 0);
-        if (x > 0 && x + wTrim > TILES.w) { lines.push([]); x = 0; }
-        for (const ch of chars) {
-          if (!(x === 0 && ch === ' ')) lines[lines.length - 1]!.push({ ch, x });
-          if (!(x === 0 && ch === ' ')) x += adv(ch);
+        const us = units(tk);
+        const w = us.reduce((a, u) => a + width(u) + (u === ' ' || narrow(u) ? 0 : g), 0);
+        const wTrim = w - (tk.endsWith(' ') ? width(' ') : 0);
+        if (x > 0 && x + wTrim > box.w) { lines.push([]); x = 0; }
+        for (const u of us) {
+          if (x === 0 && u === ' ') continue;
+          lines[lines.length - 1]!.push({ ch: u, x, w: width(u) });
+          x += width(u) + (u === ' ' || narrow(u) ? 0 : g);
         }
       }
       const h = lines.length * lh - Math.round(T * 0.2);
-      return { T, lh, lines, h, ok: h <= TILES.h && lines.length <= 5 && lines.every((l) => l.every((q) => q.x + (narrow(q.ch) ? S * 0.78 : T) <= TILES.w + 1)) };
+      const right = Math.max(...lines.map((l) => (l.length ? l[l.length - 1]!.x + l[l.length - 1]!.w : 0)));
+      return { T, lh, lines, h, right, ok: h <= box.h && lines.length <= 5 && right <= box.w + 1 };
     };
-    let lo = 40, hi = 150, best = place(lo);
+    let lo = 40, hi = m ? 150 : 56, best = place(lo);
     for (let k = 0; k < 12; k++) { const mid = (lo + hi) / 2, r = place(mid); if (r.ok) { best = r; lo = mid; } else hi = mid; }
     this.S = Math.floor(lo); best = place(this.S); this.T = best.T;
     // 元素：每個字挑一格（不重複）
@@ -125,11 +134,16 @@ export default class Elements extends Scene {
     best.lines.forEach((ln, li) => {
       for (const q of ln) {
         const tile = !(q.ch === ' ' || narrow(q.ch));
-        this.tiles.push({ ch: q.ch, tile, x: TILES.x + q.x, y: TILES.y + li * best.lh, z: tile ? pick(k) : 0, land: 0, num: tile ? (m ? m.n : 1) + k : 0 });
+        this.tiles.push({ ch: q.ch, tile, x: box.x + q.x, y: box.y + li * best.lh, z: tile ? pick(k) : 0, land: 0, num: tile ? (m ? m.n : 1) + k : 0, r: q.w / best.T });
         if (tile) k++;
       }
     });
-    this.bottom = TILES.y + best.h;
+    this.bottom = box.y + best.h;
+    // 署名：方塊右下，靠右對齊（不進右下角 QR 區）
+    this.sigX = Math.min(box.x + best.right, 1330);
+    this.sigY = this.bottom + 58;
+    // 歌詞比留言小一級（留言方塊的字 × 0.72，48～64 px）
+    this.lyrSize = Math.round(clamp(this.S * 0.72, 48, 64));
 
     // ---- 時間：第一拍後一拍一塊（或更密），兩小節內、也不超過窗格的四成五落定
     const beat = au.beatPeriod(s);
@@ -141,58 +155,32 @@ export default class Elements extends Scene {
     let j = 0, lastLand = t0;
     for (const tl of this.tiles) { if (tl.tile) lastLand = lands[j++]!; tl.land = lastLand; }
     this.tLast = lastLand;
-    this.tKey = Math.min(e - 0.6, this.tLast + beat);
     this.lyricsInWindow = lyrics.linesIn(s, e).length > 0;
-
     this.drawBase();
-
-    // ---- 即時小卡避開：方塊、歌詞欄、圖例
-    const tilesR: Rect = [TILES.x - 16, TILES.y - 20, TILES.w + 32, this.bottom - TILES.y + (m ? 30 : 110)];
-    const key: Rect = [KEY.x - 16, KEY.y - 40, W - 96 - KEY.x + 32, KEY.s + 60];
-    this.avoid = [tilesR, tilesR, key];
-    if (this.lyricsInWindow) {
-      let rows = 1;
-      for (const line of lyrics.linesIn(s, e)) rows = Math.max(rows, layoutLyric(c, line, { family: F.archivo(100, 800), size: LYR.size, minSize: 48, maxWidth: LYR.w }).rows.length);
-      const r = bbox([[LYR.x - 10, LYR.y - LYR.size - 10, LYR.w + 20, LYR.size * (rows > 1 ? 2.3 : 1.25) + 20]]);
-      this.avoid.push(r, r);
-    }
   }
 
-  /** 不會變的東西畫一次：週期表（細線、小字、族別底色）、標題、註腳。 */
+  /** 不會變的東西畫一次：週期表（淡、微微失焦＝背景）、刊頭、註腳。 */
   private drawBase() {
     const c = this.base.ctx, cs = TB.cell;
     this.base.clear();
-    const tint: Record<string, string> = { s: rgba('signal', 0.2), d: rgba('sepia', 0.035), p: rgba('blood', 0.08), n: rgba('rose', 0.16), f: rgba('sepia', 0.07) };
+    c.save();
+    c.filter = 'blur(1.4px)';
+    c.globalAlpha = 0.62;
+    const tint: Record<string, string> = { s: rgba('signal', 0.18), d: rgba('sepia', 0.03), p: rgba('blood', 0.07), n: rgba('rose', 0.14), f: rgba('sepia', 0.06) };
     for (let z = 1; z <= 118; z++) {
       const { x, y } = cellXY(z);
       c.fillStyle = tint[family(z)]!;
       c.fillRect(x + 1, y + 1, cs - 2, cs - 2);
-      c.strokeStyle = rgba('sepia', 0.5); c.lineWidth = 1;
+      c.strokeStyle = rgba('sepia', 0.4); c.lineWidth = 1;
       c.strokeRect(x + 0.5, y + 0.5, cs - 1, cs - 1);
-      c.font = font(F.mono(500), 9); c.fillStyle = rgba('sepia', 0.55);
-      c.fillText(String(z), x + 4, y + 11);
-      c.font = font(F.archivo(100, 700), 18); c.fillStyle = rgba('sepia', 0.85); c.textAlign = 'center';
-      c.fillText(SYM[z - 1]!, x + cs / 2, y + 36);
+      c.font = font(F.archivo(100, 700), 16); c.fillStyle = rgba('sepia', 0.7); c.textAlign = 'center';
+      c.fillText(SYM[z - 1]!, x + cs / 2, y + cs * 0.66);
       c.textAlign = 'left';
     }
-    // 鑭系、錒系的佔位格（虛線）
-    c.setLineDash([3, 3]); c.strokeStyle = rgba('sepia', 0.45);
-    for (const r of [5, 6]) c.strokeRect(TB.x + 2 * cs + 0.5, TB.y + r * cs + 0.5, cs - 1, cs - 1);
-    c.setLineDash([]);
-    c.font = font(F.mono(500), 9); c.fillStyle = rgba('sepia', 0.55); c.textAlign = 'center';
-    c.fillText('57–71', TB.x + 2.5 * cs, TB.y + 5.6 * cs); c.fillText('89–103', TB.x + 2.5 * cs, TB.y + 6.6 * cs);
-    c.textAlign = 'left';
-    // 族的編號
-    for (let g = 1; g <= 18; g++) mono(c, String(g), TB.x + (g - 0.5) * cs, TB.y - 10 + (g === 1 || g === 18 ? 0 : g === 2 || g >= 13 ? cs : 3 * cs), { size: 10, tracking: 1, align: 'center', color: rgba('sepia', 0.5) });
-    // 標題
-    c.font = font(F.ming(900), 60); c.fillStyle = rgba('sepia');
-    c.fillText(TITLE, 124, 176);
-    mono(c, `PERIODIC TABLE OF WISHES  ·  ${DATE_DOTS}`, 126, 212, { size: 15, tracking: 3, color: rgba('sepia', 0.6) });
-    c.fillStyle = rgba('sepia', 0.7); c.fillRect(124, 234, 740, 2);
-    // 註腳
-    c.font = font(F.hei(500), 17); c.letterSpacing = '2px'; c.fillStyle = rgba('sepia', 0.6);
-    c.fillText(FOOT, 124, 978);
-    c.letterSpacing = '0px';
+    c.restore();
+    // 刊頭（一行小字）與註腳（一行小字）：整個畫面只有這兩群小字
+    mono(c, MAST, 124, 132, { size: 16, tracking: 3, color: rgba('sepia', 0.5) });
+    tag(c, FOOT, 124, 976, { size: 17, tracking: 2, color: rgba('sepia', 0.5) });
   }
 
   override render(f: Frame, out: THREE.WebGLRenderTarget): PostOverrides {
@@ -224,11 +212,12 @@ export default class Elements extends Scene {
         continue;
       }
       const t0 = q.land - this.dur;
-      // 起飛前 0.12 秒：表上那一格先亮
+      // 起飛前 0.12 秒：表上那一格先亮（背景失焦，所以亮得軟一點）
       if (t >= t0 - 0.12 && t < q.land + 0.5) {
         const { x, y } = cellXY(q.z);
-        c.fillStyle = rgba('signal', t < t0 ? prog(t, t0 - 0.12, t0) * 0.9 : 0.9 * (1 - prog(t, t0, q.land + 0.5)));
-        c.fillRect(x + 1, y + 1, TB.cell - 2, TB.cell - 2);
+        const a = t < t0 ? prog(t, t0 - 0.12, t0) : 1 - prog(t, t0, q.land + 0.5);
+        c.fillStyle = rgba('signal', 0.3 * a); c.fillRect(x - 3, y - 3, TB.cell + 6, TB.cell + 6);
+        c.fillStyle = rgba('signal', 0.75 * a); c.fillRect(x + 1, y + 1, TB.cell - 2, TB.cell - 2);
       }
       if (t < t0) continue;
       if (t < q.land) { flying.push(q); continue; }
@@ -239,7 +228,7 @@ export default class Elements extends Scene {
       const p = (t - (q.land - this.dur)) / this.dur;
       const u = ease.outExpo(p);
       const from = cellXY(q.z);
-      // 先往下、再往左（垂直方向走得比較快）：路線從歌詞欄的下面繞過去，不會掃過正在唱的字；邊飛邊從格子大小長到方塊大小
+      // 先往下、再往左（垂直方向走得比較快）：路線從歌詞的下面繞過去，不會掃過正在唱的字；邊飛邊從格子大小長到方塊大小
       const x = lerp(from.x, q.x, ease.outQuart(p)), y = lerp(from.y, q.y, u) + Math.sin(Math.PI * u) * 40;
       const sz = lerp(TB.cell, T, ease.outCubic(p));
       // 翻面：飛行的後三成，前半看到元素符號、後半看到留言的字
@@ -248,18 +237,24 @@ export default class Elements extends Scene {
       this.tile(c, q, x, y, sz, sx, 1 + 0.08 * Math.sin(Math.PI * p), fl < 0.5, 0, 0, (1 - u) * 0.25 * (hash(q.z) - 0.5));
     }
 
-    // ---- 圖例
-    if (t >= this.tKey) this.key(c, t);
-    // 沒有留言：方塊下面一行邀請
-    if (!this.msg && t >= this.tLast) {
-      c.save(); c.globalAlpha *= prog(t, this.tLast, this.tLast + 0.4);
-      c.font = font(F.hand(700), 46); c.fillStyle = rgba('sepia');
-      c.fillText(INVITE, TILES.x, this.bottom + 76);
+    // ---- 署名（留言）或邀請（沒有留言）
+    if (t >= this.tLast) {
+      const k = prog(t, this.tLast + beat * 0.5, this.tLast + beat * 0.5 + 0.35);
+      c.save(); c.globalAlpha *= k;
+      if (this.msg) {
+        c.font = font(F.hand(400), 44); c.fillStyle = rgba('sepia', 0.8); c.textAlign = 'right';
+        fillWithHearts(c, this.sig, this.sigX, this.sigY);
+      } else {
+        c.font = font(F.hand(700), 34); c.fillStyle = rgba('sepia', 0.7);
+        c.fillText(INVITE, TILES_N.x, this.sigY - 6);
+      }
       c.restore();
     }
     comp.draw(renderer, L.upload(), out);
+    // 鏡頭：整個窗格慢慢往前推（inOutSine），方塊落定時頓一下
+    const u = (1 - Math.cos(Math.PI * clamp((t - s) / Math.max(1, e - s)))) / 2;
     const landHit = this.tiles.reduce((a, q) => Math.max(a, q.tile ? pulse(t, q.land, 0.08) : 0), 0);
-    return { paper: 1, bloom: 0.35, vignette: 0.22, grain: 0.04, halation: 0.05, zoom: 1 + 0.004 * landHit + 0.006 * pulse(t, this.tLast, 0.2), popupAvoid: this.avoid };
+    return { paper: 1, bloom: 0.35, vignette: 0.3, grain: 0.04, halation: 0.05, zoom: 1 + PUSH * u + 0.003 * landHit };
   }
 
   /**
@@ -269,29 +264,29 @@ export default class Elements extends Scene {
   private tile(c: CanvasRenderingContext2D, q: Tile, x: number, y: number, sz: number, sx: number, lift: number, back: boolean, read: number, thud: number, rot = 0) {
     const fam = family(q.z);
     const heart = q.ch === '♥';
+    const wd = sz * q.r, hw = wd / 2;
     c.save();
-    c.translate(x + sz / 2, y + sz / 2);
+    c.translate(x + hw, y + sz / 2);
     c.rotate(rot);
     c.scale(sx * lift, lift);
     const h = sz / 2;
     // 影子：飛起來的時候比較遠、比較淡
     const sh = (lift - 1) * 120 + 4;
     c.fillStyle = rgba('sepia', lift > 1.001 ? 0.12 : 0.1);
-    c.fillRect(-h + sh * 0.6, -h + sh, sz, sz);
+    c.fillRect(-hw + sh * 0.6, -h + sh, wd, sz);
     // 底：紙色，族別淡淡上色
     c.fillStyle = rgba('paper');
-    c.fillRect(-h, -h, sz, sz);
-    const tint: Record<string, string> = { s: rgba('signal', 0.26), d: rgba('sepia', 0.05), p: rgba('blood', 0.1), n: rgba('rose', 0.2), f: rgba('sepia', 0.09) };
+    c.fillRect(-hw, -h, wd, sz);
+    const tint: Record<string, string> = { s: rgba('signal', 0.2), d: rgba('sepia', 0.04), p: rgba('blood', 0.08), n: rgba('rose', 0.16), f: rgba('sepia', 0.07) };
     c.fillStyle = tint[fam]!;
-    c.fillRect(-h, -h, sz, sz);
-    c.strokeStyle = read > 0.02 || thud > 0.02 ? mixRgba('sepia', 'blood', Math.max(read, thud)) : rgba('sepia', 0.85);
-    c.lineWidth = Math.max(1.5, sz * 0.022) + 2.5 * Math.max(read, thud);
-    c.strokeRect(-h, -h, sz, sz);
-    // 左上：原子序；右上：原本的元素符號（小字，註明出處）
-    const small = Math.max(11, sz * 0.13);
-    c.font = font(F.mono(500), small); c.fillStyle = rgba('sepia', 0.75);
-    c.fillText(back ? String(q.z) : String(q.num), -h + sz * 0.07, -h + small * 1.15);
-    if (!back && sz > 70) { c.textAlign = 'right'; c.fillStyle = rgba('sepia', 0.45); c.fillText(SYM[q.z - 1]!, h - sz * 0.07, -h + small * 1.15); c.textAlign = 'left'; }
+    c.fillRect(-hw, -h, wd, sz);
+    c.strokeStyle = read > 0.02 || thud > 0.02 ? mixRgba('sepia', 'blood', Math.max(read, thud)) : rgba('sepia', 0.8);
+    c.lineWidth = Math.max(1.5, sz * 0.02) + 2.5 * Math.max(read, thud);
+    c.strokeRect(-hw, -h, wd, sz);
+    // 左上：原子序（小字、淡）
+    const small = Math.max(11, sz * 0.12);
+    c.font = font(F.mono(500), small); c.fillStyle = rgba('sepia', 0.55);
+    c.fillText(back ? String(q.z) : String(q.num), -hw + sz * 0.07, -h + small * 1.15);
     // 中間：留言的字（或背面的元素符號）
     c.textAlign = 'center'; c.textBaseline = 'alphabetic';
     if (back) {
@@ -308,78 +303,34 @@ export default class Elements extends Scene {
     c.restore();
   }
 
-  /** 圖例：一格「囍」元素，旁邊用細線標註每一欄。 */
-  private key(c: CanvasRenderingContext2D, t: number) {
-    const k = prog(t, this.tKey, this.tKey + 0.35, ease.outCubic);
-    const { x, y, s } = KEY;
-    c.save();
-    c.globalAlpha *= k;
-    tag(c, '圖例　KEY', x, y - 16, { size: 16, color: rgba('sepia', 0.7), tracking: 4 });
-    c.fillStyle = rgba('sepia', 0.1); c.fillRect(x + 5, y + 7, s, s);
-    c.fillStyle = rgba('paper'); c.fillRect(x, y, s, s);
-    c.fillStyle = rgba('rose', 0.14); c.fillRect(x, y, s, s);
-    c.strokeStyle = rgba('sepia'); c.lineWidth = 2.5;
-    // 框用畫的：0.35 秒內沿著邊畫一圈
-    const corners: [number, number][] = [[x, y], [x + s, y], [x + s, y + s], [x, y + s], [x, y]];
-    c.beginPath(); c.moveTo(x, y);
-    let left = 4 * s * k;
-    for (let i = 1; i < 5 && left > 0; i++) {
-      const [ax, ay] = corners[i - 1]!, [bx, by] = corners[i]!, u = Math.min(1, left / s);
-      c.lineTo(lerp(ax, bx, u), lerp(ay, by, u));
-      left -= s;
-    }
-    c.stroke();
-    c.font = font(F.mono(600), 24); c.fillStyle = rgba('sepia');
-    c.fillText(this.msg ? pad3(this.num) : '000', x + 14, y + 34);
-    c.font = font(F.mono(500), 15); c.fillStyle = rgba('sepia', 0.75); c.textAlign = 'right';
-    c.fillText('1314.520', x + s - 12, y + 30);
-    c.textAlign = 'center';
-    c.font = font(F.ming(900), 92); c.fillStyle = rgba('blood');
-    c.fillText('囍', x + s / 2, y + s * 0.64);
-    c.font = font(F.hei(700), Array.from(this.name).length > 6 ? 22 : Array.from(this.name).length > 4 ? 28 : 34); c.fillStyle = rgba('sepia');
-    c.fillText(this.name, x + s / 2, y + s - 22);
-    c.textAlign = 'left';
-    // 標註：細線＋小字
-    const lx = x + s + 18;
-    const notes: [number, string][] = [[y + 26, '原子序＝第幾則祝福'], [y + 60, '原子量＝一生一世我愛你'], [y + s * 0.5, '符號＝一個字'], [y + s - 28, '名稱＝寫的人']];
-    c.strokeStyle = rgba('sepia', 0.6); c.lineWidth = 1;
-    notes.forEach(([ny, label], i) => {
-      const kk = prog(t, this.tKey + 0.2 + i * 0.08, this.tKey + 0.45 + i * 0.08);
-      if (kk <= 0) return;
-      c.globalAlpha = k * kk;
-      c.beginPath(); c.moveTo(x + s - 6, ny - 5); c.lineTo(lx - 4, ny - 5); c.stroke();
-      c.fillStyle = rgba('sepia', 0.6); c.beginPath(); c.arc(x + s - 6, ny - 5, 2.5, 0, Math.PI * 2); c.fill();
-      tag(c, label, lx, ny, { size: 15, color: rgba('sepia', 0.8), tracking: 1 });
-    });
-    c.restore();
-  }
-
-  /** 左上的歌詞欄：逐字跟唱（唱到的字訊號色的暗部＋一道螢光筆），純音樂寫「本表配樂」與歌名。 */
+  /** 歌詞：有留言時在左上（比留言小一級）；沒有留言時放大成焦點。唱到的字訊號色的暗部＋一道螢光筆。純音樂寫配樂。 */
   private lyric(c: CanvasRenderingContext2D, t: number) {
     const { lyrics, song } = this.ctx;
+    const m = this.msg;
+    const box = m ? { ...LYR_M, size: this.lyrSize } : LYR_N;
     const ly = lyricAt(lyrics, t, 2.4);
-    mono(c, this.lyricsInWindow ? '♪  現場歌詞　LIVE LYRICS' : '♪  本表配樂', LYR.x, 290, { size: 15, tracking: 3, color: rgba('sepia', 0.6) });
     if (!ly) {
       if (!this.lyricsInWindow) {
-        c.font = font(F.ming(700), 56); c.fillStyle = rgba('sepia', 0.9);
-        c.fillText(song.title, LYR.x, LYR.y - 10);
-        if (song.artist) { c.font = font(F.ming(400), 30); c.fillStyle = rgba('sepia', 0.6); c.fillText(song.artist, LYR.x, LYR.y + 44); }
+        tag(c, '本表配樂', box.x, box.y - box.size * 0.9 - 14, { size: 18, color: rgba('sepia', 0.5), tracking: 4 });
+        c.font = font(F.ming(700), Math.round(box.size * 0.9)); c.fillStyle = rgba('sepia', 0.85);
+        c.fillText(song.title, box.x, box.y);
       }
       return;
     }
-    const st = { family: F.archivo(100, 800), size: LYR.size, minSize: 48, maxWidth: LYR.w, lineHeight: 1.12 };
+    const st = { family: F.archivo(100, 800), size: box.size, minSize: 48, maxWidth: box.w, lineHeight: 1.12 };
     const lay = layoutLyric(c, ly.line, st);
     const inK = ease.outExpo(prog(t, ly.line.start - 0.35, ly.line.start + 0.15));
-    const oy = LYR.y - (lay.height - lay.size) * 0.5 + (1 - inK) * 18;
+    // 兩行時往上長（最後一行的基線固定）
+    const oy = box.y - (lay.height - lay.size) + (1 - inK) * 18;
     c.save();
     c.globalAlpha *= ly.k;
     c.font = font(st.family, lay.size);
     for (const pw of lay.words) {
       const p = Lyrics.wordProgress(pw.word, t);
-      const x = LYR.x + pw.x, y = oy + pw.y;
+      const x = box.x + pw.x, y = oy + pw.y;
       if (p > 0 && p < 1) {
         // 螢光筆：跟著唱的進度畫過去
-        c.fillStyle = rgba('signal', 0.42);
+        c.fillStyle = rgba('signal', 0.4);
         c.fillRect(x - 4, y - lay.size * 0.42, (pw.w + 8) * p, lay.size * 0.5);
       }
       c.fillStyle = rgba('sepia', 0.26);

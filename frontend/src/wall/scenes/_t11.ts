@@ -147,7 +147,7 @@ void main() {
     float fine = max(pxLine(d.x, 0.2, 1.1), pxLine(d.y, 0.2, 1.1));
     float bold = max(pxLine(d5.x, 0.45, 1.4), pxLine(d5.y, 0.45, 1.4));
     // 格線用訊號色的暗部（像印刷的方格紙），很淡；紙纖維多的地方吃墨少
-    float a = (0.11 * fine + 0.16 * bold) * inb * k * (1.0 - 0.35 * b.g);
+    float a = (0.085 * fine + 0.12 * bold) * inb * k * (1.0 - 0.35 * b.g);
     col = mix(col, C_BLOOD, a);
   }
   if (margin >= 0.0) col = mix(col, C_SIGNAL * 0.8 + C_BLOOD * 0.2, pxLine(abs(p.x - margin), 0.5, 1.5) * 0.45 * k);

@@ -1,10 +1,12 @@
-// 等化器（機器 A）：音響上的大型圖形等化器，24 根 LED 光柱（shader）跟著這首歌的頻譜跳，底下亮面地板有倒影。
+// 等化器（機器 A）：暗的舞台上一整面 LED 光柱（shader），跟著這首歌的頻譜跳，底下亮面地板有倒影；鏡頭整段慢慢推近。
+// MV 融合原則：一個焦點。
+//  - 焦點是主打留言：大大的手寫字（霞鶩文楷）浮在光柱上方的暗處，一行一拍從右邊滑進來（跑馬燈的感覺，落在拍點上），右下署名。
+//    有留言時光柱暗一點，最亮的是字。
 //  - 光柱的高度來自這首歌的音訊包絡（低音、大鼓、人聲、高音…分到 24 個頻段），大鼓打低頻、小鼓打中頻、鈸打高頻；
 //    每根柱子頂上有一格「峰值」慢慢掉下來。
-//  - 歌詞一個字（英文一個字）一個字「站」在光柱上：字的高度跟著它底下那幾根柱子起伏，唱到的字跳起來、亮成訊號色，
-//    底下的柱子也整根變熱。字永遠在柱子的上面，不會壓在燈上（讀得清楚）。
-//  - 上面的顯示幕是主打留言：一行一行從右邊滑進來（跑馬燈），落在拍點上；右下署名。沒有留言：顯示邀請。
-// 跟別的機器版面不同：這裡是整面會發光的燈，看的是跟著音樂跳的節奏。
+//  - 歌詞一個字（英文一個字）一個字「站」在光柱上（比留言小一級）：字的高度跟著它底下那幾根柱子起伏，唱到的字跳起來、亮成訊號色，
+//    底下的柱子也整根變熱，柱子不會長到字上面（讀得清楚）。
+//  - 沒有留言：歌詞放大變成焦點，上面只放一行小小的邀請。
 import * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
 import { FSPass, Layer2D, W, H } from '../engine/gl';
@@ -13,7 +15,7 @@ import { rgba } from '../engine/palette';
 import { clamp, ease, prog, noise1 } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
 import { Lyrics, type Line } from '../engine/lyrics';
-import { beatAfter, signature, lyricAt } from './_motifs';
+import { beatAfter, signature, lyricAt, COUPLE_ZH } from './_motifs';
 import { fillWithHearts } from '../engine/motifs';
 import { layoutWordRows, windowLines } from './_t7';
 import { FRAG_EQ, NCOL, NSEG } from './equalizer-glsl';
@@ -21,25 +23,24 @@ import { FRAG_EQ, NCOL, NSEG } from './equalizer-glsl';
 export const spec: PlateSpecDecl = { group: 'type', family: 'machine', paper: false, energy: [0.5, 1], bars: [4, 8] };
 
 // ---------------------------------------------------------------- 版面
-const DISP = { x: 120, y: 104, w: 1220, h: 236 };
-const EQ = { x: 134, bottom: 880, pitch: 50, w: 42 };
-const SEG = { pitch: 26, h: 20 };
+/** 留言的範圍（光柱上方的暗處）與署名那一列。 */
+const MSG = { x: 150, y: 104, w: 1560, h: 330 };
+const SIG_H = 64;
+const EQ = { x: 150, bottom: 860, pitch: 58, w: 50 };
+const SEG = { pitch: 24, h: 18 };
 const EQH = NSEG * SEG.pitch;
-/** 歌詞圖層（光柱上方的範圍）。 */
-const WL = { x: 110, y: 350, w: 1240, h: 600 };
-/** 歌詞這一列的基線：每個字再跟著底下的柱子上下浮動一點點（±ROW_RIDE）。 */
-const ROW_Y = 600, ROW_RIDE = 34;
-const MAXW = 1180;
+/** 歌詞圖層（光柱上方到地板）。 */
+const WL = { x: 110, y: 420, w: 1700, h: 470 };
+const MAXW = 1370;
 
 const F_LYR = F.archivo(100, 800);
 const F_MSG = F.hand(700);
-const INVITE = '掃描右下角 QR code，你的祝福就會在這裡跑過去。';
-const FREQS = ['31', '63', '125', '250', '500', '1K', '2K', '4K', '8K', '16K'];
+const INVITE = '掃描右下角 QR code，你的祝福就會在這裡跑過去';
 
 const BG = () => new FSPass(FRAG_EQ, {
   uLvl: { value: new Array(NCOL).fill(0) }, uPeak: { value: new Array(NCOL).fill(0) }, uHot: { value: new Array(NCOL).fill(0) }, uCap: { value: new Array(NCOL).fill(1) },
   uEq: { value: new THREE.Vector4(EQ.x, EQ.bottom, EQ.pitch, EQ.w) }, uSeg: { value: new THREE.Vector2(SEG.pitch, SEG.h) },
-  uDisp: { value: new THREE.Vector4(DISP.x, DISP.y, DISP.w, DISP.h) }, uIn: { value: 1 }, uKick: { value: 0 },
+  uGlow: { value: new THREE.Vector4(900, 260, 900, 260) }, uGain: { value: 1 }, uIn: { value: 1 }, uKick: { value: 0 },
 });
 
 /** 每個頻段的中心（0..1，低到高）與它用哪一條包絡。 */
@@ -49,17 +50,20 @@ export default class Equalizer extends Scene {
   bg = shared('equalizer.bg', BG);
   /** 站在光柱上的歌詞（每格都在動，每格重畫；只有光柱上方那一塊）。 */
   words = this.track(new Layer2D(WL.w, WL.h, undefined, { fast: true }));
-  /** 顯示幕的留言（滑進來的時候才重畫）。 */
-  disp = this.track(new Layer2D(DISP.w, DISP.h, undefined, { fast: true }));
+  /** 留言（滑進來的時候才重畫）。 */
+  disp = this.track(new Layer2D(MSG.w, MSG.h + SIG_H, undefined, { fast: true }));
   msg: Msg | null = this.ctx.params.message ?? null;
   fit: FitResult | null = null;
   lineT: number[] = [];
   sigT = Infinity;
   beat = 0.5;
   tBoot = 0;
+  /** 歌詞的字級與這一列的基線（有留言時中等、沒有留言時放大）。 */
+  lyrMax = 64;
+  rowY = 596;
+  ride = 22;
   /** 太長、一列放不下的歌詞拆成兩頁（每頁是一個只含部分字的 Line，排版結果會快取）。 */
   pages = new Map<Line, Line[]>();
-  avoid: [number, number, number, number][] = [];
   private dispKey = '';
 
   override async init() {
@@ -70,25 +74,26 @@ export default class Equalizer extends Scene {
     const m = this.msg;
     const body = m ? m.text : INVITE;
     const lines = windowLines(lyrics, s, e);
-    await loadText(INVITE + body + (m ? signature(m.name) : '') + lines.map((l) => l.text).join(''));
+    if (!m) { this.lyrMax = 112; this.rowY = 540; this.ride = 30; }
+    await loadText(INVITE + body + (m ? signature(m.name) : '') + lines.map((l) => l.text).join('') + COUPLE_ZH);
     const c = this.words.ctx;
     for (const l of lines) {
-      const lay = layoutWordRows(c, l, F_LYR, MAXW, 200, { min: 52, max: 104, maxRows: 1 });
+      const lay = layoutWordRows(c, l, F_LYR, MAXW, 200, { min: 52, max: this.lyrMax, maxRows: 1 });
       if ((lay.rows[0]?.w ?? 0) <= MAXW + 1 || l.words.length < 2) continue;
-      // 拆兩頁：在中間附近的空白處斷
+      // 拆兩頁：在中間附近斷
       const half = Math.ceil(l.words.length / 2);
       this.pages.set(l, [{ ...l, words: l.words.slice(0, half) }, { ...l, words: l.words.slice(half) }]);
     }
-    // 留言：最多三行，一行一拍從右邊滑進來
-    // 下面留一列給署名
-    this.fit = fitText(this.disp.ctx, body, F_MSG, DISP.w - 90, DISP.h - 40 - 40, { min: 44, max: 78, lineHeight: 1.2, maxLines: 3 });
+    // 留言：最多四行，一行一拍從右邊滑進來；沒有留言時一行小小的邀請
+    this.fit = m
+      ? fitText(this.disp.ctx, body, F_MSG, MSG.w - 40, MSG.h, { min: 44, max: 124, lineHeight: 1.18, maxLines: 4 })
+      : fitText(this.disp.ctx, body, F_MSG, MSG.w - 40, 60, { min: 32, max: 38, lineHeight: 1.2, maxLines: 1 });
     const t0 = beatAfter(au, this.tBoot + 0.2);
     this.lineT = this.fit.lines.map((_, i) => t0 + i * this.beat);
     if (m) this.sigT = t0 + this.fit.lines.length * this.beat;
-    this.avoid = [
-      [DISP.x, DISP.y, DISP.w, DISP.h],
-      [EQ.x - 20, WL.y, NCOL * EQ.pitch + 40, EQ.bottom - WL.y - 60],
-    ];
+    const u = this.bg.u;
+    (u.uGlow!.value as THREE.Vector4).set(MSG.x + MSG.w * 0.45, MSG.y + MSG.h * 0.55, 900, 260);
+    u.uGain!.value = m ? 0.62 : 0.9;
   }
 
   // ---------------------------------------------------------------- 頻譜
@@ -122,8 +127,8 @@ export default class Equalizer extends Scene {
     return pk;
   }
 
-  // ---------------------------------------------------------------- 顯示幕
-  private drawDisplay(t: number) {
+  // ---------------------------------------------------------------- 留言
+  private drawMessage(t: number) {
     const fit = this.fit!, m = this.msg;
     const slides = this.lineT.map((t0) => prog(t, t0 - 0.42, t0, ease.outExpo));
     const sig = prog(t, this.sigT - 0.3, this.sigT + 0.2, ease.outCubic);
@@ -132,34 +137,28 @@ export default class Equalizer extends Scene {
     this.dispKey = key;
     const L = this.disp, c = L.ctx;
     L.clear();
-    c.save();
-    c.beginPath(); c.roundRect(10, 10, DISP.w - 20, DISP.h - 20, 10); c.clip();
     c.textBaseline = 'alphabetic';
     c.font = font(F_MSG, fit.size);
-    const top = 20 + (DISP.h - 60 - fit.height) / 2 + fit.size * 0.92;
+    const top = m ? (MSG.h - fit.height) / 2 + fit.size * 0.9 : 60;
     fit.lines.forEach((ln, i) => {
       const k = slides[i]!;
       if (k <= 0) return;
       // 從右邊滑進來、停在左邊
-      const x = 44 + (1 - k) * (DISP.w + 40);
-      c.fillStyle = m ? rgba('bone', 0.95) : rgba('ash', 0.9);
+      const x = 20 + (1 - k) * (MSG.w + 80);
+      c.fillStyle = m ? rgba('bone', 0.96) : rgba('ash', 0.75);
       fillWithHearts(c, ln, x, top + i * fit.lineHeight, rgba('rose'));
     });
     if (m && sig > 0) {
       c.globalAlpha = sig;
-      c.font = font(F.hand(700), 36);
+      c.font = font(F.hand(700), 44);
       c.textAlign = 'right';
       c.fillStyle = rgba('ash');
-      const sg = signature(m.name);
-      c.fillText(sg, DISP.w - 40 + (1 - sig) * 60, DISP.h - 22);
-      const sw = c.measureText(sg).width;
-      c.font = font(F.mono(500), 13); c.letterSpacing = '3px';
-      c.fillText(m.couple ? 'FROM THE COUPLE' : `No.${String(m.n).padStart(3, '0')}`, DISP.w - 40 - sw - 24 + (1 - sig) * 60, DISP.h - 26);
-      c.letterSpacing = '0px';
+      // 署名緊貼在最後一行下面（短留言時不要掉到很遠的地方），但一定在留言下面、不重疊
+      const sy = Math.min(MSG.h + SIG_H - 16, top + (fit.lines.length - 1) * fit.lineHeight + fit.size * 0.35 + 52);
+      c.fillText(signature(m.couple ? COUPLE_ZH : m.name), MSG.w - 30 + (1 - sig) * 60, sy);
       c.textAlign = 'left';
       c.globalAlpha = 1;
     }
-    c.restore();
     L.upload();
   }
 
@@ -169,28 +168,24 @@ export default class Equalizer extends Scene {
     const L = this.words, c = L.ctx;
     L.clear();
     c.textBaseline = 'alphabetic';
-    // 頻率標示（地板上）
-    c.font = font(F.mono(500), 13); c.letterSpacing = '2px'; c.fillStyle = rgba('ash', 0.55); c.textAlign = 'center';
-    FREQS.forEach((fq, k) => { const i = Math.round((k / (FREQS.length - 1)) * (NCOL - 1)); c.fillText(fq, EQ.x + i * EQ.pitch + EQ.w / 2 - WL.x, EQ.bottom + 34 - WL.y); });
-    c.textAlign = 'left'; c.letterSpacing = '0px';
     const ly = lyricAt(lyrics, t);
     if (!ly) { L.upload(); return; }
     let line = ly.line;
     const pg = this.pages.get(line);
     if (pg) line = pg[1]!.words[0]!.start - 0.3 <= t ? pg[1]! : pg[0]!;
-    const lay = layoutWordRows(c, line, F_LYR, MAXW, 200, { min: 52, max: 104, maxRows: 1 });
+    const lay = layoutWordRows(c, line, F_LYR, MAXW, 200, { min: 52, max: this.lyrMax, maxRows: 1 });
     c.font = font(F_LYR, lay.size);
-    const x0 = EQ.x - 20 + (NCOL * EQ.pitch + 40 - MAXW) / 2;
+    const x0 = EQ.x + (NCOL * EQ.pitch - MAXW) / 2;
     for (const b of lay.words) {
       const wx0 = x0 + b.x, wx1 = wx0 + b.w;
       const i0 = clamp(Math.floor((wx0 - EQ.x) / EQ.pitch), 0, NCOL - 1), i1 = clamp(Math.floor((wx1 - EQ.x) / EQ.pitch), 0, NCOL - 1);
       let top = 0;
       for (let i = i0; i <= i1; i++) top = Math.max(top, lv[i]!);
       const p = Lyrics.wordProgress(b.word, t);
-      const jump = t >= b.word.start ? 40 * Math.exp(-(t - b.word.start) / 0.16) * Math.min(1, (t - b.word.start) / 0.04) : 0;
+      const jump = t >= b.word.start ? 34 * Math.exp(-(t - b.word.start) / 0.16) * Math.min(1, (t - b.word.start) / 0.04) : 0;
       if (p > 0 && p < 1) for (let i = i0; i <= i1; i++) hot[i] = 1;
       // 字的基線：整列在同一個高度附近，跟著底下的柱子浮動一點點；唱到的時候跳起來
-      const y = ROW_Y - ROW_RIDE * (top - 0.45) * 2 - jump;
+      const y = this.rowY - this.ride * (top - 0.45) * 2 - jump;
       // 字底下的柱子被字壓住：最高只到字的下緣
       const c2 = (EQ.bottom - (y + lay.size * 0.2 + 12)) / EQH;
       for (let i = i0; i <= i1; i++) cap[i] = Math.min(cap[i]!, c2);
@@ -226,8 +221,9 @@ export default class Equalizer extends Scene {
     u.uKick!.value = f.a.kick;
     this.bg.render(renderer, out);
     this.blit(this.words.texture, WL.x, WL.y, WL.w, WL.h, out);
-    this.drawDisplay(t);
-    this.blit(this.disp.texture, DISP.x, DISP.y, DISP.w, DISP.h, out);
-    return { bloom: 0.62, vignette: 0.45, halation: 0.25, zoom: 1 + 0.005 * f.a.kick, popupAvoid: this.avoid };
+    this.drawMessage(t);
+    this.blit(this.disp.texture, MSG.x, MSG.y, MSG.w, MSG.h + SIG_H, out);
+    // 鏡頭：整段慢慢推近，大鼓時輕輕一頂
+    return { bloom: 0.6, vignette: 0.5, halation: 0.22, zoom: 1 + 0.028 * ease.inOutCubic(f.p) + 0.004 * f.a.kick };
   }
 }

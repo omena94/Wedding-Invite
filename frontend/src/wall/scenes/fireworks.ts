@@ -25,16 +25,14 @@ import { HZ, SKY_PASS, drawSkyline, type Light } from './fireworks-sky';
 import { type Shell, type SkyGlyph, type Kind, sampleStars, planGlyphs, rocketAt, drawRocket, drawCrown, drawComets, drawStars, drawEmbers, expand, drawGlyphHeart } from './fireworks-shells';
 
 /**
- * 天上排字的範圍：下面留給城市輪廓；右邊（x ≥ 1378）整條空出來給即時留言小卡（右上、右中兩格）和高度尺，
- * 小卡才不會蓋到天上的字。字的區塊因此偏左（瑞士網格的不對稱，右邊是儀器）。
+ * 天上排字的範圍：下面留給城市輪廓。即時小卡停用、高度尺也拿掉了（MV 融合原則：介面元素砍掉），
+ * 整片夜空都給煙火：留言在港口正上方炸開，是這一格唯一的焦點。
  */
-const SKY = { x0: 170, x1: 1350, y0: 176, y1: 664 };
+const SKY = { x0: 170, x1: 1750, y0: 176, y1: 664 };
 const SKY_CX = (SKY.x0 + SKY.x1) / 2;
 /** 歌詞：地平線下面、水面上那條帶子；右邊停在 QR 區（x ≥ 1360）之前。 */
 const LYR = { x: 160, y: 884, maxW: 1170 };
 const LSTYLE: LyricStyle = { family: F.archivo(100, 800), size: 58, minSize: 48, maxWidth: LYR.maxW };
-/** 高度尺：地平線是 0 m，每 2 px 一公尺（冷面的儀器讀數）。 */
-const RULER = { x: 1752, top: 200 };
 /** 字從燒紅冷卻到紙白要幾秒。 */
 const COOL = 0.9;
 /** 間奏（沒有留言也沒有歌詞）時水面上的一句邀請。 */
@@ -112,6 +110,8 @@ export default class Fireworks extends Scene {
   hotUsed = false;
   /** 整個窗格會出現重要文字的範圍（天上的字、署名、水面上的歌詞）：即時小卡挑位置時避開。init() 算好。 */
   avoid: [number, number, number, number][] = [];
+  /** 主打留言（含署名）後面的天空：煙與版畫線在這裡收一點，字後面才乾淨（x0, y0, x1, y1；沒有留言是空的）。 */
+  quiet: [number, number, number, number] = [0, 0, 0, 0];
   seed = 1;
 
   override async init() {
@@ -142,13 +142,14 @@ export default class Fireworks extends Scene {
     const launchX = (cx: number) => clamp(cx + (rnd() - 0.5) * 380, 220, 1690);
     // 排版前先把會用到的字都載好（天上的歌詞、署名、介面字），不然 fitText 量到的是備援字的寬度
     const lyricLines = lyrics.linesIn(s, e);
-    await loadText(`施放許可共發風向東北能見度良好歌詞煙火高度掃描右下角你的祝福也會在這裡綻放${COUPLE_ZH}${song.title}${signature(this.msg?.name ?? '')}${lyricLines.map((l) => l.text).join('')}`);
+    await loadText(`施放許可掃描右下角你的祝福也會在這裡綻放${COUPLE_ZH}${song.title}${signature(this.msg?.name ?? '')}${lyricLines.map((l) => l.text).join('')}`);
 
     let encoreFrom = Infinity;
     if (this.msg) {
       // ---------------------------------------------------------------- 主打留言：一行一發
       const m = this.msg, fam = F.hand(700);
-      const fit = fitText(c, m.text, fam, SKY.x1 - SKY.x0, 400, { min: 56, max: 200, lineHeight: 1.2, maxLines: 4 });
+      // 字級依「天空高度扣掉署名」算（署名最大 60 px、離最後一行 1.7 倍字高），長留言的署名才不會被擠出天空或壓到最後一行
+      const fit = fitText(c, m.text, fam, SKY.x1 - SKY.x0, SKY.y1 - SKY.y0 - 60 * 1.7, { min: 56, max: 200, lineHeight: 1.2, maxLines: 4 });
       const sigS = clamp(Math.round(fit.size * 0.42), 44, 60);
       const top = SKY.y0 + (SKY.y1 - SKY.y0 - (fit.height + sigS * 1.7)) / 2;
       const bx = SKY_CX - fit.width / 2, base0 = top + fit.size * 0.9;
@@ -192,9 +193,13 @@ export default class Fireworks extends Scene {
       const fz = this.fuse(lines.flatMap((sh) => sh.glyphs), tf0, Math.max(0.3, Math.min(e, tf0 + burn) - tf0 - 0.55));
       lines.forEach((sh) => { sh.tf0 = sh.glyphs[0]?.tg ?? tf0; });
       this.sig.tg = (fz.pts[fz.pts.length - 1]?.t ?? tf0) - 0.1;
-      this.header = `施放許可 No.${String(m.n).padStart(3, '0')}　·　共 ${n} 發　·　風向 東北　·　能見度 良好${m.couple ? '　·　FROM THE COUPLE' : ''}`;
+      // 左上角只留一小行冷面的施放編號（整個畫面唯一的一群小字），不再列風向、能見度那一長串
+      this.header = `施放許可 No.${String(m.n).padStart(3, '0')}${m.couple ? '　·　FROM THE COUPLE' : ''}`;
+      const S = this.sig, sy1 = S.y + S.lay.size * 0.35;
+      this.quiet = [Math.min(bx, S.x) - 30, base0 - fit.size - 30, Math.max(bx + fit.width, S.x + S.lay.width) + 30, sy1 + 30];
     } else {
-      this.header = lyricLines.length ? `施放許可　·　歌詞煙火　·　♪ ${song.title}` : `施放許可　·　${DATE_DOTS}　·　${COUPLE_EN.toUpperCase()}`;
+      // 沒有留言：天上是歌詞（或間奏的新人名字），左上角只標歌名；間奏時名字與日期已經在天上，不再重複
+      this.header = lyricLines.length ? `♪ ${song.title}` : '';
     }
 
     // ---------------------------------------------------------------- 歌詞煙火：唱出口就點火，唱完的下一拍炸開
@@ -442,7 +447,7 @@ export default class Fireworks extends Scene {
       drawComets(lb, sh, t);
       drawStars(lb, sh, t, f.a.hat);
       drawEmbers(lb, sh, t, sh.kind === 'heart' ? 0.9 : this.emberFrac);
-      if (sh.glyphs.length) this.drawGlyphs(c, hc, sh, t, mix);
+      if (sh.glyphs.length) this.drawGlyphs(c, hc, sh, t, mix, lit);
     }
     for (const fz of this.fuses) {
       const p = this.fuseAt(fz, t);
@@ -474,7 +479,7 @@ export default class Fireworks extends Scene {
       c.fillText(INVITE, LYR.x, LYR.y);
       c.restore();
     }
-    this.drawInstruments(c, t, kIn);
+    this.drawHeader(c, kIn);
     c.globalAlpha = 1;
 
     // ---- 合成：倒影（先把火花畫到半解析度的副本）→ 天空與水 → 遠方的線 → 字 → 字的光 → 近處的火藥
@@ -482,23 +487,35 @@ export default class Fireworks extends Scene {
     B.render(renderer, this.refl);
     Fr.render(renderer, this.refl);
     u.t!.value = t; u.k!.value = kIn; u.hx!.value = hx; u.refl!.value = this.refl.texture;
+    (u.Q!.value as THREE.Vector4).set(...this.quiet);
     this.bg.render(renderer, out);
     B.render(renderer, out);
     comp.draw(renderer, L.upload(), out);
     if (this.hotUsed) comp.draw(renderer, HL.upload(), out, { mode: 'add', tint: [1.3, 1.3, 1.3] });
     Fr.render(renderer, out);
 
-    // 爆開的那一下：極輕的閃光與推鏡（只算近處的大煙火）
-    let flash = 0, punch = 0;
-    for (const sh of this.shells) if (!sh.back) { flash += pulse(t, sh.tb, 0.05); punch += pulse(t, sh.tb, 0.16); }
-    return { bloom: 0.85, vignette: 0.5, halation: 0.3, flash: 0.005 * Math.min(1.5, flash), zoom: 1 + 0.005 * Math.min(1.5, punch), popupAvoid: this.avoid };
+    // 爆開的那一下：極輕的閃光、推鏡與一點點震動（只算近處的大煙火；遠方的小煙火只有很小的推鏡）
+    let flash = 0, punch = 0, jolt = 0;
+    for (const sh of this.shells) {
+      if (sh.back) { punch += 0.25 * pulse(t, sh.tb, 0.16); continue; }
+      flash += pulse(t, sh.tb, 0.05); punch += pulse(t, sh.tb, 0.16); jolt += pulse(t, sh.tb, 0.11);
+    }
+    // 鏡頭：整個窗格很慢地推近、同時微微往上搖（天空往下沉一點，像攝影機跟著煙火抬頭），最後一拍再推一點切走。
+    // 往上搖的量不超過推近留出來的邊（不然畫面邊緣會露出來）
+    const e = this.ctx.end;
+    const push = ease.inOutQuad(f.p);
+    const zoom = 1 + 0.034 * push + 0.012 * prog(t, e - this.beat, e, ease.inCubic) + 0.006 * Math.min(1.5, punch);
+    const room = (1 - 1 / zoom) * (H / 2);
+    const j = Math.min(1, jolt);
+    const shake: [number, number] = [Math.sin(t * 83) * 2.2 * j, -room * 0.6 + Math.cos(t * 71) * 1.6 * j];
+    return { bloom: 0.85, vignette: 0.5, halation: 0.3, flash: 0.008 * Math.min(1.5, flash), zoom, shake, popupAvoid: this.avoid };
   }
 
   /**
    * 一發的字：每個字跟著自己的星點從字的中心放大，星點快停好時浮出來；燒紅（訊號色，也畫在發光層）→ 冷卻成紙白。
    * 引信經過時一下子燒紅、往下沉一點、化掉（火星由 drawEmbers 畫）。
    */
-  private drawGlyphs(c: CanvasRenderingContext2D, hc: CanvasRenderingContext2D, sh: Shell, t: number, mix: (k: number, a: number) => string) {
+  private drawGlyphs(c: CanvasRenderingContext2D, hc: CanvasRenderingContext2D, sh: Shell, t: number, mix: (k: number, a: number) => string, lit: (x: number, y: number) => number) {
     const T = sh.Tg, g0 = sh.glyphs[0]!;
     if (t < sh.tb + T * 0.5) return;
     c.font = hc.font = font(g0.fam, g0.size);
@@ -525,7 +542,9 @@ export default class Fireworks extends Scene {
         drawGlyphHeart(c, gg, rgba('rose', a * 0.97));
         if (h > 0.03) { drawGlyphHeart(hc, gg, rgba('rose', h * h * a * 0.8 * sh.glow)); this.hotUsed = true; }
       } else if (a > 0.004) {
-        c.fillStyle = h > 0.02 ? mix(h * 0.75, a * 0.97) : rgba('bone', a * 0.97);
+        // 冷卻後也不是冷冰冰的紙白：帶一點火藥的暖（5%），附近有煙火爆開時被閃光照得更暖一點——字是天上燒著的東西，不是貼上去的字幕
+        const warm = Math.min(0.3, 0.05 + 0.28 * lit(g.cx, g.cy));
+        c.fillStyle = mix(Math.max(h * 0.75, warm), a * 0.97);
         c.fillText(g.ch, g.x, g.y + dy);
         if (h > 0.03) { hc.fillStyle = rgba('signal', h * h * h * a * 0.85 * sh.glow); hc.fillText(g.ch, g.x, g.y + dy); this.hotUsed = true; }
       }
@@ -567,41 +586,13 @@ export default class Fireworks extends Scene {
     return this.penAt(t);
   }
 
-  /** 機器的聲音：左上角的施放紀錄、右邊的高度尺（火箭升空時指針跟著走，爆開時停在那個高度）。 */
-  private drawInstruments(c: CanvasRenderingContext2D, t: number, kIn: number) {
+  /** 機器的聲音：左上角一小行施放編號（低對比，整個畫面唯一一群小字；原本的高度尺是純介面，拿掉了）。 */
+  private drawHeader(c: CanvasRenderingContext2D, kIn: number) {
+    if (!this.header) return;
     c.save();
     c.globalAlpha = kIn;
-    c.font = font(F.mono(500), 16); c.letterSpacing = '3px'; c.fillStyle = rgba('ash', 0.72);
+    c.font = font(F.mono(500), 15); c.letterSpacing = '3px'; c.fillStyle = rgba('ash', 0.5);
     c.fillText(this.header, 160, 114);
-    // 高度尺
-    const rx = RULER.x;
-    c.fillStyle = rgba('graphite', 0.9);
-    c.fillRect(rx, RULER.top, 1, HZ - RULER.top);
-    c.letterSpacing = '1px';
-    // 指針：最近一發近處的煙火（升空時跟著走，爆開後停在那個高度一下）
-    let cur: Shell | null = null;
-    for (const sh of this.shells) if (!sh.back && t >= sh.tl && t < sh.tb + 1.8) cur = sh;
-    let my = -1e4;
-    if (cur) {
-      const up = t < cur.tb, p = up ? rocketAt(cur, (t - cur.tl) / Math.max(0.05, cur.tb - cur.tl)) : { x: 0, y: cur.cy };
-      const a = up ? 1 : 1 - prog(t, cur.tb + 1.1, cur.tb + 1.8);
-      my = clamp(p.y, RULER.top, HZ);
-      c.globalAlpha = kIn * a;
-      c.fillStyle = rgba('signal');
-      c.beginPath(); c.moveTo(rx + 3, my); c.lineTo(rx + 13, my - 5); c.lineTo(rx + 13, my + 5); c.closePath(); c.fill();
-      c.font = font(F.mono(500), 14);
-      c.fillText(`${Math.round((HZ - my) / 2)} m`, rx + 18, my + 5);
-      c.globalAlpha = kIn;
-    }
-    c.font = font(F.mono(400), 13);
-    for (let m = 0; m <= 300; m += 25) {
-      const y = HZ - m * 2, major = m % 100 === 0;
-      c.fillStyle = rgba('graphite', major ? 1 : 0.8);
-      c.fillRect(rx - (major ? 12 : 6), y, major ? 12 : 6, 1);
-      if (major && m && Math.abs(y - my) > 16) { c.fillStyle = rgba('ash', 0.55); c.fillText(String(m), rx + 8, y + 4); }
-    }
-    c.fillStyle = rgba('ash', 0.55);
-    c.fillText('ALT m', rx - 12, RULER.top - 16);
     c.letterSpacing = '0px';
     c.restore();
   }

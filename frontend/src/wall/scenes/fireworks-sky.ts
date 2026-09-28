@@ -176,6 +176,7 @@ export const SKY_PASS = () => new FSPass(/* glsl */ `
   uniform vec4 L[4];      // 閃光：x, y（y 向下）, 強度, 半徑
   uniform vec4 S[4];      // 煙：x, y, 濃度, 半徑
   uniform sampler2D refl; // 火花與城市那一層（半解析度），水面取樣它的倒影
+  uniform vec4 Q;         // 主打留言後面的天空（x0, y0, x1, y1，y 向下）：煙與版畫線在這裡收一點，字才清楚
   void main() {
     vec2 p = vec2(FRAG_PX.x, ${H}.0 - FRAG_PX.y);
     float lit = 0.0, smk = 0.0;
@@ -183,6 +184,8 @@ export const SKY_PASS = () => new FSPass(/* glsl */ `
       vec2 d = p - L[i].xy; lit += L[i].z * exp(-dot(d, d) / (L[i].w * L[i].w));
       vec2 e = p - S[i].xy; smk += S[i].z * exp(-dot(e, e) / (S[i].w * S[i].w));
     }
+    // 留言後面：柔邊的框（邊緣 80 px 慢慢過渡），沒有留言時 Q 是空的
+    float qk = smoothstep(Q.x - 80.0, Q.x, p.x) * smoothstep(Q.z + 80.0, Q.z, p.x) * smoothstep(Q.y - 80.0, Q.y, p.y) * smoothstep(Q.w + 80.0, Q.w, p.y) * step(1.0, Q.z - Q.x);
     vec3 col;
     if (p.y <= yh) {
       float h = p.y / yh;
@@ -191,15 +194,21 @@ export const SKY_PASS = () => new FSPass(/* glsl */ `
       float glow = exp(-(yh - p.y) / 38.0), band = exp(-(yh - p.y) / 170.0);
       col += C_BLOOD * 0.07 * glow * k;
       col += C_GRAPHITE * hatch(p.y / 5.0, 0.07 + 0.2 * band) * 0.07 * band * k;
+      // 空氣：遠方港口上的一層薄霧（貼著地平線、很淡），煙火一亮就把霧照成暖色——有景深、有空氣，不是一張黑底
+      float haze = exp(-(yh - p.y) / 150.0);
+      col += mix(C_ASH, C_EMBER, 0.55) * haze * (0.012 + 0.09 * min(lit, 1.5)) * k;
       // 煙：只在爆開過的地方，隨風慢慢飄；被之後的閃光照亮
       // （雜訊只在有煙、有光的地方算：會場筆電多半是內顯，整片天空每格算六層雜訊太貴）
       if (smk > 0.004) {
         float n = fbm(p / 240.0 + vec2(t * 0.035, t * 0.01), 4);
-        col += C_ASH * smoothstep(-0.15, 0.65, n) * min(smk, 1.0) * (0.012 + 0.1 * lit);
+        col += C_ASH * smoothstep(-0.15, 0.65, n) * min(smk, 1.0) * (0.012 + 0.1 * lit) * (1.0 - 0.65 * qk);
       }
-      col += C_EMBER * lit * 0.03;
-      // 天空的版畫細線：平常看不見，只有閃光照到的地方浮出來
-      if (lit > 0.01) col += C_GRAPHITE * hatch(p.y / 6.5 + 0.8 * fbm(p / 520.0, 2), 0.14) * 0.14 * min(lit, 1.5);
+      // 爆開的閃光把附近的天空照亮一下（暖色、很柔）
+      col += C_EMBER * lit * 0.045;
+      // 天空的版畫細線：平常看不見，只有閃光照到的地方浮出來（留言後面不浮，免得線穿過字）
+      if (lit > 0.01) col += C_GRAPHITE * hatch(p.y / 6.5 + 0.8 * fbm(p / 520.0, 2), 0.14) * 0.14 * min(lit, 1.5) * (1.0 - 0.8 * qk);
+      // 字後面再壓暗一點點（很淡的暗角，不是框）
+      col *= 1.0 - 0.18 * qk;
     } else {
       float d = p.y - yh, persp = d / (${H}.0 - yh);
       // 水面：越近波紋越大；倒影往下拉長、被一條條波紋切斷
@@ -212,8 +221,8 @@ export const SKY_PASS = () => new FSPass(/* glsl */ `
       // 版畫的水紋：透視排列的橫線，靠近地平線密
       float u = log(d + 5.0) * 24.0 + 0.5 * snoise(vec2(p.x / 260.0, t * 0.08));
       col += C_GRAPHITE * hatch(u, 0.09) * 0.16 * exp(-d / 160.0) * k;
-      // 閃光在水面上的反光（一整片、很淡）
-      col += C_EMBER * lit * 0.02;
+      // 閃光在水面上的反光：一整片很淡的，加上沿著波紋碎成一段段的亮帶（天空亮一下，水也亮一下）
+      col += C_EMBER * lit * (0.02 + 0.05 * band * exp(-d / 180.0));
     }
     // 地平線：一條細線，開場時由火花從左畫到右
     float hl = pxLine(abs(p.y - yh), 0.4, 1.3) * step(p.x, hx);
@@ -223,5 +232,5 @@ export const SKY_PASS = () => new FSPass(/* glsl */ `
   t: { value: 0 }, k: { value: 1 }, hx: { value: W }, yh: { value: HZ },
   L: { value: [0, 1, 2, 3].map(() => new THREE.Vector4(0, 0, 0, 1)) },
   S: { value: [0, 1, 2, 3].map(() => new THREE.Vector4(0, 0, 0, 1)) },
-  refl: { value: null },
+  refl: { value: null }, Q: { value: new THREE.Vector4(0, 0, 0, 0) },
 });

@@ -6,7 +6,9 @@
 // 版面：照 pdoom dense 的「文字壓力」與瑞士網格——整面牆用「一刀切到底」（guillotine）的方式切成大大小小的格子，
 // 切線就是細線；主打留言的格子先挖好（形狀配合鏡頭停下來時的排版），剩下的隨機再切到格子數夠。
 // 留言多牆就大一點、但有上限：留言越多、格子越小、字越密（壓力跟著人數長）。留言少的時候，
-// 空下來的格子放「迴聲」（某則留言裡的一句，引用它的編號）、名冊、微縮字、疊字，牆一樣是滿的。
+// 空下來的格子放「迴聲」（某則留言裡的一句，引用它的編號）、微縮字、疊字。
+// 2026-09-28 MV 融合原則：牆是主打背後的「紋理」，不是一堆搶戲的大字——其他格子的字級一律壓在主打字級的一半以下
+// （`cap`），格子裡字小、留白多，鏡頭推近時牆虛掉就是一片柔和的字紋；主打格子是整面牆上最大的字，開場全景一眼就找得到。
 //
 // 貼圖不是顏色而是「資料」（畫面顏色由 shader 依主題色票上色，換主題不用重畫）：
 //   R = 字的覆蓋率（反白的格子：R 是底、字是挖空的）
@@ -18,10 +20,10 @@ import { F, font, measure } from '../engine/type';
 import { tokens, type FitResult } from '../engine/text';
 import type { Msg } from '../engine/scene';
 import { mulberry32, clamp } from '../engine/util';
-import { COUPLE_EN, COUPLE_ZH, DATE_DOTS, heartPoints } from './_motifs';
+import { COUPLE_EN, COUPLE_ZH, heartPoints } from './_motifs';
 
 export interface Rect { x: number; y: number; w: number; h: number }
-export type CellKind = 'msg' | 'hero' | 'echo' | 'ledger' | 'slab' | 'micro' | 'numeral' | 'couple';
+export type CellKind = 'msg' | 'hero' | 'echo' | 'slab' | 'micro' | 'couple';
 export interface Cell extends Rect { id: number; kind: CellKind; msg?: Msg; hero?: number }
 interface Rule { x0: number; y0: number; x1: number; y1: number }
 
@@ -44,23 +46,34 @@ export interface HeroSpec {
   ay: number;
 }
 
-/** 主打格子（停住時的螢幕尺寸）：四周留白、上面一列標頭（細線＋編號）、下面一列簽名。 */
+/**
+ * 主打格子（停住時的螢幕尺寸）：四周留白、上面一條火花跑的引線（點火後就熄掉，不是卡片的標題列）、下面一列簽名。
+ * 不放編號、不放框：留言是牆上被點亮的那一段字，不是一張介面卡片。
+ */
 export const HERO_PAD = 26;
-export const HERO_LABEL = 52;
+export const HERO_LABEL = 40;
 export const HERO_SIG = 80;
-/** 標頭：細線在這個高度，火花沿著它由左往右跑；編號靠右，在細線的尾端。 */
-export const HERO_RULE_Y = HERO_PAD + 13;
-export const HERO_LABEL_SIZE = 17;
+/** 引線在這個高度，火花沿著它由左往右跑。 */
+export const HERO_RULE_Y = HERO_PAD + 12;
+export const HERO_LABEL_SIZE = 15;
 const LABEL_TRACK = 3;
-export const heroLabel = (m: Msg) => `${m.couple ? 'FROM THE COUPLE  ·  ' : ''}NO.${String(m.n).padStart(3, '0')}`;
-/** 主打格子標頭的幾何（格子座標，停住時的螢幕尺寸）。 */
+/** 只有新人自己的留言標一個小小的「FROM THE COUPLE」（引線尾端）；賓客的留言不加編號。 */
+export const heroLabel = (m: Msg) => (m.couple ? 'FROM THE COUPLE' : '');
+/** 主打格子引線的幾何（格子座標，停住時的螢幕尺寸）。 */
 export function heroHeader(hs: HeroSpec) {
   const right = HERO_PAD + Math.max(hs.fit.width, 360);
-  const lw = measure(heroLabel(hs.msg), F.mono(500), HERO_LABEL_SIZE, LABEL_TRACK);
-  return { x0: HERO_PAD, x1: right - lw - 18, labelX: right - lw, right, baseY: HERO_RULE_Y + 6, track: LABEL_TRACK };
+  const lab = heroLabel(hs.msg);
+  const lw = lab ? measure(lab, F.mono(500), HERO_LABEL_SIZE, LABEL_TRACK) : 0;
+  return { x0: HERO_PAD, x1: lab ? right - lw - 18 : right, labelX: right - lw, right, baseY: HERO_RULE_Y + 5, track: LABEL_TRACK };
 }
 
-export interface WallLayout { W: number; H: number; cells: Cell[]; rules: Rule[]; ticks: { x: number; y: number }[]; heroes: HeroSpec[] }
+export interface WallLayout {
+  W: number; H: number; cells: Cell[]; rules: Rule[]; ticks: { x: number; y: number }[]; heroes: HeroSpec[];
+  /** 其他格子的字級上限（牆 px）：主打字級的一半以下，推近時背景的字才不會跟主打一樣大。 */
+  cap: number;
+}
+/** 背景格子的字最大是主打字級（牆 px）的幾倍。 */
+const CAP_K = 0.42;
 
 const UNIT = 8;
 const snap = (v: number) => Math.round(v / UNIT) * UNIT;
@@ -220,10 +233,10 @@ export function layoutWall(msgs: readonly Msg[], heroes: HeroSpec[], seed: numbe
     placed.push(hs);
   }
   // ---- 其他留言＋填充格：一直切「最該切」的那塊（面積 × 隨機權重），切到格子數夠。
-  // 留言少也至少切 40 格：牆要有壓力，空格放迴聲、名冊、微縮字
+  // 填充格（迴聲、微縮字、疊字）少一點：牆是背景紋理，留白比塞滿重要
   const others = msgs.filter((m) => !placed.some((h) => h.msg.id === m.id));
-  const nFill = clamp(Math.round(others.length * 0.1) + 6, 6, 30);
-  const target = Math.max(others.length + nFill, 40);
+  const nFill = clamp(Math.round(others.length * 0.06) + 3, 3, 16);
+  const target = Math.max(others.length + nFill, 26);
   const minW = UNIT * 7, minH = UNIT * 5;
   let guard = 0;
   while (regions.length < target && guard++ < 4000) {
@@ -256,19 +269,20 @@ export function layoutWall(msgs: readonly Msg[], heroes: HeroSpec[], seed: numbe
     if (!fillIdx.has(i) && mi < msgOrder.length) { cell.kind = 'msg'; cell.msg = msgOrder[mi++]; }
     else {
       const a = r.w / r.h, area = r.w * r.h;
-      // 大的填充格輪流放：大數字、新人的名字、疊字；其他依形狀：很高的放名冊、很扁的放微縮字或疊字，剩下的放迴聲
-      if (area > meanA * 1.5 && big < 3) cell.kind = (['numeral', 'slab', 'couple'] as CellKind[])[big++]!;
-      else if (a < 0.55) cell.kind = rnd() < 0.6 ? 'ledger' : 'echo';
+      // 大的填充格輪流放：疊字、新人的名字；其他依形狀：很扁的放微縮字或疊字，剩下的放迴聲
+      // （編號名冊、大數字這種「介面」感的格子不放了）
+      if (area > meanA * 1.5 && big < 2) cell.kind = (['slab', 'couple'] as CellKind[])[big++]!;
       else if (a > 3.4) cell.kind = rnd() < 0.55 ? 'micro' : 'slab';
-      else cell.kind = rnd() < 0.72 ? 'echo' : rnd() < 0.5 ? 'micro' : 'ledger';
+      else cell.kind = rnd() < 0.75 ? 'echo' : 'micro';
       if (msgs.length) cell.msg = msgs[Math.floor(rnd() * msgs.length)];
     }
     cells.push(cell);
   });
-  // 交叉點的小十字（對位記號）：從切線端點挑一些
+  // 交叉點的小十字（對位記號）：從切線端點挑少少幾個
   const ticks: { x: number; y: number }[] = [];
-  for (const r of rules) if (rnd() < 0.28) ticks.push({ x: r.x0, y: r.y0 });
-  return { W: WW, H: WH, cells, rules, ticks, heroes: placed };
+  for (const r of rules) if (rnd() < 0.12) ticks.push({ x: r.x0, y: r.y0 });
+  const heroPx = placed.length ? Math.min(...placed.map((h) => h.fit.size / h.zoom)) : 64;
+  return { W: WW, H: WH, cells, rules, ticks, heroes: placed, cap: Math.max(10, heroPx * CAP_K) };
 }
 
 function ov(r: Rect, x: number, y: number, w: number, h: number) {
@@ -356,14 +370,15 @@ function drawCell(c: CanvasRenderingContext2D, cell: Cell, L: WallLayout, all: r
   const g = id;
   const pad = clamp(Math.min(w, h) * 0.075, 7, 22);
   const inW = w - 2 * pad, inH = h - 2 * pad;
+  // 背景格子的字級上限：主打的一半以下（見 CAP_K）。格子大、字小，剩下的就是留白
+  const cap = L.cap;
   c.save();
   c.beginPath(); c.rect(x + 1, y + 1, w - 2, h - 2); c.clip();
-  // 格子底色：G = 代號。短的留言偶爾反白成一塊實心的格子（愛心要用點綴色，有愛心的不反白）
-  const invert = cell.kind === 'msg' && visibleLen(cell.msg!.text) <= 9 && !cell.msg!.text.includes('♥') && rnd() < 0.3;
-  c.fillStyle = RGB(invert ? 255 : 0, g, 0);
+  // 格子底色：G = 代號（不再反白成實心的格子：一塊塊亮的方塊會變成畫面上第二個焦點）
+  c.fillStyle = RGB(0, g, 0);
   c.fillRect(x, y, w, h);
-  const ink = RGB(invert ? 0 : 255, g, 0);
-  const ls = clamp(Math.min(w, h) * 0.06, 7.5, 13);
+  const ink = RGB(255, g, 0);
+  const ls = clamp(Math.min(w, h) * 0.06, 7.5, 12);
   const m = cell.msg;
   if (m) n += visibleLen(m.text);
   if (cell.kind === 'hero') drawHeroCell(c, cell, L.heroes[cell.hero!]!, ink);
@@ -372,52 +387,40 @@ function drawCell(c: CanvasRenderingContext2D, cell: Cell, L: WallLayout, all: r
     const labH = ls * 1.9;
     const cr = cjkRatio(m.text);
     const tall = h > w * 1.3;
-    if (tall && cr > 0.8) drawVertical(c, m.text, x + pad, y + pad, inW, inH - labH, rnd() < 0.55 ? F.ming(700) : F.hand(400), ink);
-    else if (tall) drawRotated(c, m.text, x + pad, y + pad, inW, inH - labH, cr < 0.5 ? F.archivo(75, 700) : F.hei(700), ink);
+    if (tall && cr > 0.8) drawVertical(c, m.text, x + pad, y + pad, inW, inH - labH, rnd() < 0.55 ? F.ming(700) : F.hand(400), ink, cap);
+    else if (tall) drawRotated(c, m.text, x + pad, y + pad, inW, inH - labH, cr < 0.5 ? F.archivo(75, 700) : F.hei(700), ink, cap);
     else {
       const len = visibleLen(m.text);
       const fam = cr < 0.5 ? (rnd() < 0.5 ? F.archivo(75, 800) : F.serif(400, true))
         : len <= 9 ? (rnd() < 0.7 ? F.hei(900) : F.ming(900))
         : ([F.hand(400), F.ming(700), F.hei(500), F.hand(700)] as const)[Math.floor(rnd() * 4)]!;
       const lh = len <= 9 ? 1.08 : 1.3;
-      const ff = fitFast(m.text, fam, inW, inH - labH, 6, 260, lh);
+      const ff = fitFast(m.text, fam, inW, inH - labH, 6, cap, lh);
       c.font = font(fam, ff.size);
       c.fillStyle = ink;
       ff.lines.forEach((ln, i) => fillRun(c, ln, x + pad, y + pad + ff.size * 0.9 + i * ff.size * lh, ff.size));
     }
-    label(c, lab, x + pad, y + h - pad, ls, invert ? 120 : 230);
+    label(c, lab, x + pad, y + h - pad, ls, 150);
   } else if (cell.kind === 'echo' && m) {
-    // 迴聲：某則留言裡的一句，引用它的編號（像報紙的拉句）
+    // 迴聲：某則留言裡的一句（像報紙的拉句），比一般留言稍大一點、但一樣在上限內
     const frs = fragments(m.text);
     const fr = frs.length ? frs[Math.floor(rnd() * frs.length)]! : m.text.slice(0, 8);
     const cr = cjkRatio(fr);
-    if (h > w * 1.5 && cr > 0.8) drawVertical(c, fr, x + pad, y + pad, inW, inH - ls * 1.9, rnd() < 0.5 ? F.ming(900) : F.hei(900), RGB(200, g, 0));
+    if (h > w * 1.5 && cr > 0.8) drawVertical(c, fr, x + pad, y + pad, inW, inH - ls * 1.9, rnd() < 0.5 ? F.ming(900) : F.hei(900), RGB(170, g, 0), cap * 1.15);
     else {
       const fam = cr < 0.5 ? F.archivo(62, 900) : ([F.hei(900), F.ming(900), F.hand(700), F.hei(300)] as const)[Math.floor(rnd() * 4)]!;
-      const ff = fitFast(fr, fam, inW, inH - ls * 1.9, 6, 300, 1.05, 2);
+      const ff = fitFast(fr, fam, inW, inH - ls * 1.9, 6, cap * 1.15, 1.05, 2);
       c.font = font(fam, ff.size);
-      c.fillStyle = RGB(170 + rnd() * 85, g, 0);
+      c.fillStyle = RGB(130 + rnd() * 70, g, 0);
       ff.lines.forEach((ln, i) => fillRun(c, ln, x + pad, y + pad + ff.size * 0.88 + i * ff.size * 1.05, ff.size));
     }
-    label(c, `↳ ${no3(m.n)}`, x + pad, y + h - pad, ls, 170);
-  } else if (cell.kind === 'ledger') {
-    // 名冊：001 小安、002 阿哲……（機器的聲音：一行一則，從隨機的一則開始）
-    const size = Math.round(clamp(Math.min(inW / 11, 15), 8, 15));
-    c.font = font(F.mono(400), size);
-    c.fillStyle = RGB(210, g, 0);
-    const start = Math.floor(rnd() * Math.max(1, all.length));
-    const rows = Math.floor(inH / (size * 1.55));
-    n += rows * 6;
-    for (let i = 0; i < rows && all.length; i++) {
-      const mm = all[(start + i) % all.length]!;
-      c.fillText(`${String(mm.n).padStart(3, '0')}  ${mm.name || '—'}`, x + pad, y + pad + size + i * size * 1.55);
-    }
+    label(c, `↳ ${no3(m.n)}`, x + pad, y + h - pad, ls, 110);
   } else if (cell.kind === 'micro') {
     // 微縮字（像鈔票的防偽線）：所有留言接成一長串，小小地排滿
-    const size = Math.round(clamp(Math.min(w, h) * 0.07, 7, 11));
+    const size = Math.round(clamp(Math.min(w, h) * 0.07, 7, Math.min(11, cap)));
     const fam = F.hei(500);
     c.font = font(fam, size);
-    c.fillStyle = RGB(180, g, 0);
+    c.fillStyle = RGB(150, g, 0);
     const start = Math.floor(rnd() * Math.max(1, all.length));
     const rows = Math.floor(inH / (size * 1.45));
     // 只接夠排滿這格的字（每行約 inW / size 個字）
@@ -428,32 +431,23 @@ function drawCell(c: CanvasRenderingContext2D, cell: Cell, L: WallLayout, all: r
     const lines = wrapFast(s || COUPLE_ZH, fam, size, inW).lines;
     for (let i = 0; i < rows && i < lines.length; i++) fillRun(c, lines[i]!, x + pad, y + pad + size + i * size * 1.45, size);
   } else if (cell.kind === 'slab') {
-    // 壓力：同一句祝福一行一行疊上去、行距壓到快碰在一起，兩種亮度交替（pdoom dense 的平塗疊字）
+    // 壓力：同一句祝福一行一行疊上去、行距壓到快碰在一起，兩種亮度交替（pdoom dense 的平塗疊字）；字級一樣壓在上限內
     const frs = m ? fragments(m.text) : [];
     const phrase = frs.length ? frs[Math.floor(rnd() * frs.length)]! : COUPLE_ZH;
     const fam = cjkRatio(phrase) < 0.5 ? F.archivo(62, 900) : F.hei(900);
-    const size = qsize(Math.max(10, Math.min(inH / 3.2, (inW / Math.max(0.5, em(fam, phrase))) * 0.98)));
+    const size = qsize(Math.max(8, Math.min(inH / 3.2, cap * 0.8, (inW / Math.max(0.5, em(fam, phrase))) * 0.98)));
     c.font = font(fam, size);
     const rows = Math.max(1, Math.floor(inH / (size * 0.86)));
     n += rows * 4;
     for (let i = 0; i < rows; i++) {
-      c.fillStyle = RGB(i % 2 ? 110 : 230, g, 0);
+      c.fillStyle = RGB(i % 2 ? 70 : 150, g, 0);
       fillRun(c, phrase, x + pad, y + pad + size * 0.84 + i * size * 0.86, size);
     }
-  } else if (cell.kind === 'numeral') {
-    // 大數字：婚禮日期或留言總數，極窄的 Archivo
-    const txt = rnd() < 0.5 ? DATE_DOTS.replace(/ · /g, '.') : String(all.length).padStart(3, '0');
-    const fam = F.archivo(62, 900);
-    const size = Math.min(inH * 0.95, (inW / em(fam, txt)) * 0.98);
-    c.font = font(fam, size);
-    c.fillStyle = RGB(120, g, 0);
-    c.fillText(txt, x + pad, y + pad + size * 0.74);
-    label(c, txt.includes('.') ? 'DATE OF ISSUE' : 'MESSAGES RECEIVED', x + pad, y + h - pad, ls, 200);
   } else if (cell.kind === 'couple') {
     const zh = rnd() < 0.5;
     const txt = zh ? COUPLE_ZH : COUPLE_EN;
     const fam = zh ? F.ming(900) : F.serif(400, true);
-    const ff = fitFast(txt, fam, inW, inH, 8, 220, 1.05, 2);
+    const ff = fitFast(txt, fam, inW, inH, 8, cap * 1.1, 1.05, 2);
     c.font = font(fam, ff.size);
     c.fillStyle = ink;
     ff.lines.forEach((ln, i) => c.fillText(ln, x + pad, y + pad + ff.size * 0.86 + i * ff.size * 1.05));
@@ -463,11 +457,11 @@ function drawCell(c: CanvasRenderingContext2D, cell: Cell, L: WallLayout, all: r
 }
 
 /** 直排（由右而左、由上而下），標點照直排的習慣放。 */
-function drawVertical(c: CanvasRenderingContext2D, text: string, x: number, y: number, w: number, h: number, fam: string, ink: string) {
+function drawVertical(c: CanvasRenderingContext2D, text: string, x: number, y: number, w: number, h: number, fam: string, ink: string, max = 240) {
   const chars = Array.from(text.replace(/\s+/g, ''));
   const n = chars.length;
   const colGap = 1.32, adv = 1.04;
-  let lo = 6, hi = 240, size = 6;
+  let lo = 6, hi = max, size = 6;
   for (let k = 0; k < 12; k++) {
     const s = (lo + hi) / 2;
     const per = Math.max(1, Math.floor(h / (s * adv)));
@@ -493,8 +487,8 @@ function drawVertical(c: CanvasRenderingContext2D, text: string, x: number, y: n
 }
 
 /** 轉 90° 的橫排（書背），給高格子裡的英文。 */
-function drawRotated(c: CanvasRenderingContext2D, text: string, x: number, y: number, w: number, h: number, fam: string, ink: string) {
-  const ff = fitFast(text, fam, h, w, 6, 200, 1.12);
+function drawRotated(c: CanvasRenderingContext2D, text: string, x: number, y: number, w: number, h: number, fam: string, ink: string, max = 200) {
+  const ff = fitFast(text, fam, h, w, 6, max, 1.12);
   c.save();
   c.translate(x, y + h);
   c.rotate(-Math.PI / 2);
@@ -504,19 +498,11 @@ function drawRotated(c: CanvasRenderingContext2D, text: string, x: number, y: nu
   c.restore();
 }
 
-/** 主打格子在牆上的樣子：跟點亮時同一個排版（縮小），點亮時亮的那份剛好蓋在它上面。 */
+/** 主打格子在牆上的樣子：跟點亮時同一個排版（縮小），點亮時亮的那份剛好蓋在它上面。不畫編號、標頭線（不是卡片）。 */
 function drawHeroCell(c: CanvasRenderingContext2D, cell: Cell, hs: HeroSpec, ink: string) {
   const z = hs.zoom, s = hs.fit.size / z;
   const x = cell.x + HERO_PAD / z, top = cell.y + (HERO_PAD + HERO_LABEL) / z;
   c.font = font(hs.family, s);
   c.fillStyle = ink;
   hs.fit.lines.forEach((ln, i) => fillRun(c, ln, x, top + s * 0.92 + (i * hs.fit.lineHeight) / z, s));
-  const hh = heroHeader(hs);
-  label(c, heroLabel(hs.msg), cell.x + hh.labelX / z, cell.y + hh.baseY / z, HERO_LABEL_SIZE / z, 230, hh.track / z);
-  // 標頭的細線（點亮時火花沿著它跑）
-  c.save();
-  c.globalCompositeOperation = 'lighter';
-  c.fillStyle = RGB(0, 0, 170);
-  c.fillRect(cell.x + hh.x0 / z, cell.y + HERO_RULE_Y / z - 0.7, (hh.x1 - hh.x0) / z, 1.4);
-  c.restore();
 }

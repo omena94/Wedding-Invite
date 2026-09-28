@@ -4,18 +4,23 @@
 //  - 一條打完，下一個八分音符「喀擦」剪斷，那一截紙帶飛下來、貼到電報紙的第幾行（稍微歪、底下有膠水的影子），
 //    收報機接著打下一條。整則留言在第一個拍點後的兩小節內全部貼好。
 //  - 最後一個小節線：訊號色的圓形收件戳「收」砸在電報紙右上角（畫面震一下）。
-// 歌詞是電報紙表頭的「附言」欄（逐字跟唱）；收報人、發報人、字數、等級是表格欄位。
+// 歌詞是電報紙表頭的「附言」欄（逐字跟唱）。
 // 沒有留言：紙帶打邀請；新人的留言：發報人是新人、收報人是全體賓客（反過來）。純音樂：附言寫「本曲為純音樂」。
+// MV 化（2026-09-28）：焦點是貼在電報紙上的一條條紙帶（留言，整張最大的字）；附言（歌詞）小一級；表頭、欄位砍到只剩收報人、發報人。
+// 鏡頭從斜上方看著桌上的電報紙與收報機（透視、景深、一盞燈），整個窗格慢慢推近。
 // 畫法：電報紙（印好的字）與每一截紙帶開場各畫成一張離屏畫布；每格只是把它們放到對的位置（紙帶用來源矩形裁出「已經打好的部分」）。
 import * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
-import { Layer2D, W, H } from '../engine/gl';
+import { Layer2D, W, H, SCALE } from '../engine/gl';
 import { F, font, layout, loadText, measure } from '../engine/type';
 import { mixRgba, rgba } from '../engine/palette';
 import { clamp, ease, hash, lerp, prog, pulse, frameIdx, TAU } from '../engine/util';
 import { wrap } from '../engine/text';
 import { lyricAt, drawLyric, layoutLyric, beatAfter, COUPLE_ZH, DATE_DOTS } from './_motifs';
-import { sigInk, ink, paper, paperLyric, makeCanvas, freeCanvas, shadowSprite, drawShadow, barsIn, xfRect, paperPass, ensureBake, themeKey, inkStamp, arcText, snapHalf, writeGlyph, yieldFrame, type Rect } from './_t1';
+import {
+  sigInk, ink, paper, paperLyric, makeCanvas, freeCanvas, shadowSprite, drawShadow, barsIn, ensureBake, themeKey, inkStamp, arcText, snapHalf, writeGlyph, yieldFrame, heartGlyph,
+  tablePass, setTableCam, fitCam, lerpCam, TABLE_F, type TableCam, type Rect,
+} from './_t1';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'doc', paper: true, energy: [0.3, 1], bars: [4, 8], weight: 1 };
 
@@ -37,8 +42,8 @@ const TEXT = '電報愛情電報局收報人發報人字數等級急電附言發
 interface Strip { text: string; cv: ReturnType<typeof makeCanvas>; w: number; t0: number; t1: number; cut: number; row: number; rot: number; dx: number; chars: { at: number; x: number }[] }
 
 export default class Telegram extends Scene {
-  layer = this.track(new Layer2D(W, H, undefined, { fast: true }));
-  pass = shared('telegram.paper', () => paperPass());
+  layer = this.track(new Layer2D(W, H, SCALE * 1.25, { fast: true }));
+  pass = shared('telegram.table', () => tablePass());
   msg: Msg | null = this.ctx.params.message ?? null;
   seed = Number(this.ctx.params.seed ?? 1);
   form: ReturnType<typeof makeCanvas> | null = null;
@@ -59,9 +64,12 @@ export default class Telegram extends Scene {
   words = 0;
   B = 0.5;
   tStamp = Infinity;
-  avoid: Rect[] = [];
-  /** 紙帶還在打字的時候，即時小卡也要避開它（打完就空了，不用避）。 */
-  tapeAvoid: Rect = [0, 0, 0, 0];
+  camA!: TableCam;
+  camB!: TableCam;
+  /** 從打字的鏡位推到留言的鏡位：開始、到位（小節線）。 */
+  camT: [number, number] = [0, 0];
+  /** 一定要清楚的點（紙帶、貼好的留言、附言，桌面座標）。 */
+  focusPts: [number, number][] = [];
 
   override async init() {
     const { audio: au, lyrics, start: s, end: e } = this.ctx;
@@ -101,11 +109,11 @@ export default class Telegram extends Scene {
       return out;
     };
     let lines: string[] = [];
-    for (let sz = 76; sz >= 40; sz -= 2) {
+    for (let sz = 92; sz >= 40; sz -= 2) {
       lines = pack(sz);
       this.size = sz;
       this.th = Math.round(sz * 1.62);
-      // 一條的時候可以大一點（最多 76）；兩條以上最多 64
+      // 一條的時候可以大一點（最多 92）；兩條以上最多 64
       if (lines.length > 1 && sz > TAPE.size) continue;
       if (lines.length <= 4 && lines.length * (this.th + 8) <= BODY.bottom - BODY.top) break;
     }
@@ -137,12 +145,23 @@ export default class Telegram extends Scene {
     await yieldFrame();
     this.drawForm();
 
+    // 鏡頭：從斜上方看，對著電報紙中間；紙帶（打字的時候）、貼好的留言、附言都要在安全範圍內而且清楚
     const bodyH = BODY.top + this.strips.length * (this.th + 8);
-    this.avoid = [
-      xfRect([BODY.x - 10, BODY.top - 10, BODY.maxW + 20, bodyH - BODY.top + 10], FORM.x, FORM.y, FORM.rot),
-      xfRect([NOTE.x - 10, NOTE.label - 20, NOTE.maxW + 20, 170], FORM.x, FORM.y, FORM.rot),
-    ];
-    this.tapeAvoid = [100, TAPE.y - this.th / 2 - 10, TAPE.head - 90, this.th + 20];
+    const toDesk = (u: number, v: number) => [FORM.x + Math.cos(FORM.rot) * u - Math.sin(FORM.rot) * v, FORM.y + Math.sin(FORM.rot) * u + Math.cos(FORM.rot) * v] as [number, number];
+    const [bx0, by0] = toDesk(BODY.x, BODY.top), [bx1, by1] = toDesk(BODY.x + BODY.maxW, bodyH);
+    const [nx0, ny0] = toDesk(NOTE.x, NOTE.base - 56);
+    const maxW = Math.max(...this.strips.map((st) => st.w));
+    const keep: Rect[] = [[bx0, by0 - 6, bx1 - bx0, by1 - by0 + 12], [nx0, ny0, NOTE.maxW, 120], [TAPE.head - maxW, TAPE.y - this.th / 2, maxW, this.th]];
+    this.focusPts = [[TAPE.head - 300, TAPE.y], toDesk(BODY.x + 500, (BODY.top + bodyH) / 2), toDesk(NOTE.x + 300, NOTE.base)];
+    // 兩個鏡位：打字的時候框住收報機與電報紙（遠一點）；貼好之後推近到貼好的留言（紙帶不用再看了）
+    this.camA = fitCam({ tu: 820, tv: 470, dist: TABLE_F * 0.86, tilt: 0.28, yaw: -0.06, roll: 0.02 }, keep);
+    const [sx0, sy0] = toDesk(BODY.x, BODY.top), [sx1, sy1] = toDesk(BODY.x + BODY.maxW, SIGN.base + 16);
+    const [cu, cv] = toDesk(BODY.x + BODY.maxW / 2, (BODY.top + bodyH) / 2 - 20);
+    this.camB = fitCam({ tu: cu, tv: cv, dist: TABLE_F * 0.72, tilt: 0.3, yaw: -0.02, roll: 0.01 }, [keep[0]!, keep[1]!, [sx0, sy0, sx1 - sx0, sy1 - sy0]]);
+    // 推近在最後一截紙帶貼好之後，緩進下一個小節線
+    const pasteEnd = this.strips[this.strips.length - 1]!.cut + FLY;
+    const bar = barsIn(au, pasteEnd + 0.4 * B, e)[0] ?? Math.min(e, pasteEnd + 4 * B);
+    this.camT = [Math.max(pasteEnd, bar - Math.max(1.2, 3 * B)), bar];
   }
 
   override dispose() { freeCanvas(this.form); freeCanvas(this.stamp); freeCanvas(this.sh); freeCanvas(this.stripSh); for (const s of this.strips) freeCanvas(s.cv); super.dispose(); }
@@ -161,15 +180,16 @@ export default class Telegram extends Scene {
     c.textBaseline = 'alphabetic';
     const lay = layout(txt, this.fam, this.size);
     for (const g of lay.glyphs) {
-      c.fillStyle = g.ch === '♥' ? rgba('rose') : ink(0.92 - 0.1 * hash(this.seed, row, g.i));
-      c.fillText(g.ch, 18 + g.x, this.th / 2 + this.size * 0.36);
+      c.fillStyle = ink(0.92 - 0.1 * hash(this.seed, row, g.i));
+      if (g.ch === '♥') heartGlyph(c, 18 + g.x, this.th / 2 + this.size * 0.36);
+      else c.fillText(g.ch, 18 + g.x, this.th / 2 + this.size * 0.36);
     }
     // STOP 印成訊號色（電報裡最醒目的字）
     let at = txt.indexOf('STOP');
     while (at >= 0) {
       const x = 18 + measure(txt.slice(0, at), this.fam, this.size);
       c.fillStyle = mixRgba('paper', 'bone', 0.45); c.fillRect(x - 2, 14, measure('STOP', this.fam, this.size) + 4, this.th - 22);
-      c.fillStyle = sigInk(0.95);
+      c.fillStyle = sigInk(0.8);
       c.fillText('STOP', x, this.th / 2 + this.size * 0.36);
       at = txt.indexOf('STOP', at + 4);
     }
@@ -186,20 +206,15 @@ export default class Telegram extends Scene {
     // 電報紙：帶一點點訊號色的紙（每首歌的電報紙顏色都不太一樣）
     c.fillStyle = mixRgba('paper', 'signal', 0.1);
     c.fillRect(0, 0, FORM.w, FORM.h);
-    c.strokeStyle = ink(0.8); c.lineWidth = 2.5; c.strokeRect(16, 16, FORM.w - 32, FORM.h - 32);
-    c.lineWidth = 0.8; c.strokeRect(22, 22, FORM.w - 44, FORM.h - 44);
+    c.strokeStyle = ink(0.45); c.lineWidth = 2; c.strokeRect(16, 16, FORM.w - 32, FORM.h - 32);
     // 表頭
-    c.fillStyle = ink(0.95);
-    c.font = font(F.hei(900), 50); c.letterSpacing = '26px'; c.fillText('電報', 40, 84); c.letterSpacing = '0px';
-    c.font = font(F.mono(600), 17); c.letterSpacing = '6px'; c.fillText('TELEGRAM', 206, 58);
-    c.font = font(F.hei(500), 17); c.letterSpacing = '4px'; c.fillText('愛情電報局 · LOVE TELEGRAPH OFFICE', 206, 84);
+    // 表頭：配角（小、低對比）
+    c.fillStyle = ink(0.7);
+    c.font = font(F.hei(900), 34); c.letterSpacing = '20px'; c.fillText('電報', 40, 76); c.letterSpacing = '0px';
+    c.fillStyle = ink(0.5);
+    c.font = font(F.hei(500), 17); c.letterSpacing = '4px'; c.fillText('愛情電報局 · TELEGRAM', 170, 74);
     c.letterSpacing = '0px';
-    c.textAlign = 'right';
-    c.font = font(F.mono(600), 20); c.letterSpacing = '3px';
-    c.fillText(`No.${String(m?.n ?? 0).padStart(3, '0')}`, FORM.w - 44, 58);
-    c.font = font(F.hei(700), 18); c.fillText('等級　急電 URGENT', FORM.w - 44, 86);
-    c.textAlign = 'left'; c.letterSpacing = '0px';
-    c.fillRect(40, 100, FORM.w - 80, 2);
+    c.fillStyle = ink(0.6); c.fillRect(40, 96, FORM.w - 80, 1.6);
     // 附言（歌詞）欄
     const lab = (zh: string, en: string, x: number, y: number) => {
       c.fillStyle = ink(0.62);
@@ -209,34 +224,30 @@ export default class Telegram extends Scene {
       c.letterSpacing = '0px';
       return x + w + 10 + measure(en, F.mono(500), 11, 3);
     };
-    lab('附言', 'PREAMBLE · 發報時播放之歌曲', NOTE.x, NOTE.label);
-    c.fillStyle = ink(0.22); c.fillRect(NOTE.x, NOTE.base + 16, NOTE.maxW, 1); c.fillRect(NOTE.x, NOTE.base + 79, NOTE.maxW, 1);
+    c.fillStyle = ink(0.5);
+    c.font = font(F.hei(500), 16); c.letterSpacing = '4px'; c.fillText('♪ 附言', NOTE.x, NOTE.label); c.letterSpacing = '0px';
+    c.fillStyle = ink(0.16); c.fillRect(NOTE.x, NOTE.base + 16, NOTE.maxW, 1); c.fillRect(NOTE.x, NOTE.base + 76, NOTE.maxW, 1);
     // 欄位列
     const fy = 318;
-    const cols: [string, string, string, number][] = [
-      ['收報人', 'TO', this.to, 40], ['發報人', 'FROM', this.from, 370], ['字數', 'WORDS', String(this.words), 720], ['收報時間', 'RECEIVED', DATE_DOTS.split(' · ').join('.'), 870],
-    ];
-    for (const [zh, en, v, x] of cols) {
-      lab(zh, en, x, fy - 30);
-      c.fillStyle = ink(0.95);
-      c.font = font(F.hei(700), 26);
+    const cols: [string, string, number][] = [['收報人', this.to, 40], ['發報人', this.from, 420]];
+    for (const [zh, v, x] of cols) {
+      c.fillStyle = ink(0.5);
+      c.font = font(F.hei(500), 16); c.letterSpacing = '4px'; c.fillText(zh, x, fy + 2); c.letterSpacing = '0px';
+      c.fillStyle = ink(0.8);
+      c.font = font(F.hei(700), 22);
       let vv = v;
-      while (Array.from(vv).length > 3 && measure(vv, F.hei(700), 26) > 300) vv = Array.from(vv).slice(0, -2).join('') + '…';
-      c.fillText(vv, x, fy + 6);
+      while (Array.from(vv).length > 3 && measure(vv, F.hei(700), 22) > 260) vv = Array.from(vv).slice(0, -2).join('') + '…';
+      c.fillText(vv, x + 84, fy + 3);
     }
-    c.fillStyle = ink(0.85); c.fillRect(40, 338, FORM.w - 80, 1.6);
+    c.fillStyle = ink(0.6); c.fillRect(40, 338, FORM.w - 80, 1.4);
     // 貼紙帶的行線（淡淡的）
-    c.fillStyle = ink(0.12);
+    c.fillStyle = ink(0.08);
     for (let r = 0; r < 4; r++) { const y = BODY.top + r * (this.th + 8) + this.th + 4; if (y < BODY.bottom) c.fillRect(40, y, FORM.w - 80, 1); }
     // 簽收欄
     c.fillStyle = ink(0.85); c.fillRect(40, SIGN.rule, FORM.w - 80, 1.6);
-    lab('收報人簽收', 'RECEIVED BY', 40, SIGN.label);
-    c.fillStyle = ink(0.35); c.fillRect(260, SIGN.base + 8, 420, 1.2);
-    // 左邊界直排的冷面小字
-    c.save(); c.translate(26, FORM.h - 40); c.rotate(-Math.PI / 2);
-    c.font = font(F.hei(500), 11); c.letterSpacing = '4px'; c.fillStyle = ink(0.45);
-    c.fillText('＊本電報以愛心計費，每字零元。', 0, 0);
-    c.restore();
+    c.fillStyle = ink(0.5);
+    c.font = font(F.hei(500), 16); c.letterSpacing = '4px'; c.fillText('簽收', 40, SIGN.label); c.letterSpacing = '0px';
+    c.fillStyle = ink(0.25); c.fillRect(260, SIGN.base + 8, 420, 1.2);
     // 收件戳（圓形日戳）
     this.stamp = inkStamp(250, 250, this.seed + 5, (sc) => {
       const col = sigInk(0.95);
@@ -288,21 +299,35 @@ export default class Telegram extends Scene {
     // 飛下來的紙帶
     for (const s of this.strips) if (t >= s.cut && t < s.cut + FLY) this.drawFlying(c, s, t);
 
-    const P = this.pass.u;
-    P.layer!.value = L.upload();
-    P.bake!.value = ensureBake(renderer);
-    P.tone!.value = 0.15;
-    P.t!.value = t;
-    this.pass.render(renderer, out);
+    // ---- 合成：鏡頭、景深、燈
+    const cam = this.cam(t);
+    const P = this.pass;
+    P.u.layer!.value = L.upload();
+    P.u.bake!.value = ensureBake(renderer);
+    P.u.tone!.value = 0.22;
+    setTableCam(P, cam, { aperture: 56, sharp: 0.02, focus: this.focusPts, lamp: [cam.tu, cam.tv - 60, 1050] });
+    P.render(renderer, out);
     let amp = 11 * pulse(t, this.tStamp, 0.06);
     for (const s of this.strips) amp += 3 * pulse(t, s.cut + FLY, 0.05);
     const ph = frameIdx(t);
     return {
-      paper: 1, popupAvoid: t < this.strips[this.strips.length - 1]!.cut ? [...this.avoid, this.tapeAvoid] : this.avoid, bloom: 0.2, bloomThreshold: 1.6, halation: 0.04, vignette: 0.26, grain: 0.05, ca: 0.4,
+      paper: 1, bloom: 0.2, bloomThreshold: 1.6, halation: 0.04, vignette: 0.3, grain: 0.05, ca: 0.4,
       shake: [amp * (hash(ph, 1) - 0.5) * 2, amp * (hash(ph, 2) - 0.5) * 2],
-      zoom: 1 + 0.02 * pulse(t, this.tStamp, 0.1) + 0.015 * prog(t, e - 1, e, ease.inCubic),
+      zoom: 1 + 0.015 * pulse(t, this.tStamp, 0.1),
     };
   }
+
+  /** 鏡頭：切進來遠一點，整個窗格慢慢推近；蓋收件戳那一下往前一點點。 */
+  private cam(t: number): TableCam {
+    const s = this.ctx.start, e = this.ctx.end;
+    const [a, b] = this.camT;
+    // 打字時很慢地推近一點；推到留言的鏡位之後也繼續很慢地推
+    const A = { ...this.camA, dist: this.camA.dist * (1.06 - 0.06 * prog(t, s, a)) };
+    const B = { ...this.camB, dist: this.camB.dist * (1.03 - 0.03 * prog(t, b, e)) };
+    const c = lerpCam(A, B, ease.inOutCubic(prog(t, a, b)));
+    return { ...c, dist: c.dist * (1 - 0.012 * pulse(t, this.tStamp, 0.12)) };
+  }
+
 
   /** 貼好的紙帶在電報紙座標的位置。 */
   private pastePos(s: Strip) { return { x: BODY.x + s.dx, y: BODY.top + s.row * (this.th + 8), rot: s.rot }; }
@@ -393,9 +418,6 @@ export default class Telegram extends Scene {
     }
     c.fillStyle = sigInk(0.3 + 0.7 * hit);
     c.beginPath(); c.arc(hx + 130, wy, 7, 0, TAU); c.fill();
-    c.fillStyle = paper(0.7); c.font = font(F.mono(600), 11); c.letterSpacing = '3px';
-    c.fillText('收報機 TELEPRINTER', hx + 4, bot - 20);
-    c.letterSpacing = '0px';
   }
 
   /** 收報人簽收：手寫字一個字一個字寫出來。 */
@@ -417,7 +439,7 @@ export default class Telegram extends Scene {
     const { lyrics } = this.ctx;
     const ly = lyricAt(lyrics, t);
     if (ly) {
-      const st = paperLyric(F.archivo(100, 800), 54, NOTE.maxW, { lineHeight: 1.16 });
+      const st = paperLyric(F.archivo(100, 800), 50, NOTE.maxW, { lineHeight: 1.16 });
       const lay = layoutLyric(c, ly.line, st);
       const inK = ease.outExpo(prog(t, ly.line.start - 0.35, ly.line.start + 0.15));
       c.save();
@@ -434,8 +456,8 @@ export default class Telegram extends Scene {
     c.save();
     c.globalAlpha = k;
     c.fillStyle = ink(0.6);
-    c.font = font(F.hei(500), 36); c.letterSpacing = '3px';
-    c.fillText(lyrics.has ? '♪（間奏中）' : '♪ 本曲為純音樂，請自行哼唱', NOTE.x, NOTE.base);
+    c.font = font(F.hei(500), 32); c.letterSpacing = '3px';
+    c.fillText(lyrics.has ? '（間奏中）' : '本曲為純音樂，請自行哼唱', NOTE.x, NOTE.base);
     c.restore();
   }
 }
