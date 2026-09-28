@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex" />
+    <title>大螢幕 | Alan & Omena</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <style>
+      /* 大螢幕是一張 16:9 的畫布置中，四周黑邊；操作列與開始／登入卡片疊在上面。
+         不用 theme.css：這一頁是投影用的暗色畫面，跟賓客頁的奶茶色系分開。 */
+      :root { color-scheme: dark; }
+      html, body { margin: 0; height: 100%; background: #000; color: #f2ebdf; overflow: hidden;
+        font: 15px/1.5 "Noto Sans TC", "Microsoft JhengHei", "PingFang TC", sans-serif; }
+      body.idle { cursor: none; }
+      #wrap { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+      #c { width: 100vw; height: 56.25vw; max-height: 100vh; max-width: 177.78vh; background: #0b0a09; display: block; }
+      #ui { position: fixed; left: 50%; bottom: 18px; transform: translate(-50%, 20px); opacity: 0; pointer-events: none;
+        transition: opacity .25s, transform .25s; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px;
+        max-width: min(1100px, calc(100vw - 32px)); padding: 12px 16px; border-radius: 14px;
+        background: rgba(18, 16, 13, .86); border: 1px solid rgba(242, 235, 223, .14); backdrop-filter: blur(8px); }
+      #ui.show { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; }
+      #ui .grp { display: flex; align-items: center; gap: 6px; }
+      #ui .lbl { color: #a1978a; font-size: 12px; }
+      #ui button { font: inherit; font-size: 14px; color: #f2ebdf; background: rgba(242, 235, 223, .08); border: 1px solid rgba(242, 235, 223, .18);
+        border-radius: 9px; padding: 6px 12px; cursor: pointer; }
+      #ui button:hover { background: rgba(242, 235, 223, .16); }
+      #ui button.primary { background: #ffb547; color: #1a1208; border-color: transparent; font-weight: 700; }
+      #ui-song { font-weight: 700; max-width: 420px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      #ui-next, #ui-status { color: #a1978a; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 360px; }
+      #ui-status.bad { color: #ff9a7a; }
+      #gate { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(8, 7, 6, .72); }
+      #gate[hidden] { display: none; }
+      .gate-card { width: min(520px, calc(100vw - 32px)); padding: 36px 32px; border-radius: 20px; text-align: center;
+        background: #17140f; border: 1px solid rgba(242, 235, 223, .14); box-shadow: 0 30px 80px rgba(0, 0, 0, .5); }
+      .gate-card h1 { margin: 6px 0 10px; font-size: 30px; font-weight: 700; letter-spacing: .06em; }
+      /* 登入卡出現時自帶的字型還沒載入：用系統的等寬字 */
+      .gate-eyebrow { margin: 0; color: #ffb547; font: 600 12px/1 Consolas, "Cascadia Mono", Menlo, monospace; letter-spacing: .3em; }
+      .gate-sub { color: #a1978a; font-size: 14px; line-height: 1.8; margin: 0 0 22px; }
+      .gate-card input { width: 100%; box-sizing: border-box; font: inherit; font-size: 16px; padding: 12px 14px; border-radius: 12px; margin-bottom: 12px;
+        color: #f2ebdf; background: #0b0a09; border: 1px solid rgba(242, 235, 223, .22); outline: none; }
+      .gate-card input:focus { border-color: #ffb547; }
+      .gate-card button { font: inherit; font-size: 17px; font-weight: 700; width: 100%; padding: 13px; border-radius: 12px; border: 0; cursor: pointer;
+        background: #ffb547; color: #1a1208; }
+      .gate-err { color: #ff9a7a; min-height: 1.5em; margin: 10px 0 0; }
+      .gate-status { color: #a1978a; font-size: 13px; min-height: 1.5em; margin: 14px 0 0; }
+      #debug { position: fixed; top: 8px; left: 8px; margin: 0; padding: 6px 10px; border-radius: 8px; background: rgba(0, 0, 0, .6);
+        color: #a1978a; font: 12px ui-monospace, Menlo, monospace; }
+      .fatal { position: fixed; top: 0; left: 0; right: 0; max-height: 60vh; overflow: auto; margin: 0; padding: 12px; background: #300; color: #fbb; white-space: pre-wrap; }
+      /* 截圖模式：畫布固定 1920x1080、不顯示任何介面 */
+      body.export #ui, body.export #gate, body.export #debug { display: none !important; }
+      body.export #c { width: 1920px; height: 1080px; max-width: none; max-height: none; }
+      body.export #wrap { inset: 0; justify-content: flex-start; align-items: flex-start; }
+    </style>
+  </head>
+  <body>
+    <div id="wrap"><canvas id="c"></canvas></div>
+    <div id="ui" role="toolbar" aria-label="大螢幕操作">
+      <div class="grp"><button id="ui-prev-btn" type="button" title="上一首（←）">上一首</button><button id="ui-play" class="primary" type="button" title="空白鍵">暫停</button><button id="ui-next-btn" type="button" title="下一首（→）">下一首</button></div>
+      <div class="grp" style="flex-direction:column;align-items:flex-start;gap:0"><span id="ui-song">—</span><span id="ui-next"></span></div>
+      <div class="grp"><span class="lbl">音量</span><button id="ui-vol-down" type="button">−</button><span id="ui-vol">90%</span><button id="ui-vol-up" type="button">＋</button></div>
+      <div class="grp"><span class="lbl">音畫同步</span><button id="ui-sync-down" type="button" title="[">−</button><span id="ui-sync">0 ms</span><button id="ui-sync-up" type="button" title="]">＋</button></div>
+      <div class="grp"><button id="ui-quality" type="button" title="電腦比較慢時改成省電">畫質：高</button><button id="ui-full" type="button" title="F">全螢幕</button></div>
+      <span id="ui-status"></span>
+    </div>
+    <div id="gate"></div>
+    <pre id="debug" hidden></pre>
+    <script type="module" src="/src/wall/main.ts"></script>
+  </body>
+</html>

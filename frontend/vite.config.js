@@ -10,8 +10,12 @@ import { resolve } from "path";
 //   info.html    → 婚禮當天資訊
 //   seat.html    → 婚禮當天查桌次
 //   photos.html  → 婚紗照分享
+//   upload.html  → 婚禮當天賓客上傳照片
+//   wish.html    → 婚禮當天現場留言（賓客寫，出現在大螢幕）
+//   wall.html    → 會場大螢幕（要登入後台）
 //   planner.html → 籌備後台（/planner、/planner/guests、/planner/vendors…）
-const PAGES = ["rsvp", "details", "info", "seat", "photos", "upload"]; // upload：婚禮當天賓客上傳照片（2026-09-27）
+// upload：婚禮當天賓客上傳照片（2026-09-27）；wish、wall：現場留言與大螢幕（2026-09-28）
+const PAGES = ["rsvp", "details", "info", "seat", "photos", "upload", "wish", "wall"];
 
 // 開發模式（npm run dev）也要能用乾淨網址：/rsvp → rsvp.html、/planner/* → planner.html
 function cleanUrls() {
@@ -28,8 +32,45 @@ function cleanUrls() {
   };
 }
 
+// 大螢幕的開發模式（/wall?dev=1）：不連後端，測試音檔從本機資料夾讀。
+// 資料夾由環境變數 WALL_DEV_AUDIO_DIR 指定（放 mp3/m4a，同名的 .lrc 會當歌詞；檔名「歌名 - 歌手.mp3」）。
+// 只在 npm run dev 有作用，打包出去的網站沒有這些網址。
+function wallDevAudio() {
+  const AUDIO = /\.(mp3|m4a|aac|wav|ogg|flac|mp4)$/i;
+  return {
+    name: "wall-dev-audio",
+    apply: "serve",
+    configureServer(server) {
+      server.middlewares.use(async (req, res, next) => {
+        const url = (req.url || "").split("?")[0];
+        if (!url.startsWith("/wall-dev/")) return next();
+        const { readdirSync, readFileSync, existsSync, createReadStream, statSync } = await import("node:fs");
+        const path = await import("node:path");
+        const dir = process.env.WALL_DEV_AUDIO_DIR || "";
+        if (url === "/wall-dev/songs.json") {
+          const files = dir && existsSync(dir) ? readdirSync(dir).filter((f) => AUDIO.test(f)).sort() : [];
+          const songs = files.map((file, i) => {
+            const stem = file.replace(AUDIO, "");
+            const [title, artist] = stem.includes(" - ") ? stem.split(" - ", 2) : [stem, ""];
+            const lrcPath = path.join(dir, `${stem}.lrc`);
+            // 檔名不能有「/」，常被換成「_」（24_7 → 24/7），跟後台上傳時一樣換回來
+            return { id: i + 1, file, title: title.replace(/(\d)_(\d)/g, "$1/$2"), artist, lrc: existsSync(lrcPath) ? readFileSync(lrcPath, "utf8") : "" };
+          });
+          res.setHeader("Content-Type", "application/json");
+          return res.end(JSON.stringify(songs));
+        }
+        const m = /^\/wall-dev\/audio\/(.+)$/.exec(url);
+        const file = m && dir ? path.join(dir, decodeURIComponent(m[1])) : "";
+        if (!file || !path.resolve(file).startsWith(path.resolve(dir)) || !existsSync(file)) { res.statusCode = 404; return res.end(); }
+        res.setHeader("Content-Length", String(statSync(file).size));
+        createReadStream(file).pipe(res);
+      });
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [react(), cleanUrls()],
+  plugins: [react(), cleanUrls(), wallDevAudio()],
   build: {
     outDir: "dist",
     emptyOutDir: true,

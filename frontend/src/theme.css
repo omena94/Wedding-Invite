@@ -1389,3 +1389,79 @@ tbody tr:last-child td { border-bottom: none; }
 .pl-stage-card { align-items: center; cursor: pointer; }
 .pl-stage-card.on { border-color: var(--milk-tea-300); background: #fbf6ee; }
 .pl-stage-card .status-dot { margin-top: 0; }
+
+/* 現場留言（2026-09-28）：賓客頁 /wish 與後台「現場留言」 */
+.wish-count { text-align: right; font-size: 12.5px; color: var(--text-muted); margin-top: 6px; font-variant-numeric: tabular-nums; }
+.wish-count.full { color: var(--rose-accent); font-weight: 600; }
+.wish-error { margin: 2px 0 10px; }
+.wish-send { margin-top: 4px; }
+.wish-quote { margin: 18px auto 22px; max-width: 420px; padding: 16px 18px; border-radius: 14px; background: var(--bg-card-subtle); border: 1px solid var(--border-soft); text-align: left; }
+.wish-quote p { margin: 0 !important; font: 600 17px/1.7 "Noto Serif TC", serif; color: var(--milk-tea-900); word-break: break-word; }
+.wish-quote footer { margin-top: 8px; font-size: 13.5px; color: var(--text-muted); text-align: right; }
+.wall-top { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); column-gap: 20px; }
+.wall-qr { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; }
+.wall-qr-code { width: 168px; height: 168px; flex-shrink: 0; border-radius: 10px; border: 1px solid var(--border-soft); }
+.wall-qr-side { flex: 1; min-width: 160px; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+.wall-qr-url { font-size: 15px; font-weight: 600; color: var(--milk-tea-900); word-break: break-all; }
+.wall-add { display: grid; grid-template-columns: minmax(0, 150px) minmax(0, 1fr) auto; gap: 8px; align-items: center; }
+.wall-msg-list { list-style: none; margin: 0; padding: 0; }
+.wall-msg { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--milk-tea-100); }
+.wall-msg:last-child { border-bottom: none; }
+.wall-msg.hide .wall-msg-text { color: var(--text-muted); }
+.wall-msg.pending { padding-left: 12px; box-shadow: inset 3px 0 0 var(--gold-accent); }
+.wall-msg-main { flex: 1; min-width: 0; }
+.wall-msg-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 12.5px; color: var(--text-muted); }
+.wall-msg-name { font-weight: 600; color: var(--milk-tea-900); }
+.wall-msg-text { margin-top: 4px; font-size: 14.5px; line-height: 1.6; color: var(--text-dark); word-break: break-word; }
+.wall-msg-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.wall-msg-toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text-muted); white-space: nowrap; }
+@media (max-width: 900px) { .wall-top { grid-template-columns: 1fr; } }
+@media (max-width: 640px) {
+  .wall-add { grid-template-columns: 1fr; }
+  .wall-msg { flex-direction: column; align-items: stretch; gap: 8px; }
+  .wall-msg-actions { justify-content: flex-end; }
+}
+
+/* 大螢幕歌單（2026-09-28）：後台「現場留言」下方的歌單、編輯歌曲的歌詞對時 */
+.ws-list { list-style: none; margin: 0; padding: 0; }
+.ws-row { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--milk-tea-100); }
+.ws-row:last-child { border-bottom: none; }
+.ws-row.off .ws-title, .ws-row.off .ws-no { color: var(--text-muted); text-decoration: line-through; }
+.ws-order { display: flex; flex-direction: column; gap: 4px; }
+.ws-order .btn { padding: 3px 6px; }
+.ws-no { font: 600 13px/1 "IBM Plex Mono", ui-monospace, monospace; color: var(--milk-tea-500); width: 24px; text-align: right; }
+.ws-main { flex: 1; min-width: 0; }
+.ws-title { font-size: 14.5px; font-weight: 600; color: var(--milk-tea-900); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ws-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-top: 3px; font-size: 12.5px; color: var(--text-muted); }
+.ws-jobtag { color: var(--milk-tea-700); font-weight: 600; }
+.ws-job { font-size: 13px; color: var(--milk-tea-700); padding: 6px 0; }
+.ws-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.ws-range { display: flex; align-items: center; gap: 8px; }
+.ws-range input { width: 100px; }
+.ws-tempo { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ws-bpm { font: 600 15px/1 "IBM Plex Mono", ui-monospace, monospace; color: var(--milk-tea-900); margin-right: 6px; }
+.ws-lyrics-head { display: flex !important; justify-content: space-between; align-items: center; gap: 12px; }
+.ws-lyrics-tools { font-weight: 400; }
+.ws-cands { border: 1px solid var(--border-soft); border-radius: 12px; padding: 4px 12px; margin-bottom: 10px; max-height: 260px; overflow-y: auto; background: var(--bg-card-subtle); }
+.ws-cand { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--milk-tea-100); }
+.ws-cand:last-child { border-bottom: none; }
+.ws-cand-title { font-size: 13.5px; font-weight: 600; color: var(--milk-tea-900); }
+.ws-lrc { font: 13px/1.6 "IBM Plex Mono", ui-monospace, monospace; }
+.ws-sync { margin-top: 10px; border: 1px solid var(--border-soft); border-radius: 14px; padding: 12px; background: var(--bg-card-subtle); }
+.ws-player { display: flex; align-items: center; gap: 8px; }
+.ws-bar { flex: 1; height: 8px; border-radius: 4px; background: var(--milk-tea-100); cursor: pointer; overflow: hidden; }
+.ws-bar > div { height: 100%; background: var(--milk-tea-500); }
+.ws-time { font: 12px/1 "IBM Plex Mono", ui-monospace, monospace; color: var(--text-muted); white-space: nowrap; }
+.ws-preview { min-height: 86px; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; padding: 12px 6px; }
+.ws-karaoke { font: 700 22px/1.5 "Noto Sans TC", "PingFang TC", sans-serif; }
+.ws-word { background: linear-gradient(90deg, var(--milk-tea-900) var(--p), var(--milk-tea-300) var(--p)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.ws-preview-next { margin-top: 4px; font-size: 14px; color: var(--text-muted); }
+.ws-tap-list { max-height: 220px; overflow-y: auto; margin-top: 10px; border-radius: 10px; background: var(--bg-card); border: 1px solid var(--border-soft); padding: 6px 0; }
+.ws-tap-line { padding: 5px 12px; font-size: 14px; color: var(--text-muted); }
+.ws-tap-line.done { color: var(--text-dark); }
+.ws-tap-line.now { background: #fbf1dc; color: var(--milk-tea-900); font-weight: 700; }
+.ws-tap-t { display: inline-block; width: 86px; font: 12px/1 "IBM Plex Mono", ui-monospace, monospace; color: var(--milk-tea-500); }
+@media (max-width: 640px) {
+  .ws-row { flex-wrap: wrap; }
+  .ws-actions { width: 100%; justify-content: flex-end; }
+}

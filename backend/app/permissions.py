@@ -33,6 +33,7 @@ PERMISSIONS = [
     ("files", "文件庫"),
     ("photos", "婚紗照"),
     ("guest_photos", "當天照片（賓客上傳的原檔：看、下載、刪除、開關）"),
+    ("wall", "現場留言：大螢幕播放、留言管理、歌單"),
     ("settings", "設定（含這張權限表）"),
 ]
 ALL = [k for k, _ in PERMISSIONS]
