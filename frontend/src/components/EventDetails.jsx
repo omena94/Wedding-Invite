@@ -37,7 +37,7 @@ export default function EventDetails() {
         <div className="detail-icon"><SquareParking size={16} /></div>
         <div className="detail-content">
           <strong>停車：</strong>
-          <a href={VENUE.parkingUrl} target="_blank" rel="noopener noreferrer" style={linkStyle}>停車場資訊</a>
+          <a href={VENUE.parkingUrl} target="_blank" rel="noopener noreferrer" style={linkStyle}>停車場位置</a>
         </div>
       </div>
     </div>
