@@ -3,7 +3,7 @@
 // 在歌詞清單按那句的「對字」邊聽邊按（存成加強版 LRC 的 <mm:ss.xx>，沒修的句子照舊自動推算）。
 // 大螢幕照這裡的順序播（停用的跳過），播到哪一首的配色、剪掉的前奏尾奏也在這裡設。
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowDown, ArrowUp, CloudUpload, FileText, Monitor, Music, Pause, Pencil, Play, RefreshCw, Search, Trash2, Type, Wand2 } from "lucide-react";
+import { ArrowDown, ArrowUp, CloudUpload, FileText, Monitor, Music, Pause, Pencil, Play, RefreshCw, Search, Square, Trash2, Type, Wand2 } from "lucide-react";
 import {
   deleteWallSong, fetchWallSongAnalysis, fetchWallSongAudio, fetchWallSongs, reorderWallSongs, saveWallSongAnalysis, updateWallSong, uploadWallSong,
 } from "../api.js";
@@ -590,6 +590,15 @@ function LyricSync({ lrc, offset, blobUrl, analysis, onLrc, onOffset, onShift })
     if (wt.phase === "tap") return wordStart();
     playSpan(t >= span.start && t < span.stop - 0.05 ? t : span.start, span.stop);
   };
+  // ■：停下來、回到這句開頭（新人不想一直拖進度條）。按到一半按 ■ 就是放棄這次，按的時間清掉。
+  const stopLine = () => {
+    const a = audio.current;
+    if (!a || !span) return;
+    a.pause();
+    stopAt.current = null;
+    seek(span.start);
+    if (wt.phase === "tap") { taps.current = []; setWt((w) => ({ ...w, times: [], phase: "setup" })); }
+  };
 
   return (
     <div className="ws-sync">
@@ -598,6 +607,7 @@ function LyricSync({ lrc, offset, blobUrl, analysis, onLrc, onOffset, onShift })
         // 對字時播放器只管這一句：進度條是這句的範圍，播放鍵只播這句（按的途中按播放鍵＝重按一次）
         <div className="ws-player">
           <button type="button" className="btn btn-primary btn-sm" disabled={!blobUrl} onClick={playLine}>{paused ? <Play size={13} /> : <Pause size={13} />}</button>
+          <button type="button" className="btn btn-ghost btn-sm" disabled={!blobUrl} title="停止，回到這句開頭" onClick={stopLine}><Square size={12} /></button>
           <div className="ws-bar" onClick={(e) => { if (wt.phase === "tap") return; const r = e.currentTarget.getBoundingClientRect(); playSpan(span.start + ((e.clientX - r.left) / r.width) * (span.stop - span.start), span.stop); }}>
             <div style={{ width: `${Math.max(0, Math.min(100, ((t - span.start) / (span.stop - span.start)) * 100))}%` }} />
           </div>
