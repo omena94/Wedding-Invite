@@ -135,9 +135,10 @@ export class Director {
       scene = spec.name;
       bars = spec.bars;
       if (spec.variants) params.variant = Math.floor(this.rnd(3) * spec.variants);
-      if (spec.minMessages) params.messages = this.pool.all.slice();
     }
     if (msg) { params.message = msg; this.pool.markShown(msg.id); }
+    // 全部可上螢幕的留言：每個窗格都給（片尾名單、便利貼牆、聊天室的歷史泡泡會拿來用），版面不用為了拿清單而設 minMessages
+    params.messages ??= this.pool.all.slice();
     params.seed = Math.floor(this.rnd(4) * 1e6);
     params.energy = energy;
 
