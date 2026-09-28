@@ -1,8 +1,9 @@
 // 大螢幕歌單（2026-09-28）：新人自己加歌、刪歌、排順序；每首歌上傳後在這台電腦上分析節拍、自動找歌詞（LRCLIB），
-// 找不到或時間不準的，在「編輯」裡貼 LRC、上傳 .lrc 檔，或邊聽邊按空白鍵逐句對時。
+// 找不到或時間不準的，在「編輯」裡貼 LRC、上傳 .lrc 檔，或邊聽邊按空白鍵逐句對時；某一句的字亮得跟歌聲對不上，
+// 在歌詞清單按那句的「對字」邊聽邊按（存成加強版 LRC 的 <mm:ss.xx>，沒修的句子照舊自動推算）。
 // 大螢幕照這裡的順序播（停用的跳過），播到哪一首的配色、剪掉的前奏尾奏也在這裡設。
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowDown, ArrowUp, CloudUpload, FileText, Monitor, Music, Pause, Pencil, Play, RefreshCw, Search, Trash2, Wand2 } from "lucide-react";
+import { ArrowDown, ArrowUp, CloudUpload, FileText, Monitor, Music, Pause, Pencil, Play, RefreshCw, Search, Trash2, Type, Wand2 } from "lucide-react";
 import {
   deleteWallSong, fetchWallSongAnalysis, fetchWallSongAudio, fetchWallSongs, reorderWallSongs, saveWallSongAnalysis, updateWallSong, uploadWallSong,
 } from "../api.js";
@@ -13,7 +14,7 @@ import { analyzeFile, ANALYSIS_VERSION } from "../wall/analysis/client";
 import { halveTempo, doubleTempo } from "../wall/analysis/tempo";
 import { searchLyrics } from "../wall/lyrics/lrclib";
 import { parseLrc, toLrc, shiftLrc, fmtTime, isSynced } from "../wall/lyrics/lrc";
-import { buildLyrics } from "../wall/lyrics/build";
+import { buildLyrics, lyricUnits } from "../wall/lyrics/build";
 import { AudioData } from "../wall/engine/audio";
 import { Lyrics } from "../wall/engine/lyrics";
 import { THEMES } from "../wall/themes";
@@ -367,21 +368,38 @@ function SongEditor({ song, onClose, onSaved }) {
   );
 }
 
-// ---------------------------------------------------------------- 預覽與逐句對時
+// ---------------------------------------------------------------- 預覽、逐句對時、逐字對時
 /**
- * 邊聽邊看歌詞（跟大螢幕一樣逐字變色）。按「逐句對時」後，每句歌詞開始唱的那一刻按空白鍵（或「這句開始」），
- * 時間就記到下一句；按錯按「退一句」。人按鍵通常慢一點點，所以記的時間自動往前 0.12 秒。
+ * 邊聽邊看歌詞，跟大螢幕同一套時間規則：上面是現在唱到的那一句（大字），下面是整首歌詞清單，每一句都照大螢幕的時間逐字亮。
+ * 新人要能「看著亮的樣子」快速修，不用手打時間（2026-09-28）：
+ * - 清單點一句 → 從那句前一點開始播。
+ * - 某一句的字亮得跟歌聲對不上 → 按那句的「對字」：每個字（或自己切的每一段）開始唱時按一下空白鍵，最後一個字唱完再按一下。
+ *   存成加強版 LRC（[時間]<時間>字<時間>字…<結束時間>），整句照樣一起顯示，只是每個字亮的時間照按的；其他句子照舊自動推算。
+ *   套用後馬上從那句前面重播，不滿意可以「復原」。
+ * - 逐句對時：整首還沒有時間時用，每句開始唱的那一刻按空白鍵。
+ * 人按鍵通常慢一點點，所以記的時間自動往前 0.12 秒（放慢播放時換算成音檔時間）。
  */
 function LyricSync({ lrc, offset, blobUrl, analysis, onLrc, onOffset, onShift }) {
   const audio = useRef(null);
+  const listRef = useRef(null);
   const [t, setT] = useState(0);
   const [dur, setDur] = useState(0);
   const [paused, setPaused] = useState(true);
   const [tap, setTap] = useState(null); // 逐句對時中：{ lines, cursor }
+  const [wt, setWt] = useState(null); // 逐字對時中：{ idx, t, text, units:[{w,pos}], cuts:[bool], split, times:[], phase:'setup'|'tap'|'done' }
+  const [rate, setRateState] = useState(1);
+  const [undo, setUndo] = useState(null); // 上一次「對字」之前的歌詞（復原用）
   const REACT = 0.12;
 
   const au = useMemo(() => (analysis ? new AudioData(analysis) : AudioData.silent(600, 100)), [analysis]);
   const lyrics = useMemo(() => { try { return buildLyrics(lrc, au, offset); } catch { return Lyrics.empty(); } }, [lrc, au, offset]);
+  const doc = useMemo(() => { try { return parseLrc(lrc); } catch { return { lines: [], meta: {} }; } }, [lrc]);
+  // 清單的每一句（LRC 的一行）對到算好時間的歌詞行：用開始時間對（空白行、沒有字的行不會出現在大螢幕上）
+  const rows = useMemo(() => doc.lines.map((l, i) => {
+    if (!l.text || !Number.isFinite(l.t)) return null;
+    const s0 = (l.words?.find((w) => w.w.trim())?.t ?? l.t) + offset;
+    return { i, l, line: lyrics.lines.find((x) => Math.abs(x.start - s0) < 0.02) || null };
+  }).filter(Boolean), [doc, lyrics, offset]);
 
   useEffect(() => {
     let raf = 0;
@@ -390,50 +408,142 @@ function LyricSync({ lrc, offset, blobUrl, analysis, onLrc, onOffset, onShift })
     return () => cancelAnimationFrame(raf);
   }, []);
 
+  const setRate = (r) => { setRateState(r); if (audio.current) audio.current.playbackRate = r; };
   const play = () => { const a = audio.current; if (!a) return; if (a.paused) a.play(); else a.pause(); };
-  const seek = (x) => { const a = audio.current; if (a) a.currentTime = Math.max(0, Math.min(dur || 0, x)); };
+  const seek = (x) => { const a = audio.current; if (a) a.currentTime = Math.max(0, Math.min(dur || a.duration || 0, x)); };
 
+  const cur = lyrics.shownLine(t, 1.2, 0.35);
+  const next = cur ? lyrics.lines[cur.i + 1] : lyrics.nextLine(t);
+  const curRow = cur ? rows.find((r) => r.line === cur)?.i : undefined;
+  // 清單跟著唱到的那一句捲動（只捲清單，不捲整個視窗）
+  useEffect(() => {
+    const box = listRef.current;
+    const el = box?.querySelector(`[data-row="${curRow}"]`);
+    if (box && el) box.scrollTo({ top: el.offsetTop - box.clientHeight / 2 + el.clientHeight / 2, behavior: "smooth" });
+  }, [curRow]);
+
+  // ------------------------------------------------ 逐句對時
   const startTap = () => {
-    const doc = parseLrc(lrc);
-    const lines = doc.lines.filter((l) => l.text).map((l) => ({ t: NaN, text: l.text }));
+    // 已經逐字對好的句子，重新逐句對時是整句平移、字跟字之間的間隔保留（old = 原本的開始時間）
+    const lines = doc.lines.filter((l) => l.text).map((l) => ({ t: NaN, text: l.text, words: l.words, old: l.t }));
     if (!lines.length) return;
+    setWt(null);
     setTap({ lines, cursor: 0 });
+    setRate(1);
     seek(0);
     audio.current?.play();
   };
-  const hit = useCallback(() => {
-    setTap((s) => {
-      if (!s || s.cursor >= s.lines.length) return s;
-      const lines = s.lines.slice();
-      lines[s.cursor] = { ...lines[s.cursor], t: Math.max(0, (audio.current?.currentTime ?? 0) - REACT) };
-      return { lines, cursor: s.cursor + 1 };
-    });
-  }, []);
+  // 歌詞時間 = 音檔時間 − 整首偏移（畫面是「歌詞時間 + 偏移」顯示的，按下去的時間要換回來）
+  const hit = () => setTap((s) => {
+    if (!s || s.cursor >= s.lines.length) return s;
+    const lines = s.lines.slice();
+    lines[s.cursor] = { ...lines[s.cursor], t: Math.max(0, (audio.current?.currentTime ?? 0) - REACT - offset) };
+    return { lines, cursor: s.cursor + 1 };
+  });
   const back = () => setTap((s) => {
     if (!s || s.cursor === 0) return s;
     const lines = s.lines.slice();
     const c = s.cursor - 1;
     const prev = lines[c - 1]?.t;
     lines[c] = { ...lines[c], t: NaN };
-    seek(Number.isFinite(prev) ? prev - 1 : 0);
+    seek(Number.isFinite(prev) ? prev + offset - 1 : 0);
     return { lines, cursor: c };
   });
   const finish = () => {
     if (!tap) return;
-    const done = tap.lines.filter((l) => Number.isFinite(l.t));
-    if (done.length) onLrc(toLrc([...done, ...tap.lines.filter((l) => !Number.isFinite(l.t))]));
+    const done = tap.lines.filter((l) => Number.isFinite(l.t)).map((l) => ({
+      t: l.t, text: l.text,
+      ...(l.words?.length && Number.isFinite(l.old) ? { words: l.words.map((w) => ({ ...w, t: w.t + l.t - l.old })) } : {}),
+    }));
+    const rest = tap.lines.filter((l) => !Number.isFinite(l.t)).map((l) => ({ t: NaN, text: l.text }));
+    if (done.length) onLrc(toLrc([...done, ...rest]));
     setTap(null);
     audio.current?.pause();
   };
+
+  // ------------------------------------------------ 逐字對時（只修一句）
+  const openWord = (idx) => {
+    const l = doc.lines[idx];
+    // 每個會被唱的單位（中文一個字、英文一個字）在整句裡的位置；段落文字從這裡切，空白與標點跟著前一段
+    const units = [];
+    let at = 0;
+    for (const u of lyricUnits(l.text)) {
+      if (!u.w.trim()) continue;
+      const pos = l.text.indexOf(u.w, at);
+      units.push({ w: u.w, pos: pos >= 0 ? pos : at });
+      at = (pos >= 0 ? pos : at) + u.w.length;
+    }
+    if (!units.length) return;
+    audio.current?.pause();
+    const t0 = l.words?.find((w) => w.w.trim())?.t ?? l.t;
+    setWt({ idx, t: t0, text: l.text, units, cuts: units.map(() => true), split: false, times: [], phase: "setup" });
+  };
+  const segsOf = (w) => {
+    const starts = w.units.map((u, i) => i).filter((i) => i === 0 || w.cuts[i]);
+    return starts.map((from, k) => {
+      const end = k + 1 < starts.length ? w.units[starts[k + 1]].pos : w.text.length;
+      return { from, text: w.text.slice(k === 0 ? 0 : w.units[from].pos, end) };
+    });
+  };
+  const wordStart = () => {
+    if (!wt) return;
+    setWt((w) => ({ ...w, times: [], phase: "tap" }));
+    if (audio.current) audio.current.playbackRate = rate;
+    seek(wt.t + offset - 2);
+    audio.current?.play();
+  };
+  const wordHit = () => setWt((w) => {
+    if (!w || w.phase !== "tap") return w;
+    const n = segsOf(w).length;
+    // 按鍵的反應時間是真實時間，放慢播放時換算成音檔時間要乘上速度
+    let tt = Math.max(0, (audio.current?.currentTime ?? 0) - REACT * rate - offset);
+    if (w.times.length) tt = Math.max(tt, w.times[w.times.length - 1] + 0.03);
+    const times = [...w.times, tt];
+    if (times.length > n) { audio.current?.pause(); return { ...w, times, phase: "done" }; }
+    return { ...w, times };
+  });
+  const wordBack = () => setWt((w) => {
+    if (!w || !w.times.length) return w;
+    const times = w.times.slice(0, -1);
+    seek((times[times.length - 1] ?? w.t) + offset - 1.5);
+    if (w.phase === "done") audio.current?.play();
+    return { ...w, times, phase: "tap" };
+  });
+  const wordCancel = () => { audio.current?.pause(); setRate(1); setWt(null); };
+  const wordApply = () => {
+    const l = doc.lines[wt.idx];
+    if (!l || l.text !== wt.text) { toastErr(new Error("歌詞在對時中被改過了，請重新選這一句")); wordCancel(); return; }
+    const segs = segsOf(wt);
+    const words = [...segs.map((sg, k) => ({ t: wt.times[k], w: sg.text })), { t: wt.times[segs.length], w: "" }];
+    const lines = doc.lines.slice();
+    lines[wt.idx] = { t: wt.times[0], text: l.text, words };
+    setUndo(lrc);
+    onLrc(toLrc(lines, doc.meta));
+    const from = wt.times[0] + offset - 1.5;
+    setWt(null);
+    // 馬上用正常速度從這句前面重播一次，看字有沒有跟上
+    setRate(1);
+    seek(from);
+    audio.current?.play();
+  };
+  const wordClear = (idx) => {
+    const lines = doc.lines.slice();
+    lines[idx] = { t: lines[idx].t, text: lines[idx].text };
+    setUndo(lrc);
+    onLrc(toLrc(lines, doc.meta));
+  };
+
   useEffect(() => {
-    if (!tap) return;
-    const onKey = (e) => { if (e.code === "Space") { e.preventDefault(); hit(); } else if (e.key === "Backspace") { e.preventDefault(); back(); } };
+    const active = tap || wt?.phase === "tap" || wt?.phase === "done";
+    if (!active) return;
+    const onKey = (e) => {
+      if (e.code === "Space") { e.preventDefault(); if (tap) hit(); else wordHit(); }
+      else if (e.key === "Backspace") { e.preventDefault(); if (tap) back(); else wordBack(); }
+    };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }); // 每次重畫都重新綁，back() 才拿得到最新的狀態
+  }); // 每次重畫都重新綁，拿得到最新的狀態
 
-  const cur = lyrics.shownLine(t, 1.2, 0.35);
-  const next = cur ? lyrics.lines[cur.i + 1] : lyrics.nextLine(t);
   return (
     <div className="ws-sync">
       <audio ref={audio} src={blobUrl || undefined} onLoadedMetadata={(e) => setDur(e.currentTarget.duration)} onPlay={() => setPaused(false)} onPause={() => setPaused(true)} hidden />
@@ -461,18 +571,44 @@ function LyricSync({ lrc, offset, blobUrl, analysis, onLrc, onOffset, onShift })
             <span className="helper-text" style={{ margin: 0 }}>第 {Math.min(tap.cursor + 1, tap.lines.length)} / {tap.lines.length} 句</span>
           </div>
         </div>
+      ) : wt ? (
+        <WordTapPanel wt={wt} segs={segsOf(wt)} rate={rate}
+          onRate={setRate} onSplit={(split) => setWt((w) => ({ ...w, split, cuts: w.units.map(() => !split), times: [], phase: "setup" }))}
+          onCut={(i) => setWt((w) => (w.phase === "setup" && w.split && i > 0 ? { ...w, cuts: w.cuts.map((c, j) => (j === i ? !c : c)) } : w))}
+          onStart={wordStart} onHit={wordHit} onBack={wordBack} onCancel={wordCancel} onApply={wordApply} />
       ) : (
         <>
           <div className="ws-preview">
             {cur ? <KaraokeLine line={cur} t={t} /> : <span className="muted-cell">{lyrics.has ? "（間奏）" : "沒有對好時間的歌詞"}</span>}
             {next && <div className="ws-preview-next">{next.text}</div>}
           </div>
-          <div className="toolbar">
+          {rows.length > 0 && (
+            <>
+              <div className="helper-text" style={{ margin: "2px 0 6px" }}>
+                下面每一句都照大螢幕的時間亮。點一句從那裡播；哪一句的字亮得跟歌聲對不上，按那句的「對字」邊聽邊按空白鍵就好（其他句子不受影響）。
+              </div>
+              <div className="ws-lines" ref={listRef}>
+                {rows.map((r) => (
+                  <div key={r.i} data-row={r.i} className={`ws-line${r.i === curRow ? " now" : ""}`} onClick={() => { seek((r.line?.start ?? r.l.t + offset) - 0.6); audio.current?.play(); }}>
+                    <span className="ws-tap-t">{fmtTime(r.l.t)}</span>
+                    <span className="ws-line-text">{r.line ? <KaraokeLine line={r.line} t={t} small /> : r.l.text}</span>
+                    {r.l.words?.length > 0 && <span className="pill pill-yes ws-line-pill" title="這句的字照你按的時間亮">逐字</span>}
+                    <span className="ws-line-btns">
+                      <button type="button" className="btn btn-ghost btn-sm" disabled={!blobUrl} onClick={(e) => { e.stopPropagation(); openWord(r.i); }}><Type size={12} /> 對字</button>
+                      {r.l.words?.length > 0 && <button type="button" className="btn btn-ghost btn-sm" title="拿掉這句的逐字時間，改回自動推算" onClick={(e) => { e.stopPropagation(); wordClear(r.i); }}>自動</button>}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+          <div className="toolbar" style={{ marginTop: 8 }}>
             <button type="button" className="btn btn-ghost btn-sm" disabled={!blobUrl || !lrc.trim()} onClick={startTap}><Wand2 size={13} /> 逐句對時</button>
             <span className="helper-text" style={{ margin: 0 }}>整首歌詞時間：</span>
             <button type="button" className="btn btn-ghost btn-sm" onClick={() => onShift(-0.1)}>提早 0.1 秒</button>
             <button type="button" className="btn btn-ghost btn-sm" onClick={() => onShift(0.1)}>延後 0.1 秒</button>
             {offset !== 0 && <button type="button" className="btn btn-ghost btn-sm" onClick={() => onOffset(0)}>清除偏移 {offset > 0 ? "+" : ""}{offset}s</button>}
+            {undo !== null && <button type="button" className="btn btn-ghost btn-sm" onClick={() => { onLrc(undo); setUndo(null); }}>復原剛剛的修改</button>}
           </div>
         </>
       )}
@@ -480,10 +616,66 @@ function LyricSync({ lrc, offset, blobUrl, analysis, onLrc, onOffset, onShift })
   );
 }
 
-/** 一行歌詞，唱過的字變深、正在唱的字漸層（跟大螢幕同樣的時間規則）。 */
-function KaraokeLine({ line, t }) {
+/** 逐字對時的畫面：設定（每個字／自己分段、播放速度）→ 邊聽邊按空白鍵 → 套用。 */
+function WordTapPanel({ wt, segs, rate, onRate, onSplit, onCut, onStart, onHit, onBack, onCancel, onApply }) {
+  const n = segs.length;
+  const k = wt.times.length; // 已經按了幾下
+  const segOf = (i) => { let s = 0; segs.forEach((sg, j) => { if (i >= sg.from) s = j; }); return s; };
   return (
-    <div className="ws-karaoke">
+    <div className="ws-tap ws-word-tap">
+      <div className="ws-chips">
+        {wt.units.map((u, i) => {
+          const sg = segOf(i);
+          const state = wt.phase === "setup" ? "" : sg < k ? " done" : sg === k && wt.phase === "tap" ? " now" : "";
+          const head = segs[sg].from === i;
+          return (
+            <span key={i} className={`ws-chip${state}${wt.split && i > 0 && head ? " cut" : ""}${wt.split && wt.phase === "setup" && i > 0 ? " clickable" : ""}`} onClick={() => onCut(i)}>
+              {u.w}
+              <small>{head && wt.times[sg] !== undefined ? fmtTime(wt.times[sg]).slice(3) : " "}</small>
+            </span>
+          );
+        })}
+      </div>
+      {wt.phase === "setup" && <>
+        <div className="toolbar" style={{ marginTop: 10 }}>
+          <button type="button" className={`btn btn-sm ${!wt.split ? "btn-primary" : "btn-ghost"}`} onClick={() => onSplit(false)}>每個字按一下</button>
+          <button type="button" className={`btn btn-sm ${wt.split ? "btn-primary" : "btn-ghost"}`} onClick={() => onSplit(true)}>自己分段</button>
+          <span className="helper-text" style={{ margin: "0 0 0 8px" }}>播放速度</span>
+          {[1, 0.75, 0.5].map((r) => <button key={r} type="button" className={`btn btn-sm ${rate === r ? "btn-primary" : "btn-ghost"}`} onClick={() => onRate(r)}>{r === 1 ? "正常" : `${r}×`}</button>)}
+        </div>
+        <div className="helper-text">
+          {wt.split ? "點一個字，就從那個字開始新的一段（例如「窗外飛過著｜宣告戀愛｜的蜻蜓」），每段開始唱時按一下空白鍵，段裡的字平均分時間。" : "每個字開始唱的那一刻按一下空白鍵。"}
+          最後一個字唱完再按一下。會從這句前兩秒開始播，跟不上可以放慢。
+        </div>
+        <div className="toolbar" style={{ marginTop: 8 }}>
+          <button type="button" className="btn btn-primary" onClick={onStart}><Play size={13} /> 開始（共 {n} {wt.split ? "段" : "個字"}，要按 {n + 1} 下）</button>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={onCancel}>取消</button>
+        </div>
+      </>}
+      {wt.phase === "tap" && (
+        <div className="toolbar" style={{ marginTop: 10 }}>
+          <button type="button" className="btn btn-primary" onClick={onHit}>{k < n ? `「${segs[k].text.trim()}」開始（空白鍵）` : "唱完了（空白鍵）"}</button>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={onBack} disabled={!k}>退一下（⌫）</button>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={onCancel}>取消</button>
+          <span className="helper-text" style={{ margin: 0 }}>{k} / {n + 1}</span>
+        </div>
+      )}
+      {wt.phase === "done" && (
+        <div className="toolbar" style={{ marginTop: 10 }}>
+          <button type="button" className="btn btn-primary" onClick={onApply}>套用並重播這一句</button>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={onStart}>重按一次</button>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={onBack}>退一下（⌫）</button>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={onCancel}>取消</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** 一行歌詞，唱過的字變深、正在唱的字漸層（跟大螢幕同樣的時間規則）。 */
+function KaraokeLine({ line, t, small }) {
+  return (
+    <div className={`ws-karaoke${small ? " sm" : ""}`}>
       {line.words.map((w, i) => {
         const p = Lyrics.wordProgress(w, t);
         const gap = i > 0 && line.text[w.o - 1] === " " ? " " : "";

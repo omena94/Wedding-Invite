@@ -1453,7 +1453,8 @@ tbody tr:last-child td { border-bottom: none; }
 .ws-bar > div { height: 100%; background: var(--milk-tea-500); }
 .ws-time { font: 12px/1 "IBM Plex Mono", ui-monospace, monospace; color: var(--text-muted); white-space: nowrap; }
 .ws-preview { min-height: 86px; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; padding: 12px 6px; }
-.ws-karaoke { font: 700 22px/1.5 "Noto Sans TC", "PingFang TC", sans-serif; }
+/* 拉丁字先用西文字型：Noto Sans TC 的彎引號是全形，it’s 會被撐開 */
+.ws-karaoke { font: 700 22px/1.5 "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans TC", "PingFang TC", sans-serif; }
 .ws-word { background: linear-gradient(90deg, var(--milk-tea-900) var(--p), var(--milk-tea-300) var(--p)); -webkit-background-clip: text; background-clip: text; color: transparent; }
 .ws-preview-next { margin-top: 4px; font-size: 14px; color: var(--text-muted); }
 .ws-tap-list { max-height: 220px; overflow-y: auto; margin-top: 10px; border-radius: 10px; background: var(--bg-card); border: 1px solid var(--border-soft); padding: 6px 0; }
@@ -1461,6 +1462,27 @@ tbody tr:last-child td { border-bottom: none; }
 .ws-tap-line.done { color: var(--text-dark); }
 .ws-tap-line.now { background: #fbf1dc; color: var(--milk-tea-900); font-weight: 700; }
 .ws-tap-t { display: inline-block; width: 86px; font: 12px/1 "IBM Plex Mono", ui-monospace, monospace; color: var(--milk-tea-500); }
+/* 整首歌詞清單：每一句照大螢幕的時間逐字亮，按「對字」修一句 */
+.ws-lines { position: relative; max-height: 300px; overflow-y: auto; border-radius: 10px; background: var(--bg-card); border: 1px solid var(--border-soft); padding: 4px 0; }
+.ws-line { display: flex; align-items: center; gap: 8px; padding: 4px 10px; cursor: pointer; }
+.ws-line:hover { background: var(--bg-card-subtle); }
+.ws-line.now { background: #fbf1dc; }
+.ws-line .ws-tap-t { flex-shrink: 0; }
+.ws-line-text { flex: 1; min-width: 0; }
+.ws-line-pill { flex-shrink: 0; }
+.ws-line-btns { display: flex; gap: 4px; flex-shrink: 0; }
+.ws-line-btns .btn { padding: 3px 8px; }
+.ws-karaoke.sm { font: 600 15px/1.45 "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans TC", "PingFang TC", sans-serif; }
+/* 逐字對時：一個字一格，段落開頭前面有分隔，按過的字變深、下一個要按的字框起來 */
+.ws-word-tap { margin-top: 10px; }
+.ws-chips { display: flex; flex-wrap: wrap; gap: 4px; padding: 12px; border-radius: 10px; background: var(--bg-card); border: 1px solid var(--border-soft); }
+.ws-chip { display: inline-flex; flex-direction: column; align-items: center; min-width: 30px; padding: 4px 4px 2px; border-radius: 8px; font: 700 22px/1.2 "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans TC", "PingFang TC", sans-serif; color: var(--milk-tea-300); border: 2px solid transparent; }
+.ws-chip small { font: 10px/1.2 "IBM Plex Mono", ui-monospace, monospace; color: var(--milk-tea-500); min-height: 12px; }
+.ws-chip.cut { margin-left: 10px; border-left: 2px dashed var(--milk-tea-300); border-top-left-radius: 0; border-bottom-left-radius: 0; }
+.ws-chip.clickable { cursor: pointer; }
+.ws-chip.clickable:hover { background: var(--bg-card-subtle); }
+.ws-chip.done { color: var(--milk-tea-900); }
+.ws-chip.now { color: var(--milk-tea-900); border-color: var(--milk-tea-500); background: #fbf1dc; }
 @media (max-width: 640px) {
   .ws-row { flex-wrap: wrap; }
   .ws-actions { width: 100%; justify-content: flex-end; }

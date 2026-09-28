@@ -5,7 +5,8 @@
 //  - 單位：中文、日文一個字；韓文一個音節；英文一個字（依母音組估音節數當權重）
 //  - 一行大約用八分音符的速度唱（一拍兩個音節），跟下一行靠很近就一路唱到下一行前；
 //  - 每個字的開始吸到最近的十六分音符格（流行歌的旋律幾乎都在拍子格上），看起來才會「跟著唱」。
-// 有加強版逐字時間（<mm:ss.xx>）的行就直接用，不推估。
+// 有加強版逐字時間（<mm:ss.xx>）的行就直接用，不推估；可以每個字標，也可以一段標一次（段內平均分）。
+// 沒標的行照舊推估，所以一首歌只要修唱不準的那幾行。
 import type { AudioData } from '../engine/audio';
 import { Lyrics, type LyricsJSON } from '../engine/lyrics';
 import { parseLrc, type LrcLine } from './lrc';
@@ -76,15 +77,29 @@ export function buildLyrics(src: string, au: AudioData, offset = 0): Lyrics {
   return new Lyrics({ lines: out });
 }
 
-/** 加強版 LRC：逐字時間照給的用；最後一個字唱到結尾標記（沒有的話唱一拍、不超過下一行）。 */
+/**
+ * 加強版 LRC：標了時間的就照標的用；最後一段唱到結尾標記（沒有的話唱 0.6 秒、不超過下一行）。
+ * 一個標記後面可以是一個字，也可以是一段（新人可以只標「窗外飛過著／宣告戀愛／的蜻蜓」三段）：
+ * 一段裡有好幾個字就把這段的時間依音節平均分給每個字，大螢幕才會一個字一個字亮，而不是整段一起亮。
+ */
 function fromTags(l: LrcLine, next: number) {
   const tags = l.words!;
   const res: { w: string; start: number; end: number }[] = [];
+  let floor = -Infinity;
   for (let k = 0; k < tags.length; k++) {
-    const w = tags[k]!.w.trim();
-    if (!w) continue;
-    const end = tags[k + 1]?.t ?? Math.min(next - 0.05, tags[k]!.t + 0.6);
-    res.push({ w, start: tags[k]!.t, end: Math.max(tags[k]!.t + 0.05, end) });
+    if (!tags[k]!.w.trim()) continue;
+    // 手打的時間偶爾會倒退（打錯一位數）：往後推，至少不讓字倒著亮
+    const start = Math.max(tags[k]!.t, floor);
+    const end = Math.max(start + 0.05, tags[k + 1]?.t ?? Math.min(next - 0.05, start + 0.6));
+    const units = lyricUnits(tags[k]!.w).filter((u) => u.w.trim());
+    const total = units.reduce((s, u) => s + Math.max(1, u.syl), 0) || 1;
+    let acc = 0;
+    for (const u of units) {
+      const t0 = start + ((end - start) * acc) / total;
+      acc += Math.max(1, u.syl);
+      res.push({ w: u.w, start: t0, end: start + ((end - start) * acc) / total });
+    }
+    floor = end;
   }
   return res;
 }
