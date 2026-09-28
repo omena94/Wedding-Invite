@@ -49,8 +49,12 @@ export const ease = {
 };
 
 /** Clamped eased progress of x through [a, b]. */
-export const prog = (x: number, a: number, b: number, fn: (t: number) => number = ease.linear) =>
-  fn(clamp((x - a) / (b - a)));
+export const prog = (x: number, a: number, b: number, fn: (t: number) => number = ease.linear) => {
+  // 婚禮版：a、b 可能是 Infinity（「窗格太短、這個動作不做」常寫成 Infinity）或 a === b，
+  // 直接除會得到 NaN、整個鏡頭／畫面壞掉；這些情況當成階梯：x 過了 a 就是 1
+  const r = (x - a) / (b - a);
+  return fn(Number.isNaN(r) ? (x >= a ? 1 : 0) : clamp(r));
+};
 
 /** Damped spring response to a step at time 0 (value goes 0 -> 1 with overshoot). */
 export const springStep = (t: number, freq = 4, damping = 0.35) => {
