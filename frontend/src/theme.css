@@ -1472,6 +1472,17 @@ tbody tr:last-child td { border-bottom: none; }
 .ws-line-pill { flex-shrink: 0; }
 .ws-line-btns { display: flex; gap: 4px; flex-shrink: 0; }
 .ws-line-btns .btn { padding: 3px 8px; }
+/* 剛剛點的／改的那一句：框起來（對字完清單會捲回這裡） */
+.ws-line.sel { box-shadow: inset 3px 0 0 var(--milk-tea-700); background: var(--bg-card-subtle); }
+.ws-line.now.sel { background: #fbf1dc; }
+.ws-save-note { margin-left: 6px; color: var(--milk-tea-700); font-weight: 600; }
+/* 歌曲編輯視窗：比一般編輯視窗寬；「儲存」固定在視窗底部，不用捲到最下面 */
+.modal-card.ws-editor { max-width: 860px; }
+.modal-card.ws-editor .edit-modal-actions {
+  position: sticky; bottom: -24px; z-index: 2;
+  margin: 18px -26px -24px; padding: 12px 26px 16px;
+  background: #fff; border-top: 1px solid var(--border-soft);
+}
 .ws-karaoke.sm { font: 600 15px/1.45 "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans TC", "PingFang TC", sans-serif; }
 /* 逐字對時：一個字一格，段落開頭前面有分隔，按過的字變深、下一個要按的字框起來 */
 .ws-word-tap { margin-top: 10px; }
