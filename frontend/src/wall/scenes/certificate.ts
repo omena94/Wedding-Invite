@@ -1,13 +1,13 @@
-// 祝福登記表（亮版面）：照 pdoom 的 bureau（FIG. 7「Paperwork」）改的。一張正式的表格，鏡頭貼著打字機走：
-//  - 第一個拍點起，登記人（留言的名字）一個字一個八分音符打上去；下一拍開始打祝福內容（逐字、落在十六／三十二分音符上），
-//    鏡頭跟著打字頭走、換行時甩回左邊。
-//  - 打完的下一拍，「以上皆是」被紅筆「刷」地勾起來、再圈一圈；接著簽名欄手寫簽名；時間夠的話登記人那一欄的右端
-//    蓋一個「核准」橡皮章（窗格長時挪到中段，整段都有事發生）；中段每兩小節換一次鏡位。
+// 祝福登記表（亮版面）：照 pdoom 的 bureau（FIG. 7「Paperwork」）改的。一張擺在桌上的表格，鏡頭貼著打字機走：
+//  - 第一個拍點起，號碼機「喀」一聲在表頭蓋上編號，登記人（留言的名字）一個字一個八分音符打上去；
+//    下一拍開始打祝福內容（逐字、落在十六／三十二分音符上），鏡頭跟著打字頭走、換行時甩回左邊。
+//  - 打完的下一拍，「以上皆是」被紅筆「刷」地勾起來、再圈一圈；接著簽名欄手寫簽名；中段每兩小節換一次鏡位。
 //  - 留言沒填滿三行，下一行打「（以下空白）」。
 //  - 最後一個大拍點（窗格結束前的最後一個小節線）：訊號色的方章「百年好合」砸在「核准章」框裡——稍微歪、稍微超出框線，
-//    鏡頭同時拉到全景、畫面震一下。
-//  - 歌詞在「2. 現場歌詞」欄，照跟唱規則：還沒唱的字三成淡淡地先出現、唱到的那一刻打上去（訊號色）、唱完變成墨色。
+//    鏡頭同時拉到全景（看得到紙緣與桌面）、畫面震一下。
+//  - 歌詞在「現場歌詞」欄，照跟唱規則：還沒唱的字三成淡淡地先出現、唱到的那一刻打上去（訊號色）、唱完變成墨色。
 //  - 沒有留言：登記人是「歌手（代唱）」，祝福內容欄改由歌詞一句一句打上去；純音樂又沒留言：打一句邀請大家掃 QR。
+// MV 融合原則（2026-09-28）：打上去的祝福內容是整張紙上最大、最黑的字（焦點）；歌詞小一級；印刷的表格只剩細線、淡墨小字。
 // 畫法（照 bureau）：所有的墨畫在一張 Canvas2D 上、用色版分開（R 打字、G 印刷、B 印泥），紙張 shader 再把它們
 // 疊印到程序生成的紙上（纖維、印章缺墨、Beer–Lambert），所以顏色全部來自色票、換主題整張跟著變。
 // 鏡頭是一個 2D 仿射（紙面 → 螢幕），推近時也保證歌詞與留言不會跑進右下角 QR 區、離邊 96 px 以上（見 CAM_* 的註解）。
@@ -19,7 +19,7 @@ import { wrap } from '../engine/text';
 import type { Line } from '../engine/lyrics';
 import { clamp, ease, lerp, prog, hash, pulse, frameIdx } from '../engine/util';
 import { lyricAt, beatAfter, barAfter, COUPLE_ZH } from './_motifs';
-import { PAPER_FRAG, BAKE_FRAG, BAKE } from './certificate-glsl';
+import { PAPER_FRAG, BAKE_FRAG, BAKE, FORM_BOX, FORM_RES } from './certificate-glsl';
 import { L, TYPE, PRINT, SIG, drawForm, makeCopy, FORM_TEXT, type FormCopy } from './certificate-form';
 
 type Ctx2 = CanvasRenderingContext2D;
@@ -42,30 +42,29 @@ const apply = (m: Xf, x: number, y: number) => ({ x: m.a * x + m.c * y + m.e, y:
 const lerpCam = (p: Cam, q: Cam, k: number): Cam => ({ x: lerp(p.x, q.x, k), y: lerp(p.y, q.y, k), z: Math.exp(lerp(Math.log(p.z), Math.log(q.z), k)), r: lerp(p.r, q.r, k) });
 
 // 取景（紙面座標，見 certificate-form.ts 的 L）。每個取景都算過：該讀的字（歌詞、留言、簽名）在螢幕上離邊 ≥ 96 px，
-// 不會落進右下角 QR 區（x ≥ 1360 且 y ≥ 830），而且右上角（x ≥ 1378、y ≤ 約 400）一直是空的——那是留給即時小卡的位置
-// （表頭與資料列只是裝飾，被小卡蓋住沒關係）。
-/** 切進來的那一格：比第一個鏡位再近一點、歪一點，0.75 秒內落定（pdoom 的 settle）。這樣推近時字也還在安全範圍內。 */
-const startOf = (c: Cam): Cam => ({ x: c.x + 30, y: c.y - 30, z: c.z * 1.1, r: c.r - 0.03 });
-/** 打名字：登記人＋現場歌詞兩欄。 */
-const CAM_NAME: Cam = { x: 700, y: 400, z: 1.45, r: -0.03 };
+// 不會落進右下角 QR 區（x ≥ 1360 且 y ≥ 830）。主欄 x 196～1270，置中在 733。
+/** 切進來的那一格：比第一個鏡位再近一點、歪一點，0.75 秒內落定（pdoom 的 settle）。推近時字也還在安全範圍內。 */
+const startOf = (c: Cam): Cam => ({ x: c.x + 20, y: c.y - 20, z: c.z * 1.06, r: c.r - 0.025 });
+/** 打名字：登記人＋現場歌詞兩欄（歌詞第二行的下緣約在螢幕 y 690）。 */
+const CAM_NAME: Cam = { x: 733, y: 350, z: 1.45, r: -0.03 };
 /**
- * 打祝福內容：z 1.2 時主欄剛好填滿畫面寬（左緣 ≥ 96、歌詞右端 < 1378 讓出右上角給小卡）；
- * y 在 596～612 之間：名字不出上緣、第三行不碰 QR 區。x 只能跟著打字頭輕輕晃 ±8（再多就壓到兩邊的限制）。
+ * 打祝福內容：歌詞欄與祝福內容欄一起入鏡（歌詞在上面照樣跟唱）。
+ * y 620、z 1.22：祝福內容第三行的下緣在螢幕 y ≈ 812（右端 x ≈ 1620，不能碰 QR 區的 830）、歌詞頂端 y ≈ 184。
+ * x 只能跟著打字頭輕輕晃 ±8。
  */
-const CAM_TYPE = { z: 1.2, r: -0.018, x: 896, sway: 8, y0: 596, dy: 8 };
-/** 看整張（勾選、簽名、核准章都在裡面）。 */
+const CAM_TYPE = { z: 1.22, r: -0.016, x: 733, sway: 8, y0: 620 };
+/** 看整張（勾選、簽名、方章框都在裡面）。 */
 const CAM_REVIEW: Cam = { x: 960, y: 575, z: 1.06, r: -0.012 };
-/** 長窗格的中段：在「看整張」與「看留言」之間，每兩小節換一次（「看留言」不往右飄，右上角才留得住）。 */
-const CAM_MSG: Cam = { x: 896, y: 606, z: 1.16, r: -0.026 };
-/** 蓋章：全景。 */
-const CAM_WIDE: Cam = { x: 960, y: 540, z: 0.965, r: -0.006 };
+/** 長窗格的中段：在「看整張」與「看留言」之間，每兩小節換一次。 */
+const CAM_MSG: Cam = { x: 745, y: 620, z: 1.2, r: -0.024 };
+/** 蓋章：全景（四周露出一點桌面，紙是擺在桌上的一張實物）。 */
+const CAM_WIDE: Cam = { x: 960, y: 540, z: 0.965, r: -0.008 };
 
 const PAPER = () => new FSPass(PAPER_FRAG, {
-  inkTex: { value: null }, roseTex: { value: null }, bakeTex: { value: null }, roseOn: { value: 0 },
+  inkTex: { value: null }, roseTex: { value: null }, bakeTex: { value: null }, formTex: { value: null }, roseOn: { value: 0 },
   camA: { value: new THREE.Vector3() }, camB: { value: new THREE.Vector3() },
-  blurV: { value: new THREE.Vector2() },
+  blurV: { value: new THREE.Vector2() }, dofR: { value: 0 },
   st0: { value: new THREE.Vector4() }, st0b: { value: new THREE.Vector4() },
-  st1: { value: new THREE.Vector4() }, st1b: { value: new THREE.Vector4() },
 });
 
 /** 紙的紋理只烤一次（整晚共用；只存明暗不存顏色，換主題不用重烤）。 */
@@ -75,15 +74,15 @@ const BAKED = () => ({
   done: false,
 });
 
-/**
- * 印好的表格每格都一樣：開場時先畫在一張紙面座標的畫布上（1.5 倍解析度，鏡頭推到 1.45 倍時字還是銳利的），
- * 每格只要 drawImage 一次。逐格重畫表格要 3 毫秒多（一堆字型切換），內顯筆電吃不消。
- */
-const FORM_BOX = { x: 60, y: 80, w: 1720, h: 930 }, FORM_RES = 1.5;
 
 /** 打字機打上去的一個字。ws/we：歌詞的字所屬那個詞的開始／結束（決定訊號色或墨色）。 */
-interface TChar { ch: string; x: number; y: number; t: number; dens: number; jx: number; jy: number; rot: number; ws: number; we: number }
-interface Block { chars: TChar[]; family: string; size: number; rows: number }
+interface TChar { ch: string; x: number; y: number; row: number; t: number; dens: number; jx: number; jy: number; rot: number; ws: number; we: number }
+/**
+ * 打好的字的「底片」：一塊字的每個字（含抖動、旋轉、墨色濃淡）先畫在一張畫布上，一行一條、上下不重疊。
+ * 每格只要把「已經打好的那一段」drawImage 過去——大字逐字 fillText（還要逐字旋轉）一格要四五毫秒，內顯吃不消。
+ */
+interface Sprite { cv: HTMLCanvasElement; x0: number; band: number; top: number }
+interface Block { chars: TChar[]; family: string; size: number; rows: number; sprite?: Sprite | null }
 interface Shot { t0: number; t1: number; e: (x: number) => number; cam: (t: number) => Cam }
 
 /** text 用這個字級、在 maxW 寬裡斷行，是否不超過 rows 行。 */
@@ -122,13 +121,38 @@ function typeset(c: Ctx2, text: string, family: string, size: number, x0: number
     for (const g of lay.glyphs) {
       chars.push({
         // ws 先暫放這個字在原文的位置（UTF-16），歌詞排時間時用（lyricBlock 會換成那個詞開始唱的時間）
-        ch: g.ch, x: x0 + g.x, y, t: 0, ws: o, we: 0,
+        ch: g.ch, x: x0 + g.x, y, row: ri, t: 0, ws: o, we: 0,
         dens: 0.8 + 0.2 * hash(seed, o, 1), jx: (hash(seed, o, 2) - 0.5) * 1.6, jy: (hash(seed, o, 3) - 0.5) * 2.2, rot: (hash(seed, o, 17) - 0.5) * 0.022,
       });
       o += g.ch.length;
     }
   });
   return { chars, family, size, rows: lines.length };
+}
+
+/** 底片的解析度（紙面 px 的倍數）：鏡頭最近約 1.55 倍，1.6 倍就還是銳利的。 */
+const SPR_RES = 1.6;
+/** 把一塊字畫成底片（空白與愛心不畫：愛心印在玫瑰色那一層，逐字畫）。字型要先載好。 */
+function makeSprite(b: Block): Sprite | null {
+  const cs = b.chars.filter((ch) => ch.ch !== ' ' && ch.ch !== '♥');
+  if (!cs.length) return null;
+  const x0 = Math.min(...cs.map((ch) => ch.x)) - b.size * 0.3, x1 = Math.max(...cs.map((ch) => ch.x)) + b.size * 1.3;
+  const top = b.size * 1.2, band = b.size * 1.65;
+  const cv = document.createElement('canvas');
+  cv.width = Math.ceil((x1 - x0) * SPR_RES); cv.height = Math.ceil(band * b.rows * SPR_RES);
+  const c = cv.getContext('2d')!;
+  c.setTransform(SPR_RES, 0, 0, SPR_RES, -x0 * SPR_RES, 0);
+  c.font = font(b.family, b.size);
+  c.textBaseline = 'alphabetic';
+  for (const ch of cs) {
+    c.save();
+    c.translate(ch.x + ch.jx, ch.row * band + top + ch.jy);
+    c.rotate(ch.rot);
+    c.fillStyle = TYPE(ch.dens);
+    c.fillText(ch.ch, 0, 0);
+    c.restore();
+  }
+  return { cv, x0, band, top };
 }
 
 const pad = (n: number, k: number) => String(Math.max(0, Math.floor(n))).padStart(k, '0');
@@ -139,7 +163,12 @@ export default class Certificate extends Scene {
   rose: Layer2D | null = null;
   paper = shared('certificate.paper', PAPER);
   bake = shared('certificate.bake', BAKED);
+  /**
+   * 印好的表格每格都一樣：開場時先畫在一張紙面座標的畫布上（1.5 倍解析度，鏡頭推到 1.45 倍時字還是銳利的），
+   * 上傳成貼圖一次，紙張 shader 直接取樣。逐格重畫（或 drawImage 進墨的畫布）要好幾毫秒，內顯筆電吃不消。
+   */
   form: HTMLCanvasElement | null = null;
+  formTex: THREE.CanvasTexture | null = null;
   msg: Msg | null = this.ctx.params.message ?? null;
   mode: 'msg' | 'lyric' | 'invite' = 'msg';
   seed = Number(this.ctx.params.seed ?? 1);
@@ -160,27 +189,27 @@ export default class Certificate extends Scene {
   // 時間點
   B = 0.5;
   tNum = 0; tType0 = 0; typeEnd = 0;
-  tTick = 0; tCircle = Infinity; tSig = Infinity; sigEnd = Infinity; tApp = Infinity; tSeal = 0;
+  tTick = 0; tCircle = Infinity; tSig = Infinity; sigEnd = Infinity; tSeal = 0;
   sealRot = -0.085; sealDx = 0; sealDy = 0;
   shots: Shot[] = [];
-  /** 即時小卡要避開的範圍（螢幕座標，整個窗格一份）。 */
-  avoid: [number, number, number, number][] = [];
   camStart: Cam = startOf(CAM_NAME);
 
   override async init() {
     const { audio: au, lyrics, song } = this.ctx;
     const s = this.ctx.start, e = this.ctx.end;
     const msg = this.msg;
+    // 墨的畫布是不透明的（黑底 + lighter）：預乘與否一樣，標成預乘、不轉色彩空間，瀏覽器就走 GPU 直接複製（見 gl.ts 的 fast）
     this.ink.texture.colorSpace = THREE.NoColorSpace;
+    this.ink.texture.premultiplyAlpha = true;
     this.mode = msg ? 'msg' : lyrics.has ? 'lyric' : 'invite';
     const songName = song.title ? `《${song.title}》${song.artist ? ' — ' + song.artist : ''}` : '今晚的歌';
     this.copy = makeCopy(this.seed, {
       no: msg ? `No.${pad(msg.n, 3)}` : `SONG ${pad(song.index, 2)}`, couple: !!msg?.couple,
-      // 有留言：第 2 欄是現場歌詞，旁邊小字註記歌名；沒有留言：第 2 欄打歌名，內容欄由歌手「代唱」
-      field2: msg ? ['現場歌詞', 'LIVE LYRICS', `本表填寫時播放之歌曲：${songName}`]
-        : lyrics.has ? ['播放歌曲', 'NOW PLAYING', '祝福內容由歌手代唱，逐字登錄'] : ['播放歌曲', 'NOW PLAYING', '本曲為純音樂'],
+      // 有留言：第 2 欄是現場歌詞；沒有留言：第 2 欄打歌名，內容欄由歌手「代唱」
+      field2: msg ? '現場歌詞' : '播放歌曲',
     });
-    const nameText = msg ? (msg.couple ? COUPLE_ZH : msg.name || '一位不願具名的賓客') : lyrics.has ? `${song.artist || '今晚的歌手'}（代唱）` : '全體賓客';
+    // 新人自己的留言：名字後面打「（新人）」（打字機打上去的字，不是另外貼一個標籤）
+    const nameText = msg ? (msg.couple ? `${COUPLE_ZH}（新人）` : msg.name || '一位不願具名的賓客') : lyrics.has ? `${song.artist || '今晚的歌手'}（代唱）` : '全體賓客';
     this.sigText = msg ? (msg.couple ? COUPLE_ZH : msg.name || '一位賓客') : lyrics.has ? song.artist || '今晚的歌手' : '全體賓客';
     const bodyText = msg ? msg.text : this.mode === 'invite' ? '掃描右下角 QR code，把祝福寫上大螢幕。' : null;
     const lines = lyrics.linesIn(s - 2, e + 1);
@@ -188,8 +217,7 @@ export default class Certificate extends Scene {
 
     const c = this.ink.ctx;
     // ---- 排版
-    // 名字不要長到核准章底下（章會蓋在名字線的右端）
-    this.name = typeset(c, nameText, F.ming(700), fitRows(c, nameText, F.ming(700), L.approve.x - L.approve.hw - L.name.x - (msg?.couple ? 250 : 10), 1, L.name.size, 30), L.name.x, [L.name.y], 2000, this.seed + 1);
+    this.name = typeset(c, nameText, F.ming(700), fitRows(c, nameText, F.ming(700), L.col.x1 - L.name.x, 1, L.name.size, 30), L.name.x, [L.name.y], 2000, this.seed + 1);
     if (bodyText) {
       // 英文為主的留言用等寬字（真的打字機）；中文用思源宋體（中文打字機的鉛字就是明體）
       const latin = (bodyText.match(/[A-Za-z]/g)?.length ?? 0) / Math.max(1, bodyText.replace(/\s/g, '').length) > 0.5;
@@ -198,9 +226,9 @@ export default class Certificate extends Scene {
       const size = fitRowsOr(c, bodyText, fam, w, L.msg.rows.length, L.msg.max, L.msg.min, 34);
       this.body = typeset(c, bodyText, fam, size, L.col.x0, L.msg.rows, w, this.seed + 2);
       if (this.body.rows < L.msg.rows.length) {
-        const bt = '（以下空白）', bs = 30;
+        const bt = '（以下空白）', bs = 28;
         this.blank = typeset(c, bt, F.ming(700), bs, (L.col.x0 + L.col.x1) / 2 - measure(bt, F.ming(700), bs) / 2, [L.msg.rows[this.body.rows]!], 2000, this.seed + 4);
-        for (const ch of this.blank.chars) ch.dens *= 0.8;
+        for (const ch of this.blank.chars) ch.dens *= 0.7;
       }
     }
     if (this.mode !== 'msg') {
@@ -218,6 +246,14 @@ export default class Certificate extends Scene {
     fc.globalCompositeOperation = 'lighter';
     fc.setTransform(FORM_RES, 0, 0, FORM_RES, -FORM_BOX.x * FORM_RES, -FORM_BOX.y * FORM_RES);
     drawForm(fc, this.copy);
+    const ft = (this.formTex = new THREE.CanvasTexture(fcv));
+    // 色版不是顏色：不轉色彩空間；畫布是不透明的，標成預乘走 GPU 直接複製；mipmap 讓全景時的細線不閃
+    ft.colorSpace = THREE.NoColorSpace;
+    ft.premultiplyAlpha = true;
+    ft.generateMipmaps = true;
+    ft.minFilter = THREE.LinearMipmapLinearFilter;
+    ft.magFilter = THREE.LinearFilter;
+    this.ctx.renderer.initTexture(ft);
     if (!this.bake.done) {
       this.bake.pass.render(this.ctx.renderer, this.bake.rt);
       this.ctx.renderer.setRenderTarget(null);
@@ -226,15 +262,22 @@ export default class Certificate extends Scene {
     if ([nameText, bodyText ?? '', ...lines.map((l) => l.text)].some((x) => x.includes('♥'))) {
       this.rose = this.track(new Layer2D());
       this.rose.texture.colorSpace = THREE.NoColorSpace;
+      this.rose.texture.premultiplyAlpha = true;
     }
-    c.font = font(this.sigFamily, 64);
-    this.sigSize = clamp(Math.floor((64 * L.sig.w) / Math.max(1, c.measureText(this.sigText).width)), 34, 64);
+    c.font = font(this.sigFamily, 60);
+    this.sigSize = clamp(Math.floor((60 * L.sig.w) / Math.max(1, c.measureText(this.sigText).width)), 34, 60);
 
     this.schedule();
-    this.avoid = this.popupAvoid();
+    // 底片先做好（窗格中途才做會卡一下）
+    for (const b of this.blocks()) if (b.sprite === undefined) b.sprite = makeSprite(b);
   }
 
-  /** 排時間：打字落在節拍格上、勾選／簽名／核准／方章依序各佔一拍，窗格太短就一項一項省掉。 */
+  /** 這個窗格所有打字的塊（做底片、還畫布用）。 */
+  private blocks(): Block[] {
+    return [this.name, this.body, this.title, this.blank, ...this.lyricCache.values()].filter((b): b is Block => !!b);
+  }
+
+  /** 排時間：打字落在節拍格上、勾選／簽名／方章依序各佔一拍，窗格太短就一項一項省掉。 */
   private schedule() {
     const au = this.ctx.audio, s = this.ctx.start, e = this.ctx.end;
     const B = (this.B = au.beatPeriod(s + 0.2));
@@ -280,7 +323,7 @@ export default class Certificate extends Scene {
       this.typeEnd = cur + 3 * B;
     }
 
-    // 後面的動作鏈：勾選（＋圈起來）→ 簽名 → 核准 → 方章。放不下就先省核准、再省簽名與圈圈。
+    // 後面的動作鏈：勾選（＋圈起來）→ 簽名 → 方章。放不下就先省簽名、再省圈圈。
     const sigDur = clamp(0.16 * Array.from(this.sigText).length + 0.25, 0.45, 1.3);
     const lastDown = (from: number, to: number) => {
       let best = NaN;
@@ -290,16 +333,15 @@ export default class Certificate extends Scene {
       return best;
     };
     const tick = beatAfter(au, this.typeEnd + 0.1);
-    const plans: [boolean, boolean, boolean][] = [[true, true, true], [true, true, false], [true, false, false], [false, false, false]];
-    for (const [circle, sig, app] of plans) {
+    const plans: [boolean, boolean][] = [[true, true], [true, false], [false, false]];
+    for (const [circle, sig] of plans) {
       let end = tick + 0.12;
-      let tc = Infinity, ts = Infinity, se = Infinity, ta = Infinity;
+      let tc = Infinity, ts = Infinity, se = Infinity;
       if (circle) { tc = beatAfter(au, tick + B * 0.9); end = tc + Math.min(0.35, B * 0.8); }
       if (sig) { ts = beatAfter(au, end + B * 0.4); se = ts + sigDur; end = se; }
-      if (app) { ta = beatAfter(au, end + 0.1); end = ta + 0.15; }
       const seal = lastDown(end + B * 0.5, sealLatest);
       if (!isNaN(seal)) {
-        Object.assign(this, { tTick: tick, tCircle: tc, tSig: ts, sigEnd: se, tApp: ta, tSeal: seal });
+        Object.assign(this, { tTick: tick, tCircle: tc, tSig: ts, sigEnd: se, tSeal: seal });
         break;
       }
     }
@@ -308,8 +350,6 @@ export default class Certificate extends Scene {
       this.tTick = Math.min(tick, sealLatest - 0.3);
       this.tSeal = Math.max(this.tTick + 0.25, Math.min(sealLatest, e - 0.4));
     }
-    // 長窗格：簽名後到蓋章前空很久的話，核准章挪到中間（整段都有事發生）
-    if (isFinite(this.tApp) && this.tSeal - this.tApp > 16 * B) this.tApp = lastDown(lerp(this.sigEnd, this.tSeal, 0.45), this.tSeal - 4 * B) || this.tApp;
     this.sealRot = -0.085 + (hash(this.seed, 9) - 0.5) * 0.06;
     this.sealDx = (hash(this.seed, 10) - 0.5) * 14;
     this.sealDy = (hash(this.seed, 11) - 0.5) * 10;
@@ -326,66 +366,16 @@ export default class Certificate extends Scene {
     this.camStart = startOf(this.shots[0]!.cam(s + 0.75));
     if (this.tType0 < this.tTick) this.shots.push({ t0: this.tType0 - 0.45, t1: this.tType0, e: io, cam: (t) => this.typeCam(t) });
     this.shots.push({ t0: this.tTick - 0.5, t1: this.tTick, e: io, cam: (t) => drift(CAM_REVIEW, t - this.tTick) });
-    // 中段很長：每兩小節在「看留言」與「看整張」之間換，緩進小節線；核准章那一拍一定是整張（另外插一個鏡位）
+    // 中段很長：每兩小節在「看留言」與「看整張」之間換，緩進小節線
     const holdFrom = (isFinite(this.sigEnd) ? this.sigEnd : this.tTick + B) + B;
     const holdTo = this.tSeal - 2 * B;
     let k = 0;
     for (let d = barAfter(au, holdFrom + 3 * B); d <= holdTo - 2 * B; d = barAfter(au, d + 7 * B)) {
-      if (isFinite(this.tApp) && d > this.tApp - 3 * B && d < this.tApp + 4 * B) continue;
       const msg = k++ % 2 === 0, t1 = d;
       this.shots.push({ t0: t1 - 1.5 * B, t1, e: io, cam: msg ? (t) => drift(CAM_MSG, t - t1, 0.006, 0) : (t) => drift(CAM_REVIEW, t - t1) });
     }
-    if (isFinite(this.tApp) && this.tApp > this.tTick + B) {
-      const t1 = this.tApp;
-      this.shots.push({ t0: t1 - 1.2 * B, t1, e: io, cam: (t) => drift(CAM_REVIEW, t - t1) });
-    }
     this.shots.sort((a, b) => a.t0 - b.t0);
     this.shots.push({ t0: this.tSeal - 0.02, t1: this.tSeal + 0.3, e: ease.outExpo, cam: (t) => drift(CAM_WIDE, t - this.tSeal, 0.008) });
-  }
-
-  /**
-   * 即時小卡要避開的範圍：該讀的東西（名字、歌詞、留言、簽名、勾選的「以上皆是」、方章）在紙上的框，
-   * 用整個窗格的鏡頭走一遍、換成螢幕座標。小卡在出現那一刻決定位置、之後會停好幾秒，所以要整段的聯集；
-   * 但每樣東西只從它出現之後算起，並且依鏡位分段（推近時一框、拉遠時一框），框才不會大到蓋滿整個畫面。
-   * 表頭、資料列、其他勾選框只是裝飾，不擋：右上角（表頭右端）通常就是留給小卡的空位。
-   */
-  private popupAvoid(): [number, number, number, number][] {
-    const s = this.ctx.start, e = this.ctx.end, lyr = this.ctx.lyrics.has;
-    type Box = { x0: number; y0: number; x1: number; y1: number; from: number };
-    const span = (b: Block | null, pad: number): Box | null => {
-      if (!b || !b.chars.length) return null;
-      const xs = b.chars.map((c) => c.x), ys = b.chars.map((c) => c.y);
-      return { x0: Math.min(...xs) - pad, y0: Math.min(...ys) - b.size - pad, x1: Math.max(...xs) + b.size + pad, y1: Math.max(...ys) + b.size * 0.3 + pad, from: b.chars[0]!.t - 0.4 };
-    };
-    const boxes: (Box | null)[] = [
-      // 名字（新人留言後面還有標籤）
-      { ...span(this.name, 12)!, ...(this.msg?.couple ? { x1: L.name.x + 560 } : {}) },
-      span(this.body, 14), span(this.blank, 10), span(this.title, 12),
-      // 歌詞：第 2 欄（有留言）或內容欄（歌詞模式），整欄都算（每一句長短不同）
-      lyr ? (this.mode === 'msg' ? { x0: L.col.x0 - 12, y0: L.lyric.label + 6, x1: L.col.x1 + 12, y1: L.lyric.rows[1] + 20, from: s }
-        : { x0: L.col.x0 - 12, y0: L.msg.label + 6, x1: L.col.x1 + 12, y1: L.msg.rows[1] + 24, from: s }) : null,
-      isFinite(this.tSig) ? { x0: L.sig.x - 16, y0: L.sig.y - this.sigSize - 12, x1: L.sig.x + L.sig.w + 90, y1: L.sig.y + 24, from: this.tSig } : null,
-      { x0: L.right.x0 - 8, y0: L.checks.y0 + 3 * L.checks.gap - 44, x1: L.right.x0 + 220, y1: L.checks.y0 + 3 * L.checks.gap + 22, from: this.tTick },
-      { x0: L.seal.x - 30, y0: L.seal.y - 30, x1: L.seal.x + L.seal.box + 30, y1: L.seal.y + L.seal.box + 30, from: this.tSeal },
-    ];
-    const acc = new Map<string, [number, number, number, number]>();
-    for (let t = s; t <= e; t += 0.1) {
-      // 依鏡位分段：最後一個已經到位的鏡位（轉場中的位置會併進那一段）
-      let seg = -1;
-      for (let i = 0; i < this.shots.length; i++) if (t >= this.shots[i]!.t1) seg = i;
-      const m = camXf(this.camAt(t));
-      boxes.forEach((b, bi) => {
-        if (!b || t < b.from) return;
-        const pts = [apply(m, b.x0, b.y0), apply(m, b.x1, b.y0), apply(m, b.x0, b.y1), apply(m, b.x1, b.y1)];
-        const k = `${bi}:${seg}`, r = acc.get(k) ?? [Infinity, Infinity, -Infinity, -Infinity];
-        for (const p of pts) { r[0] = Math.min(r[0], p.x); r[1] = Math.min(r[1], p.y); r[2] = Math.max(r[2], p.x); r[3] = Math.max(r[3], p.y); }
-        acc.set(k, r);
-      });
-    }
-    return [...acc.values()].map(([x0, y0, x1, y1]) => {
-      const a = clamp(x0, 0, W), b = clamp(y0, 0, H);
-      return [a, b, clamp(x1, 0, W) - a, clamp(y1, 0, H) - b] as [number, number, number, number];
-    }).filter(([, , w, h]) => w > 1 && h > 1);
   }
 
   /** 歌詞一行的排版與每個字的時間（字在它那個詞開始唱時打上去；英文一個詞裡的字母用自然的打字速度）。 */
@@ -393,10 +383,10 @@ export default class Certificate extends Scene {
     const hit = this.lyricCache.get(line);
     if (hit) return hit;
     const c = this.ink.ctx, fam = F.mono(600), w = L.col.x1 - L.col.x0;
-    // 有留言：歌詞在第 2 欄（兩行線）；沒有留言：歌詞就是祝福內容（字大一點，最多用前兩行：第三行推近時靠 QR 區太近）
+    // 有留言：歌詞在第 2 欄（兩行線，小一級）；沒有留言：歌詞就是祝福內容（字大、最多用前兩行：第三行推近時靠 QR 區太近）
     const rows = this.mode === 'msg' ? L.lyric.rows : L.msg.rows;
     const size = this.mode === 'msg' ? fitRowsOr(c, line.text, fam, w, 2, L.lyric.size, L.lyric.min, 34)
-      : fits(c, line.text, fam, 50, w, 2) ? fitRows(c, line.text, fam, w, 2, 72, 50) : fitRowsOr(c, line.text, fam, w, 3, 50, 50, 34);
+      : fits(c, line.text, fam, 50, w, 2) ? fitRows(c, line.text, fam, w, 2, 84, 50) : fitRowsOr(c, line.text, fam, w, 3, 50, 50, 34);
     const b = typeset(c, line.text, fam, size, L.col.x0, rows, w, this.seed + 100 + line.i);
     for (const ch of b.chars) {
       const o = ch.ws;
@@ -424,30 +414,23 @@ export default class Certificate extends Scene {
     }
     return x;
   }
-  /** 打字頭在內容欄的第幾行（0～2）。 */
-  private caretRow(b: Block, t: number) {
-    let y = b.chars[0]!.y;
-    for (const ch of b.chars) { if (t < ch.t) break; y = ch.y; }
-    return Math.max(0, (L.msg.rows as readonly number[]).indexOf(y));
-  }
   /** 正在打的那一塊（留言，或歌詞模式正在唱的那一行）；沒有字就是 null。 */
   private activeBlock(t: number): Block | null {
     const b = this.body ?? (() => { const ly = lyricAt(this.ctx.lyrics, t, 1.6); return ly ? this.lyricBlock(ly.line) : null; })();
     return b && b.chars.length ? b : null;
   }
-  /** 打祝福內容時的取景：x 跟著打字頭輕輕晃（取 0.3 秒平均，換行時晃回去），y 跟著第幾行。 */
+  /** 打祝福內容時的取景：x 跟著打字頭輕輕晃（取 0.3 秒平均，換行時晃回去）。 */
   private typeCam(t: number): Cam {
-    let x = 0, row = 0;
+    let x = 0;
     const N = 6;
     for (let i = 0; i < N; i++) {
       const tt = t - (i * 0.3) / N;
       const b = this.activeBlock(tt);
       x += b ? this.caretX(b, tt) : L.col.x0;
-      row += b ? this.caretRow(b, tt) : 0;
     }
-    x /= N; row /= N;
+    x /= N;
     const u = clamp((x - L.col.x0) / (L.col.x1 - L.col.x0));
-    return { x: CAM_TYPE.x + CAM_TYPE.sway * (2 * u - 1), y: CAM_TYPE.y0 + CAM_TYPE.dy * row, z: CAM_TYPE.z, r: CAM_TYPE.r };
+    return { x: CAM_TYPE.x + CAM_TYPE.sway * (2 * u - 1), y: CAM_TYPE.y0, z: CAM_TYPE.z, r: CAM_TYPE.r };
   }
   camAt(t: number): Cam {
     // 鏡位依序疊上去；已經完全到位的鏡位會蓋掉前面所有的，從最後一個到位的開始算就好（跟打字頭的鏡位不用每格都算）
@@ -459,12 +442,12 @@ export default class Certificate extends Scene {
       if (k > 0) cam = lerpCam(cam, sh.cam(t), k);
     }
     // 大鼓讓紙輕輕往前推一下；蓋章那一下衝得更多
-    const z = 1 + 0.006 * this.ctx.audio.hit('kick', t, 0.12) + 0.05 * pulse(t, this.tSeal, 0.09) + 0.015 * pulse(t, this.tApp, 0.07);
+    const z = 1 + 0.006 * this.ctx.audio.hit('kick', t, 0.12) + 0.05 * pulse(t, this.tSeal, 0.09);
     return { ...cam, z: cam.z * z };
   }
   /** 震動（螢幕像素）：每個打字的鍵、勾選、蓋章。方向用逐格的 hash（確定性）。 */
   private shake(t: number): [number, number] {
-    let amp = 26 * pulse(t, this.tSeal, 0.07) + 10 * pulse(t, this.tApp, 0.06) + 5 * pulse(t, this.tTick, 0.05) + 4 * pulse(t, this.tNum, 0.05);
+    let amp = 26 * pulse(t, this.tSeal, 0.07) + 5 * pulse(t, this.tTick, 0.05) + 4 * pulse(t, this.tNum, 0.05);
     const keys = (b: Block | null) => { if (b) for (const ch of b.chars) if (t >= ch.t && t < ch.t + 0.12 && ch.ch !== ' ') amp += 1.3 * pulse(t, ch.t, 0.025); };
     keys(this.name); keys(this.body); keys(this.blank); keys(this.title);
     const ly = lyricAt(this.ctx.lyrics, t);
@@ -475,7 +458,12 @@ export default class Certificate extends Scene {
 
   override dispose() {
     // 表格畫布一張十幾 MB：窗格結束馬上還
+    this.formTex?.dispose();
+    for (const b of this.blocks()) if (b.sprite) { b.sprite.cv.width = b.sprite.cv.height = 0; b.sprite = null; }
     if (this.form) { this.form.width = this.form.height = 0; this.form = null; }
+    // 共用的紙張 pass 會留著這一格的貼圖參照：換成不會被釋放的烤紙貼圖，下一個版面物件設好之前不會去上傳已經釋放的畫布
+    const P = this.paper.u;
+    P.inkTex!.value = P.roseTex!.value = P.formTex!.value = this.bake.rt.texture;
     super.dispose();
   }
 
@@ -511,16 +499,12 @@ export default class Certificate extends Scene {
       hc.globalCompositeOperation = 'lighter';
       hc.setTransform(m.a, m.b, m.c, m.d, m.e, m.f);
     }
-    c.imageSmoothingEnabled = true;
-    c.imageSmoothingQuality = 'high';
-    if (this.form) c.drawImage(this.form, FORM_BOX.x, FORM_BOX.y, FORM_BOX.w, FORM_BOX.h);
     this.drawNumber(c, t);
-    this.drawName(c, hc, t);
+    this.drawTyped(c, hc, this.name, t, { caret: 0.3 });
     this.drawField2(c, hc, t);
     this.drawBody(c, hc, t);
     this.drawChecks(c, t);
     this.drawSignature(c, t);
-    this.drawApprove(c, t);
     this.drawSeal(c, t);
     c.setTransform(1, 0, 0, 1, 0, 0);
     c.globalCompositeOperation = 'source-over';
@@ -529,17 +513,19 @@ export default class Certificate extends Scene {
     P.inkTex!.value = I.upload();
     P.roseOn!.value = this.rose ? 1 : 0;
     P.bakeTex!.value = this.bake.rt.texture;
-    if (this.rose) P.roseTex!.value = this.rose.upload();
+    P.formTex!.value = this.formTex;
+    // 沒有愛心的那層：取樣器也要綁一張有效的貼圖（別綁到上一個窗格已經釋放的畫布）
+    P.roseTex!.value = this.rose ? this.rose.upload() : I.texture;
     (P.camA!.value as THREE.Vector3).set(im.a, im.c, im.e);
     (P.camB!.value as THREE.Vector3).set(im.b, im.d, im.f);
     (P.blurV!.value as THREE.Vector2).set(bl[0], bl[1]);
-    const sl = this.sealState(t), ap = this.approveState(t);
+    // 淺景深：推得越近越淺（全景、看整張時是 0）
+    P.dofR!.value = 8 * clamp((cam.z - 1.08) / 0.35);
+    const sl = this.sealState(t);
     (P.st0!.value as THREE.Vector4).set(sl.x, sl.y, (sl.side / 2) * 1.14 * sl.scale, (sl.side / 2) * 1.14 * sl.scale);
     (P.st0b!.value as THREE.Vector4).set(sl.rot, sl.on ? sl.strength : 0, 3.7 + (this.seed % 7), 0);
-    (P.st1!.value as THREE.Vector4).set(ap.x, ap.y, L.approve.hw * 1.12, L.approve.hh * 1.2);
-    (P.st1b!.value as THREE.Vector4).set(ap.rot, ap.on ? ap.strength : 0, 9.1, 0);
     this.paper.render(renderer, out);
-    return { paper: 1, popupAvoid: this.avoid, bloom: 0.15, bloomThreshold: 1.8, halation: 0.03, vignette: 0.2, grain: 0.045, ca: 0.5 };
+    return { paper: 1, bloom: 0.15, bloomThreshold: 1.8, halation: 0.03, vignette: 0.22, grain: 0.045, ca: 0.5 };
   }
 
   /**
@@ -551,13 +537,15 @@ export default class Certificate extends Scene {
     if (alpha <= 0.001) return;
     c.font = font(b.family, b.size);
     if (hc) hc.font = c.font;
-    for (const ch of b.chars) {
-      if (ch.ch === ' ') continue;
+    if (b.sprite === undefined) b.sprite = makeSprite(b);
+    const sp = b.sprite;
+    // 逐字畫：愛心、剛打上去還在彈的字、正在唱的字（訊號色）；其他的字從底片整段貼過去
+    const one = (ch: TChar) => {
       const heart = ch.ch === '♥' && hc;
       const ctx = heart ? hc! : c;
       if (t < ch.t) {
         if (o.preview) { ctx.fillStyle = TYPE(o.preview * alpha); ctx.fillText(ch.ch, ch.x, ch.y); }
-        continue;
+        return;
       }
       const fresh = pulse(t, ch.t, 0.035);
       ctx.save();
@@ -566,6 +554,31 @@ export default class Certificate extends Scene {
       ctx.fillStyle = heart ? TYPE(alpha) : o.lyric && t < ch.we ? SIG(alpha) : TYPE(Math.min(1, ch.dens + 0.2 * fresh) * alpha);
       ctx.fillText(ch.ch, 0, 0);
       ctx.restore();
+    };
+    if (!sp) { for (const ch of b.chars) if (ch.ch !== ' ') one(ch); }
+    else {
+      const cs = b.chars, right = sp.x0 + sp.cv.width / SPR_RES;
+      // 'd' 打好了（貼底片）、'u' 還沒打（有預告就淡淡地貼底片）、'x' 逐字畫
+      const kind = (ch: TChar) => ch.ch === '♥' ? 'x' : t < ch.t ? 'u' : ch.ch === ' ' ? 'd' : t - ch.t < 0.2 || (o.lyric && t < ch.we) ? 'x' : 'd';
+      // 一段 [i0, i1)：左緣是這一行的開頭或這個字的左邊，右緣是下一個字的左邊或這一行的結尾
+      let i0 = 0;
+      const flush = (i1: number) => {
+        if (i1 <= i0) return;
+        const a = cs[i0]!, k0 = kind(a);
+        if (k0 === 'u' && !o.preview) return;
+        const L0 = i0 === 0 || cs[i0 - 1]!.row !== a.row ? sp.x0 : a.x - 1;
+        const R0 = i1 < cs.length && cs[i1]!.row === a.row ? cs[i1]!.x - 1 : right;
+        if (R0 <= L0) return;
+        c.globalAlpha = k0 === 'd' ? alpha : o.preview! * alpha;
+        c.drawImage(sp.cv, (L0 - sp.x0) * SPR_RES, a.row * sp.band * SPR_RES, (R0 - L0) * SPR_RES, sp.band * SPR_RES, L0, a.y - sp.top, R0 - L0, sp.band);
+        c.globalAlpha = 1;
+      };
+      for (let i = 0; i < cs.length; i++) {
+        const ch = cs[i]!, k = kind(ch);
+        if (k === 'x') { flush(i); one(ch); i0 = i + 1; continue; }
+        if (i > i0 && (k !== kind(cs[i0]!) || ch.row !== cs[i0]!.row)) { flush(i); i0 = i; }
+      }
+      flush(cs.length);
     }
     // 打字的導引（下一個字會打在哪）：訊號色的小三角。caret = 第一個字前多久先出現（只給正在打的那一塊）
     if (o.caret !== undefined) {
@@ -578,34 +591,17 @@ export default class Certificate extends Scene {
     }
   }
 
-  /** 編號：第一個拍點用號碼機蓋上去（訊號色，稍微歪；號碼機是表格上唯一會「喀」一聲的東西）。 */
+  /** 編號：第一個拍點用號碼機蓋在表頭右端（訊號色，稍微歪；號碼機是表格上唯一會「喀」一聲的東西）。 */
   private drawNumber(c: Ctx2, t: number) {
     if (t < this.tNum) return;
     const k = prog(t, this.tNum, this.tNum + 0.05, ease.outQuad), sc = lerp(1.14, 1, k);
     c.save();
     c.translate(L.numberAt.x, L.numberAt.y); c.rotate(-0.022); c.scale(sc, sc);
-    c.font = font(F.mono(600), 22); c.letterSpacing = '4px';
-    c.fillStyle = SIG(0.95);
+    c.font = font(F.mono(600), 20); c.letterSpacing = '4px';
+    c.textAlign = 'right';
+    c.fillStyle = SIG(0.9);
     c.fillText(this.copy.no, 0, 0);
     c.restore();
-  }
-
-  private drawName(c: Ctx2, hc: Ctx2 | null, t: number) {
-    this.drawTyped(c, hc, this.name, t, { caret: 0.3 });
-    // 新人自己的留言：名字後面蓋一個小小的「新人」標籤（訊號色）
-    const last = this.name.chars[this.name.chars.length - 1]!;
-    if (this.msg?.couple && t >= last.t + 0.1) {
-      const k = prog(t, last.t + 0.1, last.t + 0.16);
-      c.save();
-      c.fillStyle = SIG(k);
-      c.font = font(F.mono(600), 12); c.letterSpacing = '3px';
-      const x = last.x + this.name.size + 22;
-      const w = measure('新人 · FROM THE COUPLE', F.mono(600), 12, 3) + 20;
-      c.strokeStyle = SIG(k); c.lineWidth = 2;
-      c.strokeRect(x, L.name.y - 28, w, 32);
-      c.fillText('新人 · FROM THE COUPLE', x + 10, L.name.y - 7);
-      c.restore();
-    }
   }
 
   /** 第 2 欄：有留言時是現場歌詞；沒有留言時打歌名（歌詞改到內容欄）。 */
@@ -620,14 +616,14 @@ export default class Certificate extends Scene {
   /** 沒有歌詞的時候：純音樂就請大家自己哼；兩句之間寫「間奏中」（淡淡的印刷字，歌詞一來就讓位）。 */
   private drawGap(c: Ctx2, t: number, y: number, hold: number) {
     const { lyrics } = this.ctx;
-    let a = 0.4;
+    let a = 0.36;
     const last = lyrics.lastLine(t), next = lyrics.nextLine(t);
     if (last) a *= clamp((t - last.end - hold) / 0.4);
     if (next) a *= clamp((next.start - 0.35 - t) / 0.25);
     if (a <= 0.01) return;
     c.save();
     c.fillStyle = PRINT(a);
-    c.font = font(F.hei(500), 30); c.letterSpacing = '4px';
+    c.font = font(F.hei(500), 26); c.letterSpacing = '4px';
     c.fillText(lyrics.has ? '♪  （間奏中）' : '♪  本曲為純音樂，請自行哼唱', L.col.x0 + 8, y);
     c.restore();
   }
@@ -654,22 +650,22 @@ export default class Certificate extends Scene {
     c.save();
     c.strokeStyle = SIG(1); c.lineCap = 'round'; c.lineJoin = 'round';
     // 勾：短短往下、長長往右上甩出框外（老師改考卷的那種）
-    const pts = [[bx + 3, by + b * 0.45], [bx + b * 0.42, by + b + 3], [bx + b + 20, by - 22]] as const;
+    const pts = [[bx + 3, by + b * 0.45], [bx + b * 0.42, by + b + 3], [bx + b + 18, by - 20]] as const;
     const p = prog(t, this.tTick, this.tTick + 0.11, ease.outQuad);
     const l1 = Math.hypot(pts[1][0] - pts[0][0], pts[1][1] - pts[0][1]), l2 = Math.hypot(pts[2][0] - pts[1][0], pts[2][1] - pts[1][1]);
     const len = (l1 + l2) * p;
-    c.lineWidth = 5.5;
+    c.lineWidth = 4.5;
     c.beginPath(); c.moveTo(pts[0][0], pts[0][1]);
     if (len <= l1) c.lineTo(lerp(pts[0][0], pts[1][0], len / l1), lerp(pts[0][1], pts[1][1], len / l1));
     else { c.lineTo(pts[1][0], pts[1][1]); c.lineTo(lerp(pts[1][0], pts[2][0], (len - l1) / l2), lerp(pts[1][1], pts[2][1], (len - l1) / l2)); }
     c.stroke();
     // 圈：繞「以上皆是」一圈多一點，半徑有一點手抖
     if (t >= this.tCircle) {
-      const tw = measure(this.copy.checks[3]!, F.hei(500), 26, 3);
-      const cx = L.right.x0 + b + 20 + tw / 2, cy = y - 10, rx = tw / 2 + 24, ry = 25;
+      const tw = measure(this.copy.checks[3]!, F.hei(500), 20, 3);
+      const cx = L.right.x0 + b + 18 + tw / 2, cy = y - 8, rx = tw / 2 + 20, ry = 21;
       const q = prog(t, this.tCircle, this.tCircle + Math.min(0.35, this.B * 0.8), ease.inOutCubic);
       const a0 = -2.5, span = (Math.PI * 2 + 0.55) * q;
-      c.lineWidth = 3.2;
+      c.lineWidth = 2.8;
       c.beginPath();
       for (let i = 0; i <= 48; i++) {
         const a = a0 + (span * i) / 48;
@@ -710,7 +706,7 @@ export default class Certificate extends Scene {
     // 尾巴：一條往右上揚的弧線
     const u = prog(t, this.sigEnd - 0.15, this.sigEnd + 0.05, ease.outCubic);
     if (u > 0) {
-      c.strokeStyle = TYPE(0.9); c.lineWidth = 2.6; c.lineCap = 'round';
+      c.strokeStyle = TYPE(0.9); c.lineWidth = 2.4; c.lineCap = 'round';
       const w = lay.width;
       c.beginPath();
       const N = 20;
@@ -724,36 +720,15 @@ export default class Certificate extends Scene {
     c.restore();
   }
 
-  private approveState(t: number) {
-    const k = prog(t, this.tApp, this.tApp + 0.05, ease.outQuad);
-    return { x: L.approve.x, y: L.approve.y, rot: 0.07, on: t >= this.tApp, strength: 1 + 0.4 * (1 - k), scale: lerp(1.06, 1, k) };
-  }
-  /** 「核准」橡皮章（印刷墨、圓角框），蓋在登記人那一欄的右端（像承辦人蓋的章）。 */
-  private drawApprove(c: Ctx2, t: number) {
-    const s = this.approveState(t);
-    if (!s.on) return;
-    const { hw, hh } = L.approve;
-    c.save();
-    c.translate(s.x, s.y); c.rotate(s.rot); c.scale(s.scale, s.scale);
-    c.strokeStyle = PRINT(1); c.lineWidth = 6;
-    c.beginPath(); c.roundRect(-hw + 8, -hh + 8, 2 * hw - 16, 2 * hh - 16, 14); c.stroke();
-    c.fillStyle = PRINT(1); c.textAlign = 'center'; c.textBaseline = 'alphabetic';
-    c.font = font(F.hei(900), 46); c.letterSpacing = '18px';
-    c.fillText('核准', 9 - 60, 16);
-    c.font = font(F.mono(700), 13); c.letterSpacing = '4px';
-    c.fillText('APPROVED', 72, -4);
-    c.fillText('已登錄', 72, 20);
-    c.restore();
-  }
-
   private sealState(t: number) {
     const k = prog(t, this.tSeal, this.tSeal + 0.05, ease.outQuad);
     const { x, y, box, side } = L.seal;
     return { x: x + box / 2 + this.sealDx, y: y + box / 2 + this.sealDy, side, rot: this.sealRot, on: t >= this.tSeal, strength: 1 + 0.55 * (1 - k), scale: lerp(1.08, 1, k) };
   }
   /**
-   * 方章（陰刻：整塊印泥、字是白的）。四個字由左而右、由上而下排：傳統印章是右行直讀，
-   * 但大螢幕上只看一眼，橫著讀才不會被念成「好百合年」。
+   * 方章（陽刻：紅框紅字，紙色留白）。整塊實心的陰刻章是一大塊訊號色，會比打上去的祝福還搶眼；
+   * 陽刻章一樣是「砸下來」的那一下，但留言還是整張紙的主角。四個字由左而右、由上而下排：
+   * 傳統印章是右行直讀，但大螢幕上只看一眼，橫著讀才不會被念成「好百合年」。
    */
   private drawSeal(c: Ctx2, t: number) {
     const s = this.sealState(t);
@@ -761,20 +736,17 @@ export default class Certificate extends Scene {
     const S = s.side, h = S / 2;
     c.save();
     c.translate(s.x, s.y); c.rotate(s.rot); c.scale(s.scale, s.scale);
-    c.fillStyle = SIG(1);
-    c.beginPath(); c.roundRect(-h, -h, S, S, 10); c.fill();
-    c.globalCompositeOperation = 'difference';
-    c.strokeStyle = SIG(1); c.lineWidth = 3;
-    c.strokeRect(-h + 11, -h + 11, S - 22, S - 22);
+    c.strokeStyle = SIG(1); c.lineWidth = 9;
+    c.beginPath(); c.roundRect(-h + 4.5, -h + 4.5, S - 9, S - 9, 10); c.stroke();
     c.fillStyle = SIG(1);
     const chars = Array.from(this.copy.seal);
-    const cell = (S - 44) / 2, size = cell * 0.96;
+    const cell = (S - 34) / 2, size = cell * 0.98;
     c.font = font(F.ming(900), size);
     c.textAlign = 'center'; c.textBaseline = 'middle';
     const pos = [[0, 0], [1, 0], [0, 1], [1, 1]] as const;
     chars.slice(0, 4).forEach((ch, i) => {
       const [cx, cy] = pos[i]!;
-      c.fillText(ch, -h + 22 + cell * (cx + 0.5), -h + 22 + cell * (cy + 0.5) + size * 0.04);
+      c.fillText(ch, -h + 17 + cell * (cx + 0.5), -h + 17 + cell * (cy + 0.5) + size * 0.04);
     });
     c.restore();
   }

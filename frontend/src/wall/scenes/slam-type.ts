@@ -76,9 +76,12 @@ export function linePieces(line: Line, cjkMax = 4, latinMax = 9): Piece[] {
   return out;
 }
 
-/** 留言、邀請之類不是唱出來的字：切好詞組，時間由版面排。 */
-export function textPieces(text: string, cjkMax: number, latinMax: number): Piece[] {
-  return splitRanges(text, cjkMax, latinMax).map((r) => ({ src: text, a: r.a, b: r.b, text: upper(text.slice(r.a, r.b)), gap: r.gap, words: [], t0: 0 }));
+/**
+ * 留言、邀請之類不是唱出來的字：切好詞組，時間由版面排。
+ * `keepCase`：賓客的留言照原本的大小寫（這是他們寫的字，大螢幕是他們看到自己祝福的唯一地方，不要替他們改）。
+ */
+export function textPieces(text: string, cjkMax: number, latinMax: number, keepCase = false): Piece[] {
+  return splitRanges(text, cjkMax, latinMax).map((r) => ({ src: text, a: r.a, b: r.b, text: keepCase ? text.slice(r.a, r.b) : upper(text.slice(r.a, r.b)), gap: r.gap, words: [], t0: 0 }));
 }
 
 // ---------------------------------------------------------------- 大字塊
