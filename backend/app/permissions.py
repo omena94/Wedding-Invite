@@ -26,7 +26,6 @@ PERMISSIONS = [
     ("gifts_view", "喜餅：看送餅名單"),
     ("gifts_pickup", "喜餅：勾簽收確認（分批、代領）"),
     ("gifts_manage", "喜餅：帶入賓客、編輯送餅對象、廠商、款式、訂購與費用、匯出"),
-    ("dashboard", "總覽"),
     ("budget", "花費（含婚宴預估）"),
     ("calendar", "行事曆"),
     ("notes", "筆記"),
@@ -91,7 +90,6 @@ def require_perm(*keys: str):
 # /api/planner 底下的路徑對應到哪把鑰匙（沒列到的一律只給新人）
 PLANNER_PATH_KEYS = [
     ("settings", ("settings",)),
-    ("dashboard", ("dashboard",)),
     ("expenses", ("budget",)),
     ("payments", ("budget",)),
     ("banquet", ("budget",)),

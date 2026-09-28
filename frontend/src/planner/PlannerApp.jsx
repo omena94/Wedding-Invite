@@ -2,11 +2,10 @@
 import { useEffect, useState } from "react";
 import { BrowserRouter, NavLink, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import {
-  LayoutDashboard, Users, Wallet, CalendarDays, FolderOpen,
+  Users, Wallet, CalendarDays, FolderOpen,
   Settings as SettingsIcon, LogOut, Lock, LogIn, Home as HomeIcon, Armchair, Images, Gift, NotebookPen, PartyPopper, Camera,
 } from "lucide-react";
 import { adminLogin, clearToken, getRole, getToken, setRole, setToken, fetchMe } from "../api.js";
-import Dashboard from "./Dashboard.jsx";
 import Guests from "./Guests.jsx";
 import Budget from "./Budget.jsx";
 import Timeline from "./Timeline.jsx";
@@ -26,7 +25,6 @@ import { Loading } from "./ui.jsx";
 // 2026-09-08 依新人要求移除「廠商」與「比價」頁；2026-09-10 其他頁的廠商欄位也一併移除（後端資料與 API 保留）
 // 2026-09-27 每一頁對應一把鑰匙（perm）；角色能用哪些鑰匙由設定頁的權限表決定
 const NAV = [
-  { to: "/", label: "總覽", icon: LayoutDashboard, end: true, perm: ["dashboard"] },
   { to: "/guests", label: "賓客名單", icon: Users, perm: ["guests_view"] }, // 2026-09-08 依新人要求改名為「賓客名單」
   { to: "/seating", label: "座位圖", icon: Armchair, perm: ["seating_view", "seating_edit"] },
   { to: "/gifts", label: "喜餅", icon: Gift, perm: ["gifts_view"] },
@@ -71,14 +69,14 @@ export default function PlannerApp() {
   }
 
   if (!perms) return <div className="pl-shell"><main className="pl-main"><Loading /></main></div>;
-  const home = NAV.find((n) => can(...n.perm))?.to || "/guests";
+  // 2026-09-28 總覽頁拿掉：登入後預設進設定（沒有設定權限的幫手就進第一個能用的頁）
+  const home = can("settings") ? "/settings" : (NAV.find((n) => can(...n.perm))?.to || "/guests");
 
   return (
     <PlannerContext.Provider value={{ role, perms, can, logout }}>
       <BrowserRouter basename="/planner" future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <Shell role={role} can={can} onLogout={logout}>
           <Routes>
-            <Route path="/" element={<Allowed ok={can("dashboard")} home={home}><Dashboard /></Allowed>} />
             <Route path="/guests" element={<Allowed ok={can("guests_view")} home={home}><Guests /></Allowed>} />
             <Route path="/seating" element={<Allowed ok={can("seating_view", "seating_edit")} home={home}><Seating /></Allowed>} />
             <Route path="/gifts" element={<Allowed ok={can("gifts_view")} home={home}><Gifts /></Allowed>} />

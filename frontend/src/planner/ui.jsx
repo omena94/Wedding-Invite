@@ -2,6 +2,7 @@
 import { useEffect, useState, useCallback } from "react";
 import Swal from "sweetalert2";
 import { X } from "lucide-react";
+import { daysUntil } from "../constants.js";
 
 const SWAL_COLOR = "#B28F70";
 
@@ -138,3 +139,13 @@ export function NumberInput({ value, onChange, placeholder = "0", ...rest }) {
 }
 
 export const toInt = (v) => (v === "" || v === null || v === undefined ? 0 : parseInt(v, 10) || 0);
+
+// 應付日的提醒字（逾期／今天／N 天後）；2026-09-28 從已移除的總覽頁搬過來，花費頁用
+export function dueTag(iso) {
+  const d = daysUntil(iso);
+  if (d === null) return "";
+  if (d < 0) return `（逾期 ${-d} 天）`;
+  if (d === 0) return "（今天）";
+  if (d <= 14) return `（${d} 天後）`;
+  return "";
+}

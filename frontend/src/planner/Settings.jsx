@@ -23,7 +23,6 @@ const PERM_ROWS = [
   ["gifts_view", "喜餅：看送餅名單"],
   ["gifts_pickup", "喜餅：勾簽收確認（分批、代領）"],
   ["gifts_manage", "喜餅：帶入賓客、編輯送餅對象、廠商、款式、訂購與費用、匯出"],
-  ["dashboard", "總覽"],
   ["budget", "花費（含婚宴預估）"],
   ["calendar", "行事曆"],
   ["notes", "筆記"],
@@ -79,6 +78,18 @@ export default function SettingsPage() {
   return (
     <div>
       <PageHead title="設定" sub="賓客端的開關與文案都在這裡，改完立即生效" />
+
+      {/* 目前階段（2026-09-28 從總覽搬過來）：賓客各頁現在開了沒，一眼看完 */}
+      <div className="panel">
+        <div className="panel-head"><div className="panel-title"><Info size={18} /> 目前階段</div></div>
+        <div className="pl-stage-row">
+          <StageItem ok label="第一階段意願調查" value="開放中（/rsvp）" />
+          <StageItem ok={stage.phase2_open} label="第二階段出席與主餐" value={stage.phase2_open ? `已開放（自 ${fmtDateTime(stage.phase2_open_at)}）` : stage.phase2_open_at ? `預計 ${fmtDateTime(stage.phase2_open_at)} 開放` : "尚未開放"} />
+          <StageItem ok={stage.seat_open} label="婚禮當天桌次查詢" value={stage.seat_open ? "開放中（/seat）" : "關閉"} />
+          <StageItem ok={stage.guest_upload_open} label="婚禮當天照片上傳" value={stage.guest_upload_open ? "開放中（/upload）" : "關閉"} />
+          <StageItem ok={stage.photos_open} label="婚紗照分享頁" value={stage.photos_open ? "開放中（/photos）" : "關閉"} />
+        </div>
+      </div>
 
       {/* 第二階段 */}
       <div className="panel">
@@ -178,6 +189,18 @@ function Switch({ label, desc, value, onChange, busy }) {
       <div>
         <div className="pl-list-title">{label} <span className={`pill ${value ? "pill-yes" : "pill-no"}`}>{value ? "開放中" : "關閉"}</span></div>
         <div className="pl-list-sub">{desc}</div>
+      </div>
+    </div>
+  );
+}
+
+function StageItem({ ok, label, value }) {
+  return (
+    <div className="pl-stage-item">
+      <span className={`status-dot${ok ? "" : " off"}`} />
+      <div>
+        <div className="pl-list-title">{label}</div>
+        <div className="pl-list-sub">{value}</div>
       </div>
     </div>
   );

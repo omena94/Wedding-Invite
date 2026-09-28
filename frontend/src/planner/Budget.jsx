@@ -7,7 +7,7 @@ import { deleteExpense, deletePayment, fetchExpenses } from "../api.js";
 import { PAID_BY, fmtDate, money } from "../constants.js";
 import { ExpenseModal, PaymentModal } from "./modals.jsx";
 import { Empty, ErrorBox, Loading, Modal, PageHead, confirmDelete, toastErr, useLoader } from "./ui.jsx";
-import { dueTag } from "./Dashboard.jsx";
+import { dueTag } from "./ui.jsx";
 import BanquetPanel from "./BanquetPanel.jsx";
 
 export default function Budget() {
