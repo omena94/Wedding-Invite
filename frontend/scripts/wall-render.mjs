@@ -109,7 +109,7 @@ try {
     writeFileSync(out, Buffer.from(b64, 'base64'));
     console.log(out);
   } else if (mode === 'qa') {
-    // 標準驗收：同一個版面跑十種情境（長短留言、英文、只有愛心、沒留言、純音樂、慢歌、2 小節、新人留言＋三張小卡），
+    // 標準驗收：同一個版面跑十一種情境（長短留言、英文、只有愛心、沒留言、純音樂、慢歌、2 小節、新人留言、四行多愛心），
     // 加確定性檢查（同一個時間點畫兩次要一模一樣）與效能，拼成一張總表 wall-out/qa/<版面>.jpg，數字寫在 <版面>.json。
     // 需要標準測試音檔資料夾（Test Band - Fast Pop.mp3、Test Band - Slow Ballad.mp3）。
     const scene = opt('scene');
@@ -127,6 +127,8 @@ try {
       { label: 'H 慢歌', song: SLOW, message: 3, theme: 'gold', from: 20, to: 40, t: [21, 26, 32, 39.6] },
       { label: 'I 2 小節', song: FAST, message: 3, theme: 'coral', from: 50, to: 53.64, t: [50.2, 51.5, 53.4] },
       { label: 'J 新人留言', song: FAST, message: 1, theme: 'gold', from: 20, to: 36.4, t: [23, 27] },
+      // 正式站踩過：四行、愛心穿插的留言，署名被字蓋住（2026-09-28）
+      { label: 'K 四行＋很多愛心・香檳', song: FAST, message: 19, theme: 'champagne', from: 60, to: 74, t: [63, 67, 73.5] },
     ];
     // --params '{"variant":2}'：每個情境都帶這些參數（測變化款）；輸出檔名加上 --tag（預設 v2 這種）
     const extra = opt('params') ? JSON.parse(opt('params')) : {};

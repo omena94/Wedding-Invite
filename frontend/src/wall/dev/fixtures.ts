@@ -24,6 +24,9 @@ export const DEV_MESSAGES: RawMessage[] = [
   { id: 16, name: 'Ken', text: 'Cheers! 🥂 To love, laughter and happily ever after.' },
   { id: 17, name: '表妹', text: '姐姐姐夫新婚快樂，記得帶我去度蜜月（開玩笑的）' },
   { id: 18, name: '老闆', text: '祝兩位永結同心，家庭事業兩得意。' },
+  // 2026-09-28 正式站踩到的樣子（自己編的，不是真的賓客留言）：自己換行、愛心穿插、名字三個字，
+  // 會排成四行——版面只留三行的位置，署名就被字蓋住了。QA 的 K 情境用它。
+  { id: 19, name: '姜小姐', text: '寶貝不管怎樣你開心最重要❤️\n我們永遠是你的娘家你的後盾❤️\n要一直幸福下去喔❤️❤️❤️' },
 ];
 
 /** 模擬現場新留言（/wall?dev=1&sim=1 每隔幾秒丟一則進來）。 */
