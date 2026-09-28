@@ -195,6 +195,17 @@ void main() {
   fragColor = vec4(0.0, 0.0, 0.0, a);
 }`;
 /** 房間：鋼琴後面的暗處，燈打到的地方一點點暖。 */
+/**
+ * 右下角的暗角：那一角後面是燈照到的白鍵，引擎畫的 QR 旁邊的淺色小字（掃描留言、已收到幾則）會讀不清楚，
+ * 讓鍵盤在右下角慢慢沒入黑暗（像燈照不到那裡），HUD 的字才清楚。預乘的「蓋上去」：黑色、透明度隨位置。
+ */
+const CORNER = () => new FSPass(/* glsl */ `
+  void main() {
+    vec2 p = vec2(FRAG_PX.x, ${H}.0 - FRAG_PX.y);
+    float a = 0.93 * smoothstep(1060.0, 1430.0, p.x) * smoothstep(620.0, 850.0, p.y);
+    fragColor = vec4(0.0, 0.0, 0.0, a);
+  }`, {}, { over: true });
+
 const ROOM = () => new FSPass(/* glsl */ `
   void main() {
     vec2 p = vec2(FRAG_PX.x, ${H}.0 - FRAG_PX.y);
@@ -290,6 +301,7 @@ interface Note { m: number; a: number; r: number; v: number }
 export default class Piano extends Scene {
   rig = shared('piano.rig', () => new PianoRig());
   room = shared('piano.room', ROOM);
+  corner = shared('piano.corner', CORNER);
   cam = new THREE.PerspectiveCamera(36, W / H, 1, 800);
   base = this.track(new Layer2D(PG.w, PG.h, undefined, { fast: true }));
   lyr = this.track(new Layer2D(PG.w, PG.h, undefined, { fast: true }));
@@ -560,6 +572,7 @@ export default class Piano extends Scene {
     renderer.clearDepth();
     renderer.render(rig.scene, cam);
     comp.draw(renderer, rt.texture, out, { mode: 'replace', premult: false });
+    this.corner.render(renderer, out);
     return { bloom: 0.75, bloomThreshold: 0.95, vignette: 0.55, halation: 0.3, popupAvoid: this.avoid };
   }
 }
