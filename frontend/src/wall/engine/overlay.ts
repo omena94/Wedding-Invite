@@ -67,8 +67,10 @@ export class Overlay {
   /**
    * 排一張小卡：t0 開始（呼叫的人會對齊到拍點），`fresh` = 剛送出的新留言（標「新留言」、停留久一點）。
    * 位置在空著的格子裡隨機挑（用留言 id 當種子，同一則每次重播位置一樣）。
+   * `cover`：空格子都會蓋到版面的重要文字（avoid）時，要不要還是出來（挑蓋最少的）。預設不要：回傳 false，
+   * 呼叫的人晚一點再試（新留言等太久才准蓋，見 main.ts）。
    */
-  schedule(msg: Msg, t0: number, fresh: boolean, avoid: [number, number, number, number][] = []): boolean {
+  schedule(msg: Msg, t0: number, fresh: boolean, avoid: [number, number, number, number][] = [], cover = false): boolean {
     const dur = clamp(readSeconds(msg.text) + (fresh ? 4.5 : 2.5), fresh ? 7 : 6, fresh ? 15 : 11);
     const t1 = t0 + dur;
     this.measure.font = font(F.hand(400), TEXT_SIZE);
@@ -86,6 +88,7 @@ export class Overlay {
     };
     const scored = free.map((i) => ({ i, o: overlap(i) }));
     const clear = scored.filter((s) => s.o === 0).map((s) => s.i);
+    if (!clear.length && !cover) return false;
     const slot = clear.length ? clear[Math.floor(hash(msg.id, Math.floor(t0 * 10)) * clear.length)]! : scored.sort((a, b) => a.o - b.o)[0]!.i;
     this.popups.push({ msg, t0, t1, slot, fresh, lines, h });
     return true;

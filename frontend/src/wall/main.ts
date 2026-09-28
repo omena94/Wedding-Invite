@@ -114,7 +114,8 @@ function startRuntime(rt: SongRuntime, startAt: number) {
   applyTheme(rt.info.theme);
   engine.setSong(rt);
   director.startSong(rt, startAt);
-  popupQueue.length = 0;
+  // 還沒出卡的新留言留到下一首（歌尾最後幾秒送出的留言以前會在這裡被清掉，永遠等不到「新留言」小卡）
+  popupWait.clear();
   nextRandomPopup = startAt + 14;
   t = startAt;
 }
@@ -181,6 +182,8 @@ async function prevSong() {
 
 // ------------------------------------------------------------------ 留言與即時小卡
 const popupQueue: Msg[] = [];
+/** 新留言第一次試著出卡的時間（畫面上沒有不蓋字的空位就等；等超過 8 秒才准蓋到版面的字）。 */
+const popupWait = new Map<number, number>();
 let nextRandomPopup = 14;
 pool.onArrive = (m) => popupQueue.push(m);
 pool.onRemove = (id) => {
@@ -205,7 +208,12 @@ function schedulePopups() {
   // 新留言：下一拍跳出來（歌快結束了就等下一首）
   if (popupQueue.length && t < end - 6) {
     const at = au.nextBeat(t + 0.25);
-    if (engine.overlay.schedule(popupQueue[0]!, at, true, engine.lastPost.popupAvoid)) { pool.markShown(popupQueue[0]!.id); popupQueue.shift(); }
+    const m = popupQueue[0]!;
+    // 換歌時歌曲時間會歸零：記的時間比現在晚就從現在重新算
+    const since = popupWait.get(m.id);
+    if (since === undefined || since > t) popupWait.set(m.id, t);
+    const waited = t - popupWait.get(m.id)!;
+    if (engine.overlay.schedule(m, at, true, engine.lastPost.popupAvoid, waited > 8)) { pool.markShown(m.id); popupQueue.shift(); popupWait.delete(m.id); }
   }
   // 舊留言：每隔 12～28 秒隨機冒一則出來（留言太少、畫面上已經有兩張就不冒）
   if (t >= nextRandomPopup && t < end - 8) {

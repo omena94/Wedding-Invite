@@ -74,11 +74,76 @@ export function wrapGreedy(c: CanvasRenderingContext2D, text: string, maxWidth: 
 }
 
 /**
- * 斷行並「平衡」：行數跟貪婪斷行一樣，但把每行的寬度拉平（避免最後一行只剩一個字）。
+ * 斷行並「平衡」：行數跟貪婪斷行一樣，但把每行的寬度拉平（避免最後一行只剩一個字），
+ * 而且盡量斷在標點後面、不要把一個詞拆開（「今天／來，吃飽喝足」「吃／飽喝足」這種斷法很難讀）。
  */
 export function wrap(c: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
   const greedy = wrapGreedy(c, text, maxWidth);
   if (greedy.length <= 1) return greedy;
+  const nice = wrapNice(c, text, maxWidth, greedy.length);
+  if (nice) return nice;
+  return wrapBalanced(c, text, maxWidth, greedy);
+}
+
+let wordSeg: Intl.Segmenter | null = null;
+const BREAK_AFTER = /[、。，．,.!?！？：；:;）)」』】〕〉》…～~♥]\s*$/;
+
+/**
+ * 最佳斷行（行數固定 = lines）：每行留白的平方加總最小，另外
+ * 斷在標點後面不扣分、斷在詞與詞之間扣一點、把一個詞拆開扣很多（詞用瀏覽器內建的中文斷詞）。
+ * 有單一單位比一行還寬就回 null，交給舊的做法。
+ */
+function wrapNice(c: CanvasRenderingContext2D, text: string, maxWidth: number, lines: number): string[] | null {
+  const toks = tokens(text);
+  const n = toks.length;
+  if (n < 2 || n > 400) return null;
+  // 每個單位的寬度（行尾的空白不算）；中文沒有字距調整，逐個量加起來就是整行寬
+  const w = toks.map((tk) => c.measureText(tk).width);
+  const wTrim = toks.map((tk, i) => (tk.endsWith(' ') ? c.measureText(tk.trimEnd()).width : w[i]!));
+  if (wTrim.some((x) => x > maxWidth)) return null;
+  const pre = [0];
+  for (const x of w) pre.push(pre[pre.length - 1]! + x);
+  const lineW = (i: number, j: number) => pre[j]! - pre[i]! - (w[j - 1]! - wTrim[j - 1]!);
+  // 詞的邊界（字元位置）
+  if (!wordSeg) wordSeg = new Intl.Segmenter('zh-Hant', { granularity: 'word' });
+  const bounds = new Set<number>();
+  for (const s of wordSeg.segment(text)) bounds.add(s.index);
+  const at: number[] = [0];
+  for (const tk of toks) at.push(at[at.length - 1]! + tk.length);
+  const brk = (j: number) => {
+    if (BREAK_AFTER.test(toks[j - 1]!)) return 0;
+    if (bounds.has(at[j]!) || toks[j - 1]!.endsWith(' ')) return (0.12 * maxWidth) ** 2;
+    return (0.45 * maxWidth) ** 2;
+  };
+  // best[k][j]：前 j 個單位排成 k 行的最小成本
+  const INF = Infinity;
+  const best: number[][] = Array.from({ length: lines + 1 }, () => new Array<number>(n + 1).fill(INF));
+  const from: number[][] = Array.from({ length: lines + 1 }, () => new Array<number>(n + 1).fill(-1));
+  best[0]![0] = 0;
+  for (let k = 1; k <= lines; k++) {
+    for (let j = 1; j <= n; j++) {
+      for (let i = j - 1; i >= 0; i--) {
+        const lw = lineW(i, j);
+        if (lw > maxWidth) break;
+        const prev = best[k - 1]![i]!;
+        if (prev === INF) continue;
+        const cost = prev + (maxWidth - lw) ** 2 + (j < n ? brk(j) : 0);
+        if (cost < best[k]![j]!) { best[k]![j] = cost; from[k]![j] = i; }
+      }
+    }
+  }
+  if (best[lines]![n] === INF) return null;
+  const out: string[] = [];
+  for (let k = lines, j = n; k > 0; k--) {
+    const i = from[k]![j]!;
+    out.unshift(toks.slice(i, j).join('').trim());
+    j = i;
+  }
+  return out;
+}
+
+/** 舊的平衡法：二分搜尋最窄的寬度，行數不變。 */
+function wrapBalanced(c: CanvasRenderingContext2D, text: string, maxWidth: number, greedy: string[]): string[] {
   let lo = c.measureText(text).width / greedy.length, hi = maxWidth;
   let best = greedy;
   for (let k = 0; k < 14; k++) {
