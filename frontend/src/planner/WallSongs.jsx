@@ -387,7 +387,7 @@ function LyricSync({ lrc, offset, blobUrl, analysis, onLrc, onOffset, onShift })
   const [dur, setDur] = useState(0);
   const [paused, setPaused] = useState(true);
   const [tap, setTap] = useState(null); // 逐句對時中：{ lines, cursor }
-  const [wt, setWt] = useState(null); // 逐字對時中：{ idx, t, text, units:[{w,pos}], cuts:[bool], split, times:[], phase:'setup'|'tap'|'done' }
+  const [wt, setWt] = useState(null); // 逐字對時中：{ idx, t, text, units:[{w,pos}], cuts:[bool], times:[], phase:'setup'|'tap'|'done' }
   const [rate, setRateState] = useState(1);
   const [undo, setUndo] = useState(null); // 上一次「對字」之前的歌詞（復原用）
   const REACT = 0.12;
@@ -499,7 +499,8 @@ function LyricSync({ lrc, offset, blobUrl, analysis, onLrc, onOffset, onShift })
     if (!units.length) return;
     audio.current?.pause();
     const t0 = l.t; // 第一個字／第一段就是這句在 LRC 上的時間
-    setWt({ idx, t: t0, text: l.text, units, cuts: units.map(() => true), split: false, times: [], phase: "setup" });
+    // 只有「自己分段」（新人拿掉了每個字按一下）：一開始整句一段，點字切段
+    setWt({ idx, t: t0, text: l.text, units, cuts: units.map(() => false), times: [], phase: "setup" });
   };
   const segsOf = (w) => {
     const starts = w.units.map((u, i) => i).filter((i) => i === 0 || w.cuts[i]);
@@ -641,8 +642,8 @@ function LyricSync({ lrc, offset, blobUrl, analysis, onLrc, onOffset, onShift })
         </div>
       ) : wt ? (
         <WordTapPanel wt={wt} segs={segsOf(wt)} rate={rate} ended={paused && stopAt.current === null}
-          onRate={setRate} onSplit={(split) => setWt((w) => ({ ...w, split, cuts: w.units.map(() => !split), times: [], phase: "setup" }))}
-          onCut={(i) => setWt((w) => (w.phase === "setup" && w.split && i > 0 ? { ...w, cuts: w.cuts.map((c, j) => (j === i ? !c : c)) } : w))}
+          onRate={setRate}
+          onCut={(i) => setWt((w) => (w.phase === "setup" && i > 0 ? { ...w, cuts: w.cuts.map((c, j) => (j === i ? !c : c)) } : w))}
           onStart={wordStart} onHit={wordHit} onBack={wordBack} onCancel={wordCancel} onApply={wordApply} />
       ) : (
         <>
@@ -688,12 +689,11 @@ function LyricSync({ lrc, offset, blobUrl, analysis, onLrc, onOffset, onShift })
  * 逐字對時的畫面：設定（每個字／自己分段、播放速度）→ 邊聽邊按空白鍵 → 套用。
  * 第一段從這句原本的時間開始（不用按），wt.times 是之後每一段開頭、最後是唱完（可以沒有）。
  */
-function WordTapPanel({ wt, segs, rate, ended, onRate, onSplit, onCut, onStart, onHit, onBack, onCancel, onApply }) {
+function WordTapPanel({ wt, segs, rate, ended, onRate, onCut, onStart, onHit, onBack, onCancel, onApply }) {
   const cuts = segs.length - 1; // 要按幾個「開始」
   const k = wt.times.length; // 已經按了幾下
   const tapping = wt.phase === "tap";
   const segOf = (i) => { let s = 0; segs.forEach((sg, j) => { if (i >= sg.from) s = j; }); return s; };
-  const unit = wt.split ? "段" : "個字";
   return (
     <div className="ws-tap ws-word-tap">
       <div className="ws-chips">
@@ -703,7 +703,7 @@ function WordTapPanel({ wt, segs, rate, ended, onRate, onSplit, onCut, onStart, 
           const head = segs[sg].from === i;
           const at = sg === 0 ? wt.t : wt.times[sg - 1];
           return (
-            <span key={i} className={`ws-chip${state}${wt.split && i > 0 && head ? " cut" : ""}${wt.split && wt.phase === "setup" && i > 0 ? " clickable" : ""}`} onClick={() => onCut(i)}>
+            <span key={i} className={`ws-chip${state}${i > 0 && head ? " cut" : ""}${wt.phase === "setup" && i > 0 ? " clickable" : ""}`} onClick={() => onCut(i)}>
               {u.w}
               <small>{head && at !== undefined ? fmtTime(at).slice(3) : " "}</small>
             </span>
@@ -712,15 +712,12 @@ function WordTapPanel({ wt, segs, rate, ended, onRate, onSplit, onCut, onStart, 
       </div>
       {wt.phase === "setup" && <>
         <div className="toolbar" style={{ marginTop: 10 }}>
-          <button type="button" className={`btn btn-sm ${!wt.split ? "btn-primary" : "btn-ghost"}`} onClick={() => onSplit(false)}>每個字按一下</button>
-          <button type="button" className={`btn btn-sm ${wt.split ? "btn-primary" : "btn-ghost"}`} onClick={() => onSplit(true)}>自己分段</button>
-          <span className="helper-text" style={{ margin: "0 0 0 8px" }}>播放速度</span>
+          <span className="helper-text" style={{ margin: 0 }}>播放速度</span>
           {[1, 0.75, 0.5].map((r) => <button key={r} type="button" className={`btn btn-sm ${rate === r ? "btn-primary" : "btn-ghost"}`} onClick={() => onRate(r)}>{r === 1 ? "正常" : `${r}×`}</button>)}
         </div>
         <div className="helper-text">
-          {wt.split
-            ? "點一個字，就從那個字開始新的一段（例如「窗外飛過著｜宣告戀愛｜的蜻蜓」）。第一段從這句原本的時間開始，不用按；之後每段開始唱的那一刻按一下空白鍵，段裡的字平均分時間。"
-            : "第一個字從這句原本的時間開始，不用按；之後每個字開始唱的那一刻按一下空白鍵。"}
+          先點上面的字把這句切成幾段：點一個字，就從那個字開始新的一段（例如「窗外飛過著｜宣告戀愛｜的蜻蜓」），再點一次取消。
+          第一段從這句原本的時間開始，不用按；之後每段開始唱的那一刻按一下空白鍵，段裡的字平均分時間。
           最後一個字唱完再按一下（沒按到也沒關係，結尾會自動推算）。只播這一句（這句的時間到下一句的時間）；跟不上可以放慢。
         </div>
         <div className="toolbar" style={{ marginTop: 8 }}>
@@ -730,7 +727,7 @@ function WordTapPanel({ wt, segs, rate, ended, onRate, onSplit, onCut, onStart, 
       </>}
       {tapping && ended && (
         <div className="helper-text" style={{ marginTop: 10 }}>
-          {k >= cuts ? "這句播完了。最後一下沒按到也沒關係，結尾會自動推算，可以直接套用。" : `這句播完了，還有 ${cuts - k} ${unit}的開頭沒按到。按「重按一次」從頭再來，或「退一下」從上一下接著按。`}
+          {k >= cuts ? "這句播完了。最後一下沒按到也沒關係，結尾會自動推算，可以直接套用。" : `這句播完了，還有 ${cuts - k} 段的開頭沒按到。按「重按一次」從頭再來，或「退一下」從上一下接著按。`}
         </div>
       )}
       {tapping && (
