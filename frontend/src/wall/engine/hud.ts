@@ -79,13 +79,18 @@ export class Hud {
     c.textAlign = 'right';
     c.textBaseline = 'alphabetic';
     const tx = x - 22;
-    // 小時鐘：最上面一行，低調的 mono 小字
+    // 小時鐘：最上面一行，「7:30」大一點、「PM」小一點（12 小時制，新人說這樣賓客才會直覺是時間）
     if (this.live.clock) {
-      c.font = font(F.mono(500), 17);
-      c.letterSpacing = '2px';
-      c.fillStyle = ink ? rgba('sepia', 0.55) : rgba('bone', 0.5);
-      c.fillText(this.live.clock, tx, y + 16);
-      c.letterSpacing = '0px';
+      const [hm, ap] = this.live.clock.split(' ');
+      c.fillStyle = ink ? rgba('sepia', 0.7) : rgba('bone', 0.68);
+      let xx = tx;
+      if (ap) {
+        c.font = font(F.mono(600), 14);
+        c.fillText(ap, xx, y + 18);
+        xx -= c.measureText(ap).width + 6;
+      }
+      c.font = font(F.mono(500), 21);
+      c.fillText(hm ?? '', xx, y + 18);
     }
     c.fillStyle = ink ? rgba('sepia', 0.95) : rgba('bone', 0.92);
     c.font = font(F.hei(700), 26);
