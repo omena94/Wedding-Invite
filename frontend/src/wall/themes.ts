@@ -13,7 +13,7 @@ export const THEMES: Theme[] = [
   { key: 'champagne', label: '香檳', energy: 0.25, tempo: 72,
     colors: { ink: '#0A0A0A', ink2: '#161512', signal: '#F2D19B', ember: '#FFF0D4', blood: '#8C6A3C', rose: '#F0788A', paper: '#F3EDE3', sepia: '#3A3024' } },
   { key: 'rose', label: '玫瑰', energy: 0.55, tempo: 100,
-    colors: { ink: '#0D090A', ink2: '#1A1214', signal: '#FF7F93', ember: '#FFC4CD', blood: '#A33650', rose: '#FFD08A', paper: '#F5E6E4', sepia: '#43262B' } },
+    colors: { ink: '#0D090A', ink2: '#1A1214', signal: '#FF7F93', ember: '#FFC4CD', blood: '#A33650', rose: '#E8435F', paper: '#F5E6E4', sepia: '#43262B' } },
   { key: 'sage', label: '鼠尾草', energy: 0.45, tempo: 95,
     colors: { ink: '#090B0A', ink2: '#121613', signal: '#A8D5A2', ember: '#E1F4DC', blood: '#3F7446', rose: '#F59AA5', paper: '#EBEFE6', sepia: '#25332A' } },
   { key: 'lilac', label: '薰衣草', energy: 0.62, tempo: 110,
