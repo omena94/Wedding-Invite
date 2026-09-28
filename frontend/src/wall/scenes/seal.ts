@@ -32,7 +32,7 @@ const COL = { x: 700, x1: 1340, y: 170 };
 /** 蓋出來的印（實際大小）。 */
 const PRINT = 176;
 /** 邊款拓片（歌詞）。 */
-const BAND = { x: 150, y: 742, w: 1190, h: 158 };
+const BAND = { x: 150, y: 758, w: 1190, h: 128 };
 const TXT_R = { x: 96, y: 80, w: 1270, h: 900 };
 const FAM_MSG = F.hand(400);
 const FOOT = '＊印面為反字，蓋出來才是正的。';
@@ -100,7 +100,7 @@ void main() {
     // 印泥：凸起的地方沾上紅色（斑駁）
     float mott = smoothstep(-0.7, 0.4, snoise(p * 0.08 + 3.0) * 0.6 + snoise(p * 0.3) * 0.4);
     vec3 red = mix(C_SIGNAL, C_BLOOD, 0.55);
-    fcol = mix(fcol, red * (0.8 + 0.2 * mott), uInk * (1.0 - h) * (0.7 + 0.3 * mott));
+    fcol = mix(fcol, red * (0.8 + 0.2 * mott), uInk * (1.0 - h) * (0.55 + 0.3 * mott));
     // 印面的邊：左上亮、右下暗的一圈倒角
     float edge = min(min(uv.x, uv.y), min(1.0 - uv.x, 1.0 - uv.y)) * FACE.z;
     float bev = 1.0 - smoothstep(0.0, 5.0, edge);
@@ -206,14 +206,16 @@ export default class Seal extends Scene {
     const w = COL.x1 - COL.x;
     if (m) {
       const short = Array.from(m.text).length <= 8;
-      this.fit = fitMsg(c, m.text, FAM_MSG, w, 330, { min: 44, max: 96, lineHeight: 1.34, maxLines: short ? 1 : 6 });
+      this.fit = fitMsg(c, m.text, FAM_MSG, w, 380, { min: 48, max: 104, lineHeight: 1.32, maxLines: short ? 1 : 6 });
       this.sigSize = Math.round(clamp(this.fit.size * 0.52, 40, 50));
-      const msgTop = COL.y + this.fit.size * 0.9;
-      const sigY = msgTop + this.fit.height + this.sigSize * 1.7;
-      const py = Math.min(sigY - PRINT * 0.6, 740 - 64 - PRINT);
-      this.layoutY = { msg: msgTop, sig: py + PRINT * 0.6, px: COL.x1 - PRINT, py };
+      // 留言在上、印（與左邊的署名）在留言下面，整塊在右欄（y 170～724）裡上下置中：短留言不會只擠在最上面，印也不會壓到最後一行
+      const blockH = this.fit.height + 24 + PRINT;
+      const msgTop = COL.y + Math.max(0, (554 - blockH) / 2) + this.fit.size * 0.9;
+      const lastBase = msgTop + (this.fit.lines.length - 1) * this.fit.lineHeight;
+      const py = Math.min(lastBase + this.fit.size * 0.25 + 24, 740 - 16 - PRINT);
+      this.layoutY = { msg: msgTop, sig: py + PRINT * 0.55, px: COL.x1 - PRINT, py };
     } else {
-      this.layoutY = { msg: COL.y + 60, sig: 0, px: COL.x1 - PRINT, py: 420 };
+      this.layoutY = { msg: COL.y + 140, sig: 0, px: COL.x1 - PRINT, py: 420 };
     }
   }
 
@@ -337,7 +339,8 @@ export default class Seal extends Scene {
     const u = this.bg.u;
     u.uMask!.value = this.mask;
     u.uProg!.value = carve * 1.002;
-    u.uInk!.value = prog(t, this.tInk, this.tInk + 0.1, ease.outCubic);
+    // 沾印泥（一下子紅）→ 蓋下去之後大部分的泥印到紙上，印面只剩一層薄薄的紅
+    u.uInk!.value = prog(t, this.tInk, this.tInk + 0.1, ease.outCubic) * (1 - 0.6 * prog(t, this.tStamp, this.tStamp + 0.15));
     u.uSeed!.value = (this.ctx.params.seed ?? 3) % 17;
     u.uIn!.value = 1;
     this.bg.render(renderer, out);
@@ -360,7 +363,7 @@ export default class Seal extends Scene {
     const L = this.layoutY;
     return {
       paper: 1, bloom: 0.3, bloomThreshold: 0.98, bloomKnee: 0.12, halation: 0.08, vignette: 0.24, grain: 0.055,
-      zoom: 1 + 0.02 * ease.inOutCubic(f.p) + 0.004 * f.a.kick,
+      zoom: 1 + 0.035 * ease.inOutCubic(f.p) + 0.004 * f.a.kick,
       shake: [thump * 6 * noise1(t * 70, 1), thump * 6 * noise1(t * 67, 2)],
       popupAvoid: [[COL.x - 20, COL.y - 20, COL.x1 - COL.x + 40, Math.max(L.py + PRINT, L.sig) - COL.y + 60], [BAND.x - 10, BAND.y - 10, BAND.w + 20, BAND.h + 20]],
     };
@@ -444,20 +447,14 @@ export default class Seal extends Scene {
     c.save();
     c.translate(-TXT_R.x, -TXT_R.y);
     // 頁眉
-    c.font = font(F.hei(500), 20);
+    c.font = font(F.hei(500), 18);
     c.letterSpacing = '6px';
-    c.fillStyle = rgba('sepia', 0.6);
+    c.fillStyle = rgba('sepia', 0.45);
     c.fillText('篆刻 · 印譜', BAND.x, 108);
-    c.font = font(F.mono(500), 16);
-    c.letterSpacing = '4px';
-    if (m) { const tag = `NO.${String(m.n).padStart(3, '0')}${m.couple ? ' · 新人' : ''}`; c.fillText(tag, COL.x1 - c.measureText(tag).width, 108); }
-    // 印面下的標籤
-    c.fillStyle = rgba('sepia', 0.55);
-    c.fillText('印面 · 放大 2.5× · 反字', FACE.x, FACE.y + FACE.s + SIDE + 34);
     c.letterSpacing = '0px';
     // 註腳
-    c.font = font(F.hei(500), 24);
-    c.fillStyle = rgba('sepia', 0.5);
+    c.font = font(F.hei(500), 20);
+    c.fillStyle = rgba('sepia', 0.42);
     c.fillText(FOOT, BAND.x, BAND.y + BAND.h + 50);
     // 留言
     const Y = this.layoutY;
@@ -485,7 +482,7 @@ export default class Seal extends Scene {
       c.fillStyle = rgba('sepia', 0.85);
       INVITE.forEach((ln, i) => c.fillText(ln, COL.x, Y.msg + 40 + i * 76));
     }
-    // 印的位置：還沒蓋時是一個淡淡的虛線框；蓋好了是印與說明
+    // 印：蓋下去的那一刻才出現在署名旁邊
     if (stamped && this.print) {
       c.save();
       c.globalAlpha = 0.35 + 0.65 * land;
@@ -495,19 +492,7 @@ export default class Seal extends Scene {
       c.scale(sc, sc);
       c.drawImage(this.print, -PRINT / 2, -PRINT / 2, PRINT, PRINT);
       c.restore();
-    } else {
-      c.strokeStyle = rgba('sepia', 0.22);
-      c.setLineDash([6, 6]);
-      c.lineWidth = 1.2;
-      c.strokeRect(Y.px, Y.py, PRINT, PRINT);
-      c.setLineDash([]);
     }
-    c.font = font(F.hei(500), 20);
-    c.letterSpacing = '4px';
-    c.fillStyle = rgba('sepia', 0.55);
-    const cap = `${this.art.chars.join('')} · ${this.art.baiwen ? '白文' : '朱文'}`;
-    c.fillText(cap, Y.px + PRINT - c.measureText(cap).width, Y.py + PRINT + 36);
-    c.letterSpacing = '0px';
     c.restore();
     L.upload();
   }
@@ -521,16 +506,20 @@ export default class Seal extends Scene {
     c.globalAlpha = vis;
     const bx = BAND.x + 40, bw = BAND.w - 80;
     if (ly) {
-      const st: LyricStyle = { family: F.ming(700), size: 62, minSize: 48, maxWidth: bw, active: rgba('signal'), sung: rgba('paper', 0.94), unsung: rgba('paper', 0.28) };
+      const size = this.fit ? Math.round(clamp(this.fit.size * 0.8, 48, 58)) : 60;
+      const st: LyricStyle = { family: F.ming(700), size, minSize: 48, maxWidth: bw, active: rgba('signal'), sung: rgba('paper', 0.94), unsung: rgba('paper', 0.28) };
       const lay = layoutLyric(c, ly.line, st);
       const inK = ease.outExpo(prog(t, ly.line.start - 0.35, ly.line.start + 0.2));
       c.translate(bx, BAND.y + BAND.h / 2 + lay.size * 0.36 - (lay.height - lay.size) / 2 + (1 - inK) * 12);
       drawLyric(c, ly.line, t, st, lay, ly.k * vis);
     } else {
       const { song } = this.ctx;
-      c.font = font(F.ming(700), 50);
-      c.fillStyle = rgba('paper', 0.85);
-      c.fillText(`${song.title}${song.artist ? '　' + song.artist : ''}`, bx, BAND.y + BAND.h / 2 + 18);
+      // 間奏：拓片上只有淡淡的歌名（像拓得不清楚的舊款），不搶留言
+      c.font = font(F.ming(700), 34);
+      c.letterSpacing = '6px';
+      c.fillStyle = rgba('paper', 0.32);
+      c.fillText(`${song.title}${song.artist ? '　' + song.artist : ''}`, bx, BAND.y + BAND.h / 2 + 12);
+      c.letterSpacing = '0px';
     }
     c.restore();
   }

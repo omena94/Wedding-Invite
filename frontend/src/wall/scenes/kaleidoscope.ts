@@ -3,8 +3,9 @@
 //    再到「物件盒」裡找玻璃碎片（三角片、菱形片、珠子，兩層疊著、透光）。鏡子接縫留一條極淡的線，像真的鏡片。
 //  - 動作落在拍點：每一拍轉筒轉一格（outExpo，轉完停住），每個小節線碎片「翻滾」一次（物件盒整個滑一段）；
 //    大鼓讓背光亮一下、hi-hat 讓碎片的邊閃一下。
-//  - 正中央是一塊「透明處」（煙燻玻璃的圓窗，細線刻度環）：第一個拍點打開，主打留言在裡面一個字一個字浮出來、署名、編號。
-//  - 歌詞在下緣的「外框」（筒身的銘牌帶，碎片在這裡暗成一成）：逐字跟唱。
+//  - 正中央是一塊「透明處」（煙燻玻璃的圓窗）：第一個拍點打開，主打留言在裡面一個字一個字浮出來、署名。
+//    有留言時留言是唯一的焦點：碎片整體暗三成、圓窗外圍再暗一圈（像光只打在鏡片中央），窗大到長留言也有 50 px 以上。
+//  - 歌詞在下緣（筒口往下暗掉的地方，沒有邊框），比留言小一級，逐字跟唱。左上角只留一行很小的轉數。
 //  - 沒有留言：歌詞放大到中央的圓窗裡，外框寫歌名與邀請；純音樂又沒留言：圓窗裡是邀請。
 import * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
@@ -20,14 +21,15 @@ import { subRect, fitMsg } from './_t13';
 export const spec: PlateSpecDecl = { group: 'type', family: 'craft', paper: false, energy: [0.4, 1], bars: [4, 8], variants: 2 };
 
 /** 萬花筒的中心（圓窗的圓心）與下緣外框的上緣。 */
-const O = { x: 960, y: 455 };
-const STRIP = 836;
+const O = { x: 960, y: 462 };
+/** 下緣從這裡開始往下暗（歌詞在暗處，不用框）。 */
+const STRIP = 760;
 /** 外框裡的歌詞：左緣、基線、最寬（右端停在 HUD 左邊）。 */
 const LX = 124, LBASE = 952, LW = 1210;
 /** 圓窗與它的文字圖層範圍（圓窗最大半徑 340，加上刻度環與署名）。 */
-const RL_MAX = 330;
-const MSG_R = { x: O.x - 420, y: O.y - 400, w: 840, h: 800 };
-const STRIP_R = { x: 96, y: STRIP, w: 1264, h: 160 };
+const RL_MAX = 392;
+const MSG_R = { x: O.x - 470, y: O.y - 440, w: 940, h: 880 };
+const STRIP_R = { x: 96, y: 836, w: 1264, h: 160 };
 const FAM_MSG = F.hand(400);
 const FAM_LYRIC = F.archivo(87.5, 800);
 const INVITE = ['掃描右下角 QR code，', '把你的祝福放進萬花筒。'];
@@ -36,7 +38,7 @@ const FOOTNOTE = '＊本萬花筒一拍轉一格，同一個花樣不會出現�
 const FRAG = /* glsl */ `
 uniform vec2 uO; uniform float uPhi; uniform vec2 uOff; uniform float uRL; uniform float uKick; uniform float uHat;
 uniform float uN; uniform float uIn; uniform float uStrip; uniform float uT; uniform float uSeed; uniform float uStyle;
-uniform float uRing; uniform float uRV;
+uniform float uRing; uniform float uRV; uniform float uCalm;
 
 float sdTri(vec2 p, float r) {
   const float k = 1.7320508;
@@ -110,9 +112,12 @@ void main() {
     chips(q, 104.0, uSeed + 11.0, uStyle, 0.86, col, rim);
     chips(q + vec2(37.0, 91.0), 62.0, uSeed + 29.0, 1.0 - uStyle, 0.62, col, rim);
   }
-  // 背光跟著大鼓亮一下；切面的亮線 hi-hat 一打就閃
+  // 背光跟著大鼓亮一下；切面的亮線 hi-hat 一打就閃（離中心越遠越柔：像前景虛化）
   col *= 0.9 + 0.24 * uKick;
-  col += C_EMBER * rim * (0.14 + 0.45 * uHat);
+  col += C_EMBER * rim * (0.14 + 0.45 * uHat) * (1.0 - 0.6 * smoothstep(300.0, 560.0, r));
+  // 有留言時碎片退成背景：整體暗三成，圓窗外圍再暗一圈
+  col *= 1.0 - 0.32 * uCalm;
+  col *= 1.0 - 0.5 * uCalm * (1.0 - smoothstep(uRL, uRL + 190.0, r)) * step(uRL, r);
   col += C_BONE * 0.04 * pxLine(seam, 0.3, 1.2) * step(uRL + 20.0, r);
   // 筒口邊緣：往外暗下去（鏡子的邊），再來一圈金屬唇
   col *= mix(1.0, 0.35, smoothstep(uRV - 150.0, uRV, r));
@@ -122,22 +127,16 @@ void main() {
   col = mix(wall, col, view);
   col += C_ASH * (0.28 * aaStroke(r - uRV - 5.0, 1.6) + 0.12 * aaStroke(r - uRV - 15.0, 0.9));
 
-  // 下緣的外框只剩一成
-  float strip = step(uStrip, p.y);
-  col *= mix(1.0, 0.085, strip);
-  col += C_ASH * 0.10 * pxLine(abs(p.y - uStrip), 0.3, 1.2);
-  col += C_ASH * 0.05 * pxLine(abs(p.y - uStrip - 7.0), 0.3, 1.2);
+  // 下緣慢慢暗下去（歌詞在這裡，不用框）
+  col *= mix(1.0, 0.12, smoothstep(uStrip, uStrip + 200.0, p.y));
 
-  // 中央的透明處：煙燻玻璃圓窗（還看得到一點點後面的碎片），細線環與刻度
+  // 中央的透明處：煙燻玻璃圓窗（還看得到一點點後面的碎片），只有一圈細細的玻璃邊
   if (uRL > 1.0) {
     float inside = 1.0 - smoothstep(uRL - 1.0, uRL + 1.0, r);
-    col = mix(col, col * 0.07 + C_INK * 0.85, inside);
-    float ring = aaStroke(r - uRL, 1.3) * 0.55 + aaStroke(r - uRL - 11.0, 0.9) * 0.22;
-    float aa = atan(d.y, d.x) + uRing;
-    float tk = abs(fract(aa / TAU * 72.0 + 0.5) - 0.5) * (TAU / 72.0) * r;
-    float major = step(abs(fract(aa / TAU * 12.0 + 0.5) - 0.5), 0.02);
-    float band = step(uRL + 13.0, r) * step(r, uRL + (major > 0.5 ? 30.0 : 21.0));
-    col += C_BONE * (ring + 0.32 * pxLine(tk, 0.3, 1.1) * band);
+    col = mix(col, col * 0.06 + C_INK * 0.8, inside);
+    // 玻璃邊：左上受光亮一點
+    float lit = 0.5 + 0.5 * dot(normalize(d + 1e-3), normalize(vec2(-0.6, -0.8)));
+    col += C_BONE * aaStroke(r - uRL, 1.2) * (0.12 + 0.28 * lit);
   }
   fragColor = vec4(col * uIn, 1.0);
 }`;
@@ -145,10 +144,12 @@ void main() {
 const BG = () => new FSPass(FRAG, {
   uO: { value: new THREE.Vector2(O.x, O.y) }, uPhi: { value: 0 }, uOff: { value: new THREE.Vector2() }, uRL: { value: 0 },
   uKick: { value: 0 }, uHat: { value: 0 }, uN: { value: 6 }, uIn: { value: 1 }, uStrip: { value: STRIP }, uT: { value: 0 },
-  uSeed: { value: 0 }, uStyle: { value: 0 }, uRing: { value: 0 }, uRV: { value: 560 },
+  uSeed: { value: 0 }, uStyle: { value: 0 }, uRing: { value: 0 }, uRV: { value: 560 }, uCalm: { value: 0 },
 });
 
 interface MsgLay { fit: FitResult; sig: string; sigSize: number; top: number; n: number; t0: number; dur: number }
+/** 有留言時歌詞比留言小一級（但不小於 48 px）。 */
+const lyricSizeFor = (msgSize: number) => Math.round(clamp(msgSize * 0.78, 48, 60));
 
 export default class Kaleidoscope extends Scene {
   bg = shared('kaleidoscope.bg', BG);
@@ -179,11 +180,11 @@ export default class Kaleidoscope extends Scene {
       const R = RL_MAX;
       // 十個字以內的短句排成一行（「新婚快／樂！！！」這種從詞中間折斷的，字再大也不好看）
       const short = Array.from(this.msg.text).length <= 10;
-      const fit = fitMsg(c, this.msg.text, FAM_MSG, R * 1.62, R * 1.02, { min: 44, max: 112, lineHeight: 1.36, maxLines: short ? 1 : 7 });
+      const fit = fitMsg(c, this.msg.text, FAM_MSG, R * 1.62, R * 1.0, { min: 48, max: 120, lineHeight: 1.34, maxLines: short ? 1 : 7 });
       const sigSize = Math.round(clamp(fit.size * 0.48, 40, 52));
       const blockH = fit.height + sigSize * 1.9;
       // 圓窗半徑：框的對角線再留一點邊（短留言的窗小一點，外面的碎片比較多）
-      this.rl = clamp(Math.hypot(Math.max(fit.width, 300) / 2, blockH / 2) + 46, 230, R);
+      this.rl = clamp(Math.hypot(Math.max(fit.width, 320) / 2, blockH / 2) + 50, 250, R);
       const n = fit.lines.reduce((s, l) => s + Array.from(l).length, 0);
       const dur = clamp(0.06 * n + 0.5, 0.8, 2.6);
       this.lay = { fit, sig: signature(this.msg.name), sigSize, top: O.y - blockH / 2 + fit.size * 0.9, n, t0: this.tOpen + 0.12, dur };
@@ -225,6 +226,7 @@ export default class Kaleidoscope extends Scene {
     u.uRL!.value = rl;
     u.uRing!.value = -u.uPhi!.value * 0.25;
     u.uIn!.value = prog(t, s, s + 0.2);
+    u.uCalm!.value = this.msg ? open : 0;
     this.bg.render(renderer, out);
 
     const textK = open;
@@ -326,21 +328,22 @@ export default class Kaleidoscope extends Scene {
     c.translate(-STRIP_R.x, -STRIP_R.y);
     c.globalAlpha = k;
     if (ly) {
-      const st: LyricStyle = { family: FAM_LYRIC, size: 64, minSize: 48, maxWidth: LW };
+      const size = this.lay ? lyricSizeFor(this.lay.fit.size) : 64;
+      const st: LyricStyle = { family: FAM_LYRIC, size, minSize: 48, maxWidth: LW };
       const lay = layoutLyric(c, ly.line, st);
       const inK = ease.outExpo(prog(t, ly.line.start - 0.35, ly.line.start + 0.2));
       c.translate(LX, LBASE - (lay.height - lay.size) + (1 - inK) * 18);
       drawLyric(c, ly.line, t, st, lay, ly.k);
     } else {
       const { song } = this.ctx;
-      c.font = font(F.mono(500), 18);
+      c.font = font(F.mono(500), 16);
       c.letterSpacing = '4px';
-      c.fillStyle = rgba('ash', 0.85);
-      c.fillText(`♪  ${song.title}${song.artist ? '  ·  ' + song.artist : ''}`.toUpperCase(), LX, 904);
+      c.fillStyle = rgba('ash', 0.6);
+      c.fillText(`♪  ${song.title}${song.artist ? '  ·  ' + song.artist : ''}`.toUpperCase(), LX, 916);
       c.letterSpacing = '0px';
-      // 冷面註腳（外框空著的時候才有位置放）
-      c.font = font(F.hei(500), 26);
-      c.fillStyle = rgba('bone', 0.55);
+      // 冷面註腳（下緣空著的時候才放）
+      c.font = font(F.hei(500), 20);
+      c.fillStyle = rgba('bone', 0.4);
       c.fillText(FOOTNOTE, LX, 952);
     }
     c.restore();
@@ -355,15 +358,12 @@ export default class Kaleidoscope extends Scene {
     const L = this.info, c = L.ctx;
     L.clear();
     c.globalAlpha = k;
-    c.font = font(F.mono(500), 16);
+    c.font = font(F.mono(500), 15);
     c.letterSpacing = '4px';
-    c.fillStyle = rgba('ash', 0.8);
+    c.fillStyle = rgba('ash', 0.5);
     const mirrors = this.variant ? 8 : 12;
-    const m = this.msg;
-    // 三行疊在左上角（筒壁上，不壓到碎片）：像鏡筒上刻的規格
-    c.fillText('KALEIDOSCOPE', 0, 22);
-    c.fillText(`${mirrors} 面鏡 · 第 ${String(turn).padStart(3, '0')} 轉`, 0, 52);
-    if (m) c.fillText(`NO.${String(m.n).padStart(3, '0')}${m.couple ? ' · 新人' : ''}`, 0, 82);
+    // 一行很小的規格（筒壁上的刻字），不搶焦點
+    c.fillText(`萬花筒 · ${mirrors} 面鏡 · 第 ${String(turn).padStart(3, '0')} 轉`, 0, 22);
     c.letterSpacing = '0px';
     L.upload();
   }

@@ -5,7 +5,8 @@
 //  - 鏡頭：一開始很低（側面看紙鶴），攤開的同時升到正上方（讀留言），窗格夠長的話最後三拍再摺回去、紙鶴飛走。
 //  - 紙在裁切墊上的影子：把每個面壓扁到桌面畫一次（用深度測試讓重疊的地方不會越疊越黑）。
 //  - 從紙鶴到小三角這一步（真正的鶴要摺二十步）直接「省略」——左欄一本正經地寫著「步驟 04～20：略」。
-//  - 歌詞在上緣逐字跟唱；左欄是步驟編號與註腳。沒有留言：紙裡寫的是邀請。
+//  - 攤開的紙（留言）是唯一的焦點；歌詞在上緣逐字跟唱，比留言小一級。小字只有兩群：左上的步驟、左下的註腳。
+//    沒有留言：紙裡寫的是邀請。
 import * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
 import { FSPass, Layer2D, W, H } from '../engine/gl';
@@ -22,18 +23,18 @@ export const spec: PlateSpecDecl = { group: 'type', family: 'craft', paper: true
 
 // ---------------------------------------------------------------- 版面
 /** 紙的中心在畫面上的位置、紙的半邊長（世界座標 1 單位 = 桌面上 1 px）。 */
-const P0 = { x: 830, y: 575 };
-const S = 300;
+const P0 = { x: 850, y: 596 };
+const S = 318;
 /** 紙裡面那張貼圖的解析度（紙寬 600 px，貼圖 1024：推近也是銳利的）。 */
 const TEX = 1024;
 /** 上緣的歌詞與左欄。 */
 const LYR = { x: P0.x - S, base: 196, w: 1340 - (P0.x - S) };
 const LYR_R = { x: 96, y: 92, w: 1270, h: 170 };
 const COL = { x: 128, w: 330 };
-const COL_R = { x: 96, y: 260, w: 400, h: 730 };
+const COL_R = { x: 96, y: 80, w: 420, h: 910 };
 const FAM_MSG = F.hand(400);
 const INVITE = ['掃描右下角 QR code，', '把你的祝福摺進', '下一隻紙鶴。'];
-const NOTES = ['＊步驟 04～20：略。', '＊每一隻紙鶴裡，', '　都摺著一句祝福。'];
+const NOTES = ['＊步驟 04～20：略。', '＊每一隻紙鶴裡，都摺著一句祝福。'];
 
 /** 裁切墊：比紙暗一點的桌面、1 cm 的細格、5 cm 一條粗線。 */
 const MAT = () => new FSPass(/* glsl */ `
@@ -43,7 +44,7 @@ const MAT = () => new FSPass(/* glsl */ `
     col *= 0.95 + 0.07 * (1.0 - vUv.x * 0.6) * vUv.y;
     vec2 g = abs(fract((p - vec2(8.0, 12.0)) / 40.0 + 0.5) - 0.5) * 40.0;
     vec2 G = abs(fract((p - vec2(8.0, 12.0)) / 200.0 + 0.5) - 0.5) * 200.0;
-    float ln = max(pxLine(g.x, 0.3, 1.1), pxLine(g.y, 0.3, 1.1)) * 0.07 + max(pxLine(G.x, 0.5, 1.5), pxLine(G.y, 0.5, 1.5)) * 0.1;
+    float ln = max(pxLine(g.x, 0.3, 1.1), pxLine(g.y, 0.3, 1.1)) * 0.04 + max(pxLine(G.x, 0.4, 1.3), pxLine(G.y, 0.4, 1.3)) * 0.06;
     fragColor = vec4(mix(col, C_SEPIA, ln), 1.0);
   }`);
 
@@ -239,9 +240,10 @@ export default class Origami extends Scene {
       const s = signature(m.name), sw = c.measureText(s).width;
       c.fillText(s, h + Math.min(fit.width / 2, bw / 2) - sw, top + (fit.lines.length - 1) * fit.lineHeight + sig * 1.7);
     } else {
-      c.font = font(FAM_MSG, 54 * k);
-      c.fillStyle = rgba('sepia', 0.88);
-      INVITE.forEach((ln, i) => { const w = c.measureText(ln).width; c.fillText(ln, h - w / 2, h - 60 * k + i * 76 * k); });
+      // 沒有留言時焦點是歌詞：紙裡的邀請小一點、淡一點
+      c.font = font(FAM_MSG, 46 * k);
+      c.fillStyle = rgba('sepia', 0.7);
+      INVITE.forEach((ln, i) => { const w = c.measureText(ln).width; c.fillText(ln, h - w / 2, h - 50 * k + i * 64 * k); });
     }
     L.upload();
   }
@@ -277,7 +279,7 @@ export default class Origami extends Scene {
     const D = (H / 2) / Math.tan((22 * Math.PI) / 360);
     const tgt = new THREE.Vector3(P0.x, H - P0.y, 0);
     // 窗格慢慢推近一點
-    const dist = D * (1 - 0.04 * ease.inOutCubic(f.p));
+    const dist = D * (1 - 0.05 * ease.inOutCubic(f.p));
     this.cam.position.set(tgt.x, tgt.y - dist * Math.sin(tilt), dist * Math.cos(tilt));
     this.cam.up.set(0, 1, 0);
     this.cam.lookAt(tgt);
@@ -349,7 +351,8 @@ export default class Origami extends Scene {
     c.translate(-LYR_R.x, -LYR_R.y);
     c.globalAlpha = vis;
     if (ly) {
-      const st: LyricStyle = { family: F.archivo(87.5, 800), size: 66, minSize: 48, maxWidth: LYR.w, ...paperLyric() };
+      const onScreen = this.fit ? this.fit.size / (TEX / (2 * S)) : 70;
+      const st: LyricStyle = { family: F.archivo(87.5, 800), size: Math.round(clamp(onScreen * 0.8, 48, 58)), minSize: 48, maxWidth: LYR.w, ...paperLyric() };
       const lay = layoutLyric(c, ly.line, st);
       const inK = ease.outExpo(prog(t, ly.line.start - 0.35, ly.line.start + 0.2));
       c.translate(LYR.x, LYR.base - (lay.height - lay.size) + (1 - inK) * 16);
@@ -377,25 +380,15 @@ export default class Origami extends Scene {
     c.save();
     c.translate(-COL_R.x, -COL_R.y);
     c.globalAlpha = vis;
-    c.font = font(F.mono(500), 16);
+    // 左上：一行步驟（像說明書角落的小字）；左下：兩行冷面註腳
+    c.font = font(F.mono(500), 15);
     c.letterSpacing = '4px';
-    c.fillStyle = rgba('sepia', 0.6);
-    c.fillText('ORIGAMI  紙鶴', COL.x, 300);
-    if (this.msg) c.fillText(`NO.${String(this.msg.n).padStart(3, '0')}${this.msg.couple ? ' · 新人' : ''}`, COL.x, 330);
-    c.fillText('步驟', COL.x, 420);
+    c.fillStyle = rgba('sepia', 0.5);
+    c.fillText(`摺紙鶴 · 步驟 ${String(t >= this.tRePop ? 21 : step).padStart(2, '0')}／21 · ${label}`, COL.x, 128);
     c.letterSpacing = '0px';
-    c.font = font(F.archivo(75, 800), 150);
-    c.fillStyle = rgba('sepia', 0.9);
-    c.fillText(String(t >= this.tRePop ? 21 : step).padStart(2, '0'), COL.x - 6, 560);
-    c.font = font(F.mono(500), 22);
-    c.fillStyle = rgba('sepia', 0.5);
-    c.fillText('／21', COL.x + 190, 560);
-    c.font = font(F.hei(500), 26);
-    c.fillStyle = rgba('blood', 0.9);
-    c.fillText(label, COL.x, 610);
-    c.font = font(F.hei(500), 24);
-    c.fillStyle = rgba('sepia', 0.5);
-    NOTES.forEach((ln, i) => c.fillText(ln, COL.x, 860 + i * 36));
+    c.font = font(F.hei(500), 20);
+    c.fillStyle = rgba('sepia', 0.42);
+    NOTES.forEach((ln, i) => c.fillText(ln, COL.x, 912 + i * 32));
     c.restore();
     L.upload();
   }

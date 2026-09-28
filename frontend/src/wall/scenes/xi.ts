@@ -3,7 +3,7 @@
 //    後面牆上的主打留言就露出來了（留言是寫在牆上的，一開始被紅紙擋住）。
 //  - 接著剪斗方上的「囍」：字的每一筆（連在一起的一塊）是一刀，一拍剪一塊（塊多就半拍），剪下來的紙片一片片掉下去；
 //    剪完之後的下一個小節線，斗方四邊的一圈小菱形「啪」地一次打穿。刀口在拍點上合起來（喀嚓）。
-//  - 光從左上打過來：紅紙在牆上有影子，剪空的地方光透過去，牆上就映出一個淡淡的囍。
+//  - 燈打在窗花上（留言是唯一的焦點）：斗方在燈的邊緣、暗一些、小一些，是配角；紅紙在牆上有影子。
 //  - 畫法：紙在一張 Canvas2D 遮罩上（紙在不在、掉下來的紙片），shader 把它畫成有纖維、有摺痕、切口有厚度的紅紙，
 //    並用同一張遮罩算牆上的影子；留言與歌詞在牆與紙之間。剪刀與切口的亮線是 GPU 細線。
 //  - 歌詞在下緣的牆上逐字跟唱。沒有留言：窗花裡露出的是一句邀請。
@@ -25,11 +25,11 @@ export const spec: PlateSpecDecl = { group: 'type', family: 'craft', paper: fals
 /** 紙的遮罩圖層範圍。 */
 const PR = { x: 120, y: 110, w: 1250, h: 740 };
 /** 斗方：中心與半對角線；裡面的囍（正方形的字框）。 */
-const DC = { x: 470, y: 470 }, DH = 305;
-const GS = 330;
+const DC = { x: 420, y: 470 }, DH = 262;
+const GS = 284;
 /** 窗花（長方的紅紙）與中間的海棠窗。 */
-const CT = { x: 850, y: 150, w: 490, h: 640, rot: 0.012 };
-const WIN = { x: CT.x + 40, y: CT.y + 44, w: CT.w - 80, h: CT.h - 88, r: 38 };
+const CT = { x: 790, y: 124, w: 560, h: 690, rot: 0.012 };
+const WIN = { x: CT.x + 38, y: CT.y + 42, w: CT.w - 76, h: CT.h - 84, r: 38 };
 /** 牆上的歌詞。 */
 const LYR = { x: 170, base: 948, w: 1170 };
 const LYR_R = { x: 120, y: 800, w: 1260, h: 190 };
@@ -47,9 +47,9 @@ float paperAt(vec2 p) {
 void main() {
   vec2 p = vec2(FRAG_PX.x, ${H}.0 - FRAG_PX.y);
   vec3 col = C_INK * (0.85 + 0.2 * fbm(p / 380.0, 3)) + C_INK2 * 0.4;
-  // 燈：左上方一大片暖光
-  float lamp = 1.0 - smoothstep(0.0, 1500.0, length(p - vec2(420.0, 160.0)));
-  col += (C_INK2 * 1.6 + C_BLOOD * 0.05) * lamp * lamp;
+  // 燈：打在窗花上（留言在這裡），往外暗下去
+  float lamp = 1.0 - smoothstep(0.0, 1250.0, length((p - vec2(${(CT.x + CT.w / 2).toFixed(1)}, ${(CT.y + CT.h * 0.42).toFixed(1)})) * vec2(0.8, 1.0)));
+  col += (C_INK2 * 1.7 + C_BLOOD * 0.05) * lamp * lamp;
   // 牆面的細紋（像粉刷過的灰泥）
   col *= 0.96 + 0.05 * snoise(p * 0.08) * snoise(p * 0.013 + 2.0);
   // 紙的影子：遮罩往右下 (22, 30) 挪、八個點平均（糊）
@@ -82,7 +82,11 @@ void main() {
   float fib = snoise(p * vec2(0.9, 0.06)) * 0.5 + snoise(p * 0.35 + 7.0) * 0.3;
   vec3 col = base * (0.88 + 0.08 * fib + 0.05 * fbm(p / 260.0, 3));
   // 燈在左上：紙面整體左上亮、右下暗一點；大鼓時燈閃一下
-  col *= 0.9 + 0.16 * (1.0 - smoothstep(0.0, 1300.0, length(p - vec2(420.0, 160.0)))) + 0.05 * uKick;
+  // 燈打在窗花上：窗花亮、斗方在燈的邊緣暗一些（配角）；大鼓時燈閃一下
+  float lampK = 1.0 - smoothstep(180.0, 820.0, length(p - vec2(${(CT.x + CT.w / 2).toFixed(1)}, ${(CT.y + CT.h * 0.42).toFixed(1)})));
+  col *= 0.5 + 0.55 * lampK + 0.05 * uKick;
+  // 燈照不到的地方也比較灰（斗方退成配角）
+  col = mix(vec3(luma(col)), col, 0.55 + 0.45 * lampK);
   // 斗方對摺過（剪紙是對摺剪的）：中間一條直的摺痕
   float crease = pxLine(abs(p.x - ${DC.x}.0), 0.4, 1.6) * step(abs(p.y - ${DC.y}.0) + abs(p.x - ${DC.x}.0), ${DH}.0);
   col *= 1.0 - 0.1 * crease;
@@ -192,8 +196,9 @@ export default class Xi extends Scene {
     // ---- 牆上的留言
     const c = this.txt.ctx;
     if (m) {
-      const short = Array.from(m.text).length <= 6;
-      this.fit = fitMsg(c, m.text, FAM_MSG, WIN.w - 70, WIN.h - 150, { min: 44, max: 104, lineHeight: 1.36, maxLines: short ? 2 : 9 });
+      // 八個字以內排成一行（窗是直的，兩行會從詞中間折斷：「新婚快／樂！！！」）
+      const short = Array.from(m.text).length <= 8;
+      this.fit = fitMsg(c, m.text, FAM_MSG, WIN.w - 60, WIN.h - 120, { min: 46, max: 112, lineHeight: 1.34, maxLines: short ? 1 : 9 });
       this.sigSize = Math.round(clamp(this.fit.size * 0.5, 40, 50));
     }
   }
@@ -443,7 +448,8 @@ export default class Xi extends Scene {
     c.translate(-LYR_R.x, -LYR_R.y);
     c.globalAlpha = vis;
     if (ly) {
-      const st: LyricStyle = { family: F.archivo(87.5, 800), size: 64, minSize: 48, maxWidth: LYR.w };
+      const size = this.fit ? Math.round(clamp(this.fit.size * 0.8, 48, 60)) : 64;
+      const st: LyricStyle = { family: F.archivo(87.5, 800), size, minSize: 48, maxWidth: LYR.w };
       const lay = layoutLyric(c, ly.line, st);
       const inK = ease.outExpo(prog(t, ly.line.start - 0.35, ly.line.start + 0.2));
       c.save();
@@ -452,21 +458,10 @@ export default class Xi extends Scene {
       c.restore();
     } else {
       const { song } = this.ctx;
-      c.font = font(F.mono(500), 18);
-      c.letterSpacing = '4px';
-      c.fillStyle = rgba('ash', 0.85);
-      c.fillText(`♪  ${song.title}${song.artist ? '  ·  ' + song.artist : ''}`.toUpperCase(), LYR.x, LYR.base - 20);
-      c.letterSpacing = '0px';
-    }
-    // 編號：窗花右下角外面的牆上
-    const m = this.msg;
-    if (m) {
-      c.globalAlpha = vis;
       c.font = font(F.mono(500), 15);
       c.letterSpacing = '4px';
-      c.fillStyle = rgba('ash', 0.7);
-      const tag = `NO.${String(m.n).padStart(3, '0')}${m.couple ? ' · 新人' : ''}`;
-      c.fillText(tag, CT.x + CT.w - c.measureText(tag).width, CT.y + CT.h + 40);
+      c.fillStyle = rgba('ash', 0.55);
+      c.fillText(`♪  ${song.title}${song.artist ? '  ·  ' + song.artist : ''}`.toUpperCase(), LYR.x, LYR.base - 20);
       c.letterSpacing = '0px';
     }
     c.restore();

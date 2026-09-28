@@ -4,9 +4,9 @@
 //  - 105／20 = 21／4：轉滿四圈才會閉合。窗格不到四小節時，紙上已經有前幾圈淡淡的「上一位賓客畫的」，最後一拍剛好閉合；
 //    閉合的那一拍整朵花亮一下。窗格更長就換到內側的孔再畫一層（訊號色的暗部），再閉合一次。
 //  - 齒輪、筆也是 LineBatch（填滿的圓＝一段零長度的粗線），不用每格上傳一張大圖。
-//  - 主打留言寫在花心（齒環正中央的紙上，手寫字），署名在下面。歌詞在左邊一欄逐字跟唱。
-//  - 左上角是器材規格（mono），左下角是圈數與冷面註腳。
-//  - 沒有留言：歌詞放大寫在花心，左欄放邀請；純音樂又沒留言：花心放邀請。
+//  - 主打留言寫在花心（齒環正中央的紙上，手寫字），是畫面唯一的焦點；署名在下面。齒環拉近到上下出格（特寫）。
+//    歌詞在左邊逐字跟唱，比留言小一級。小字只有兩小群：左上的器材與圈數、左下的冷面註腳。
+//  - 沒有留言：歌詞放大寫在花心；純音樂又沒留言：花心放邀請。
 import * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
 import { FSPass, Layer2D, H } from '../engine/gl';
@@ -23,23 +23,23 @@ export const spec: PlateSpecDecl = { group: 'type', family: 'craft', paper: true
 
 // ---------------------------------------------------------------- 器材（邏輯像素）
 /** 齒環的圓心（花心）。偏右：左邊留一欄給歌詞；齒環上下出格一點點，像貼近拍的照片。 */
-const C = { x: 1160, y: 530 };
+const C = { x: 1130, y: 540 };
 const TEETH_RING = 105, TEETH_GEAR = 20;
 /** 齒環的節圓半徑、齒輪半徑（齒數比）。 */
-const R = 470, r = (R * TEETH_GEAR) / TEETH_RING;
+const R = 500, r = (R * TEETH_GEAR) / TEETH_RING;
 /** 孔到齒輪中心的距離：一個孔畫一朵（四圈閉合）。 */
 const HOLES = [0.88 * r, 0.6 * r, 0.34 * r];
 const LOOP = 4;
 /** 一圈幾段線（一段約 4 px）。 */
 const SEG = 620;
 /** 留言在花心的框（花瓣尖在半徑 ~302）。 */
-const BOX = { w: 460, h: 330 };
+const BOX = { w: 510, h: 360 };
 /** 左欄：歌詞、標籤。 */
-const COL = { x: 118, w: 480 };
+const COL = { x: 140, w: 440 };
 const COL_R = { x: 98, y: 90, w: 540, h: 900 };
 const LYR_Y = 540;
 /** 齒環＋花心文字的圖層。 */
-const MID_R = { x: C.x - 530, y: C.y - 530, w: 1060, h: 1060 };
+const MID_R = { x: C.x - 560, y: C.y - 560, w: 1120, h: 1120 };
 const FAM_MSG = F.hand(400);
 const FAM_LYRIC = F.archivo(75, 800);
 const FOOT = '＊轉滿四圈，花才會閉合。';
@@ -103,7 +103,7 @@ export default class Spirograph extends Scene {
     const c = this.mid.ctx;
     if (this.msg) {
       const short = Array.from(this.msg.text).length <= 10;
-      this.fit = fitMsg(c, this.msg.text, FAM_MSG, BOX.w, BOX.h - 60, { min: 44, max: 104, lineHeight: 1.3, maxLines: short ? 1 : 7 });
+      this.fit = fitMsg(c, this.msg.text, FAM_MSG, BOX.w, BOX.h - 60, { min: 48, max: 112, lineHeight: 1.3, maxLines: short ? 1 : 7 });
       this.sigSize = Math.round(clamp(this.fit.size * 0.5, 40, 50));
     }
     this.inviteFit = fitText(c, INVITE.join(''), FAM_MSG, COL.w, 200, { min: 44, max: 54, lineHeight: 1.35, maxLines: 3 });
@@ -201,12 +201,12 @@ export default class Spirograph extends Scene {
     this.lines.render(renderer, out);
 
     // ---- 左欄
-    this.drawCol(t, f, k, vis, lyricAt(lyrics, t));
+    this.drawCol(t, k, vis, lyricAt(lyrics, t));
     comp.draw(renderer, this.col.upload(), out, subRect(COL_R));
 
     return {
       paper: 1, bloom: 0.35, bloomThreshold: 0.98, bloomKnee: 0.12, halation: 0.1, vignette: 0.24, grain: 0.05,
-      zoom: 1 + 0.015 * f.p + 0.004 * f.a.kick,
+      zoom: 1 + 0.035 * ease.inOutCubic(f.p) + 0.004 * f.a.kick,
       popupAvoid: [[C.x - BOX.w / 2 - 20, C.y - BOX.h / 2 - 30, BOX.w + 40, BOX.h + 60], [COL.x - 20, 300, COL.w + 40, 440]],
     };
   }
@@ -314,57 +314,44 @@ export default class Spirograph extends Scene {
   }
 
   /** 左欄：規格標籤、歌詞（或邀請、歌名）、圈數與註腳。 */
-  private drawCol(t: number, f: Frame, k: number, a: number, ly: ReturnType<typeof lyricAt>) {
+  private drawCol(t: number, k: number, a: number, ly: ReturnType<typeof lyricAt>) {
     const L = this.col, c = L.ctx;
     L.clear();
     c.save();
     c.translate(-COL_R.x, -COL_R.y);
     c.globalAlpha = a;
-    c.font = font(F.mono(500), 16);
-    c.letterSpacing = '4px';
-    c.fillStyle = rgba('sepia', 0.62);
-    c.fillText('SPIROGRAPH  萬花尺', COL.x, 128);
-    c.fillStyle = rgba('sepia', 0.45);
+    // 左上：器材與圈數（一行小字）
     const flower = Math.min(HOLES.length - 1, Math.floor(k / LOOP));
-    c.fillText(`齒環 ${TEETH_RING} 齒 · 齒輪 ${TEETH_GEAR} 齒 · 第 ${flower + 1} 孔`, COL.x, 158);
-    if (this.msg) c.fillText(`NO.${String(this.msg.n).padStart(3, '0')}${this.msg.couple ? ' · 新人' : ''}`, COL.x, 188);
+    const done = Math.floor(k + 1e-6);
+    const inFlower = done % LOOP === 0 && done > 0 ? LOOP : (done % LOOP) + 1;
+    c.font = font(F.mono(500), 15);
+    c.letterSpacing = '4px';
+    c.fillStyle = rgba('sepia', 0.5);
+    c.fillText(`萬花尺 · 第 ${flower + 1} 孔 · 第 ${inFlower} 圈／${LOOP}${done % LOOP === 0 && done > 0 ? ' 閉合' : ''}`, COL.x, 128);
     c.letterSpacing = '0px';
-    // 細線：跟著大鼓呼吸
-    c.fillStyle = rgba('sepia', 0.18 + 0.4 * f.a.kick);
-    c.fillRect(COL.x, 214, COL.w * (0.25 + 0.75 * clamp(f.barPhase)), 1 + f.a.kick * 1.5);
 
     if (this.msg && ly) {
-      const st: LyricStyle = { family: FAM_LYRIC, size: 66, minSize: 48, maxWidth: COL.w, ...paperLyric() };
+      const size = this.fit ? Math.round(clamp(this.fit.size * 0.78, 48, 58)) : 58;
+      const st: LyricStyle = { family: FAM_LYRIC, size, minSize: 48, maxWidth: COL.w, ...paperLyric() };
       const lay = layoutLyric(c, ly.line, st);
       const inK = ease.outExpo(prog(t, ly.line.start - 0.35, ly.line.start + 0.2));
       c.save();
       c.translate(COL.x, LYR_Y - (lay.height - lay.size) / 2 + (1 - inK) * 22);
       drawLyric(c, ly.line, t, st, lay, ly.k * a);
       c.restore();
-    } else if (!this.msg && this.inviteFit && (ly || this.ctx.lyrics.has)) {
-      c.font = font(FAM_MSG, this.inviteFit.size);
-      c.fillStyle = rgba('sepia', 0.8);
-      INVITE.forEach((ln, i) => c.fillText(ln, COL.x, LYR_Y - 20 + i * this.inviteFit!.lineHeight));
-    } else {
+    }
+    // 左下：歌名（沒歌詞時）與冷面註腳
+    if (!ly) {
       const { song } = this.ctx;
-      c.font = font(F.mono(500), 18);
+      c.font = font(F.mono(500), 15);
       c.letterSpacing = '4px';
-      c.fillStyle = rgba('sepia', 0.55);
-      c.fillText(`♪  ${song.title}`.toUpperCase(), COL.x, LYR_Y);
-      if (song.artist) c.fillText(song.artist.toUpperCase(), COL.x, LYR_Y + 34);
+      c.fillStyle = rgba('sepia', 0.45);
+      c.fillText(`♪  ${song.title}${song.artist ? '  ·  ' + song.artist : ''}`.toUpperCase(), COL.x, 910);
       c.letterSpacing = '0px';
     }
-    // 圈數（閉合時打勾）與註腳
-    const done = Math.floor(k + 1e-6);
-    const inFlower = done % LOOP === 0 && done > 0 ? LOOP : (done % LOOP) + 1;
-    c.font = font(F.mono(500), 16);
-    c.letterSpacing = '4px';
-    c.fillStyle = rgba('sepia', 0.55);
-    c.fillText(`第 ${inFlower} 圈 ／ ${LOOP}${done % LOOP === 0 && done > 0 ? '  ·  閉合' : ''}`, COL.x, 902);
-    c.letterSpacing = '0px';
-    c.font = font(F.hei(500), 24);
-    c.fillStyle = rgba('sepia', 0.5);
-    c.fillText(FOOT, COL.x, 944);
+    c.font = font(F.hei(500), 20);
+    c.fillStyle = rgba('sepia', 0.4);
+    c.fillText(FOOT, COL.x, 946);
     c.restore();
   }
 }

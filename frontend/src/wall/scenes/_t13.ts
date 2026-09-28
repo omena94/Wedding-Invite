@@ -162,12 +162,17 @@ export function cjkRatio(s: string) {
  * 孤零零的一個字在大螢幕上很顯眼。最多試六次，縮到最小字級就算了。
  */
 export function fitMsg(c: CanvasRenderingContext2D, text: string, family: string, w: number, h: number, o: { min?: number; max?: number; lineHeight?: number; maxLines?: number } = {}): FitResult {
-  let fit = fitText(c, text, family, w, h, o);
+  const first = fitText(c, text, family, w, h, o);
   const orphan = (f: FitResult) => f.lines.length > 1 && Array.from(f.lines[f.lines.length - 1]!.replace(/[\s，。！？、,.!?~～…]/g, '')).length <= 2;
-  for (let k = 0; k < 6 && orphan(fit) && fit.size > (o.min ?? 20) + 2; k++) {
+  // 整則很短（兩行以內）就不管：縮小也改不了（「新婚／快樂！！！」），只會白白變小
+  if (!orphan(first) || first.lines.length <= 2) return first;
+  let fit = first;
+  for (let k = 0; k < 6 && fit.size > (o.min ?? 20) + 2; k++) {
     const next = fitText(c, text, family, w, h, { ...o, max: fit.size - 3 });
     if (next.size < (o.min ?? 20)) break;
     fit = next;
+    if (!orphan(fit)) return fit;
   }
-  return fit;
+  // 縮到最後還是孤字：用原本最大的字級
+  return first;
 }

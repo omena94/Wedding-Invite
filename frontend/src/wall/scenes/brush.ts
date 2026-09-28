@@ -77,7 +77,7 @@ const PAPER = () => new FSPass(/* glsl */ `
     float fx = step(${SHEET.y0 - 12}.0, p.y) * step(p.y, ${SHEET.y1 + 12}.0);
     ln = max(ln, fx * (pxLine(abs(p.x - ${SHEET.x0 - 14}.0), 1.4, 2.4) + pxLine(abs(p.x - ${SHEET.x1 + 14}.0), 1.4, 2.4)));
     ln *= 0.72 + 0.28 * smoothstep(-0.6, 0.6, snoise(p * 0.03));
-    fragColor = vec4(mix(paper, red, sat(ln) * 0.55), 1.0);
+    fragColor = vec4(mix(paper, red, sat(ln) * 0.4), 1.0);
   }`, { uVert: { value: 1 } });
 
 /** 飛白用的乾擦紋（一張共用的貼圖：很多條長短不一的細橫紋）。 */
@@ -122,14 +122,16 @@ export default class Brush extends Scene {
   seal = { x: 0, y: 0, s: 100, t: Infinity, rot: 0 };
   sealCv: HTMLCanvasElement | null = null;
   inkKey = '';
-  /** 正在寫的字的「字模」（含飛白），換字才重做。 */
-  cur: { i: number; cv: HTMLCanvasElement } | null = null;
+  /**
+   * 每個字的「字模」（含飛白、暈墨），init 時一次做好，之後寫字、濕墨、整張重畫都用同一張：
+   * 每次重畫都重新光柵化的話，瀏覽器可能這次用 GPU、下次用 CPU 畫（畫布多的時候會退回 CPU），
+   * 邊緣差一兩個色階，同一個時間點畫兩次就不一樣了。
+   */
+  gcv: HTMLCanvasElement[] = [];
   /** 詞組開始的時間（沾墨）。 */
   dips: number[] = [];
   /** glyphs 最後幾個是落款。 */
   nSig = 0;
-  fontsReady = false;
-  allText = '';
 
   override async init() {
     const { audio: au, start, song } = this.ctx;
@@ -137,7 +139,8 @@ export default class Brush extends Scene {
     const text = m ? m.text : INVITE;
     const sig = m ? (m.couple ? '新人 敬謝' : `${m.name || '一位賓客'} 敬賀`) : '新人 敬邀';
     await loadText(`${text}${sig}${FOOT}${SEAL_TXT.join('')}書法八行箋${song.title}`);
-    this.allText = `${text}${sig}`;
+    // 字模只做一次、做了就不再變：一定要等真正用到的繁中字型（文楷、思源宋體）到了再做，等久一點
+    await loadText(`${text}${sig}`, 12000, true);
     // 中文為主、或根本沒有英文字（例如只有愛心）就直書
     this.vert = cjkRatio(text) >= 0.5 || !/[A-Za-z]/.test(text);
     const t0 = beatAfter(au, start + 0.05);
@@ -145,12 +148,13 @@ export default class Brush extends Scene {
     else this.layoutHorizontal(text, sig);
     this.schedule(t0);
     this.sealCv = this.buildSeal(this.seal.s);
+    this.gcv = this.glyphs.map((g) => this.glyphCanvas(g));
   }
 
   override dispose() {
     // 一晚會建幾百次：字模、印的畫布馬上還掉，不等 GC
-    for (const cv of [this.sealCv, this.cur?.cv, ...this.wetCache.values()]) if (cv) cv.width = cv.height = 0;
-    this.wetCache.clear();
+    for (const cv of [this.sealCv, ...this.gcv]) if (cv) cv.width = cv.height = 0;
+    this.gcv = [];
     super.dispose();
   }
 
@@ -159,10 +163,13 @@ export default class Brush extends Scene {
   private layoutVertical(text: string, sig: string) {
     const colH = SHEET.y1 - SHEET.y0 - 36;
     let s = 44, cols: Tok[][] = [];
+    // 一行（直的）放得下幾格；標點可以掛在行尾一格，但「！！！」這種連續標點會一直掛下去、超出紙：也要算進去
+    const cells = (col: Tok[]) => col.reduce((a, tk) => a + tk.adv, 0);
     for (let size = 100; size >= 44; size -= 2) {
-      const cs = breakCols(toks(text, size), colH / (size * 1.06));
+      const cap = colH / (size * 1.06);
+      const cs = breakCols(toks(text, size), cap);
       s = size; cols = cs;
-      if (cs.length + 1 <= NCOL) break;
+      if (cs.length + 1 <= NCOL && cs.every((col) => cells(col) <= cap + 0.1)) break;
     }
     if (s > CW * 0.7) { s = CW * 0.7; cols = breakCols(toks(text, s), colH / (s * 1.06)); }
     const used = cols.length + 1;
@@ -316,11 +323,12 @@ export default class Brush extends Scene {
   // ---------------------------------------------------------------- 畫
   /** 一個字的「字模」：墨色的字，按乾的程度用乾擦紋挖掉一些（飛白），邊緣帶一點暈開的墨。 */
   private glyphCanvas(g: G) {
-    const P = Math.ceil(Math.max(g.s * 1.6, g.bh + g.s * 0.6));
+    const P = Math.ceil(Math.max(g.s * 1.6, g.bh + g.s * 0.6)), K = 1.5;
     const cv = document.createElement('canvas');
-    cv.width = cv.height = P * 2;
-    const c = cv.getContext('2d')!;
-    c.scale(2, 2);
+    cv.width = cv.height = Math.ceil(P * K);
+    // 軟體畫布：每次畫出來都一樣（GPU 畫布的模糊與反鋸齒可能每次差一點點）
+    const c = cv.getContext('2d', { willReadFrequently: true })!;
+    c.scale(K, K);
     const inkCol = mixRgba('sepia', 'ink', 0.7, 0.97);
     c.translate(P / 2, P / 2);
     // 手寫的字不會排得像印刷一樣整齊：每個字一點點歪、一點點大小不同
@@ -345,20 +353,20 @@ export default class Brush extends Scene {
     if (g.dry > 0.05) {
       // 飛白：乾擦紋只出現在筆畫的「收尾」那一側（右邊、下面），越往尾巴越乾；紋路的角度每個字不同
       const m = document.createElement('canvas');
-      m.width = m.height = P * 2;
-      const mc = m.getContext('2d')!;
-      mc.scale(2, 2);
+      m.width = m.height = Math.ceil(P * K);
+      const mc = m.getContext('2d', { willReadFrequently: true })!;
+      mc.scale(K, K);
       mc.translate(P / 2, P / 2);
       mc.rotate(g.ang);
       mc.drawImage(streaks(), -P, -P * 0.5 + (hash(g.x, g.y) - 0.5) * 80, P * 2, P);
       mc.setTransform(1, 0, 0, 1, 0, 0);
-      const gr = mc.createLinearGradient(P * 0.2, P * 0.3, P * 1.9, P * 1.4);
+      const gr = mc.createLinearGradient(P * K * 0.1, P * K * 0.15, P * K * 0.95, P * K * 0.7);
       gr.addColorStop(0, 'rgba(0,0,0,0)');
       gr.addColorStop(0.5, 'rgba(0,0,0,0.35)');
       gr.addColorStop(1, 'rgba(0,0,0,1)');
       mc.globalCompositeOperation = 'destination-in';
       mc.fillStyle = gr;
-      mc.fillRect(0, 0, P * 2, P * 2);
+      mc.fillRect(0, 0, m.width, m.height);
       c.setTransform(1, 0, 0, 1, 0, 0);
       c.globalCompositeOperation = 'destination-out';
       c.globalAlpha = Math.min(1, g.dry * 1.25);
@@ -370,20 +378,8 @@ export default class Brush extends Scene {
     return cv;
   }
 
-  /** 剛寫好的字的字模（濕墨疊一層用）：只留最近幾個，不要每格重做。 */
-  private wetCache = new Map<number, HTMLCanvasElement>();
-  private wetCv(i: number, g: G) {
-    let cv = this.wetCache.get(i);
-    if (!cv) {
-      cv = this.glyphCanvas(g);
-      this.wetCache.set(i, cv);
-      for (const k of this.wetCache.keys()) if (k < i - 12) { const old = this.wetCache.get(k)!; old.width = old.height = 0; this.wetCache.delete(k); }
-    }
-    return cv;
-  }
-
   private drawGlyph(c: CanvasRenderingContext2D, g: G, cv: HTMLCanvasElement) {
-    const P = cv.width / 2;
+    const P = cv.width / 1.5;
     c.drawImage(cv, g.x - P / 2, g.y - P / 2, P, P);
   }
 
@@ -397,10 +393,7 @@ export default class Brush extends Scene {
     // ---- 寫好的字（含落好的印、上方標籤）
     const done = this.glyphs.filter((g) => t >= g.t1).length;
     const sealIn = t >= this.seal.t + 0.14;
-    // 字型分片如果還沒到（很多版面同時在載字時會發生），寫好的字會先用備援字型畫、被快取住；
-    // 等字型到了 key 會變，整張重畫一次
-    if (!this.fontsReady) this.fontsReady = document.fonts.check(font(FAM, 40), this.allText) && document.fonts.check(font(FAM_SIG, 40), this.allText);
-    const key = `${done}|${sealIn}|${this.fontsReady}`;
+    const key = `${done}|${sealIn}`;
     if (key !== this.inkKey) { this.inkKey = key; this.drawInk(done, sealIn); }
     comp.draw(renderer, this.ink.texture, out, { ...subRect(INK_R), opacity: vis });
 
@@ -439,16 +432,10 @@ export default class Brush extends Scene {
     c.letterSpacing = '6px';
     c.fillStyle = rgba('sepia', 0.55);
     c.fillText(this.vert ? '書法 · 八行箋' : '書法 · 橫格信箋', SHEET.x0 - 14, SHEET.y0 - 34);
-    if (this.msg) {
-      c.font = font(F.mono(500), 16);
-      c.letterSpacing = '4px';
-      const tag = `NO.${String(this.msg.n).padStart(3, '0')}${this.msg.couple ? ' · 新人' : ''}`;
-      c.fillText(tag, SHEET.x1 + 14 - c.measureText(tag).width, SHEET.y0 - 34);
-    }
     c.letterSpacing = '0px';
     for (let i = 0; i < done; i++) {
       const g = this.glyphs[i]!;
-      this.drawGlyph(c, g, this.glyphCanvas(g));
+      this.drawGlyph(c, g, this.gcv[i]!);
     }
     if (sealIn && this.sealCv) this.drawSeal(c, 1, 1);
     c.restore();
@@ -477,7 +464,6 @@ export default class Brush extends Scene {
     const gi = this.glyphs.findIndex((g) => t >= g.t0 && t < g.t1);
     if (gi >= 0) {
       const g = this.glyphs[gi]!;
-      if (!this.cur || this.cur.i !== gi) this.cur = { i: gi, cv: this.glyphCanvas(g) };
       const u = clamp((t - g.t0) / (g.t1 - g.t0));
       // 掃過去的路線：四橫（直書、橫書都一樣，由上而下），每一橫由左到右
       const bw = g.bw, bh = g.bh, rows = Math.max(4, Math.round((4 * bh) / bw)), x0 = g.x - bw / 2, y0 = g.y - bh / 2;
@@ -495,7 +481,7 @@ export default class Brush extends Scene {
         c.rect(x0 - 4, ry - bh / rows / 2 - 2, bw * full + 8, bh / rows + 4);
       }
       c.clip();
-      this.drawGlyph(c, g, this.cur.cv);
+      this.drawGlyph(c, g, this.gcv[gi]!);
       c.restore();
       const p = pt(u);
       tip = { x: p.x + R * 0.2, y: p.y, press: 1 - g.dry * 0.5 };
@@ -518,8 +504,7 @@ export default class Brush extends Scene {
       if (t < g.t1 || t > g.t1 + 1.4 || g.ch === '♥') continue;
       c.save();
       c.globalAlpha *= 0.38 * (1 - (t - g.t1) / 1.4);
-      if (this.cur && this.cur.i === i) this.drawGlyph(c, g, this.cur.cv);
-      else this.drawGlyph(c, g, this.wetCv(i, g));
+      this.drawGlyph(c, g, this.gcv[i]!);
       c.restore();
     }
     if (tip) this.drawBrush(c, tip.x, tip.y, tip.press);
@@ -589,7 +574,9 @@ export default class Brush extends Scene {
     c.translate(-LYR_R.x, -LYR_R.y);
     c.globalAlpha = vis;
     if (ly) {
-      const st: LyricStyle = { family: F.hand(700), size: 62, minSize: 48, maxWidth: LYR.w, ...paperLyric() };
+      // 歌詞比留言小一級（留言是焦點）
+      const ms = this.glyphs[0]?.s ?? 70;
+      const st: LyricStyle = { family: F.hand(700), size: Math.round(clamp(ms * 0.78, 48, 58)), minSize: 48, maxWidth: LYR.w, ...paperLyric() };
       const lay = layoutLyric(c, ly.line, st);
       const inK = ease.outExpo(prog(t, ly.line.start - 0.35, ly.line.start + 0.2));
       c.translate(LYR.x, LYR.base - (lay.height - lay.size) + (1 - inK) * 16);
