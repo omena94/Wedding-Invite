@@ -25,11 +25,11 @@ const mmss = (s) => (s > 0 ? `${Math.floor(s / 60)}:${String(Math.round(s % 60))
 
 /** 歌詞狀態：純音樂／已對時（第幾行）／有歌詞但沒時間／沒歌詞。 */
 function lyricsState(s) {
-  if (s.instrumental) return { label: "純音樂", pill: "pill-groom" };
-  if (!s.lyrics_lrc) return { label: "還沒有歌詞", pill: "pill-warn" };
+  if (s.instrumental) return { kind: "inst", label: "純音樂", pill: "pill-groom" };
+  if (!s.lyrics_lrc) return { kind: "missing", label: "還沒有歌詞", pill: "pill-warn" };
   const doc = parseLrc(s.lyrics_lrc);
-  if (!isSynced(doc)) return { label: "歌詞還沒對時", pill: "pill-warn" };
-  return { label: `歌詞 ${doc.lines.filter((l) => l.text).length} 行`, pill: "pill-yes" };
+  if (!isSynced(doc)) return { kind: "missing", label: "歌詞還沒對時", pill: "pill-warn" };
+  return { kind: "ok", label: `歌詞 ${doc.lines.filter((l) => l.text).length} 行`, pill: "pill-yes" };
 }
 
 /** LRCLIB 候選裡「可以直接套用」的：純音樂，或有時間軸、長度跟音檔差 3 秒內（版本不同時間會對不上）。 */
@@ -61,6 +61,7 @@ export default function WallSongs() {
   const [jobs, setJobs] = useState({}); // id 或暫時的 key → 進度文字
   const [editing, setEditing] = useState(null);
   const [playing, setPlaying] = useState(null); // 試聽中的歌 id
+  const [lyf, setLyf] = useState(""); // 歌詞篩選："" 全部／ok／missing／inst
   const fileRef = useRef(null);
   const audioRef = useRef(null);
   const urlRef = useRef("");
@@ -142,6 +143,25 @@ export default function WallSongs() {
   useEffect(() => stopPreview, [stopPreview]);
 
   const total = items.filter((s) => s.enabled).reduce((sum, s) => sum + Math.max(0, (s.end_at || s.duration) - (s.start_at || 0)), 0);
+  // 歌詞狀態統計：一眼看出還有幾首要處理（2026-09-28 新人要求）
+  const states = items.map((s) => lyricsState(s).kind);
+  const nOk = states.filter((k) => k === "ok").length, nMissing = states.filter((k) => k === "missing").length, nInst = states.filter((k) => k === "inst").length;
+  const shown = items.map((s, idx) => ({ s, idx })).filter(({ s }) => !lyf || lyricsState(s).kind === lyf);
+  // 缺歌詞的歌全部再上 LRCLIB 找一次（歌名、歌手兩種順序都試；找到能用的才套用）
+  const retryAll = async () => {
+    const todo = items.filter((s) => lyricsState(s).kind === "missing");
+    let found = 0;
+    for (const s of todo) {
+      setJob(s.id, "找歌詞…");
+      try {
+        const tryOrder = async (t, a) => { try { return usable(await searchLyrics(t, a, s.duration)); } catch { return null; } };
+        const c = (await tryOrder(s.title, s.artist)) || (s.artist ? await tryOrder(s.artist, s.title) : null);
+        if (c) { replace(await updateWallSong(s.id, lyricsFrom(c))); found++; }
+      } catch (e) { toastErr(e); }
+      setJob(s.id, null);
+    }
+    toastOk(found ? `找到 ${found} 首，還有 ${todo.length - found} 首要自己處理` : "這次都沒找到，請到各首的「編輯」貼歌詞或上傳 .lrc");
+  };
 
   return (
     <div className="panel">
@@ -158,12 +178,20 @@ export default function WallSongs() {
         找不到或時間不準的，按「編輯」處理。大螢幕依這裡的順序播放，關掉的歌會跳過。
       </p>
       <audio ref={audioRef} onEnded={stopPreview} hidden />
+      {items.length > 0 && (
+        <div className="ws-summary">
+          {[["", `全部 ${items.length}`], ["ok", `有歌詞 ${nOk}`], ["missing", `缺歌詞 ${nMissing}`], ["inst", `純音樂 ${nInst}`]].map(([k, label]) => (
+            <button key={k} type="button" className={`btn btn-sm ${lyf === k ? "btn-primary" : "btn-ghost"}`} onClick={() => setLyf(k)}>{label}</button>
+          ))}
+          {nMissing > 0 && <button type="button" className="btn btn-ghost btn-sm" onClick={retryAll}><Search size={13} /> 缺歌詞的全部再找一次</button>}
+        </div>
+      )}
       {Object.entries(jobs).filter(([k]) => String(k).startsWith("up-")).map(([k, v]) => <div key={k} className="ws-job">{v}</div>)}
       {error ? <ErrorBox error={error} /> : loading ? <Loading /> : items.length === 0 ? (
         <Empty>還沒有歌。按「上傳音檔」一次選好幾首；沒有歌的時候大螢幕會先安靜地播留言。</Empty>
       ) : (
         <ul className="ws-list">
-          {items.map((s, idx) => {
+          {shown.map(({ s, idx }) => {
             const ls = lyricsState(s);
             const job = jobs[s.id];
             return (

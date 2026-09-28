@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { BrowserRouter, NavLink, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import {
   Users, Wallet, CalendarDays, FolderOpen,
-  Settings as SettingsIcon, LogOut, Lock, LogIn, Home as HomeIcon, Armchair, Images, Gift, NotebookPen, PartyPopper, Camera, MessageSquareHeart,
+  Settings as SettingsIcon, LogOut, Lock, LogIn, Home as HomeIcon, Armchair, Images, Gift, NotebookPen, PartyPopper, Camera, Monitor, ExternalLink, MessageSquareHeart,
 } from "lucide-react";
 import { adminLogin, clearToken, getRole, getToken, setRole, setToken, fetchMe } from "../api.js";
 import Guests from "./Guests.jsx";
@@ -119,11 +119,17 @@ function Shell({ role, can, onLogout, children }) {
           <div className="pl-brand-role">{role === "helper" ? "幫手模式" : "新人模式"}</div>
         </div>
         <nav className="pl-nav" key={location.pathname}>
-          {items.map(({ to, label, icon: Icon, end }) => (
+          {items.map(({ to, label, icon: Icon, end }) => [
             <NavLink key={to} to={to} end={end} className={({ isActive }) => (isActive ? "active" : undefined)}>
               <Icon size={16} /> {label}
-            </NavLink>
-          ))}
+            </NavLink>,
+            // 2026-09-28 新人要求：任何一頁都能直接開大螢幕（/wall 是獨立頁面，用新分頁開，後台照樣留著）；放在「現場留言」正下方
+            to === "/wall" && (
+              <a key="wall-screen" href="/wall" target="_blank" rel="noopener" className="pl-nav-ext">
+                <Monitor size={16} /> 大螢幕 <ExternalLink size={12} />
+              </a>
+            ),
+          ])}
         </nav>
         <div className="pl-side-foot">
           <a className="top-link" href="/"><HomeIcon size={14} /> 回賓客首頁</a>

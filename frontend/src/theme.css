@@ -1465,3 +1465,8 @@ tbody tr:last-child td { border-bottom: none; }
   .ws-row { flex-wrap: wrap; }
   .ws-actions { width: 100%; justify-content: flex-end; }
 }
+/* 後台左側「大螢幕 ↗」：新分頁開 /wall，跟一般選單同樣式，右邊的小箭頭表示會開新分頁 */
+.pl-nav a.pl-nav-ext { color: var(--milk-tea-700); }
+.pl-nav a.pl-nav-ext svg:last-child { margin-left: auto; opacity: .55; }
+/* 歌單上方的歌詞統計與篩選 */
+.ws-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: -4px 0 12px; }
