@@ -87,7 +87,11 @@ function wallGlyphs() {
       const { join } = await import("node:path");
       const files = readdirSync(dir).filter((f) => f.endsWith(".ts"));
       const src = (f) => { this.addWatchFile(join(dir, f)); return strip(readFileSync(join(dir, f), "utf8")); };
-      const shared = cjk(files.filter((f) => f.startsWith("_")).map(src).join(""));
+      // 引擎自己畫的字（右下角 HUD 的「已收到」「則祝福」、小卡…）也要：沒預載的話 HUD 第一次用備援字型畫，
+      // 之後重畫才換成正確字型，同一格畫兩次就不一樣（2026-09-28 查到的確定性偶發不過）
+      const engineDir = resolve(__dirname, "src/wall/engine");
+      const engineSrc = readdirSync(engineDir).filter((f) => f.endsWith(".ts")).map((f) => { this.addWatchFile(join(engineDir, f)); return strip(readFileSync(join(engineDir, f), "utf8")); }).join("");
+      const shared = cjk(files.filter((f) => f.startsWith("_")).map(src).join("") + engineSrc);
       const scenes = {};
       for (const f of files.filter((f) => !f.startsWith("_") && !f.includes("-"))) {
         const name = f.slice(0, -3);
