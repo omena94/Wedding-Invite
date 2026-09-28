@@ -1,7 +1,8 @@
 // 片尾名單（批次 T6・螢幕 B，暗）：電影院銀幕上的片尾名單，用放映機放出來的樣子。
 //  - 名單以畫面中線偏左的「脊線」對齊：職稱靠右、名字靠左（片尾名單的老規矩），往上捲；
 //    捲動跟著拍子：每一拍一開始衝一下、拍尾放慢（「頓一下」），像放映機一格一格拉片。
-//  - 捲到主打留言那一段就停住：名字（訊號色）＋留言（手寫字，置中），停到讀得完再繼續往下捲：
+//  - 捲到主打留言那一段就停住：名字（訊號色，小一號）＋留言（手寫字，置中、整個畫面最大），停到讀得完再繼續往下捲；
+//    停住的時候名單其他部分暗下去，只剩留言那一段亮著（MV 檢修：一個焦點），整個窗格鏡頭很慢地推近一點。
 //    其他賓客的署名（「共同演出」）、本片歌曲、工作人員（攝影：在場每一支手機；燈光：仙女棒……）、冷面的聲明，
 //    最後停在「宣文 & 孟庭（未完，待續）」。
 //  - 歌詞是銀幕下緣的字幕（逐字跟唱，置中在脊線上）。
@@ -11,14 +12,14 @@
 import * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
 import { FSPass, Layer2D, W, H } from '../engine/gl';
-import { F, font, loadText } from '../engine/type';
+import { F, font } from '../engine/type';
 import { rgba } from '../engine/palette';
-import { clamp, hash, lerp, frameIdx } from '../engine/util';
+import { clamp, ease, hash, lerp, prog, frameIdx } from '../engine/util';
 import { readSeconds, type FitResult } from '../engine/text';
 import { lyricAt, drawLyric, layoutLyric, beatAfter, drawMessage, COUPLE_ZH, COUPLE_EN, DATE_DOTS } from './_motifs';
-import { fitMessage, inOut, subRect, type Rect } from './_t6';
+import { fitMessage, inOut, subRect, type Rect, loadPlateText } from './_t6';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'screen', paper: false, energy: [0, 0.7], bars: [6, 12], minMessages: 3, weight: 1 };
+export const spec: PlateSpecDecl = { group: 'type', family: 'screen', paper: false, energy: [0, 0.7], bars: [6, 12], weight: 1 };
 
 // ---------------------------------------------------------------- 版面
 const SPINE = 720; // 脊線在畫面上的 x
@@ -50,6 +51,7 @@ const BG = () => new FSPass(/* glsl */ `
 const FILM = () => new FSPass(/* glsl */ `
   uniform sampler2D roll; uniform vec2 rollPos; uniform vec2 rollSize; uniform float flick; uniform float k;
   uniform float fi; uniform float scratchX; uniform float scratchA;
+  uniform vec2 hold; uniform float holdK;
   void main() {
     vec2 p = vec2(FRAG_PX.x, ${H}.0 - FRAG_PX.y); // y 向下
     vec4 col = vec4(0.0);
@@ -59,6 +61,9 @@ const FILM = () => new FSPass(/* glsl */ `
       vec4 c = texture(roll, vec2(q.x, 1.0 - q.y));
       c.rgb = c.a > 0.0 ? toLinear(c.rgb / c.a) * c.a : vec3(0.0);
       float m = smoothstep(${VIEW.t}.0, ${VIEW.t + 90}.0, p.y) * (1.0 - smoothstep(${VIEW.b - 90}.0, ${VIEW.b}.0, p.y));
+      // 停在主打留言的時候，名單其他部分暗下去（一個焦點）
+      float inHold = smoothstep(hold.x - 60.0, hold.x, p.y) * (1.0 - smoothstep(hold.y, hold.y + 60.0, p.y));
+      m *= mix(1.0, 0.18 + 0.82 * inHold, holdK);
       col = c * m * flick * k;
     }
     // 灰塵：每格換位置的幾顆小點（深色是片上的髒點，亮色是刮掉乳劑的地方）
@@ -81,7 +86,7 @@ const FILM = () => new FSPass(/* glsl */ `
     fragColor = col;
   }`, {
   roll: { value: null }, rollPos: { value: new THREE.Vector2() }, rollSize: { value: new THREE.Vector2(1, 1) }, flick: { value: 1 }, k: { value: 1 },
-  fi: { value: 0 }, scratchX: { value: 0 }, scratchA: { value: 0 },
+  fi: { value: 0 }, scratchX: { value: 0 }, scratchA: { value: 0 }, hold: { value: new THREE.Vector2() }, holdK: { value: 0 },
 }, { blending: THREE.CustomBlending, transparent: true });
 
 interface Item { y: number; draw: (c: CanvasRenderingContext2D, y: number) => void }
@@ -110,12 +115,12 @@ export default class Credits extends Scene {
   private drawn = false;
 
   override async init() {
-    const { audio: au, song } = this.ctx;
+    const { audio: au } = this.ctx;
     const s = this.ctx.start, e = this.ctx.end;
     const others = ((this.ctx.params.messages ?? []) as Msg[]).filter((m) => m.id !== this.msg?.id);
     // 共同演出：其他賓客有署名的（新人自己的留言、沒填名字的不列）
     const names = [...new Set(others.filter((m) => !m.couple && m.name).map((m) => m.name))].slice(0, 20);
-    await loadText(TEXT + song.title + song.artist + names.join(''));
+    await loadPlateText(this.ctx, TEXT + names.join(''));
     this.layout(names);
     this.roll = this.track(new Layer2D(RW, this.rollH, 1, { fast: true }));
     // 時間：主打留言在第一拍後一小節停到中間，停到讀得完（不超過窗格結尾前一拍半），再往下捲到最後一張卡
@@ -161,15 +166,16 @@ export default class Credits extends Scene {
     const top = y;
     header('祝福', 'With Love From');
     if (m) {
-      this.fit = fitMessage(mc, `「${m.text}」`, F.hand(400), RW - 160, 300, { min: 44, max: 68, lineHeight: 1.3 });
+      this.fit = fitMessage(mc, `「${m.text}」`, F.hand(400), RW - 120, 400, { min: 56, max: 100, lineHeight: 1.28 });
       const fit = this.fit;
       push(92, (c, yy) => {
-        c.textAlign = 'center'; c.font = font(F.ming(700), 60); c.fillStyle = rgba('signal');
-        c.fillText(m.name || '一位賓客', SP, yy + 62);
-        if (m.couple) { c.font = font(F.mono(500), 18); c.letterSpacing = '4px'; c.fillStyle = rgba('ash'); c.fillText('FROM THE COUPLE', SP, yy + 92); c.letterSpacing = '0px'; }
+        c.textAlign = 'center'; c.font = font(F.ming(700), 46); c.fillStyle = rgba('signal', 0.9);
+        c.fillText(m.name || '一位賓客', SP, yy + 56);
+        if (m.couple) { c.font = font(F.mono(500), 18); c.letterSpacing = '4px'; c.fillStyle = rgba('ash'); c.fillText('FROM THE COUPLE', SP, yy + 88); c.letterSpacing = '0px'; }
         c.textAlign = 'left';
       });
       y += 20;
+      y += 10;
       push(fit.height + 30, (c, yy) => {
         c.font = font(F.hand(400), fit.size);
         fit.lines.forEach((ln, i) => {
@@ -295,9 +301,14 @@ export default class Credits extends Scene {
     F2.u.flick!.value = flick;
     F2.u.k!.value = k;
     F2.u.fi!.value = fi % 997;
+    // 停住的那段時間（前後各半拍淡入淡出）
+    const beat = this.ctx.audio.beatPeriod(t);
+    const hk = this.msg ? Math.min(prog(t, this.tA - beat, this.tA), 1 - prog(t, this.tB - beat * 0.5, this.tB + beat * 0.5)) : 0;
+    (F2.u.hold!.value as THREE.Vector2).set(ry + wy + this.msgSpan[0] + 110, ry + wy + this.msgSpan[1]);
+    F2.u.holdK!.value = hk;
     // 刮痕：大約每兩秒有一段時間出現，位置每段換一次
     const seg = Math.floor(t * 0.7);
-    F2.u.scratchA!.value = hash(seg, 11) < 0.4 ? 0.3 + 0.3 * hash(fi, 5) : 0;
+    F2.u.scratchA!.value = hash(seg, 11) < 0.25 ? 0.12 + 0.12 * hash(fi, 5) : 0;
     F2.u.scratchX!.value = 180 + hash(seg, 12) * 1500;
     F2.render(renderer, out);
     // 字幕（歌詞）：置中在脊線上，銀幕下緣
@@ -326,6 +337,6 @@ export default class Credits extends Scene {
     // 避開：主打留言停住時的那一段（名字＋留言，實際的字寬）與字幕
     const mw = Math.min(RW - 120, (this.fit?.width ?? 800) + 60);
     const avoid: Rect[] = [[SPINE - mw / 2, this.yA + this.msgSpan[0], mw, this.msgSpan[1] - this.msgSpan[0]], [SUB.x, SUB.y, SUB.w, SUB.h]];
-    return { bloom: 0.5, vignette: 0.55, grain: 0.085, halation: 0.35, popups: 0.9, popupAvoid: avoid };
+    return { bloom: 0.5, vignette: 0.55, grain: 0.085, halation: 0.35, zoom: 1 + 0.03 * ease.inOutQuad(f.p), popupAvoid: avoid };
   }
 }

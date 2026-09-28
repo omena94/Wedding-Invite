@@ -1,34 +1,35 @@
-// 新聞快報（批次 T6・螢幕 B，暗）：自己設計的「喜訊台」新聞畫面（不像任何一家真的電視台）。
-//  - 背景是一顆 three.js 的線框地球：開場轉得飛快，第一個小節線剛好停在台灣，下一個小節線鏡頭一路推進到婚禮現場；
-//    世界各地的賓客沿著大圓弧線「飛」過來（一拍發一條，弧線的頭是仙女棒的火花），現場的標記在大鼓上泛起一圈圈漣漪。
-//  - 下三分之一：「快訊」標籤在第一拍切進來，頭條就是主打留言（思源宋體），署名是「現場報導」的記者；
-//    每個小節線頭條上緣掃過一道光。沒有留言時頭條是「現正播放」＋邀請。
-//  - 最下面的跑馬燈是歌詞：跑馬燈的速度跟著歌聲走——正在唱的字永遠停在同一個「讀頭」的位置，唱完的往左流走，
-//    還沒唱的從右邊等著（逐字跟唱：唱完紙白、正在唱訊號色、還沒唱三成透明）。純音樂時跑固定的快訊。
-//  - 左上角台標、LIVE 在拍點閃、現場時間的冒號一拍閃一次。
-// 手法：地球（球體 mesh 的菲涅耳邊光＋LineBatch 3D 經緯線、台灣海岸線、飛行弧線）用同一台透視相機；字與圖卡在一張 Canvas 層。
+// 新聞快報（批次 T6・螢幕 B，暗）：自己設計的「喜訊台」新聞（不像任何一家真的電視台），在暗暗的客廳裡的一台電視上播。
+// MV 檢修後：整個新聞畫面先畫進一張「電視訊號」貼圖，再用 _t6 的 ScreenRig 擺成客廳裡的一台電視（邊框、玻璃反光、
+// 電視的光灑在牆上與矮櫃上），鏡頭整個窗格很慢地往電視推近、轉正。電視上的新聞只留三樣：
+//  - 頭條＝主打留言（思源宋體、大、紙白底），署名是「—— 阿哲　現場報導」；面板從下往上長，長留言面板比較高。
+//    「快訊」標籤在第一拍切進來，每個小節線頭條上緣掃過一道光。沒有留言時頭條是「現正播放：歌名」＋一句邀請。
+//  - 跑馬燈是歌詞：速度跟著歌聲走——正在唱的字永遠停在「讀頭」的位置（逐字跟唱）。純音樂時跑固定的快訊。
+//  - 背景的線框地球：開場轉到台灣、推進到婚禮現場，賓客從世界各地沿大圓弧線飛過來（一拍一條），現場在大鼓上泛漣漪。
+//  小字只剩左上角「喜訊台 ● LIVE」（LIVE 一拍閃一次）和地圖上的「婚禮現場」。
+// 手法：地球（球體 mesh 的菲涅耳邊光＋LineBatch 3D 線）、字與圖卡（Canvas 層）都畫進電視訊號；客廳是一個 GLSL pass。
 import * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
-import { FSPass, Layer2D, W, H } from '../engine/gl';
+import { FSPass, Layer2D, W, H, makeRT } from '../engine/gl';
 import { LineBatch } from '../engine/lines';
-import { F, font, loadText } from '../engine/type';
+import { F, font } from '../engine/type';
 import { LIN, rgba } from '../engine/palette';
 import { clamp, ease, lerp, prog, mulberry32 } from '../engine/util';
 import { Lyrics, type Line } from '../engine/lyrics';
 import type { FitResult } from '../engine/text';
 import { sparkHead, sparkParticles, beatAfter, barAfter, signature, drawMessage, COUPLE_ZH } from './_motifs';
-import { TAIWAN, VENUE, beatsIn, fitMessage, inOut, type Rect } from './_t6';
+import { TAIWAN, VENUE, beatsIn, fitMessage, inOut, ScreenRig, loadPlateText } from './_t6';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'screen', paper: false, energy: [0.35, 1], bars: [4, 8], weight: 1 };
 
 // ---------------------------------------------------------------- 版面
-const X0 = 100, XR = 1340;
-const LABEL = { y: 516, h: 60 }; // 快訊標籤那一列
-const HEAD_Y = LABEL.y + LABEL.h; // 頭條面板上緣
-const HEAD_MAX_B = 848; // 頭條面板下緣最多到這裡
-const TK = { y: 872, h: 78, labelW: 150 }; // 跑馬燈
-const TK_SIZE = 50;
-const HEAD_X = 640; // 跑馬燈的讀頭（正在唱的字停在這裡）
+// 這些是「電視訊號」的座標（1920×1080）：整個畫面會放在電視上、縮小約八成，所以字都比直接上螢幕大一號
+const X0 = 110, XR = 1330;
+const LABEL_H = 62; // 快訊標籤（貼在頭條面板上緣）
+const HEAD_B = 826; // 頭條面板的下緣（固定）；面板往上長，長留言的面板比較高
+const HEAD_MIN_Y = 330; // 面板最高到這裡
+const TK = { y: 846, h: 108, labelW: 108 }; // 跑馬燈
+const TK_SIZE = 72;
+const HEAD_X = 600; // 跑馬燈的讀頭（正在唱的字停在這裡）
 const SEP = '　◆　';
 const TICKER_IDLE = ['現場天氣：降愛機率百分之百', '交通：往幸福的路上一路順暢', '掃描右下角 QR code，你的祝福就是下一則頭條', '芃芃與 QQ 已就位', '喜宴菜色：一道比一道更甜'];
 const [GROOM, BRIDE] = COUPLE_ZH.split(/\s*&\s*/) as [string, string];
@@ -49,6 +50,24 @@ const BG = () => new FSPass(/* glsl */ `
     col += (C_INK2 - C_INK) * 0.3 * fbm(p / 500.0 + t * 0.01, 3);
     fragColor = vec4(col, 1.0);
   }`, { t: { value: 0 }, g: { value: new THREE.Vector2(1140, 330) }, gr: { value: 300 }, k: { value: 1 } });
+
+// 房間：很暗的客廳，電視的光打在後面的牆上（跟著電視的位置），電視下面一條矮櫃的邊
+const ROOM = () => new FSPass(/* glsl */ `
+  uniform vec2 c; uniform vec2 r; uniform float glow; uniform float k;
+  void main() {
+    vec2 p = vec2(FRAG_PX.x, ${H}.0 - FRAG_PX.y);
+    vec2 d = (p - c) / (r * 1.5);
+    float spill = exp(-dot(d, d) * 1.1);
+    vec3 col = C_INK * 0.7 + (C_INK2 - C_INK * 0.7) * (0.25 + 1.3 * spill * glow) + C_SIGNAL * 0.018 * spill * glow;
+    float shelf = c.y + r.y + 46.0;
+    float top = 1.0 - smoothstep(0.0, 2.5, abs(p.y - shelf));
+    float body = step(shelf, p.y) * (1.0 - smoothstep(shelf, shelf + 120.0, p.y));
+    float span = 1.0 - smoothstep(r.x * 1.15, r.x * 1.3, abs(p.x - c.x));
+    col = mix(col, C_INK * 0.55, body * span);
+    col += C_BONE * 0.05 * top * span * glow;
+    col += (C_INK2 - C_INK) * 0.2 * fbm(p / 500.0, 3);
+    fragColor = vec4(col * mix(0.5, 1.0, k), 1.0);
+  }`, { c: { value: new THREE.Vector2(960, 480) }, r: { value: new THREE.Vector2(700, 400) }, glow: { value: 1 }, k: { value: 1 } });
 
 // 地球本體：暗色的球＋菲涅耳邊光（顏色每格從色票更新）
 const SPHERE_VERT = /* glsl */ `precision highp float;
@@ -82,6 +101,10 @@ interface Crawl { lines: { line: Line; x: number; w: number; words: { x: number;
 export default class News extends Scene {
   bg = shared('news.bg', BG);
   ui = this.track(new Layer2D(W, H, undefined, { fast: true }));
+  /** 電視訊號（整個新聞畫面先畫在這裡，再當成電視螢幕的貼圖）。 */
+  tv = this.track(makeRT(W, H));
+  rig = new ScreenRig(this.tv.texture, W, H, { decode: false, bezel: 20, radius: 8 });
+  room = shared('news.room', ROOM);
   g3 = this.track(new LineBatch(9000, { screen2D: false, blend: 'add' }));
   glow = this.track(new LineBatch(2048, { screen2D: true, blend: 'add' }));
   msg: Msg | null = this.ctx.params.message ?? null;
@@ -91,6 +114,8 @@ export default class News extends Scene {
   private sMat!: THREE.RawShaderMaterial;
   fit: FitResult | null = null;
   headH = 200;
+  /** 頭條面板的上緣（依留言長短）。 */
+  headY = 600;
   tLand = 0; tPush = 0; b0 = 0;
   arcs: Arc[] = [];
   crawl: Crawl = { lines: [], total: 0 };
@@ -104,7 +129,7 @@ export default class News extends Scene {
   override async init() {
     const { audio: au, lyrics, song } = this.ctx;
     const s = this.ctx.start, e = this.ctx.end;
-    await loadText(TEXT + song.title + song.artist);
+    await loadPlateText(this.ctx, TEXT + TICKER_IDLE.join(''));
     const b0 = this.b0 = beatAfter(au, s + 0.05);
     const beat = au.beatPeriod(b0);
     // 地球：第一個小節線停在台灣（太晚就第一拍後兩拍），下一個小節線開始推鏡（窗格太短就不推那麼多）
@@ -120,7 +145,7 @@ export default class News extends Scene {
     const rnd = mulberry32((this.ctx.params.seed ?? 1) * 7 + 3);
     const launches = beatsIn(au, this.tLand, e - beat * 0.5);
     launches.forEach((bt, i) => {
-      if (i >= 14) return;
+      if (i >= 8) return;
       const lon = VENUE[0] + (rnd() - 0.5) * 300, lat = (rnd() - 0.35) * 110;
       const from = norm(llToV(lon, lat));
       this.arcs.push({ from, t0: bt, ang: Math.acos(clamp(dot(from, this.venue), -1, 1)) });
@@ -137,8 +162,10 @@ export default class News extends Scene {
     // 頭條
     const c = this.ui.ctx;
     const headText = this.msg ? this.msg.text : `現正播放：${song.title || '今晚的歌'}`;
-    this.fit = fitMessage(c, headText, F.ming(700), XR - X0 - 80, HEAD_MAX_B - HEAD_Y - 60, { min: 44, max: 84, lineHeight: 1.24 });
-    this.headH = this.fit.height + 64;
+    // 頭條（留言）：電視上會縮小，字級下限拉高；署名在面板裡的最後一行
+    this.fit = fitMessage(c, headText, F.ming(700), XR - X0 - 80, HEAD_B - HEAD_MIN_Y - 64 - (this.msg ? 70 : 0), { min: 66, max: 120, lineHeight: 1.2 });
+    this.headH = this.fit.height + 64 + (this.msg ? 70 : 0);
+    this.headY = HEAD_B - this.headH;
     // 跑馬燈：把這個窗格附近的歌詞排成一條長帶子
     c.font = font(F.archivo(100, 700), TK_SIZE);
     const sepW = c.measureText(SEP).width;
@@ -157,6 +184,7 @@ export default class News extends Scene {
   override dispose() {
     this.sphere?.geometry.dispose();
     this.sMat?.dispose();
+    this.rig.dispose();
     super.dispose();
   }
 
@@ -184,9 +212,36 @@ export default class News extends Scene {
   }
 
   override render(f: Frame, out: THREE.WebGLRenderTarget): PostOverrides {
-    const { renderer, comp } = this.ctx;
+    const { renderer } = this.ctx;
     const t = f.t, s = this.ctx.start, e = this.ctx.end;
-    const k = inOut(t, s, e, 0.2, 0.3);
+    const k = inOut(t, s, e, 0.25, 0.3);
+    // 1) 新聞畫面畫進電視訊號；2) 客廳＋電視，鏡頭很慢地往電視推近、轉正
+    this.broadcast(f, this.tv);
+    const u = ease.inOutQuad(clamp((t - s) / Math.max(1, e - s)));
+    const kick = f.a.kick;
+    this.rig.pose({ fx: W / 2, fy: H / 2, cx: lerp(890, 916, u), cy: lerp(462, 478, u), scale: lerp(0.68, 0.73, u) * (1 + 0.004 * kick), rx: 0.025, ry: lerp(0.16, 0.08, u), rz: -0.005 });
+    const c0 = this.rig.toScreen(W / 2, H / 2), c1 = this.rig.toScreen(W, H);
+    (this.room.u.c!.value as THREE.Vector2).set(c0.x, c0.y);
+    (this.room.u.r!.value as THREE.Vector2).set(Math.abs(c1.x - c0.x), Math.abs(c1.y - c0.y));
+    this.room.u.glow!.value = 1 + 0.25 * kick;
+    this.room.u.k!.value = k;
+    this.room.render(renderer, out);
+    const U = this.rig.u;
+    (U.bezelCol!.value as THREE.Vector3).set(LIN.ink[0] * 0.4, LIN.ink[1] * 0.4, LIN.ink[2] * 0.4);
+    (U.rimCol!.value as THREE.Vector3).set(...LIN.bone);
+    U.edgeDark!.value = 0.18;
+    U.glare!.value = 0.35 - 0.3 * u;
+    U.glareK!.value = 1.2;
+    U.k!.value = k;
+    this.rig.render(renderer, out);
+    return { bloom: 0.6, vignette: 0.55 };
+  }
+
+  /** 新聞畫面本身（電視訊號）。 */
+  private broadcast(f: Frame, out: THREE.WebGLRenderTarget) {
+    const { renderer, comp } = this.ctx;
+    const t = f.t;
+    const k = 1;
     const G = this.globe(t);
     // 相機：看著地球中心，距離讓球在畫面上是 G.r 那麼大；用 view offset 把中心搬到 (cx, cy)
     const fpx = (H / 2) / Math.tan((this.cam.fov * D2R) / 2);
@@ -222,8 +277,6 @@ export default class News extends Scene {
       sparkHead(this.glow, hl.x, hl.y, t, 1);
     }
     if (this.glow.count) this.glow.render(renderer, out);
-    const avoid: Rect[] = [[X0 - 10, LABEL.y - 10, XR - X0 + 20, this.headH + LABEL.h + 20], [X0 - 10, TK.y - 10, XR - X0 + 20, TK.h + 20]];
-    return { bloom: 0.7, vignette: 0.4, popupAvoid: avoid };
   }
 
   private project(v: V3) {
@@ -239,7 +292,7 @@ export default class News extends Scene {
     const hz = 1 / D; // 地平線：z 大於這個才看得到
     const face = (z: number) => clamp((z - hz) / 0.06);
     const gc = LIN.bone, sg = LIN.signal;
-    const ga = 0.16 * k;
+    const ga = 0.11 * k;
     const lines = (set: V3[][], alpha: number, w: number) => {
       if (alpha <= 0.005) return;
       for (const pl of set) {
@@ -301,7 +354,7 @@ export default class News extends Scene {
         if (prev) {
           const tail = 0.25 + 0.75 * (i / n);
           const vis = Math.min(face(prev[2] + 0.3 * (hgt - 1)), 1);
-          L.seg(prev[0], prev[1], prev[2], q[0], q[1], q[2], 1.5, sg[0] * 1.8, sg[1] * 1.8, sg[2] * 1.8, k * fade * tail * vis);
+          L.seg(prev[0], prev[1], prev[2], q[0], q[1], q[2], 1.5, sg[0] * 1.1, sg[1] * 1.1, sg[2] * 1.1, 0.7 * k * fade * tail * vis);
         }
         prev = q;
       }
@@ -321,37 +374,22 @@ export default class News extends Scene {
   private headlineSpark(t: number): { x: number; y: number } | null {
     const u = prog(t, this.b0 + 0.05, this.b0 + 0.5, ease.inOutCubic);
     if (u <= 0 || u >= 1) return null;
-    return { x: lerp(X0, XR, u), y: HEAD_Y };
+    return { x: lerp(X0, XR, u), y: this.headY };
   }
 
   private drawUI(t: number, pin: { x: number; y: number }, push: number) {
     const L = this.ui; L.clear();
     const c = L.ctx;
-    const { audio: au, live } = this.ctx;
-    const s = this.ctx.start, e = this.ctx.end;
-    c.globalAlpha = inOut(t, s, e, 0.2, 0.3);
+    const { audio: au } = this.ctx;
     c.textBaseline = 'alphabetic';
-    // ---- 台標與 LIVE（左上）
-    c.fillStyle = rgba('signal', 0.95); c.fillRect(X0, 104, 156, 56);
-    c.font = font(F.hei(900), 34); c.fillStyle = rgba('ink');
-    c.fillText('喜訊台', X0 + 20, 144);
-    c.font = font(F.mono(600), 15); c.fillStyle = rgba('bone', 0.8); c.letterSpacing = '3px';
-    c.fillText('AO NEWS · 24H', X0, 184);
-    c.letterSpacing = '0px';
+    // ---- 台標與 LIVE（左上，小小一組）：LIVE 的紅點一拍閃一次
+    c.font = font(F.hei(900), 34); c.fillStyle = rgba('bone', 0.8);
+    c.fillText('喜訊台', X0, 132);
     const bp = au.beatAt(t), blink = 1 - clamp((bp - Math.floor(bp)) * 2.5);
-    c.strokeStyle = rgba('bone', 0.5); c.lineWidth = 1.5; c.strokeRect(X0 + 176, 112, 170, 40);
     c.fillStyle = rgba('signal', 0.35 + 0.65 * blink);
-    c.beginPath(); c.arc(X0 + 198, 132, 8, 0, Math.PI * 2); c.fill();
-    c.font = font(F.mono(600), 22); c.fillStyle = rgba('bone', 0.95);
-    c.fillText('LIVE', X0 + 216, 140);
-    c.font = font(F.hei(500), 20); c.fillText('現場', X0 + 284, 140);
-    // 現場時間：午宴 12:30 開播，照歌曲時間走；冒號一拍閃一次
-    const mins = 12 * 60 + 30 + Math.floor(t / 60);
-    const hh = String(Math.floor(mins / 60)).padStart(2, '0'), mm = String(mins % 60).padStart(2, '0');
-    c.font = font(F.mono(500), 26); c.fillStyle = rgba('bone', 0.85);
-    c.fillText(hh, X0 + 368, 141);
-    c.fillStyle = rgba('bone', 0.3 + 0.55 * blink); c.fillText(':', X0 + 402, 141);
-    c.fillStyle = rgba('bone', 0.85); c.fillText(mm, X0 + 418, 141);
+    c.beginPath(); c.arc(X0 + 138, 120, 8, 0, Math.PI * 2); c.fill();
+    c.font = font(F.mono(600), 24); c.fillStyle = rgba('bone', 0.7);
+    c.fillText('LIVE', X0 + 156, 129);
 
     // ---- 現場標記的標籤（推鏡之後才出現，跟著標記走）
     const la = prog(push, 0.55, 0.9);
@@ -362,9 +400,6 @@ export default class News extends Scene {
       c.beginPath(); c.moveTo(pin.x + 6, pin.y - 6); c.lineTo(lx - 6, ly + 8); c.lineTo(lx + 180, ly + 8); c.stroke();
       c.font = font(F.hei(700), 26); c.fillStyle = rgba('bone', 0.95);
       c.fillText('婚禮現場', lx, ly);
-      c.font = font(F.mono(500), 15); c.fillStyle = rgba('ash', 0.9); c.letterSpacing = '2px';
-      c.fillText(`${VENUE[1].toFixed(2)}°N  ${VENUE[0].toFixed(2)}°E`, lx, ly + 32);
-      c.letterSpacing = '0px';
       c.restore();
     }
     c.fillStyle = rgba('ember'); c.beginPath(); c.arc(pin.x, pin.y, 4.5, 0, Math.PI * 2); c.fill();
@@ -374,56 +409,52 @@ export default class News extends Scene {
     const b0 = this.b0;
     const lu = prog(t, b0 - 0.05, b0 + 0.25, ease.outExpo);
     if (lu > 0) {
-      const lw = 170 * lu;
-      c.fillStyle = rgba('signal', 0.96); c.fillRect(X0, LABEL.y, lw, LABEL.h);
-      c.save(); c.beginPath(); c.rect(X0, LABEL.y, lw, LABEL.h); c.clip();
-      c.font = font(F.hei(900), 36); c.fillStyle = rgba('ink');
-      c.fillText(m?.couple ? '新人發言' : m ? '快訊' : '現場', X0 + 22, LABEL.y + 43);
+      const lw = (m?.couple ? 230 : 160) * lu;
+      c.fillStyle = rgba('signal', 0.96); c.fillRect(X0, this.headY - LABEL_H, lw, LABEL_H);
+      c.save(); c.beginPath(); c.rect(X0, this.headY - LABEL_H, lw, LABEL_H); c.clip();
+      c.font = font(F.hei(900), 40); c.fillStyle = rgba('ink');
+      c.fillText(m?.couple ? '新人發言' : m ? '快訊' : '現場', X0 + 24, this.headY - LABEL_H + 46);
       c.restore();
-      // 署名＝記者：「—— 阿哲　現場報導」
-      const bu = prog(t, b0 + 0.3, b0 + 0.7, ease.outExpo);
-      if (bu > 0) {
-        c.save(); c.globalAlpha *= bu;
-        c.fillStyle = rgba('ink2', 0.9); c.fillRect(X0 + 170, LABEL.y, (XR - X0 - 170) * bu, LABEL.h);
-        c.font = font(F.hand(400), 36); c.fillStyle = rgba('bone', 0.92);
-        const byline = m ? `${signature(m.name)}　現場報導` : '本台記者　現場報導';
-        c.fillText(byline, X0 + 200, LABEL.y + 42);
-        c.font = font(F.mono(500), 16); c.fillStyle = rgba('ash', 0.8); c.letterSpacing = '2px'; c.textAlign = 'right';
-        c.fillText(m ? `NO.${String(m.n).padStart(3, '0')}` : `${live.count} 則祝福`, XR - 24, LABEL.y + 38);
-        c.textAlign = 'left'; c.letterSpacing = '0px';
-        c.restore();
-      }
     }
     const hu = prog(t, b0 + 0.12, b0 + 0.5, ease.outExpo);
     if (hu > 0 && this.fit) {
       const fit = this.fit;
       const hh2 = this.headH;
-      c.fillStyle = rgba('bone', 0.95); c.fillRect(X0, HEAD_Y, (XR - X0) * hu, hh2);
+      c.fillStyle = rgba('bone', 0.95); c.fillRect(X0, this.headY, (XR - X0) * hu, hh2);
       // 每個小節線，上緣掃過一道訊號色的光
       const bar = au.barAt(t), ph = bar - Math.floor(bar);
       const sweep = prog(ph, 0, 0.35, ease.inOutCubic);
       if (t > b0 + 0.6 && sweep < 1) {
         const sx = X0 + (XR - X0) * sweep;
-        c.fillStyle = rgba('signal', 0.9 * (1 - sweep)); c.fillRect(Math.max(X0, sx - 160), HEAD_Y, sx - Math.max(X0, sx - 160), 5);
+        c.fillStyle = rgba('signal', 0.9 * (1 - sweep)); c.fillRect(Math.max(X0, sx - 160), this.headY, sx - Math.max(X0, sx - 160), 5);
       }
-      c.fillStyle = rgba('signal', 0.95); c.fillRect(X0, HEAD_Y, 8, hh2);
-      c.save(); c.beginPath(); c.rect(X0, HEAD_Y, (XR - X0) * hu, hh2); c.clip();
+      c.fillStyle = rgba('signal', 0.95); c.fillRect(X0, this.headY, 8, hh2);
+      c.save(); c.beginPath(); c.rect(X0, this.headY, (XR - X0) * hu, hh2); c.clip();
       // 頭條一行一行從下面冒上來（每行錯開 0.08 秒）
       fit.lines.forEach((ln, i) => {
         const ku = prog(t, b0 + 0.25 + i * 0.08, b0 + 0.6 + i * 0.08, ease.outExpo);
         if (ku <= 0) return;
         const one: FitResult = { ...fit, lines: [ln] };
-        const y = HEAD_Y + 30 + fit.size * 0.92 + i * fit.lineHeight + (1 - ku) * 40;
+        const y = this.headY + 30 + fit.size * 0.92 + i * fit.lineHeight + (1 - ku) * 40;
         c.save(); c.globalAlpha *= ku;
         drawMessage(c, one, F.ming(700), X0 + 40, y, { color: rgba('ink', 0.96) });
         c.restore();
       });
+      // 署名＝記者：「—— 阿哲　現場報導」（面板裡的最後一行，靠右）
+      if (m) {
+        const bu = prog(t, b0 + 0.5, b0 + 0.9, ease.outCubic);
+        c.save(); c.globalAlpha *= bu;
+        c.font = font(F.hand(400), 50); c.fillStyle = rgba('ink', 0.72); c.textAlign = 'right';
+        c.fillText(`${signature(m.name)}　現場報導`, XR - 40, this.headY + hh2 - 34);
+        c.textAlign = 'left';
+        c.restore();
+      }
       c.restore();
     }
     if (!m && hu > 0) {
       // 沒有留言：頭條下面一句邀請（跑馬燈上面）
-      c.font = font(F.hei(500), 26); c.fillStyle = rgba('bone', 0.8 * hu);
-      c.fillText('掃描右下角 QR code，你的祝福就是下一則頭條', X0 + 4, HEAD_Y + this.headH + 34);
+      c.font = font(F.hei(500), 30); c.fillStyle = rgba('bone', 0.55 * hu);
+      c.fillText('掃描右下角 QR code，你的祝福就是下一則頭條', X0 + 260, this.headY - 20);
     }
 
     // ---- 跑馬燈（歌詞）
@@ -459,8 +490,9 @@ export default class News extends Scene {
     c.fillStyle = rgba('ink', 0.94); c.fillRect(X0, TK.y, XR - X0, TK.h);
     c.fillStyle = rgba('bone', 0.12); c.fillRect(X0, TK.y, XR - X0, 1.5);
     c.fillStyle = rgba('bone', 0.92); c.fillRect(X0, TK.y, TK.labelW, TK.h);
-    c.font = font(F.hei(900), 30); c.fillStyle = rgba('ink');
-    c.fillText(lyrics.has ? '♪ 現場' : '即時', X0 + 24, TK.y + 50);
+    c.font = font(F.hei(900), lyrics.has ? 44 : 32); c.fillStyle = rgba('ink'); c.textAlign = 'center';
+    c.fillText(lyrics.has ? '♪' : '即時', X0 + TK.labelW / 2, TK.y + TK.h / 2 + (lyrics.has ? 16 : 11));
+    c.textAlign = 'left';
     const x0 = X0 + TK.labelW + 12, base = TK.y + TK.h / 2 + TK_SIZE * 0.36;
     c.save();
     c.beginPath(); c.rect(x0, TK.y, XR - x0, TK.h); c.clip();
