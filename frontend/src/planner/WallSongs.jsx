@@ -422,15 +422,15 @@ function LyricSync({ lrc, offset, blobUrl, analysis, onLrc, onOffset, onShift })
   const play = () => { const a = audio.current; if (!a) return; stopAt.current = null; if (a.paused) a.play(); else a.pause(); };
   const seek = (x) => { const a = audio.current; if (a) a.currentTime = Math.max(0, Math.min(dur || a.duration || 0, x)); };
   /**
-   * 某一句的播放範圍（音檔時間）：從這句開頭，到「下一句開始後一點點」或「這句唱完後 margin 秒」，取比較早的那個
-   * （下一句隔很久才來的話，不用把間奏整段聽完）。end：這句唱完的時間（沒給就用現在算出來的）。
+   * 某一句的播放範圍（音檔時間）＝ LRC 上這句的時間到下一句的時間（新人要求：例如 00:13.939～00:16.592，前後都不多播）。
+   * 最後一句沒有下一句：播到算出來的結尾（end）後 1 秒；下一句隔很久（間奏）最多播 15 秒。
    */
-  const lineSpan = (idx, margin, end) => {
+  const lineSpan = (idx, end) => {
     const l = doc.lines[idx];
-    const start = (l.words?.find((w) => w.w.trim())?.t ?? l.t) + offset;
+    const start = l.t + offset;
     const nextL = doc.lines.slice(idx + 1).find((x) => Number.isFinite(x.t) && x.t > l.t + 0.05);
-    const e = end ?? rows.find((r) => r.i === idx)?.line?.end ?? start + 5;
-    return { start, stop: Math.min(nextL ? nextL.t + offset + 0.5 : Infinity, e + margin) };
+    const stop = nextL ? nextL.t + offset : (end ?? rows.find((r) => r.i === idx)?.line?.end ?? start + 5) + 1;
+    return { start, stop: Math.min(stop, start + 15) };
   };
   const playSpan = (from, stop) => { seek(from); stopAt.current = stop; audio.current?.play(); };
 
@@ -498,7 +498,7 @@ function LyricSync({ lrc, offset, blobUrl, analysis, onLrc, onOffset, onShift })
     }
     if (!units.length) return;
     audio.current?.pause();
-    const t0 = l.words?.find((w) => w.w.trim())?.t ?? l.t;
+    const t0 = l.t; // 第一個字／第一段就是這句在 LRC 上的時間
     setWt({ idx, t: t0, text: l.text, units, cuts: units.map(() => true), split: false, times: [], phase: "setup" });
   };
   const segsOf = (w) => {
@@ -513,14 +513,14 @@ function LyricSync({ lrc, offset, blobUrl, analysis, onLrc, onOffset, onShift })
   // 按的時間先記在 ref 裡：按很快的時候兩下之間畫面可能還沒更新，從 state 讀會漏掉一下。
   const taps = useRef([]);
   const cutsOf = (w) => segsOf(w).length - 1; // 要按的「開始」有幾下（不含第一段）
-  // 對字只播這一句：從前兩秒播到這句唱完（多留 3.5 秒，長音拉很久也來得及按最後一下）
+  // 對字只播這一句：從這句的時間播到下一句的時間
   const wordStart = () => {
     if (!wt) return;
     taps.current = [];
     setWt((w) => ({ ...w, times: [], phase: "tap" }));
     if (audio.current) audio.current.playbackRate = rate;
-    const sp = lineSpan(wt.idx, 3.5);
-    playSpan(sp.start - 2, sp.stop);
+    const sp = lineSpan(wt.idx);
+    playSpan(sp.start, sp.stop);
   };
   const wordHit = () => {
     const a = audio.current;
@@ -540,8 +540,9 @@ function LyricSync({ lrc, offset, blobUrl, analysis, onLrc, onOffset, onShift })
     if (!wt || !taps.current.length) return;
     taps.current = taps.current.slice(0, -1);
     setWt((w) => ({ ...w, times: taps.current, phase: "tap" }));
-    // 退回上一下之前一點點再播，一樣播到這句結束就停
-    playSpan((taps.current[taps.current.length - 1] ?? wt.t) + offset - 1.5, lineSpan(wt.idx, 3.5).stop);
+    // 退回上一下之前一點點再播（不早於這句開頭），一樣播到這句結束就停
+    const sp = lineSpan(wt.idx);
+    playSpan(Math.max(sp.start, (taps.current[taps.current.length - 1] ?? wt.t) + offset - 1.5), sp.stop);
   };
   const wordCancel = () => { audio.current?.pause(); stopAt.current = null; setRate(1); setWt(null); };
   const wordApply = () => {
@@ -556,11 +557,11 @@ function LyricSync({ lrc, offset, blobUrl, analysis, onLrc, onOffset, onShift })
     lines[wt.idx] = { t: wt.t, text: l.text, words };
     setUndo(lrc);
     onLrc(toLrc(lines, doc.meta));
-    const sp = lineSpan(wt.idx, 1.2, end !== undefined ? end + offset : undefined);
+    const sp = lineSpan(wt.idx, end !== undefined ? end + offset : undefined);
     setWt(null);
     // 馬上用正常速度重播這一句（只播這句），看字有沒有跟上
     setRate(1);
-    playSpan(wt.t + offset - 1.5, sp.stop);
+    playSpan(sp.start, sp.stop);
   };
   const wordClear = (idx) => {
     const lines = doc.lines.slice();
@@ -580,17 +581,38 @@ function LyricSync({ lrc, offset, blobUrl, analysis, onLrc, onOffset, onShift })
     return () => window.removeEventListener("keydown", onKey);
   }); // 每次重畫都重新綁，拿得到最新的狀態
 
+  // 對字中：這句的播放範圍；播放鍵只播這句
+  const span = wt ? lineSpan(wt.idx) : null;
+  const playLine = () => {
+    const a = audio.current;
+    if (!a || !span) return;
+    if (!a.paused) { a.pause(); stopAt.current = null; return; }
+    if (wt.phase === "tap") return wordStart();
+    playSpan(t >= span.start && t < span.stop - 0.05 ? t : span.start, span.stop);
+  };
+
   return (
     <div className="ws-sync">
       <audio ref={audio} src={blobUrl || undefined} onLoadedMetadata={(e) => setDur(e.currentTarget.duration)} onPlay={() => setPaused(false)} onPause={() => setPaused(true)} hidden />
-      <div className="ws-player">
-        <button type="button" className="btn btn-primary btn-sm" disabled={!blobUrl} onClick={play}>{paused ? <Play size={13} /> : <Pause size={13} />}</button>
-        <button type="button" className="btn btn-ghost btn-sm" onClick={() => seek(t - 5)}>−5 秒</button>
-        <div className="ws-bar" onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); stopAt.current = null; seek(((e.clientX - r.left) / r.width) * dur); }}>
-          <div style={{ width: `${dur ? (t / dur) * 100 : 0}%` }} />
+      {span ? (
+        // 對字時播放器只管這一句：進度條是這句的範圍，播放鍵只播這句（按的途中按播放鍵＝重按一次）
+        <div className="ws-player">
+          <button type="button" className="btn btn-primary btn-sm" disabled={!blobUrl} onClick={playLine}>{paused ? <Play size={13} /> : <Pause size={13} />}</button>
+          <div className="ws-bar" onClick={(e) => { if (wt.phase === "tap") return; const r = e.currentTarget.getBoundingClientRect(); playSpan(span.start + ((e.clientX - r.left) / r.width) * (span.stop - span.start), span.stop); }}>
+            <div style={{ width: `${Math.max(0, Math.min(100, ((t - span.start) / (span.stop - span.start)) * 100))}%` }} />
+          </div>
+          <span className="ws-time">這句 {fmtTime(span.start)}～{fmtTime(span.stop)}</span>
         </div>
-        <span className="ws-time">{fmtTime(t).slice(0, 5)} / {fmtTime(dur).slice(0, 5)}</span>
-      </div>
+      ) : (
+        <div className="ws-player">
+          <button type="button" className="btn btn-primary btn-sm" disabled={!blobUrl} onClick={play}>{paused ? <Play size={13} /> : <Pause size={13} />}</button>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => seek(t - 5)}>−5 秒</button>
+          <div className="ws-bar" onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); stopAt.current = null; seek(((e.clientX - r.left) / r.width) * dur); }}>
+            <div style={{ width: `${dur ? (t / dur) * 100 : 0}%` }} />
+          </div>
+          <span className="ws-time">{fmtTime(t).slice(0, 5)} / {fmtTime(dur).slice(0, 5)}</span>
+        </div>
+      )}
       {tap ? (
         <div className="ws-tap">
           <div className="ws-tap-list">
@@ -625,7 +647,7 @@ function LyricSync({ lrc, offset, blobUrl, analysis, onLrc, onOffset, onShift })
               </div>
               <div className="ws-lines" ref={listRef}>
                 {rows.map((r) => (
-                  <div key={r.i} data-row={r.i} className={`ws-line${r.i === curRow ? " now" : ""}`} onClick={() => { const sp = lineSpan(r.i, 1.2); playSpan(sp.start - 0.6, sp.stop); }}>
+                  <div key={r.i} data-row={r.i} className={`ws-line${r.i === curRow ? " now" : ""}`} onClick={() => { const sp = lineSpan(r.i); playSpan(sp.start, sp.stop); }}>
                     <span className="ws-tap-t">{fmtTime(r.l.t)}</span>
                     <span className="ws-line-text">{r.line ? <KaraokeLine line={r.line} t={t} small /> : r.l.text}</span>
                     {r.l.words?.length > 0 && <span className="pill pill-yes ws-line-pill" title="這句的字照你按的時間亮">逐字</span>}
@@ -689,7 +711,7 @@ function WordTapPanel({ wt, segs, rate, ended, onRate, onSplit, onCut, onStart, 
           {wt.split
             ? "點一個字，就從那個字開始新的一段（例如「窗外飛過著｜宣告戀愛｜的蜻蜓」）。第一段從這句原本的時間開始，不用按；之後每段開始唱的那一刻按一下空白鍵，段裡的字平均分時間。"
             : "第一個字從這句原本的時間開始，不用按；之後每個字開始唱的那一刻按一下空白鍵。"}
-          最後一個字唱完再按一下（沒按到也沒關係，結尾會自動推算）。會從這句前兩秒開始播、唱完這句就停；跟不上可以放慢。
+          最後一個字唱完再按一下（沒按到也沒關係，結尾會自動推算）。只播這一句（這句的時間到下一句的時間）；跟不上可以放慢。
         </div>
         <div className="toolbar" style={{ marginTop: 8 }}>
           <button type="button" className="btn btn-primary" onClick={onStart}><Play size={13} /> 開始（{cuts ? `按 ${cuts} 次開頭＋` : ""}唱完按 1 次）</button>
