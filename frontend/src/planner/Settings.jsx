@@ -78,21 +78,18 @@ export default function SettingsPage() {
     <div>
       <PageHead title="設定" sub="賓客端的開關與文案都在這裡，改完立即生效" />
 
-      {/* 目前階段（2026-09-28）：一眼看完各賓客頁開了沒，也直接在這裡開關。第二階段打開＝現在開放、關掉＝關閉（新人要求跟其他開關一樣簡單） */}
+      {/* 目前階段（2026-09-28）：卡片式，每張卡一個開關直接開關（新人要求維持卡片樣式）。第二階段打開＝現在開放、關掉＝關閉 */}
       <div className="panel">
         <div className="panel-head"><div className="panel-title"><Info size={18} /> 目前階段</div><span className="helper-text">直接切換就生效</span></div>
-        <div className="pl-switch-list">
-          <div className="pl-switch" style={{ cursor: "default" }}>
-            <Toggle checked disabled onChange={() => {}} label="第一階段意願調查" />
-            <div><div className="pl-list-title">第一階段意願調查（/rsvp） <span className="pill pill-yes">一直開放</span></div><div className="pl-list-sub">賓客回覆出席與人數，不需要開關</div></div>
-          </div>
-          <Switch label="第二階段出席與主餐確認（/details）" desc={stage.phase2_open ? `已開放（自 ${fmtDateTime(stage.phase2_open_at)} 起）；關掉後賓客會看到「尚未開放」` : "開啟後首頁與 /details 立刻切換，群發信可以在這之後寄"} value={!!stage.phase2_open} busy={!!busy}
+        <div className="pl-stage-row">
+          <StageCard on locked label="第一階段意願調查" value="一直開放（/rsvp）" />
+          <StageCard on={!!stage.phase2_open} busy={!!busy} label="第二階段出席與主餐" value={stage.phase2_open ? `已開放（自 ${fmtDateTime(stage.phase2_open_at)}）` : "尚未開放"}
             onChange={(v) => save({ phase2_open_at: v ? localToISO(nowLocal()) : "" }, "p2")} />
-          <Switch label="婚禮當天桌次查詢（/seat）" desc="開啟後賓客輸入姓名、電話或 Email 就能看到自己的桌子與座位；座位在「座位圖」安排" value={values.seat_open === "1"} busy={!!busy}
+          <StageCard on={values.seat_open === "1"} busy={!!busy} label="婚禮當天桌次查詢" value={values.seat_open === "1" ? "開放中（/seat）" : "關閉"}
             onChange={(v) => save({ seat_open: v ? "1" : "0" }, "seat")} />
-          <Switch label="婚禮當天照片上傳（/upload）" desc="開啟後賓客不用登入就能把當天拍的照片（原檔）傳給你們；在後台「當天照片」看與下載" value={values.guest_upload_open === "1"} busy={!!busy}
+          <StageCard on={values.guest_upload_open === "1"} busy={!!busy} label="婚禮當天照片上傳" value={values.guest_upload_open === "1" ? "開放中（/upload）" : "關閉"}
             onChange={(v) => save({ guest_upload_open: v ? "1" : "0" }, "upload")} />
-          <Switch label="婚紗照分享頁（/photos）" desc="只會顯示「文件庫」裡標記為公開的照片" value={values.photos_open === "1"} busy={!!busy}
+          <StageCard on={values.photos_open === "1"} busy={!!busy} label="婚紗照分享頁" value={values.photos_open === "1" ? "開放中（/photos）" : "關閉"}
             onChange={(v) => save({ photos_open: v ? "1" : "0" }, "photos")} />
         </div>
       </div>
@@ -152,15 +149,17 @@ export default function SettingsPage() {
   );
 }
 
-function Switch({ label, desc, value, onChange, busy }) {
+
+// 目前階段的卡片：狀態點、名稱、狀態說明，右上角一個開關（locked = 一直開放，不能關）
+function StageCard({ on, locked = false, busy = false, label, value, onChange }) {
   return (
-    <div className="pl-switch" onClick={() => !busy && onChange(!value)}>
-      <Toggle checked={value} disabled={busy} onChange={onChange} label={label} />
-      <div>
-        <div className="pl-list-title">{label} <span className={`pill ${value ? "pill-yes" : "pill-no"}`}>{value ? "開放中" : "關閉"}</span></div>
-        <div className="pl-list-sub">{desc}</div>
+    <div className={`pl-stage-item pl-stage-card${on ? " on" : ""}`} onClick={() => !locked && !busy && onChange && onChange(!on)} role={locked ? undefined : "button"}>
+      <span className={`status-dot${on ? "" : " off"}`} />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div className="pl-list-title">{label}</div>
+        <div className="pl-list-sub">{value}</div>
       </div>
+      <span onClick={(e) => e.stopPropagation()}><Toggle checked={!!on} disabled={locked || busy} onChange={(v) => onChange && onChange(v)} label={label} /></span>
     </div>
   );
 }
-

@@ -1385,3 +1385,7 @@ tbody tr:last-child td { border-bottom: none; }
 .up-preview-none { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; height: 100%; color: var(--text-muted); font-size: 10px; padding: 6px; word-break: break-all; text-align: center; }
 .up-preview-x { position: absolute; top: 6px; right: 6px; width: 28px; height: 28px; border-radius: 50%; border: none; background: rgba(61, 45, 32, .75); color: #fff; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
 .up-confirm { display: flex; align-items: center; justify-content: center; gap: 8px; }
+/* 設定頁「目前階段」卡片＋開關（2026-09-28） */
+.pl-stage-card { align-items: center; cursor: pointer; }
+.pl-stage-card.on { border-color: var(--milk-tea-300); background: #fbf6ee; }
+.pl-stage-card .status-dot { margin-top: 0; }
