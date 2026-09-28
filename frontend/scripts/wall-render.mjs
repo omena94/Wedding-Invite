@@ -176,6 +176,20 @@ try {
         await page.evaluate((tt) => window.__wall.still(tt), t0);
         const b = await grab();
         report.deterministic = a === b;
+        // 不一樣時記下差在哪裡（範圍、像素數、最大差），查原因用
+        if (!report.deterministic) {
+          report.detDiff = await page.evaluate(async ([da, db]) => {
+            const load = async (u) => { const im = new Image(); im.src = u; await im.decode(); const cv = new OffscreenCanvas(im.width, im.height); const c = cv.getContext('2d'); c.drawImage(im, 0, 0); return c.getImageData(0, 0, im.width, im.height); };
+            const A = await load(da), B = await load(db);
+            let n = 0, max = 0, x0 = 1e9, y0 = 1e9, x1 = -1, y1 = -1;
+            for (let i = 0; i < A.data.length; i += 4) {
+              const d = Math.max(Math.abs(A.data[i] - B.data[i]), Math.abs(A.data[i + 1] - B.data[i + 1]), Math.abs(A.data[i + 2] - B.data[i + 2]));
+              if (d) { n++; max = Math.max(max, d); const p = i / 4, x = p % A.width, y = Math.floor(p / A.width); x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
+            }
+            return { pixels: n, maxDiff: max, box: [x0, y0, x1, y1] };
+          }, [a, b]);
+          console.log('確定性差異：', JSON.stringify(report.detDiff));
+        }
         report.perf = +(await page.evaluate(([f, n]) => window.__wall.perf(f, n), [cs.t[2], 240])).toFixed(2);
       }
     }
