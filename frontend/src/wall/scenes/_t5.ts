@@ -1,9 +1,13 @@
 // 批次 T5（紙本 E ＋ 螢幕 A：notebook、stickynotes、chat、desktop、search、phone）共用的小工具。
 // 這六個版面的手法各不相同，共用的只有「時間骨架」（第一拍、小節線、窗格裡有哪幾句歌詞）與幾個畫圖的小零件，
 // 放在一起是為了讓六個版面的節拍感一致：東西都在拍點上彈出、在小節線上換狀態。
+import * as THREE from 'three';
 import type { AudioData } from '../engine/audio';
 import { Lyrics, type Line } from '../engine/lyrics';
 import { clamp, ease } from '../engine/util';
+import { FSPass, W, H, SCALE, makeRT, clearRT } from '../engine/gl';
+import { GLSL_COMMON, THEME_UNIFORMS } from '../engine/glsl/common';
+import { shared } from '../engine/scene';
 import { beatAfter, barAfter } from './_motifs';
 
 /** 窗格的節拍骨架。b0：第一拍；bar0：第一個小節線（太晚就用第二拍）；beat：拍長；bars：窗格裡的小節線。 */
@@ -101,4 +105,271 @@ export function settle(t: number, t0: number, freq = 2.6, damping = 0.62) {
   if (t <= t0) return 0;
   const w = Math.PI * 2 * freq, x = t - t0;
   return clamp(1 - Math.exp(-damping * w * x) * Math.cos(w * Math.sqrt(1 - damping * damping) * x), -0.2, 1.2);
+}
+
+// ================================================================ 空間：把螢幕、紙放進有景深的場景裡
+// MV 融合原則：螢幕類版面要「螢幕在空間裡」（透視、反光、景深），紙類版面要像擺在桌上被鏡頭拍。
+// 這裡是四個螢幕版面與兩個紙版面共用的東西：三維舞台（多重取樣＋深度貼圖）→ 景深 pass；機身、桌面、螢幕的材質；
+// 還有「把一張 2D 畫面當成桌上的紙斜著拍」的 tilt pass。整晚共用（shared），同一時間只會有一個 T5 版面在畫。
+
+// 顏色用 2 倍超取樣（景深 pass 在像素中心雙線性取樣＝剛好 2×2 平均，邊緣乾淨）；景深要的深度另外畫一張半解析度的深度圖。
+// 不用多重取樣（MSAA）：它在 D3D 上每次解出來的值末位會不一樣，同一格畫兩次不會完全相同（確定性檢查不過）。
+const STAGE_RT = () => makeRT(W, H, { pxScale: SCALE * 2 });
+// 深度寫成顏色（線性的相機距離）：直接讀硬體深度貼圖在這張顯卡上每次末位會不一樣（實測），寫成半浮點顏色就穩定
+const DEPTH_RT = () => makeRT(W / 2, H / 2);
+const DEPTH_MAT = () => new THREE.ShaderMaterial({
+  vertexShader: 'varying float vZ; void main() { vec4 mv = modelViewMatrix * vec4(position, 1.0); vZ = -mv.z; gl_Position = projectionMatrix * mv; }',
+  fragmentShader: 'varying float vZ; void main() { gl_FragColor = vec4(vZ, 0.0, 0.0, 1.0); }',
+});
+
+// 景深：用深度算每個像素的模糊半徑（焦內 = 0），24 點向日葵取樣；樣本自己夠糊才算進來，焦內的東西不會糊進背景。
+const DOF = () => new FSPass(/* glsl */ `
+  uniform sampler2D src; uniform sampler2D depthTex; uniform float near; uniform float far;
+  uniform float focus; uniform float range; uniform float maxR; uniform float falloff;
+  float linZ(vec2 uv) { return textureLod(depthTex, uv, 0.0).r; }
+  float coc(float z) { return clamp((abs(z - focus) - range) / (focus * falloff), 0.0, 1.0) * maxR; }
+  void main() {
+    vec3 col = textureLod(src, vUv, 0.0).rgb;
+    float c = coc(linZ(vUv));
+    if (c < 0.6) { fragColor = vec4(col, 1.0); return; }
+    vec3 acc = col; float ws = 1.0;
+    for (int i = 0; i < 24; i++) {
+      float r = sqrt((float(i) + 0.5) / 24.0);
+      float a = float(i) * 2.39996323;
+      vec2 uv = vUv + vec2(cos(a), sin(a)) * r * c / vec2(${W}.0, ${H}.0);
+      float w = smoothstep(r * c - 1.5, r * c + 1.5, coc(linZ(uv)) + 0.75);
+      acc += textureLod(src, uv, 0.0).rgb * w; ws += w;
+    }
+    fragColor = vec4(acc / ws, 1.0);
+  }`, { src: { value: null }, depthTex: { value: null }, near: { value: 1 }, far: { value: 100 }, focus: { value: 20 }, range: { value: 2 }, maxR: { value: 12 }, falloff: { value: 0.5 } });
+
+export interface DofOpts { focus: number; range: number; maxR: number; falloff?: number }
+
+/** 畫一個三維場景（先清成 bg 色）再經過景深，輸出到 out。 */
+export function renderStage(renderer: THREE.WebGLRenderer, scene: THREE.Scene, cam: THREE.PerspectiveCamera, out: THREE.WebGLRenderTarget, bg: readonly number[], dof: DofOpts) {
+  const rt = shared('t5.stage.rt', STAGE_RT);
+  clearRT(renderer, rt, [bg[0]!, bg[1]!, bg[2]!]);
+  renderer.setRenderTarget(rt);
+  renderer.render(scene, cam);
+  // 深度：同一個場景用只寫深度的材質再畫一次（半解析度、不取樣）
+  const drt = shared('t5.stage.depth', DEPTH_RT);
+  clearRT(renderer, drt, [0, 0, 0]);
+  const prevOverride = scene.overrideMaterial;
+  scene.overrideMaterial = shared('t5.stage.depthMat', DEPTH_MAT);
+  renderer.setRenderTarget(drt);
+  renderer.render(scene, cam);
+  scene.overrideMaterial = prevOverride;
+  const p = shared('t5.stage.dof', DOF);
+  p.u.src!.value = rt.texture; p.u.depthTex!.value = drt.texture;
+  p.u.near!.value = cam.near; p.u.far!.value = cam.far;
+  p.u.focus!.value = dof.focus; p.u.range!.value = dof.range; p.u.maxR!.value = dof.maxR; p.u.falloff!.value = dof.falloff ?? 0.5;
+  p.render(renderer, out);
+}
+
+const WORLD_VS = /* glsl */ `
+  varying vec3 vW; varying vec3 vN; varying vec2 vUv;
+  void main() { vec4 wp = modelMatrix * vec4(position, 1.0); vW = wp.xyz; vN = normalize(mat3(modelMatrix) * normal); vUv = uv; gl_Position = projectionMatrix * viewMatrix * wp; }`;
+
+/** 機身：簡單的打光（主光＋補光＋邊緣光＋一點高光），顏色每格從色票設。 */
+export function bodyMaterial() {
+  return new THREE.ShaderMaterial({
+    vertexShader: WORLD_VS,
+    fragmentShader: /* glsl */ `
+      uniform vec3 base; uniform vec3 keyDir; uniform vec3 keyCol; uniform vec3 fill; uniform float shine; uniform float rough;
+      varying vec3 vW; varying vec3 vN; varying vec2 vUv;
+      void main() {
+        vec3 n = normalize(vN); vec3 v = normalize(cameraPosition - vW); vec3 l = normalize(keyDir);
+        float lam = max(dot(n, l), 0.0);
+        float sp = pow(max(dot(n, normalize(l + v)), 0.0), rough) * shine;
+        float fr = pow(1.0 - max(dot(n, v), 0.0), 4.0);
+        gl_FragColor = vec4(base * (fill + keyCol * lam) + keyCol * sp + keyCol * fr * 0.2, 1.0);
+      }`,
+    uniforms: { base: { value: new THREE.Vector3() }, keyDir: { value: new THREE.Vector3(-0.5, 0.8, 0.6) }, keyCol: { value: new THREE.Vector3(1, 1, 1) }, fill: { value: new THREE.Vector3(0.1, 0.1, 0.1) }, shine: { value: 0.3 }, rough: { value: 40 } },
+  });
+}
+
+/**
+ * 螢幕：取 fast 的 Canvas（預乘、sRGB）自己解碼，當成自發光；玻璃有菲涅耳反光與一條柔和的窗光反射（跟著鏡頭角度動）。
+ * crt > 0：映像管（桶狀變形、掃描線）；on：亮度（開機、休眠）。
+ */
+export function screenMaterial() {
+  return new THREE.ShaderMaterial({
+    vertexShader: WORLD_VS,
+    fragmentShader: /* glsl */ `
+      uniform sampler2D ui; uniform float on; uniform vec3 sheen; uniform float crt; uniform vec2 res; uniform vec3 refl;
+      varying vec3 vW; varying vec3 vN; varying vec2 vUv;
+      ${GLSL_COMMON}
+      void main() {
+        vec2 uv = vUv;
+        vec2 c0 = uv - 0.5;
+        if (crt > 0.0) uv = 0.5 + c0 * (1.0 + crt * dot(c0, c0)) * (1.0 - crt * 0.18);
+        vec3 c = vec3(0.0);
+        if (uv.x > 0.0 && uv.x < 1.0 && uv.y > 0.0 && uv.y < 1.0) {
+          vec4 tx = texture2D(ui, uv);
+          c = tx.a > 0.0 ? toLinear(tx.rgb / tx.a) : vec3(0.0);
+          if (crt > 0.0) c *= 0.74 + 0.26 * smoothstep(0.1, 0.6, abs(fract(uv.y * res.y / 2.0) - 0.5) * 2.0);
+        }
+        vec2 e = abs(c0) * 2.0;
+        c *= on * (1.0 - 0.14 * pow(max(e.x, e.y), 5.0));
+        // 玻璃：菲涅耳＋一條窗光的反射（方向 refl），螢幕關著的時候也看得到
+        vec3 n = normalize(vN); vec3 v = normalize(cameraPosition - vW);
+        float fr = pow(1.0 - max(dot(n, v), 0.0), 3.0);
+        vec3 r = reflect(-v, n);
+        float band = smoothstep(0.2, 0.0, abs(dot(r, normalize(refl)) - 0.62));
+        c += sheen * (0.35 * fr + band * (0.25 + 0.75 * fr));
+        gl_FragColor = vec4(c, 1.0);
+      }`,
+    uniforms: { ui: { value: null }, on: { value: 1 }, sheen: { value: new THREE.Vector3(0.02, 0.02, 0.02) }, crt: { value: 0 }, res: { value: new THREE.Vector2(1000, 1000) }, refl: { value: new THREE.Vector3(-0.5, 0.7, 0.4) }, ...THEME_UNIFORMS },
+  });
+}
+
+/**
+ * 桌面（xz 平面）：兩個色之間的木紋、螢幕灑在桌上的光（glowPos 附近）、一盞燈的光、機身下的接觸陰影（旋轉的矩形）。
+ * 遠處（-z）慢慢融進 fade 色（房間的深處）。
+ */
+export function tableMaterial() {
+  return new THREE.ShaderMaterial({
+    vertexShader: WORLD_VS,
+    fragmentShader: /* glsl */ `
+      uniform vec3 base; uniform vec3 base2; uniform float grainK; uniform vec3 glowCol; uniform vec3 glowPos; uniform float glowR;
+      uniform vec4 shadow; uniform float shadowRot; uniform float shadowK; uniform vec3 fade; uniform float fadeZ;
+      uniform vec3 lampCol; uniform vec3 lampPos; uniform float lampR;
+      varying vec3 vW; varying vec3 vN; varying vec2 vUv;
+      ${GLSL_COMMON}
+      void main() {
+        vec2 p = vW.xz;
+        float g = fbm(vec2(p.x / 60.0, p.y / 2.2), 3) * 0.65 + fbm(p / 14.0, 2) * 0.35;
+        vec3 col = mix(base, base2, clamp(0.5 + g * grainK, 0.0, 1.0));
+        float d = length(p - glowPos.xz);
+        col += glowCol * exp(-d * d / (glowR * glowR));
+        float dl = length(p - lampPos.xz);
+        col += lampCol * exp(-dl * dl / (lampR * lampR));
+        vec2 q = p - shadow.xy;
+        float cs = cos(shadowRot), sn = sin(shadowRot);
+        q = vec2(cs * q.x + sn * q.y, -sn * q.x + cs * q.y);
+        vec2 b = abs(q) - shadow.zw;
+        float sd = length(max(b, 0.0)) + min(max(b.x, b.y), 0.0);
+        col *= 1.0 - shadowK * (0.8 * exp(-max(sd, 0.0) / 1.2) + 0.2 * exp(-max(sd, 0.0) / 6.0));
+        col = mix(col, fade, smoothstep(0.0, 1.0, (-vW.z - fadeZ) / 60.0));
+        gl_FragColor = vec4(col, 1.0);
+      }`,
+    uniforms: {
+      base: { value: new THREE.Vector3() }, base2: { value: new THREE.Vector3() }, grainK: { value: 0.6 }, glowCol: { value: new THREE.Vector3() }, glowPos: { value: new THREE.Vector3() }, glowR: { value: 12 },
+      shadow: { value: new THREE.Vector4() }, shadowRot: { value: 0 }, shadowK: { value: 0.6 }, fade: { value: new THREE.Vector3() }, fadeZ: { value: 40 },
+      lampCol: { value: new THREE.Vector3() }, lampPos: { value: new THREE.Vector3() }, lampR: { value: 30 }, ...THEME_UNIFORMS,
+    },
+  });
+}
+
+/** 背景的牆（面向鏡頭的大平面）：上下漸層、一團柔和的光（窗或燈），很淡的紋理。 */
+export function backdropMaterial() {
+  return new THREE.ShaderMaterial({
+    vertexShader: WORLD_VS,
+    fragmentShader: /* glsl */ `
+      uniform vec3 top; uniform vec3 bottom; uniform vec3 lightCol; uniform vec2 lightPos; uniform float lightR; uniform float y0; uniform float y1;
+      varying vec3 vW; varying vec3 vN; varying vec2 vUv;
+      ${GLSL_COMMON}
+      void main() {
+        vec3 col = mix(bottom, top, smoothstep(y0, y1, vW.y));
+        vec2 d = vW.xy - lightPos;
+        col += lightCol * exp(-dot(d, d) / (lightR * lightR));
+        col *= 0.97 + 0.03 * fbm(vW.xy / 25.0, 2);
+        gl_FragColor = vec4(col, 1.0);
+      }`,
+    uniforms: { top: { value: new THREE.Vector3() }, bottom: { value: new THREE.Vector3() }, lightCol: { value: new THREE.Vector3() }, lightPos: { value: new THREE.Vector2() }, lightR: { value: 40 }, y0: { value: -20 }, y1: { value: 80 }, ...THEME_UNIFORMS },
+  });
+}
+
+/** 圓角的扁盒子（手機、筆電、螢幕的機身）：正面在 z = 0，往 -z 長 depth。 */
+export function slab(w: number, h: number, depth: number, r: number, bevel = 0.12, seg = 10): THREE.BufferGeometry {
+  const s = new THREE.Shape();
+  const x0 = -w / 2 + bevel, y0 = -h / 2 + bevel, x1 = w / 2 - bevel, y1 = h / 2 - bevel, rr = Math.max(0.01, r - bevel);
+  s.moveTo(x0 + rr, y0); s.lineTo(x1 - rr, y0); s.quadraticCurveTo(x1, y0, x1, y0 + rr); s.lineTo(x1, y1 - rr); s.quadraticCurveTo(x1, y1, x1 - rr, y1);
+  s.lineTo(x0 + rr, y1); s.quadraticCurveTo(x0, y1, x0, y1 - rr); s.lineTo(x0, y0 + rr); s.quadraticCurveTo(x0, y0, x0 + rr, y0);
+  const g = new THREE.ExtrudeGeometry(s, { depth: Math.max(0.01, depth - 2 * bevel), bevelEnabled: true, bevelThickness: bevel, bevelSize: bevel, bevelSegments: 3, curveSegments: seg });
+  g.translate(0, 0, -(depth - bevel));
+  g.computeVertexNormals();
+  return g;
+}
+
+/** 設 vec3 uniform（linear 色乘上 k）。 */
+export const setV3 = (u: THREE.IUniform, c: readonly number[], k = 1) => (u.value as THREE.Vector3).set(c[0]! * k, c[1]! * k, c[2]! * k);
+/** 兩個 linear 色混合。 */
+export const mixV = (a: readonly number[], b: readonly number[], k: number): [number, number, number] => [a[0]! + (b[0]! - a[0]!) * k, a[1]! + (b[1]! - a[1]!) * k, a[2]! + (b[2]! - a[2]!) * k];
+
+/** 世界座標投影成螢幕像素（檢查字的位置用）。 */
+export function toScreen(cam: THREE.Camera, p: THREE.Vector3): { x: number; y: number } {
+  const v = p.clone().project(cam);
+  return { x: (v.x * 0.5 + 0.5) * W, y: (0.5 - v.y * 0.5) * H };
+}
+
+// ---------------------------------------------------------------- 把一張 2D 畫面當成桌上的紙斜著拍
+/**
+ * tilt：src 是一張 1920×1080（邏輯）的 2D 畫面，當成一張平放的紙（1 單位 = 1 px，中心在原點，z = 0），
+ * 虛擬鏡頭在 cam、看向 look（同一套座標，y 向上＝紙的上方）；每個像素算射線打到紙上哪一點去取樣，
+ * 依距離做景深模糊（解析式，不用深度貼圖）。紙以外的地方用 edge 色（桌子）。燈 light（螢幕像素）附近亮一點。
+ */
+export const TILT = () => new FSPass(/* glsl */ `
+  uniform sampler2D src; uniform vec3 cam; uniform vec3 look; uniform float fov; uniform float roll;
+  uniform float focus; uniform float range; uniform float maxR; uniform vec3 edge; uniform vec2 light; uniform float lightK;
+  vec3 samplePage(vec2 q) {
+    if (q.x < 0.0 || q.x > ${W}.0 || q.y < 0.0 || q.y > ${H}.0) return edge;
+    return textureLod(src, vec2(q.x / ${W}.0, 1.0 - q.y / ${H}.0), 0.0).rgb;
+  }
+  void main() {
+    vec3 F = normalize(look - cam);
+    vec3 R0 = normalize(cross(F, vec3(0.0, 1.0, 0.0)));
+    vec3 U0 = cross(R0, F);
+    float cr = cos(roll), sr = sin(roll);
+    vec3 R = cr * R0 + sr * U0, U = -sr * R0 + cr * U0;
+    float th = tan(fov * 0.5);
+    vec2 frag = vec2(FRAG_PX.x, FRAG_PX.y);
+    vec2 ndc = frag / vec2(${W}.0, ${H}.0) * 2.0 - 1.0;
+    vec3 d = normalize(F + ndc.x * th * ${(W / H).toFixed(6)} * R + ndc.y * th * U);
+    float t = -cam.z / d.z;
+    vec3 P = cam + t * d;
+    vec2 q = vec2(P.x + ${W / 2}.0, ${H / 2}.0 - P.y);
+    // 景深：跟對焦距離差多少就糊多少（在紙面上取樣，半徑換算成紙面的長度）
+    float c = clamp((abs(t - focus) - range) / (focus * 0.35), 0.0, 1.0) * maxR;
+    vec3 col = samplePage(q);
+    if (c > 0.6) {
+      float px = t * th / ${H / 2}.0;
+      vec3 acc = col;
+      for (int i = 0; i < 16; i++) {
+        float r = sqrt((float(i) + 0.5) / 16.0);
+        float a = float(i) * 2.39996323;
+        acc += samplePage(q + vec2(cos(a), sin(a)) * r * c * px);
+      }
+      col = acc / 17.0;
+    }
+    // 一盞燈：light（螢幕像素，y 向下）附近亮一點、遠處暗一點
+    vec2 fl = vec2(frag.x, ${H}.0 - frag.y);
+    float lk = exp(-dot(fl - light, fl - light) / (1100.0 * 1100.0));
+    col *= mix(1.0, 0.84 + 0.2 * lk, lightK);
+    fragColor = vec4(col, 1.0);
+  }`, {
+  src: { value: null }, cam: { value: new THREE.Vector3(0, -300, 1200) }, look: { value: new THREE.Vector3() }, fov: { value: 0.8 }, roll: { value: 0 },
+  focus: { value: 1200 }, range: { value: 60 }, maxR: { value: 6 }, edge: { value: new THREE.Vector3() }, light: { value: new THREE.Vector2(700, 400) }, lightK: { value: 1 },
+});
+
+/** tilt 用的中間畫面（整晚共用）。 */
+export const tiltRT = () => shared('t5.tilt.rt', () => makeRT(W, H, { depthBuffer: false }));
+/** tilt pass（整晚共用）。 */
+export const tiltPass = () => shared('t5.tilt.pass', TILT);
+
+/**
+ * tilt 的正向投影（CPU）：紙上一點（2D 像素）→ 螢幕像素，給檢查字的位置、火花跟著紙走用。
+ * 參數跟 TILT 的 uniform 一樣。
+ */
+export function tiltProject(cam: THREE.Vector3, look: THREE.Vector3, fov: number, roll: number, x: number, y: number): { x: number; y: number } {
+  const P = new THREE.Vector3(x - W / 2, H / 2 - y, 0);
+  const F = look.clone().sub(cam).normalize();
+  const R0 = new THREE.Vector3().crossVectors(F, new THREE.Vector3(0, 1, 0)).normalize();
+  const U0 = new THREE.Vector3().crossVectors(R0, F);
+  const R = R0.clone().multiplyScalar(Math.cos(roll)).addScaledVector(U0, Math.sin(roll));
+  const U = R0.clone().multiplyScalar(-Math.sin(roll)).addScaledVector(U0, Math.cos(roll));
+  const v = P.sub(cam);
+  const z = v.dot(F), th = Math.tan(fov / 2);
+  const nx = v.dot(R) / (z * th * (W / H)), ny = v.dot(U) / (z * th);
+  return { x: (nx * 0.5 + 0.5) * W, y: (0.5 - ny * 0.5) * H };
 }

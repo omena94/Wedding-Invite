@@ -18,21 +18,23 @@ import { clamp, ease, lerp, prog, hash, pulse, mulberry32 } from '../engine/util
 import { fitText } from '../engine/text';
 import type { Line } from '../engine/lyrics';
 import { layoutLyric, drawLyric, drawHeart, fillWithHearts, signature, DATE_DOTS, type LyricStyle } from './_motifs';
-import { grid, windowLines, pad, type Grid } from './_t5';
+import { grid, windowLines, renderStage, type Grid } from './_t5';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'doc', paper: true, energy: [0.35, 1], bars: [4, 8], minMessages: 4 };
 
 // ---------------------------------------------------------------- 牆上的位置（鏡頭歸位時 = 螢幕像素，y 向下）
-const ROW = { x: 150, y: 108, w: 1190, n: 6 }; // 歌詞那一排（一張約 198）
+const ROW = { x: 140, y: 120, w: 820, n: 4 }; // 歌詞那一排（一張 205）：只在主打那張上面，跟主打同一個焦點
 const NOTE_S = ROW.w / ROW.n;
-const HERO = { x: 420, y: 632, s: 540, rot: -0.022 };
-const SLOTS = [[872, 505], [1190, 498], [868, 818], [1186, 812]] as const; // 右邊四格（中心）
+const HERO = { x: 460, y: 640, s: 620, rot: -0.022 };
+const SLOTS = [[1060, 470], [1370, 486], [1066, 790], [1380, 800]] as const; // 右邊四格（中心）：離焦點遠，會糊掉
 const SLOT_S = 282;
-const DECOR = [[1520, 250, 214, -0.07], [1712, 470, 190, 0.06], [1515, 650, 200, 0.04]] as const;
+const DECOR = [[1250, 170, 214, -0.07], [1700, 250, 190, 0.06], [1690, 620, 200, 0.04]] as const;
 // 字的畫布：atlas（不會變的）與 strip（歌詞，每格重畫；三條：歌名、偶數句、奇數句）
 const AT_W = 2048, AT_H = 1200, AT_RES = 1.25;
 const BAND_H = 200;
-const LY: LyricStyle = { family: F.archivo(100, 900), size: 112, minSize: 50, maxWidth: ROW.w - 70, align: 'center', lineHeight: 1.05 };
+// 歌詞比主打留言小一級；沒有留言時歌詞是焦點，大一點
+const LY: LyricStyle = { family: F.archivo(100, 700), size: 60, minSize: 50, maxWidth: ROW.w - 60, align: 'center', lineHeight: 1.1 };
+const LY_BIG: LyricStyle = { ...LY, family: F.archivo(100, 900), size: 84 };
 const SLAP = 0.15; // 貼上去要幾秒
 
 const TODO = ['☑ 找到座位', '☑ 吃飽了', '☐ 跟新人合照', '☐ 寫一句祝福', '記得：拿喜餅', '新郎 好帥', '新娘 好美', '芃芃 QQ 很乖'];
@@ -130,7 +132,7 @@ const CAP = 320;
 function makeRig() {
   const scene = new THREE.Scene();
   const cam = new THREE.PerspectiveCamera(26, W / H, 10, 20000);
-  const wallMat = new THREE.RawShaderMaterial({ glslVersion: THREE.GLSL3, vertexShader: WALL_VERT, fragmentShader: WALL_FRAG, uniforms: { ...THEME_UNIFORMS }, depthTest: false, depthWrite: false });
+  const wallMat = new THREE.RawShaderMaterial({ glslVersion: THREE.GLSL3, vertexShader: WALL_VERT, fragmentShader: WALL_FRAG, uniforms: { ...THEME_UNIFORMS }, depthTest: true, depthWrite: true }); // 牆要寫深度：景深靠它
   // 牆的頂點座標就是牆面座標（平移放進幾何，shader 直接拿來算紋路）
   const wall = new THREE.Mesh(new THREE.PlaneGeometry(9000, 6000).translate(960, -540, 0), wallMat);
   wall.frustumCulled = false; wall.renderOrder = 0;
@@ -231,7 +233,7 @@ export default class StickyNotes extends Scene {
     for (const b of g.bars) if (b > g.b0 + g.beat * 4.5 && b < e - g.beat * 0.5 && times.length < 12) times.push(b);
     times.filter((x) => x < e - 0.1).forEach((tt, k) => {
       const [sx, sy] = SLOTS[k % 4]!;
-      const cellX = 580 + (k % 5) * 292, cellY = (Math.floor(k / 5)) * 292;
+      const cellX = 660 + (k % 4) * 290, cellY = (Math.floor(k / 4)) * 292;
       const tx = nextText();
       this.smallCell(c, cellX, cellY, SLOT_S, tx.text, tx.name, k);
       const tone = k % 3;
@@ -263,13 +265,11 @@ export default class StickyNotes extends Scene {
   private heroCell(c: CanvasRenderingContext2D, x: number, y: number, s: number) {
     const m = this.msg;
     c.save(); c.beginPath(); c.rect(x, y, s, s); c.clip();
-    c.font = font(F.mono(500), 18); c.letterSpacing = '3px'; c.fillStyle = rgba('sepia', 0.55);
-    c.fillText(m ? `No.${pad(m.n)}${m.couple ? ' · FROM THE COUPLE' : ''}` : '空位 · 等你來貼', x + 36, y + 60);
-    c.letterSpacing = '0px';
     const text = m ? m.text : '掃描右下角 QR code，把你的祝福貼上來';
-    const fit = fitText(c, text, F.hand(700), s - 76, s - 190, { min: 44, max: 96, lineHeight: 1.22, maxLines: 7 });
-    c.font = font(F.hand(700), fit.size); c.fillStyle = rgba('sepia', 0.95);
-    const top = y + 92 + (s - 190 - fit.height) * 0.35;
+    // 高度預算扣掉署名那一行：署名永遠在字的下面
+    const fit = fitText(c, text, F.hand(700), s - 80, s - 150, { min: 48, max: m ? 116 : 64, lineHeight: 1.2, maxLines: 7 });
+    c.font = font(F.hand(700), fit.size); c.fillStyle = rgba('sepia', m ? 0.95 : 0.7);
+    const top = y + 44 + (s - 150 - fit.height) * 0.4;
     fit.lines.forEach((ln, i) => fillWithHearts(c, ln, x + 38, top + fit.size * 0.9 + i * fit.lineHeight));
     if (m) {
       c.font = font(F.hand(400), 36); c.fillStyle = rgba('sepia', 0.75); c.textAlign = 'right';
@@ -308,7 +308,7 @@ export default class StickyNotes extends Scene {
   /** 歌詞的兩條：正在唱的那句（跟唱）與上一句（全部唱完）。 */
   private drawBands(t: number) {
     const c = this.strip.ctx;
-    const st = { ...LY, active: rgba('blood'), sung: rgba('sepia', 0.94), unsung: rgba('sepia', 0.3) };
+    const st = { ...(this.msg ? LY : LY_BIG), active: rgba('blood'), sung: rgba('sepia', 0.94), unsung: rgba('sepia', 0.3) };
     for (let band = 1; band <= 2; band++) {
       c.clearRect(0, band * BAND_H, ROW.w, BAND_H);
       // 這一條屬於哪一句：窗格裡第 i 句用 band 1 + (i % 2)，挑最近開始蓋的那一句
@@ -362,21 +362,27 @@ export default class StickyNotes extends Scene {
     for (const a of Object.values(A)) { a.needsUpdate = true; a.addUpdateRange(0, n * 4); }
     R.geo.instanceCount = n;
 
-    // ---- 鏡頭：從斜一點、近一點的地方，在第一拍（主打貼上去）落定；每貼一張往前頂一下
-    const D = (H / 2) / Math.tan(THREE.MathUtils.degToRad(13));
+    // ---- 鏡頭：斜斜地看著牆（從左邊），焦點在主打那張與上面那排歌詞；右邊的便利貼越遠越糊（淺景深）。
+    // 第一拍（主打貼上去）前從更斜、更近的地方搖進來落定；之後每個小節線往前推一小步，每貼一張輕輕頂一下。
+    const D0 = (H / 2) / Math.tan(THREE.MathUtils.degToRad(13));
     const k = ease.outCubic(prog(t, s, Math.max(s + 0.3, g.b0 + 0.2)));
-    const push = 14 * pulse(t, lastSlap, 0.09);
-    const cx = 960 + (1 - k) * 110, cy = -540 + (1 - k) * 36;
-    R.cam.position.set(cx + (1 - k) * 160, cy, D * lerp(0.9, 1, k) - push);
-    R.cam.lookAt(cx, cy, 0);
+    let step = 0;
+    for (const b of g.bars) step += prog(t, b - 0.1, b + 0.7, ease.inOutCubic);
+    const push = 14 * pulse(t, lastSlap, 0.09) + Math.min(step, 6) * 22;
+    const yaw = 0.34 + (1 - k) * 0.12;
+    const look = new THREE.Vector3(800, -545, 0);
+    const D = D0 * lerp(0.95, 1.03, k) - push;
+    R.cam.position.set(look.x - Math.sin(yaw) * D, look.y + (1 - k) * 30, Math.cos(yaw) * D);
+    R.cam.lookAt(look);
     R.cam.updateMatrixWorld();
-    renderer.setRenderTarget(out);
-    renderer.render(R.scene, R.cam);
+    // 對焦在主打與歌詞那一排中間（牆上 x≈470）
+    const fp = new THREE.Vector3(470, -450, 0);
+    const focus = R.cam.position.distanceTo(fp);
+    renderStage(renderer, R.scene, R.cam, out, LIN.paper, { focus, range: 130, maxR: 16, falloff: 0.1 });
     for (const a of Object.values(A)) a.clearUpdateRanges();
     void au;
     return {
       paper: 1, bloom: 0.2, vignette: 0.26, grain: 0.04,
-      popupAvoid: [[ROW.x - 10, ROW.y - 10, ROW.w + 20, BAND_H + 20], [HERO.x - HERO.s / 2 - 20, HERO.y - HERO.s / 2 - 20, 1340 - (HERO.x - HERO.s / 2) + 40, HERO.s + 40]],
     };
   }
 }
