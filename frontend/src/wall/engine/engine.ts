@@ -16,7 +16,8 @@ import { DEFAULT_POST, Post, type PostParams } from './post';
 import { Hud } from './hud';
 import { Overlay } from './overlay';
 import type { Frame, Scene, SceneClass, SceneCtx, PostOverrides, SongInfo, LiveInfo, PlateSpecDecl } from './scene';
-import { loadFonts } from './type';
+import { loadFonts, loadText } from './type';
+import { SHARED as GLYPHS_SHARED, SCENES as GLYPHS } from 'virtual:wall-glyphs';
 import { loadStrokeFonts } from './stroke';
 import { LIN } from './palette';
 
@@ -110,6 +111,11 @@ export class Engine {
       }
       catch (err) { this.errors.push(`[${name}] ${String((err as Error)?.stack ?? err)}`); console.error(`scene module ${name} failed`, err); }
     }));
+    // 版面寫死的中文字先載字型：截圖／驗收（only）等全部載好再開始，同一格畫兩次才會一樣；
+    // 現場播放不擋開機，背景慢慢載（第一次輪到那個版面前多半已經載好了）
+    const glyphs = GLYPHS_SHARED + names.map((n) => GLYPHS[n] ?? '').join('');
+    if (only) await loadText(glyphs, 30000, true);
+    else void loadText(glyphs, 120000, true);
     this.post = new Post();
     this.hud = new Hud(this.live);
     this.overlay = new Overlay(this.live);

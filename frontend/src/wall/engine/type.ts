@@ -134,9 +134,11 @@ const CJK_LOAD: [string, number[]][] = [
  * 讓這段文字用到的 CJK 分片都下載好（每個字族、每個字重）。只會下載 unicode-range 有交集的分片，所以很便宜。
  * 最多等 `timeout` 毫秒：網路不好時寧可先用系統字，也不要讓畫面停住。
  */
-export async function loadText(text: string, timeout = 6000): Promise<void> {
+export async function loadText(text: string, timeout = 6000, tcOnly = false): Promise<void> {
   if (!text) return;
-  const jobs = CJK_LOAD.flatMap(([fam, wts]) => wts.map((w) => document.fonts.load(`${w} 40px "${fam}"`, text).catch(() => [])));
+  // tcOnly：只載繁中的三個字族（開機預載版面固定字用；簡中、韓文只是備援，全載太大）
+  const fams = tcOnly ? CJK_LOAD.filter(([fam]) => / TC$/.test(fam)) : CJK_LOAD;
+  const jobs = fams.flatMap(([fam, wts]) => wts.map((w) => document.fonts.load(`${w} 40px "${fam}"`, text).catch(() => [])));
   await Promise.race([Promise.all(jobs), new Promise((r) => setTimeout(r, timeout))]);
 }
 

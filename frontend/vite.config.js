@@ -69,8 +69,37 @@ function wallDevAudio() {
   };
 }
 
+// 大螢幕版面裡寫死的中文字（標題、標籤、冷面註腳）：打包時掃一遍 scenes/*.ts，給引擎開機時先把這些字的字型載好。
+// 中文字型是 Google Fonts 依字分片下載的，版面第一次出現時才載，網路慢就會先用備援字畫、那個窗格就一直是錯的字型。
+// 註解不算（註解也是中文，掃進來會多載一堆用不到的字）。
+function wallGlyphs() {
+  const ID = "virtual:wall-glyphs";
+  const RID = "\0" + ID;
+  const dir = resolve(__dirname, "src/wall/scenes");
+  const strip = (s) => s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:'"`\\])\/\/.*$/gm, "$1");
+  const cjk = (s) => [...new Set(s.match(/[⺀-〿㐀-鿿豈-﫿＀-￯]/g) || [])].join("");
+  return {
+    name: "wall-glyphs",
+    resolveId(id) { return id === ID ? RID : undefined; },
+    async load(id) {
+      if (id !== RID) return;
+      const { readdirSync, readFileSync } = await import("node:fs");
+      const { join } = await import("node:path");
+      const files = readdirSync(dir).filter((f) => f.endsWith(".ts"));
+      const src = (f) => { this.addWatchFile(join(dir, f)); return strip(readFileSync(join(dir, f), "utf8")); };
+      const shared = cjk(files.filter((f) => f.startsWith("_")).map(src).join(""));
+      const scenes = {};
+      for (const f of files.filter((f) => !f.startsWith("_") && !f.includes("-"))) {
+        const name = f.slice(0, -3);
+        scenes[name] = cjk(files.filter((g) => g === f || g.startsWith(`${name}-`)).map(src).join(""));
+      }
+      return `export const SHARED = ${JSON.stringify(shared)};\nexport const SCENES = ${JSON.stringify(scenes)};\n`;
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [react(), cleanUrls(), wallDevAudio()],
+  plugins: [react(), cleanUrls(), wallDevAudio(), wallGlyphs()],
   build: {
     outDir: "dist",
     emptyOutDir: true,
