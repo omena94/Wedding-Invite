@@ -97,7 +97,8 @@ export default function Upload() {
   return (
     <div className="container">
       <PreviewBanner stage={stage} closedLabels={stage && !stage.guest_upload_open ? ["照片上傳"] : []} />
-      <GuestHeader title="把今天的照片給我們" subtitle="拍到的每一張都想收藏，選好照片直接上傳就好" />
+      {/* 2026-09-28 新人給的文案 */}
+      <GuestHeader title="交出你的相簿！留下今天的美好瞬間 📸" subtitle={<>今天只顧著笑跟吃，你手上一定有好多精彩畫面<br />謝謝大家今天熱情相伴！<br />快把你們手機裡的照片全部丟過來給我們收藏吧！</>} />
 
       {stageError ? <LoadError error={stageError} retry={retry} /> : stage === null ? (
         <div className="loading">讀取中…</div>
@@ -123,7 +124,7 @@ export default function Upload() {
             <button type="button" className="btn-submit up-pick" onClick={() => fileRef.current?.click()}>
               <CloudUpload size={22} /> 選照片上傳
             </button>
-            <p className="helper-text" style={{ textAlign: "center", marginTop: 10 }}>可以一次選很多張，選好會先讓你看一遍，按「確認上傳」才會送出；照原檔上傳、不壓縮，每張最多 {MAX_MB}MB。</p>
+            <p className="helper-text" style={{ textAlign: "center", marginTop: 10 }}>選好照片直接上傳，每一張我們都想看！可以一次選很多張，按「確認上傳」才會送出；每張最多 {MAX_MB}MB。</p>
           </section>
 
           {picked.length > 0 && (
