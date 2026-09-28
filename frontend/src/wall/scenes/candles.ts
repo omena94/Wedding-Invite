@@ -6,7 +6,7 @@
 // 鏡頭整個窗格很慢地往前推一點點。
 import * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
-import { FSPass, Layer2D, W, H, SCALE, makeRT } from '../engine/gl';
+import { FSPass, Layer2D, W, H, SCALE, makeRT, sharedMSAA } from '../engine/gl';
 import { LineBatch } from '../engine/lines';
 import { F, font } from '../engine/type';
 import { rgba, mixRgba } from '../engine/palette';
@@ -54,7 +54,7 @@ export default class Candles extends Scene {
    * 3D 畫進 MSAA 的目標（蠟燭是細長的直線，不抗鋸齒會一直閃）。整晚共用一張、不釋放：
    * 一張約 80～100 MB 顯示記憶體，每個燭光窗格都重建的話第一格會卡一下。每格都整張蓋過（背景 pass 先畫滿），不怕殘留上一個窗格的畫面。
    */
-  rt = shared('candles.msaa', () => makeRT(W, H, { samples: 4 }));
+  rt = sharedMSAA();
   text = this.track(new Layer2D(W, H, undefined, { fast: true }));
   /** 繡在前擺上的留言（init 畫一次，當成桌布 shader 的貼圖）。 */
   cloth = this.track(new Layer2D(TEX.w, TEX.h, Math.min(2, SCALE * 1.5), { fast: true }));

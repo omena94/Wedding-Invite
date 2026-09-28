@@ -107,6 +107,8 @@ export const spec: PlateSpecDecl = {
   瀏覽器每次畫出來會差一點點（確定性偶發不過，也比較慢）。不要用 `document.fonts.check` 觸發重畫（它查的字族不一定會載到）。
   懷疑字型時間差時，可用 `scratchpad/detcheck.mjs <版面> <次數>`（環境變數 `FONT_DELAY=6000` 故意延遲字型）重現。
 - fast 的 Layer2D 貼圖要在自己的 shader 裡取樣：`fastLayer(texture(tex, uv))`（`GLSL_COMMON` 內建，解預乘、轉線性）。
+- **3D 抗鋸齒一律用 `sharedMSAA()`**（`gl.ts`，整晚全引擎只有一張 4× MSAA）：不要自己 `makeRT(W, H, { samples: 4 })`，
+  一張約 100 MB 顯示記憶體，每個版面各留一張會把會場筆電的內顯吃光。畫進去後同一個 `render()` 裡就要解析到 out，不要 track／dispose 它。
 - 半透明的全螢幕層疊在畫好的畫面上：`new FSPass(frag, uniforms, { over: true })`（預乘 One／OneMinusSrcAlpha）。
 - 有留言時歌詞的字級：`lyricSizeFor(留言字級)`（`_motifs.ts`，留言是焦點、歌詞小一級但 ≥ 48 px）。
 - **畫面上任何字（標籤、符號如 ∩、全形括號）都要在 `init()` 先 `await loadText(...)`**：引擎只預載 scenes 檔裡寫死的中文，

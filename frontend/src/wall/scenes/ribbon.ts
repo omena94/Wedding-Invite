@@ -10,7 +10,7 @@
 // 印在緞帶上的字是一張照弧長對應的圖層；蝴蝶結、吊牌也是網格。
 import * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
-import { FSPass, Layer2D, W, H, makeRT } from '../engine/gl';
+import { FSPass, Layer2D, W, H, makeRT, sharedMSAA } from '../engine/gl';
 import { LineBatch } from '../engine/lines';
 import { GLSL_COMMON, THEME_UNIFORMS } from '../engine/glsl/common';
 import { F, font } from '../engine/type';
@@ -211,7 +211,7 @@ export default class Ribbon extends Scene {
   rig = shared('ribbon.rig', makeRig);
   bg = shared('ribbon.bg', BG);
   /** 緞帶與吊牌是細長、邊很多的網格：畫進共用的 4× MSAA 目標（像 candles）。 */
-  rt = shared('ribbon.msaa', () => makeRT(W, H, { samples: 4 }));
+  rt = sharedMSAA();
   txt = this.track(new Layer2D(TEXW, TEXH, TEXRES, { fast: true }));
   tagL = this.track(new Layer2D(TAG.w, TAG.h, 1.5, { fast: true }));
   glow = this.track(new LineBatch(64, { screen2D: true, blend: 'normal' }));

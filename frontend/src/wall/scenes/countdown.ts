@@ -10,7 +10,7 @@
 // 畫法：three.js（MSAA 目標）畫擠出的數字與留言的那一片；背景（霧、地板格線）是全螢幕 shader；火花、灰塵是 LineBatch。
 import * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
-import { FSPass, Layer2D, W, H, makeRT } from '../engine/gl';
+import { FSPass, Layer2D, W, H, makeRT, sharedMSAA } from '../engine/gl';
 import { LineBatch } from '../engine/lines';
 import { F, font, ot } from '../engine/type';
 import { LIN, rgba } from '../engine/palette';
@@ -150,7 +150,7 @@ const BG = () => new FSPass(/* glsl */ `
 /** 整晚共用：數字幾何、MSAA 目標、背景。 */
 class Rig {
   digits = DIGITS();
-  msaa = makeRT(W, H, { samples: 4 });
+  msaa = sharedMSAA();
   bg = BG();
   scene = new THREE.Scene();
   cam = new THREE.PerspectiveCamera(FOV, W / H, 20, 60000);

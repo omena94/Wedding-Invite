@@ -11,7 +11,7 @@
 // 每格照攤開的角度算出每個頂點的位置，正面貼籤詩的 render target、背面是素紙）。整個 3D 畫進 MSAA 目標再貼到畫面上。
 import * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
-import { Layer2D, W, H, makeRT } from '../engine/gl';
+import { Layer2D, W, H, makeRT, sharedMSAA } from '../engine/gl';
 import { F, font } from '../engine/type';
 import { rgba } from '../engine/palette';
 import { GLSL_COMMON, THEME_UNIFORMS } from '../engine/glsl/common';
@@ -88,7 +88,7 @@ function makeRig() {
   const st = new Stage(1, 30);
   st.U.ambient.value = 0.78;
   const rt = docRT(PW, PH);
-  const msaa = makeRT(W, H, { samples: 4 });
+  const msaa = sharedMSAA();
   const objMat = (kind: number) => new THREE.RawShaderMaterial({
     glslVersion: THREE.GLSL3, vertexShader: OBJ_VERT, fragmentShader: OBJ_FRAG,
     uniforms: { ...THEME_UNIFORMS, pool: st.U.pool, lightDir: st.U.lightDir, ambient: st.U.ambient, kind: { value: kind } },

@@ -72,6 +72,18 @@ function fullscreenGeometry() {
  * declares its own uniforms and `void main()` writing `fragColor`. `vUv` (0..1) is provided,
  * and GLSL_COMMON (noise, hashes, sdf, palette, hatch helpers) is prepended.
  */
+
+let msaaSingleton: THREE.WebGLRenderTarget | null = null;
+/**
+ * 整晚共用「一張」全畫面 4× MSAA 目標（3D 版面畫抗鋸齒用）。2026-09-28：各版面原本各自 shared 一張，
+ * 一張約 100 MB 顯示記憶體、整晚不釋放，七、八個版面加起來會把會場筆電的內顯吃光。
+ * 同一時間只有一個場景在畫，而且每個版面都在自己的 render() 裡畫完就解析到 out，所以大家共用一張就夠。
+ * 規則：畫進去之後、同一個 render() 裡就要用完（不能期待下一格還留著內容）；不要 track()／dispose() 它。
+ */
+export function sharedMSAA(): THREE.WebGLRenderTarget {
+  return (msaaSingleton ??= makeRT(W, H, { samples: 4 }));
+}
+
 export class FSPass {
   mat: THREE.RawShaderMaterial;
   mesh: THREE.Mesh;

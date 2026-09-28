@@ -12,7 +12,7 @@
 // 影子是把骨牌沿光線方向壓扁到桌面畫進一張小圖、桌面取樣時模糊；最後一個景深 pass 輸出。
 import * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
-import { FSPass, Layer2D, W, H, SCALE, makeRT, clearRT } from '../engine/gl';
+import { FSPass, Layer2D, W, H, SCALE, makeRT, clearRT, sharedMSAA } from '../engine/gl';
 import { GLSL_COMMON, THEME_UNIFORMS } from '../engine/glsl/common';
 import { F, font, loadText } from '../engine/type';
 import { LIN, rgba } from '../engine/palette';
@@ -271,7 +271,7 @@ class Rig {
   shScene = new THREE.Scene();
   cam = new THREE.PerspectiveCamera(28, W / H, 10, 40000);
   shCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 5000);
-  msaa = makeRT(W, H, { samples: 4 });
+  msaa = sharedMSAA();
   shRT = makeRT(1024, 640, { pxScale: 1, type: THREE.UnsignedByteType, depthBuffer: false });
   table = TABLE();
   dof = DOF();
