@@ -76,7 +76,12 @@ export default class Chat extends Scene {
     await loadText(`今晚的賓客群組正在輸入錄音中掃描右下角加入聊天你的話會出現在這裡一位賓客芃芃加入了群組${COUPLE_ZH}${song.title}${m ? m.text + m.name : ''}${this.olds.map((o) => o.text + o.name).join('')}${this.lines.map((l) => l.text).join('')}`);
     this.tHero = g.b0 + g.beat;
     if (m) {
-      this.fit = fitText(c, m.text, F.hand(400), CW - 2 * PX - 120, 1150, { min: 104, max: 180, lineHeight: 1.22, maxLines: 8 });
+      // 短留言先試一行：一行放得下、字又比歌詞（98）明顯大，就不要斷行（「新婚快／樂！！！」很難讀）；
+      // 放一行會太小的才照長留言的方式斷成幾行
+      const one = fitText(c, m.text, F.hand(400), CW - 2 * PX - 120, 400, { min: 104, max: 180, lineHeight: 1.22, maxLines: 1 });
+      this.fit = one.lines.length === 1 && one.size >= 110 && one.width <= CW - 2 * PX - 120
+        ? one
+        : fitText(c, m.text, F.hand(400), CW - 2 * PX - 120, 1150, { min: 104, max: 180, lineHeight: 1.22, maxLines: 8 });
       this.heroW = this.fit.width + 110;
       this.heroH = this.fit.height + this.fit.size * 0.3 + 90;
     }
