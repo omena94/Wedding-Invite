@@ -1,7 +1,6 @@
 // 設定：第二階段開放時間、桌次查詢與婚紗照開關、婚禮資訊頁文案
 import { useEffect, useState } from "react";
-import { CalendarClock, Info, KeyRound, Save } from "lucide-react";
-import DateTimePicker from "../components/DateTimePicker.jsx";
+import { Info, KeyRound, Save } from "lucide-react";
 import Toggle, { Checkbox } from "../components/Toggle.jsx";
 import { fetchPlannerSettings, savePlannerSettings } from "../api.js";
 import { fmtDateTime, isoToLocal, localToISO } from "../constants.js";
@@ -79,51 +78,22 @@ export default function SettingsPage() {
     <div>
       <PageHead title="設定" sub="賓客端的開關與文案都在這裡，改完立即生效" />
 
-      {/* 目前階段（2026-09-28 從總覽搬過來）：賓客各頁現在開了沒，一眼看完 */}
+      {/* 目前階段（2026-09-28）：一眼看完各賓客頁開了沒，也直接在這裡開關。第二階段打開＝現在開放、關掉＝關閉（新人要求跟其他開關一樣簡單） */}
       <div className="panel">
-        <div className="panel-head"><div className="panel-title"><Info size={18} /> 目前階段</div></div>
-        <div className="pl-stage-row">
-          <StageItem ok label="第一階段意願調查" value="開放中（/rsvp）" />
-          <StageItem ok={stage.phase2_open} label="第二階段出席與主餐" value={stage.phase2_open ? `已開放（自 ${fmtDateTime(stage.phase2_open_at)}）` : stage.phase2_open_at ? `預計 ${fmtDateTime(stage.phase2_open_at)} 開放` : "尚未開放"} />
-          <StageItem ok={stage.seat_open} label="婚禮當天桌次查詢" value={stage.seat_open ? "開放中（/seat）" : "關閉"} />
-          <StageItem ok={stage.guest_upload_open} label="婚禮當天照片上傳" value={stage.guest_upload_open ? "開放中（/upload）" : "關閉"} />
-          <StageItem ok={stage.photos_open} label="婚紗照分享頁" value={stage.photos_open ? "開放中（/photos）" : "關閉"} />
-        </div>
-      </div>
-
-      {/* 第二階段 */}
-      <div className="panel">
-        <div className="panel-head"><div className="panel-title"><CalendarClock size={18} /> 第二階段（出席與主餐確認）</div></div>
-        <div className="pl-stage-banner">
-          <span className={`status-dot${stage.phase2_open ? "" : " off"}`} />
-          {stage.phase2_open
-            ? <>目前<strong>已開放</strong>（自 {fmtDateTime(stage.phase2_open_at)} 起）</>
-            : stage.phase2_open_at
-              ? <>目前<strong>尚未開放</strong>，預計 {fmtDateTime(stage.phase2_open_at)} 自動開放</>
-              : <>目前<strong>尚未開放</strong>，也還沒設定開放時間</>}
-        </div>
-        <div className="form-group grid-2">
-          <Field label="開放時間（台灣時間）" hint="時間到了首頁與 /details 會自動切換，不用再改任何東西；群發信可以在這之後寄">
-            <DateTimePicker value={isoToLocal(values.phase2_open_at)} onChange={(v) => set("phase2_open_at", v ? localToISO(v) : "")} placeholder="選擇開放日期" />
-          </Field>
-          <div style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap", paddingBottom: 18 }}>
-            <button className="btn btn-primary" disabled={!!busy} onClick={() => save({ phase2_open_at: values.phase2_open_at || "" }, "p2")}><Save size={14} /> 儲存時間</button>
-            <button className="btn btn-ghost" disabled={!!busy} onClick={() => save({ phase2_open_at: localToISO(nowLocal()) }, "p2now")}>立即開放</button>
-            <button className="btn btn-ghost" disabled={!!busy} onClick={() => save({ phase2_open_at: "" }, "p2off")}>關閉（清除時間）</button>
-          </div>
-        </div>
-      </div>
-
-      {/* 開關 */}
-      <div className="panel">
-        <div className="panel-head"><div className="panel-title"><Info size={18} /> 賓客頁面開關</div></div>
+        <div className="panel-head"><div className="panel-title"><Info size={18} /> 目前階段</div><span className="helper-text">直接切換就生效</span></div>
         <div className="pl-switch-list">
+          <div className="pl-switch" style={{ cursor: "default" }}>
+            <Toggle checked disabled onChange={() => {}} label="第一階段意願調查" />
+            <div><div className="pl-list-title">第一階段意願調查（/rsvp） <span className="pill pill-yes">一直開放</span></div><div className="pl-list-sub">賓客回覆出席與人數，不需要開關</div></div>
+          </div>
+          <Switch label="第二階段出席與主餐確認（/details）" desc={stage.phase2_open ? `已開放（自 ${fmtDateTime(stage.phase2_open_at)} 起）；關掉後賓客會看到「尚未開放」` : "開啟後首頁與 /details 立刻切換，群發信可以在這之後寄"} value={!!stage.phase2_open} busy={!!busy}
+            onChange={(v) => save({ phase2_open_at: v ? localToISO(nowLocal()) : "" }, "p2")} />
           <Switch label="婚禮當天桌次查詢（/seat）" desc="開啟後賓客輸入姓名、電話或 Email 就能看到自己的桌子與座位；座位在「座位圖」安排" value={values.seat_open === "1"} busy={!!busy}
-            onChange={(v) => save({ seat_open: v ? "1" : "" }, "seat")} />
+            onChange={(v) => save({ seat_open: v ? "1" : "0" }, "seat")} />
           <Switch label="婚禮當天照片上傳（/upload）" desc="開啟後賓客不用登入就能把當天拍的照片（原檔）傳給你們；在後台「當天照片」看與下載" value={values.guest_upload_open === "1"} busy={!!busy}
             onChange={(v) => save({ guest_upload_open: v ? "1" : "0" }, "upload")} />
           <Switch label="婚紗照分享頁（/photos）" desc="只會顯示「文件庫」裡標記為公開的照片" value={values.photos_open === "1"} busy={!!busy}
-            onChange={(v) => save({ photos_open: v ? "1" : "" }, "photos")} />
+            onChange={(v) => save({ photos_open: v ? "1" : "0" }, "photos")} />
         </div>
       </div>
 
@@ -194,14 +164,3 @@ function Switch({ label, desc, value, onChange, busy }) {
   );
 }
 
-function StageItem({ ok, label, value }) {
-  return (
-    <div className="pl-stage-item">
-      <span className={`status-dot${ok ? "" : " off"}`} />
-      <div>
-        <div className="pl-list-title">{label}</div>
-        <div className="pl-list-sub">{value}</div>
-      </div>
-    </div>
-  );
-}
