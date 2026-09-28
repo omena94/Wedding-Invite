@@ -28,6 +28,15 @@ const SLOTS: [number, number][] = [
 /** 下方的兩格要從底部往上長（高度看內容），這裡記哪幾格是「貼底」的。 */
 const BOTTOM = new Set([4, 6]);
 
+type Rect = [number, number, number, number];
+/** 一張高 h 的卡放在第 i 格時實際佔的範圍（貼底的往上長；碰到右下角 QR 就往上推）。 */
+function slotRect(i: number, h: number): Rect {
+  const [x, sy] = SLOTS[i]!;
+  let y = BOTTOM.has(i) ? sy - h : sy;
+  if (x + CARD_W > HUD_SAFE.x && y + h > HUD_SAFE.y) y = HUD_SAFE.y - h - 12;
+  return [x, y, CARD_W, h];
+}
+
 interface Popup {
   msg: Msg;
   t0: number;
@@ -62,15 +71,17 @@ export class Overlay {
   schedule(msg: Msg, t0: number, fresh: boolean, avoid: [number, number, number, number][] = []): boolean {
     const dur = clamp(readSeconds(msg.text) + (fresh ? 4.5 : 2.5), fresh ? 7 : 6, fresh ? 15 : 11);
     const t1 = t0 + dur;
-    const taken = new Set(this.popups.filter((p) => p.t1 > t0 - 0.6 && p.t0 < t1 + 0.6).map((p) => p.slot));
-    const free = SLOTS.map((_, i) => i).filter((i) => !taken.has(i));
-    if (!free.length) return false;
     this.measure.font = font(F.hand(400), TEXT_SIZE);
     const lines = wrap(this.measure, msg.text, CARD_W - PAD * 2);
     const h = PAD + 30 + lines.length * TEXT_SIZE * LINE_H + 12 + (msg.name ? 40 : 6) + PAD * 0.6;
+    // 同時在畫面上的卡用「實際大小」比，不只比格子編號：四行的長卡會往下長到隔壁格子的位置
+    const others = this.popups.filter((p) => p.t1 > t0 - 0.6 && p.t0 < t1 + 0.6).map((p) => ({ slot: p.slot, r: slotRect(p.slot, p.h) }));
+    const hits = (a: Rect, b: Rect, gap = 12) => a[0] < b[0] + b[2] + gap && b[0] < a[0] + a[2] + gap && a[1] < b[1] + b[3] + gap && b[1] < a[1] + a[3] + gap;
+    const free = SLOTS.map((_, i) => i).filter((i) => others.every((o) => o.slot !== i && !hits(slotRect(i, h), o.r)));
+    if (!free.length) return false;
     // 版面說「這裡有重要的字」的地方盡量不要蓋：先挑完全不重疊的格子（多個就隨機），都會重疊就挑蓋得最少的
     const overlap = (i: number) => {
-      const [sx, sy] = SLOTS[i]!, y0 = BOTTOM.has(i) ? sy - h : sy;
+      const [sx, y0] = slotRect(i, h);
       return avoid.reduce((s, [ax, ay, aw, ah]) => s + Math.max(0, Math.min(sx + CARD_W, ax + aw) - Math.max(sx, ax)) * Math.max(0, Math.min(y0 + h, ay + ah) - Math.max(y0, ay)), 0);
     };
     const scored = free.map((i) => ({ i, o: overlap(i) }));
@@ -100,10 +111,8 @@ export class Overlay {
   }
 
   private card(c: CanvasRenderingContext2D, p: Popup, t: number, paper: boolean, opacity: number, au: AudioData) {
-    const [sx, sy] = SLOTS[p.slot]!;
-    const x = sx, y = BOTTOM.has(p.slot) ? sy - p.h : sy;
-    // 右下角是 QR 的地盤：萬一重疊就往上推
-    const y2 = x + CARD_W > HUD_SAFE.x && y + p.h > HUD_SAFE.y ? HUD_SAFE.y - p.h - 12 : y;
+    // 跟挑位置時用同一套幾何（貼底往上長、碰到右下角 QR 往上推）
+    const [x, y2] = slotRect(p.slot, p.h);
     const w = CARD_W, h = p.h;
     const lt = t - p.t0, rem = p.t1 - t;
     // 進場：火花沿框跑一圈（0.7 秒），框裡的東西跟著淡入；離場：壓成一條線（0.45 秒）
@@ -118,7 +127,8 @@ export class Overlay {
     c.save();
     c.globalAlpha = alpha;
     // 底：暗版面用半透明的墨色、亮版面用紙色，讓字在任何背景上都讀得到
-    c.fillStyle = paper ? rgba('paper', 0.94 * fill) : rgba('ink2', 0.86 * fill);
+    // 底色夠不透明，後面版面的大字才不會透出來跟卡片的字打架
+    c.fillStyle = paper ? rgba('paper', 0.97 * fill) : rgba('ink2', 0.94 * fill);
     c.fillRect(x, top, w, hh);
     // 細框：隨進場進度畫出來
     const per = 2 * (w + hh), len = per * draw;

@@ -127,7 +127,13 @@ export class AudioData {
 
   /** Onset events of a kind in [t0, t1). */
   events(kind: string, t0: number, t1: number): [number, number][] {
-    return (this.onsets[kind] ?? []).filter(([t]) => t >= t0 && t < t1);
+    // 婚禮版：二分搜尋起點（一首歌有上千個 onset，版面每格都可能呼叫）
+    const list = this.onsets[kind] ?? [];
+    let lo = 0, hi = list.length;
+    while (lo < hi) { const m = (lo + hi) >> 1; if (list[m]![0] < t0) lo = m + 1; else hi = m; }
+    const out: [number, number][] = [];
+    for (let i = lo; i < list.length && list[i]![0] < t1; i++) out.push(list[i]!);
+    return out;
   }
 
   sample(t: number): AudioSample {

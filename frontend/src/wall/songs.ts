@@ -7,6 +7,7 @@ import { buildLyrics } from './lyrics/build';
 import { analyzeArrayBuffer, ANALYSIS_VERSION } from './analysis/client';
 import { fetchAnalysis, fetchAudio, saveAnalysis, type SongRow } from './net';
 import { pickTheme, themeByKey } from './themes';
+import { loadText } from './engine/type';
 
 export interface LoadedSong {
   row: SongRow;
@@ -50,6 +51,8 @@ export async function loadSong(row: SongRow, index: number, count: number, prevT
   // 導演與引擎用 duration 當這首歌的結尾：剪掉尾奏就是改這裡
   audio.duration = endAt;
   const lyrics = row.instrumental || !row.lyrics_lrc ? Lyrics.empty() : buildLyrics(row.lyrics_lrc, audio, row.lyrics_offset || 0);
+  // 整首歌詞、歌名、歌手的中文字型分片先載好（版面第一格才不會先用系統字頂著）；下一首是在背景準備的，不會卡畫面
+  await loadText(lyrics.lines.map((l) => l.text).join('') + row.title + row.artist);
   const theme = themeByKey(row.theme) ? row.theme : pickTheme(audio, row.id, prevTheme ? [prevTheme] : []);
   return {
     row, blob, startAt, endAt, gain: gainFor(audio.loudness),
