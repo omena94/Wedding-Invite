@@ -4,8 +4,10 @@
 //  - 酒標：上方小小的酒莊名「DOMAINE ALAN & OMENA」、年份（婚禮那一年）；中間的「品飲筆記」就是主打留言
 //    （思源宋體、最大、置中），署名是手寫的；下緣一行冷面小字（愛情法定產區、恕不退還）。
 //  - 歌詞印在酒標上方的一條深色瓶頸標上（燙金的細線，唱到的字是訊號色，深底上讀得清楚）。
-//  - 之後每個小節線，紙面的光澤從左掃到右一次（窗光掃過）；鏡頭一直很慢地推近。
-//  - 沒有留言：品飲筆記那一塊印的是歌詞（大字、跟唱），下面一行邀請；瓶頸標寫歌名。
+//  - 之後每個小節線，紙面的光澤從左掃到右一次（窗光掃過）；轉盤很慢地來回轉一點點；鏡頭一直很慢地推近。
+//  - 留言標準 v2：鏡頭不再推到酒標塞滿畫面，停在「看得到整個瓶身的寬、瓶子兩側是牆」的中景（酒瓶在畫面偏左，右下角 HUD 的後面是牆）；
+//    品飲筆記那一塊在畫面上約 765×270，留言 40～60 px。推近之後的下一拍，署名像用筆簽上去（從左寫到右）。
+//  - 沒有留言：品飲筆記那一塊印的是歌詞（跟唱），下面一行邀請；瓶頸標寫歌名。
 // 畫法：一個全螢幕 shader 把每個像素打回圓柱上的角度與高度（正交鏡頭＋一點俯角，是解析解，不用光線步進），
 // 酒標的紙與印刷是 init 畫好的圖層（有 mipmap，推近推遠都不閃），歌詞另一張圖層每格畫；玻璃、窗光、紙的光澤、
 // 背景牆上酒瓶的影子都在 shader 裡算。
@@ -17,9 +19,10 @@ import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, pulse, noise1, lerp } from '../engine/util';
 import { fitText } from '../engine/text';
 import { lyricAt, drawLyric, layoutLyric, beatAfter, COUPLE_EN, WEDDING_DATE, type LyricStyle } from './_motifs';
-import { preloadText, fitWithSig, INVITE_SMALL, paperSignal } from './_t19';
+import { preloadText, INVITE_SMALL, paperSignal } from './_t19';
 import { ensureBake, barsIn, sigInk } from './_t1';
-import { placeBlock, drawBlock, sigOf, T22_TEXT, type Rect } from './_t22';
+import { placeBlock, drawBlock, sigOf, fitV2, T22_TEXT, type Rect } from './_t22';
+import { lyricV2, V2 } from './_v2';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'keepsake', paper: true, energy: [0.15, 0.85], bars: [4, 10], weight: 1 };
 
@@ -32,10 +35,15 @@ const RW = 720;
 const LW = 2400, LH = 960;
 const RES = 1.25;
 /** 瓶頸標（深色，歌詞）與主標（紙）的範圍（v，label px）。 */
-const STRIP = { v0: 0, v1: 136 };
-const MAIN = { v0: 164, v1: LH };
+const STRIP = { v0: 0, v1: 150 };
+const MAIN = { v0: 178, v1: LH };
 /** 品飲筆記（留言）那一塊（label px，置中在 LW / 2）。 */
-const NOTE = { v0: 356, v1: 744, w: 1060 };
+const NOTE = { v0: 392, v1: 742, w: 980 };
+/**
+ * 推近之後的鏡頭：縮放 K1（正面 1 label px = 螢幕 K1 px）、瓶軸在畫面上的 x。
+ * 瓶身寬約 1120 px、在畫面偏左（右緣 x ≈ 1350），右下角 HUD 的後面是牆，不是深色的玻璃。
+ */
+const K1 = 0.78, AX = 770;
 const YEAR = String(WEDDING_DATE).slice(0, 4);
 const TOP1 = `DOMAINE ${COUPLE_EN.toUpperCase()}`;
 const TOP2 = `MILLÉSIME ${YEAR}  ·  宣文與孟庭酒莊`;
@@ -125,9 +133,11 @@ export default class WineLabel extends Scene {
   tPush = 1;
   bars: number[] = [];
   B = 0.5;
-  stripLyr: LyricStyle = { family: F.archivo(100, 700), size: 56, minSize: 48, maxWidth: 1200, align: 'center', active: rgba('signal'), sung: rgba('bone', 0.96), unsung: rgba('bone', 0.3), lineHeight: 1.1 };
-  noteLyr: LyricStyle = { family: F.archivo(100, 800), size: 88, minSize: 60, maxWidth: 1180, align: 'center', lineHeight: 1.14 };
+  stripLyr: LyricStyle = { family: F.archivo(100, 700), size: V2.lyrMax / K1, minSize: V2.lyrMin / K1, maxWidth: 1300, align: 'center', active: rgba('signal'), sung: rgba('bone', 0.96), unsung: rgba('bone', 0.3), lineHeight: 1.08 };
+  noteLyr: LyricStyle = { family: F.archivo(100, 800), size: V2.lyrMax / K1, minSize: V2.lyrMin / K1, maxWidth: 1100, align: 'center', lineHeight: 1.14 };
   avoid: Rect[] = [];
+  /** 手寫的署名（每格畫在 dyn 上，簽上去的進度用遮罩）：位置、字級、開始與結束時間。 */
+  sig: { text: string; x: number; y: number; w: number; size: number; t0: number; t1: number } | null = null;
 
   override async init() {
     const { audio: au, start: s, end: e } = this.ctx;
@@ -143,7 +153,13 @@ export default class WineLabel extends Scene {
     this.tPush = Math.min(barLen * 0.9, (e - this.tSpin) * 0.35, 2.2);
     this.bars = bars.filter((b) => b > this.tSpin + this.tPush + 0.3);
     this.drawLabel();
-    this.avoid = [[280, 330, 1360, 500], [360, 110, 1200, 140]];
+    // 署名：推近之後的下一拍開始簽（窗格短就簽快一點）
+    if (this.sig) {
+      const t0 = beatAfter(au, this.tSpin + this.tPush * 0.8);
+      this.sig.t0 = t0;
+      this.sig.t1 = t0 + clamp(Math.min(this.B * 2, (e - t0) * 0.25), 0.35, 1.1);
+    }
+    this.avoid = [[320, 270, 940, 430], [300, 200, 1000, 130]];
   }
 
   /** 酒標的紙與印刷（label px；中線 x = LW / 2）。 */
@@ -164,36 +180,41 @@ export default class WineLabel extends Scene {
       c.beginPath(); c.moveTo(0, a); c.lineTo(LW, a); c.moveTo(0, b); c.lineTo(LW, b); c.stroke();
     }
     // 上方：一小段葡萄藤（兩條捲鬚繞成一顆心）、酒莊名、年份
-    this.vine(c, cx, 214);
+    this.vine(c, cx, 238);
     c.textAlign = 'center'; c.textBaseline = 'alphabetic';
     c.fillStyle = rgba('sepia', 0.9);
-    c.font = font(F.serif(600), 26); c.letterSpacing = '9px'; c.fillText(TOP1, cx + 4, 276);
-    c.font = font(F.mono(500), 15); c.letterSpacing = '4px'; c.fillStyle = rgba('sepia', 0.62); c.fillText(TOP2, cx + 2, 304);
-    c.fillStyle = sigInk(0.95); c.font = font(F.mono(600), 15); c.letterSpacing = '5px'; c.fillText(NOTE_T, cx + 2, 342);
+    c.font = font(F.serif(600), 26); c.letterSpacing = '9px'; c.fillText(TOP1, cx + 4, 300);
+    c.font = font(F.mono(500), 15); c.letterSpacing = '4px'; c.fillStyle = rgba('sepia', 0.62); c.fillText(TOP2, cx + 2, 328);
+    c.fillStyle = sigInk(0.95); c.font = font(F.mono(600), 15); c.letterSpacing = '5px'; c.fillText(NOTE_T, cx + 2, 368);
     c.letterSpacing = '0px';
     // ---- 品飲筆記：主打留言（宋體、置中），署名手寫
+    let msgScreen: number | null = null;
     if (m) {
+      // 留言標準 v2：畫面上 40～60 px（依字數）；推近之後正面 1 label px = 螢幕 K1 px，所以酒標上的字級 = 畫面字級 ÷ K1
       const fam = F.ming(700), sfam = F.hand(700), sig = sigOf(m);
-      const short = Array.from(m.text).length <= 8;
-      const blk = fitWithSig(c, m.text, fam, NOTE.w, NOTE.v1 - NOTE.v0 - 20, { min: 50, max: short ? 118 : 96, lineHeight: 1.34, maxLines: 5 }, { ratio: 0.5, min: 40, max: 58 });
-      const top = NOTE.v0 + 20 + Math.max(0, (NOTE.v1 - NOTE.v0 - 20 - blk.height) * 0.45);
+      const blk = fitV2(c, m.text, fam, NOTE.w, NOTE.v1 - NOTE.v0 - 10, K1, { lineHeight: 1.32 });
+      msgScreen = blk.fit.size * K1;
+      const top = NOTE.v0 + 10 + Math.max(0, (NOTE.v1 - NOTE.v0 - 10 - blk.height) * 0.45);
       const pl = placeBlock(c, blk, fam, sig, cx, top, { align: 'center', sigFamily: sfam, sigAlign: 'center' });
-      drawBlock(c, blk, pl, fam, sig, { color: rgba('sepia', 0.95), sigColor: rgba('sepia', 0.8), sigFamily: sfam });
+      // 署名先不印：render 時一筆一筆簽上去（dyn 圖層）
+      drawBlock(c, blk, pl, fam, '', { color: rgba('sepia', 0.95), sigColor: rgba('sepia', 0.8), sigFamily: sfam });
+      this.sig = { text: sig, x: pl.sig.x, y: pl.sig.y, w: pl.sig.w, size: blk.sigSize, t0: 0, t1: 1 };
       if (m.couple) {
         c.textAlign = 'center'; c.font = font(F.mono(600), 15); c.letterSpacing = '5px'; c.fillStyle = sigInk(0.95);
-        c.fillText('FROM THE COUPLE  ·  新人', cx + 2, top - 6);
+        c.fillText('FROM THE COUPLE  ·  新人', cx + 2, top - 2);
         c.letterSpacing = '0px';
       }
     } else {
       c.textAlign = 'center'; c.fillStyle = rgba('sepia', 0.7);
       const fit = fitText(c, INVITE_SMALL, F.ming(700), 1000, 60, { min: 30, max: 38 });
       c.font = font(F.ming(700), fit.size);
-      c.fillText(INVITE_SMALL, cx, NOTE.v1 - 40);
+      c.fillText(INVITE_SMALL, cx, NOTE.v1 - 30);
     }
+    this.stripLyr = { ...this.stripLyr, size: lyricV2(msgScreen) / K1 };
     // ---- 下緣：愛情法定產區（冷面小字）
     c.textAlign = 'center';
-    c.fillStyle = rgba('sepia', 0.8); c.font = font(F.serif(600, true), 24); c.letterSpacing = '2px'; c.fillText(BOT1, cx, 794);
-    c.fillStyle = rgba('sepia', 0.55); c.font = font(F.mono(500), 13); c.letterSpacing = '3px'; c.fillText(BOT2, cx + 2, 822);
+    c.fillStyle = rgba('sepia', 0.8); c.font = font(F.serif(600, true), 24); c.letterSpacing = '2px'; c.fillText(BOT1, cx, 806);
+    c.fillStyle = rgba('sepia', 0.55); c.font = font(F.mono(500), 13); c.letterSpacing = '3px'; c.fillText(BOT2, cx + 2, 834);
     c.letterSpacing = '0px'; c.textAlign = 'left';
     L.upload();
   }
@@ -249,6 +270,23 @@ export default class WineLabel extends Scene {
       drawLyric(c, ly.line, t, this.noteLyr, lay, ly.k);
       c.restore();
     }
+    // 手寫的署名：從左往右簽上去（筆尖後面的墨是實的，前面還沒寫到的擦掉，邊緣柔一點）
+    const sg = this.sig;
+    if (sg && t > sg.t0) {
+      const q = ease.outQuad(clamp((t - sg.t0) / (sg.t1 - sg.t0)));
+      c.save();
+      c.textAlign = 'left'; c.font = font(F.hand(700), sg.size); c.fillStyle = rgba('sepia', 0.8);
+      c.fillText(sg.text, sg.x, sg.y);
+      if (q < 1) {
+        const ex = sg.x - 10 + (sg.w + 20) * q;
+        const g = c.createLinearGradient(ex - 14, 0, ex + 4, 0);
+        g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,0,1)');
+        c.globalCompositeOperation = 'destination-out';
+        c.fillStyle = g;
+        c.fillRect(ex - 14, sg.y - sg.size * 1.1, sg.w + 40, sg.size * 1.5);
+      }
+      c.restore();
+    }
     if (!this.msg && !ly) {
       // 沒有留言又在間奏：品飲筆記那一塊不要整片空白
       c.textAlign = 'center'; c.font = font(F.ming(700), 50); c.fillStyle = rgba('sepia', 0.32);
@@ -266,15 +304,17 @@ export default class WineLabel extends Scene {
     const u = clamp((t - this.tSpin) / 0.75);
     const settle = t > this.tSpin ? 0.035 * Math.exp(-(t - this.tSpin - 0.5) * 3.5) * Math.sin((t - this.tSpin) * 9) * clamp((t - this.tSpin - 0.35) / 0.2) : 0;
     const phi0 = -2.05 + 0.06 * (t - s);
-    const phi = lerp(phi0, 0, ease.outExpo(u)) + settle + 0.012 * noise1(t * 0.4, 5);
+    // 轉到正面之後，轉盤很慢地來回轉一點點（酒標左右漂、瓶身的反光跟著走；字一直讀得到）
+    const drift = 0.04 * Math.sin((t - this.tSpin - 0.75) * 0.55) * clamp((t - this.tSpin - 0.75) / 1.5);
+    const phi = lerp(phi0, 0, ease.outExpo(u)) + settle + 0.012 * noise1(t * 0.4, 5) + drift;
     const push = ease.inOutCubic(prog(t, this.tSpin, this.tSpin + this.tPush));
-    const k = lerp(0.56, 1, push) * (1 + 0.035 * ease.inOutQuad(prog(t, this.tSpin + this.tPush, e)));
+    const k = lerp(0.56, K1, push) * (1 + 0.035 * ease.inOutQuad(prog(t, this.tSpin + this.tPush, e)));
     const tau = lerp(0.24, 0.12, push);
     const P = this.pass;
     P.u.lab!.value = this.lab.texture;
     P.u.dyn!.value = D.texture;
     P.u.bake!.value = ensureBake(renderer);
-    (P.u.cam!.value as THREE.Vector4).set(960 + lerp(-40, 0, push), 560 - k * RW * Math.sin(tau) + lerp(30, 0, push), k, tau);
+    (P.u.cam!.value as THREE.Vector4).set(lerp(900, AX, push), 560 - k * RW * Math.sin(tau) + lerp(30, 0, push), k, tau);
     P.u.phi!.value = phi;
     // 小節線：紙面的光澤從左掃到右
     let sw = -9, swK = 0;

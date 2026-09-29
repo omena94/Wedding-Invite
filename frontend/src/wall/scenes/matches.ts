@@ -18,27 +18,35 @@ import { LineBatch } from '../engine/lines';
 import { F, font } from '../engine/type';
 import { LIN, rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, hash, noise1, lerp, pulse, frameIdx } from '../engine/util';
-import { sparkParticles, sparkHead, lyricAt, drawLyric, layoutLyric, beatAfter, lyricSizeFor, COUPLE_EN, DATE_DOTS, type LyricStyle } from './_motifs';
-import { preloadText, fitWithSig, INVITE_SMALL, type MsgBlock } from './_t19';
-import { makeCanvas, freeCanvas, barsIn } from './_t1';
-import { placeBlock, drawBlock, sigOf, T22_TEXT, type DrawnBlock, type Rect, type P2 } from './_t22';
+import { sparkParticles, sparkHead, lyricAt, drawLyric, layoutLyric, beatAfter, COUPLE_EN, DATE_DOTS, type LyricStyle } from './_motifs';
+import { preloadText, INVITE_SMALL, type MsgBlock } from './_t19';
+import { makeCanvas, freeCanvas, barsIn, beatsIn } from './_t1';
+import { lyricV2, V2 } from './_v2';
+import { placeBlock, drawBlock, sigOf, fitV2, T22_TEXT, type DrawnBlock, type Rect, type P2 } from './_t22';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'keepsake', paper: false, energy: [0, 0.7], bars: [4, 12], weight: 1 };
 
 /** 牆與桌面的交界（螢幕 y）。 */
-const LEDGE = 900;
+const LEDGE = 925;
 /** 留言寫在牆上的範圍（右上三分之二；火在左下）。 */
-const MSG = { x: 610, y: 150, w: 1110, h: 520 };
+const MSG = { x: 860, y: 190, w: 820, h: 390 };
 /** 歌詞：留言下面，左對齊留言；最寬到 x = 1340（右下角 QR 區的左邊）。 */
-const LYR = { x: 610, y: 790, maxW: 730 };
+const LYR = { x: 860, y: 712, maxW: 820 };
 /** 火柴拿起來之後，火柴頭的位置。 */
-const HOLD = { x: 430, y: 530 };
+const HOLD = { x: 413, y: 540 };
 /** 火柴：長度、粗細。 */
 const STICK = 214, THICK = 11;
 /** 擦火柴的磷面（盒側）：起點、終點的 y、x。 */
 const STRIKE = { y: 927, x0: 178, x1: 520 };
-/** 火柴盒離屏畫布的左上角（螢幕座標）。 */
+/** 火柴盒離屏畫布的左上角（道具座標）。 */
 const BOXO = { x: 120, y: 770 };
+/**
+ * 留言標準 v2：留言寫小一點（40～60 px、右側 ≤ 820×390），道具放大當主角——火柴盒、火柴、桌上的火柴屍體
+ * 都畫在「道具座標」（原本的螢幕座標），以畫面左下 PIV 為支點放大 PS 倍到螢幕上。
+ */
+const PS = 1.5, PIV = { x: 120, y: 1000 };
+const SX = (x: number) => PIV.x + (x - PIV.x) * PS;
+const SY = (y: number) => PIV.y + (y - PIV.y) * PS;
 const FOOT = '＊一根火柴的時間，剛好讀完一句祝福。';
 
 // ---------------------------------------------------------------- 灰泥牆的高度圖（整晚共用、只烤一次）
@@ -120,8 +128,20 @@ const WALL = () => new FSPass(/* glsl */ `
 
 // ---------------------------------------------------------------- 火焰與煙（疊加）
 const FLAME = () => new FSPass(/* glsl */ `
-  uniform vec2 fp; uniform vec4 fs; uniform vec4 sm; uniform float t;
+  uniform vec2 fp; uniform vec4 fs; uniform vec4 sm; uniform vec4 sm2; uniform float t;
   ${LIGHT_GLSL}
+  // 一縷煙：從 s.xy 往上升，左右飄、越高越寬越淡；s.z = 升了多久（決定多高）、s.w = 濃度
+  float smokeAt(vec2 p, vec4 s) {
+    if (s.w <= 0.002) return 0.0;
+    float v = s.y - p.y;
+    if (v < -6.0 || v > 720.0) return 0.0;
+    float cx = s.x + 26.0 * sin(v * 0.012 - t * 1.7) * sat(v / 180.0) + 42.0 * snoise(vec2(v * 0.003, t * 0.25 + s.x * 0.01)) * sat(v / 320.0);
+    float wd = 3.0 + v * 0.055;
+    float d = exp(-pow((p.x - cx) / wd, 2.0));
+    d *= sat((s.z * 170.0 - v) / 140.0) * (1.0 - sat(v / 700.0));
+    d *= 0.55 + 0.45 * snoise(vec2(p.x * 0.018, v * 0.012 - t * 0.9));
+    return max(d, 0.0) * s.w;
+  }
   void main() {
     vec2 p = vec2(FRAG_PX.x, ${H}.0 - FRAG_PX.y);
     vec3 col = vec3(0.0);
@@ -140,25 +160,16 @@ const FLAME = () => new FSPass(/* glsl */ `
       vec3 outer = mix(mix(C_BLOOD, C_SIGNAL, 0.35 + 0.65 * sat(1.0 - u)), C_BONE * 0.8, 0.3) * 2.2;
       vec3 hot = mix(C_EMBER, vec3(1.0), 0.55) * 4.2;
       col += (outer * body * (0.55 + 0.45 * base) + hot * core * base) * fs.z;
-      // 光暈（bloom 之外再一點，讓火焰周圍的空氣是暖的）
+    }
+    // 光暈（bloom 之外再一點，讓火焰周圍的空氣是暖的）：放在上面的範圍判斷外面，才不會切出一個圓圈的邊
+    if (fs.z > 0.002) {
       float r = length(q0 + vec2(0.0, fs.x * 0.4));
       col += fireCol() * 0.22 * exp(-r / (fs.x * 0.9)) * fs.z;
     }
-    // 煙：熄掉的地方升起一縷，左右飄、越高越寬越淡
-    if (sm.w > 0.002) {
-      float v = sm.y - p.y;
-      if (v > -6.0 && v < 720.0) {
-        float cx = sm.x + 26.0 * sin(v * 0.012 - t * 1.7) * sat(v / 180.0) + 42.0 * snoise(vec2(v * 0.003, t * 0.25 + sm.x)) * sat(v / 320.0);
-        float wd = 3.0 + v * 0.055;
-        float d = exp(-pow((p.x - cx) / wd, 2.0));
-        float top = sm.z * 170.0;
-        d *= sat((top - v) / 140.0) * (1.0 - sat(v / 700.0));
-        d *= 0.55 + 0.45 * snoise(vec2(p.x * 0.018, v * 0.012 - t * 0.9));
-        col += C_BONE * 0.07 * max(d, 0.0) * sm.w;
-      }
-    }
+    // 煙：熄掉的地方升起一縷；燒著的時候火焰上方也有一縷很淡的
+    col += C_BONE * 0.07 * (smokeAt(p, sm) + smokeAt(p, sm2));
     fragColor = vec4(col, 1.0);
-  }`, { fp: { value: new THREE.Vector2() }, fs: { value: new THREE.Vector4() }, sm: { value: new THREE.Vector4() }, t: { value: 0 } },
+  }`, { fp: { value: new THREE.Vector2() }, fs: { value: new THREE.Vector4() }, sm: { value: new THREE.Vector4() }, sm2: { value: new THREE.Vector4() }, t: { value: 0 } },
 { blending: THREE.AdditiveBlending, transparent: true });
 
 /** 一根火柴的時間表。 */
@@ -183,9 +194,12 @@ export default class Matches extends Scene {
   B = 0.5;
   blk: MsgBlock | null = null;
   pl: DrawnBlock | null = null;
-  lyr: LyricStyle = { family: F.archivo(100, 700), size: 52, minSize: 48, maxWidth: LYR.maxW };
-  /** 沒有留言：歌詞寫在牆上當主角。 */
-  soloLyr: LyricStyle = { family: F.archivo(100, 800), size: 92, minSize: 60, maxWidth: MSG.w, lineHeight: 1.12 };
+  lyr: LyricStyle = { family: F.archivo(100, 700), size: 48, minSize: V2.lyrMin, maxWidth: LYR.maxW };
+  /** 沒有留言：歌詞寫在牆上當主角（v2：一樣不超過 52）。 */
+  soloLyr: LyricStyle = { family: F.archivo(100, 800), size: V2.lyrMax, minSize: V2.lyrMin, maxWidth: MSG.w, lineHeight: 1.16 };
+  /** 拍點（火星往上飄）與小節線（火焰竄高一下）。 */
+  beats: number[] = [];
+  barT: number[] = [];
   avoid: Rect[] = [];
 
   override async init() {
@@ -202,14 +216,15 @@ export default class Matches extends Scene {
     const ts = [t0];
     for (const b of bars) if (b - ts[ts.length - 1]! >= life * 0.92 && e - b >= Math.max(3.5, life * 0.55) && ts.length < 4) ts.push(b);
     this.matches = ts.map((x, i) => ({ ts: x, te: i < ts.length - 1 ? ts[i + 1]! - Math.max(0.3, this.B * 0.75) : Infinity, life: i < ts.length - 1 ? ts[i + 1]! - x : Math.max(life, e - x + 1) }));
+    this.beats = beatsIn(au, t0 + 0.4, e);
+    this.barT = barsIn(au, t0 + 0.6, e);
 
     // ---- 牆上的字
     const c = this.paint.ctx;
     this.paint.clear();
     if (m) {
       const fam = F.hand(700);
-      const short = Array.from(m.text).length <= 8;
-      this.blk = fitWithSig(c, m.text, fam, MSG.w, MSG.h, { min: 56, max: short ? 150 : 124, lineHeight: 1.3, maxLines: 5 }, { ratio: 0.46, min: 42, max: 60 });
+      this.blk = fitV2(c, m.text, fam, MSG.w, MSG.h, 1, { lineHeight: 1.3 });
       const top = MSG.y + Math.max(0, (MSG.h - this.blk.height) * 0.45);
       const sig = sigOf(m);
       this.pl = placeBlock(c, this.blk, fam, sig, MSG.x, top);
@@ -219,12 +234,12 @@ export default class Matches extends Scene {
         c.fillText('FROM THE COUPLE · 新人', MSG.x, top - 26);
         c.letterSpacing = '0px';
       }
-      this.lyr = { ...this.lyr, size: lyricSizeFor(this.blk.fit.size) };
+      this.lyr = { ...this.lyr, size: lyricV2(this.blk.fit.size) };
       this.avoid = [this.pl.rect, [LYR.x - 10, LYR.y - 64, LYR.maxW + 20, 130]];
     } else {
       // 沒有留言：牆下方淡淡的一行邀請（歌詞在上面當主角）
-      c.font = font(F.hand(700), 40); c.fillStyle = rgba('bone', 0.62);
-      c.fillText(INVITE_SMALL, MSG.x, 760);
+      c.font = font(F.hand(700), 32); c.fillStyle = rgba('bone', 0.62);
+      c.fillText(INVITE_SMALL, MSG.x, 600);
       this.avoid = [[MSG.x - 10, MSG.y, MSG.w + 20, 660]];
     }
     this.paint.upload();
@@ -235,7 +250,7 @@ export default class Matches extends Scene {
 
   /** 火柴盒（離屏畫布，畫一次）：盒面（ALAN & OMENA）、盒側的磷面、拉出來的內盒裡一排火柴頭。 */
   private buildBox() {
-    const b = (this.box = makeCanvas(560, 220, 1.5));
+    const b = (this.box = makeCanvas(560, 220, 2));
     const c = b.c;
     // 畫布左上角對應螢幕 (BOXO.x, BOXO.y)：底下直接用螢幕座標畫
     c.translate(-BOXO.x, -BOXO.y);
@@ -334,7 +349,8 @@ export default class Matches extends Scene {
   }
   /** 掉在桌上的位置（盒子右邊，一根一根疊過去）。 */
   private liePose(i: number): Pose {
-    return { x: 700 + 64 * i + 14 * hash(this.seed, i), y: 1000 - 8 * hash(this.seed, i, 2), a: -0.18 + 0.36 * hash(this.seed, i, 3) + (i % 2 ? 3.1 : 0), alpha: 1 };
+    // 都往右躺（放大之後往左躺會蓋到火柴盒、往右太遠會進到右下角 QR 的底下）
+    return { x: 468 + 40 * i + 10 * hash(this.seed, i), y: 990 - 5 * hash(this.seed, i, 2), a: -0.14 + 0.28 * hash(this.seed, i, 3), alpha: 1 };
   }
   /** 第 i 根燒到哪裡（0..1，燒黑的長度比例）。 */
   private burnOf(i: number, t: number) {
@@ -386,36 +402,53 @@ export default class Matches extends Scene {
     c.restore();
   }
 
+  /** 火在 tb 時的位置（螢幕座標）與亮度（沒有火是 null）：火星從這裡出發。 */
+  private flameAt(tb: number): { x: number; y: number; I: number } | null {
+    let cur = -1;
+    for (let i = 0; i < this.matches.length; i++) if (tb >= this.matches[i]!.ts - 0.5) cur = i;
+    if (cur < 0) return null;
+    const fi = this.fire(cur, tb);
+    if (fi.I <= 0.05) return null;
+    const p = this.pose(cur, tb)!;
+    return { x: SX(p.x - Math.cos(p.a) * 10), y: SY(p.y - Math.sin(p.a) * 10 - 6) - 37 * PS * fi.h, I: fi.I };
+  }
+
   override render(f: Frame, out: THREE.WebGLRenderTarget): PostOverrides {
     const { renderer, comp, lyrics, song } = this.ctx;
     const t = f.t, s = this.ctx.start, e = this.ctx.end;
 
-    // ---- 現在是哪一根在燒、火在哪裡
+    // ---- 現在是哪一根在燒、火在哪裡（道具座標算姿勢，換成螢幕座標給光與火焰）
     let cur = -1;
     for (let i = 0; i < this.matches.length; i++) if (t >= this.matches[i]!.ts - 0.5) cur = i;
     let I = 0, flameH = 0, fx = -9999, fy = -9999, lean = 0;
     let smoke: [number, number, number, number] = [0, 0, 0, 0];
+    let wisp: [number, number, number, number] = [0, 0, 0, 0];
     const hats = this.ctx.audio.events('hat', t - 0.8, t + 1e-4);
+    // 小節線：像有一陣風從門縫進來，火焰竄高、亮一下（每個小節一個小事件）
+    let flare = 0;
+    for (const b of this.barT) flare += pulse(t, b, 0.18) * clamp((t - b) / 0.04);
     if (cur >= 0) {
       const fi = this.fire(cur, t);
       const p = this.pose(cur, t)!;
       // 火焰的根在火柴頭上（頭 → 尾的反方向），火焰本身永遠往上（再被 hi-hat 吹歪一點）
-      fx = p.x - Math.cos(p.a) * 10; fy = p.y - Math.sin(p.a) * 10 - 6;
+      fx = SX(p.x - Math.cos(p.a) * 10); fy = SY(p.y - Math.sin(p.a) * 10 - 6);
       const flick = 1 + 0.07 * noise1(t * 9.3, 5) + 0.05 * noise1(t * 23, 9);
-      I = fi.I * flick * (1 + 0.1 * f.a.kick);
-      flameH = 74 * fi.h * (1 + 0.06 * noise1(t * 7, 2)) * (1 + 0.08 * f.a.kick);
+      I = fi.I * flick * (1 + 0.1 * f.a.kick) * (1 + 0.35 * flare);
+      flameH = 74 * PS * fi.h * (1 + 0.06 * noise1(t * 7, 2)) * (1 + 0.08 * f.a.kick) * (1 + 0.3 * flare);
       for (const [et, st] of hats) {
         const a = t - et;
         lean += (hash(Math.round(et * 1000), 3) < 0.5 ? -1 : 1) * st * 0.22 * Math.exp(-a * 5) * Math.sin(a * 16);
       }
-      lean += 0.06 * noise1(t * 1.7, 4);
+      lean += 0.06 * noise1(t * 1.7, 4) + 0.12 * flare * Math.sin(t * 9);
+      // 燒著的時候火焰上方一直有一縷很淡的煙
+      if (fi.I > 0.05) wisp = [fx, fy - flameH * 0.9, 3.2, 0.3 * clamp(fi.I)];
     }
     // 煙：最近熄掉的那一根
     for (let i = 0; i < this.matches.length; i++) {
       const mt = this.matches[i]!;
       if (t >= mt.te && t < mt.te + 3.2) {
         const h0 = this.holdPose(i, mt.te);
-        smoke = [h0.x - Math.cos(h0.a) * 12, h0.y - Math.sin(h0.a) * 12 - 8, t - mt.te, 1 - clamp((t - mt.te - 1.6) / 1.6)];
+        smoke = [SX(h0.x - Math.cos(h0.a) * 12), SY(h0.y - Math.sin(h0.a) * 12 - 8), t - mt.te, 1 - clamp((t - mt.te - 1.6) / 1.6)];
       }
     }
     const lx = fx, ly = fy - flameH * 0.45;
@@ -429,13 +462,16 @@ export default class Matches extends Scene {
     Wp.u.amb!.value = amb;
     Wp.render(renderer, out);
 
-    // ---- 火柴盒、火柴、歌詞
+    // ---- 火柴盒、火柴（道具座標，放大到螢幕上）、歌詞
     const D = this.dyn, c = D.ctx;
     D.clear();
     const lightAt = (x: number, y: number) => {
       const r = Math.hypot(x - lx, y - ly);
       return amb * 4 + I * (0.55 / (1 + (r * r) / 90000) + 0.45 / (1 + (r * r) / 810000));
     };
+    c.save();
+    c.translate(PIV.x * (1 - PS), PIV.y * (1 - PS));
+    c.scale(PS, PS);
     // 桌上的火柴屍體
     for (let i = 0; i < this.matches.length; i++) {
       const mt = this.matches[i]!;
@@ -450,17 +486,18 @@ export default class Matches extends Scene {
       const p = this.pose(i, t);
       if (p) this.drawStick(c, p, this.burnOf(i, t), t > mt.ts + 0.1, 0.8);
     }
-    // 照光：離火越遠越暗（只蓋在已經畫的東西上）
+    c.restore();
+    // 照光：離火越遠越暗（只蓋在已經畫的道具上）
     c.save();
     c.globalCompositeOperation = 'source-atop';
-    const g = c.createRadialGradient(lx, ly, 0, lx, ly, 1300);
-    for (const r of [0, 120, 260, 420, 640, 900, 1300]) g.addColorStop(r / 1300, rgba('ink', clamp(1 - lightAt(lx + r, ly) * 1.05, 0.08, 0.96)));
+    const g = c.createRadialGradient(lx, ly, 0, lx, ly, 1500);
+    for (const r of [0, 150, 320, 520, 780, 1100, 1500]) g.addColorStop(r / 1500, rgba('ink', clamp(1 - lightAt(lx + r, ly) * 1.05, 0.08, 0.96)));
     c.fillStyle = g;
-    c.fillRect(100, 520, 900, 560);
-    const g2 = c.createRadialGradient(lx, ly, 0, lx, ly, 700);
+    c.fillRect(0, 150, 1400, 930);
+    const g2 = c.createRadialGradient(lx, ly, 0, lx, ly, 800);
     g2.addColorStop(0, rgba('signal', 0.18 * clamp(I))); g2.addColorStop(1, rgba('signal', 0));
     c.fillStyle = g2;
-    c.fillRect(100, 520, 900, 560);
+    c.fillRect(0, 150, 1400, 930);
     c.restore();
 
     // 歌詞（火光照得到，但就算火熄了也還讀得到：最暗不低於六成）
@@ -475,10 +512,10 @@ export default class Matches extends Scene {
         drawLyric(c, ly1.line, t, st, lay, ly1.k);
         c.restore();
       } else {
-        const k = kL(MSG.x + 300, 440);
+        const k = kL(MSG.x + 300, 400);
         const st: LyricStyle = { ...this.soloLyr, active: mixRgba('ink', 'signal', k), sung: mixRgba('ink', 'bone', k * 0.96), unsung: mixRgba('ink', 'bone', k * 0.3) };
         const lay = layoutLyric(c, ly1.line, st);
-        c.save(); c.translate(MSG.x, 470 - (lay.rows.length - 1) * lay.size * 0.55);
+        c.save(); c.translate(MSG.x, 420 - (lay.rows.length - 1) * lay.size * 0.58);
         drawLyric(c, ly1.line, t, st, lay, ly1.k);
         c.restore();
       }
@@ -490,7 +527,7 @@ export default class Matches extends Scene {
     // 註腳（第一根點著之後才出現，很淡）
     const m0 = this.matches[0]!;
     c.font = font(F.mono(500), 16); c.letterSpacing = '2px'; c.fillStyle = rgba('ash', 0.42 * prog(t, m0.ts + 0.6, m0.ts + 1.4));
-    c.fillText(FOOT, LYR.x, 952);
+    c.fillText(FOOT, LYR.x, 960);
     c.letterSpacing = '0px';
     comp.draw(renderer, D.upload(), out);
 
@@ -500,11 +537,13 @@ export default class Matches extends Scene {
     (Fp.u.fp!.value as THREE.Vector2).set(fx, fy);
     (Fp.u.fs!.value as THREE.Vector4).set(flameH, 0.34, clamp(I, 0, 1.8), lean);
     (Fp.u.sm!.value as THREE.Vector4).set(smoke[0], smoke[1], smoke[2], smoke[3]);
+    (Fp.u.sm2!.value as THREE.Vector4).set(wisp[0], wisp[1], wisp[2], wisp[3]);
     Fp.u.t!.value = t;
     Fp.render(renderer, out);
 
-    // ---- 火星（擦的那一下）與燒紅的那一圈
+    // ---- 火星（擦的那一下）、拍點往上飄的火星、燒紅的那一圈
     this.glow.clear();
+    const sg = LIN.signal, em = LIN.ember;
     for (let i = 0; i < this.matches.length; i++) {
       const mt = this.matches[i]!;
       const a = t - mt.ts;
@@ -513,20 +552,37 @@ export default class Matches extends Scene {
           const u = tb - mt.ts;
           if (u < 0.03 || u > 0.2) return null;
           const p = this.pose(i, tb)!;
-          return { x: p.x, y: p.y + 4 };
-        }, { rate: 260, life: 0.5, speed: 380, gravity: 900, seed: this.seed + i * 7, intensity: 1.2 });
-        if (a > 0.02 && a < 0.16) { const p = this.pose(i, t)!; sparkHead(this.glow, p.x, p.y, t, 0.9, 1 - a / 0.16); }
+          return { x: SX(p.x), y: SY(p.y + 4) };
+        }, { rate: 260, life: 0.5, speed: 420, gravity: 900, seed: this.seed + i * 7, intensity: 1.2 });
+        if (a > 0.02 && a < 0.16) { const p = this.pose(i, t)!; sparkHead(this.glow, SX(p.x), SY(p.y), t, 1.1, 1 - a / 0.16); }
       }
       // 燒紅的一圈：在燒黑與木頭的交界
       if (t > mt.ts + 0.3 && t < mt.te + 0.2) {
         const p = this.pose(i, t)!;
         const bl = this.burnOf(i, t) * STICK;
-        const cx = p.x + Math.cos(p.a) * bl, cy = p.y + Math.sin(p.a) * bl;
-        const nx = -Math.sin(p.a) * THICK * 0.5, ny = Math.cos(p.a) * THICK * 0.5;
+        const cx = SX(p.x + Math.cos(p.a) * bl), cy = SY(p.y + Math.sin(p.a) * bl);
+        const nx = -Math.sin(p.a) * THICK * 0.5 * PS, ny = Math.cos(p.a) * THICK * 0.5 * PS;
         const k = (t < mt.te ? 1 : 1 - (t - mt.te) / 0.2) * (0.7 + 0.3 * noise1(t * 13, i));
-        const sg = LIN.signal, em = LIN.ember;
-        this.glow.seg2(cx - nx, cy - ny, cx + nx, cy + ny, 3.2, [em[0] * 2.4 * k, em[1] * 1.8 * k, em[2] * 1.2 * k], 0.9);
-        this.glow.seg2(cx - nx * 1.4, cy - ny * 1.4, cx + nx * 1.4, cy + ny * 1.4, 7, [sg[0] * 0.5 * k, sg[1] * 0.35 * k, sg[2] * 0.2 * k], 0.5);
+        this.glow.seg2(cx - nx, cy - ny, cx + nx, cy + ny, 4.5, [em[0] * 2.4 * k, em[1] * 1.8 * k, em[2] * 1.2 * k], 0.9);
+        this.glow.seg2(cx - nx * 1.4, cy - ny * 1.4, cx + nx * 1.4, cy + ny * 1.4, 10, [sg[0] * 0.5 * k, sg[1] * 0.35 * k, sg[2] * 0.2 * k], 0.5);
+      }
+    }
+    // 拍點：火焰吐出兩三顆火星，搖搖晃晃往上飄、慢慢熄（小節線那一下多吐幾顆）
+    for (const b of this.beats) {
+      const age = t - b;
+      if (age < 0 || age > 1.8) continue;
+      const src = this.flameAt(b);
+      if (!src) continue;
+      const bi = Math.round(b * 1000);
+      const n = this.barT.some((x) => Math.abs(x - b) < 0.02) ? 6 : 2 + Math.floor(hash(bi, 1) * 2);
+      for (let k = 0; k < n; k++) {
+        const life = 1.1 + 0.7 * hash(bi, k, 2);
+        if (age > life) continue;
+        const u = age / life;
+        const vx = (hash(bi, k, 3) - 0.5) * 70, vy = -(90 + 90 * hash(bi, k, 4));
+        const x = src.x + vx * age + 14 * Math.sin(age * 5 + k * 2.1) * u, y = src.y + vy * age + 30 * age * age;
+        const heat = (1 - u) * (1 - u) * src.I;
+        this.glow.seg2(x, y, x - vx * 0.02, y - vy * 0.02, 2.2 * (1 - 0.5 * u), [(sg[0] + em[0]) * 1.4 * heat, (sg[1] + em[1]) * 1.1 * heat, (sg[2] + em[2]) * 0.7 * heat], Math.min(1, heat * 1.6));
       }
     }
     if (this.glow.count) this.glow.render(renderer, out);

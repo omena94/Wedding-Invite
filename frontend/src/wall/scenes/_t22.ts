@@ -11,6 +11,8 @@ import { fillWithHearts } from '../engine/motifs';
 import { signature, COUPLE_ZH } from './_motifs';
 import type { Msg } from '../engine/scene';
 import type { MsgBlock } from './_t19';
+import { fitText } from '../engine/text';
+import { msgMaxFor, sigV2, V2, fitClauses } from './_v2';
 
 export type Rect = [number, number, number, number];
 export type P2 = { x: number; y: number };
@@ -51,6 +53,29 @@ export function placeBlock(c: CanvasRenderingContext2D, blk: MsgBlock, family: s
   const sy = last.y + blk.sigDy;
   const x0 = Math.min(left, sx), x1 = Math.max(right, sx + sw);
   return { lines, sig: { x: sx, y: sy, w: sw }, rect: [x0, top, x1 - x0, sy + blk.sigSize * 0.3 - top] };
+}
+
+/**
+ * 留言標準 v2 的排版（留言＋署名）：字級照「畫面上的 px」（V2：40～60，依字數用 msgMaxFor 定上限），
+ * S = 容器（卡片、吊牌、貼圖）上 1 px 在畫面上是幾 px，所以畫在容器上的字級 = 畫面字級 ÷ S。
+ * 先照子句斷行（fitClauses：不會斷出「…這一天，要／一直…」），放不下才交給 fitText；
+ * 署名 sigV2（26～32），字級依「可用高度扣掉署名那一列」往下找，署名一定在最後一行下面（K 情境）。
+ */
+export function fitV2(c: CanvasRenderingContext2D, text: string, family: string, w: number, h: number, S = 1, o: { lineHeight?: number; maxLines?: number; min?: number; max?: number } = {}): MsgBlock {
+  const lh = o.lineHeight ?? 1.3, maxLines = o.maxLines ?? 5;
+  const min = (o.min ?? V2.msgMin) / S, max = Math.max(min, (o.max ?? msgMaxFor(text)) / S);
+  let hh = h, best: MsgBlock | null = null;
+  for (let k = 0; k < 8; k++) {
+    const opt = { min, max, lineHeight: lh, maxLines };
+    const fit = fitClauses(c, text, family, w, hh, opt) ?? fitText(c, text, family, w, Math.max(hh, min * 1.2), opt);
+    const ss = sigV2(fit.size * S) / S;
+    const sigDy = fit.size * 0.34 + ss * 1.02;
+    const height = fit.height + sigDy + ss * 0.26;
+    best = { fit, sigSize: ss, sigDy, height };
+    if (height <= h + 0.5 || hh <= min * 1.2) break;
+    hh = Math.max(min * 1.2, hh - (height - h + 2));
+  }
+  return best!;
 }
 
 /** 畫 placeBlock 排好的留言（愛心用我們自己畫的那顆）與署名。 */

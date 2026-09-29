@@ -18,10 +18,11 @@ import { LIN, rgba } from '../engine/palette';
 import { clamp, ease, prog, pulse, lerp, springStep, noise1, smoothstep } from '../engine/util';
 import { fitText } from '../engine/text';
 import { lyricAt, drawLyric, layoutLyric, beatAfter, COUPLE_EN, COUPLE_ZH, DATE_DOTS, type LyricStyle } from './_motifs';
-import { preloadText, fitWithSig, INVITE_SMALL, paperSignal } from './_t19';
+import { preloadText, INVITE_SMALL, paperSignal } from './_t19';
 import { barsIn } from './_t1';
 import { camDist } from './_t4';
-import { placeBlock, drawBlock, sigOf, stripGeometry, setStrip, T22_TEXT, type Rect } from './_t22';
+import { placeBlock, drawBlock, sigOf, stripGeometry, setStrip, fitV2, T22_TEXT, type Rect } from './_t22';
+import { lyricV2, V2 } from './_v2';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'keepsake', paper: false, energy: [0.15, 0.8], bars: [4, 12], weight: 1 };
 
@@ -35,8 +36,21 @@ const TEXW = 3400, TEXH = 132, TEXRES = 1.4;
 const TXT = { s0: 360, s1: 1180 };
 /** 蝴蝶結的結（螢幕座標）。 */
 const KNOT = { x: 1320, y: 196 };
-/** 吊牌：大小、繩孔在吊牌上的位置、繩長。 */
-const TAG = { w: 820, h: 500, hx: 410, hy: 44, str: 96 };
+/**
+ * 吊牌：大小、繩孔在吊牌上的位置、繩長。留言標準 v2：吊牌（留言的容器）在畫面上 ≤ 860×430，
+ * 吊牌離鏡頭比緞帶近一點，畫面上約放大 1.04 倍（TAG_S），740×400 → 約 770×416。
+ */
+const TAG = { w: 740, h: 400, hx: 370, hy: 40, str: 96 };
+const TAG_S = 1.04;
+/** 吊牌上寫留言的範圍（吊牌座標）。 */
+const TAGM = { x: 52, y: 92, w: 636, h: 282 };
+/** 背景裡慢慢飄落的捲曲緞帶（像拆禮物時剪下來、用剪刀刮捲的那種）：螺旋的圈數、每段的點數。 */
+const CURL_N = 120;
+const CURLS = [
+  { x: 260, y: 300, z: -700, s: 1.0, spin: 0.9, fall: 26, ph: 0.0 },
+  { x: 610, y: 150, z: -1300, s: 0.8, spin: -0.7, fall: 18, ph: 2.1 },
+  { x: 120, y: 620, z: -1000, s: 0.7, spin: 1.1, fall: 22, ph: 4.2 },
+];
 
 /** 綁好之後緞帶中心線的控制點（螢幕座標、z 往鏡頭）。 */
 const TIED: [number, number, number][] = [
@@ -65,7 +79,7 @@ precision highp int;
 in vec3 vN; in vec2 vUv; in vec3 vPos;
 out vec4 fragColor;
 ${GLSL_COMMON}
-uniform sampler2D txt; uniform float txtOn; uniform vec3 camPos; uniform float frontSign;
+uniform sampler2D txt; uniform float txtOn; uniform vec3 camPos; uniform float frontSign; uniform float dim;
 void main() {
   bool front = (gl_FrontFacing ? 1.0 : -1.0) * frontSign > 0.0;
   vec3 V = normalize(camPos - vPos);
@@ -88,7 +102,7 @@ void main() {
     vec3 alb = mix(C_SIGNAL, C_BLOOD, 0.42);
     col = alb * (0.12 + 0.85 * dif) + mix(C_EMBER, C_BONE, 0.4) * (spec * 0.45 + sheen * 0.16);
   }
-  col *= 0.72 + 0.28 * edge;
+  col *= (0.72 + 0.28 * edge) * dim;
   fragColor = vec4(col, 1.0);
 }`;
 
@@ -131,7 +145,7 @@ const toW = (p: V3) => new THREE.Vector3(p[0], H - p[1], p[2]);
 function satinMat(frontSign: number) {
   const m = new THREE.RawShaderMaterial({
     glslVersion: THREE.GLSL3, vertexShader: VERT, fragmentShader: SATIN,
-    uniforms: { ...THEME_UNIFORMS, txt: { value: null }, txtOn: { value: 0 }, camPos: { value: new THREE.Vector3() }, frontSign: { value: frontSign } },
+    uniforms: { ...THEME_UNIFORMS, txt: { value: null }, txtOn: { value: 0 }, camPos: { value: new THREE.Vector3() }, frontSign: { value: frontSign }, dim: { value: 1 } },
     side: THREE.DoubleSide, depthTest: true, depthWrite: true,
   });
   return m;
@@ -149,6 +163,21 @@ function loopPts(d: number, n = 44) {
     // 靠結的地方被束起來（窄），圈的外端最寬
     const pinch = 0.42 + 0.58 * Math.sin(a * 0.5);
     side.push(new THREE.Vector3(0.12 * d * Math.sin(a), sa, ca).normalize().multiplyScalar(HALF * 0.8 * pinch));
+  }
+  return { pts, side };
+}
+/**
+ * 捲曲緞帶（螺旋，軸是 y）：寬度方向沿著軸，像刮捲過的包裝緞帶一圈一圈彈簧似地垂著。
+ * 半徑往下慢慢變小、圈距慢慢變大（被自己的重量拉開）。
+ */
+function curlPts() {
+  const pts: THREE.Vector3[] = [], side: THREE.Vector3[] = [];
+  const turns = 4.5;
+  for (let i = 0; i < CURL_N; i++) {
+    const u = i / (CURL_N - 1), a = u * turns * Math.PI * 2;
+    const r = 58 * (1 - 0.3 * u), y = -u * 380 - 70 * u * u;
+    pts.push(new THREE.Vector3(r * Math.cos(a), y, r * Math.sin(a)));
+    side.push(new THREE.Vector3(0.25 * Math.sin(a), 1, -0.25 * Math.cos(a)).normalize().multiplyScalar(17));
   }
   return { pts, side };
 }
@@ -204,7 +233,14 @@ function makeRig() {
   tagPivot.add(tag);
   scene.add(tagPivot);
   const curve = new THREE.CatmullRomCurve3(TIED.map(toW), false, 'centripetal');
-  return { scene, cam, ribbon, mat, bow, bowMat, knotMat, knot, tagPivot, tag, tagMat, curve };
+  // 背景的捲曲緞帶：遠、暗（沒有景深，用暗一點代替失焦），慢慢轉著往下飄
+  const curlMat = satinMat(-1);
+  curlMat.uniforms.dim!.value = 0.24;
+  const curlG = stripGeometry(CURL_N);
+  const cp = curlPts();
+  setStrip(curlG, cp.pts, cp.side);
+  const curls = CURLS.map(() => { const m = new THREE.Mesh(curlG, curlMat); m.frustumCulled = false; m.renderOrder = -1; scene.add(m); return m; });
+  return { scene, cam, ribbon, mat, bow, bowMat, knotMat, knot, tagPivot, tag, tagMat, curve, curls, curlMat };
 }
 
 export default class Ribbon extends Scene {
@@ -213,13 +249,15 @@ export default class Ribbon extends Scene {
   /** 緞帶與吊牌是細長、邊很多的網格：畫進共用的 4× MSAA 目標（像 candles）。 */
   rt = sharedMSAA();
   txt = this.track(new Layer2D(TEXW, TEXH, TEXRES, { fast: true }));
-  tagL = this.track(new Layer2D(TAG.w, TAG.h, 1.5, { fast: true }));
+  tagL = this.track(new Layer2D(TAG.w, TAG.h, 1.75, { fast: true }));
   glow = this.track(new LineBatch(64, { screen2D: true, blend: 'normal' }));
   msg: Msg | null = this.ctx.params.message ?? null;
   tTie = 0;
   bars: number[] = [];
-  ribSt: LyricStyle = { family: F.archivo(100, 700), size: 56, minSize: 46, maxWidth: TXT.s1 - TXT.s0 - 40, align: 'center', lineHeight: 1.08 };
-  tagSt: LyricStyle = { family: F.archivo(100, 800), size: 76, minSize: 52, maxWidth: TAG.w - 130, align: 'center', lineHeight: 1.14 };
+  ribSt: LyricStyle = { family: F.archivo(100, 700), size: 48, minSize: V2.lyrMin, maxWidth: TXT.s1 - TXT.s0 - 40, align: 'center', lineHeight: 1.08 };
+  tagSt: LyricStyle = { family: F.archivo(100, 800), size: V2.lyrMax / TAG_S, minSize: V2.lyrMin / TAG_S, maxWidth: TAG.w - 110, align: 'center', lineHeight: 1.14 };
+  /** 留言在畫面上的字級（歌詞照它小一級）。 */
+  msgScreen: number | null = null;
   motif = false;
   avoid: Rect[] = [];
   private pts: THREE.Vector3[] = Array.from({ length: N }, () => new THREE.Vector3());
@@ -242,6 +280,8 @@ export default class Ribbon extends Scene {
     // 沒有留言、或純音樂：緞帶上印一整排名字與日期（婚禮緞帶常見的印法），歌詞搬到吊牌（沒有留言時）
     this.motif = !m || !lyrics.has;
     this.drawTag(0);
+    // 歌詞比留言小一級（v2：40～52）；緞帶就在鏡頭的焦平面上，印在上面的字級 ≈ 畫面字級
+    this.ribSt = { ...this.ribSt, size: lyricV2(this.msgScreen) };
     if (this.motif) this.drawMotif();
     this.avoid = [[880, 280, 850, 520], [TXT.s0 - 300, 790, TXT.s1 - TXT.s0 + 60, 150]];
   }
@@ -276,29 +316,29 @@ export default class Ribbon extends Scene {
     c.fillStyle = rgba('signal', 0.9); c.beginPath(); c.arc(TAG.hx, TAG.hy, 22, 0, Math.PI * 2); c.fill();
     c.save(); c.globalCompositeOperation = 'destination-out'; c.beginPath(); c.arc(TAG.hx, TAG.hy, 11, 0, Math.PI * 2); c.fill(); c.restore();
     c.textBaseline = 'alphabetic';
-    c.font = font(F.hand(400), 26); c.fillStyle = rgba('sepia', 0.6);
-    c.fillText(m?.couple ? 'To 大家' : `To ${COUPLE_ZH}`, 56, 102);
+    c.font = font(F.hand(400), 22); c.fillStyle = rgba('sepia', 0.6);
+    c.fillText(m?.couple ? 'To 大家' : `To ${COUPLE_ZH}`, TAGM.x, 74);
     if (m) {
       if (m.couple) {
         c.textAlign = 'right'; c.font = font(F.mono(500), 14); c.letterSpacing = '4px'; c.fillStyle = rgba('blood', 0.9);
-        c.fillText('FROM THE COUPLE · 新人', TAG.w - 56, 100); c.letterSpacing = '0px'; c.textAlign = 'left';
+        c.fillText('FROM THE COUPLE · 新人', TAG.w - TAGM.x, 72); c.letterSpacing = '0px'; c.textAlign = 'left';
       }
       const fam = F.hand(700), sig = sigOf(m);
-      const short = Array.from(m.text).length <= 8;
-      const blk = fitWithSig(c, m.text, fam, TAG.w - 120, TAG.h - 170, { min: 46, max: short ? 110 : 84, lineHeight: 1.28, maxLines: 5 }, { ratio: 0.46, min: 34, max: 46 });
-      const top = 128 + Math.max(0, (TAG.h - 170 - blk.height) * 0.45);
-      const pl = placeBlock(c, blk, fam, sig, 60, top);
+      const blk = fitV2(c, m.text, fam, TAGM.w, TAGM.h, TAG_S, { lineHeight: 1.28 });
+      this.msgScreen = blk.fit.size * TAG_S;
+      const top = TAGM.y + Math.max(0, (TAGM.h - blk.height) * 0.42);
+      const pl = placeBlock(c, blk, fam, sig, TAGM.x, top);
       drawBlock(c, blk, pl, fam, sig, { color: rgba('sepia', 0.95), sigColor: rgba('sepia', 0.72) });
     } else {
       const ly = lyricAt(this.ctx.lyrics, t);
       if (ly) {
         const lay = layoutLyric(c, ly.line, this.tagSt);
-        c.save(); c.translate(TAG.w / 2, 290 - (lay.rows.length - 1) * lay.size * 0.57);
+        c.save(); c.translate(TAG.w / 2, 230 - (lay.rows.length - 1) * lay.size * 0.57);
         drawLyric(c, ly.line, t, this.tagSt, lay, ly.k);
         c.restore();
       } else {
-        c.textAlign = 'center'; c.font = font(F.hand(700), 44); c.fillStyle = rgba('sepia', 0.35);
-        c.fillText(this.ctx.lyrics.has ? '♪（間奏中）' : '♪ 本曲為純音樂', TAG.w / 2, 290);
+        c.textAlign = 'center'; c.font = font(F.hand(700), 40); c.fillStyle = rgba('sepia', 0.35);
+        c.fillText(this.ctx.lyrics.has ? '♪（間奏中）' : '♪ 本曲為純音樂', TAG.w / 2, 230);
         c.textAlign = 'left';
       }
       c.textAlign = 'center'; c.fillStyle = rgba('sepia', 0.62);
@@ -373,10 +413,25 @@ export default class Ribbon extends Scene {
     const bowK = ease.outBack(clamp((t - this.tTie - 0.12) / 0.45), 1.8);
     R.bow.visible = bowK > 0.01;
     R.bow.position.set(KNOT.x, H - KNOT.y, 20);
-    R.bow.scale.setScalar(Math.max(0.01, bowK));
+    // 大鼓時蝴蝶結跟著「噗」一下（次要動作落在拍點）
+    R.bow.scale.setScalar(Math.max(0.01, bowK) * (1 + 0.03 * f.a.kick));
     let jolt = 0;
     for (const b of this.bars) jolt += pulse(t, b, 0.12);
     R.bow.rotation.z = 0.08 * Math.sin((t - this.tTie) * 1.2) * clamp(t - this.tTie) + 0.04 * jolt;
+
+    // ---- 背景的捲曲緞帶：慢慢轉著往下飄（遠的轉得慢、落得慢：視差），每個小節線被風帶一下
+    let gustAll = 0;
+    for (const b of this.bars) if (t >= b) gustAll += Math.exp(-(t - b) * 1.6) * Math.sin(Math.min(Math.PI, (t - b) * 3.2));
+    R.curls.forEach((m, i) => {
+      const cf = CURLS[i]!;
+      const lt = t - s;
+      // 在畫面外（整條都在上緣之上或下緣之下）才繞回去，不會在畫面裡突然冒出來
+      const y = ((cf.y + 560 + lt * cf.fall) % 1660) - 560;
+      m.position.set(cf.x + 30 * Math.sin(lt * 0.5 + cf.ph) + 40 * gustAll * cf.s, H - y, cf.z);
+      m.rotation.set(0.18 * Math.sin(lt * 0.4 + cf.ph), cf.spin * lt + cf.ph + 0.5 * gustAll, 0.1 * Math.sin(lt * 0.3 + cf.ph));
+      m.scale.setScalar(cf.s * (1 + 0.04 * f.a.kick));
+    });
+    R.curlMat.uniforms.dim!.value = 0.24 * prog(t, s, s + 0.6);
 
     // ---- 吊牌：打結之後從上面掉下來、彈兩下，之後輕輕晃（小節線被帶一下）
     // 吊牌：打結之後從結的右上方甩下來（以繩孔為支點像鐘擺一樣盪兩下），之後輕輕晃
@@ -404,7 +459,7 @@ export default class Ribbon extends Scene {
     R.bowMat.uniforms.txtOn!.value = 0;
     R.knotMat.uniforms.txtOn!.value = 0;
     R.tagMat.uniforms.tex!.value = this.tagL.texture;
-    for (const mt of [R.mat, R.bowMat, R.knotMat, R.tagMat]) (mt.uniforms.camPos!.value as THREE.Vector3).copy(R.cam.position);
+    for (const mt of [R.mat, R.bowMat, R.knotMat, R.tagMat, R.curlMat]) (mt.uniforms.camPos!.value as THREE.Vector3).copy(R.cam.position);
 
     // ---- 背景（吊牌的影子）→ 3D（MSAA）→ 疊到 out
     const tp = this.project(hang.x, hang.y, hang.z);

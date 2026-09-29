@@ -15,10 +15,11 @@ import { LineBatch } from '../engine/lines';
 import { F, font } from '../engine/type';
 import { rgba } from '../engine/palette';
 import { clamp, ease, prog, pulse, hash, noise1, lerp, frameIdx } from '../engine/util';
-import { sparkHead, sparkParticles, lyricAt, drawLyric, layoutLyric, beatAfter, lyricSizeFor, COUPLE_EN, COUPLE_ZH, DATE_DOTS, type LyricStyle } from './_motifs';
-import { preloadText, fitWithSig, INVITE_SMALL } from './_t19';
+import { sparkHead, sparkParticles, lyricAt, drawLyric, layoutLyric, beatAfter, COUPLE_EN, COUPLE_ZH, DATE_DOTS, type LyricStyle } from './_motifs';
+import { preloadText, INVITE_SMALL } from './_t19';
 import { barsIn } from './_t1';
-import { placeBlock, drawBlock, sigOf, T22_TEXT, type Rect } from './_t22';
+import { placeBlock, drawBlock, sigOf, fitV2, T22_TEXT, type Rect } from './_t22';
+import { lyricV2, V2 } from './_v2';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'keepsake', paper: false, energy: [0.1, 0.75], bars: [4, 12], weight: 1 };
 
@@ -37,7 +38,7 @@ const PASS = () => new FSPass(/* glsl */ `
   uniform mat3 rA; uniform vec3 pA; uniform mat3 rB; uniform vec3 pB;
   uniform vec3 camC; uniform vec3 camR; uniform vec3 camU; uniform vec3 camF; uniform float focal;
   uniform sampler2D ins; uniform float ac;
-  uniform float sweep; uniform float glint; uniform float t;
+  uniform float sweep; uniform float glint; uniform float t; uniform float kick;
   ${SS_TAP_GLSL}
   const float RO = ${RO.toFixed(3)}, RI = ${RI.toFixed(3)}, HH = ${HH.toFixed(3)};
 
@@ -76,7 +77,8 @@ const PASS = () => new FSPass(/* glsl */ `
     float strip = exp(-pow((r.x - 0.72) / 0.07, 2.0)) * smoothstep(-0.3, 0.2, r.y) * (1.0 - smoothstep(0.6, 0.95, r.y));
     float card = smoothstep(0.45, 0.85, dot(r, normalize(vec3(0.1, -0.45, 1.0))));
     float sw = exp(-pow((atan(r.x, r.z) - sweep) / 0.05, 2.0)) * smoothstep(-0.4, 0.3, r.y) * glint;
-    return C_BONE * (key * 1.7 + strip * 1.25 + card * 0.55 + sw * 3.2) + C_INK2 * 0.35;
+    // 右邊的長條燈在大鼓時亮一下（戒面上的反光跟著跳）
+    return C_BONE * (key * 1.7 + strip * 1.25 * (1.0 + 0.8 * kick) + card * 0.55 + sw * 3.2) + C_INK2 * 0.35;
   }
 
   vec3 shadeRing(vec3 pl, int kind, mat3 R, vec3 dW, vec3 tint, bool engraved, float dist) {
@@ -145,28 +147,33 @@ const PASS = () => new FSPass(/* glsl */ `
   }`, {
   rA: { value: new THREE.Matrix3() }, pA: { value: new THREE.Vector3() }, rB: { value: new THREE.Matrix3() }, pB: { value: new THREE.Vector3() },
   camC: { value: new THREE.Vector3() }, camR: { value: new THREE.Vector3() }, camU: { value: new THREE.Vector3() }, camF: { value: new THREE.Vector3() }, focal: { value: 1800 },
-  ins: { value: null }, ac: { value: -Math.PI / 2 }, sweep: { value: -9 }, glint: { value: 0 }, t: { value: 0 }, ssTap: SS_TAP,
+  ins: { value: null }, ac: { value: -Math.PI / 2 }, sweep: { value: -9 }, glint: { value: 0 }, t: { value: 0 }, kick: { value: 0 }, ssTap: SS_TAP,
 });
 
 interface Cam { C: V3; T: V3 }
 /** 開場（兩只戒指分開）與特寫（看進金戒的內圈）兩個鏡位。 */
 const CAM0: Cam = { C: [1.05, 1.85, 4.9], T: [1.0, 0.05, 0.0] };
-const CAM1: Cam = { C: [0.0, 0.74, 1.62], T: [0.0, -0.02, -0.55] };
-const FOCAL0 = 1650, FOCAL1 = 1850;
+// 留言標準 v2：刻字小一點（40～60 px），鏡頭不再貼著內圈，而是退到看得到整只金戒、白金戒勾在左前方的中景：
+// 戒指是畫面的主角，刻字在遠端的內壁上（從上緣望進去）
+// 長焦（像珠寶廣告的微距鏡頭從遠處拍）：近的戒圈不會被透視放得太誇張；金戒在畫面偏左，右下角 QR 的底下保持乾淨
+const CAM1: Cam = { C: [0.15, 2.63, 6.53], T: [0.15, 0.14, 0.0] };
+const FOCAL0 = 1650, FOCAL1 = 3640;
 
 /**
- * 扣在一起之後白金戒的位置：勾在金戒右前方的戒圈上（穿過內圈、繞過戒圈的頂上、往下掛）。
- * 兩只一樣大的戒指扣在一起，一定有一只的一段弧在另一只的洞裡；勾在右前方，推進內圈的特寫時它是右下角的前景
- * （剛好在 QR 的後面，那裡本來就不放字），不會擋到刻字。
+ * 扣在一起之後白金戒的位置：勾在金戒左前方的戒圈上（穿過內圈、繞過戒圈的頂上、往下掛）。
+ * 兩只一樣大的戒指扣在一起，一定有一只的一段弧在另一只的洞裡；勾在左前方，中景時它垂在畫面左下（右下角 QR 的底下保持乾淨），
+ * 不會擋到遠端內壁的刻字。
  * 白金戒的座標：x = 金戒的徑向（往外）、y（戒指的軸）= 金戒圓周的切線、z = 往下。
  */
-const LINK_PSI = 0.55;
+const LINK_PSI = Math.PI - 0.62;
 const LINK_R: V3 = [Math.cos(LINK_PSI), 0, Math.sin(LINK_PSI)];
 const LINK_P: V3 = [LINK_R[0] * 1.0, -0.6, LINK_R[2] * 1.0];
 const LINK_Q = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(
   new THREE.Vector3(...LINK_R), new THREE.Vector3(-Math.sin(LINK_PSI), 0, Math.cos(LINK_PSI)), new THREE.Vector3(0, -1, 0)));
 /** 扣住的接觸點（白金戒繞過金戒頂上的地方）：火花從這裡噴。 */
 const LINK_HIT: V3 = [LINK_R[0] * 0.95, 0.3, LINK_R[2] * 0.95];
+/** 白金戒盪的軸：金戒圓周在接觸點的切線（水平）。 */
+const SWING_AXIS = new THREE.Vector3(-Math.sin(LINK_PSI), 0, Math.cos(LINK_PSI)).normalize();
 /** 開場時白金戒在右邊。 */
 const APART_P: V3 = [2.35, 0.25, -0.3];
 
@@ -180,11 +187,15 @@ export default class Rings extends Scene {
   tLock = 0;
   tPush = 1;
   bars: number[] = [];
-  lyr: LyricStyle = { family: F.archivo(100, 700), size: 54, minSize: 48, maxWidth: 1400, align: 'center' };
+  lyr: LyricStyle = { family: F.archivo(100, 700), size: V2.lyrMax, minSize: V2.lyrMin, maxWidth: 1400, align: 'center' };
+  /** 刻字圖層 1 px 在畫面上是幾 px（中景鏡頭下、遠端內壁的中間；init 用鏡頭算）。 */
+  sTex = 0.35;
+  msgScreen: number | null = null;
   avoid: Rect[] = [];
   private qa = new THREE.Quaternion();
   private qb = new THREE.Quaternion();
   private m4 = new THREE.Matrix4();
+  private qSwing = new THREE.Quaternion();
   private cam = { C: new THREE.Vector3(), R: new THREE.Vector3(), U: new THREE.Vector3(), F: new THREE.Vector3(), focal: 1800 };
 
   override async init() {
@@ -201,13 +212,14 @@ export default class Rings extends Scene {
     this.tLock = bars[0] !== undefined && bars[0] - first <= barLen * 0.55 && e - bars[0] > barLen * 1.6 ? bars[0] : first;
     this.tPush = Math.min(barLen * 0.95, (e - this.tLock) * 0.4, 2.4);
     this.bars = barsIn(au, this.tLock + this.tPush + 0.2, e);
+    // 刻字圖層在畫面上的縮放：中景鏡頭下，遠端內壁中間上下各 0.05 的一段投影到畫面上多高
+    this.setCam(CAM1.C, CAM1.T, FOCAL1);
+    const a = this.toScreen([0, 0.05, -RI]), b = this.toScreen([0, -0.05, -RI]);
+    this.sTex = Math.abs(b.y - a.y) / (0.1 * TEX_PER_UNIT);
     this.drawInscription();
-    if (!m) this.lyr = { ...this.lyr, size: 76, minSize: 56, maxWidth: 1500 };
-    else this.lyr = { ...this.lyr, size: lyricSizeFor(this.inscSize * 0.56) };
+    this.lyr = { ...this.lyr, size: lyricV2(this.msgScreen) };
     this.avoid = [[300, 180, 1320, 560], [220, 96, 1480, 110]];
   }
-
-  inscSize = 100;
 
   /** 刻在金戒內圈的字（圖層座標：中線 x = TW / 2，高 = 戒指寬）。 */
   private drawInscription() {
@@ -219,20 +231,22 @@ export default class Rings extends Scene {
     if (m) {
       const fam = F.ming(700);
       const sig = `${sigOf(m)}  ·  ${DATE_DOTS}`;
-      // 寬度只用內圈 ±0.8 弧度：再往兩邊斜得太厲害；寧可多一行也不要字太小（fitWithSig 會偏好少行）
-      const blk = fitWithSig(c, m.text, fam, 1950, TH - 60, { min: 92, max: 210, lineHeight: 1.18, maxLines: 4 }, { ratio: 0.45, min: 72, max: 92 });
-      const top = 30 + Math.max(0, (TH - 60 - blk.height) / 2);
+      // 留言標準 v2：畫面上 40～60 px（依字數），刻字圖層上的字級 = 畫面字級 ÷ sTex；
+      // 寬度只用內圈中間約 ±0.75 弧度（畫面上約 700 px）：再往兩邊內壁斜得太厲害
+      const S = this.sTex;
+      const blk = fitV2(c, m.text, fam, Math.min(1950, 700 / S), TH - 40, S, { lineHeight: 1.16, maxLines: 5 });
+      const top = 20 + Math.max(0, (TH - 40 - blk.height) / 2);
       const pl = placeBlock(c, blk, fam, sig, cx, top, { align: 'center', sigAlign: 'center' });
       // 愛心畫成純紅色：不是畫面上的顏色，是給 shader 分辨「這裡填琺瑯」的遮罩
       drawBlock(c, blk, pl, fam, sig, { color: col, sigColor: col, heart: HEART_MASK });
-      this.inscSize = blk.fit.size;
+      this.msgScreen = blk.fit.size * S;
     } else {
-      // 沒有留言：刻新人的名字與日期（戒指本來就該刻的）
+      // 沒有留言：刻新人的名字與日期（戒指本來就該刻的）；焦點是歌詞，刻字比歌詞小
+      const S = this.sTex;
       c.textAlign = 'center'; c.fillStyle = col;
-      c.font = font(F.serif(600, true), 190); c.fillText(COUPLE_EN, cx, 330);
-      c.font = font(F.ming(700), 92); c.letterSpacing = '24px'; c.fillText(`${COUPLE_ZH}  ${DATE_DOTS}`, cx + 12, 500);
+      c.font = font(F.serif(600, true), 48 / S); c.fillText(COUPLE_EN, cx, TH / 2 - 6 / S);
+      c.font = font(F.ming(700), 26 / S); c.letterSpacing = `${8 / S}px`; c.fillText(`${COUPLE_ZH}  ${DATE_DOTS}`, cx + 4 / S, TH / 2 + 40 / S);
       c.letterSpacing = '0px'; c.textAlign = 'left';
-      this.inscSize = 150;
     }
     L.upload();
   }
@@ -272,6 +286,16 @@ export default class Rings extends Scene {
     this.qb.slerpQuaternions(qApart, LINK_Q, k);
     const arc = Math.sin(Math.PI * k) * 0.5;
     const pB: V3 = [lerp(APART_P[0], LINK_P[0], k), lerp(APART_P[1], LINK_P[1], k) + arc, lerp(APART_P[2], LINK_P[2], k) + arc * 0.6];
+    // 白金戒是「掛」在金戒上的：扣住那一下盪很大、慢慢停；之後每個小節線被帶一下（像被輕輕碰到），繞著接觸點的切線擺
+    if (t >= L) {
+      let sw = 0.3 * Math.exp(-(t - L) * 1.4) * Math.sin((t - L) * 5.2) + 0.015 * Math.sin((t - L) * 1.3);
+      for (const b of this.bars) if (t > b) sw += 0.07 * Math.exp(-(t - b) * 1.8) * Math.sin((t - b) * 5.2);
+      const qs = this.qSwing.setFromAxisAngle(SWING_AXIS, sw);
+      this.qb.premultiply(qs);
+      const piv = new THREE.Vector3(...LINK_HIT);
+      const off = new THREE.Vector3(...pB).sub(piv).applyQuaternion(qs).add(piv);
+      pB[0] = off.x; pB[1] = off.y; pB[2] = off.z;
+    }
     // 扣住之後兩只一起很慢地轉一點點（留言保持讀得到）
     const drift = settle * 0.022 * Math.sin((t - L) * 0.45);
     const qPair = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, drift, 0));
@@ -287,7 +311,8 @@ export default class Rings extends Scene {
     const pre = prog(t, s, L, ease.inOutQuad);
     const c0: V3 = [CAM0.C[0] - 0.1 * pre, CAM0.C[1] - 0.1 * pre, CAM0.C[2] - 0.5 * pre];
     const hold = prog(t, L + this.tPush, e, ease.inOutQuad);
-    const c1: V3 = [CAM1.C[0] + 0.025 * Math.sin(hold * 2.4), CAM1.C[1] + 0.02 * hold, CAM1.C[2] - 0.05 * hold];
+    // 中景時鏡頭很慢地往右繞、往前推一點（刻字的透視跟著變，但一直讀得到）
+    const c1: V3 = [CAM1.C[0] + 0.5 * (hold - 0.5), CAM1.C[1] - 0.12 * hold, CAM1.C[2] - 0.35 * hold];
     const C: V3 = [lerp(c0[0], c1[0], settle), lerp(c0[1], c1[1], settle), lerp(c0[2], c1[2], settle)];
     const T: V3 = [lerp(CAM0.T[0], CAM1.T[0], settle), lerp(CAM0.T[1], CAM1.T[1], settle), lerp(CAM0.T[2], CAM1.T[2], settle)];
     this.setCam(C, T, lerp(FOCAL0, FOCAL1, settle), 0.012 * noise1(t * 0.3, 3) * settle);
@@ -308,6 +333,7 @@ export default class Rings extends Scene {
     P.u.sweep!.value = sw;
     P.u.glint!.value = gl;
     P.u.t!.value = t;
+    P.u.kick!.value = f.a.kick;
     P.render(renderer, out);
 
     // ---- 歌詞（戒指上方的黑暗裡）
