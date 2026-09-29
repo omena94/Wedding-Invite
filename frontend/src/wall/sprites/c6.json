@@ -1,0 +1,29 @@
+{
+  "group": "c6",
+  "series": {
+    "xw_proposal_": {"ref":"xw_proposal_stand","refFrac":0.9615885416666666,"groundFrac":0.9811197916666666,"target":600},
+    "mt_proposal_": {"ref":"mt_proposal_stand","refFrac":0.9563802083333334,"groundFrac":0.9752604166666666,"target":600},
+    "cp_proposal_": {"ref":"cp_proposal_hug","refFrac":0.9696969696969697,"groundFrac":0.9856459330143541,"target":600},
+    "cp_cake_": {"ref":"cp_cake_ready","refFrac":0.9752791068580542,"groundFrac":0.9880382775119617,"target":600},
+    "xw_toast_": {"ref":"xw_toast_stand","refFrac":0.96875,"groundFrac":0.9850260416666666,"target":600},
+    "mt_toast_": {"ref":"mt_toast_stand","refFrac":0.9518229166666666,"groundFrac":0.9759114583333334,"target":600},
+    "cp_toast_": {"ref":"cp_toast_link","refFrac":0.9633173843700159,"groundFrac":0.9808612440191388,"target":600},
+    "mt_bouquet_": {"ref":"mt_toast_stand","refFrac":0.9518229166666666,"groundFrac":0.9759114583333334,"target":600},
+    "pp_": {"ref":"pp_stand","refFrac":0.8310546875,"groundFrac":0.927734375,"target":260,"from":"base:pp_"}
+  },
+  "sprites": {
+    "cp_cake_feed": {"kind":"couple","w":501,"h":602,"ax":245.1,"ay":598.3,"ref":600},
+    "cp_cake_ready": {"kind":"couple","w":424,"h":607,"ax":182.7,"ay":603.2,"ref":600,"pts":{"knife":[321.3,319.9]}},
+    "cp_proposal_hug": {"kind":"couple","w":352,"h":607,"ax":134,"ay":603.2,"ref":600},
+    "cp_toast_link": {"kind":"couple","w":451,"h":608,"ax":204.4,"ay":603.2,"ref":600},
+    "mt_bouquet_ready": {"kind":"person","w":379,"h":582,"ax":195.6,"ay":577.6,"ref":600},
+    "mt_proposal_hand": {"kind":"person","w":310,"h":595,"ax":77.4,"ay":591.2,"ref":600},
+    "mt_proposal_stand": {"kind":"person","w":152,"h":607,"ax":77.8,"ay":603.1,"ref":600},
+    "mt_toast_raise": {"kind":"person","w":397,"h":582,"ax":197.2,"ay":578.5,"ref":600,"pts":{"glass":[341.9,12.7,12.3]}},
+    "mt_toast_stand": {"kind":"person","w":365,"h":607,"ax":182.8,"ay":603.1,"ref":600,"pts":{"glass":[265.5,95.2,10.7]}},
+    "xw_proposal_kneel_1": {"kind":"person","w":376,"h":550,"ax":181,"ay":546.6,"ref":600,"pts":{"box":[338,135.3,16.2]}},
+    "xw_proposal_stand": {"kind":"person","w":160,"h":607,"ax":81,"ay":603,"ref":600},
+    "xw_toast_raise": {"kind":"person","w":227,"h":602,"ax":68.8,"ay":597.8,"ref":600,"pts":{"glass":[212.1,50,12.1]}},
+    "xw_toast_stand": {"kind":"person","w":151,"h":607,"ax":56.7,"ay":603,"ref":600,"pts":{"glass":[138.7,125.8,10.5]}}
+  }
+}
