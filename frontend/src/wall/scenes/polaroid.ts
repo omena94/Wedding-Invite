@@ -34,12 +34,14 @@ const MAIN = { x: -540, y: 30, rot: -0.03 };
 const TW = 560, TH = 84;
 const TAPE = [{ x: -200 + TW / 2, y: 330 }, { x: -172 + TW / 2, y: 236 }];
 /**
- * 散在桌上的其他拍立得：第一張開場就在（右上）；之後的一張一張丟上來——相片右邊下方（下緣出血到畫面外）、右邊、最右邊。
- * 都停在 HUD 外面、不蓋到標籤帶。
+ * 散在桌上的其他拍立得：第一張開場就在（右上）；之後的一張一張丟上來——留言那張的右下（一角塞在它底下、下緣出血到畫面外）、
+ * 右邊、最右邊。都不蓋到標籤帶；右下角 HUD 底下要是乾淨的桌布（init() 再用鏡頭檢查一次，壓到就往左上收）。
  */
 const PILE = [
-  { x: 880, y: 430, rot: 0.28 }, { x: 90, y: -420, rot: -0.2 }, { x: 740, y: 190, rot: 0.12 }, { x: 1180, y: 120, rot: -0.3 },
+  { x: 880, y: 430, rot: 0.28 }, { x: -40, y: -380, rot: -0.22 }, { x: 740, y: 190, rot: 0.12 }, { x: 1180, y: 240, rot: -0.3 },
 ];
+/** HUD 的範圍（x ≥ 1360、y ≥ 830）再往外留一點（相片的影子、推近時的晃動）。 */
+const HUD_CLEAR = { x: 1320, y: 790 };
 const FAM = F.hand(700);
 const FAM_TAPE = F.hei(900);
 /** 沒有留言：白邊上寫一句邀請（空白的相片等著你來寫），署名的位置寫怎麼做。 */
@@ -311,8 +313,30 @@ export default class Polaroid extends Scene {
       const p = PILE[i]!;
       // 不跟留言那張同一張圖：另外兩張輪流
       const { cv, tex } = drawIll(mainIll + 1 + (i % 2), RES_X, this.seed + 101 * (i + 1));
-      this.pile.push({ cv, tex, tLand: tt, x: p.x, y: p.y, rot: p.rot });
+      this.pile.push({ cv, tex, tLand: tt, ...this.clearHud(p) });
     });
+  }
+
+  /**
+   * 右邊那一堆不能壓到右下角 HUD：用整個窗格的鏡頭（開場、推近到最後，種子決定鏡頭偏哪一邊）把相片投影到畫面上檢查，
+   * 有任何一點落在 HUD 範圍就往左上收一點，直到乾淨為止。
+   */
+  private clearHud(p: { x: number; y: number; rot: number }) {
+    const st = this.rig.st, s = this.ctx.start, e = this.ctx.end;
+    const times = [0, 0.2, 0.4, 0.6, 0.8, 1].map((k) => lerp(s, e, k));
+    const q = { ...p };
+    const hits = () => times.some((t) => {
+      this.shoot(t);
+      const cs = Math.cos(q.rot), sn = Math.sin(q.rot);
+      for (let i = 0; i <= 10; i++) for (let j = 0; j <= 14; j++) {
+        const lx = (i / 10 - 0.5) * PW, ly = (j / 14 - 0.5) * PH;
+        const sp = st.toScreen([q.x + lx * cs - ly * sn, q.y + lx * sn + ly * cs, 1]);
+        if (sp.x >= HUD_CLEAR.x && sp.y >= HUD_CLEAR.y) return true;
+      }
+      return false;
+    });
+    for (let k = 0; k < 30 && hits(); k++) { q.x -= 30; q.y += 25; }
+    return q;
   }
 
   /** 相片的位置：吐片時一段一段往下（每一段 outExpo，落在拍點）、落地時往下掉（z）彈一下。 */
