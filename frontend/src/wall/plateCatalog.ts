@@ -130,6 +130,22 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "idea": "婚禮服，空蕩的舞池、一盞聚光燈、慢慢轉；賓客的留言像周圍桌上的小燭光一則一則亮起。慢歌專用。"
  },
  {
+  "name": "swing",
+  "title": "搖擺舞",
+  "family": "dance",
+  "light": false,
+  "couple": true,
+  "idea": "快歌用：40 年代搖擺舞，甩出去、拉回來、拋起來，全在拍點；地板的舞步腳印排成字。"
+ },
+ {
+  "name": "lantern",
+  "title": "放天燈",
+  "family": "date",
+  "light": false,
+  "couple": true,
+  "idea": "平溪天燈：兩人在天燈上寫字（留言），點火、放手在小節線，天燈升空，遠處已經有一片寫著其他留言的天燈。"
+ },
+ {
   "name": "boarding",
   "title": "登機證",
   "family": "doc",
