@@ -77,12 +77,10 @@ def phase2_message(record, details_done: int, attending_groups: int) -> str:
         f"👤 {esc(record.name)}（{SIDE_TXT.get(record.side, record.side)}親友）",
         f"👥 確認人數：大人 {record.adult_count}・小孩 {record.child_count}",
     ]
-    mains = record.main_course
-    if mains:
-        lines.append("🥩 主餐：" + "、".join(f"{esc(k)}×{v}" for k, v in mains.items()))
+    # 2026-09-29 自助餐：只有素食人數與兒童座椅
+    if record.veg_count:
+        lines.append(f"🥬 素食：{record.veg_count} 位")
     extras = []
-    if record.kids_meal_count:
-        extras.append(f"兒童餐 {record.kids_meal_count}")
     if record.baby_chair_count:
         extras.append(f"兒童座椅 {record.baby_chair_count}")
     if extras:

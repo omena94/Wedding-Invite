@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 import Swal from "sweetalert2";
 import {
-  Users, Utensils, Baby, Mail, PieChart,
+  Users, Utensils, Baby, Mail, PieChart, Leaf,
   ClipboardList, Download, Trash2, Armchair, Pencil, MessageCircle,
   Megaphone, Send, ChevronDown, Plus, Save,
 } from "lucide-react";
@@ -143,10 +143,8 @@ export default function Guests() {
                     {rows.map((r, i) => {
                       // 餐點欄第二行的補充資訊
                       const extras = [];
-                      if (r.kids_meal_count > 0) extras.push(`兒童餐×${r.kids_meal_count}`);
                       if (r.baby_chair_count > 0) extras.push(`座椅×${r.baby_chair_count}`);
                       if ((r.personal_note || "").trim()) extras.push("💌 有當天的話");
-                      if (r.veg_count > 0) extras.push(r.veg_type !== "無" ? r.veg_type : "素食");
                       const hs = (r.children || []).map((c) => (c.height != null ? c.height : "?"));
                       if (r.child_count > 0 && hs.some((h) => h !== "?")) extras.push(`身高 ${hs.join("/")}`);
                       // 留言彈窗內容（想說的話 / 備註 / 飲食過敏 合併）
@@ -171,7 +169,7 @@ export default function Guests() {
                           <td className="muted-cell" style={{ minWidth: 130 }}>
                             {r.details_completed ? (
                               <>
-                                {fmtMains(r.main_course) || "—"}
+                                {r.veg_count > 0 ? `素食 ${r.veg_count} 位` : "一般"}
                                 {extras.length > 0 && (
                                   <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 2 }}>{extras.join("・")}</div>
                                 )}
@@ -239,7 +237,6 @@ export default function Guests() {
 }
 
 /* ---------- 編輯賓客資料視窗 ---------- */
-const EDIT_DISHES = ["牛排", "雞腿排", "鮭魚排", "素食"];
 const numOpts = (from, to, unit = "") =>
   Array.from({ length: to - from + 1 }, (_, i) => ({ value: from + i, label: `${from + i}${unit}` }));
 
@@ -285,7 +282,6 @@ function AddGuestModal({ onClose, onSaved }) {
 function EditModal({ row, onClose, onSaved }) {
   const [f, setF] = useState({
     ...row,
-    main_course: { ...Object.fromEntries(EDIT_DISHES.map((d) => [d, 0])), ...(row.main_course || {}) },
     children: Array.from({ length: row.child_count || 0 }, (_, i) => ({
       height: row.children && row.children[i] && row.children[i].height != null ? row.children[i].height : "",
       pricing: (row.children && row.children[i] && row.children[i].pricing) || "auto",
@@ -293,7 +289,6 @@ function EditModal({ row, onClose, onSaved }) {
   });
   const [busy, setBusy] = useState(false);
   const set = (k, v) => setF((x) => ({ ...x, [k]: v }));
-  const setMain = (d, v) => setF((x) => ({ ...x, main_course: { ...x.main_course, [d]: v } }));
   const setChild = (i, patch) =>
     setF((x) => {
       const arr = [...(x.children || [])];
@@ -316,8 +311,7 @@ function EditModal({ row, onClose, onSaved }) {
         child_count: f.child_count,
         message: f.message || "",
         details_completed: f.details_completed,
-        main_course: f.main_course,
-        kids_meal_count: f.kids_meal_count,
+        veg_count: f.veg_count || 0,
         baby_chair_count: f.baby_chair_count,
         veg_type: f.veg_type || "無",
         dietary_note: f.dietary_note || "",
@@ -389,22 +383,11 @@ function EditModal({ row, onClose, onSaved }) {
           </div>
         </div>
 
-        <div className="form-group">
-          <label>主餐份數</label>
-          <div className="grid-2">
-            {EDIT_DISHES.map((d) => (
-              <div key={d} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={{ fontSize: 13, minWidth: 48 }}>{d}</span>
-                <Select value={f.main_course[d]} onChange={(v) => setMain(d, v)} options={numOpts(0, 15, " 份")} />
-              </div>
-            ))}
-          </div>
-        </div>
-
+        {/* 2026-09-29 自助餐：主餐與兒童餐取消，只記素食幾位 */}
         <div className="form-group grid-2">
           <div>
-            <label>兒童餐點</label>
-            <Select value={f.kids_meal_count} onChange={(v) => set("kids_meal_count", v)} options={numOpts(0, 15, " 份")} />
+            <label>素食人數</label>
+            <Select value={f.veg_count || 0} onChange={(v) => set("veg_count", v)} options={numOpts(0, 15, " 位")} />
           </div>
           <div>
             <label>兒童座椅</label>
@@ -488,8 +471,8 @@ function StatsCards({ stats }) {
 }
 
 /* 群發 Email 通知 */
-const DEFAULT_SUBJECT = "宣文 & 孟庭 婚宴｜請幫我們確認出席與主餐 🍽";
-const DEFAULT_BODY = `<p>{name} 你好：</p><p>謝謝你先前回覆出席我們的婚宴！<br>日期已確定為 <strong>2027.03.13（週六）中午 12:00</strong>，<br>地點在<strong>台北美福大飯店</strong>（台北市中山區樂群二路55號）。</p><p>接下來想請你幫我們確認最終出席人數、挑選你的專屬主餐：<br><a href="https://wedding.example.com/details">https://wedding.example.com/details</a><br>（進入後輸入你當初留的 Email 或電話，再用 Email 驗證碼開啟回覆）</p><p>期待與你相見！<br>宣文 &amp; 孟庭</p>`;
+const DEFAULT_SUBJECT = "宣文 & 孟庭 婚宴｜請幫我們確認出席人數 🍽";
+const DEFAULT_BODY = `<p>{name} 你好：</p><p>謝謝你先前回覆出席我們的婚宴！<br>日期已確定為 <strong>2027.03.13（週六）中午 12:00</strong>，<br>地點在<strong>台北美福大飯店</strong>（台北市中山區樂群二路55號）。</p><p>接下來想請你幫我們確認最終出席人數與飲食需求：<br><a href="https://wedding.example.com/details">https://wedding.example.com/details</a><br>（進入後輸入你當初留的 Email 或電話，再用 Email 驗證碼開啟回覆）</p><p>期待與你相見！<br>宣文 &amp; 孟庭</p>`;
 
 const QUILL_MODULES = {
   toolbar: [
@@ -677,13 +660,10 @@ function BroadcastPanel({ stats }) {
   );
 }
 
-const MAIN_DISHES = ["牛排", "雞腿排", "鮭魚排", "素食"]; // 跟 /details 表單同一份
-
 function Breakdown({ stats }) {
   if (!stats) return null;
   const g = stats.people_by_side.groom;
   const b = stats.people_by_side.bride;
-  const mainTotals = stats.main_course_totals || {};
   const totalAttend = stats.attending_responses || 0;
   const donePct = totalAttend ? Math.round((stats.details_done / totalAttend) * 100) : 0;
   return (
@@ -704,14 +684,11 @@ function Breakdown({ stats }) {
           <div className="bar-track"><div className="bar-fill" style={{ width: `${donePct}%`, background: "linear-gradient(135deg,var(--sage-accent),#5f7361)" }} /></div>
           <div className="footnote" style={{ textAlign: "left", marginTop: 6 }}>尚待填 {stats.details_pending} 組</div>
         </div>
-        {/* 2026-09-22 新人要求：主餐份數併進這張卡，素食就是主餐「素食」的份數，不再另列 */}
+        {/* 2026-09-29 婚宴改自助餐：只剩素食套餐與兒童座椅 */}
         <div className="mini pl-meals">
           <div className="m-label">餐點需求</div>
           <div className="pl-meal-row">
-            {MAIN_DISHES.map((d) => <span key={d}><b>{mainTotals[d] || 0}</b> {d}</span>)}
-          </div>
-          <div className="pl-meal-row sub">
-            <span title="兒童餐"><Baby size={15} /> <b>{stats.total_kids_meals}</b> 兒童餐</span>
+            <span title="素食套餐"><Leaf size={15} /> <b>{stats.total_veg}</b> 素食套餐</span>
             <span title="兒童座椅"><Armchair size={15} /> <b>{stats.total_baby_chairs}</b> 兒童座椅</span>
           </div>
         </div>
@@ -720,12 +697,6 @@ function Breakdown({ stats }) {
   );
 }
 
-function fmtMains(mc) {
-  return Object.entries(mc || {})
-    .filter(([, v]) => v > 0)
-    .map(([k, v]) => `${k}×${v}`)
-    .join("、");
-}
 
 function fmtTime(iso) {
   if (!iso) return "";

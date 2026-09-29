@@ -23,7 +23,7 @@ export function homeAction(stage = {}, period = 'before') {
     return { id: 'thanks', href: '/rsvp', title: '謝謝你，成為這一天的一部分', description: '那些祝福與笑容，我們都好好收在心裡。', action: '回看我的回覆', label: 'WITH LOVE & THANKS' };
   }
   if (stage.seat_open) return { id: 'seat', href: '/seat', title: '為你留的那一席，準備好了', description: '輸入姓名或手機，從入口一路找到自己的座位。', action: '帶我找到座位', label: '座位查詢已開放' };
-  if (stage.phase2_open) return { id: 'details', href: '/details', title: '相聚之前，先為你準備美味', description: '確認同行人數，選好主餐，讓我們照顧每一份期待。', action: '確認我的出席與餐點', label: '餐點確認已開放' };
+  if (stage.phase2_open) return { id: 'details', href: '/details', title: '相聚之前，先為你準備美味', description: '確認同行人數與飲食需求，讓我們照顧每一份期待。', action: '確認我的出席人數', label: '出席確認已開放' };
   return { id: 'rsvp', href: '/rsvp', title: '這場相聚，想把你也寫進來', description: '留一點時間，告訴我們你是否能來，一起完成這一天。', action: '回覆我的出席意願', label: '期待收到你的回覆' };
 }
 

@@ -55,22 +55,23 @@ def test_receipt_private_data_and_verification_required(setup):
     client,db=setup
     response=create(client);assert response.status_code==201,response.text
     receipt=response.json()
-    assert set(receipt)=={'name','attending','adult_count','child_count','main_course','details_completed','access_token'}
+    assert set(receipt)=={'name','attending','adult_count','child_count','veg_count','details_completed','access_token'}
     assert client.post('/api/rsvp/lookup',json={'access_token':receipt['access_token']}).status_code==403
     open_details(db)
     assert client.post('/api/rsvp/lookup',json={'contact':'0912345678'}).status_code==401
-    assert client.post('/api/rsvp/details',json={'contact':'0912345678','main_course':{'牛排':1}}).status_code==401
+    assert client.post('/api/rsvp/details',json={'contact':'0912345678','veg_count':1}).status_code==401
     found=client.post('/api/rsvp/lookup',json={'access_token':receipt['access_token']})
     assert found.json()['name']=='測試賓客'
     assert 'admin_note' not in found.json()
     assert client.post('/api/rsvp/lookup',json={'access_token':'forged'}).status_code==401
 
 
-def test_exact_meals_and_no_partial_update(setup):
+def test_veg_count_bounds_and_no_partial_update(setup):
+    # 2026-09-29 自助餐：只問素食幾位，不能超過大人數、不能是負數
     client,db=setup;receipt=create(client).json();open_details(db)
-    for mains in ({},{'牛排':2},{'牛排':-1},{'未知主餐':1}):
-        assert client.post('/api/rsvp/details',json={'access_token':receipt['access_token'],'adult_count':1,'main_course':mains}).status_code==400
-    response=client.post('/api/rsvp/details',json={'access_token':receipt['access_token'],'adult_count':2,'child_count':1,'children':[{'height':99,'pricing':'free'}],'main_course':{'牛排':1,'素食':1},'kids_meal_count':1})
+    for veg in (2,-1):
+        assert client.post('/api/rsvp/details',json={'access_token':receipt['access_token'],'adult_count':1,'veg_count':veg}).status_code in (400,422)
+    response=client.post('/api/rsvp/details',json={'access_token':receipt['access_token'],'adult_count':2,'child_count':1,'children':[{'height':99,'pricing':'free'}],'veg_count':1})
     assert response.status_code==200,response.text
     assert response.json()['details_completed'] is True
     record=db.scalar(select(Rsvp));assert record.veg_count==1

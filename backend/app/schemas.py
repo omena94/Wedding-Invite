@@ -70,7 +70,7 @@ class GuestReceipt(BaseModel):
     adult_count: int
     child_count: int
     details_completed: bool
-    main_course: dict[str, int] = {}
+    veg_count: int = 0  # 2026-09-29 自助餐：不再選主餐，只記素食幾位
     access_token: str
 
 
@@ -86,8 +86,7 @@ class LookupOut(BaseModel):
     baby_chair_count: int = 0
     veg_type: str = "無"
     dietary_note: str = ""
-    main_course: dict[str, int] = {}
-    kids_meal_count: int = 0
+    veg_count: int = 0  # 2026-09-29 自助餐：只問素食幾位（主餐、兒童餐已取消）
     remark: str = ""
     children: list[dict] = []
     access_token: str = ""
@@ -99,8 +98,7 @@ class Phase2Details(BaseModel):
     access_token: str = Field(default="", max_length=1000)
     adult_count: int = Field(default=1, ge=1, le=50)
     child_count: int = Field(default=0, ge=0, le=50)
-    main_course: dict[str, int] = {}                     # {"牛排":2,"雞腿排":1,...}
-    kids_meal_count: int = Field(default=0, ge=0, le=50)
+    veg_count: int = Field(default=0, ge=0, le=50)       # 2026-09-29 自助餐：素食幾位（不能超過大人數）
     baby_chair_count: int = Field(default=0, ge=0, le=50)
     veg_type: str = Field(default="無", max_length=30)
     dietary_note: str = Field(default="", max_length=300)
@@ -155,8 +153,7 @@ class RsvpAdminUpdate(BaseModel):
     message: str | None = Field(default=None, max_length=2000)
     # 詳細調查
     details_completed: bool | None = None
-    main_course: dict[str, int] | None = None
-    kids_meal_count: int | None = Field(default=None, ge=0, le=50)
+    veg_count: int | None = Field(default=None, ge=0, le=50)  # 2026-09-29 自助餐：素食幾位
     baby_chair_count: int | None = Field(default=None, ge=0, le=50)
     veg_type: str | None = Field(default=None, max_length=30)
     dietary_note: str | None = Field(default=None, max_length=300)
@@ -191,8 +188,6 @@ class RsvpOut(BaseModel):
     veg_type: str
     dietary_note: str
     personal_note: str = ""
-    main_course: dict[str, int]
-    kids_meal_count: int
     remark: str
     children: list[dict]
     manage_status: str
@@ -248,8 +243,6 @@ class Stats(BaseModel):
     total_baby_chairs: int = 0
     total_veg: int = 0
     veg_types: dict[str, int] = {}
-    main_course_totals: dict[str, int] = {}   # 各主餐總份數
-    total_kids_meals: int = 0                  # 兒童餐點總份數
 
 
 # ===== 賓客端：桌次查詢 =====

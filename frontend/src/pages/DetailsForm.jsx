@@ -1,7 +1,7 @@
 import { GuestHeader, GuestNav, LoadError, useGuestLoad, GuestReceipt, useDraft } from '../components/GuestUI.jsx';
 import { useEffect, useState } from "react";
 import Swal from "sweetalert2";
-import { Search, Users, Utensils, Baby, Salad, PenLine, Send, PartyPopper, Ruler, Leaf } from "lucide-react";
+import { Search, Users, Baby, Salad, PenLine, Send, PartyPopper, Ruler, Leaf } from "lucide-react";
 import Select, { range } from "../components/Select.jsx";
 import EmailInput from "../components/EmailInput.jsx";
 import PreviewBanner from "../components/PreviewBanner.jsx";
@@ -9,8 +9,7 @@ import { fetchStage, lookupRsvp, submitPhase2, requestVerification, verifyGuest 
 import { fmtDateTime } from "../constants.js";
 import { isValidEmail, isValidPhone, normalizePhone } from "../validators.js";
 
-// 主餐選項（要改直接改這裡）
-const MAIN_DISHES = ["牛排", "雞腿排", "鮭魚排", "素食"];
+// 2026-09-29 婚宴改自助餐：不再選主餐與兒童餐，只問「素食幾位」
 
 export default function DetailsForm() {
   const [step, setStep] = useState("lookup"); // lookup | form | done
@@ -28,8 +27,7 @@ export default function DetailsForm() {
   const [form, setForm, draft] = useDraft(guest ? `wedding-details-${guest.public_id}` : null, {
     adult_count: 1,
     child_count: 0,
-    main_course: Object.fromEntries(MAIN_DISHES.map((d) => [d, 0])),
-    kids_meal_count: 0,
+    veg_count: 0,
     baby_chair_count: 0,
     veg_type: "無",
     dietary_note: "",
@@ -37,8 +35,6 @@ export default function DetailsForm() {
     children: [],   // 每個小孩的身高 [{height: "95"}]
   });
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
-  const setMain = (dish, v) =>
-    setForm((f) => ({ ...f, main_course: { ...f.main_course, [dish]: v } }));
   const setChild = (i, height) =>
     setForm((f) => {
       const arr = [...(f.children || [])];
@@ -46,9 +42,6 @@ export default function DetailsForm() {
       arr[i] = { ...arr[i], height };
       return { ...f, children: arr };
     });
-
-  const mainTotal = Object.values(form.main_course).reduce((a, b) => a + (b || 0), 0);
-  const mainRemaining = Math.max(0, form.adult_count - mainTotal); // 主餐剩餘可選份數
 
   const doLookup = async (e) => {
     e.preventDefault();
@@ -78,8 +71,7 @@ export default function DetailsForm() {
           ...f,
           adult_count: r.adult_count || 1,
           child_count: r.child_count || 0,
-          main_course: { ...Object.fromEntries(MAIN_DISHES.map(d=>[d,0])), ...(r.main_course || {}) },
-          kids_meal_count: r.kids_meal_count || 0,
+          veg_count: r.veg_count || 0,
           baby_chair_count: r.baby_chair_count || 0,
           veg_type: r.veg_type || "無",
           dietary_note: r.dietary_note || "",
@@ -102,11 +94,8 @@ export default function DetailsForm() {
     e.preventDefault();
     if(busy)return;
     setError("");
-    if (mainTotal !== form.adult_count) {
-      return setError(`主餐總份數（${mainTotal}）須等於大人人數（${form.adult_count}），請為每位大人選一份主餐`);
-    }
-    if (form.kids_meal_count > form.child_count) {
-      return setError(`兒童餐點份數（${form.kids_meal_count}）超過小孩人數（${form.child_count}），請調整`);
+    if (form.veg_count > form.adult_count) {
+      return setError(`素食人數（${form.veg_count}）不可超過大人人數（${form.adult_count}），請調整`);
     }
     if(form.baby_chair_count>form.child_count)return setError('兒童椅數量不可超過小孩人數，請調整後再送出');
     setBusy(true);
@@ -131,7 +120,7 @@ export default function DetailsForm() {
 
   return (
     <div className="container">
-      <GuestHeader title="入席 ‧ 共赴美好時光" subtitle="核對邀請資訊，確認同行人數、主餐與特殊飲食需求" brush/>
+      <GuestHeader title="入席 ‧ 共赴美好時光" subtitle="核對邀請資訊，確認同行人數與特殊飲食需求" brush/>
 
       <>{stageError?<LoadError error={stageError} retry={retry}/>:!stage&&<div className="loading" role="status">讀取回覆開放時間…</div>}</>
       <PreviewBanner stage={stage} closedLabels={stage && !stage.phase2_open ? ["第二階段"] : []}
@@ -143,7 +132,7 @@ export default function DetailsForm() {
           </div>
           <p style={{ fontSize: 14, lineHeight: 1.8 }}>
             {stage.phase2_open_at ? <>預計 <strong>{fmtDateTime(stage.phase2_open_at)}</strong> 開放，</> : null}
-            收到我們的通知後再回來確認出席與主餐就可以囉
+            收到我們的通知後再回來確認出席人數就可以囉
           </p>
           <p style={{ marginTop: 14 }}><a href="/" style={{ color: "var(--milk-tea-700)", fontWeight: 600 }}>← 回首頁</a></p>
         </section>
@@ -233,41 +222,6 @@ export default function DetailsForm() {
             </section>
           )}
 
-          {/* 選擇主餐 */}
-          <section className="section-card">
-            <div className="section-header">
-              <div className="section-header-title"><Utensils size={18} /> 選擇主餐</div>
-              <div className="section-header-en">Main Course</div>
-            </div>
-            <p className="helper-text" style={{ marginBottom: 14 }}>
-              請依大人人數，填寫每種主餐各要幾份。（已選 {mainTotal} / {form.adult_count} 份
-              {mainRemaining > 0
-                ? `，還可選 ${mainRemaining} 份`
-                : "，已選滿；若要更換請先減少原本選定的餐點"}）
-            </p>
-            {MAIN_DISHES.map((dish) => {
-              const cur = form.main_course[dish] || 0;
-              // 已選滿時只能維持或減少；有剩餘額度才能往上加
-              const maxSel = Math.min(50, Math.max(cur, cur + mainRemaining));
-              return (
-                <div className="form-group grid-2" key={dish} style={{ alignItems: "center", marginBottom: 12 }}>
-                  <label style={{ margin: 0 }}>{dish}</label>
-                  <Select aria-label={dish} value={cur} onChange={(v) => setMain(dish, v)}
-                    options={range(0, maxSel, (n) => `${n} 份`)} />
-                </div>
-              );
-            })}
-            {/* 跟上面的主餐同一種排法：名稱在左、下拉在右同寬（2026-09-22 新人要求） */}
-            <div className="form-group grid-2" style={{ alignItems: "center", marginBottom: 12 }}>
-              <label style={{ margin: 0 }}>兒童餐點</label>
-              <Select aria-label="兒童餐點" value={form.kids_meal_count} onChange={(v) => set("kids_meal_count", v)}
-                options={range(0, Math.min(50, Math.max(form.kids_meal_count || 0, form.child_count)), (n) => (n === 0 ? "不需要" : `${n} 份`))} />
-            </div>
-            <div className="helper-text" style={{ marginTop: -4 }}>
-              依小孩人數填寫，最多 {form.child_count} 份；若無需求也沒關係，現場自助吧的餐點小孩皆可享用
-            </div>
-          </section>
-
           {/* 座位需求 */}
           <section className="section-card">
             <div className="section-header">
@@ -286,6 +240,13 @@ export default function DetailsForm() {
             <div className="section-header">
               <div className="section-header-title"><Salad size={18} /> 特殊飲食</div>
               <div className="section-header-en">Dietary</div>
+            </div>
+            {/* 2026-09-29 婚宴是自助餐，不選主餐；只問幾位需要素食套餐 */}
+            <div className="form-group">
+              <label>素食人數</label>
+              <Select aria-label="素食人數" value={form.veg_count} onChange={(v) => set("veg_count", v)}
+                options={range(0, Math.min(50, Math.max(form.veg_count || 0, form.adult_count)), (n) => (n === 0 ? "沒有人需要素食" : `${n} 位需要素食套餐`))} />
+              <div className="helper-text">依大人人數填寫，最多 {form.adult_count} 位</div>
             </div>
             {/* 2026-09-22 新人決定素食一律全素，不再問素食類型；改成說明，餐檯有標示食材可自行取用 */}
             <div className="veg-note" role="note">

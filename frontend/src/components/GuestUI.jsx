@@ -7,7 +7,7 @@ export function GuestHeader({title, subtitle, english='OUR WEDDING · 2027.03.13
   return <header className={`guest-header${brush?' guest-header-brush':''}`}><a href="/" className="guest-brand">Alan <span>&</span> Omena</a><p className="guest-eyebrow">{english}</p><h1>{title}</h1>{subtitle&&<p>{subtitle}</p>}</header>;
 }
 export function GuestNav() {
-  return <nav className="guest-nav" aria-label="婚禮導覽">{[['/','首頁',Home],['/details','餐點確認',Utensils],['/seat','我的座位',Armchair],['/upload','當天照片',Camera],['/photos','婚紗照',Images]].map(([href,label,Icon])=><a key={href} href={href} aria-current={location.pathname===href?'page':undefined}><Icon size={19}/><span>{label}</span></a>)}</nav>;
+  return <nav className="guest-nav" aria-label="婚禮導覽">{[['/','首頁',Home],['/details','出席確認',Utensils],['/seat','我的座位',Armchair],['/upload','當天照片',Camera],['/photos','婚紗照',Images]].map(([href,label,Icon])=><a key={href} href={href} aria-current={location.pathname===href?'page':undefined}><Icon size={19}/><span>{label}</span></a>)}</nav>;
 }
 export function LoadError({error,retry}) { return <div className="guest-error" role="alert"><p>{error?.message||error||'資料暫時無法讀取'}</p><button type="button" className="btn" onClick={retry}>重新讀取</button></div>; }
 export function useGuestLoad(loader) {
@@ -55,7 +55,7 @@ export function GuestReceipt({receipt}) {
   const [copied,setCopied]=useState(false),[copyError,setCopyError]=useState(false);
   const link=`${location.origin}/details#access=${encodeURIComponent(receipt.access_token)}`;
   return <section ref={card} tabIndex={-1} className="section-card guest-receipt" role="status"><div className="receipt-seal"><Check size={28}/></div><p className="guest-eyebrow">WITH LOVE & THANKS</p><h2>{receipt.name}，謝謝你的回覆</h2><p>{receipt.attending?`已記下 ${receipt.adult_count} 位大人、${receipt.child_count} 位小孩，期待與你相聚。`:'你的祝福，我們都好好收下了。'}</p>
-    {receipt.details_completed&&<p>{Object.entries(receipt.main_course||{}).filter(([,n])=>n>0).map(([dish,n])=>`${dish} ${n} 份`).join('・')}</p>}
-    {receipt.attending&&<><p>{receipt.details_completed?'餐點與需求已更新。':'餐點確認開放時，我們會再通知你。'}</p><div className="receipt-actions"><CalendarButtons inline/><a className="btn" href={VENUE.mapUrl} target="_blank" rel="noopener noreferrer"><MapPin size={17}/>前往場地</a></div><button type="button" className="btn-submit" onClick={async()=>{try{await navigator.clipboard.writeText(link);setCopied(true);setCopyError(false);}catch{setCopyError(true);}}}>{copied?'已複製，請自行保存':'複製我的回覆連結'}</button>{copyError&&<label>長按複製回覆連結<input readOnly value={link} onFocus={e=>e.target.select()}/></label>}<p className="helper-text">連結可用來修改餐點回覆，請妥善保存，勿轉傳；90 天內有效。</p></>}
+    {receipt.details_completed&&receipt.veg_count>0&&<p>素食套餐 {receipt.veg_count} 位</p>}
+    {receipt.attending&&<><p>{receipt.details_completed?'人數與需求已更新。':'出席確認開放時，我們會再通知你。'}</p><div className="receipt-actions"><CalendarButtons inline/><a className="btn" href={VENUE.mapUrl} target="_blank" rel="noopener noreferrer"><MapPin size={17}/>前往場地</a></div><button type="button" className="btn-submit" onClick={async()=>{try{await navigator.clipboard.writeText(link);setCopied(true);setCopyError(false);}catch{setCopyError(true);}}}>{copied?'已複製，請自行保存':'複製我的回覆連結'}</button>{copyError&&<label>長按複製回覆連結<input readOnly value={link} onFocus={e=>e.target.select()}/></label>}<p className="helper-text">連結可用來修改回覆，請妥善保存，勿轉傳；90 天內有效。</p></>}
     <a href="/" className="top-link">回首頁看婚禮資訊 →</a></section>;
 }
