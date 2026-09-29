@@ -4,7 +4,7 @@ import { BrowserRouter, NavLink, Navigate, Route, Routes, useLocation } from "re
 import {
   Users, Wallet, CalendarDays, FolderOpen,
   Settings as SettingsIcon, LogOut, Lock, LogIn, Home as HomeIcon, Armchair, Images, Gift, NotebookPen, PartyPopper, Camera, Monitor, ExternalLink, MessageSquareHeart, LayoutGrid,
-  ChevronDown, ClipboardList, Sparkles,
+  ChevronDown, ClipboardList, Sparkles, UtensilsCrossed,
 } from "lucide-react";
 import { adminLogin, clearToken, getRole, getToken, setRole, setToken, fetchMe } from "../api.js";
 import Guests from "./Guests.jsx";
@@ -37,7 +37,9 @@ const NAV_GROUPS = [
 const NAV_OPEN_KEY = "wedding_planner_nav_open"; // 記住哪幾組是展開的（只存在這台瀏覽器）
 
 const NAV = [
-  { to: "/guests", label: "婚宴", icon: Users, perm: ["guests_view"], group: "guests" }, // 2026-09-29 依新人要求改名，裡面分賓客名單／菜單 // 2026-09-08 依新人要求改名為「賓客名單」
+  // 2026-09-29 新人要求：第一項叫「名單」，菜單獨立成子選單一項（同一頁的兩個分頁，用 ?tab=menu 區分）
+  { to: "/guests", label: "名單", icon: Users, perm: ["guests_view"], group: "guests", exclude: "tab=menu" },
+  { to: "/guests", search: "?tab=menu", label: "菜單", icon: UtensilsCrossed, perm: ["menu"], group: "guests" }, // 2026-09-29 依新人要求改名，裡面分賓客名單／菜單 // 2026-09-08 依新人要求改名為「賓客名單」
   { to: "/seating", label: "座位圖", icon: Armchair, perm: ["seating_view", "seating_edit"], group: "guests" },
   { to: "/gifts", label: "喜餅", icon: Gift, perm: ["gifts_view"], group: "guests" },
   { to: "/budget", label: "花費", icon: Wallet, perm: ["budget"], group: "prep" }, // 2026-09-08 依新人要求移除「預算」概念，只記實際金額
@@ -135,8 +137,18 @@ function Shell({ role, can, onLogout, children }) {
     return next;
   });
   // 依 NAV 順序輸出：遇到某組的第一個項目就把整組（可見的）一起畫出來；沒有權限的組整組不出現
-  const renderLink = ({ to, label, icon: Icon, end }) => [
-    <NavLink key={to} to={to} end={end} className={({ isActive }) => (isActive ? "active" : undefined)}>
+  // 同一頁的分頁（名單／菜單）靠網址的 ?tab 分辨誰亮：有 search 的要 search 相符，有 exclude 的則 search 不能含它
+  const isOn = ({ to, search, exclude }) => {
+    const onPath = location.pathname === to || location.pathname.startsWith(to + "/");
+    if (!onPath) return false;
+    if (search) return location.search.includes(search.slice(1));
+    if (exclude) return !location.search.includes(exclude);
+    return true;
+  };
+  const renderLink = (n) => {
+    const { to, search, label, icon: Icon } = n;
+    return [
+    <NavLink key={to + (search || "")} to={to + (search || "")} className={() => (isOn(n) ? "active" : undefined)}>
       <Icon size={16} /> {label}
     </NavLink>,
     // 2026-09-28 新人要求：任何一頁都能直接開大螢幕（/wall 是獨立頁面，用新分頁開，後台照樣留著）；放在「現場留言」正下方
@@ -145,7 +157,7 @@ function Shell({ role, can, onLogout, children }) {
         <Monitor size={16} /> 大螢幕 <ExternalLink size={12} />
       </a>
     ),
-  ];
+  ]; };
   const rendered = new Set();
   const nav = items.flatMap((n) => {
     if (!n.group) return renderLink(n);
