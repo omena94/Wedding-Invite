@@ -4,6 +4,7 @@ import { BrowserRouter, NavLink, Navigate, Route, Routes, useLocation } from "re
 import {
   Users, Wallet, CalendarDays, FolderOpen,
   Settings as SettingsIcon, LogOut, Lock, LogIn, Home as HomeIcon, Armchair, Images, Gift, NotebookPen, PartyPopper, Camera, Monitor, ExternalLink, MessageSquareHeart, LayoutGrid,
+  ChevronDown, ClipboardList, Sparkles,
 } from "lucide-react";
 import { adminLogin, clearToken, getRole, getToken, setRole, setToken, fetchMe } from "../api.js";
 import Guests from "./Guests.jsx";
@@ -26,19 +27,28 @@ import { Loading } from "./ui.jsx";
 
 // 2026-09-08 依新人要求移除「廠商」與「比價」頁；2026-09-10 其他頁的廠商欄位也一併移除（後端資料與 API 保留）
 // 2026-09-27 每一頁對應一把鑰匙（perm）；角色能用哪些鑰匙由設定頁的權限表決定
+// 2026-09-29 新人要求：同主題的頁面放同一個板塊、摺疊式子選單（行事曆跟筆記放一起）。
+// group 對應 NAV_GROUPS 的 key；沒有 group 的（婚紗照、設定）單獨一列。網址與權限都沒變。
+const NAV_GROUPS = [
+  { key: "guests", label: "賓客", icon: Users },
+  { key: "prep", label: "籌備", icon: ClipboardList },
+  { key: "day", label: "婚禮當天", icon: Sparkles },
+];
+const NAV_OPEN_KEY = "wedding_planner_nav_open"; // 記住哪幾組是展開的（只存在這台瀏覽器）
+
 const NAV = [
-  { to: "/guests", label: "婚宴", icon: Users, perm: ["guests_view"] }, // 2026-09-29 依新人要求改名，裡面分賓客名單／菜單 // 2026-09-08 依新人要求改名為「賓客名單」
-  { to: "/seating", label: "座位圖", icon: Armchair, perm: ["seating_view", "seating_edit"] },
-  { to: "/gifts", label: "喜餅", icon: Gift, perm: ["gifts_view"] },
-  { to: "/budget", label: "花費", icon: Wallet, perm: ["budget"] }, // 2026-09-08 依新人要求移除「預算」概念，只記實際金額
-  { to: "/timeline", label: "行事曆", icon: CalendarDays, perm: ["calendar"] }, // 2026-09-10 原「籌備進度」改為月曆
-  { to: "/memos", label: "筆記", icon: NotebookPen, perm: ["notes"] }, // 2026-09-10 原「備忘」改為筆記：標題、內容、主題、已處理、釘選
-  { to: "/program", label: "活動環節", icon: PartyPopper, perm: ["program"] }, // 2026-09-09 婚禮當天流程與點子，只在後台
-  { to: "/files", label: "文件庫", icon: FolderOpen, perm: ["files"] },
+  { to: "/guests", label: "婚宴", icon: Users, perm: ["guests_view"], group: "guests" }, // 2026-09-29 依新人要求改名，裡面分賓客名單／菜單 // 2026-09-08 依新人要求改名為「賓客名單」
+  { to: "/seating", label: "座位圖", icon: Armchair, perm: ["seating_view", "seating_edit"], group: "guests" },
+  { to: "/gifts", label: "喜餅", icon: Gift, perm: ["gifts_view"], group: "guests" },
+  { to: "/budget", label: "花費", icon: Wallet, perm: ["budget"], group: "prep" }, // 2026-09-08 依新人要求移除「預算」概念，只記實際金額
+  { to: "/timeline", label: "行事曆", icon: CalendarDays, perm: ["calendar"], group: "prep" }, // 2026-09-10 原「籌備進度」改為月曆
+  { to: "/memos", label: "筆記", icon: NotebookPen, perm: ["notes"], group: "prep" }, // 2026-09-10 原「備忘」改為筆記：標題、內容、主題、已處理、釘選
+  { to: "/files", label: "文件庫", icon: FolderOpen, perm: ["files"], group: "prep" },
+  { to: "/program", label: "活動環節", icon: PartyPopper, perm: ["program"], group: "day" }, // 2026-09-09 婚禮當天流程與點子，只在後台
+  { to: "/wall", label: "現場留言", icon: MessageSquareHeart, perm: ["wall"], group: "day" }, // 2026-09-28 賓客在 /wish 留言、會場大螢幕、歌單
+  { to: "/wall-plates", label: "大螢幕版面", icon: LayoutGrid, perm: ["wall"], group: "day" }, // 2026-09-28 所有版面的縮圖、預覽、開關、換版面節奏
+  { to: "/day-photos", label: "當天照片", icon: Camera, perm: ["guest_photos"], group: "day" }, // 2026-09-27 賓客上傳的原檔
   { to: "/photos", label: "婚紗照", icon: Images, perm: ["photos"] }, // 2026-09-28 新人要求改名
-  { to: "/day-photos", label: "當天照片", icon: Camera, perm: ["guest_photos"] }, // 2026-09-27 賓客上傳的原檔
-  { to: "/wall", label: "現場留言", icon: MessageSquareHeart, perm: ["wall"] }, // 2026-09-28 賓客在 /wish 留言、會場大螢幕、歌單
-  { to: "/wall-plates", label: "大螢幕版面", icon: LayoutGrid, perm: ["wall"] }, // 2026-09-28 所有版面的縮圖、預覽、開關、換版面節奏
   { to: "/settings", label: "設定", icon: SettingsIcon, perm: ["settings"] },
 ];
 
@@ -113,6 +123,47 @@ function Allowed({ ok, home, children }) {
 function Shell({ role, can, onLogout, children }) {
   const location = useLocation();
   const items = NAV.filter((n) => can(...n.perm));
+  // 哪幾組展開：先讀上次記的，目前所在頁的那一組一定打開
+  const activeGroup = items.find((n) => location.pathname === n.to || location.pathname.startsWith(n.to + "/"))?.group;
+  const [open, setOpen] = useState(() => {
+    try { const saved = JSON.parse(localStorage.getItem(NAV_OPEN_KEY) || "{}"); return saved && typeof saved === "object" ? saved : {}; } catch { return {}; }
+  });
+  useEffect(() => { if (activeGroup && !open[activeGroup]) setOpen((o) => ({ ...o, [activeGroup]: true })); }, [activeGroup]);
+  const toggle = (key) => setOpen((o) => {
+    const next = { ...o, [key]: !o[key] };
+    try { localStorage.setItem(NAV_OPEN_KEY, JSON.stringify(next)); } catch { /* 存不了就只記在這次 */ }
+    return next;
+  });
+  // 依 NAV 順序輸出：遇到某組的第一個項目就把整組（可見的）一起畫出來；沒有權限的組整組不出現
+  const renderLink = ({ to, label, icon: Icon, end }) => [
+    <NavLink key={to} to={to} end={end} className={({ isActive }) => (isActive ? "active" : undefined)}>
+      <Icon size={16} /> {label}
+    </NavLink>,
+    // 2026-09-28 新人要求：任何一頁都能直接開大螢幕（/wall 是獨立頁面，用新分頁開，後台照樣留著）；放在「現場留言」正下方
+    to === "/wall" && (
+      <a key="wall-screen" href="/wall" target="_blank" rel="noopener" className="pl-nav-ext">
+        <Monitor size={16} /> 大螢幕 <ExternalLink size={12} />
+      </a>
+    ),
+  ];
+  const rendered = new Set();
+  const nav = items.flatMap((n) => {
+    if (!n.group) return renderLink(n);
+    if (rendered.has(n.group)) return [];
+    rendered.add(n.group);
+    const g = NAV_GROUPS.find((x) => x.key === n.group);
+    const GIcon = g.icon;
+    const isOpen = !!open[n.group];
+    const list = items.filter((x) => x.group === n.group);
+    return (
+      <div key={`g-${n.group}`} className={`pl-nav-group${isOpen ? " open" : ""}${activeGroup === n.group ? " current" : ""}`}>
+        <button type="button" className="pl-nav-group-head" aria-expanded={isOpen} onClick={() => toggle(n.group)}>
+          <GIcon size={16} /> {g.label} <ChevronDown size={14} className="pl-nav-chev" />
+        </button>
+        <div className="pl-nav-group-items">{list.flatMap(renderLink)}</div>
+      </div>
+    );
+  });
   return (
     <div className="pl-shell">
       <aside className="pl-side">
@@ -121,19 +172,7 @@ function Shell({ role, can, onLogout, children }) {
           <div className="pl-brand-title">婚禮籌備後台</div>
           <div className="pl-brand-role">{role === "helper" ? "幫手模式" : "新人模式"}</div>
         </div>
-        <nav className="pl-nav" key={location.pathname}>
-          {items.map(({ to, label, icon: Icon, end }) => [
-            <NavLink key={to} to={to} end={end} className={({ isActive }) => (isActive ? "active" : undefined)}>
-              <Icon size={16} /> {label}
-            </NavLink>,
-            // 2026-09-28 新人要求：任何一頁都能直接開大螢幕（/wall 是獨立頁面，用新分頁開，後台照樣留著）；放在「現場留言」正下方
-            to === "/wall" && (
-              <a key="wall-screen" href="/wall" target="_blank" rel="noopener" className="pl-nav-ext">
-                <Monitor size={16} /> 大螢幕 <ExternalLink size={12} />
-              </a>
-            ),
-          ])}
-        </nav>
+        <nav className="pl-nav">{nav}</nav>
         <div className="pl-side-foot">
           <a className="top-link" href="/"><HomeIcon size={14} /> 回賓客首頁</a>
           <button className="btn btn-ghost btn-sm" onClick={onLogout}><LogOut size={14} /> 登出</button>
