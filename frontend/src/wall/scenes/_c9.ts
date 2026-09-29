@@ -8,6 +8,7 @@
 // 全部只看傳進來的 t／拍點／種子，確定性沒問題。
 import { clamp, hash, lerp } from '../engine/util';
 import { rgba, mixRgba } from '../engine/palette';
+import { W, SCALE } from '../engine/gl';
 
 type Ctx = CanvasRenderingContext2D;
 export type Pt = { x: number; y: number };
@@ -269,6 +270,44 @@ export function drawCrowd(c: Ctx, fans: readonly Fan[], o: { unit: number; fill:
     }
   }
   return lights;
+}
+
+/**
+ * 一片觀眾「預先畫好」：幾百個剪影每格重畫太貴（concert 一格要 5 ms），所以在 init 畫成貼圖，每格只貼上去、整片跟著拍子動。
+ * 觀眾分成遠、近兩群（各自上下彈的幅度不同，才不會像整張圖在動），每群畫兩種手的姿勢（往左揮、往右揮），每一拍換一次（拍點上甩過去）。
+ * 輪廓光的顏色在這裡就定了（一首歌的色票不會變）；手燈球的顏色會每小節換，所以球不畫進去，回傳每個球的位置讓版面每格自己點。
+ * y0／y1：貼圖涵蓋的範圍（舉起來的手最高到哪、身體畫到哪就被暗部蓋住）；split：遠近兩群的分界（k）。
+ */
+export interface CrowdBake {
+  groups: { k: number; y0: number; poses: [HTMLCanvasElement, HTMLCanvasElement]; lights: [FanLight[], FanLight[]] }[];
+}
+export function bakeCrowd(fans: readonly Fan[], o: { unit: number; fill: (k: number) => string; rim?: string; y0: number; y1: number; split: number; wave?: number; t?: number }): CrowdBake {
+  const x0 = -60, w = W + 120, h = o.y1 - o.y0;
+  const groups: CrowdBake['groups'] = [];
+  for (const [lo, hi] of [[0, o.split], [o.split, 9]] as const) {
+    const list = fans.filter((f) => f.k >= lo && f.k < hi);
+    if (!list.length) continue;
+    const poses: HTMLCanvasElement[] = [], lights: FanLight[][] = [];
+    for (const sgn of [-1, 1]) {
+      const cv = document.createElement('canvas');
+      cv.width = Math.ceil(w * SCALE); cv.height = Math.ceil(h * SCALE);
+      const c = cv.getContext('2d')!;
+      c.setTransform(SCALE, 0, 0, SCALE, -x0 * SCALE, -o.y0 * SCALE);
+      lights.push(drawCrowd(c, list, { unit: o.unit, fill: o.fill, rim: o.rim, bounce: 0, t: o.t ?? 0, wave: sgn * (o.wave ?? 0.22) }));
+      poses.push(cv);
+    }
+    groups.push({ k: list.reduce((a, f) => a + f.k, 0) / list.length, y0: o.y0, poses: poses as [HTMLCanvasElement, HTMLCanvasElement], lights: lights as [FanLight[], FanLight[]] });
+  }
+  return { groups };
+}
+
+/** 把預先畫好的一群觀眾貼到畫面上（x 從 -60 開始、y 從 y0 開始），dy = 這一格整群往上彈多少（px，往上是正的）。 */
+export function drawBakedCrowd(c: Ctx, cv: HTMLCanvasElement, y0: number, dy: number, alpha = 1) {
+  if (alpha <= 0.003) return;
+  const prev = c.globalAlpha;
+  c.globalAlpha = prev * alpha;
+  c.drawImage(cv, -60, y0 - dy, cv.width / SCALE, cv.height / SCALE);
+  c.globalAlpha = prev;
 }
 
 // ---------------------------------------------------------------- 路人剪影

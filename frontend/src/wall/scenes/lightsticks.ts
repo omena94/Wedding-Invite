@@ -5,7 +5,7 @@
 //  - 兩個人：兩人都揮手燈（程式畫的，燈色跟著全場），每一拍換一次手（兩張姿勢輪流），兩拍一次小跳；每兩個小節線一起跳起來（跳的那張圖），
 //    最高點剛好在小節線上。孟庭另一隻手舉著應援板。
 //  - **主打留言寫在孟庭舉的應援板上**：黑色的板子、一圈 LED 燈珠（八分音符一格一格跑）、手寫字；第一拍板子從下面舉起來，留言接著一個字一個字出現。
-//    照「留言尺寸與版面比例標準 v2」：字 40～60、板子最大 580 × 350，寬高跟著留言。沒有留言時寫邀請。
+//    照「留言尺寸與版面比例標準 v2」：字 40～60、板子最大 720 × 300（上緣在 LED 帶下面），寬高跟著留言。沒有留言時寫邀請。
 //  - 歌詞跑在看台中間那條環場 LED 帶上（逐字跟唱），在畫面左上，跟應援板分開。
 //  - 鏡頭：整個窗格慢慢往上搖（看台越來越多）、推近一點點；大鼓時輕輕一頓。右下角 HUD 只有暗暗的座位。
 import * as THREE from 'three';
@@ -27,7 +27,8 @@ const SZ = 620;
 /** 兩個人站的位置。 */
 const AX = 470, OX = 760;
 /** 應援板：最大寬高（標準 v2）、寫字的內距、左緣離拳頭多遠、握把多長。 */
-const BOARD = { wMax: 640, hMax: 320, wMin: 360, left: 50, stick: 40, top: 118 };
+/** （上緣 top 在環場 LED 帶的下緣再往下 20 px：板子四邊的燈珠框都看得到；板子因此改成寬一點、矮一點。） */
+const BOARD = { wMax: 720, hMax: 300, wMin: 360, left: 50, stick: 30, top: 196 };
 const PAD = { x: 36, top: 34, bottom: 26 };
 /** 環場 LED 帶（歌詞）：畫面左上。 */
 /** 手燈海（上層看台）：從哪裡到哪裡（y）。 */
@@ -220,7 +221,7 @@ export default class Lightsticks extends Scene {
     // ---- 環場 LED 帶（歌詞），應援板（孟庭舉著）蓋在它前面
     this.drawRibbon(c, t, on);
     const B = pts[1];
-    if (B?.board) this.drawBoard(c, g, t, B.board, kick, on);
+    if (B?.board) this.drawBoard(c, g, t, B.board, B.lift, kick, on);
 
     // ---- 兩個人腳邊：他們那一排的欄杆（很暗，只有上緣一條亮邊），腳下的看台暗一點
     c.save();
@@ -243,13 +244,13 @@ export default class Lightsticks extends Scene {
    * 應援板：握把從孟庭的拳頭往上，黑色的板子、一圈 LED 燈珠（八分音符一格一格往前跑、拍點上全亮一下）、手寫的留言。
    * 第一拍從下面舉起來（先藏在人群後面）；之後跟著拳頭走（跳的時候一起跳）。
    */
-  private drawBoard(c: CanvasRenderingContext2D, g: CanvasRenderingContext2D, t: number, fist: Pt, kick: number, on: number) {
+  private drawBoard(c: CanvasRenderingContext2D, g: CanvasRenderingContext2D, t: number, fist: Pt, lift: number, kick: number, on: number) {
     const n = this.note, D = this.board;
     const rise = ease.outBack(prog(t, this.tBoard, this.tBoard + 0.4));
     if (rise <= 0) return;
     const drop = (1 - rise) * 260;
-    // 板子的上緣不要超過 BOARD.top（跳起來的時候也一樣：握把縮短一點），字才不會碰到上面的 LED 帶與畫面邊緣
-    const x = fist.x + D.dx, y = Math.max(BOARD.top, fist.y + D.dy) + drop;
+    // 板子的上緣不要超過 BOARD.top（在 LED 帶下面），握把不夠長就短一點；跳起來的那一下整塊跟著人往上（板子畫在 LED 帶前面）
+    const x = fist.x + D.dx, y = Math.max(BOARD.top - lift, fist.y + D.dy) + drop;
     c.save();
     c.globalAlpha = clamp(rise * 2);
     // 握把
