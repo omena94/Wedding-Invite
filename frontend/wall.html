@@ -34,6 +34,8 @@
       /* 版面預覽（/wall?plate=）：左上角標出現在的版面，左右按鈕換版面 */
       #preview-tag { position: fixed; top: 14px; left: 14px; z-index: 30; display: flex; align-items: center; gap: 10px; max-width: min(760px, 70vw);
         padding: 8px 10px; border-radius: 12px; background: rgba(12, 10, 9, 0.72); color: #f2ebdf; font: 14px/1.4 "Noto Sans TC", system-ui, sans-serif; }
+      /* 自己寫的 display: flex 會蓋過 hidden 屬性：沒在預覽時一定要藏起來 */
+      #preview-tag[hidden] { display: none; }
       #preview-tag span { display: flex; flex-direction: column; min-width: 0; }
       #preview-tag small { color: #a1978a; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
       #preview-tag em { color: #ff9a7a; font-style: normal; font-size: 12px; margin-left: 6px; }
