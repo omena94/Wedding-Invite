@@ -17,22 +17,29 @@ import { F, font, layout, loadText } from '../engine/type';
 import { LIN, rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, lerp, prog, smoothstep, TAU } from '../engine/util';
 import { fitText } from '../engine/text';
+import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 } from './_v2';
 import { Lyrics } from '../engine/lyrics';
 import { sparkHead, sparkParticles, lyricAt, drawLyric, layoutLyric, beatAfter, signature, COUPLE_ZH } from './_motifs';
 import { stagger, mono, tag } from './_t11';
 
+/** 右下角 HUD（QR、留言數）那一塊的背景要乾淨：線畫到那裡就淡掉。 */
+const hudFade = (x: number, y: number) => clamp(Math.max((1330 - x) / 150, (800 - y) / 150));
+
 export const spec: PlateSpecDecl = { group: 'type', family: 'science', paper: false, energy: [0.3, 0.9], bars: [4, 12], weight: 1 };
 
 /** 字排在這個範圍（有留言／沒有留言）。左緣 184：鏡頭斜看時左邊比較近、會放大，投影後仍離邊 96 px 以上。 */
-const BOX_M = { x: 184, y: 330, w: 1380, h: 450 };
-const BOX_N = { x: 184, y: 590, w: 1000, h: 170 };
+/** v2：留言區寬 ≤ 860、在畫面左側；右邊整片是一直在扭的螺旋（場景是主角）。 */
+const BOX_M = { x: 184, y: 330, w: 860, h: 470 };
+const BOX_N = { x: 184, y: 590, w: 860, h: 170 };
+/** 左邊離鏡頭比較近（鏡頭左右轉），投影後會放大約 8%：字級上限先除掉這一段，螢幕上才照 v2 的數字。 */
+const NEAR = 1.08;
 /** 螺旋從畫面外延伸到畫面外。 */
 const X_MIN = -80, X_MAX = W + 80;
 /** 透視：鏡頭到螺旋軸的距離（px）。 */
 const CAM_D = 1500;
 /** 歌詞：有留言時在上方（比留言小一級），沒有留言時放大。 */
 const LYR_M = { x: 124, y: 226, w: 1560 };
-const LYR_N = { x: 124, y: 420, w: 1560, size: 104 };
+const LYR_N = { x: 124, y: 330, w: 1560, size: lyricV2(null) };
 /** 鏡頭的左右轉角（窗格開始 → 結束）。 */
 const YAW = [0.14, 0.05] as const;
 const FAM_MSG = F.hand(700);
@@ -40,17 +47,29 @@ const INVITE = '掃描右下角 QR code，把你的祝福編進我們的基因�
 const FOOT = '鹼基配對：A–T、G–C、宣–孟　·　相容性 100.0%';
 
 const BG = () => new FSPass(/* glsl */ `
-  uniform float k;
+  uniform float k; uniform float t; uniform float kick;
   void main() {
     vec2 p = FRAG_PX;
+    vec2 sp = vec2(p.x, ${H}.0 - p.y);
     // 很暗的底，中間（螺旋那一帶）稍微浮起來一點，像顯微鏡下的視野
     float band = exp(-pow((${H}.0 - p.y - 580.0) / 360.0, 2.0));
     vec3 col = C_INK + (C_INK2 - C_INK) * (0.3 + 0.6 * band) * (0.85 + 0.3 * fbm(p / 520.0, 3)) * (0.6 + 0.4 * k);
+    // 培養液裡慢慢往上飄的小顆粒（兩層，遠的慢、近的快＝視差），大鼓時亮一下；右下角 HUD 那一塊不放
+    float hud = smoothstep(0.0, 150.0, max(1330.0 - sp.x, 800.0 - sp.y));
+    for (int L = 0; L < 2; L++) {
+      float fl = float(L), cs = 64.0 + 40.0 * fl, sp_ = 14.0 + 22.0 * fl;
+      vec2 q = sp + vec2(8.0 * sin(t * 0.4 + fl), t * sp_);
+      vec2 cell = floor(q / cs), ctr = (cell + 0.2 + 0.6 * hash22(cell + fl * 17.0)) * cs;
+      float on = step(0.55, hash12(cell + 5.0 + fl));
+      float d = length(q - ctr), r = 1.2 + 1.6 * fl;
+      col += mix(C_BONE, C_SIGNAL, 0.5 * fl) * (1.0 - smoothstep(r * 0.5, r * 2.2, d)) * on * (0.06 + 0.05 * fl) * (1.0 + 1.5 * kick) * hud * k;
+    }
     fragColor = vec4(col, 1.0);
-  }`, { k: { value: 1 } });
+  }`, { k: { value: 1 }, t: { value: 0 }, kick: { value: 0 } });
 
 interface Rung { cx: number; ch: string | null; t: number }
-interface Row { y: number; rungs: Rung[]; x0: number; x1: number; knots: [number, number][]; tStart: number; tEnd: number }
+/** dim：沒有字的「襯底」螺旋比較淡；shift：襯底螺旋的相位錯開。 */
+interface Row { y: number; rungs: Rung[]; x0: number; x1: number; knots: [number, number][]; tStart: number; tEnd: number; dim: number; shift: number }
 
 export default class Dna extends Scene {
   bg = shared('dna.bg', BG);
@@ -64,7 +83,8 @@ export default class Dna extends Scene {
   S = 60; R = 57; omega = 0.01;
   sig = ''; sigT = Infinity; sigX = 0; sigY = 0;
   lyricsInWindow = false;
-  lyrSize = 64;
+  lyrSize = 52;
+  sigSize = 30;
   /** 這一格的鏡頭左右轉角（render 一開始算好，proj 用）。 */
   yaw: number = YAW[0];
 
@@ -73,14 +93,16 @@ export default class Dna extends Scene {
     const s = this.ctx.start, e = this.ctx.end, m = this.msg;
     const text = m ? m.text : COUPLE_ZH.replace(/\s*&\s*/, '♥');
     this.sig = m ? (m.couple ? '—— 新郎新娘' : signature(m.name)) : '';
-    await loadText(`${text}${this.sig}${INVITE}${FOOT}${song.title}${song.artist}mRNA轉錄中樣本歌曲`);
+    await loadText(`${text}${this.sig}${INVITE}${FOOT}${song.title}${song.artist}mRNA轉錄中樣本歌曲▸`);
     const c = this.layer.ctx;
 
     // ---- 排字：一到三行，行距要放得下螺旋的直徑（字級 × 2.5）
     const BOX = m ? BOX_M : BOX_N;
     // 右邊比較遠（透視縮小約一成），字級下限放高一點
     // 有留言時字級依「可用高度扣掉署名」算：署名永遠在最後一行螺旋的下面、不重疊
-    const fit = fitText(c, text, FAM_MSG, BOX.w, BOX.h - (m ? 70 : 0), { min: 50, max: m ? 104 : 60, lineHeight: 2.45, maxLines: 3 });
+    // v2：字級上限依字數（msgMaxFor，換算成投影前的字級），先照子句斷行、放不下再交給 fitText；行距要放得下螺旋的直徑
+    const o = { min: Math.round(V2.msgMin / NEAR), max: Math.floor((m ? msgMaxFor(text) : 48) / NEAR), lineHeight: 3.0, maxLines: 4 };
+    const fit = (m ? fitClauses(c, text, FAM_MSG, BOX.w, BOX.h - 60, o) : null) ?? fitText(c, text, FAM_MSG, BOX.w, BOX.h - (m ? 60 : 0), o);
     const S = this.S = fit.size;
     this.R = S * 0.98;
     this.omega = TAU / (10 * S * 1.02);
@@ -107,20 +129,31 @@ export default class Dna extends Scene {
       const x1 = x0 + lay.width;
       for (let x = x1 + step / 2; x < X_MAX; x += step) rungs.push({ cx: x, ch: null, t: 0 });
       const tStart = knots[0]?.[0] ?? tFirst;
-      this.rows.push({ y, rungs, x0, x1, knots, tStart, tEnd: knots[knots.length - 1]?.[0] ?? tStart });
+      this.rows.push({ y, rungs, x0, x1, knots, tStart, tEnd: knots[knots.length - 1]?.[0] ?? tStart, dim: 1, shift: 0 });
     });
     const last = this.rows[this.rows.length - 1]!;
     this.sigT = last.tEnd + beat * 0.75;
     this.sigX = Math.min(BOX.x + BOX.w, Math.max(...this.rows.map((r) => r.x1)));
-    this.sigY = last.y + this.R + 62;
+    this.sigSize = sigV2(S * NEAR);
+    this.sigY = last.y + this.R + this.sigSize + 16;
     this.lyricsInWindow = lyrics.linesIn(s, e).length > 0;
-    this.lyrSize = Math.round(clamp(S * 0.72, 48, 64));
+    this.lyrSize = lyricV2(m ? S * NEAR : null);
+    // v2：螺旋不到三條時補上沒有字的襯底螺旋（淡一點、相位錯開），畫面上下都有東西在扭——場景是主角
+    for (let k = 0; this.rows.length < 3 && k < 8; k++) {
+      const ys = this.rows.map((r) => r.y);
+      // 沒有留言時只往上補（下面是邀請那一行，不能被螺旋穿過）
+      const y = !m || k % 2 === 0 ? Math.min(...ys) - fit.lineHeight : Math.max(...ys) + fit.lineHeight;
+      if (y < 300 || y > 840) continue;
+      const rungs: Rung[] = [];
+      for (let x = X_MIN; x < X_MAX; x += S * 1.02) rungs.push({ cx: x, ch: null, t: 0 });
+      this.rows.push({ y, rungs, x0: 0, x1: 0, knots: [], tStart: Infinity, tEnd: -Infinity, dim: 0.42, shift: 97 * (k + 1) });
+    }
   }
 
   /** 解旋酶（分叉點）在這一行的位置：每到一個字的時間就「推」到那個字後面（0.16 秒 outExpo），之間停住。 */
   private fork(row: Row, t: number): number {
     const K = row.knots;
-    if (!K.length) return X_MIN - 400;
+    if (!K.length) return X_MIN - 400 - row.shift;
     const z = this.S * 2.2;
     // 第一個字之前：從畫面左邊外面衝進來
     const t0 = K[0]![0];
@@ -154,7 +187,7 @@ export default class Dna extends Scene {
     // 鏡頭：整個窗格從左前方慢慢繞到比較正面（inOutSine）
     const u = (1 - Math.cos(Math.PI * clamp((t - s) / Math.max(1, e - s)))) / 2;
     this.yaw = lerp(YAW[0], YAW[1], u);
-    this.bg.u.k!.value = vis;
+    this.bg.u.k!.value = vis; this.bg.u.t!.value = t; this.bg.u.kick!.value = f.a.kick;
     this.bg.render(renderer, out);
     const L = this.layer, c = L.ctx;
     L.clear();
@@ -181,8 +214,8 @@ export default class Dna extends Scene {
         const qa = { x, y: row.y - R * cs, z: R * sn }, qb = { x, y: row.y + R * cs, z: -R * sn };
         if (pa && pb) {
           const far = 1 - 0.5 * smoothstep(1350, 1950, x);
-          this.strand(pa, qa, A, 0.62 * far, vis);
-          this.strand(pb, qb, B, 1.25 * far, vis);
+          this.strand(pa, qa, A, 0.62 * far * row.dim, vis);
+          this.strand(pb, qb, B, 1.25 * far * row.dim, vis);
         }
         pa = qa; pb = qb;
       }
@@ -198,7 +231,7 @@ export default class Dna extends Scene {
           const a = this.proj(r.cx, row.y + dy * gap, dz * gap), b = this.proj(r.cx, row.y + dy * R, dz * R);
           const zc = dz * R;
           const dk = (zc / R + 1) / 2;
-          const col = side < 0 ? A : B, gain = (side < 0 ? 0.36 : 0.5) * (0.3 + 0.7 * dk) * vis * far;
+          const col = side < 0 ? A : B, gain = (side < 0 ? 0.36 : 0.5) * (0.3 + 0.7 * dk) * vis * far * row.dim * hudFade(b.x, b.y);
           const lb = zc > 0.5 ? this.front : this.back;
           lb.seg2(a.x, a.y, b.x, b.y, (1.4 + 1.2 * dk) * a.k, [col[0] * gain, col[1] * gain, col[2] * gain], 1);
         }
@@ -227,7 +260,7 @@ export default class Dna extends Scene {
     if (this.msg && t >= this.sigT) {
       const p = this.proj(this.sigX, this.sigY, 0);
       c.save(); c.globalAlpha = vis * prog(t, this.sigT, this.sigT + 0.3);
-      c.font = font(F.hand(400), Math.round(44 * p.k)); c.fillStyle = rgba('ash'); c.textAlign = 'right';
+      c.font = font(F.hand(400), Math.round(this.sigSize)); c.fillStyle = rgba('ash'); c.textAlign = 'right';
       // 署名低到右下角 QR 那一帶時，右緣收到 x = 1330
       c.fillText(this.sig, p.y > 800 ? Math.min(p.x, 1330) : p.x, p.y);
       c.restore();
@@ -257,7 +290,7 @@ export default class Dna extends Scene {
   private strand(p: { x: number; y: number; z: number }, q: { x: number; y: number; z: number }, col: [number, number, number], gain: number, vis: number) {
     const a = this.proj(p.x, p.y, p.z), b = this.proj(q.x, q.y, q.z);
     const zc = (p.z + q.z) / 2, dk = (zc / this.R + 1) / 2;
-    const g = gain * (0.25 + 0.75 * dk) * vis;
+    const g = gain * (0.25 + 0.75 * dk) * vis * hudFade(a.x, a.y);
     const lb = zc > 0.5 ? this.front : this.back;
     lb.seg2(a.x, a.y, b.x, b.y, (2 + 2.2 * dk) * a.k, [col[0] * g, col[1] * g, col[2] * g], 1);
     if (gain > 1 && dk > 0.6) this.glow.seg2(a.x, a.y, b.x, b.y, 9 * a.k, [col[0] * 0.08 * vis, col[1] * 0.08 * vis, col[2] * 0.08 * vis], 0.6);
@@ -276,7 +309,7 @@ export default class Dna extends Scene {
       }
       return;
     }
-    const st = { family: F.archivo(100, 800), size: box.size, minSize: 48, maxWidth: box.w };
+    const st = { family: F.archivo(100, 800), size: box.size, minSize: V2.lyrMin, maxWidth: box.w };
     const lay = layoutLyric(c, ly.line, st);
     const inK = ease.outExpo(prog(t, ly.line.start - 0.35, ly.line.start + 0.1));
     const top = box.y - (lay.height - lay.size) + (1 - inK) * 16;

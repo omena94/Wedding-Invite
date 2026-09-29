@@ -6,17 +6,21 @@
 //    整句往上飄走、淡掉，新的一句再打進來。純音樂時輸入框是「錄音中」的波形（真的音量）。
 //  - 上面一兩則很淡的舊訊息（前幾則留言，或狗狗加入群組），只是讓它像一個真的對話。
 // 鏡頭：窗格一開始焦點在後面的房間，0.3 秒內「拉焦」到手機上；之後慢慢推近，每個小節線緩一下。
-// 畫法：手機、桌子、背後的牆是 three.js（_t5 的舞台：多重取樣＋景深）；螢幕內容是一張直式 Canvas2D（fast），每格重畫。
+// v2（留言尺寸標準）：鏡頭拉遠，手機在畫面左半邊，桌上多一根蠟燭（火焰一直晃、每個小節線被風吹歪一下，光在桌上跟著閃）；
+// 每一個新泡泡彈出來（主打、每一句歌詞），手機螢幕灑在桌上的光就亮一下——「有新訊息」。螢幕上的字級照 v2（畫面上的 px）：量螢幕投影到畫面上的寬度，換算成畫布上的字級。
+// 畫法：手機、桌子、背後的牆是 three.js（_t5 的舞台：超取樣＋景深）；螢幕內容是一張直式 Canvas2D（fast），每格重畫。
 import * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
 import { Layer2D } from '../engine/gl';
 import { F, font, loadText } from '../engine/type';
 import { LIN, rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, hash } from '../engine/util';
-import { fitText, type FitResult } from '../engine/text';
+import { type FitResult } from '../engine/text';
 import type { Line } from '../engine/lyrics';
 import { layoutLyric, drawLyric, fillWithHearts, COUPLE_ZH, type LyricStyle } from './_motifs';
-import { grid, windowLines, rrect, pad, pop, renderStage, bodyMaterial, screenMaterial, tableMaterial, backdropMaterial, slab, setV3, mixV, type Grid } from './_t5';
+import { grid, windowLines, rrect, pad, pop, renderStage, bodyMaterial, screenMaterial, tableMaterial, backdropMaterial, slab, setV3, mixV, projScale, fitMsgV2, flame, type Grid } from './_t5';
+import { V2, lyricV2, sigV2 } from './_v2';
+import { LineBatch } from '../engine/lines';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'screen', paper: false, energy: [0.15, 0.85], bars: [4, 8] };
 
@@ -25,11 +29,11 @@ const PHONE = { w: 7.4, h: 15.9, d: 0.8, r: 1.1 };
 const CW = 1080, CH = 2340;
 const SCR = { w: 6.9, h: 6.9 * (CH / CW) };
 const LEAN = 0.2, TURN = 0.12; // 往後靠、稍微轉向右前方（鏡頭那邊）
-const PX = 60; // 泡泡左右留白
+const PX = 36; // 泡泡左右留白（螢幕很窄：泡泡幾乎貼邊，短句才放得下一行）
 const IN_Y = 1930, IN_H = 330; // 輸入框（歌詞）
 const HERO_BOT = IN_Y - 80; // 主打泡泡的下緣
-const LYRIC: LyricStyle = { family: F.archivo(100, 700), size: 98, minSize: 88, maxWidth: CW - 2 * PX - 110, align: 'left', lineHeight: 1.08 };
-const LYRIC_BIG: LyricStyle = { ...LYRIC, size: 120, minSize: 96 };
+const LYRIC_BASE: LyricStyle = { family: F.archivo(100, 700), size: 98, minSize: 88, maxWidth: CW - 2 * PX - 110, align: 'left', lineHeight: 1.08 };
+const CANDLE = { x: 13, z: -16, r: 1.6, h: 9 };
 
 function makeRig() {
   const scene = new THREE.Scene();
@@ -45,11 +49,21 @@ function makeRig() {
   // 立著、往後靠一點、轉一點；底邊貼在桌上
   phone.rotation.set(-LEAN, TURN, 0, 'YXZ');
   phone.position.set(2.5, (PHONE.h / 2) * Math.cos(LEAN), -(PHONE.h / 2) * Math.sin(LEAN) * 0.9);
-  scene.add(table, wall, phone);
-  return { scene, cam, table, wall, body, screen, phone };
+  // 蠟燭：蠟身＋燭芯（火焰是 LineBatch，畫在場景之後、景深之前）
+  const waxMat = bodyMaterial();
+  const wax = new THREE.Mesh(new THREE.CylinderGeometry(CANDLE.r, CANDLE.r * 1.05, CANDLE.h, 32), waxMat);
+  wax.position.set(CANDLE.x, CANDLE.h / 2, CANDLE.z);
+  const wick = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.6, 6), bodyMaterial());
+  wick.position.set(CANDLE.x, CANDLE.h + 0.3, CANDLE.z);
+  scene.add(table, wall, phone, wax, wick);
+  const fire = new LineBatch(256, { screen2D: false, worldWidth: true, blend: 'add', depthTest: true });
+  return { scene, cam, table, wall, body, screen, phone, waxMat, wick, fire };
 }
 
 interface Old { text: string; name: string }
+
+/** 署名：「—— 名字」；新人自己寫的標「（新人）」。 */
+const sigText = (m: Msg) => `—— ${m.name || (m.couple ? COUPLE_ZH : '一位賓客')}${m.couple ? '（新人）' : ''}`;
 
 export default class Chat extends Scene {
   rig = shared('chat.rig', makeRig);
@@ -63,6 +77,12 @@ export default class Chat extends Scene {
   olds: Old[] = [];
   lines: Line[] = [];
   voice: number[] = [];
+  /** 畫面 px／畫布 px（init 時用窗格中段的鏡位量）與換算過的字級。 */
+  sc = 0.4;
+  lyr: LyricStyle = LYRIC_BASE;
+  lyrBig: LyricStyle = LYRIC_BASE;
+  nameSize = 46;
+  oldSize = 58;
 
   override async init() {
     const { audio: au, lyrics, song, params } = this.ctx;
@@ -75,16 +95,26 @@ export default class Chat extends Scene {
     this.olds = others.length >= 2 ? others.slice(0, 2).map((x) => ({ text: x.text, name: x.name || '一位賓客' })) : [{ text: '芃芃、QQ 加入了群組', name: '' }];
     await loadText(`今晚的賓客群組正在輸入錄音中掃描右下角加入聊天你的話會出現在這裡一位賓客芃芃加入了群組${COUPLE_ZH}${song.title}${m ? m.text + m.name : ''}${this.olds.map((o) => o.text + o.name).join('')}${this.lines.map((l) => l.text).join('')}`);
     this.tHero = g.b0 + g.beat;
+    // v2 字級：量窗格中段的鏡位下，螢幕上 1 畫布 px 是畫面上幾 px
+    this.pose((s + e) / 2);
+    const k = this.sc = projScale(this.rig.cam, this.rig.screen, new THREE.Vector3(-SCR.w / 2, 0, 0), new THREE.Vector3(SCR.w / 2, 0, 0), CW);
     if (m) {
-      // 短留言先試一行：一行放得下、字又比歌詞（98）明顯大，就不要斷行（「新婚快／樂！！！」很難讀）；
-      // 放一行會太小的才照長留言的方式斷成幾行
-      const one = fitText(c, m.text, F.hand(400), CW - 2 * PX - 120, 400, { min: 104, max: 180, lineHeight: 1.22, maxLines: 1 });
-      this.fit = one.lines.length === 1 && one.size >= 110 && one.width <= CW - 2 * PX - 120
-        ? one
-        : fitText(c, m.text, F.hand(400), CW - 2 * PX - 120, 1150, { min: 104, max: 180, lineHeight: 1.22, maxLines: 8 });
-      this.heroW = this.fit.width + 110;
-      this.heroH = this.fit.height + this.fit.size * 0.3 + 90;
+      // 短句一行放完（不要「新婚快／樂！！！」），長留言照子句斷；字級照 v2 換算
+      // 高度預算：泡泡（含署名、邊距）在畫面上不超過 430（v2 的留言區上限）
+      this.fit = fitMsgV2(c, m.text, F.hand(400), CW - 2 * PX - 84, (430 - 40 - 50) / k, k, 1.12, 9);
+      this.heroW = this.fit.width + 84;
+      this.heroH = this.fit.height + this.fit.size * 0.3 + 60;
+      // 署名放在泡泡裡、最後一行下面（v2：署名永遠在留言最後一行下面）；先算好字級，泡泡跟著長高、夠寬
+      const sz = sigV2(this.fit.size * k) / k;
+      c.font = font(F.hand(400), sz);
+      this.heroW = Math.max(this.heroW, c.measureText(sigText(m)).width + 110);
+      this.heroH += sz * 1.5;
     }
+    const ms = this.fit ? this.fit.size * k : null;
+    this.lyr = { ...LYRIC_BASE, size: lyricV2(ms) / k, minSize: V2.lyrMin / k };
+    this.lyrBig = { ...LYRIC_BASE, size: lyricV2(null) / k, minSize: V2.lyrMin / k };
+    this.nameSize = sigV2(ms ?? 44) / k;
+    this.oldSize = 30 / k;
     if (!this.lines.length) {
       const N = 40;
       for (let k = 0; k < N; k++) this.voice.push(au.env('rms', s + (k / (N - 1)) * (e - s)));
@@ -103,9 +133,13 @@ export default class Chat extends Scene {
     setV3(tb.uniforms.base!, mixV(LIN.ink2, LIN.blood, 0.12), 1.1);
     setV3(tb.uniforms.base2!, mixV(LIN.ink, LIN.ink2, 0.6));
     tb.uniforms.grainK!.value = 0.5;
-    setV3(tb.uniforms.glowCol!, mixV(LIN.bone, LIN.signal, 0.3), 0.05);
-    (tb.uniforms.glowPos!.value as THREE.Vector3).set(0.5, 0, 5);
-    tb.uniforms.glowR!.value = 10;
+    // 新訊息：主打泡泡、每一句歌詞的泡泡彈出來的那一刻，螢幕灑在桌上的光亮一下
+    let ping = 0;
+    const pings = [this.tHero, ...this.lines.map((l) => l.start - 0.35)];
+    for (const x of pings) if (t >= x) ping = Math.max(ping, Math.exp(-(t - x) * 4));
+    setV3(tb.uniforms.glowCol!, mixV(LIN.bone, LIN.signal, 0.3), 0.05 + 0.09 * ping);
+    (tb.uniforms.glowPos!.value as THREE.Vector3).set(1.5, 0, 6);
+    tb.uniforms.glowR!.value = 10 + 3 * ping;
     (tb.uniforms.shadow!.value as THREE.Vector4).set(2.5, -1.2, PHONE.w / 2, 0.8);
     tb.uniforms.shadowRot!.value = TURN;
     tb.uniforms.shadowK!.value = 0.6;
@@ -131,21 +165,48 @@ export default class Chat extends Scene {
     setV3(sc.uniforms.sheen!, LIN.bone, 0.035);
     (sc.uniforms.refl!.value as THREE.Vector3).set(-0.7, 0.45, 0.55);
 
-    // ---- 鏡頭：跟螢幕差不多高、在手機右前方；慢慢推近，每個小節線緩一下；主打出現時多推一點
-    let step = 0;
-    for (const b of g.bars) step += prog(t, b - 0.1, b + 0.7, ease.inOutCubic);
-    const push = Math.min(step, 6) * 0.3 + 0.7 * prog(t, this.tHero, this.tHero + 1, ease.outCubic);
-    const dist = 25.5 - push;
-    const look = new THREE.Vector3(2.0, 6.4, 0.2);
-    const az = 0.38 + 0.012 * Math.min(step, 6);
-    R.cam.position.set(look.x + Math.sin(az) * dist, look.y + 1.2, look.z + Math.cos(az) * dist);
-    R.cam.lookAt(look);
-    R.cam.updateMatrixWorld();
-    // 拉焦：一開始對在後面的牆，0.3 秒內拉到手機（快，才不會讓正在唱的歌詞糊太久）
+    // ---- 蠟燭：燭火一直晃，每個小節線被風吹歪一下；桌上的燭光跟著閃
+    let gust = 0;
+    for (const b of g.bars) if (t >= b) gust = Math.max(gust, Math.exp(-(t - b) * 5) * Math.sin(Math.min(Math.PI, (t - b) * 9)));
+    const flick = 0.5 + 0.3 * Math.sin(t * 17.3) * Math.sin(t * 7.1) + 0.2 * this.ctx.audio.hit('kick', t, 0.12);
+    const wm = R.waxMat;
+    setV3(wm.uniforms.base!, mixV(LIN.bone, LIN.signal, 0.15), 0.5);
+    setV3(wm.uniforms.keyCol!, mixV(LIN.signal, LIN.ember, 0.5), 0.45);
+    (wm.uniforms.keyDir!.value as THREE.Vector3).set(0, 1, 0.3);
+    setV3(wm.uniforms.fill!, LIN.ink2, 1.1);
+    setV3(tb.uniforms.lampCol!, mixV(LIN.ink2, LIN.signal, 0.55), 0.35 + 0.12 * flick);
+    (tb.uniforms.lampPos!.value as THREE.Vector3).set(CANDLE.x, 0, CANDLE.z);
+    tb.uniforms.lampR!.value = 16;
+
+    // ---- 鏡頭（見 pose）；拉焦：一開始對在後面的牆，0.3 秒內拉到手機（快，才不會讓正在唱的歌詞糊太久）
+    const dist = this.pose(t);
     const rack = prog(t, s, s + 0.3, ease.inOutCubic);
     const focus = dist + (1 - rack) * 120;
-    renderStage(renderer, R.scene, R.cam, out, LIN.ink, { focus, range: 3.5, maxR: 18, falloff: 0.5 });
-    return { bloom: 0.5, vignette: 0.45, grain: 0.05 };
+    const core = mixV(LIN.ember, [1, 1, 1], 0.4), glow = LIN.signal;
+    renderStage(renderer, R.scene, R.cam, out, LIN.ink, { focus, range: 5, maxR: 18, falloff: 0.5 }, (rt) => {
+      R.fire.clear();
+      flame(R.fire, t, CANDLE.x, CANDLE.h + 0.45, CANDLE.z, 2.4, core, glow, flick * 0.6 + gust * 2.2);
+      R.fire.render(renderer, rt, R.cam);
+    });
+    return { bloom: 0.6, vignette: 0.45, grain: 0.05 };
+  }
+
+  /**
+   * 鏡頭：跟螢幕差不多高、在手機右前方，拉遠一點讓手機在畫面左半邊、蠟燭在右邊；慢慢推近，每個小節線緩一下，
+   * 主打出現時多推一點。回傳鏡頭到手機的距離（對焦用）。
+   */
+  private pose(t: number): number {
+    const R = this.rig, g = this.g;
+    let step = 0;
+    for (const b of g.bars) step += prog(t, b - 0.1, b + 0.7, ease.inOutCubic);
+    const push = Math.min(step, 6) * 0.35 + 0.8 * prog(t, this.tHero, this.tHero + 1, ease.outCubic);
+    const dist = 37.5 - push;
+    const look = new THREE.Vector3(9.5, 7.2, -1.5);
+    const az = 0.3 + 0.012 * Math.min(step, 6);
+    R.cam.position.set(look.x + Math.sin(az) * dist, look.y + 2.5, look.z + Math.cos(az) * dist);
+    R.cam.lookAt(look);
+    R.cam.updateMatrixWorld();
+    return R.cam.position.distanceTo(R.phone.position);
   }
 
   // ---------------------------------------------------------------- 螢幕內容
@@ -167,7 +228,7 @@ export default class Chat extends Scene {
       const fit = this.fit;
       const k = pop(t, this.tHero, 0.36, 1.6);
       const y = HERO_BOT - this.heroH;
-      top = y - 70;
+      top = y - 40;
       if (t >= g.b0 && t < this.tHero) this.dots(c, PX, HERO_BOT - 150, t, g.b0);
       if (k > 0) {
         c.save();
@@ -176,10 +237,12 @@ export default class Chat extends Scene {
         c.fillStyle = mixRgba('ink2', 'graphite', 0.55); rrect(c, PX, y, this.heroW, this.heroH, 56); c.fill();
         c.beginPath(); c.moveTo(PX + 4, HERO_BOT - 50); c.quadraticCurveTo(PX - 8, HERO_BOT, PX - 26, HERO_BOT + 4); c.quadraticCurveTo(PX + 26, HERO_BOT + 4, PX + 56, HERO_BOT - 4); c.fill();
         c.font = font(F.hand(400), fit.size); c.fillStyle = rgba('bone', 0.97);
-        fit.lines.forEach((ln, i) => fillWithHearts(c, ln, PX + 55, y + 45 + fit.size * 0.92 + i * fit.lineHeight));
+        fit.lines.forEach((ln, i) => fillWithHearts(c, ln, PX + 42, y + 30 + fit.size * 0.92 + i * fit.lineHeight));
+        // 署名：泡泡裡、最後一行下面、靠右（v2 的署名字級）
+        c.font = font(F.hand(400), this.nameSize); c.fillStyle = rgba('bone', 0.6); c.textAlign = 'right';
+        c.fillText(sigText(m), PX + this.heroW - 40, y + 30 + fit.height + fit.size * 0.3 + this.nameSize * 1.1);
+        c.textAlign = 'left';
         c.restore();
-        c.font = font(F.hei(500), 46); c.fillStyle = rgba('bone', 0.55 * clamp(k * 2));
-        c.fillText(m.couple ? `${m.name || COUPLE_ZH}（新人）` : m.name || '一位賓客', PX + 10, y - 26);
       } else top = HERO_BOT - 220;
     } else {
       // 沒有留言：中間一行很淡的邀請
@@ -193,15 +256,21 @@ export default class Chat extends Scene {
     c.save();
     c.globalAlpha = 0.3;
     let y = top;
-    for (let i = this.olds.length - 1; i >= 0 && y > 420; i--) {
+    // 舊訊息只放得下的：整個泡泡（含名字）要在標題下的分隔線（y 310）以下
+    for (let i = this.olds.length - 1; i >= 0 && y - this.oldSize * 3.2 > 330; i--) {
       const o = this.olds[i]!;
-      c.font = font(F.hand(400), 58);
-      const w = Math.min(CW - 2 * PX - 200, c.measureText(o.text).width) + 80;
+      c.font = font(F.hand(400), this.oldSize);
+      // 舊訊息只是背景：太長就截短加「…」，不要超出泡泡
+      const maxW = CW - 2 * PX - 200;
+      let txt = o.text;
+      if (c.measureText(txt).width > maxW) { const ch = Array.from(txt); while (ch.length > 1 && c.measureText(ch.join('') + '…').width > maxW) ch.pop(); txt = ch.join('') + '…'; }
+      const w = c.measureText(txt).width + 80;
       if (o.name) {
-        c.fillStyle = mixRgba('ink2', 'graphite', 0.5); rrect(c, PX, y - 120, w, 120, 44); c.fill();
-        c.fillStyle = rgba('bone', 0.95); fillWithHearts(c, o.text, PX + 40, y - 40);
-        c.font = font(F.hei(500), 38); c.fillStyle = rgba('bone', 0.7); c.fillText(o.name, PX + 10, y - 140);
-        y -= 220;
+        const bh = this.oldSize * 1.7;
+        c.fillStyle = mixRgba('ink2', 'graphite', 0.5); rrect(c, PX, y - bh, w, bh, 44); c.fill();
+        c.fillStyle = rgba('bone', 0.95); fillWithHearts(c, txt, PX + 40, y - bh * 0.32);
+        c.font = font(F.hei(500), this.oldSize * 0.7); c.fillStyle = rgba('bone', 0.7); c.fillText(o.name, PX + 10, y - bh - 14);
+        y -= bh + this.oldSize * 1.4;
       } else {
         c.font = font(F.hei(500), 38); c.fillStyle = rgba('bone', 0.8); c.textAlign = 'center';
         c.fillText(o.text, CW / 2, y - 30); c.textAlign = 'left';
@@ -222,7 +291,7 @@ export default class Chat extends Scene {
 
   /** 輸入框裡的歌詞：唱到哪打到哪；換句時舊的往上飄走淡掉。 */
   private typed(c: CanvasRenderingContext2D, t: number, big: boolean) {
-    const st = big ? LYRIC_BIG : LYRIC;
+    const st = big ? this.lyrBig : this.lyr;
     const colors = { active: rgba('signal'), sung: rgba('bone', 0.95), unsung: rgba('bone', 0.3) };
     // 最近一句開始打（提早 0.35 秒）的那一句是目前的；前一句在換句後 0.3 秒內飄走
     let cur = -1;

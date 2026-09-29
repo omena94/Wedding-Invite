@@ -14,6 +14,7 @@ import { F, font, loadText } from '../engine/type';
 import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, lerp, prog, pulse, hash } from '../engine/util';
 import { tokens } from '../engine/text';
+import { msgMaxFor, lyricV2, sigV2, V2 } from './_v2';
 import { Lyrics } from '../engine/lyrics';
 import { lyricAt, layoutLyric, beatAfter, drawHeart, signature, fillWithHearts, COUPLE_ZH } from './_motifs';
 import { Paper, stagger, mono, tag } from './_t11';
@@ -51,17 +52,21 @@ function family(z: number): 's' | 'd' | 'p' | 'n' | 'f' {
   return 'd';
 }
 /** 表的位置與格子大小（右上角，背景）。 */
-const TB = { x: 1062, y: 92, cell: 42 };
+/** v2：週期表放大、清楚一點，是畫面的主角之一（右上）；左上是一顆一直在轉的原子模型。 */
+const TB = { x: 900, y: 110, cell: 52 };
+/** 原子模型的中心與軌道半徑（左上）。 */
+const ATOM = { x: 440, y: 318, r: 160 };
 const cellXY = (z: number) => { const { r, c } = cellOf(z); return { x: TB.x + c * TB.cell, y: TB.y + r * TB.cell }; };
 
 // ---------------------------------------------------------------- 版面
 const MAST = 'PERIODIC TABLE OF WISHES　·　祝福元素週期表';
 /** 有留言：歌詞在左上（表的左邊）；方塊在下面一整條（最下緣 820：鏡頭推近以後也不碰右下角 QR）。 */
-const LYR_M = { x: 124, y: 316, w: 860 };
-const TILES_M = { x: 124, y: 556, w: 1560, h: 262 };
+/** v2：留言方塊在左下（寬 ≤ 860、高 ≤ 260），歌詞在它上面。 */
+const LYR_M = { x: 124, y: 566, w: 860 };
+const TILES_M = { x: 124, y: 610, w: 860, h: 250 };
 /** 沒有留言：歌詞放大在中間偏下，方塊小小一排在更下面。 */
-const LYR_N = { x: 124, y: 600, w: 1560, size: 104 };
-const TILES_N = { x: 124, y: 700, w: 1200, h: 100 };
+const LYR_N = { x: 124, y: 640, w: 860, size: lyricV2(null) };
+const TILES_N = { x: 124, y: 700, w: 860, h: 90 };
 const FOOT = '＊原子序依祝福送達順序編排；原子量 1314.520（一生一世我愛你）。';
 const INVITE = '掃描右下角 QR code，你的祝福也能成為一種新元素。';
 const FAM_TILE = F.archivo(100, 700);
@@ -83,7 +88,8 @@ export default class Elements extends Scene {
   S = 60; T = 78;
   dur = 0.4;
   tFirst = 0; tLast = 0;
-  lyrSize = 64;
+  lyrSize = 52;
+  sigSize = 30;
   sig = '';
   sigX = 0; sigY = 0;
   lyricsInWindow = false;
@@ -124,7 +130,8 @@ export default class Elements extends Scene {
       const right = Math.max(...lines.map((l) => (l.length ? l[l.length - 1]!.x + l[l.length - 1]!.w : 0)));
       return { T, lh, lines, h, right, ok: h <= box.h && lines.length <= 5 && right <= box.w + 1 };
     };
-    let lo = 40, hi = m ? 150 : 56, best = place(lo);
+    // v2：方塊裡的字級（螢幕 px）上限依字數，下限 40；沒有留言時方塊小小的（歌詞是焦點）
+    let lo: number = V2.msgMin, hi = m ? msgMaxFor(text) : 44, best = place(lo);
     for (let k = 0; k < 12; k++) { const mid = (lo + hi) / 2, r = place(mid); if (r.ok) { best = r; lo = mid; } else hi = mid; }
     this.S = Math.floor(lo); best = place(this.S); this.T = best.T;
     // 元素：每個字挑一格（不重複）
@@ -141,9 +148,10 @@ export default class Elements extends Scene {
     this.bottom = box.y + best.h;
     // 署名：方塊右下，靠右對齊（不進右下角 QR 區）
     this.sigX = Math.min(box.x + best.right, 1330);
-    this.sigY = this.bottom + 58;
+    this.sigSize = sigV2(this.S);
+    this.sigY = this.bottom + this.sigSize + 16;
     // 歌詞比留言小一級（留言方塊的字 × 0.72，48～64 px）
-    this.lyrSize = Math.round(clamp(this.S * 0.72, 48, 64));
+    this.lyrSize = lyricV2(this.S);
 
     // ---- 時間：第一拍後一拍一塊（或更密），兩小節內、也不超過窗格的四成五落定
     const beat = au.beatPeriod(s);
@@ -164,8 +172,8 @@ export default class Elements extends Scene {
     const c = this.base.ctx, cs = TB.cell;
     this.base.clear();
     c.save();
-    c.filter = 'blur(1.4px)';
-    c.globalAlpha = 0.62;
+    c.filter = 'blur(0.5px)';
+    c.globalAlpha = 0.8;
     const tint: Record<string, string> = { s: rgba('signal', 0.18), d: rgba('sepia', 0.03), p: rgba('blood', 0.07), n: rgba('rose', 0.14), f: rgba('sepia', 0.06) };
     for (let z = 1; z <= 118; z++) {
       const { x, y } = cellXY(z);
@@ -173,7 +181,7 @@ export default class Elements extends Scene {
       c.fillRect(x + 1, y + 1, cs - 2, cs - 2);
       c.strokeStyle = rgba('sepia', 0.4); c.lineWidth = 1;
       c.strokeRect(x + 0.5, y + 0.5, cs - 1, cs - 1);
-      c.font = font(F.archivo(100, 700), 16); c.fillStyle = rgba('sepia', 0.7); c.textAlign = 'center';
+      c.font = font(F.archivo(100, 700), 19); c.fillStyle = rgba('sepia', 0.7); c.textAlign = 'center';
       c.fillText(SYM[z - 1]!, x + cs / 2, y + cs * 0.66);
       c.textAlign = 'left';
     }
@@ -193,6 +201,8 @@ export default class Elements extends Scene {
     L.clear();
     c.globalAlpha = 1 - exit;
 
+    this.tableLife(c, t);
+    this.atom(c, t);
     this.lyric(c, t);
 
     // ---- 方塊：先畫落定的，再畫飛行中的（在上面）
@@ -242,11 +252,11 @@ export default class Elements extends Scene {
       const k = prog(t, this.tLast + beat * 0.5, this.tLast + beat * 0.5 + 0.35);
       c.save(); c.globalAlpha *= k;
       if (this.msg) {
-        c.font = font(F.hand(400), 44); c.fillStyle = rgba('sepia', 0.8); c.textAlign = 'right';
+        c.font = font(F.hand(400), this.sigSize); c.fillStyle = rgba('sepia', 0.8); c.textAlign = 'right';
         fillWithHearts(c, this.sig, this.sigX, this.sigY);
       } else {
         c.font = font(F.hand(700), 34); c.fillStyle = rgba('sepia', 0.7);
-        c.fillText(INVITE, TILES_N.x, this.sigY - 6);
+        c.fillText(INVITE, TILES_N.x, this.bottom + 52);
       }
       c.restore();
     }
@@ -255,6 +265,75 @@ export default class Elements extends Scene {
     const u = (1 - Math.cos(Math.PI * clamp((t - s) / Math.max(1, e - s)))) / 2;
     const landHit = this.tiles.reduce((a, q) => Math.max(a, q.tile ? pulse(t, q.land, 0.08) : 0), 0);
     return { paper: 1, bloom: 0.35, vignette: 0.3, grain: 0.04, halation: 0.05, zoom: 1 + PUSH * u + 0.003 * landHit };
+  }
+
+  /**
+   * 週期表自己也一直在動：每一拍有一格輕輕亮一下（像實驗室的指示燈），每個小節線有一道光從左到右掃過一排排族（一拍掃完）。
+   */
+  private tableLife(c: CanvasRenderingContext2D, t: number) {
+    const au = this.ctx.audio, cs = TB.cell;
+    const bi = Math.floor(au.beatAt(t));
+    for (let k = 0; k < 3; k++) {
+      const b = bi - k, z = 1 + Math.floor(hash(this.seed, b, 3) * 118), a = pulse(t, au.timeOfBeat(b), 0.28) * 0.5;
+      if (a < 0.02) continue;
+      const { x, y } = cellXY(z);
+      c.fillStyle = rgba('signal', a); c.fillRect(x + 1, y + 1, cs - 2, cs - 2);
+    }
+    const bar = au.timeOfBar(Math.floor(au.barAt(t) + 1e-4)), u = (t - bar) / au.beatPeriod(bar);
+    if (u >= 0 && u < 1.6) {
+      const col = 18 * u;
+      for (let z = 1; z <= 118; z++) {
+        const { x, y } = cellXY(z), cc = (x - TB.x) / cs, d = col - cc;
+        if (d < 0 || d > 3) continue;
+        c.fillStyle = rgba('signal', 0.28 * (1 - d / 3)); c.fillRect(x + 1, y + 1, cs - 2, cs - 2);
+      }
+    }
+  }
+
+  /**
+   * 左上的原子模型（波耳模型）：三條傾斜的軌道，電子一小節繞一圈；每個小節線有一顆電子躍遷，吐出一個光子（一小段波浪線）。
+   * 原子核在大鼓上抖一下。只用墨色與訊號色，細線。
+   */
+  private atom(c: CanvasRenderingContext2D, t: number) {
+    const au = this.ctx.audio, { x, y, r } = ATOM;
+    const bar = au.barAt(t), kick = this.ctx.audio.hit('kick', t, 0.12);
+    const b0 = Math.floor(bar + 1e-4), tb = au.timeOfBar(b0), age = t - tb;
+    const flash = b0 % 3;
+    c.save();
+    c.lineWidth = 1.3;
+    for (let i = 0; i < 3; i++) {
+      const rot = (i * Math.PI) / 3 + 0.25;
+      const lit = i === flash ? pulse(t, tb, 0.3) : 0;
+      c.strokeStyle = lit > 0.02 ? mixRgba('sepia', 'blood', lit) : rgba('sepia', 0.32);
+      c.beginPath(); c.ellipse(x, y, r, r * 0.34, rot, 0, Math.PI * 2); c.stroke();
+      // 電子：一小節一圈，三條軌道的相位錯開；前半圈（靠近鏡頭）大一點
+      const a = Math.PI * 2 * (bar + i / 3) * (i === 1 ? -1 : 1);
+      const ex = Math.cos(a) * r, ey = Math.sin(a) * r * 0.34;
+      const px = x + ex * Math.cos(rot) - ey * Math.sin(rot), py = y + ex * Math.sin(rot) + ey * Math.cos(rot);
+      const near = 0.5 + 0.5 * Math.sin(a);
+      c.fillStyle = i === flash && lit > 0.05 ? rgba('blood') : rgba('sepia', 0.85);
+      c.beginPath(); c.arc(px, py, 4 + 2.5 * near, 0, Math.PI * 2); c.fill();
+      // 光子：躍遷的那一顆，在小節線上往外吐一段波浪線（0.7 秒飛出去、淡掉）
+      if (i === flash && age >= 0 && age < 0.7) {
+        const dx = px - x, dy = py - y, L = Math.hypot(dx, dy) || 1, ux = dx / L, uy = dy / L;
+        const d0 = 14 + 150 * ease.outCubic(age / 0.7);
+        c.strokeStyle = rgba('blood', 0.8 * (1 - age / 0.7)); c.lineWidth = 1.6;
+        c.beginPath();
+        for (let s = 0; s <= 60; s += 3) {
+          const w = Math.sin(s / 4) * 6, qx = px + ux * (d0 + s) - uy * w, qy = py + uy * (d0 + s) + ux * w;
+          if (s === 0) c.moveTo(qx, qy); else c.lineTo(qx, qy);
+        }
+        c.stroke(); c.lineWidth = 1.3;
+      }
+    }
+    // 原子核：幾顆小球擠在一起，大鼓時抖一下
+    for (let k = 0; k < 7; k++) {
+      const ang = k * 2.4, rr = k === 0 ? 0 : 9 + 2 * (k % 2);
+      const jx = Math.cos(ang) * rr + kick * 3 * Math.cos(k * 7 + t * 40), jy = Math.sin(ang) * rr + kick * 3 * Math.sin(k * 5 + t * 40);
+      c.fillStyle = k % 2 ? rgba('blood', 0.85) : rgba('sepia', 0.85);
+      c.beginPath(); c.arc(x + jx, y + jy, 7, 0, Math.PI * 2); c.fill();
+    }
+    c.restore();
   }
 
   /**
@@ -317,7 +396,7 @@ export default class Elements extends Scene {
       }
       return;
     }
-    const st = { family: F.archivo(100, 800), size: box.size, minSize: 48, maxWidth: box.w, lineHeight: 1.12 };
+    const st = { family: F.archivo(100, 800), size: box.size, minSize: V2.lyrMin, maxWidth: box.w, lineHeight: 1.12 };
     const lay = layoutLyric(c, ly.line, st);
     const inK = ease.outExpo(prog(t, ly.line.start - 0.35, ly.line.start + 0.15));
     // 兩行時往上長（最後一行的基線固定）

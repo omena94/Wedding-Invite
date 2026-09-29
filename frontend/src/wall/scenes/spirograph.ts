@@ -6,7 +6,9 @@
 //  - 齒輪、筆也是 LineBatch（填滿的圓＝一段零長度的粗線），不用每格上傳一張大圖。
 //  - 主打留言寫在花心（齒環正中央的紙上，手寫字），是畫面唯一的焦點；署名在下面。齒環拉近到上下出格（特寫）。
 //    歌詞在左邊逐字跟唱，比留言小一級。小字只有兩小群：左上的器材與圈數、左下的冷面註腳。
-//  - 沒有留言：歌詞放大寫在花心；純音樂又沒留言：花心放邀請。
+//  - 沒有留言：歌詞寫在花心；純音樂又沒留言：花心放邀請。
+//  - 標準 v2：花心的字是寫在紙上的（場景物件），字級 40～60、署名 26～32、歌詞 40～52；空出來的左下角放兩個備用齒輪，
+//    每一拍咬合轉一齒（outBack）；
 import * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
 import { FSPass, Layer2D, H } from '../engine/gl';
@@ -17,7 +19,8 @@ import { clamp, ease, prog, pulse, TAU } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
 import { fillWithHearts } from '../engine/motifs';
 import { lyricAt, drawLyric, layoutLyric, beatAfter, signature, type LyricStyle } from './_motifs';
-import { subRect, paperLyric, fitMsg } from './_t13';
+import { subRect, paperLyric } from './_t13';
+import { msgMaxFor, lyricV2, sigV2, V2, fitClauses } from './_v2';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'craft', paper: true, energy: [0.2, 0.85], bars: [4, 8] };
 
@@ -33,7 +36,7 @@ const LOOP = 4;
 /** 一圈幾段線（一段約 4 px）。 */
 const SEG = 620;
 /** 留言在花心的框（花瓣尖在半徑 ~302）。 */
-const BOX = { w: 510, h: 360 };
+const BOX = { w: 470, h: 340 };
 /** 左欄：歌詞、標籤。 */
 const COL = { x: 140, w: 440 };
 const COL_R = { x: 98, y: 90, w: 540, h: 900 };
@@ -43,6 +46,8 @@ const MID_R = { x: C.x - 560, y: C.y - 560, w: 1120, h: 1120 };
 const FAM_MSG = F.hand(400);
 const FAM_LYRIC = F.archivo(75, 800);
 const FOOT = '＊轉滿四圈，花才會閉合。';
+/** 左下角的兩個備用齒輪（咬合：半徑比就是轉速比）。 */
+const SPARE = [{ x: 262, y: 752, r: 64, teeth: 32 }, { x: 262 + 64 + 38 + 1, y: 752 - 22, r: 38, teeth: 19 }];
 const INVITE = ['掃描右下角 QR code，', '下一圈換你來畫。'];
 
 const PAPER = () => new FSPass(/* glsl */ `
@@ -59,6 +64,15 @@ const PAPER = () => new FSPass(/* glsl */ `
     col *= 1.0 - 0.075 * smoothstep(${R - 8}.0, ${R}.0, dd) * (1.0 - smoothstep(${R + 40}.0, ${R + 52}.0, dd));
     fragColor = vec4(col, 1.0);
   }`, { uC: { value: new THREE.Vector2(C.x, C.y) } });
+
+/**
+ * 右下角 HUD（時間、已收到幾則、QR：x ≥ 1360、y ≥ 830）底下要乾淨：齒環、花樣在這一區淡掉（離這一區 80 px 起慢慢淡）。
+ */
+function hudFade(x: number, y: number) {
+  const dx = 1360 - x, dy = 830 - y;
+  const d = dx > 0 || dy > 0 ? Math.hypot(Math.max(dx, 0), Math.max(dy, 0)) : 0;
+  return clamp(d / 80);
+}
 
 /** 內擺線：齒輪在齒環裡面滾（θ = 齒輪中心繞圓心的角度），筆在距齒輪中心 d 的孔。 */
 function pen(th: number, d: number) {
@@ -102,11 +116,14 @@ export default class Spirograph extends Scene {
     await loadText(`${FOOT}${INVITE.join('')}萬花尺齒環齒輪第孔圈閉合${song.title}${this.msg ? signature(this.msg.name) : ''}`);
     const c = this.mid.ctx;
     if (this.msg) {
-      const short = Array.from(this.msg.text).length <= 10;
-      this.fit = fitMsg(c, this.msg.text, FAM_MSG, BOX.w, BOX.h - 60, { min: 48, max: 112, lineHeight: 1.3, maxLines: short ? 1 : 7 });
-      this.sigSize = Math.round(clamp(this.fit.size * 0.5, 40, 50));
+      // 標準 v2：字級上限依字數，先照子句排；可用高度扣掉署名（署名永遠在最後一行下面）
+      const text = this.msg.text;
+      const h = BOX.h - sigV2(msgMaxFor(text)) * 2;
+      const o = { min: V2.msgMin, max: msgMaxFor(text), lineHeight: 1.34, maxLines: 6 };
+      this.fit = fitClauses(c, text, FAM_MSG, BOX.w, h, o) ?? fitText(c, text, FAM_MSG, BOX.w, h, o);
+      this.sigSize = sigV2(this.fit.size);
     }
-    this.inviteFit = fitText(c, INVITE.join(''), FAM_MSG, COL.w, 200, { min: 44, max: 54, lineHeight: 1.35, maxLines: 3 });
+    this.inviteFit = fitText(c, INVITE.join(''), FAM_MSG, COL.w, 200, { min: 40, max: 44, lineHeight: 1.35, maxLines: 3 });
     this.ring = this.buildRing();
   }
 
@@ -174,7 +191,7 @@ export default class Spirograph extends Scene {
       let p = pen(-Math.PI / 2, HOLES[2]!);
       for (let i = 1; i <= SEG * LOOP; i += 2) {
         const q = pen((i / SEG) * TAU - Math.PI / 2, HOLES[2]!);
-        this.lines.seg2(p.x, p.y, q.x, q.y, 1.1, g, 0.2 * vis);
+        this.lines.seg2(p.x, p.y, q.x, q.y, 1.1, g, 0.2 * vis * hudFade(q.x, q.y));
         p = q;
       }
     }
@@ -193,11 +210,12 @@ export default class Spirograph extends Scene {
       for (let i = 1; i <= n; i++) {
         const u = Math.min(k, loop + i / SEG);
         const q = pen(u * TAU - Math.PI / 2, dd);
-        this.lines.seg2(p.x, p.y, q.x, q.y, wdt, col, a);
+        this.lines.seg2(p.x, p.y, q.x, q.y, wdt, col, a * hudFade(q.x, q.y));
         p = q;
       }
     }
     this.gear(th, d, vis, f.a.kick);
+    this.spares(au.beatAt(t), vis);
     this.lines.render(renderer, out);
 
     // ---- 左欄
@@ -255,6 +273,40 @@ export default class Spirograph extends Scene {
     L.seg2(pp.x, pp.y, pp.x + 0.01, pp.y, 8, LIN.blood, k);
   }
 
+  /**
+   * 左下角的兩個備用齒輪：互相咬合，每一拍轉一齒（outBack，轉過頭一點再停住），大的順時針、小的逆時針。
+   * 只是道具（桌上沒在用的零件），讓空著的角落也跟著拍子動。
+   */
+  private spares(beat: number, k: number) {
+    const L = this.lines;
+    const bi = Math.floor(beat), bp = beat - bi;
+    const ticks = bi + ease.outBack(clamp(bp / 0.35));
+    const sg = LIN.signal, sp = LIN.sepia;
+    const edge: [number, number, number] = [sg[0] * 0.4 + sp[0] * 0.6, sg[1] * 0.4 + sp[1] * 0.6, sg[2] * 0.4 + sp[2] * 0.6];
+    SPARE.forEach((g, gi) => {
+      // 一拍轉一齒（大齒輪的齒距），小齒輪反向、轉速是半徑比
+      const rot = (gi === 0 ? 1 : -SPARE[0]!.r / g.r) * ticks * (TAU / SPARE[0]!.teeth) + (gi ? Math.PI / g.teeth : 0);
+      L.seg2(g.x + 5, g.y + 8, g.x + 5.01, g.y + 8, 2 * g.r, sp, 0.06 * k);
+      L.seg2(g.x, g.y, g.x + 0.01, g.y, 2 * g.r, sg, 0.16 * k);
+      const N = g.teeth * 6;
+      let px = 0, py = 0;
+      for (let i = 0; i <= N; i++) {
+        const a = (i / N) * TAU;
+        const rr = g.r + 3 * Math.cos(a * g.teeth);
+        const x = g.x + rr * Math.cos(a + rot), y = g.y + rr * Math.sin(a + rot);
+        if (i) L.seg2(px, py, x, y, 1, edge, 0.55 * k);
+        px = x; py = y;
+      }
+      // 中心孔與一個偏心孔（看得出在轉）
+      L.seg2(g.x, g.y, g.x + 0.01, g.y, 7, edge, 0.5 * k);
+      const hx = g.x + g.r * 0.55 * Math.cos(rot), hy = g.y + g.r * 0.55 * Math.sin(rot);
+      for (let i = 0; i < 10; i++) {
+        const a0 = (i / 10) * TAU, a1 = ((i + 1) / 10) * TAU;
+        L.seg2(hx + 4.5 * Math.cos(a0), hy + 4.5 * Math.sin(a0), hx + 4.5 * Math.cos(a1), hy + 4.5 * Math.sin(a1), 1, edge, 0.5 * k);
+      }
+    });
+  }
+
   /** 齒環與花心的留言／歌詞／邀請。 */
   private drawMid(t: number, k: number, ly: ReturnType<typeof lyricAt>) {
     const m = this.msg, fit = this.fit;
@@ -274,10 +326,22 @@ export default class Spirograph extends Scene {
     c.save();
     c.translate(-MID_R.x, -MID_R.y);
     c.globalAlpha = k;
-    if (this.ring) c.drawImage(this.ring, MID_R.x, MID_R.y, MID_R.w, MID_R.h);
+    if (this.ring) {
+      c.drawImage(this.ring, MID_R.x, MID_R.y, MID_R.w, MID_R.h);
+      // HUD 那一角挖掉（邊緣 80 px 漸層），跟 hudFade 一致
+      c.save();
+      c.globalCompositeOperation = 'destination-out';
+      const gx = c.createLinearGradient(1280, 0, 1360, 0), gy = c.createLinearGradient(0, 750, 0, 830);
+      gx.addColorStop(0, 'rgba(0,0,0,0)'); gx.addColorStop(1, 'rgba(0,0,0,1)');
+      gy.addColorStop(0, 'rgba(0,0,0,0)'); gy.addColorStop(1, 'rgba(0,0,0,1)');
+      c.fillStyle = '#000'; c.fillRect(1360, 830, 600, 300);
+      c.fillStyle = gx; c.fillRect(1280, 830, 80, 300);
+      c.fillStyle = gy; c.fillRect(1360, 750, 600, 80);
+      c.restore();
+    }
     c.textBaseline = 'alphabetic';
     if (m && fit) {
-      const blockH = fit.height + this.sigSize * 1.7;
+      const blockH = fit.height + this.sigSize * 2;
       const top = C.y - blockH / 2 + fit.size * 0.88;
       c.font = font(FAM_MSG, fit.size);
       c.fillStyle = rgba('sepia', 0.95);
@@ -295,19 +359,19 @@ export default class Spirograph extends Scene {
         c.font = font(FAM_MSG, this.sigSize);
         c.fillStyle = rgba('sepia', 0.7);
         const sig = signature(m.name), sw = c.measureText(sig).width;
-        c.fillText(sig, C.x + Math.min(fit.width / 2, BOX.w / 2) - sw, top + (fit.lines.length - 1) * fit.lineHeight + this.sigSize * 1.6);
+        c.fillText(sig, C.x + Math.min(Math.max(fit.width / 2, sw / 2), BOX.w / 2) - sw, top + (fit.lines.length - 1) * fit.lineHeight + fit.size * 0.3 + this.sigSize * 1.5);
       }
     } else if (ly) {
-      const st: LyricStyle = { family: FAM_LYRIC, size: 92, minSize: 50, maxWidth: BOX.w, align: 'center', lineHeight: 1.14, ...paperLyric() };
+      const st: LyricStyle = { family: FAM_LYRIC, size: lyricV2(null), minSize: V2.lyrMin, maxWidth: BOX.w, align: 'center', lineHeight: 1.14, ...paperLyric() };
       const lay = layoutLyric(c, ly.line, st);
       c.save();
       c.translate(C.x, C.y + lay.size * 0.36 - (lay.height - lay.size) / 2);
       drawLyric(c, ly.line, t, st, lay, ly.k * k);
       c.restore();
     } else {
-      c.font = font(FAM_MSG, 50);
+      c.font = font(FAM_MSG, 44);
       c.fillStyle = rgba('sepia', 0.85);
-      INVITE.forEach((ln, i) => c.fillText(ln, C.x - c.measureText(ln).width / 2, C.y - 12 + i * 68));
+      INVITE.forEach((ln, i) => c.fillText(ln, C.x - c.measureText(ln).width / 2, C.y - 10 + i * 62));
     }
     c.restore();
     L.upload();
@@ -331,8 +395,7 @@ export default class Spirograph extends Scene {
     c.letterSpacing = '0px';
 
     if (this.msg && ly) {
-      const size = this.fit ? Math.round(clamp(this.fit.size * 0.78, 48, 58)) : 58;
-      const st: LyricStyle = { family: FAM_LYRIC, size, minSize: 48, maxWidth: COL.w, ...paperLyric() };
+      const st: LyricStyle = { family: FAM_LYRIC, size: lyricV2(this.fit ? this.fit.size : null), minSize: V2.lyrMin, maxWidth: COL.w, ...paperLyric() };
       const lay = layoutLyric(c, ly.line, st);
       const inK = ease.outExpo(prog(t, ly.line.start - 0.35, ly.line.start + 0.2));
       c.save();

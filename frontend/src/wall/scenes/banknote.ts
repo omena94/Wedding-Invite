@@ -16,9 +16,10 @@
 // 影子落在右下；切進來時鏡頭從遠一點、斜一點的位置一下子推到定位，之後整個窗格很慢地繞、慢慢推近。
 // 配角砍掉一半以上：只留行名（小）、一行冷面小字與序號、簽名欄，徽章外圈只留一行弧形字；總裁簽名、英文副標、微縮字、放大鏡圖解都拿掉，
 // 留言是整張紙上唯一的大字。
-// v2（2026-09-29「留言尺寸與版面比例標準 v2」）：鏡頭往後拉（鈔票約佔畫面的七成，四周看得到桌面）：
-// 留言在畫面上 40～60 px（依字數）、署名 26～32、桌上的歌詞 40～52（不比留言大），字都照鏡頭的縮放換算成平面字級。
-// 鈔票底下斜斜壓著一張舊的鈔票（整疊的感覺）；窗外的樹影與一道窗光很慢地掃過桌面與鈔票。
+// v2（2026-09-29「留言尺寸與版面比例標準 v2」）：鈔票照樣撐滿畫面（鈔票是場景，不是留言區），只把留言縮到
+// 畫面上 40～60 px（依字數）、署名 26～32、桌上的歌詞 40～52（不比留言大），字都照鏡頭的縮放換算成平面字級。
+// 多補的動畫是鈔票自己的防偽特徵：每幾個小節一道驗鈔燈（紫外線）的光帶從左掃到右，照出紙裡的螢光纖維與隱藏的愛心浮水印；
+// 鈔票底下斜斜壓著一張舊的鈔票（整疊的感覺）。
 import * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides } from '../engine/scene';
 import { Layer2D, makeRT, W, H } from '../engine/gl';
@@ -42,9 +43,9 @@ const LYR = { x: 190, base: 930, maxW: 1060 };
 const STRIP = { y: 826, h: 150 };
 /** 鏡頭的焦距（px）：跟「距離」一樣時，對準的那一點是 1:1。 */
 const CAM_F = 1800;
-/** v2：鏡頭往後拉多少（距離的倍數）；拉遠之後平面上 1 px 在畫面上約是 NOTE_S px（字級照這個換算）。 */
-const PULL = 1.26;
-const NOTE_S = 0.8;
+/** 鏡頭的距離倍數（v2 試過往後拉，但鈔票變小、四周空一大片桌面，不好看：維持原本的取景）；平面上 1 px 在畫面上約是 NOTE_S px（字級照這個換算）。 */
+const PULL = 1.0;
+const NOTE_S = 1.0;
 /** 畫面上的字級 → 平面上的字級。 */
 const plane = (screenPx: number) => screenPx / NOTE_S;
 
@@ -313,6 +314,9 @@ export default class Banknote extends Scene {
     (u.uThread!.value as THREE.Vector3).set(INNER.y0 + (t - kick.t) / 0.42 * (INNER.y1 - INNER.y0), kick.k * Math.exp(-(t - kick.t) / 0.5), 0);
     const head = this.head(t);
     (u.uSpark!.value as THREE.Vector3).set(head?.p.x ?? 0, head?.p.y ?? 0, head ? head.k : 0);
+    // 驗鈔燈：印好之後，每兩小節（奇數小節線起）一道光帶花一小節從左掃到右
+    const uv = this.uvSweep(t);
+    (u.uUV!.value as THREE.Vector3).set(uv.x, uv.k, 0);
     // 鏡頭：平面 → 螢幕（shader 用反矩陣把每個像素換回平面座標）
     this.camera(t);
     (u.uInv!.value as THREE.Matrix3).copy(this.camInv);
@@ -340,6 +344,16 @@ export default class Banknote extends Scene {
       zoom, flash: 0.05 * stamp + 0.03 * clink,
       shake: [Math.sin(t * 91) * 7 * stamp, Math.cos(t * 77) * 5 * stamp],
     };
+  }
+
+  /** 驗鈔燈的光帶：留言印好之後，每兩小節的小節線起花一小節從鈔票左緣掃到右緣（淡入淡出）。 */
+  private uvSweep(t: number) {
+    const au = this.ctx.audio, T = this.T;
+    const b = Math.floor(au.barAt(t) + 1e-4);
+    const t0 = au.timeOfBar(b), t1 = au.timeOfBar(b + 1);
+    if (b % 2 !== 1 || t0 < T.printEnd + T.P || t1 > this.ctx.end) return { x: -9999, k: 0 };
+    const u = clamp((t - t0) / Math.max(0.3, t1 - t0));
+    return { x: lerp(20, 1900, ease.inOutQuad(u)), k: Math.sin(Math.PI * u) * 0.9 };
   }
 
   // ------------------------------------------------------------------ 鏡頭

@@ -7,6 +7,8 @@
 //    用鄰近像素算法向量打光（左上來的光），刻痕底部是新鮮的石粉白、有刀痕；石頭有程序生成的石紋。
 //  - 節奏：第一拍開始刻，每一拍刻一段（outExpo，刀子往前一推）；刻完的下一拍「沾印泥」（印面凸起的地方變紅），
 //    再下一拍蓋印（畫面震一下），之後印面帶著印泥、刀子收走。
+//  - 標準 v2：留言＋署名＋印整塊 ≤ 600 × 430（留言 40～60、署名 26～32、歌詞 40～52）；
+//    蓋完之後每個小節線有人對著印面「呼」一口氣，石粉往右上飄散。
 import * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
 import { FSPass, Layer2D, H } from '../engine/gl';
@@ -17,7 +19,9 @@ import { clamp, ease, prog, hash, mulberry32, noise1, TAU } from '../engine/util
 import { type FitResult } from '../engine/text';
 import { fillWithHearts } from '../engine/motifs';
 import { lyricAt, drawLyric, layoutLyric, beatAfter, signature, type LyricStyle } from './_motifs';
-import { subRect, rasterPieces, fitMsg } from './_t13';
+import { subRect, rasterPieces } from './_t13';
+import { msgMaxFor, lyricV2, sigV2, V2, fitClauses } from './_v2';
+import { fitText } from '../engine/text';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'craft', paper: true, energy: [0.2, 0.8], bars: [4, 8] };
 
@@ -30,7 +34,7 @@ const M = 512;
 /** 右欄：留言、署名、印。 */
 const COL = { x: 700, x1: 1340, y: 170 };
 /** 蓋出來的印（實際大小）。 */
-const PRINT = 176;
+const PRINT = 150;
 /** 邊款拓片（歌詞）。 */
 const BAND = { x: 150, y: 758, w: 1190, h: 128 };
 const TXT_R = { x: 96, y: 80, w: 1270, h: 900 };
@@ -116,7 +120,8 @@ void main() {
   if (inBand > 0.0) {
     float g = fbm(p * 0.012, 4) * 0.5 + snoise(p * 0.35) * 0.25 + snoise(p * 1.1) * 0.15;
     vec3 inkC = mix(C_INK, C_SEPIA, 0.35) * (0.8 + 0.35 * g);
-    col = mix(col, inkC, (0.9 + 0.1 * g) * uIn);
+    // 拓片的墨不要壓成一整塊實心的黑：濃淡不勻，紙紋透得出來
+    col = mix(col, inkC, (0.74 + 0.14 * g) * uIn);
   }
   fragColor = vec4(col, 1.0);
 }`;
@@ -205,10 +210,11 @@ export default class Seal extends Scene {
     const c = this.txt.ctx;
     const w = COL.x1 - COL.x;
     if (m) {
-      const short = Array.from(m.text).length <= 8;
-      // 字級用「右欄高度扣掉印與署名」算（554 − 24 − 印 176 = 354）：印與署名永遠在留言下面，不會壓到最後一行
-      this.fit = fitMsg(c, m.text, FAM_MSG, w, 350, { min: 48, max: 104, lineHeight: 1.32, maxLines: short ? 1 : 6 });
-      this.sigSize = Math.round(clamp(this.fit.size * 0.52, 40, 50));
+      // 標準 v2：字級上限依字數、先照子句排；高度用「留言區 430 扣掉印與署名」算，印與署名永遠在留言下面
+      const o = { min: V2.msgMin, max: msgMaxFor(m.text), lineHeight: 1.32, maxLines: 5 };
+      const h = V2.boxH - 24 - PRINT;
+      this.fit = fitClauses(c, m.text, FAM_MSG, w - 40, h, o) ?? fitText(c, m.text, FAM_MSG, w - 40, h, o);
+      this.sigSize = sigV2(this.fit.size);
       // 留言在上、印（與左邊的署名）在留言下面，整塊在右欄（y 170～724）裡上下置中：短留言不會只擠在最上面，印也不會壓到最後一行
       const blockH = this.fit.height + 24 + PRINT;
       const msgTop = COL.y + Math.max(0, (554 - blockH) / 2) + this.fit.size * 0.9;
@@ -350,6 +356,7 @@ export default class Seal extends Scene {
     this.lines.clear();
     if (t < this.tInk + 0.2) this.knife(t, carve, f, vis * (1 - prog(t, this.tInk - 0.1, this.tInk + 0.2)));
     this.chips(t);
+    this.puffs(t);
     if (this.lines.count) this.lines.render(renderer, out);
 
     // ---- 右欄與標籤
@@ -424,6 +431,35 @@ export default class Seal extends Scene {
         const a2 = Math.max(0, age - 0.02);
         const x1 = ox + vx * a2, y1 = oy + vy * a2 + 900 * a2 * a2;
         this.lines.seg2(x1, y1, x0, y0, 2 + 2.5 * hash(b, j, 4), stone, 0.85 * (1 - age / life));
+      }
+    }
+  }
+
+  /**
+   * 吹石粉：蓋完印之後，每個小節線有人對著印面「呼」一口氣，細細的石粉從印面往右上飄散、慢下來、淡掉。
+   * 粒子的起點與方向都由小節號雜湊決定（確定性）。
+   */
+  private puffs(t: number) {
+    const au = this.ctx.audio;
+    const from = this.tStamp + 0.3;
+    if (t < from) return;
+    const dust: [number, number, number] = [LIN.sepia[0] * 0.5 + LIN.paper[0] * 0.5, LIN.sepia[1] * 0.5 + LIN.paper[1] * 0.5, LIN.sepia[2] * 0.5 + LIN.paper[2] * 0.5];
+    const bi = Math.floor(au.barAt(t));
+    for (let b = bi - 1; b <= bi; b++) {
+      const tb = au.timeOfBar(b);
+      if (tb < from || t < tb) continue;
+      const age = t - tb;
+      if (age > 1.6) continue;
+      for (let j = 0; j < 40; j++) {
+        const x0 = FACE.x + 40 + (FACE.s - 80) * hash(b, j, 1), y0 = FACE.y + 40 + (FACE.s - 80) * hash(b, j, 2);
+        const a = -0.2 - 0.9 * hash(b, j, 3), sp = 160 + 320 * hash(b, j, 4);
+        const life = 0.8 + 0.8 * hash(b, j, 5);
+        if (age > life) continue;
+        // 空氣阻力：走的距離 = v·(1 − e^(−kt))/k
+        const d = (sp * (1 - Math.exp(-2.4 * age))) / 2.4, d2 = (sp * (1 - Math.exp(-2.4 * Math.max(0, age - 0.03)))) / 2.4;
+        const x = x0 + Math.cos(a) * d, y = y0 + Math.sin(a) * d - 30 * age;
+        const xb = x0 + Math.cos(a) * d2, yb = y0 + Math.sin(a) * d2 - 30 * Math.max(0, age - 0.03);
+        this.lines.seg2(xb, yb, x, y, 1.6 + 1.6 * hash(b, j, 6), dust, 0.55 * (1 - age / life));
       }
     }
   }
@@ -507,8 +543,8 @@ export default class Seal extends Scene {
     c.globalAlpha = vis;
     const bx = BAND.x + 40, bw = BAND.w - 80;
     if (ly) {
-      const size = this.fit ? Math.round(clamp(this.fit.size * 0.8, 48, 58)) : 60;
-      const st: LyricStyle = { family: F.ming(700), size, minSize: 48, maxWidth: bw, active: rgba('signal'), sung: rgba('paper', 0.94), unsung: rgba('paper', 0.28) };
+      const size = lyricV2(this.fit ? this.fit.size : null);
+      const st: LyricStyle = { family: F.ming(700), size, minSize: V2.lyrMin, maxWidth: bw, active: rgba('signal'), sung: rgba('paper', 0.94), unsung: rgba('paper', 0.28) };
       const lay = layoutLyric(c, ly.line, st);
       const inK = ease.outExpo(prog(t, ly.line.start - 0.35, ly.line.start + 0.2));
       c.translate(bx, BAND.y + BAND.h / 2 + lay.size * 0.36 - (lay.height - lay.size) / 2 + (1 - inK) * 12);

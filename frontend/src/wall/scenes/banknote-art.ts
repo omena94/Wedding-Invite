@@ -137,6 +137,7 @@ uniform vec2 uSig; uniform vec2 uSigT; // 簽名的左右（x0, x1）與寫的�
 uniform vec3 uThread;                // 金屬箔的閃光：位置（y）、強度、-
 uniform vec2 uShadow;                // 鈔票的影子偏移
 uniform vec3 uSpark;                 // 仙女棒的位置與亮度：紙是亮的，只靠加亮的火花看不清楚，這裡再墊一圈有顏色的光
+uniform vec3 uUV;                    // 驗鈔燈（紫外線）：光帶中心 x（平面座標）、強度、-
 uniform mat3 uInv;                   // 鏡頭：螢幕 px → 桌面平面座標（齊次）
 uniform sampler2D uLyr;              // 桌面上的歌詞（fast Layer2D：預乘、sRGB 編碼）
 uniform vec2 uLyrY;                  // 歌詞那一條在平面上的 y 起點與高度
@@ -199,14 +200,7 @@ void main() {
   float light = 0.66 + 0.36 * exp(-0.5 * dot(lq, lq));
   // 紙上緣之外的桌面是鏡頭遠處：再暗一點，空間才有深度
   light *= mix(0.84, 1.0, smoothstep(-160.0, 260.0, p.y));
-  // 窗外的樹影：斜斜落在桌面與鈔票的右上半，在風裡很慢地晃（葉縫之間是亮的）；一道窗光很慢地從左掃到右
-  {
-    vec2 lp = p * 0.0024 + vec2(0.25 * sin(uT * 0.42) + 0.06 * sin(uT * 1.3), 0.12 * sin(uT * 0.31 + 1.0));
-    float leafM = smoothstep(700.0, 1900.0, p.x) * smoothstep(900.0, -100.0, p.y);
-    light *= 1.0 - 0.14 * leafM * smoothstep(0.14, 0.3, fbm(lp, 3));
-    float sweep = dot(p, vec2(0.8, 0.6)) - (900.0 + 900.0 * sin(uT * 0.06));
-    light *= 1.0 + 0.07 * exp(-sweep * sweep / (260.0 * 260.0));
-  }
+
 
   float ink = 0.0;       // 墨色（sepia）
   float tint = 0.0;      // 套色（淺的訊號色）
@@ -379,6 +373,32 @@ void main() {
     col = col * (1.0 - lc.a) + lin;
   }
   col *= light;
+  // ---- 驗鈔燈（v2 多補的動畫，鈔票自己的防偽特徵）：每幾個小節一道紫外線光帶從左掃到右，
+  //      光帶經過的地方，紙裡藏的螢光纖維（短短的彎線）與一個隱藏的「∞ 與愛心」浮水印亮起來（點綴色與訊號色），
+  //      掃過就暗回去。平常看不到，只有驗鈔燈照到才出現——跟真的鈔票一樣。
+  if (uUV.y > 0.001 && inPaper > 0.0) {
+    float band = exp(-pow((p.x - uUV.x) / 170.0, 2.0)) * uUV.y * inPaper;
+    if (band > 0.002) {
+      // 螢光纖維：每格一根短短的彎線，方向、顏色（點綴色或訊號色）隨機
+      vec2 cell = floor(p / 46.0), fc = fract(p / 46.0) - 0.5;
+      float h1 = hash12(cell + 11.0), h2 = hash12(cell + 29.0), h3 = hash12(cell + 47.0);
+      float ang = h1 * TAU;
+      vec2 dir = vec2(cos(ang), sin(ang));
+      vec2 q = fc - (vec2(h2, h3) - 0.5) * 0.4;
+      float along = dot(q, dir), across = dot(q, vec2(-dir.y, dir.x)) + 0.35 * along * along * (h2 - 0.5);
+      float fiber = step(0.45, h3) * (1.0 - smoothstep(0.012, 0.03, abs(across))) * (1.0 - smoothstep(0.18, 0.24, abs(along)));
+      // 隱藏的浮水印：花飾左下方一個大大的愛心輪廓（只有邊框、很細）
+      vec2 hq = (p - vec2(1180.0, 620.0)) / 90.0;
+      hq.y = -hq.y + 0.25;
+      float hd = pow(hq.x * hq.x + hq.y * hq.y - 1.0, 3.0) - hq.x * hq.x * hq.y * hq.y * hq.y;
+      float heartLine = 1.0 - smoothstep(0.0, 0.18, abs(hd));
+      vec3 fcol = mix(C_ROSE, C_SIGNAL, step(0.5, h1));
+      col += fcol * 1.3 * fiber * band;
+      col += C_SIGNAL * 0.8 * heartLine * band;
+      // 紫外線本身讓紙微微泛藍紫（用訊號色的暗部，不寫死顏色）
+      col = mix(col, col * mix(vec3(1.0), C_BLOOD / max(max(C_BLOOD.r, C_BLOOD.g), C_BLOOD.b), 0.25), band);
+    }
+  }
   // 燙的東西自己會發光，不吃主光
   col = mix(col, C_SIGNAL * 1.75, sat(hot));
   fragColor = vec4(col, 1.0);
@@ -395,6 +415,7 @@ export const makeMainPass = () => new FSPass(MAIN_FRAG, {
   uThread: { value: new THREE.Vector3(-999, 0, 0) },
   uShadow: { value: new THREE.Vector2(12, 20) },
   uSpark: { value: new THREE.Vector3(0, 0, 0) },
+  uUV: { value: new THREE.Vector3(-9999, 0, 0) },
   uInv: { value: new THREE.Matrix3() },
   uLyr: { value: null }, uLyrY: { value: new THREE.Vector2(0, 1) },
 });

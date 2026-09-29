@@ -8,8 +8,9 @@
 //  - 留言 40～60 px（依字數，TREATMENT 的表）、署名 26～32、歌詞 40～52（不比留言大），都在畫面左邊；
 //    留言區約 800 寬、不到 430 高，不再撐滿半個畫面。
 //  - 空出來的右半邊是一個真的舞台（場景是主視覺，一直在動）：暗紅的絨布幕在風裡輕輕擺、
-//    一盞追蹤燈從上面打下來照著一支老式麥克風，光柱裡有煙霧與飄著的灰塵；兩盞搖頭燈的光束在幕上慢慢掃，
-//    每個小節線亮一下；地板是亮面的，映著燈與麥克風；大鼓一打，麥克風的網罩閃一下。
+//    一盞追蹤燈從上面打下來照著一支老式麥克風，光柱裡有煙霧；兩盞搖頭燈的光束在幕上慢慢掃，每個小節線亮一下；
+//    天花板上一顆看不到的鏡面球在轉，一顆顆小光點慢慢掃過幕與地板（KTV 的招牌），大鼓時一起亮一下；
+//    地板是亮面的，映著燈與麥克風；大鼓一打，麥克風的網罩閃一下。
 import * as THREE from 'three';
 import { Scene, shared, type Frame, type PostOverrides, type Msg } from '../engine/scene';
 import { FSPass, Layer2D, W, H } from '../engine/gl';
@@ -233,7 +234,7 @@ export default class Karaoke extends Scene {
       sparkParticles(this.glow, t, () => h, { rate: this.msg ? 40 : 60, life: 0.3, speed: this.msg ? 140 : 180 });
       sparkHead(this.glow, h.x, h.y, t, this.msg ? 0.6 : 0.8);
     }
-    this.drawDust(t, mk);
+    this.drawMirrorBall(t, mk, f.a.kick);
     // 大鼓一打：麥克風網罩上一顆小小的亮點閃一下
     const kk = f.a.kick * mk;
     if (kk > 0.05) {
@@ -245,18 +246,27 @@ export default class Karaoke extends Scene {
     return { bloom: 0.6, vignette: 0.5, zoom: (1 + 0.03 * ease.inOutQuad(f.p)) * (1 + 0.005 * f.a.kick) };
   }
 
-  /** 追蹤燈光柱裡的灰塵：很小、很慢地飄，轉到光裡亮一下（只在光柱裡看得到）。 */
-  private drawDust(t: number, k: number) {
-    const B = LIN.bone;
-    for (let i = 0; i < 46; i++) {
-      const u = (hash(this.seed, i, 1) + t * (0.01 + 0.018 * hash(this.seed, i, 2))) % 1;
-      const y = 60 + u * (FLOOR_Y - 120);
-      // 光柱從上往下變寬：灰塵在光柱的寬度裡左右飄
-      const halfW = 40 + y * 0.17;
-      const x = MIC.x - 60 + 0.06 * y + (hash(this.seed, i, 3) - 0.5) * 2 * halfW + 16 * Math.sin(t * 0.5 + i);
-      const a = k * (0.15 + 0.35 * hash(this.seed, i, 4)) * (0.5 + 0.5 * Math.sin(t * (1 + hash(this.seed, i, 5)) + i * 2)) * Math.sin(Math.PI * u);
+  /**
+   * 鏡面球的光點：天花板上（畫面外右上方）一顆鏡面球在轉，一顆顆小光點沿著各自的「緯度」橫著掃過幕與地板，
+   * 轉到球的背面就看不到（亮度照 cos 淡出）。左邊留言那一塊壓暗，不在字上面晃。大鼓時一起亮一下。
+   */
+  private drawMirrorBall(t: number, k: number, kick: number) {
+    const B = LIN.bone, S = LIN.signal, spin = t * 0.22;
+    for (let i = 0; i < 70; i++) {
+      const lat = hash(this.seed, i, 1), lon = hash(this.seed, i, 2) * Math.PI * 2 + spin;
+      const facing = Math.cos(lon);
+      if (facing < 0.05) continue;
+      // 球在畫面外右上方：經度換成橫向位置（球轉 → 光點往左掃），緯度換成高度（遠的地方間距大）
+      const x = 1180 + 1150 * Math.sin(lon) * (0.8 + 0.4 * lat);
+      const y = 40 + lat * 1000;
+      // 右下角 HUD 那一塊不放（背景要乾淨）
+      if (x < 40 || x > 1880 || (x > 1340 && y > 810)) continue;
+      let a = k * facing * (0.45 + 0.35 * hash(this.seed, i, 3)) * (1 + 1.2 * kick);
+      // 留言與歌詞那一塊（左邊）壓暗，光點不在字上面晃
+      if (x < 1000 && y > 200 && y < 860) a *= 0.2;
       if (a < 0.02) continue;
-      this.glow.seg2(x, y, x + 0.6, y + 0.6, 1.6, [B[0] * a, B[1] * a, B[2] * a], 1);
+      const c = hash(this.seed, i, 4) < 0.25 ? S : B, w = 5 + 4 * hash(this.seed, i, 5);
+      this.glow.seg2(x - w * 0.5, y, x + w * 0.5, y, w, [c[0] * a, c[1] * a, c[2] * a], 0.9);
     }
   }
 

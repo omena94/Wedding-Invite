@@ -4,8 +4,11 @@
 //  - 主打留言：一個大大的「新留言」視窗，第一拍從桌面上的「祝福」資料夾用縮放框（老電腦開視窗的那幾圈框線）打開，
 //    手寫字、整個畫面最大，署名在右下。
 //  - 歌詞：下面一條「歌詞.txt」視窗，一句一句打進去（跟唱規則），方塊游標跟著拍子閃。純音樂時是方塊頻譜。
-//  - 冷面的對話框「確定要永遠在一起嗎？ [是] [是]」：等留言讀完了（或沒有留言時）才彈出來，游標滑過去在小節線上按下。
-// 畫法：電腦、桌子、牆是 three.js（_t5 的舞台：多重取樣＋景深）；螢幕內容是一張半解析度的 Canvas2D（fast、最近點放大
+//  - 冷面的對話框「確定要永遠在一起嗎？ [是] [是]」：只在沒有留言時彈出來（有留言時會蓋到署名），游標滑過去在小節線上按下。
+// v2（留言尺寸標準）：電腦本身是場景、可以大；右邊一盞桌燈只是照明。補的動畫跟「老電腦」有關：
+// 每個小節線映像管「消磁」晃一下（畫面扭一下、顏色偏一下），機殼上的磁碟機燈跟著大鼓閃（像在讀寫）；
+// 螢幕上的字級照 v2（畫面上的 px）：量螢幕投影到畫面上的寬度換算；留言視窗縮小到只比字多一點。
+// 畫法：電腦、桌子、牆是 three.js（_t5 的舞台：超取樣＋景深）；螢幕內容是一張半解析度的 Canvas2D（fast、最近點放大
 // → 方塊像素），螢幕材質負責桶狀變形與掃描線。
 import * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
@@ -14,10 +17,12 @@ import { GLSL_COMMON } from '../engine/glsl/common';
 import { F, font, loadText } from '../engine/type';
 import { LIN, rgba } from '../engine/palette';
 import { clamp, ease, lerp, prog, hash } from '../engine/util';
-import { fitText, readSeconds, type FitResult } from '../engine/text';
+import { fitText, type FitResult } from '../engine/text';
 import type { Line } from '../engine/lyrics';
 import { layoutLyric, drawLyric, lyricAt, drawHeart, fillWithHearts, signature, type LyricStyle } from './_motifs';
-import { grid, windowLines, pad, renderStage, bodyMaterial, screenMaterial, tableMaterial, backdropMaterial, slab, setV3, mixV, type Grid } from './_t5';
+import { grid, windowLines, pad, renderStage, bodyMaterial, screenMaterial, tableMaterial, backdropMaterial, slab, setV3, mixV, projScale, fitMsgV2, type Grid } from './_t5';
+import { V2, lyricV2, sigV2 } from './_v2';
+import { LineBatch } from '../engine/lines';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'screen', paper: false, energy: [0.25, 1], bars: [4, 8] };
 
@@ -27,14 +32,14 @@ const CASE = { w: 44, h: 37, d: 30, r: 2.4 };
 const CW = 1280, CH = 960;
 const SCR = { w: 34.5, h: 34.5 * (CH / CW) };
 // 留言視窗佔滿整個寬度（打開之後蓋住右邊的圖示），歌詞一條在下面
-const MSGW: Rect = { x: 36, y: 58, w: 1208, h: 604 };
+const MSGW: Rect = { x: 60, y: 76, w: 1100, h: 560 };
 const LYW: Rect = { x: 36, y: 686, w: 1208, h: 246 };
 const DLG: Rect = { x: 640, y: 250, w: 560, h: 280 };
 const TITLE = 44;
-const SIG_H = 76; // 署名一行（48 px 字＋行距）
 const FOLDER = { x: 1120, y: 110 };
-const LYRIC: LyricStyle = { family: F.hei(700), size: 78, minSize: 70, maxWidth: LYW.w - 110, align: 'left', lineHeight: 1.1 };
-const LYRIC_BIG: LyricStyle = { ...LYRIC, size: 92, minSize: 72 };
+const LYRIC_BASE: LyricStyle = { family: F.hei(700), size: 78, minSize: 70, maxWidth: LYW.w - 110, align: 'left', lineHeight: 1.1 };
+/** 桌燈：底座在 (LAMP.x, 0, LAMP.z)，燈罩在 bulb、朝下斜照。 */
+const LAMP = { x: 58, z: -34, bulb: new THREE.Vector3(48, 34, -26) };
 
 /** 冷面的對話框（按鈕全都是「好」的意思）。 */
 const DIALOGS: { q: string; a: string; b: string }[] = [
@@ -91,8 +96,27 @@ function makeRig() {
   kb.rotation.y = 0.08;
   pc.add(stand, box, bezel, screen);
   pc.rotation.y = 0.18;
-  scene.add(table, wall, pc, kb);
-  return { scene, cam, table, wall, bodyMat, bezel, screen, keys, pc, center: new THREE.Vector3() };
+  // 桌燈：圓底座、兩段燈臂、圓錐燈罩（開口朝下偏左，對著電腦與桌面）
+  const lampMat = bodyMaterial();
+  const lamp = new THREE.Group();
+  const base = new THREE.Mesh(new THREE.CylinderGeometry(6, 7, 1.6, 32), lampMat);
+  base.position.set(LAMP.x, 0.8, LAMP.z);
+  const armA = new THREE.Vector3(LAMP.x, 1.6, LAMP.z), armB = new THREE.Vector3(LAMP.x + 6, 22, LAMP.z - 3);
+  const arm = (a: THREE.Vector3, b: THREE.Vector3) => {
+    const m = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.6, a.distanceTo(b), 12), lampMat);
+    m.position.copy(a).lerp(b, 0.5);
+    m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), b.clone().sub(a).normalize());
+    return m;
+  };
+  const shadeTip = LAMP.bulb.clone().add(new THREE.Vector3(5, 4, -1));
+  const shade = new THREE.Mesh(new THREE.CylinderGeometry(2.2, 8, 11, 32, 1, true), lampMat);
+  shade.material.side = THREE.DoubleSide;
+  shade.position.copy(LAMP.bulb).lerp(shadeTip, 0.35);
+  shade.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), shadeTip.clone().sub(LAMP.bulb).normalize());
+  lamp.add(base, arm(armA, armB), arm(armB, shadeTip), shade);
+  scene.add(table, wall, pc, kb, lamp);
+  const glow = new LineBatch(64, { screen2D: false, worldWidth: true, blend: 'add', depthTest: true });
+  return { scene, cam, table, wall, bodyMat, bezel, screen, keys, pc, center: new THREE.Vector3(), lampMat, glow };
 }
 
 interface Dlg { i: number; tOpen: number; tClick: number; tClose: number }
@@ -108,6 +132,11 @@ export default class Desktop extends Scene {
   dlgs: Dlg[] = [];
   lines: Line[] = [];
   clock = '20:13';
+  /** 畫面 px／畫布 px 與換算過的字級。 */
+  sc = 0.6;
+  lyr: LyricStyle = LYRIC_BASE;
+  lyrBig: LyricStyle = LYRIC_BASE;
+  sigSize = 48;
 
   override async init() {
     const { audio: au, lyrics, song } = this.ctx;
@@ -121,14 +150,22 @@ export default class Desktop extends Scene {
     await loadText(`${DIALOGS.map((d) => d.q + d.a + d.b).join('')}新留言還沒有歌詞.txt播放中這段沒有歌詞祝福資源回收桶掃描右下角把你的祝福傳到這台電腦一位賓客${song.title}${m ? m.text + m.name : ''}${this.lines.map((l) => l.text).join('')}`);
     const c = this.ui.ctx;
     const text = m ? m.text : '掃描右下角 QR code，把你的祝福傳到這台電腦';
+    // v2 字級：量窗格中段的鏡位下，螢幕上 1 畫布 px 是畫面上幾 px
+    this.pose((s + e) / 2);
+    const k = this.sc = projScale(this.rig.cam, this.rig.screen, new THREE.Vector3(-SCR.w / 2, 0, 0), new THREE.Vector3(SCR.w / 2, 0, 0), CW);
+    this.sigSize = sigV2(44) / k;
     this.fit = m
-      // 高度預算＝視窗內高扣掉上邊距、署名那一行（SIG_H）與下邊距：署名永遠在最後一行字的下面，不會被蓋住
-      ? fitText(c, text, F.hand(400), MSGW.w - 110, MSGW.h - TITLE - 30 - SIG_H - 30, { min: 56, max: 140, lineHeight: 1.15, maxLines: 7 })
-      : fitText(c, text, F.hei(500), MSGW.w - 100, 200, { min: 50, max: 58, lineHeight: 1.3, maxLines: 2 });
+      // 高度預算＝視窗內高扣掉上邊距、署名那一行與下邊距：署名永遠在最後一行字的下面，不會被蓋住
+      ? fitMsgV2(c, text, F.hand(400), MSGW.w - 110, MSGW.h - TITLE - 30 - (V2.sigMax / k) * 1.6 - 24, k, 1.15, 7)
+      : fitText(c, text, F.hei(500), MSGW.w - 100, 200, { min: 30 / k, max: 34 / k, lineHeight: 1.3, maxLines: 2 });
+    const ms = m ? this.fit.size * k : null;
+    if (m) this.sigSize = sigV2(ms!) / k;
+    this.lyr = { ...LYRIC_BASE, size: lyricV2(ms) / k, minSize: V2.lyrMin / k };
+    this.lyrBig = { ...LYRIC_BASE, size: lyricV2(null) / k, minSize: V2.lyrMin / k };
     this.tMsg = g.b0;
     // 對話框：留言讀完之後（沒有留言就從第二個小節線起）才彈，每兩小節一個；開、下一個小節線按、再一拍關
-    const readyAt = m ? this.tMsg + readSeconds(m.text) + 0.5 : g.b0 + g.beat;
-    const bars = g.bars.filter((b) => b >= readyAt);
+    // 有留言時不彈（對話框會蓋到留言與署名；每個小節線的小事件交給桌燈閃一下）；沒有留言才用它填畫面
+    const bars = m ? [] : g.bars.filter((b) => b >= g.b0 + g.beat);
     for (let k = 0, n = 0; k < bars.length; k += 2, n++) {
       const tOpen = bars[k]!;
       const tClick = bars[k + 1] ?? tOpen + g.beat * 3;
@@ -181,20 +218,62 @@ export default class Desktop extends Scene {
     setV3(sc.uniforms.sheen!, mixV(LIN.bone, LIN.signal, 0.3), 0.05);
     (sc.uniforms.refl!.value as THREE.Vector3).set(-0.8, 0.5, 0.4);
 
-    // ---- 鏡頭：斜前方、比螢幕中心略高；慢慢推近，每個小節線緩一下
+    // ---- 映像管消磁：每個小節線畫面扭一下、顏色偏一下（0.5 秒內停下來）
+    let lastBar = -Infinity;
+    for (const b of g.bars) if (t >= b) lastBar = b;
+    sc.uniforms.wob!.value = lastBar === -Infinity ? 0 : Math.exp(-(t - lastBar) * 7);
+    sc.uniforms.wobT!.value = t - lastBar;
+    // ---- 桌燈：暖光照在桌上（在燈的正下方偏電腦那邊）
+    const lampI = 1;
+    setV3(tb.uniforms.lampCol!, mixV(LIN.ink2, LIN.signal, 0.6), 0.55 * lampI);
+    (tb.uniforms.lampPos!.value as THREE.Vector3).set(LAMP.bulb.x - 14, 0, LAMP.bulb.z + 4);
+    tb.uniforms.lampR!.value = 30;
+    const lm = R.lampMat;
+    setV3(lm.uniforms.base!, mixV(LIN.ink2, LIN.graphite, 0.5), 0.9);
+    setV3(lm.uniforms.keyCol!, mixV(LIN.bone, LIN.signal, 0.4), 0.5);
+    (lm.uniforms.keyDir!.value as THREE.Vector3).set(-0.6, 0.6, 0.5);
+    setV3(lm.uniforms.fill!, LIN.ink2, 1);
+    lm.uniforms.shine!.value = 0.5; lm.uniforms.rough!.value = 40;
+
+    // ---- 鏡頭（見 pose）
+    const dist = this.pose(t);
+    renderStage(renderer, R.scene, R.cam, out, LIN.ink, { focus: dist, range: 8, maxR: 20, falloff: 0.4 }, (rt) => {
+      // 燈泡（加亮的一團）；機殼上的電源燈（一直亮、很暗）與磁碟機燈（跟著大鼓閃，像在讀寫）
+      R.glow.clear();
+      const bc = mixV(LIN.ember, [1, 1, 1], 0.4);
+      const bb = LAMP.bulb;
+      R.glow.seg(bb.x, bb.y, bb.z, bb.x + 0.05, bb.y, bb.z, 3.2, bc[0] * 3 * lampI, bc[1] * 3 * lampI, bc[2] * 3 * lampI, 0.9);
+      R.pc.updateMatrixWorld();
+      const led = (x: number, k: number, col: readonly number[]) => {
+        const p = R.pc.localToWorld(new THREE.Vector3(x, 5.4, 0.08));
+        R.glow.seg(p.x, p.y, p.z, p.x + 0.02, p.y, p.z, 0.55, col[0]! * k, col[1]! * k, col[2]! * k, 0.95);
+      };
+      led(CASE.w / 2 - 4, 1.2, LIN.ember);
+      const disk = this.ctx.audio.hit('kick', t, 0.07) > 0.3 ? 4 : 0.25;
+      led(CASE.w / 2 - 7, disk, LIN.signal);
+      R.glow.render(renderer, rt, R.cam);
+    });
+    return { bloom: 0.55, vignette: 0.45, grain: 0.05 };
+  }
+
+  /**
+   * 鏡頭：斜前方、比螢幕中心略高，拉遠一點讓電腦在畫面左半邊、桌燈在右邊；慢慢推近，每個小節線緩一下，
+   * 主打出現時多推一點。回傳鏡頭到螢幕的距離（對焦用）。
+   */
+  private pose(t: number): number {
+    const R = this.rig, g = this.g;
     let step = 0;
     for (const b of g.bars) step += prog(t, b - 0.1, b + 0.7, ease.inOutCubic);
-    const push = Math.min(step, 6) * 0.8 + 2.5 * prog(t, this.tMsg, this.tMsg + 1.2, ease.outCubic);
-    const dist = 80 - push;
+    const push = Math.min(step, 6) * 1.1 + 3 * prog(t, this.tMsg, this.tMsg + 1.2, ease.outCubic);
+    const dist = 96 - push;
     R.pc.updateMatrixWorld();
     R.screen.getWorldPosition(R.center);
-    const look = R.center.clone().add(new THREE.Vector3(3.5, -3.5, 0));
-    const az = 0.46 - 0.012 * Math.min(step, 6), el = 0.1;
+    const look = R.center.clone().add(new THREE.Vector3(16, -5, 0));
+    const az = 0.36 - 0.012 * Math.min(step, 6), el = 0.1;
     R.cam.position.set(look.x + Math.sin(az) * Math.cos(el) * dist, look.y + Math.sin(el) * dist, look.z + Math.cos(az) * Math.cos(el) * dist);
     R.cam.lookAt(look);
     R.cam.updateMatrixWorld();
-    renderStage(renderer, R.scene, R.cam, out, LIN.ink, { focus: dist, range: 6, maxR: 20, falloff: 0.4 });
-    return { bloom: 0.55, vignette: 0.45, grain: 0.05 };
+    return R.cam.position.distanceTo(R.center);
   }
 
   // ---------------------------------------------------------------- 螢幕內容（1280×960，畫在半解析度上）
@@ -297,7 +376,7 @@ export default class Desktop extends Scene {
       return;
     }
     if (!ly) return;
-    const st = this.msg ? LYRIC : LYRIC_BIG;
+    const st = this.msg ? this.lyr : this.lyrBig;
     const lay = layoutLyric(c, ly.line, st);
     const b = lay.rows.length > 1 ? r.y + TITLE + 80 : base;
     c.save();
@@ -328,10 +407,10 @@ export default class Desktop extends Scene {
     c.font = font(m ? F.hand(400) : F.hei(500), fit.size); c.fillStyle = rgba('bone', m ? 0.97 : 0.75);
     fit.lines.forEach((ln, i) => fillWithHearts(c, ln, x0, top + fit.size * 0.95 + i * fit.lineHeight));
     if (m) {
-      // 署名：緊接在最後一行字的下面（字的下緣＋一行），不會超出視窗
+      // 署名：緊接在最後一行字的下面（字的下緣＋一行），不會超出視窗；v2 的署名字級
       const textBot = top + fit.size * 0.95 + (fit.lines.length - 1) * fit.lineHeight + fit.size * 0.25;
-      c.font = font(F.hand(400), 48); c.fillStyle = rgba('bone', 0.6); c.textAlign = 'right';
-      c.fillText(signature(m.name), MSGW.x + MSGW.w - 50, Math.min(MSGW.y + MSGW.h - 28, textBot + SIG_H - 10));
+      c.font = font(F.hand(400), this.sigSize); c.fillStyle = rgba('bone', 0.6); c.textAlign = 'right';
+      c.fillText(signature(m.name), MSGW.x + MSGW.w - 50, Math.min(MSGW.y + MSGW.h - 20, textBot + this.sigSize * 1.3));
       c.textAlign = 'left';
     }
   }

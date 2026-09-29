@@ -14,8 +14,9 @@ import { FSPass, Layer2D, W, H } from '../engine/gl';
 import { LineBatch } from '../engine/lines';
 import { F, font, loadText } from '../engine/type';
 import { LIN, rgba, mixRgba } from '../engine/palette';
-import { clamp, ease, lerp, prog, pulse, TAU } from '../engine/util';
+import { clamp, ease, lerp, prog, pulse, hash, TAU } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
+import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 } from './_v2';
 import { lyricAt, drawLyric, layoutLyric, beatAfter, signature, fillWithHearts } from './_motifs';
 import { stagger, mono, tag } from './_t11';
 
@@ -23,11 +24,11 @@ export const spec: PlateSpecDecl = { group: 'type', family: 'science', paper: fa
 
 // ---------------------------------------------------------------- 軌道參數
 /** 質心在螢幕上的位置；軌道面傾角（鏡頭）從 INC0 慢慢變到 INC1。 */
-const CEN = { x: 1250, y: 372 };
+const CEN = { x: 1200, y: 400 };
 const INC0 = (66 * Math.PI) / 180, INC1 = (50 * Math.PI) / 180;
 /** 兩星的質量（α 宣文、β 孟庭）、相對軌道的半長軸（px）、偏心率、每小節進動。 */
 const M1 = 1, M2 = 0.8, MT = M1 + M2;
-const A = 300, ECC = 0.55, PREC = (11 * Math.PI) / 180, OMEGA0 = (200 * Math.PI) / 180;
+const A = 340, ECC = 0.55, PREC = (11 * Math.PI) / 180, OMEGA0 = (200 * Math.PI) / 180;
 
 /** 解克卜勒方程：平近點角 M → 相對位置（軌道面座標）與距離。 */
 function kepler(Mean: number, w: number) {
@@ -41,11 +42,12 @@ function kepler(Mean: number, w: number) {
 // ---------------------------------------------------------------- 版面
 /** 有留言：歌詞在左上；留言在下方一整條（後面的等位線壓暗）。 */
 const LYR_M = { x: 124, y: 252, w: 780 };
-const MSG = { x: 124, y: 640, w: 1320, h: 250 };
+/** v2：留言區寬 ≤ 860、在畫面左下三分之一（場景是右上的雙星系統）。 */
+const MSG = { x: 124, y: 640, w: 860, h: 300 };
 /** 沒有留言：歌詞放大到下方。 */
-const LYR_N = { x: 124, y: 790, w: 1320, size: 100 };
+const LYR_N = { x: 124, y: 790, w: 860, size: lyricV2(null) };
 /** 留言後面等位線要壓暗的範圍（x0, y0, x1, y1）。 */
-const CALM: [number, number, number, number] = [96, 600, 1480, 930];
+const CALM: [number, number, number, number] = [96, 600, 1010, 960];
 const FAM_MSG = F.hand(700);
 const CONCL = '結論：兩星軌道穩定，預計永遠互繞。';
 const INVITE = '掃描右下角 QR code，發送你的祝福訊號。';
@@ -54,7 +56,7 @@ const PUSH = 0.02;
 
 const BG = () => new FSPass(/* glsl */ `
   uniform vec2 p1; uniform vec2 p2; uniform float sep; uniform float phiL1; uniform float k; uniform float kick; uniform float peri;
-  uniform float ci; uniform vec4 calm;
+  uniform float ci; uniform vec4 calm; uniform float hat;
   float pot(vec2 q) {
     float d1 = length(q - p1), d2 = length(q - p2);
     return -(${M1.toFixed(2)} / sqrt(d1 * d1 + 100.0) + ${M2.toFixed(2)} / sqrt(d2 * d2 + 100.0)) - 0.5 * ${MT.toFixed(2)} / (sep * sep * sep) * dot(q, q);
@@ -70,6 +72,11 @@ const BG = () => new FSPass(/* glsl */ `
     // 留言那一塊壓暗（等位線、星都淡掉），字才乾淨
     vec2 cq = max(calm.xy - sp, sp - calm.zw);
     float quiet = 1.0 - 0.8 * (1.0 - smoothstep(0.0, 120.0, max(cq.x, cq.y)));
+    // 右下角 HUD（QR、留言數）那一塊的背景要乾淨：星與等位線都淡掉
+    float hud = smoothstep(0.0, 150.0, max(1330.0 - sp.x, 800.0 - sp.y));
+    quiet *= hud;
+    // 星在 hi-hat 上一顆顆閃
+    st *= 0.6 + 0.9 * hat * step(0.5, hash12(cell + 3.0));
     col += C_BONE * st * 0.28 * quiet;
     // 等位線：log(-Φ) 等距；太密的地方（星的旁邊）淡掉，離系統越遠越淡
     float v = log(-ph * 1000.0) * 7.0;
@@ -93,7 +100,7 @@ const BG = () => new FSPass(/* glsl */ `
   }`, {
   p1: { value: new THREE.Vector2() }, p2: { value: new THREE.Vector2() }, sep: { value: 300 }, phiL1: { value: 0 },
   k: { value: 1 }, kick: { value: 0 }, peri: { value: 0 }, ci: { value: Math.cos(INC0) },
-  calm: { value: new THREE.Vector4(...CALM) },
+  calm: { value: new THREE.Vector4(...CALM) }, hat: { value: 0 },
 });
 
 interface Glyph { ch: string; x: number; y: number; t: number }
@@ -107,7 +114,8 @@ export default class Orbit extends Scene {
   glyphs: Glyph[] = [];
   sig = ''; sigT = Infinity; conclT = Infinity; sigY = 0; sigX = 0;
   tFirst = 0;
-  lyrSize = 64;
+  lyrSize = 52;
+  sigSize = 30;
   lyricsInWindow = false;
   /** 這一格軌道面的 cos／sin 傾角（鏡頭）。 */
   ci = Math.cos(INC0); si = Math.sin(INC0);
@@ -116,17 +124,19 @@ export default class Orbit extends Scene {
     const { audio: au, lyrics, song } = this.ctx;
     const s = this.ctx.start, e = this.ctx.end, m = this.msg;
     this.sig = m ? (m.couple ? '—— 新郎新娘' : signature(m.name)) : '';
-    await loadText(`${m?.text ?? ''}${this.sig}${CONCL}${INVITE}${song.title}${song.artist}觀測紀錄宣文孟庭`);
+    await loadText(`${m?.text ?? ''}${this.sig}${CONCL}${INVITE}${song.title}${song.artist}觀測紀錄宣文孟庭αβ`);
     const c = this.layer.ctx;
     const beat = au.beatPeriod(s);
     this.tFirst = beatAfter(au, s + Math.min(0.2, beat * 0.4));
     const bar = au.timeOfBar(au.barAt(this.tFirst) + 1) - this.tFirst;
     this.lyricsInWindow = lyrics.linesIn(s, e).length > 0;
     if (!m) { this.conclT = beatAfter(au, s + 0.4); return; }
-    const fit = this.fit = fitText(c, m.text, FAM_MSG, MSG.w, MSG.h - 60, { min: 48, max: 140, lineHeight: 1.28, maxLines: 3 });
+    // v2：字級上限依字數（msgMaxFor），可用高度先扣掉署名；先照子句斷行，放不下再交給 fitText
+    const o = { min: V2.msgMin, max: msgMaxFor(m.text), lineHeight: 1.28, maxLines: 4 };
+    const fit = this.fit = fitClauses(c, m.text, FAM_MSG, MSG.w, MSG.h - 56, o) ?? fitText(c, m.text, FAM_MSG, MSG.w, MSG.h - 56, o);
     // 一組兩三個字（標點斷開），一拍一組「收到」
     const chars: { ch: string; x: number; y: number }[] = [];
-    const top = MSG.y + fit.size * 0.9 + Math.max(0, (MSG.h - 60 - fit.height) * 0.4);
+    const top = MSG.y + fit.size * 0.9 + Math.max(0, (MSG.h - 56 - fit.height) * 0.4);
     c.font = font(FAM_MSG, fit.size);
     fit.lines.forEach((ln, li) => {
       let x = MSG.x;
@@ -145,11 +155,12 @@ export default class Orbit extends Scene {
     const tLast = times[nG - 1] ?? this.tFirst;
     this.sigT = tLast + beat * 0.5;
     this.conclT = Math.min(e - 0.8, tLast + beat * 1.5);
-    this.sigY = top + (fit.lines.length - 1) * fit.lineHeight + 62;
-    // 署名靠右對齊留言，但最多到 x = 1340（署名的高度會進到右下角 QR 那一帶）
-    this.sigX = Math.min(MSG.x + Math.min(MSG.w, fit.width), 1340);
-    // 歌詞比留言小一級
-    this.lyrSize = Math.round(clamp(fit.size * 0.6, 48, 58));
+    // 署名在最後一行（連下伸部）下面，靠右對齊留言
+    this.sigSize = sigV2(fit.size);
+    this.sigY = top + (fit.lines.length - 1) * fit.lineHeight + fit.size * 0.3 + this.sigSize + 10;
+    this.sigX = MSG.x + Math.min(MSG.w, fit.width);
+    // 歌詞比留言小一點（v2）
+    this.lyrSize = lyricV2(fit.size);
   }
 
   /** 軌道面 → 螢幕（y 向下；z > 0 在前面）。 */
@@ -187,6 +198,7 @@ export default class Orbit extends Scene {
     const u = this.bg.u;
     (u.p1!.value as THREE.Vector2).set(B.p1.x, B.p1.y);
     (u.p2!.value as THREE.Vector2).set(B.p2.x, B.p2.y);
+    u.hat!.value = f.a.hat;
     u.sep!.value = B.r; u.phiL1!.value = best; u.k!.value = vis; u.kick!.value = f.a.kick; u.peri!.value = peri; u.ci!.value = this.ci;
     this.bg.render(renderer, out);
 
@@ -253,11 +265,30 @@ export default class Orbit extends Scene {
     mono(c, 'α  宣文', S1.x + 22, S1.y - 14, { size: 15, tracking: 2, color: rgba('bone', 0.6) });
     mono(c, 'β  孟庭', S2.x + 22, S2.y - 14, { size: 15, tracking: 2, color: rgba('signal', 0.7) });
 
+    this.meteor(lb, t, vis);
     this.caption(c, t, S1, S2);
     this.log(c, t);
     comp.draw(renderer, L.upload(), out);
     if (lb.count) lb.render(renderer, out);
     return { bloom: 0.75, vignette: 0.55, halation: 0.28, zoom: 1 + PUSH * cam + 0.005 * peri };
+  }
+
+  /**
+   * 流星：大部分小節的第二拍，一顆流星從右上方往左劃過（0.55 秒、outCubic），每 1～2 小節一個小事件。
+   * 只在畫面上緣（y < 180），不會劃過歌詞與留言。
+   */
+  private meteor(lb: LineBatch, t: number, vis: number) {
+    const au = this.ctx.audio;
+    const b = Math.floor(au.barAt(t) + 1e-4);
+    if (hash(b, 5) > 0.65) return;
+    const t0 = au.timeOfBeat(Math.round(au.beatAt(au.timeOfBar(b))) + 1), u = (t - t0) / 0.55;
+    if (u < 0 || u > 1) return;
+    const x0 = 1480 + 300 * hash(b, 6), y0 = 70 + 70 * hash(b, 7), ang = Math.PI - 0.12 - 0.1 * hash(b, 8);
+    const dx = Math.cos(ang), dy = Math.sin(ang), len = 420;
+    const hx = x0 + dx * len * ease.outCubic(u), hy = y0 + dy * len * ease.outCubic(u), tl = 140 * (1 - 0.5 * u);
+    const a = (1 - u) * vis, e = LIN.ember;
+    lb.seg2(hx - dx * tl, hy - dy * tl, hx, hy, 1.6, [e[0] * 1.4 * a, e[1] * 1.4 * a, e[2] * 1.4 * a], 1);
+    lb.seg2(hx, hy, hx + 0.01, hy, 4, [3 * a, 2.8 * a, 2.4 * a], 1);
   }
 
   /** 歌詞：有留言時是左上的圖註（小一級），沒有留言時放大到下方；句尾一條很淡的引線拉到其中一顆星（一句換一顆）。 */
@@ -317,7 +348,7 @@ export default class Orbit extends Scene {
       }
       if (t >= this.sigT) {
         c.save(); c.globalAlpha *= prog(t, this.sigT, this.sigT + 0.3);
-        c.font = font(F.hand(400), 42); c.fillStyle = rgba('ash'); c.textAlign = 'right';
+        c.font = font(F.hand(400), this.sigSize); c.fillStyle = rgba('ash'); c.textAlign = 'right';
         fillWithHearts(c, this.sig, this.sigX, this.sigY);
         c.restore();
       }
@@ -330,7 +361,7 @@ export default class Orbit extends Scene {
     // 小字第三群：結論
     if (m && t >= this.conclT) {
       c.save(); c.globalAlpha *= prog(t, this.conclT, this.conclT + 0.3);
-      tag(c, CONCL, MSG.x, 962, { size: 18, color: rgba('ash', 0.6), tracking: 3 });
+      tag(c, CONCL, MSG.x, 982, { size: 18, color: rgba('ash', 0.6), tracking: 3 });
       c.restore();
     }
   }

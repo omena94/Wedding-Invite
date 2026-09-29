@@ -17,6 +17,7 @@ uniform vec2 uC;        // 唱片圓心
 uniform float uR;       // 唱片半徑
 uniform float uRl;      // 標籤半徑
 uniform float uTh;      // 唱片轉過的角度（順時針為正）：灰塵、標籤跟著轉
+uniform vec4 uStb;      // 頻閃點：看起來的漂移角度、頻閃燈這一下的亮度、頻閃燈在桌面上的位置 xy
 uniform float uFan;     // 反光扇形的軸（兩片對稱）
 uniform float uFanK;    // 反光強度（進場時亮起來、大鼓時亮一點）
 uniform float uIn;      // 進場 0..1
@@ -78,6 +79,20 @@ void main() {
   // 轉盤邊緣：一圈細細的金屬（比唱片大一點）
   float plat = aaStroke(r - uR - 9.0, 1.2) * 0.6 + aaStroke(r - uR - 15.0, 0.8) * 0.25;
   col += C_ASH * 0.08 * plat * uIn * (0.4 + 0.8 * lamp);
+  // 頻閃點（v2 多補的動畫，唱盤自己的東西）：轉盤邊緣一圈小方點，被旁邊一盞小頻閃燈照著。
+  // 轉速對的時候，頻閃下的點看起來幾乎不動（這裡讓它照拍子慢慢往前爬一格）；燈在每一拍閃一下，離燈越遠越暗。
+  {
+    float rr = r - uR - 27.0;
+    if (abs(rr) < 9.0) {
+      float n = 180.0;
+      float cellA = fract((a - uStb.x) * n / TAU) - 0.5;
+      float arc = abs(cellA) * TAU / n * r;
+      float dotm = (1.0 - smoothstep(2.2, 3.4, arc)) * (1.0 - smoothstep(3.5, 5.0, abs(rr)));
+      float nearL = exp(-pow(length(p - uStb.zw) / 460.0, 2.0));
+      col += mix(C_SIGNAL, C_EMBER, 0.3) * dotm * (0.04 + 0.55 * uStb.y) * nearL * uIn;
+      col += C_ASH * 0.05 * dotm * (0.4 + 0.8 * lamp) * uIn;
+    }
+  }
 
   // ---- 唱片
   float rec = 1.0 - smoothstep(uR - 0.7, uR + 0.7, r);

@@ -13,6 +13,7 @@ import { F, font, loadText } from '../engine/type';
 import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
+import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 } from './_v2';
 import { lyricAt, drawLyric, layoutLyric, beatAfter, signature, fillWithHearts } from './_motifs';
 import { mono, tag, type Rect } from './_t11';
 
@@ -20,10 +21,11 @@ export const spec: PlateSpecDecl = { group: 'type', family: 'science', paper: fa
 
 /** 波源的 x、留言排的範圍（右下角 QR 上面）。 */
 const SRC_X = 214;
-const BOX = { x: 560, y: 330, w: 1140, h: 460 };
+/** v2：留言區寬 ≤ 860、在畫面右側（亮紋張開的地方），下緣 ≤ 760：署名不會進右下角 QR 區。 */
+const BOX = { x: 880, y: 330, w: 860, h: 430 };
 /** 歌詞：有留言時在上方；沒有留言時放大到中間（坐在中央的亮紋上）。 */
 const LYR_M = { x: 124, y: 214, w: 1560 };
-const LYR_N = { x: 560, w: 1140, size: 104 };
+const LYR_N = { x: 880, w: 860, size: lyricV2(null) };
 const FAM_MSG = F.ming(700);
 /** 想要的波長（px）：太密會閃、太疏不像干涉圖。 */
 const LAMBDA = 36;
@@ -34,7 +36,7 @@ const PUSH = 0.025;
 
 const BG = () => new FSPass(/* glsl */ `
   uniform vec2 s1; uniform vec2 s2; uniform float lam; uniform float ph; uniform float k;
-  uniform float pr; uniform float pk; uniform float rr; uniform float rk; uniform float kick; uniform vec4 calm;
+  uniform float pr; uniform float pk; uniform float rr; uniform float rk; uniform float kick; uniform vec4 calm; uniform float hat;
   void main() {
     vec2 p = vec2(FRAG_PX.x, ${H}.0 - FRAG_PX.y);
     float r1 = length(p - s1), r2 = length(p - s2);
@@ -45,16 +47,24 @@ const BG = () => new FSPass(/* glsl */ `
     // 時間平均的亮度：cos²(πΔ/λ) → 亮紋（柔和的光帶，往右張開）
     float I = pow(cos(PI * (r2 - r1) / lam), 2.0);
     float band = 1.0 / (1.0 + r1 / 500.0) + 1.0 / (1.0 + r2 / 500.0);
-    col += C_SIGNAL * 0.017 * I * band * (1.0 - 0.4 * inMsg) * k;
+    // 右下角 HUD（QR、留言數）那一塊的背景要乾淨
+    float hud = smoothstep(0.0, 150.0, max(1330.0 - p.x, 800.0 - p.y));
+    col += C_SIGNAL * 0.017 * I * band * (1.0 - 0.4 * inMsg) * hud * k;
     // 波峰：兩家同心圓（細線），只在波源附近清楚，越遠越淡
     float q1 = abs(fract(r1 / lam - ph + 0.5) - 0.5) * lam;
     float q2 = abs(fract(r2 / lam - ph + 0.5) - 0.5) * lam;
-    float a1 = exp(-r1 / 300.0), a2 = exp(-r2 / 300.0);
+    float a1 = exp(-r1 / 480.0), a2 = exp(-r2 / 480.0);
     float c1 = pxLine(q1, 0.45, 1.35) * a1, c2 = pxLine(q2, 0.45, 1.35) * a2;
-    float quiet = 1.0 - 0.85 * inMsg;
+    float quiet = (1.0 - 0.85 * inMsg) * hud;
     col += (C_BONE * c1 * 0.1 + C_SIGNAL * c2 * 0.14) * quiet * k;
     // 交點（兩家波峰疊在一起）＝ 建設性干涉：亮一下，大鼓時更亮
     col += C_EMBER * c1 * c2 * (0.5 + 1.0 * kick) * quiet * k;
+    // 水面的反光點：一格一顆，兩家的波峰一起經過時閃一下（hi-hat 上多閃一點）——整片水面一直在動
+    vec2 gc = floor(p / 46.0), ctr = gc * 46.0 + 23.0 + (hash22(gc) - 0.5) * 30.0;
+    float g1 = length(ctr - s1), g2 = length(ctr - s2);
+    float wv = cos(TAU * (g1 / lam - ph)) * exp(-g1 / 900.0) + cos(TAU * (g2 / lam - ph)) * exp(-g2 / 900.0);
+    float glint = (1.0 - smoothstep(0.8, 2.2, length(p - ctr))) * pow(max(wv, 0.0) * 0.5, 3.0) * (0.8 + 1.2 * hat * step(0.6, hash12(gc + 9.0)));
+    col += mix(C_BONE, C_EMBER, 0.5) * glint * 0.9 * quiet * k;
     // 脈衝：第一拍的強脈衝、每小節線的淡脈衝（兩個波源各一道）
     float w1 = exp(-pow((r1 - pr) / 5.0, 2.0)) + exp(-pow((r2 - pr) / 5.0, 2.0));
     float w2 = exp(-pow((r1 - rr) / 5.0, 2.0)) + exp(-pow((r2 - rr) / 5.0, 2.0));
@@ -66,7 +76,7 @@ const BG = () => new FSPass(/* glsl */ `
     fragColor = vec4(col, 1.0);
   }`, {
   s1: { value: new THREE.Vector2() }, s2: { value: new THREE.Vector2() }, lam: { value: LAMBDA }, ph: { value: 0 }, k: { value: 1 },
-  pr: { value: -100 }, pk: { value: 0 }, rr: { value: -100 }, rk: { value: 0 }, kick: { value: 0 }, calm: { value: new THREE.Vector4(0, 0, 0, 0) },
+  pr: { value: -100 }, pk: { value: 0 }, rr: { value: -100 }, rk: { value: 0 }, kick: { value: 0 }, calm: { value: new THREE.Vector4(0, 0, 0, 0) }, hat: { value: 0 },
 });
 
 interface Glyph { ch: string; x: number; y: number; d: number; t: number }
@@ -84,7 +94,8 @@ export default class Interference extends Scene {
   sig = ''; sigT = Infinity; sigX = 0; sigY = 0;
   /** 沒有留言時歌詞那一行的中心高度。 */
   yc = 560;
-  lyrSize = 60;
+  lyrSize = 52;
+  sigSize = 30;
   lyricsInWindow = false;
   /** 留言的範圍（波峰線在這裡淡掉）。 */
   calm: Rect = [0, 0, 0, 0];
@@ -93,7 +104,7 @@ export default class Interference extends Scene {
     const { audio: au, lyrics, song } = this.ctx;
     const s = this.ctx.start, e = this.ctx.end, m = this.msg;
     this.sig = m ? (m.couple ? '—— 新郎新娘' : signature(m.name)) : '';
-    await loadText(`${m?.text ?? ''}${this.sig}${INVITE}${FOOT}${song.title}${song.artist}宣文孟庭疊加中`);
+    await loadText(`${m?.text ?? ''}${this.sig}${INVITE}${FOOT}${song.title}${song.artist}宣文孟庭疊加中S₁S₂♪`);
     const c = this.layer.ctx;
     const beat = au.beatPeriod(s);
     this.tFirst = beatAfter(au, s + Math.min(0.2, beat * 0.4));
@@ -103,7 +114,8 @@ export default class Interference extends Scene {
     const L = BOX.x + BOX.w / 2 - SRC_X;
     // 波源間距：讓離中線最近的那一行落在第 1 條（偶數行）或第 0 條（奇數行）亮紋上，其他行大致落在第 2、3… 條
     const setSources = (yc: number, h1: number) => {
-      const d = clamp((LAMBDA * Math.hypot(L, h1)) / h1, 180, 520);
+      // 間距最多 420：兩個波源才不會碰到上面的歌詞、下面的註腳
+      const d = clamp((LAMBDA * Math.hypot(L, h1)) / h1, 180, 420);
       this.lam = (d * h1) / Math.hypot(L, h1);
       this.s1 = { x: SRC_X, y: yc - d / 2 }; this.s2 = { x: SRC_X, y: yc + d / 2 };
     };
@@ -117,7 +129,9 @@ export default class Interference extends Scene {
       return;
     }
     // 字級依「可用高度扣掉署名」算：署名永遠在最後一行（連 y、g 的下伸部）下面、不重疊
-    const fit = this.fit = fitText(c, m.text, FAM_MSG, BOX.w, BOX.h - 70, { min: 48, max: 140, lineHeight: 1.5, maxLines: 4 });
+    // v2：字級上限依字數（msgMaxFor），可用高度先扣掉署名；先照子句斷行，放不下再交給 fitText
+    const o = { min: V2.msgMin, max: msgMaxFor(m.text), lineHeight: 1.5, maxLines: 5 };
+    const fit = this.fit = fitClauses(c, m.text, FAM_MSG, BOX.w, BOX.h - 60, o) ?? fitText(c, m.text, FAM_MSG, BOX.w, BOX.h - 60, o);
     const n = fit.lines.length;
     // 行的位置：垂直置中；波源的中線對準中間那一行（奇數行）或兩行中間（偶數行）
     const y0 = BOX.y + (BOX.h - fit.height) / 2 + fit.size * 0.5; // 第一行字的中心
@@ -142,10 +156,11 @@ export default class Interference extends Scene {
     this.sigT = tLast + beat * 0.5;
     const wMax = Math.max(...fit.lines.map((l) => c.measureText(l).width));
     this.sigX = BOX.x + wMax;
-    this.sigY = rowsY[n - 1]! + fit.size * 0.36 + Math.max(70, fit.size * 0.3 + 44);
+    this.sigSize = sigV2(fit.size);
+    this.sigY = rowsY[n - 1]! + fit.size * 0.36 + fit.size * 0.3 + this.sigSize + 10;
     this.calm = [BOX.x - 10, rowsY[0]! - fit.size * 0.6, wMax + 20, rowsY[n - 1]! - rowsY[0]! + fit.size * 1.2];
     // 歌詞比留言小一級
-    this.lyrSize = Math.round(clamp(fit.size * 0.62, 48, 60));
+    this.lyrSize = lyricV2(fit.size);
   }
 
   /** 脈衝在 t 時的半徑（第一拍出發、outCubic，dur 秒掃過全部的字）。 */
@@ -164,6 +179,7 @@ export default class Interference extends Scene {
     (u.s1!.value as THREE.Vector2).set(this.s1.x, this.s1.y); // 著色器也用 y 向下的座標
     (u.s2!.value as THREE.Vector2).set(this.s2.x, this.s2.y);
     (u.calm!.value as THREE.Vector4).set(this.calm[0], this.calm[1], this.calm[0] + this.calm[2], this.calm[1] + this.calm[3]);
+    u.hat!.value = f.a.hat;
     u.lam!.value = this.lam; u.ph!.value = ph; u.k!.value = vis; u.kick!.value = f.a.kick;
     // 第一拍的強脈衝
     const pr = this.pulseR(t);
@@ -199,7 +215,7 @@ export default class Interference extends Scene {
       }
       if (t >= this.sigT) {
         c.save(); c.globalAlpha *= prog(t, this.sigT, this.sigT + 0.3);
-        c.font = font(F.ming(400), 42); c.fillStyle = rgba('ash'); c.textAlign = 'right';
+        c.font = font(F.ming(400), this.sigSize); c.fillStyle = rgba('ash'); c.textAlign = 'right';
         // 署名的高度可能進到右下角 QR 那一帶：最多到 x = 1340
         fillWithHearts(c, this.sig, this.sigY > 800 ? Math.min(this.sigX, 1340) : this.sigX, this.sigY);
         c.restore();
@@ -224,7 +240,7 @@ export default class Interference extends Scene {
     const ly = lyricAt(lyrics, t, m ? 1.2 : 1.8);
     if (!ly) {
       if (!this.lyricsInWindow) {
-        c.font = font(F.archivo(100, 700), m ? 52 : 88); c.fillStyle = rgba('bone', 0.85);
+        c.font = font(F.archivo(100, 700), 52); c.fillStyle = rgba('bone', 0.85);
         c.fillText(song.title, m ? LYR_M.x : LYR_N.x, m ? LYR_M.y - 8 : this.yc + 30);
       }
       if (!m && t >= this.tFirst + this.dur) {
@@ -235,7 +251,7 @@ export default class Interference extends Scene {
       }
       return;
     }
-    const st = m ? { family: F.archivo(100, 800), size: this.lyrSize, minSize: 48, maxWidth: LYR_M.w } : { family: F.archivo(100, 800), size: LYR_N.size, minSize: 64, maxWidth: LYR_N.w };
+    const st = m ? { family: F.archivo(100, 800), size: this.lyrSize, minSize: V2.lyrMin, maxWidth: LYR_M.w } : { family: F.archivo(100, 800), size: LYR_N.size, minSize: V2.lyrMin, maxWidth: LYR_N.w };
     const lay = layoutLyric(c, ly.line, st);
     const inK = ease.outExpo(prog(t, ly.line.start - 0.35, ly.line.start + 0.1));
     const ox = m ? LYR_M.x : LYR_N.x;

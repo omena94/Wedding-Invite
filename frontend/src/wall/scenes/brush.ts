@@ -1,40 +1,48 @@
-// 書法（亮）：一張八行箋（宣紙、印好的紅色直行線），毛筆把主打留言一個字一個字寫上去，落款是署名，最後蓋一方紅印。
-//  - 中文為主的留言直書、由右到左（標點掛在字的右上、括號轉向）；英文為主的留言改用橫格的信紙、由左到右。
-//  - 落筆在拍點：留言切成幾個詞組，每個詞組在一個拍點（詞組多就半拍）「沾一次墨」開始寫；同一個詞組越寫越乾，
-//    後面的字有飛白（筆毛分岔的乾擦痕）。一個字的寫法是筆沿著字從上到下一橫一橫掃過去（中文沒有筆順資料，這是近似），
-//    寫好的字邊緣暈開一點點墨。
+// 書法（亮）：一張鋪在毛氈上的大宣紙，上面是一幅水墨桃花（「桃之夭夭，灼灼其華」，詩經裡嫁女兒的那一首），
+// 毛筆把主打留言當成這幅畫的題款，一個字一個字寫在右邊的空白處，落款是署名，最後蓋一方紅印。
+//  - 畫是場景（主視覺）：桃枝從畫面左緣伸進來，用「很多根筆毛」的方法畫（每一筆是十幾條細線，越往筆尾越乾、飛白），
+//    開場時已經畫好主幹與一部分花；之後每一拍開一朵桃花（花瓣用 outBack 綻開），每個小節線長出一根新的小枝。
+//    題款寫完、蓋好印之後，筆移到畫上，每一拍在枝上「點」一朵花（點梅的畫法）。
+//  - 題款（留言）：中文為主直書、由右到左（標點掛在字的右上、括號轉向）；英文為主的留言改橫書。
+//    標準 v2：字級 40～60、落款 26～32、題款整塊 ≤ 600 × 430；歌詞 40～52，在左下角的空白處逐字跟唱（手寫字）。
+//  - 落筆在拍點：題款切成幾個詞組，每個詞組在一個拍點（詞組多就半拍）「沾一次墨」開始寫；同一個詞組越寫越乾，
+//    後面的字有飛白。一個字的寫法是筆沿著字從上到下一橫一橫掃過去（中文沒有筆順資料，這是近似），寫好的字邊緣暈開一點點墨。
 //  - 寫完的下一拍寫落款（「阿哲 敬賀」），再下一拍蓋印（白文「百年好合」，畫面震一下）。
-//  - 寫好的字畫在一張圖層上、只有「寫完的字數」變了才重畫；正在寫的那個字、筆、蓋印的動作在另一張小圖層每格畫。
-//  - 歌詞在信紙下緣逐字跟唱（手寫字）。沒有留言：信紙上寫一句邀請（落款「新人 敬邀」）。
+//  - 開場前就畫好的部分（主幹、舊的花、標題）畫一次存起來；新開的花、新長的枝、正在寫的字、筆在另一張全螢幕圖層每格畫。
+//    每個字的字模在 init 一次做好（軟體畫布）：每次重畫都重新光柵化的話，同一個時間點畫兩次可能差一兩個色階。
+//  - 沒有留言：題款寫一句邀請（落款「新人 敬邀」）。
 import * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
-import { FSPass, Layer2D, H } from '../engine/gl';
+import { FSPass, Layer2D, W, H } from '../engine/gl';
 import { F, font, layout, loadText, measure } from '../engine/type';
 import { rgba, mixRgba } from '../engine/palette';
-import { clamp, ease, prog, hash, mulberry32, noise1 } from '../engine/util';
+import { clamp, ease, prog, hash, mulberry32, noise1, TAU } from '../engine/util';
 import { lyricAt, drawLyric, layoutLyric, beatAfter, drawHeart, type LyricStyle } from './_motifs';
 import { subRect, paperLyric, cjkRatio } from './_t13';
+import { msgMaxFor, lyricV2, sigV2, V2 } from './_v2';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'craft', paper: true, energy: [0, 0.65], bars: [4, 8] };
 
-// ---------------------------------------------------------------- 信紙（邏輯像素）
-/** 印好的格子範圍：直書八行，橫書七列。 */
-const SHEET = { x0: 206, x1: 1310, y0: 152, y1: 812 };
-const NCOL = 8, NROW = 7;
-const CW = (SHEET.x1 - SHEET.x0) / NCOL, RH = (SHEET.y1 - SHEET.y0) / NROW;
-/** 寫好的字那一層的範圍（含上方的標籤）。 */
-const INK_R = { x: 150, y: 90, w: 1200, h: 760 };
-/** 下緣的歌詞。 */
-const LYR = { x: SHEET.x0, base: 938, w: 1110 };
-const LYR_R = { x: 150, y: 850, w: 1210, h: 140 };
+// ---------------------------------------------------------------- 紙與版面（邏輯像素）
+/** 宣紙的範圍（外面是毛氈）。 */
+const SHEET = { x0: 76, x1: 1846, y0: 46, y1: 1034 };
+/** 題款（留言＋落款＋印）的範圍：右邊的空白處（標準 v2：≤ 860 × 430）。 */
+const MSG = { x0: 1130, x1: 1730, y0: 176, y1: 606 };
+/** 寫好的字那一層。 */
+const INK_R = { x: 1080, y: 120, w: 720, h: 580 };
+/** 畫（桃枝）可以伸到的範圍：左邊到中間，不進題款與左下的歌詞。 */
+const ART = { x0: 60, x1: 1090, y0: 120, y1: 870 };
+/** 左下的歌詞。 */
+const LYR = { x: 170, base: 962, w: 1000 };
+const LYR_R = { x: 130, y: 850, w: 1100, h: 150 };
 const FAM = F.hand(700);
 const FAM_SIG = F.hand(400);
-const INVITE = '請掃描右下角，把祝福寫在這張信紙上。';
+const INVITE = '請掃描右下角，把祝福題在這幅畫上。';
 const FOOT = '＊墨跡未乾，請勿觸摸螢幕。';
+const TITLE = '書畫 · 桃之夭夭';
 const SEAL_TXT = ['百', '年', '好', '合'];
 
 const PAPER = () => new FSPass(/* glsl */ `
-  uniform float uVert;
   float fibres(vec2 p, float cs) {
     float acc = 0.0;
     vec2 cell = floor(p / cs);
@@ -52,33 +60,26 @@ const PAPER = () => new FSPass(/* glsl */ `
   void main() {
     vec2 p = vec2(FRAG_PX.x, ${H}.0 - FRAG_PX.y);
     float cloud = fbm(p * 0.0019, 3);
+    // 毛氈：深色的羊毛，細細的絨
+    vec3 felt = mix(C_SEPIA, C_INK, 0.45) * (0.85 + 0.12 * fbm(p * 0.02, 3) + 0.06 * snoise(p * 0.9));
+    // 宣紙：比一般的紙白一點、纖維明顯、雲狀的厚薄；左上來的窗光
     float f = fibres(p, 30.0);
-    // 宣紙：比一般的紙白一點、纖維明顯、雲狀的厚薄
     vec3 paper = mix(C_PAPER, C_BONE, 0.3) * (0.978 + 0.022 * cloud + 0.03 * f);
-    paper *= 0.97 + 0.045 * (1.0 - vUv.x * 0.5) * vUv.y;
-    // 印刷的紅格線（訊號色的暗部）：線有一點點深淺不勻
-    vec3 red = mix(C_BLOOD, C_SIGNAL, 0.3);
-    float inY = step(${SHEET.y0}.0, p.y) * step(p.y, ${SHEET.y1}.0);
-    float inX = step(${SHEET.x0 - 1}.0, p.x) * step(p.x, ${SHEET.x1 + 1}.0);
-    float ln = 0.0;
-    if (uVert > 0.5) {
-      float d = abs(mod(p.x - ${SHEET.x0}.0 + ${(CW / 2).toFixed(3)}, ${CW.toFixed(3)}) - ${(CW / 2).toFixed(3)});
-      ln = pxLine(d, 0.45, 1.3) * inY * inX;
-    } else {
-      float d = abs(mod(p.y - ${SHEET.y0}.0 + ${(RH / 2).toFixed(3)}, ${RH.toFixed(3)}) - ${(RH / 2).toFixed(3)});
-      ln = pxLine(d, 0.45, 1.3) * inY * inX;
-      ln = max(ln, pxLine(abs(p.x - ${SHEET.x0}.0), 0.45, 1.3) * inY);
-      ln = max(ln, pxLine(abs(p.x - ${SHEET.x1}.0), 0.45, 1.3) * inY);
-    }
-    // 外框：上下一粗一細，左右粗線
-    float fy = step(${SHEET.x0 - 14}.0, p.x) * step(p.x, ${SHEET.x1 + 14}.0);
-    ln = max(ln, fy * (pxLine(abs(p.y - ${SHEET.y0 - 12}.0), 1.4, 2.4) + pxLine(abs(p.y - ${SHEET.y1 + 12}.0), 1.4, 2.4)));
-    ln = max(ln, fy * (pxLine(abs(p.y - ${SHEET.y0}.0), 0.45, 1.3) + pxLine(abs(p.y - ${SHEET.y1}.0), 0.45, 1.3)));
-    float fx = step(${SHEET.y0 - 12}.0, p.y) * step(p.y, ${SHEET.y1 + 12}.0);
-    ln = max(ln, fx * (pxLine(abs(p.x - ${SHEET.x0 - 14}.0), 1.4, 2.4) + pxLine(abs(p.x - ${SHEET.x1 + 14}.0), 1.4, 2.4)));
-    ln *= 0.72 + 0.28 * smoothstep(-0.6, 0.6, snoise(p * 0.03));
-    fragColor = vec4(mix(paper, red, sat(ln) * 0.4), 1.0);
-  }`, { uVert: { value: 1 } });
+    paper *= 0.965 + 0.05 * (1.0 - vUv.x * 0.5) * vUv.y;
+    vec2 sc = vec2(${(SHEET.x0 + SHEET.x1) / 2}.0, ${(SHEET.y0 + SHEET.y1) / 2}.0), sh = vec2(${(SHEET.x1 - SHEET.x0) / 2}.0, ${(SHEET.y1 - SHEET.y0) / 2}.0);
+    float dS = sdBox(p - sc, sh);
+    // 紙在毛氈上的影子
+    felt *= 1.0 - 0.35 * (1.0 - smoothstep(-4.0, 16.0, sdBox(p - sc - vec2(6.0, 9.0), sh)));
+    vec3 col = mix(paper, felt, smoothstep(-0.8, 0.8, dS));
+    // 紙鎮：一條深色的木頭壓在紙的上緣，底下有影子
+    vec2 wc = vec2(960.0, 62.0), wh = vec2(560.0, 18.0);
+    float dW = sdBox(p - wc, wh) - 8.0;
+    col *= 1.0 - 0.22 * (1.0 - smoothstep(-4.0, 18.0, sdBox(p - wc - vec2(8.0, 12.0), wh) - 8.0));
+    vec3 wood = mix(C_SEPIA, C_INK, 0.35) * (0.8 + 0.2 * fbm(vec2(p.x * 0.004, p.y * 0.12), 3));
+    wood += C_BONE * 0.07 * (1.0 - smoothstep(0.0, 3.0, abs(p.y - (wc.y - wh.y + 3.0))));
+    col = mix(col, wood, 1.0 - smoothstep(-0.8, 0.8, dW));
+    fragColor = vec4(col, 1.0);
+  }`);
 
 /** 飛白用的乾擦紋（一張共用的貼圖：很多條長短不一的細橫紋）。 */
 let STREAK: HTMLCanvasElement | null = null;
@@ -99,10 +100,14 @@ function streaks() {
   return cv;
 }
 
-/** 一個要寫的字：格子中心 (x, y)、字級、開始與寫完的時間、乾的程度、筆的方向。 */
-interface G { ch: string; x: number; y: number; s: number; fam: string; t0: number; t1: number; dry: number; ang: number; turn: boolean; dx: number; dy: number; small: boolean; bw: number; bh: number }
+/** 一個要寫的字：中心 (x, y)、字級、開始與寫完的時間、乾的程度、筆的方向。 */
+interface G { ch: string; x: number; y: number; s: number; fam: string; t0: number; t1: number; dry: number; ang: number; turn: boolean; small: boolean; bw: number; bh: number }
 /** 直書的排版單位：一個字、掛在右上的小標點、一串轉 90° 的英文、空白。adv 是佔幾格（一格 = 字級 × 1.06）。 */
 interface Tok { t: string; kind: 'char' | 'small' | 'run' | 'space'; adv: number }
+/** 畫裡的一筆：點（含粗細）、開始長的時間與長多久（開場前就畫好的是 -Infinity）。 */
+interface Stroke { pts: { x: number; y: number; w: number }[]; t0: number; dur: number; seed: number; ink: number }
+/** 一朵桃花：位置、大小、轉角、顏色偏向、開的時間（開場前就開了的是 -Infinity）、是不是花苞。 */
+interface Blossom { x: number; y: number; r: number; rot: number; hue: number; t: number; bud: boolean }
 
 const PUNCT_SMALL = new Set(Array.from('，。、．,.'));
 const PUNCT_TURN = new Set(Array.from('…～~ー—「」『』（）()《》〈〉【】-'));
@@ -113,8 +118,10 @@ export default class Brush extends Scene {
   paper = shared('brush.paper', PAPER);
   /** 寫好的字（寫完的字數變了才重畫）。 */
   ink = this.track(new Layer2D(INK_R.w, INK_R.h, undefined, { fast: true }));
-  /** 正在寫的字、筆、蓋印的動作（每格畫）。 */
-  wet = this.track(new Layer2D(INK_R.w, INK_R.h + 60, undefined, { fast: true }));
+  /** 開場前就畫好的畫（主幹、舊的花、標題）：畫一次。 */
+  art = this.track(new Layer2D(W, H, undefined, { fast: true }));
+  /** 每格畫：新長的枝、新開的花、正在寫的字、筆、蓋印的動作。 */
+  wet = this.track(new Layer2D(W, H, undefined, { fast: true }));
   lyr = this.track(new Layer2D(LYR_R.w, LYR_R.h, undefined, { fast: true }));
   msg: Msg | null = this.ctx.params.message ?? null;
   vert = true;
@@ -128,17 +135,19 @@ export default class Brush extends Scene {
    * 邊緣差一兩個色階，同一個時間點畫兩次就不一樣了。
    */
   gcv: HTMLCanvasElement[] = [];
-  /** 詞組開始的時間（沾墨）。 */
-  dips: number[] = [];
   /** glyphs 最後幾個是落款。 */
   nSig = 0;
+  strokes: Stroke[] = [];
+  blossoms: Blossom[] = [];
+  /** 蓋完印之後由筆點的花（開的時間在這之後）。 */
+  dotFrom = Infinity;
 
   override async init() {
     const { audio: au, start, song } = this.ctx;
     const m = this.msg;
     const text = m ? m.text : INVITE;
     const sig = m ? (m.couple ? '新人 敬謝' : `${m.name || '一位賓客'} 敬賀`) : '新人 敬邀';
-    await loadText(`${text}${sig}${FOOT}${SEAL_TXT.join('')}書法八行箋${song.title}`);
+    await loadText(`${text}${sig}${FOOT}${TITLE}${SEAL_TXT.join('')}${song.title}`);
     // 字模只做一次、做了就不再變：一定要等真正用到的繁中字型（文楷、思源宋體）到了再做，等久一點
     await loadText(`${text}${sig}`, 12000, true);
     // 中文為主、或根本沒有英文字（例如只有愛心）就直書
@@ -149,6 +158,8 @@ export default class Brush extends Scene {
     this.schedule(t0);
     this.sealCv = this.buildSeal(this.seal.s);
     this.gcv = this.glyphs.map((g) => this.glyphCanvas(g));
+    this.buildPainting(t0);
+    this.drawArt();
   }
 
   override dispose() {
@@ -158,23 +169,26 @@ export default class Brush extends Scene {
     super.dispose();
   }
 
-  // ---------------------------------------------------------------- 排版
-  /** 直書：選最大的字級，讓留言＋落款一行放得進八行；用到的行置中。英文字、數字連成一串轉 90° 放（像直書的書本）。 */
+  // ---------------------------------------------------------------- 題款排版
+  /**
+   * 直書：由右到左，行寬 = 字級 × 1.42。從字數決定的上限往下找最大的字級，讓題款＋落款放得進題款的範圍（高 430）。
+   * 英文字、數字連成一串轉 90° 放（像直書的書本）。
+   */
   private layoutVertical(text: string, sig: string) {
-    const colH = SHEET.y1 - SHEET.y0 - 36;
-    let s = 44, cols: Tok[][] = [];
-    // 一行（直的）放得下幾格；標點可以掛在行尾一格，但「！！！」這種連續標點會一直掛下去、超出紙：也要算進去
+    const colH = MSG.y1 - MSG.y0;
+    const bw = MSG.x1 - MSG.x0;
+    let s: number = V2.msgMin, cols: Tok[][] = [];
+    // 一行（直的）放得下幾格；標點可以掛在行尾，但「！！！」這種連續標點會一直掛下去、超出範圍：也要算進去
     const cells = (col: Tok[]) => col.reduce((a, tk) => a + tk.adv, 0);
-    // 字級從格子寬的七成往下找（先夾好再排：排完才夾字級，斷行就對不上了，標點會掛出紙外）
-    for (let size = Math.floor(Math.min(100, CW * 0.7)); size >= 44; size -= 2) {
+    // 沒有留言時題的是邀請：焦點是歌詞，邀請的字不比歌詞大
+    for (let size = this.msg ? msgMaxFor(text) : 48; size >= V2.msgMin; size -= 2) {
       const cap = colH / (size * 1.06);
       const cs = breakCols(toks(text, size), cap);
       s = size; cols = cs;
-      if (cs.length + 1 <= NCOL && cs.every((col) => cells(col) <= cap + 0.1)) break;
+      if ((cs.length + 1) * size * 1.42 <= bw && cs.every((col) => cells(col) <= cap + 0.1)) break;
     }
-    const used = cols.length + 1;
-    const first = Math.floor((NCOL - used) / 2); // 從右邊數第幾行開始
-    const colX = (i: number) => SHEET.x1 - CW * (first + i + 0.5);
+    const cw = s * 1.42;
+    const colX = (i: number) => MSG.x1 - cw * (i + 0.5);
     const put = (tk: Tok, x: number, top: number, size: number, fam: string) => {
       const L = tk.adv * size * 1.06;
       if (tk.kind === 'space') return;
@@ -182,68 +196,66 @@ export default class Brush extends Scene {
       const run = tk.kind === 'run';
       this.glyphs.push({
         ch: tk.t, x: x + (small ? size * 0.3 : 0), y: small ? top + size * 0.1 : top + L / 2, s: size, fam, t0: 0, t1: 0, dry: 0, ang: 0,
-        turn: run || PUNCT_TURN.has(tk.t), dx: 0, dy: 1, small, bw: size * 1.1, bh: run ? L : size * 1.1,
+        turn: run || PUNCT_TURN.has(tk.t), small, bw: size * 1.1, bh: run ? L : size * 1.1,
       });
     };
     cols.forEach((col, ci) => {
-      let top = SHEET.y0 + 18;
+      let top = MSG.y0;
       for (const tk of col) { put(tk, colX(ci), top, s, FAM); top += tk.adv * s * 1.06; }
     });
-    // 落款：下一行、靠下，字小一點；印蓋在落款下面
-    const sealS = Math.round(clamp(s * 1.05, 76, CW * 0.74));
-    // 落款的字級：名字很長（「孟庭的高中同學們 敬賀」）就縮小，免得壓到印
-    const room = colH - sealS - 60 - s * 0.8;
-    let ss = Math.max(40, Math.round(s * 0.56)), st = toks(sig, ss, FAM_SIG);
+    // 落款：下一行、靠下，字小一點（26～32）；印蓋在落款下面
+    const sealS = Math.round(clamp(s * 1.1, 48, 64));
+    const room = colH - sealS - 30;
+    let ss = sigV2(s), st = toks(sig, ss, FAM_SIG);
     const lenOf = (ts: Tok[], z: number) => ts.reduce((a, tk) => a + tk.adv, 0) * z * 1.06;
-    while (ss > 36 && lenOf(st, ss) > room) { ss -= 2; st = toks(sig, ss, FAM_SIG); }
+    while (ss > V2.sigMin && lenOf(st, ss) > room) { ss -= 1; st = toks(sig, ss, FAM_SIG); }
     const len = lenOf(st, ss);
-    const x = colX(cols.length);
-    let top = Math.max(SHEET.y0 + 40 + s * 0.8, SHEET.y1 - 22 - sealS - 26 - len);
+    const x = colX(cols.length) + cw * 0.15;
+    let top = Math.max(MSG.y0 + s * 0.8, MSG.y1 - sealS - 16 - len);
     const before = this.glyphs.length;
     for (const tk of st) { put(tk, x, top, ss, FAM_SIG); top += tk.adv * ss * 1.06; }
     this.nSig = this.glyphs.length - before;
-    this.seal = { x, y: Math.min(SHEET.y1 - 16 - sealS / 2, top + 20 + sealS / 2), s: sealS, t: Infinity, rot: -0.04 };
+    this.seal = { x, y: Math.min(MSG.y1 - sealS / 2, top + 12 + sealS / 2), s: sealS, t: Infinity, rot: -0.04 };
   }
 
-  /** 橫書（英文為主）：在七列的格子裡，字級 44～72，一列一行。 */
+  /** 橫書（英文為主）：在題款的範圍裡由左到右，一列一行；署名靠右、印在署名右邊。 */
   private layoutHorizontal(text: string, sig: string) {
     const c = this.ink.ctx;
-    const maxW = SHEET.x1 - SHEET.x0 - 80;
-    let s = 44, lines: string[] = [text];
-    for (let size = 76; size >= 44; size -= 2) {
+    const maxW = MSG.x1 - MSG.x0;
+    let s: number = V2.msgMin, lines: string[] = [text];
+    for (let size = this.msg ? msgMaxFor(text) : 48; size >= V2.msgMin; size -= 2) {
       c.font = font(FAM, size);
       const ls = wrapWords(c, text, maxW);
       s = size; lines = ls;
-      if (ls.length <= NROW - 2) break;
+      if (ls.length * size * 1.5 + size * 1.6 <= MSG.y1 - MSG.y0) break;
     }
-    // 用到的列（留言＋落款）上下置中
-    const row0 = Math.max(0, Math.floor((NROW - lines.length - 1) / 2));
+    const rh = s * 1.5;
     lines.forEach((ln, li) => {
       const lay = layout(ln, FAM, s);
-      const base = SHEET.y0 + RH * (row0 + li + 1) - RH * 0.24;
+      const base = MSG.y0 + s + li * rh;
       for (const g of lay.glyphs) {
         if (g.ch === ' ') continue;
-        this.glyphs.push({ ch: g.ch, x: SHEET.x0 + 40 + g.x + g.w / 2, y: base - s * 0.34, s, fam: FAM, t0: 0, t1: 0, dry: 0, ang: 0, turn: false, dx: 1, dy: 0, small: false, bw: Math.max(g.w, s * 0.4) + 6, bh: s * 1.1 });
+        this.glyphs.push({ ch: g.ch, x: MSG.x0 + g.x + g.w / 2, y: base - s * 0.34, s, fam: FAM, t0: 0, t1: 0, dry: 0, ang: 0, turn: false, small: false, bw: Math.max(g.w, s * 0.4) + 6, bh: s * 1.1 });
       }
     });
-    const ss = Math.max(40, Math.round(s * 0.62));
+    const ss = sigV2(s);
     const sigText = `—— ${sig.replace(/ 敬.*$/, '')}`;
     const sl = layout(sigText, FAM_SIG, ss);
-    const sealS = 86;
-    const base = SHEET.y0 + RH * (row0 + lines.length + 1) - RH * 0.24;
-    const x0 = SHEET.x1 - 40 - sealS - 24 - sl.width;
+    const sealS = 54;
+    const base = MSG.y0 + s + lines.length * rh + ss * 0.4;
+    const x0 = MSG.x1 - sealS - 20 - sl.width;
     const before = this.glyphs.length;
     for (const g of sl.glyphs) {
       if (g.ch === ' ') continue;
-      this.glyphs.push({ ch: g.ch, x: x0 + g.x + g.w / 2, y: base - ss * 0.34, s: ss, fam: FAM_SIG, t0: 0, t1: 0, dry: 0, ang: 0, turn: false, dx: 1, dy: 0, small: false, bw: Math.max(g.w, ss * 0.4) + 6, bh: ss * 1.1 });
+      this.glyphs.push({ ch: g.ch, x: x0 + g.x + g.w / 2, y: base - ss * 0.34, s: ss, fam: FAM_SIG, t0: 0, t1: 0, dry: 0, ang: 0, turn: false, small: false, bw: Math.max(g.w, ss * 0.4) + 6, bh: ss * 1.1 });
     }
     this.nSig = this.glyphs.length - before;
-    this.seal = { x: SHEET.x1 - 40 - sealS / 2, y: base - ss * 0.34, s: sealS, t: Infinity, rot: 0.035 };
+    this.seal = { x: MSG.x1 - sealS / 2, y: base - ss * 0.34, s: sealS, t: Infinity, rot: 0.035 };
   }
 
   // ---------------------------------------------------------------- 時間
   /**
-   * 留言切成詞組（標點後、或滿四個字／一個英文字），每個詞組在拍點（太多就半拍）沾墨開始寫；
+   * 題款切成詞組（標點後、或滿四個字／一個英文字），每個詞組在拍點（太多就半拍）沾墨開始寫；
    * 詞組裡一個字接一個字，越寫越乾。落款在下一拍，印再下一拍。
    */
   private schedule(t0: number) {
@@ -271,7 +283,6 @@ export default class Brush extends Scene {
       const ts = au.timeOfBeat(b0 + gi / div);
       const slot = beat / div;
       const dc = Math.min(0.24, (slot * 0.92) / grp.length);
-      this.dips.push(ts);
       grp.forEach((g, i) => {
         g.t0 = ts + i * dc;
         g.t1 = g.t0 + dc * 0.94;
@@ -282,9 +293,115 @@ export default class Brush extends Scene {
     });
     // 落款：寫完的下一拍，一個字 0.12 秒
     const ts = beatAfter(au, end + 0.05);
-    this.dips.push(ts);
     tail.forEach((g, i) => { g.t0 = ts + i * 0.12; g.t1 = g.t0 + 0.11; g.dry = 0.15 + 0.4 * (i / Math.max(1, tail.length - 1)); g.ang = 0.1; end = g.t1; });
     this.seal.t = beatAfter(au, end + 0.1);
+  }
+
+  // ---------------------------------------------------------------- 畫（桃枝與桃花）
+  /**
+   * 桃枝：主幹從畫面左緣斜斜伸進來往右上，兩根大枝，幾十根往上翹的小枝（桃、梅的小枝是直的，像鞭子）。
+   * 形狀固定（構圖要好看），細節用種子抖動；開場前就畫好主幹、大枝與一半的小枝、花；
+   * 之後每個小節線長一根新小枝、每一拍開一朵花（蓋完印之後的花由筆點出來）。
+   */
+  private buildPainting(t0: number) {
+    const au = this.ctx.audio;
+    const rnd = mulberry32(((this.ctx.params.seed ?? 5) * 7919) >>> 0);
+    const wobble = (ctrl: [number, number][], w0: number, w1: number): { x: number; y: number; w: number }[] => {
+      const out: { x: number; y: number; w: number }[] = [];
+      const n = (ctrl.length - 1) * 6;
+      for (let i = 0; i <= n; i++) {
+        const u = i / n, k = u * (ctrl.length - 1), j = Math.min(ctrl.length - 2, Math.floor(k)), fr = k - j;
+        const a = ctrl[j]!, b = ctrl[j + 1]!;
+        const jit = i % 6 === 0 ? 0 : (rnd() - 0.5) * 8;
+        const dx = b[0] - a[0], dy = b[1] - a[1], L = Math.hypot(dx, dy) || 1;
+        out.push({ x: a[0] + dx * fr - (dy / L) * jit, y: a[1] + dy * fr + (dx / L) * jit, w: (w0 + (w1 - w0) * u) * (0.9 + 0.2 * rnd()) });
+      }
+      return out;
+    };
+    const pre = -Infinity;
+    const trunk = wobble([[20, 830], [300, 700], [500, 575], [690, 520], [860, 390], [1000, 300]], 46, 12);
+    const b1 = wobble([[300, 700], [370, 540], [345, 400], [420, 270], [395, 170]], 24, 6);
+    const b2 = wobble([[690, 520], [810, 600], [960, 612], [1060, 690]], 16, 5);
+    this.strokes.push({ pts: trunk, t0: pre, dur: 0, seed: 1, ink: 0.92 }, { pts: b1, t0: pre, dur: 0, seed: 2, ink: 0.85 }, { pts: b2, t0: pre, dur: 0, seed: 3, ink: 0.8 });
+    // 小枝：從大枝上長出來，往上翹（方向在「沿著枝」與「往上」之間）
+    const twigs: Stroke[] = [];
+    const mains = [trunk, b1, b2];
+    for (let k = 0; k < 40 && twigs.length < 22; k++) {
+      const base = mains[Math.floor(rnd() * mains.length)]!;
+      const i = 3 + Math.floor(rnd() * (base.length - 5));
+      const p = base[i]!, q = base[i + 1]!;
+      const along = Math.atan2(q.y - p.y, q.x - p.x);
+      const side = rnd() < 0.5 ? -1 : 1;
+      const ang = along * 0.45 + (-Math.PI / 2) * 0.55 + side * (0.25 + 0.5 * rnd());
+      const L = 60 + 90 * rnd();
+      const ex = p.x + Math.cos(ang) * L, ey = p.y + Math.sin(ang) * L;
+      if (ex < ART.x0 + 40 || ex > ART.x1 || ey < ART.y0 || ey > ART.y1) continue;
+      const mx = p.x + Math.cos(ang - 0.08 * side) * L * 0.55, my = p.y + Math.sin(ang - 0.08 * side) * L * 0.55;
+      const w0 = Math.min(p.w * 0.45, 9);
+      twigs.push({ pts: [{ x: p.x, y: p.y, w: w0 }, { x: mx, y: my, w: w0 * 0.6 }, { x: ex, y: ey, w: 1.4 }], t0: pre, dur: 0, seed: 10 + k, ink: 0.8 });
+    }
+    // 後面 8 根是這個窗格裡、每個小節線長出來的
+    const bar0 = Math.ceil(au.barAt(t0) - 1e-6);
+    twigs.forEach((tw, i) => {
+      const j = i - (twigs.length - 8);
+      if (j >= 0) {
+        tw.t0 = au.timeOfBar(bar0 + 1 + j) + 0.02;
+        tw.dur = Math.min(0.5, (au.timeOfBar(bar0 + 2 + j) - au.timeOfBar(bar0 + 1 + j)) * 0.4);
+      }
+    });
+    this.strokes.push(...twigs);
+    // 花：開在大枝與舊小枝的旁邊（新長的小枝尾巴上是花苞）
+    const spots: { x: number; y: number }[] = [];
+    const hosts = [trunk, b1, b2, ...twigs.filter((tw) => tw.t0 === pre).map((tw) => tw.pts)];
+    for (let k = 0; spots.length < 64 && k < 400; k++) {
+      const h = hosts[Math.floor(rnd() * hosts.length)]!;
+      const i = Math.floor(rnd() * (h.length - 1)) + (h === trunk ? 8 : 0);
+      const p = h[Math.min(h.length - 1, i)]!;
+      const a = rnd() * TAU, d = p.w * 0.5 + 6 + 10 * rnd();
+      const x = p.x + Math.cos(a) * d, y = p.y + Math.sin(a) * d;
+      if (x < ART.x0 + 40 || x > ART.x1 || y < ART.y0 || y > ART.y1) continue;
+      if (spots.some((s) => Math.hypot(s.x - x, s.y - y) < 30)) continue;
+      spots.push({ x, y });
+    }
+    // 開的時間：前 24 朵開場前就開了；之後每一拍一朵
+    const b0 = au.beatAt(t0);
+    const endB = au.beatAt(this.ctx.end - 0.15);
+    spots.forEach((sp, i) => {
+      const j = i - 24;
+      const tb = j < 0 ? pre : b0 + j <= endB ? au.timeOfBeat(Math.round(b0) + j) : Infinity;
+      this.blossoms.push({ x: sp.x, y: sp.y, r: 11 + 7 * rnd(), rot: rnd() * TAU, hue: rnd(), t: tb, bud: rnd() < 0.18 });
+    });
+    for (const tw of twigs.slice(-8)) {
+      const e = tw.pts[tw.pts.length - 1]!;
+      this.blossoms.push({ x: e.x, y: e.y, r: 6, rot: 0, hue: 0.6, t: tw.t0 + tw.dur, bud: true });
+    }
+    this.dotFrom = this.seal.t + 0.4;
+  }
+
+  /** 開場前就畫好的部分：標題、主幹、大枝、舊的小枝、已經開的花（畫一次）。 */
+  private drawArt() {
+    const L = this.art, c = L.ctx;
+    L.clear();
+    c.font = font(F.hei(500), 20);
+    c.letterSpacing = '6px';
+    c.fillStyle = rgba('sepia', 0.5);
+    c.fillText(TITLE, 150, 140);
+    c.letterSpacing = '0px';
+    // 墨暈：大枝底下先淡淡地暈一層（宣紙吃墨）
+    c.save();
+    c.filter = 'blur(3px)';
+    for (const s of this.strokes) if (s.t0 === -Infinity && s.pts[0]!.w > 10) paintBody(c, s.pts, 1, mixRgba('sepia', 'ink', 0.4, 0.14), 1.35);
+    c.restore();
+    for (const s of this.strokes) if (s.t0 === -Infinity) paintStroke(c, s, 1, true);
+    // 苔點：主幹上幾顆濃墨點
+    const trunk = this.strokes[0]!.pts;
+    for (let i = 0; i < 12; i++) {
+      const p = trunk[4 + ((i * 7) % (trunk.length - 8))]!;
+      c.fillStyle = mixRgba('sepia', 'ink', 0.7, 0.85);
+      c.beginPath(); c.arc(p.x + (hash(i, 1) - 0.5) * p.w, p.y - p.w * 0.45 - 2, 2 + 2.5 * hash(i, 2), 0, TAU); c.fill();
+    }
+    for (const b of this.blossoms) if (b.t === -Infinity) drawBlossom(c, b, 1);
+    L.upload();
   }
 
   /** 白文方印（紅底、字是白的）：印泥不勻、邊緣有缺角。 */
@@ -320,7 +437,7 @@ export default class Brush extends Scene {
     return cv;
   }
 
-  // ---------------------------------------------------------------- 畫
+  // ---------------------------------------------------------------- 字
   /** 一個字的「字模」：墨色的字，按乾的程度用乾擦紋挖掉一些（飛白），邊緣帶一點暈開的墨。 */
   private glyphCanvas(g: G) {
     const P = Math.ceil(Math.max(g.s * 1.6, g.bh + g.s * 0.6)), K = 1.5;
@@ -387,39 +504,31 @@ export default class Brush extends Scene {
     const { renderer, comp, lyrics } = this.ctx;
     const t = f.t, s = this.ctx.start, e = this.ctx.end;
     const vis = prog(t, s, s + 0.3) * (1 - prog(t, e - 0.25, e));
-    this.paper.u.uVert!.value = this.vert ? 1 : 0;
     this.paper.render(renderer, out);
+    comp.draw(renderer, this.art.texture, out);
 
-    // ---- 寫好的字（含落好的印、上方標籤）
+    // ---- 寫好的字（含落好的印）
     const done = this.glyphs.filter((g) => t >= g.t1).length;
     const sealIn = t >= this.seal.t + 0.14;
     const key = `${done}|${sealIn}`;
     if (key !== this.inkKey) { this.inkKey = key; this.drawInk(done, sealIn); }
     comp.draw(renderer, this.ink.texture, out, { ...subRect(INK_R), opacity: vis });
 
-    // ---- 正在寫的字、筆、蓋印
-    const shake = this.drawWet(t, vis);
-    comp.draw(renderer, this.wet.upload(), out, subRect({ ...INK_R, h: INK_R.h + 60 }));
+    // ---- 新長的枝、新開的花、正在寫的字、筆、蓋印
+    const shake = this.drawWet(t, vis, f);
+    comp.draw(renderer, this.wet.upload(), out);
 
     // ---- 歌詞
     this.drawLyr(t, vis, lyricAt(lyrics, t));
     comp.draw(renderer, this.lyr.upload(), out, subRect(LYR_R));
 
-    const box = this.bounds();
     return {
-      paper: 1, bloom: 0.3, bloomThreshold: 0.98, bloomKnee: 0.12, halation: 0.08, vignette: 0.22, grain: 0.055,
+      // 色差調小：紙的邊緣壓在深色毛氈上，預設的色差會在紙邊出現一條藍邊
+      paper: 1, bloom: 0.3, bloomThreshold: 0.98, bloomKnee: 0.12, halation: 0.08, vignette: 0.22, grain: 0.055, ca: 0.4,
       shake: [shake * noise1(t * 60, 3) * 5, shake * noise1(t * 57, 4) * 5],
       zoom: 1 + 0.03 * ease.inOutCubic(f.p) + 0.003 * f.a.kick,
-      popupAvoid: [box, [LYR.x - 20, LYR.base - 80, LYR.w + 40, 110]],
+      popupAvoid: [[MSG.x0 - 20, MSG.y0 - 20, MSG.x1 - MSG.x0 + 40, MSG.y1 - MSG.y0 + 40], [LYR.x - 20, LYR.base - 80, LYR.w + 40, 110]],
     };
-  }
-
-  /** 留言、落款、印的範圍（小卡避開）。 */
-  private bounds(): [number, number, number, number] {
-    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-    for (const g of this.glyphs) { x0 = Math.min(x0, g.x - g.s / 2); x1 = Math.max(x1, g.x + g.s / 2); y0 = Math.min(y0, g.y - g.s / 2); y1 = Math.max(y1, g.y + g.s / 2); }
-    x0 = Math.min(x0, this.seal.x - this.seal.s / 2); x1 = Math.max(x1, this.seal.x + this.seal.s / 2); y1 = Math.max(y1, this.seal.y + this.seal.s / 2);
-    return [x0 - 20, y0 - 20, x1 - x0 + 40, y1 - y0 + 40];
   }
 
   private drawInk(done: number, sealIn: boolean) {
@@ -427,16 +536,7 @@ export default class Brush extends Scene {
     L.clear();
     c.save();
     c.translate(-INK_R.x, -INK_R.y);
-    // 上方的標籤（mono 與小字）
-    c.font = font(F.hei(500), 20);
-    c.letterSpacing = '6px';
-    c.fillStyle = rgba('sepia', 0.55);
-    c.fillText(this.vert ? '書法 · 八行箋' : '書法 · 橫格信箋', SHEET.x0 - 14, SHEET.y0 - 34);
-    c.letterSpacing = '0px';
-    for (let i = 0; i < done; i++) {
-      const g = this.glyphs[i]!;
-      this.drawGlyph(c, g, this.gcv[i]!);
-    }
+    for (let i = 0; i < done; i++) this.drawGlyph(c, this.glyphs[i]!, this.gcv[i]!);
     if (sealIn && this.sealCv) this.drawSeal(c, 1, 1);
     c.restore();
     L.upload();
@@ -453,13 +553,18 @@ export default class Brush extends Scene {
     c.restore();
   }
 
-  /** 正在寫的那個字（沿著字一橫一橫掃過去）、毛筆、蓋印。回傳畫面震動量。 */
-  private drawWet(t: number, vis: number): number {
+  /** 每格：新長的小枝、新開的花、正在寫的字（一橫一橫掃過去）、剛寫好的濕墨、毛筆、蓋印。回傳畫面震動量。 */
+  private drawWet(t: number, vis: number, f: Frame): number {
     const L = this.wet, c = L.ctx;
     L.clear();
     c.save();
-    c.translate(-INK_R.x, -INK_R.y);
     c.globalAlpha = vis;
+    // 新長的小枝（小節線上長出來，outCubic）、新開的花（拍點上綻開，outBack）
+    for (const s of this.strokes) if (s.t0 !== -Infinity && t >= s.t0) paintStroke(c, s, ease.outCubic(clamp((t - s.t0) / s.dur)));
+    for (const b of this.blossoms) {
+      if (b.t === -Infinity || t < b.t) continue;
+      drawBlossom(c, b, ease.outBack(clamp((t - b.t) / 0.28)));
+    }
     let tip: { x: number; y: number; press: number } | null = null;
     const gi = this.glyphs.findIndex((g) => t >= g.t0 && t < g.t1);
     if (gi >= 0) {
@@ -468,10 +573,6 @@ export default class Brush extends Scene {
       // 掃過去的路線：四橫（直書、橫書都一樣，由上而下），每一橫由左到右
       const bw = g.bw, bh = g.bh, rows = Math.max(4, Math.round((4 * bh) / bw)), x0 = g.x - bw / 2, y0 = g.y - bh / 2;
       const R = (bh / rows) * 0.8;
-      const pt = (v: number) => {
-        const k = Math.min(rows - 1e-6, v * rows), ri = Math.floor(k), fr = k - ri;
-        return { x: x0 + fr * bw, y: y0 + (ri + 0.5) * (bh / rows) };
-      };
       c.save();
       c.beginPath();
       for (let r = 0; r < rows; r++) {
@@ -483,19 +584,25 @@ export default class Brush extends Scene {
       c.clip();
       this.drawGlyph(c, g, this.gcv[gi]!);
       c.restore();
-      const p = pt(u);
-      tip = { x: p.x + R * 0.2, y: p.y, press: 1 - g.dry * 0.5 };
+      const k = Math.min(rows - 1e-6, u * rows), ri = Math.floor(k), fr = k - ri;
+      tip = { x: x0 + fr * bw + R * 0.2, y: y0 + (ri + 0.5) * (bh / rows), press: 1 - g.dry * 0.5 };
     } else {
-      // 兩個詞組之間：筆提起來，停在剛寫完的字旁邊
       let last: G | null = null;
       for (const g of this.glyphs) if (g.t1 <= t) last = g;
       const next = this.glyphs.find((g) => g.t0 > t);
       if (last && next && next.t0 - last.t1 < 1.5) {
+        // 兩個詞組之間：筆提起來，移到下一個字
         const k = ease.inOutCubic(clamp((t - last.t1) / Math.max(0.05, next.t0 - last.t1)));
         tip = { x: last.x + (next.x - next.s * 0.5 - last.x) * k, y: last.y + (next.y - next.s * 0.5 - last.y) * k, press: 0 };
       } else if (!last && next) {
+        // 開場：筆從右上方畫面外飛進來
         const k = ease.outExpo(prog(t, this.ctx.start, next.t0));
-        tip = { x: next.x - next.s * 0.5 - 160 * (1 - k), y: next.y - next.s * 0.5 - 120 * (1 - k), press: 0 };
+        tip = { x: next.x - next.s * 0.5 + 260 * (1 - k), y: next.y - next.s * 0.5 - 220 * (1 - k), press: 0 };
+      } else if (last && t >= this.dotFrom - 0.6) {
+        // 題完款、蓋好印：筆移到畫上，每一拍點一朵花
+        tip = this.dotTip(t, last);
+      } else if (last) {
+        tip = { x: last.x + 20, y: last.y - 30, press: 0 };
       }
     }
     // 剛寫好的字還是濕的：墨色深一點、慢慢乾（淡回去）
@@ -519,12 +626,30 @@ export default class Brush extends Scene {
     }
     if (t >= st) shake = Math.pow(0.5, (t - st) / 0.06) * (t < st + 0.4 ? 1 : 0);
     c.restore();
+    void f;
     return shake;
   }
 
-  /** 毛筆：筆尖（墨色的尖毫）、金屬箍、竹桿；直書時桿往左上（還沒寫的那一側），橫書時往右下。 */
+  /** 點花：筆在前一朵與下一朵（開的時間在 dotFrom 之後）之間移動，拍點上壓下去。 */
+  private dotTip(t: number, last: G): { x: number; y: number; press: number } {
+    const list = this.blossoms.filter((b) => !b.bud && b.t >= this.dotFrom && b.t !== Infinity);
+    const nextI = list.findIndex((b) => b.t + 0.12 > t);
+    const prev = nextI > 0 ? list[nextI - 1]! : nextI === -1 ? list[list.length - 1] : null;
+    const next = nextI >= 0 ? list[nextI]! : null;
+    const from = prev ? { x: prev.x, y: prev.y, t: prev.t + 0.12 } : { x: last.x + 20, y: last.y - 30, t: this.dotFrom - 0.6 };
+    if (!next) return { x: from.x + 6, y: from.y - 18, press: 0 };
+    const k = ease.inOutCubic(clamp((t - from.t) / Math.max(0.05, next.t - 0.06 - from.t)));
+    const press = Math.max(0, 1 - Math.abs(t - next.t) / 0.1);
+    // 移動時筆提高一點（y 往上 16），拍點上壓下去
+    return { x: from.x + (next.x - from.x) * k, y: from.y + (next.y - from.y) * k - 16 * (1 - press), press };
+  }
+
+  /** 毛筆：筆尖（墨色的尖毫）、金屬箍、竹桿。題款時桿往左上（直書）或右下（橫書），點花時往右上。 */
   private drawBrush(c: CanvasRenderingContext2D, x: number, y: number, press: number) {
-    const dir = this.vert ? { x: -0.5, y: -0.866 } : { x: 0.42, y: 0.907 };
+    const w0 = this.vert ? { x: -0.5, y: -0.866 } : { x: 0.42, y: 0.907 }, w1 = { x: 0.5, y: -0.866 };
+    const rk = clamp((1100 - x) / 200);
+    const dx0 = w0.x + (w1.x - w0.x) * rk, dy0 = w0.y + (w1.y - w0.y) * rk, dl = Math.hypot(dx0, dy0) || 1;
+    const dir = { x: dx0 / dl, y: dy0 / dl };
     const nx = -dir.y, ny = dir.x;
     const lift = (1 - press) * 14;
     const bx = x + dir.x * lift, by = y + dir.y * lift;
@@ -574,26 +699,116 @@ export default class Brush extends Scene {
     c.translate(-LYR_R.x, -LYR_R.y);
     c.globalAlpha = vis;
     if (ly) {
-      // 歌詞比留言小一級（留言是焦點）
-      const ms = this.glyphs[0]?.s ?? 70;
-      const st: LyricStyle = { family: F.hand(700), size: Math.round(clamp(ms * 0.78, 48, 58)), minSize: 48, maxWidth: LYR.w, ...paperLyric() };
+      // 歌詞比題款小一點（題款是焦點）
+      const st: LyricStyle = { family: F.hand(700), size: lyricV2(this.msg ? this.glyphs[0]?.s ?? null : null), minSize: V2.lyrMin, maxWidth: LYR.w, ...paperLyric() };
       const lay = layoutLyric(c, ly.line, st);
       const inK = ease.outExpo(prog(t, ly.line.start - 0.35, ly.line.start + 0.2));
       c.translate(LYR.x, LYR.base - (lay.height - lay.size) + (1 - inK) * 16);
       drawLyric(c, ly.line, t, st, lay, ly.k * vis);
     } else {
       const { song } = this.ctx;
-      c.font = font(F.mono(500), 17);
+      c.font = font(F.mono(500), 16);
       c.letterSpacing = '4px';
-      c.fillStyle = rgba('sepia', 0.55);
-      c.fillText(`♪  ${song.title}${song.artist ? '  ·  ' + song.artist : ''}`.toUpperCase(), LYR.x, LYR.base - 44);
-      c.letterSpacing = '0px';
-      c.font = font(F.hei(500), 24);
       c.fillStyle = rgba('sepia', 0.5);
+      c.fillText(`♪  ${song.title}${song.artist ? '  ·  ' + song.artist : ''}`.toUpperCase(), LYR.x, LYR.base - 40);
+      c.letterSpacing = '0px';
+      c.font = font(F.hei(500), 20);
+      c.fillStyle = rgba('sepia', 0.45);
       c.fillText(FOOT, LYR.x, LYR.base);
     }
     c.restore();
   }
+}
+
+/** 一筆的「墨身」：沿著點畫一條有粗細的帶子（到 frac 為止），scale 是寬度倍數。 */
+function paintBody(c: CanvasRenderingContext2D, pts: { x: number; y: number; w: number }[], frac: number, fill: string, scale: number) {
+  const n = pts.length, last = Math.max(1, Math.floor(frac * (n - 1)));
+  const L: { x: number; y: number }[] = [], R: { x: number; y: number }[] = [];
+  for (let i = 0; i <= last; i++) {
+    const p = pts[i]!, a = pts[Math.max(0, i - 1)]!, b = pts[Math.min(n - 1, i + 1)]!;
+    const dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy) || 1;
+    const hw = (p.w * scale) / 2;
+    L.push({ x: p.x - (dy / d) * hw, y: p.y + (dx / d) * hw });
+    R.push({ x: p.x + (dy / d) * hw, y: p.y - (dx / d) * hw });
+  }
+  c.fillStyle = fill;
+  c.beginPath();
+  L.forEach((p, i) => (i ? c.lineTo(p.x, p.y) : c.moveTo(p.x, p.y)));
+  for (let i = R.length - 1; i >= 0; i--) c.lineTo(R[i]!.x, R[i]!.y);
+  c.closePath();
+  c.fill();
+}
+
+/**
+ * 畫一筆（到 frac 為止）：先一條濃墨的墨身，中間隨機幾段再疊一層更濃的（墨汁積在那裡）；
+ * dry = true 時再用「筆毛」細線把筆尾挖出幾道白（飛白），越往筆尾、越靠兩側越乾。斷不斷由雜湊決定（確定性）。
+ * 挖白用 destination-out：只給開場前就畫好的那一層用（那時候花還沒畫上去）。
+ */
+function paintStroke(c: CanvasRenderingContext2D, s: Stroke, frac: number, dry = false) {
+  if (frac <= 0) return;
+  const pts = s.pts, n = pts.length;
+  paintBody(c, pts, frac, mixRgba('sepia', 'ink', 0.8, Math.min(1, 1.04 * s.ink)), 1);
+  // 積墨：幾段比較濃
+  const last = Math.floor(frac * (n - 1));
+  for (let i = 0; i < last; i += 3) {
+    if (hash(s.seed, i, 7) < 0.55) continue;
+    paintBody(c, pts.slice(i, Math.min(last, i + 3) + 1), 1, mixRgba('ink', 'sepia', 0.2, 0.35), 0.55);
+  }
+  if (!dry || pts[0]!.w < 6) return;
+  const NB = pts[0]!.w > 20 ? 11 : 6;
+  c.save();
+  c.globalCompositeOperation = 'destination-out';
+  c.lineCap = 'round';
+  for (let b = 0; b < NB; b++) {
+    const o = (b + 0.5) / NB - 0.5;
+    let pen = false;
+    c.beginPath();
+    for (let i = 0; i <= last; i++) {
+      const p = pts[i]!, a = pts[Math.max(0, i - 1)]!, q = pts[Math.min(n - 1, i + 1)]!;
+      const dx = q.x - a.x, dy = q.y - a.y, d = Math.hypot(dx, dy) || 1;
+      const u = i / (n - 1);
+      // 挖白的機率：筆頭幾乎不挖、筆尾與兩側挖得多
+      const gap = Math.max(0, (u - 0.4) * 1.2) + 0.3 * Math.abs(o) * u;
+      if (hash(s.seed, b, i) > gap) { if (pen) { c.stroke(); c.beginPath(); } pen = false; continue; }
+      const x = p.x - (dy / d) * o * p.w, y = p.y + (dx / d) * o * p.w;
+      if (pen) c.lineTo(x, y); else c.moveTo(x, y);
+      pen = true;
+      c.lineWidth = Math.max(0.7, (p.w / NB) * 0.5);
+      c.strokeStyle = `rgba(0,0,0,${0.55 + 0.4 * hash(s.seed, b, 9)})`;
+    }
+    if (pen) c.stroke();
+  }
+  c.restore();
+}
+
+/** 一朵桃花（k 是綻開的程度，可以超過 1 一點點：outBack）：五片花瓣疊出水彩的深淺，花心幾根花蕊；花苞是一顆小點。 */
+function drawBlossom(c: CanvasRenderingContext2D, b: Blossom, k: number) {
+  if (k <= 0.01) return;
+  const col = mixRgba('signal', 'blood', 0.25 + 0.45 * b.hue, 0.62);
+  c.save();
+  c.translate(b.x, b.y);
+  c.rotate(b.rot);
+  c.scale(k, k);
+  if (b.bud) {
+    c.fillStyle = mixRgba('signal', 'blood', 0.6, 0.85);
+    c.beginPath(); c.ellipse(0, 0, b.r * 0.5, b.r * 0.7, 0, 0, TAU); c.fill();
+    c.restore();
+    return;
+  }
+  c.fillStyle = col;
+  for (let i = 0; i < 5; i++) {
+    const a = (i / 5) * TAU;
+    c.beginPath(); c.arc(Math.cos(a) * b.r * 0.62, Math.sin(a) * b.r * 0.62, b.r * 0.58, 0, TAU); c.fill();
+  }
+  c.strokeStyle = mixRgba('sepia', 'ink', 0.5, 0.75);
+  c.fillStyle = mixRgba('sepia', 'ink', 0.5, 0.85);
+  c.lineWidth = 1;
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * TAU + 0.3, L = b.r * (0.55 + 0.2 * (i % 2));
+    c.beginPath(); c.moveTo(0, 0); c.lineTo(Math.cos(a) * L, Math.sin(a) * L); c.stroke();
+    c.beginPath(); c.arc(Math.cos(a) * L, Math.sin(a) * L, 1.6, 0, TAU); c.fill();
+  }
+  c.restore();
 }
 
 const LATIN = /[A-Za-z0-9&'’.\-@#+]/;

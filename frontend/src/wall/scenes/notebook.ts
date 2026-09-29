@@ -3,6 +3,9 @@
 //  - 主打留言是另一個人寫的便條：第一拍「啪」地貼上右下角，下兩拍各貼一條膠帶；字是比較粗的筆跡、稍微歪。
 //  - 主打留言是整個畫面的焦點：便條大、字大、離鏡頭近；歌詞小一級，只寫在便條左邊。
 //  - 頁首只剩一行很淡的「今晚的歌 ♪ 歌名」，旁邊用「正」字記小節數，每個小節線補一筆（冷面）。
+//  - v2（留言尺寸標準）：便條只比字多一點、字級照 v2（用斜拍鏡頭的投影換算成紙上的字級）；本子本身是場景、撐滿畫面。
+//    補的動畫跟「筆記本」有關：筆沒在寫的時候跟著拍子在紙上點（像邊聽歌邊用筆打拍子），
+//    每個小節線便條被風吹得抖一下。
 //  - 鏡頭：整張桌子（2D 畫好）當成一張紙放在桌上，從桌邊斜斜拍（_t5 的 tilt：透視＋景深＋一盞桌燈），
 //    慢慢推近，每個小節線緩一下；便條貼上去那一拍鏡頭輕輕往便條那邊帶。
 //  - 沒有留言：便條是待辦清單（掃 QR、寫一句祝福、看它出現在這裡），每個小節線勾掉一項。
@@ -19,7 +22,8 @@ import { clamp, ease, lerp, prog, pulse } from '../engine/util';
 import { fitText, wrap, type FitResult } from '../engine/text';
 import { Lyrics, type Line } from '../engine/lyrics';
 import { layoutLyric, fillWithHearts, signature, type LyricStyle, type PlacedWord } from './_motifs';
-import { grid, windowLines, tiltRT, tiltPass, setV3, mixV, type Grid } from './_t5';
+import { grid, windowLines, tiltRT, tiltPass, tiltProject, setV3, mixV, fitMsgV2, type Grid } from './_t5';
+import { V2, lyricV2, sigV2, msgMaxFor } from './_v2';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'doc', paper: true, energy: [0.05, 0.7], bars: [4, 8] };
 
@@ -32,7 +36,7 @@ const MARGIN_X = 268; // 紅色邊線
 const TX = 300; // 字的左緣
 const WIDE = 1310; // 行的右界（便條旁邊的行到便條左邊為止）
 // 便條（頁面座標，會跟著頁面捲）：寬固定、高度看留言長短，底邊對齊（長的往上長）
-const NOTE_W = 600, NOTE_X = 846, NOTE_BOT = 900, NOTE_ROT = 0.03, NOTE_MAXH = 660;
+const NOTE_W = 520, NOTE_X = 880, NOTE_BOT = 830, NOTE_ROT = 0.03, NOTE_MAXH = 420;
 const MAX_Y = 790; // 正在寫的那一行最低到這裡，再下去本子就往上推（最多推到便條頂端還在畫面裡）
 const HAND = F.hand(400);
 const HAND_B = F.hand(700);
@@ -102,6 +106,10 @@ export default class Notebook extends Scene {
   todo = ['掃右下角的 QR code', '寫一句祝福', '看它出現在這裡'];
   tNote = 0;
   showNote = true;
+  /** 畫面 px／紙上 px（斜拍鏡頭在便條那裡的放大倍數）與換算過的字級。 */
+  sc = 1;
+  sigSize = 40;
+  ly: LyricStyle = LY;
 
   override async init() {
     const { audio: au, lyrics, song } = this.ctx;
@@ -113,10 +121,22 @@ export default class Notebook extends Scene {
     const m = this.msg;
     await loadText(`今晚的歌小節待辦掃右下角的寫一句祝福看它出現在這裡一位賓客${this.todo.join('')}${song.title}${m ? m.text + m.name : ''}${lines.map((l) => l.text).join('')}`);
     this.tNote = g.b0;
+    // v2 字級：量窗格中段的鏡位下，便條中間那一段紙在畫面上放大幾倍
+    const mid = this.tiltCam((s + e) / 2);
+    const cx = NOTE_X + NOTE_W / 2, cy = NOTE_BOT - NOTE_MAXH / 2;
+    const pa = tiltProject(mid.cam, mid.look, mid.fov, mid.roll, cx - 150, cy), pb = tiltProject(mid.cam, mid.look, mid.fov, mid.roll, cx + 150, cy);
+    const k = this.sc = Math.hypot(pb.x - pa.x, pb.y - pa.y) / 300;
+    this.sigSize = sigV2(44) / k;
     if (m) {
-      this.noteFit = fitText(c, m.text, HAND_B, NOTE_W - 80, NOTE_MAXH - 170, { min: 66, max: 120, lineHeight: 1.18, maxLines: 7 });
-      this.nr.h = clamp(60 + this.noteFit.height + this.noteFit.size * 0.3 + 70 + 40, 360, NOTE_MAXH);
-    } else this.nr.h = 400;
+      const sigH = (V2.sigMax / k) * 1.6;
+      this.noteFit = fitMsgV2(c, m.text, HAND_B, NOTE_W - 80, NOTE_MAXH - 60 - sigH - 30, k, 1.18, 7);
+      this.sigSize = sigV2(this.noteFit.size * k) / k;
+      this.nr.h = clamp(60 + this.noteFit.height + this.noteFit.size * 0.3 + this.sigSize * 1.6 + 30, 220, NOTE_MAXH);
+    } else this.nr.h = 360;
+    // 歌詞寫在本子上半部（離鏡頭比便條遠、看起來小一點）：用那裡的放大倍數換算，畫面上才夠 40 px
+    const la = tiltProject(mid.cam, mid.look, mid.fov, mid.roll, TX + 150, ROW0 + 150), lb = tiltProject(mid.cam, mid.look, mid.fov, mid.roll, TX + 450, ROW0 + 150);
+    const kL = Math.hypot(lb.x - la.x, lb.y - la.y) / 300;
+    this.ly = { ...LY, size: lyricV2(m && !this.instr ? this.noteFit!.size * k : null) / kL, minSize: V2.lyrMin / kL };
     this.nr.y = NOTE_BOT - this.nr.h;
     // 歌詞排進橫線：便條旁邊的行窄一點；一句放不下一行就折兩行。
     // 本子往上推最多推到便條頂端還在畫面裡；再寫不下就翻到新的一頁（舊的幾行淡掉，從第一行重新寫）。
@@ -127,7 +147,7 @@ export default class Notebook extends Scene {
       const y = ROW0 + r * ROW_DY;
       const nr = this.nr;
       const narrow = y + 15 > nr.y - 20 && y - 75 < nr.y + nr.h + 40 && !this.instr && this.showNote;
-      return layoutLyric(c, l, { ...LY, maxWidth: (narrow ? nr.x - 26 : WIDE) - TX });
+      return layoutLyric(c, l, { ...this.ly, maxWidth: (narrow ? nr.x - 26 : WIDE) - TX });
     };
     lines.forEach((l, idx) => {
       let lay = place(l, row);
@@ -143,13 +163,15 @@ export default class Notebook extends Scene {
     if (this.instr && m) {
       // 純音樂：原子筆把留言寫在橫線上（最多四行，字大一點），寫完簽名
       this.showNote = false;
-      const fit = fitText(c, m.text, HAND_B, WIDE - TX, ROW_DY * 3.6, { min: 48, max: 76, lineHeight: ROW_DY / 60, maxLines: 4 });
-      c.font = font(HAND_B, Math.min(fit.size, 76));
+      // 字級照 v2：一行寫在一條橫線上（行距固定是橫線的間距）
+      const fs = Math.min(msgMaxFor(m.text) / k, ROW_DY * 0.62);
+      const fit = fitText(c, m.text, HAND_B, WIDE - TX, ROW_DY * 3.6, { min: V2.msgMin / k, max: fs, lineHeight: ROW_DY / fs, maxLines: 4 });
+      c.font = font(HAND_B, fit.size);
       const ls = wrap(c, m.text, WIDE - TX);
       const n = ls.reduce((a, x) => a + Array.from(x).length, 0);
       const per = clamp(3.2 / n, 0.06, 0.13);
       const t0 = g.b0;
-      this.written = { lines: ls, size: Math.min(fit.size, 76), t0, per, sig: signature(m.name), tSig: t0 + n * per + g.beat * 0.5 };
+      this.written = { lines: ls, size: fit.size, t0, per, sig: signature(m.name), tSig: t0 + n * per + g.beat * 0.5 };
     }
     this.drawNote();
   }
@@ -182,8 +204,9 @@ export default class Notebook extends Scene {
         fillWithHearts(c, ln, 0, 0);
         c.restore();
       });
-      c.font = font(HAND, 40); c.fillStyle = rgba('sepia', 0.72); c.textAlign = 'right';
-      c.fillText(signature(m.name), x + w - 40, y + 60 + fit.height + fit.size * 0.3 + 58);
+      // 署名：緊接在最後一行下面（v2 的署名字級）
+      c.font = font(HAND, this.sigSize); c.fillStyle = rgba('sepia', 0.72); c.textAlign = 'right';
+      c.fillText(signature(m.name), x + w - 40, y + 60 + fit.height + fit.size * 0.3 + this.sigSize * 1.2);
       c.textAlign = 'left';
     } else {
       c.font = font(HAND_B, 40); c.fillStyle = rgba('sepia', 0.9);
@@ -226,16 +249,12 @@ export default class Notebook extends Scene {
     // ---- 鏡頭：整張桌子當成平放的紙，從桌邊（畫面下方）斜斜往上看；慢慢推近，每個小節線緩一下，
     // 便條貼上去之後鏡頭輕輕往右帶（留言在畫面裡偏中間）。純音樂時留言寫在左邊，鏡頭留在左邊。
     const tp = tiltPass();
-    let step = 0;
-    for (const b of g.bars) step += prog(t, b - 0.1, b + 0.7, ease.inOutCubic);
-    const toNote = this.showNote ? prog(t, this.tNote, this.tNote + 1.2, ease.inOutCubic) : 0;
-    const lookX = lerp(-40, 70, toNote), lookY = -20 - 20 * toNote;
-    const D = 1560 - Math.min(step, 6) * 22 - 40 * toNote, a = 0.3;
-    (tp.u.look!.value as THREE.Vector3).set(lookX, lookY, 0);
-    (tp.u.cam!.value as THREE.Vector3).set(lookX + 90, lookY - Math.sin(a) * D, Math.cos(a) * D);
-    tp.u.fov!.value = 2 * Math.atan(505 / D);
-    tp.u.roll!.value = -0.02;
-    tp.u.focus!.value = D; tp.u.range!.value = 170; tp.u.maxR!.value = 7;
+    const cam = this.tiltCam(t);
+    (tp.u.look!.value as THREE.Vector3).copy(cam.look);
+    (tp.u.cam!.value as THREE.Vector3).copy(cam.cam);
+    tp.u.fov!.value = cam.fov;
+    tp.u.roll!.value = cam.roll;
+    tp.u.focus!.value = cam.D; tp.u.range!.value = 170; tp.u.maxR!.value = 7;
     setV3(tp.u.edge!, mixV(LIN.paper, LIN.sepia, 0.17));
     (tp.u.light!.value as THREE.Vector2).set(620, 330);
     tp.u.lightK!.value = 1;
@@ -243,6 +262,17 @@ export default class Notebook extends Scene {
     tp.render(renderer, out);
     void song; void au;
     return { paper: 1, bloom: 0.2, vignette: 0.32, grain: 0.045, zoom: 1 + 0.004 * pulse(t, this.tNote, 0.12) };
+  }
+
+  /** 斜拍的鏡位：慢慢推近（每個小節線緩一下），便條貼上去之後鏡頭輕輕往右帶。純音樂時留言寫在左邊，鏡頭留在左邊。 */
+  private tiltCam(t: number) {
+    const g = this.g;
+    let step = 0;
+    for (const b of g.bars) step += prog(t, b - 0.1, b + 0.7, ease.inOutCubic);
+    const toNote = this.showNote ? prog(t, this.tNote, this.tNote + 1.2, ease.inOutCubic) : 0;
+    const lookX = lerp(-40, 70, toNote), lookY = -20 - 20 * toNote;
+    const D = 1560 - Math.min(step, 6) * 22 - 40 * toNote, a = 0.3;
+    return { look: new THREE.Vector3(lookX, lookY, 0), cam: new THREE.Vector3(lookX + 90, lookY - Math.sin(a) * D, Math.cos(a) * D), fov: 2 * Math.atan(505 / D), roll: -0.02, D };
   }
 
   /** 目前在寫第幾行（頁面上的行號）。 */
@@ -386,12 +416,30 @@ export default class Notebook extends Scene {
     return head;
   }
 
+  /** 筆沒在寫的時候：每一拍往下點一下紙（1 = 抬起、0 = 碰到紙）。 */
+  private tapLift(t: number): number {
+    let last = -Infinity;
+    for (const b of this.g.beats) { if (b <= t) last = b; else break; }
+    if (last === -Infinity) return 1;
+    const x = t - last;
+    return 1 - Math.exp(-x * 14) * (x < 0.03 ? x / 0.03 : 1);
+  }
+
+  /** 小節線上吹過一陣風的量（0..1），便條跟著抖。 */
+  private pageLift(t: number): number {
+    let v = 0;
+    for (const b of this.g.bars) if (t >= b) { const x = t - b; v = Math.max(v, Math.exp(-x * 3.5) * Math.abs(Math.sin(Math.min(x * 5, Math.PI * 1.5)))); }
+    return v;
+  }
+
   /** 便條：第一拍貼上（從大一點、歪一點啪地落下），下兩拍各貼一條膠帶。沒有留言時的待辦清單每個小節勾一項。 */
   private stickNote(c: CanvasRenderingContext2D, t: number) {
     const g = this.g;
     if (t < this.tNote - 0.02) return;
     const u = prog(t, this.tNote - 0.02, this.tNote + 0.16, ease.outExpo);
-    const sc = lerp(1.14, 1, u), rot = this.nr.rot + (1 - u) * 0.09;
+    // 小節線上的風也吹到便條：整張輕輕抖一下
+    const flutter = this.pageLift(t) * 0.012 * Math.sin(t * 40);
+    const sc = lerp(1.14, 1, u), rot = this.nr.rot + (1 - u) * 0.09 + flutter;
     const cx = this.nr.x + this.nr.w / 2, cy = this.nr.y + this.nr.h / 2;
     c.save();
     c.globalAlpha *= clamp(u * 3);
@@ -449,11 +497,11 @@ export default class Notebook extends Scene {
     let x: number, y: number, lift: number;
     if (head) {
       x = head.x; y = head.y;
-      lift = head.writing ? 0 : 1;
+      lift = head.writing ? 0 : this.tapLift(t);
       // 寫字時手的小抖動（一秒七八下，確定性）
       if (head.writing) { x += Math.sin(t * 47) * 2; y += Math.sin(t * 31 + 1) * 3; }
     } else {
-      x = TX + 40; y = ROW0 - 20; lift = 1;
+      x = TX + 40; y = ROW0 - 20; lift = this.tapLift(t);
     }
     const L = 330;
     const ang = -0.98; // 筆身朝右上

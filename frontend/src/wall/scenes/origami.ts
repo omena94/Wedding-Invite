@@ -7,6 +7,9 @@
 //  - 從紙鶴到小三角這一步（真正的鶴要摺二十步）直接「省略」——左欄一本正經地寫著「步驟 04～20：略」。
 //  - 攤開的紙（留言）是唯一的焦點；歌詞在上緣逐字跟唱，比留言小一級。小字只有兩群：左上的步驟、左下的註腳。
 //    沒有留言：紙裡寫的是邀請。
+//  - 標準 v2：紙縮成 420 px 見方、放在右邊；左邊大半個桌面散著一群摺好的紙鶴（千紙鶴），是場景的主角：
+//    每一拍輪到一隻「跳」一下、轉個方向落下（outBack），全部隨著風輕輕晃；鏡頭停在斜上方，看得出紙鶴是立體的。
+//    留言字級 40～60（貼圖字級要換算成螢幕上的 px）、署名 26～32、歌詞 40～52。
 import * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
 import { FSPass, Layer2D, W, H } from '../engine/gl';
@@ -17,18 +20,33 @@ import { clamp, ease, prog, lerp, pulse } from '../engine/util';
 import { type FitResult } from '../engine/text';
 import { fillWithHearts } from '../engine/motifs';
 import { lyricAt, drawLyric, layoutLyric, beatAfter, signature, type LyricStyle } from './_motifs';
-import { subRect, paperLyric, fitMsg } from './_t13';
+import { subRect, paperLyric } from './_t13';
+import { msgMaxFor, lyricV2, sigV2, V2, fitClauses } from './_v2';
+import { fitText } from '../engine/text';
+import { LIN } from '../engine/palette';
+import { hash } from '../engine/util';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'craft', paper: true, energy: [0.1, 0.75], bars: [4, 8] };
 
 // ---------------------------------------------------------------- 版面
 /** 紙的中心在畫面上的位置、紙的半邊長（世界座標 1 單位 = 桌面上 1 px）。 */
-const P0 = { x: 850, y: 596 };
-const S = 318;
-/** 紙裡面那張貼圖的解析度（紙寬 600 px，貼圖 1024：推近也是銳利的）。 */
+const P0 = { x: 1128, y: 548 };
+const S = 210;
+/** 紙裡面那張貼圖的解析度（紙寬 420 px，貼圖 1024：推近也是銳利的）。 */
 const TEX = 1024;
+/** 貼圖 px／螢幕 px（字級換算用）。 */
+const KT = TEX / (2 * S);
 /** 上緣的歌詞與左欄。 */
-const LYR = { x: P0.x - S, base: 196, w: 1340 - (P0.x - S) };
+const LYR = { x: 128, base: 204, w: 1210 };
+/**
+ * 桌上散著的紙鶴（螢幕座標，攤平時的位置）：大小、朝向、顏色（0 訊號色、1 淺的訊號色、2 白）。
+ * 都在紙的左邊、避開上緣的歌詞與左下的註腳。
+ */
+const FLOCK = [
+  { x: 290, y: 400, s: 0.56, r: 0.6, c: 0 }, { x: 520, y: 320, s: 0.44, r: -0.9, c: 2 }, { x: 720, y: 450, s: 0.5, r: 2.3, c: 1 },
+  { x: 420, y: 600, s: 0.6, r: -0.35, c: 0 }, { x: 660, y: 730, s: 0.46, r: 1.35, c: 2 }, { x: 210, y: 640, s: 0.42, r: 2.9, c: 1 },
+  { x: 780, y: 290, s: 0.38, r: -2.1, c: 0 }, { x: 330, y: 800, s: 0.4, r: -1.2, c: 1 },
+];
 const LYR_R = { x: 96, y: 92, w: 1270, h: 170 };
 const COL = { x: 128, w: 330 };
 const COL_R = { x: 96, y: 80, w: 420, h: 910 };
@@ -67,7 +85,7 @@ precision highp int;
 in vec3 vWP; in vec2 vUv;
 out vec4 fragColor;
 uniform vec3 cameraPosition;
-uniform sampler2D uTex; uniform float uMode; uniform float uAlpha;
+uniform sampler2D uTex; uniform float uMode; uniform float uAlpha; uniform vec3 uTint;
 ${GLSL_COMMON}
 void main() {
   if (uMode > 1.5) { fragColor = vec4(0.0, 0.0, 0.0, (uMode > 2.5 ? 0.1 : 0.2) * uAlpha); return; }
@@ -83,7 +101,7 @@ void main() {
     col = c.a > 0.0 ? toLinear(c.rgb / c.a) : C_BONE;
   } else {
     // 有顏色的那一面：訊號色的和紙（不發光），細細的纖維
-    col = mix(C_SIGNAL, C_BLOOD, 0.3) * 0.78 * (0.95 + 0.05 * snoise(vWP.xy * vec2(0.9, 0.08)));
+    col = uTint * 0.78 * (0.95 + 0.05 * snoise(vWP.xy * vec2(0.9, 0.08)));
   }
   fragColor = vec4(col * lam * uAlpha, uAlpha);
 }`;
@@ -139,6 +157,13 @@ export default class Origami extends Scene {
   faceShadows: THREE.Mesh[] = [];
   crane: THREE.Mesh;
   craneShadow: THREE.Mesh;
+  /** 桌上的紙鶴群（三種顏色各一個材質）。 */
+  flock: THREE.Mesh[] = [];
+  flockShadows: THREE.Mesh[] = [];
+  tintMats: THREE.RawShaderMaterial[] = [];
+  /** 每一拍輪到哪一隻跳（打散的順序）。 */
+  order: number[] = [];
+  beat0 = 0;
   geoms: THREE.BufferGeometry[] = [];
   msg: Msg | null = this.ctx.params.message ?? null;
   fit: FitResult | null = null;
@@ -151,7 +176,7 @@ export default class Origami extends Scene {
     super(ctx);
     const mk = (mode: number, o: Partial<THREE.ShaderMaterialParameters> = {}) => new THREE.RawShaderMaterial({
       glslVersion: THREE.GLSL3, vertexShader: VERT, fragmentShader: FRAG,
-      uniforms: { ...THEME_UNIFORMS, uTex: { value: null }, uMode: { value: mode }, uAlpha: { value: 1 } },
+      uniforms: { ...THEME_UNIFORMS, uTex: { value: null }, uMode: { value: mode }, uAlpha: { value: 1 }, uTint: { value: new THREE.Vector3() } },
       side: THREE.DoubleSide, ...o,
     });
     this.paperMat = mk(0, { depthTest: false, depthWrite: false });
@@ -185,6 +210,16 @@ export default class Origami extends Scene {
     for (const o of [this.crane, this.craneShadow]) { o.matrixAutoUpdate = false; o.frustumCulled = false; this.scene3.add(o); }
     this.craneShadow.renderOrder = 0;
     this.crane.renderOrder = 50;
+    // 紙鶴群：共用幾何，三種顏色
+    this.tintMats = [0, 1, 2].map(() => mk(1, { depthTest: true, depthWrite: true }));
+    for (const b of FLOCK) {
+      const m = new THREE.Mesh(cg, this.tintMats[b.c]!), sh = new THREE.Mesh(cg, this.craneShadowMat);
+      for (const o of [m, sh]) { o.matrixAutoUpdate = false; o.frustumCulled = false; this.scene3.add(o); }
+      m.renderOrder = 40; sh.renderOrder = 0;
+      this.flock.push(m); this.flockShadows.push(sh);
+    }
+    // 輪流的順序：固定的洗牌（每個窗格都一樣，確定性）
+    this.order = FLOCK.map((_, i) => i).sort((a, b) => hash(a, 71) - hash(b, 71));
   }
 
   override async init() {
@@ -194,6 +229,7 @@ export default class Origami extends Scene {
     this.beat = au.beatPeriod(start);
     this.tPop = beatAfter(au, start + 0.05);
     const b0 = au.beatAt(this.tPop);
+    this.beat0 = Math.round(b0);
     this.tB = au.timeOfBeat(b0 + 1);
     this.tA = au.timeOfBeat(b0 + 2);
     // 窗格夠長（24 拍以上）才摺回去：最後三拍 A、B、變回紙鶴飛走
@@ -209,7 +245,7 @@ export default class Origami extends Scene {
   /** 紙的裡面：白紙、紙鶴的摺痕、留言（或邀請）。只畫一次。 */
   private drawInside() {
     const L = this.inside, c = L.ctx;
-    const k = TEX / (2 * S); // 貼圖 px／桌面 px
+    const k = KT; // 貼圖 px／桌面（螢幕）px
     c.fillStyle = rgba('bone');
     c.fillRect(0, 0, TEX, TEX);
     // 紙鶴的摺痕：對角線、中線、鳥形基本型的菱形（淡淡的）
@@ -226,11 +262,12 @@ export default class Origami extends Scene {
     const m = this.msg;
     c.textBaseline = 'alphabetic';
     if (m) {
-      const bw = 470 * k, bh = 400 * k;
-      const short = Array.from(m.text).length <= 8;
-      this.fit = fitMsg(c, m.text, FAM_MSG, bw, bh - 70 * k, { min: 46 * k, max: 104 * k, lineHeight: 1.34, maxLines: short ? 1 : 7 });
-      const fit = this.fit, sig = Math.round(clamp(fit.size * 0.5, 42 * k, 52 * k));
-      const blockH = fit.height + sig * 1.8;
+      // 標準 v2：螢幕上 40～60（依字數）、署名 26～32；紙上的框 380 × 360（署名的高度先扣掉）
+      const bw = 380 * k, bh = (360 - sigV2(msgMaxFor(m.text)) * 2) * k;
+      const o = { min: V2.msgMin * k, max: msgMaxFor(m.text) * k, lineHeight: 1.3, maxLines: 7 };
+      this.fit = fitClauses(c, m.text, FAM_MSG, bw, bh, o) ?? fitText(c, m.text, FAM_MSG, bw, bh, o);
+      const fit = this.fit, sig = sigV2(fit.size / k) * k;
+      const blockH = fit.height + sig * 2;
       const top = h - blockH / 2 + fit.size * 0.88;
       c.font = font(FAM_MSG, fit.size);
       c.fillStyle = rgba('sepia', 0.95);
@@ -238,12 +275,12 @@ export default class Origami extends Scene {
       c.font = font(FAM_MSG, sig);
       c.fillStyle = rgba('sepia', 0.7);
       const s = signature(m.name), sw = c.measureText(s).width;
-      c.fillText(s, h + Math.min(fit.width / 2, bw / 2) - sw, top + (fit.lines.length - 1) * fit.lineHeight + sig * 1.7);
+      c.fillText(s, h + Math.min(Math.max(fit.width / 2, sw / 2), bw / 2) - sw, top + (fit.lines.length - 1) * fit.lineHeight + fit.size * 0.3 + sig * 1.5);
     } else {
       // 沒有留言時焦點是歌詞：紙裡的邀請小一點、淡一點
-      c.font = font(FAM_MSG, 46 * k);
+      c.font = font(FAM_MSG, 36 * k);
       c.fillStyle = rgba('sepia', 0.7);
-      INVITE.forEach((ln, i) => { const w = c.measureText(ln).width; c.fillText(ln, h - w / 2, h - 50 * k + i * 64 * k); });
+      INVITE.forEach((ln, i) => { const w = c.measureText(ln).width; c.fillText(ln, h - w / 2, h - 40 * k + i * 52 * k); });
     }
     L.upload();
   }
@@ -275,7 +312,7 @@ export default class Origami extends Scene {
     const up = ease.inOutCubic(prog(t, this.tPop, this.tA + this.beat * 0.7));
     // 沒有摺回去的窗格 tReA 是 Infinity：prog(t, ∞, ∞) 會是 NaN，鏡頭整個壞掉，要先擋掉
     const down = t >= this.tReA ? ease.inOutCubic(prog(t, this.tReA, this.tRePop + 0.2)) : 0;
-    const tilt = lerp(lerp(0.82, 0.1, up), 0.78, down) + 0.012 * Math.sin(f.bar * Math.PI) * up * (1 - down);
+    const tilt = lerp(lerp(0.8, 0.52, up), 0.72, down) + 0.012 * Math.sin(f.bar * Math.PI) * up * (1 - down);
     const D = (H / 2) / Math.tan((22 * Math.PI) / 360);
     const tgt = new THREE.Vector3(P0.x, H - P0.y, 0);
     // 窗格慢慢推近一點
@@ -326,6 +363,8 @@ export default class Origami extends Scene {
     this.craneMat.uniforms.uAlpha!.value = 1;
     this.craneShadowMat.uniforms.uAlpha!.value = 1 - fly;
 
+    this.updateFlock(f);
+
     renderer.setRenderTarget(out);
     renderer.clearDepth();
     renderer.render(this.scene3, this.cam);
@@ -340,8 +379,51 @@ export default class Origami extends Scene {
     return {
       paper: 1, bloom: 0.3, bloomThreshold: 0.98, bloomKnee: 0.12, halation: 0.08, vignette: 0.22, grain: 0.05,
       zoom: 1 + 0.01 * whoosh,
-      popupAvoid: [[P0.x - S - 20, P0.y - S - 20, 2 * S + 40, 2 * S + 40], [LYR.x - 20, 100, LYR.w + 40, 130]],
+      popupAvoid: [[P0.x - S - 30, P0.y - S - 30, 2 * S + 60, 2 * S + 60], [LYR.x - 20, 110, LYR.w + 40, 130]],
     };
+  }
+
+  /**
+   * 桌上的紙鶴群：每一拍輪到一隻跳起來、轉 70°～110° 落下（outBack，落地時壓一下）；
+   * 全部跟著「風」輕輕晃（慢慢的正弦，不同相位）。跳過幾次、轉了多少由拍號直接算（確定性）。
+   */
+  private updateFlock(f: Frame) {
+    const au = this.ctx.audio, t = f.t, N = FLOCK.length;
+    const tint = [
+      [LIN.signal[0] * 0.7 + LIN.blood[0] * 0.3, LIN.signal[1] * 0.7 + LIN.blood[1] * 0.3, LIN.signal[2] * 0.7 + LIN.blood[2] * 0.3],
+      [LIN.signal[0] * 0.5 + LIN.paper[0] * 0.5, LIN.signal[1] * 0.5 + LIN.paper[1] * 0.5, LIN.signal[2] * 0.5 + LIN.paper[2] * 0.5],
+      [LIN.bone[0] * 1.05, LIN.bone[1] * 1.05, LIN.bone[2] * 1.05],
+    ];
+    this.tintMats.forEach((m, i) => (m.uniforms.uTint!.value as THREE.Vector3).set(tint[i]![0]!, tint[i]![1]!, tint[i]![2]!));
+    (this.craneMat.uniforms.uTint!.value as THREE.Vector3).set(tint[0]![0]!, tint[0]![1]!, tint[0]![2]!);
+    (this.paperMat.uniforms.uTint!.value as THREE.Vector3).set(tint[0]![0]!, tint[0]![1]!, tint[0]![2]!);
+    const bNow = Math.floor(au.beatAt(t)), bp = au.beatAt(t) - bNow;
+    const rel = bNow - this.beat0;
+    FLOCK.forEach((b, i) => {
+      const pos = this.order.indexOf(i);
+      // 到這一拍為止跳過幾次（每 N 拍輪一次）；每次轉的角度用雜湊決定方向
+      const hops = rel >= pos ? Math.floor((rel - pos) / N) + 1 : 0;
+      let turn = 0;
+      for (let h = 0; h < hops; h++) turn += (hash(i, h, 5) < 0.5 ? -1 : 1) * (1.2 + 0.7 * hash(i, h, 6));
+      const mine = rel >= 0 && ((rel - pos) % N + N) % N === 0 && hops > 0;
+      let lift = 0, squash = 1;
+      if (mine) {
+        // 這一拍是牠：前 35% 跳起來、落下；轉的量用 outBack 走完
+        const u = clamp(bp / 0.38);
+        lift = Math.sin(Math.PI * u) * 46;
+        const last = (hash(i, hops - 1, 5) < 0.5 ? -1 : 1) * (1.2 + 0.7 * hash(i, hops - 1, 6));
+        turn -= last * (1 - ease.outBack(u));
+        squash = 1 - 0.08 * Math.sin(Math.PI * clamp((bp - 0.3) / 0.2));
+      }
+      const wob = 0.035 * Math.sin(t * 1.3 + i * 1.7) + 0.02 * Math.sin(t * 2.1 + i);
+      const sc = b.s;
+      const M = new THREE.Matrix4().makeTranslation(b.x, H - b.y, 0.2 * S * sc + lift)
+        .multiply(new THREE.Matrix4().makeRotationZ(b.r + turn + wob))
+        .multiply(new THREE.Matrix4().makeRotationX(0.04 * Math.sin(t * 1.7 + i * 2.3)))
+        .multiply(new THREE.Matrix4().makeScale(sc, sc, sc * squash));
+      this.flock[i]!.matrix.copy(M); this.flock[i]!.matrixWorldNeedsUpdate = true;
+      this.flockShadows[i]!.matrix.copy(M); this.flockShadows[i]!.matrixWorldNeedsUpdate = true;
+    });
   }
 
   private drawLyr(t: number, vis: number, ly: ReturnType<typeof lyricAt>) {
@@ -351,8 +433,7 @@ export default class Origami extends Scene {
     c.translate(-LYR_R.x, -LYR_R.y);
     c.globalAlpha = vis;
     if (ly) {
-      const onScreen = this.fit ? this.fit.size / (TEX / (2 * S)) : 70;
-      const st: LyricStyle = { family: F.archivo(87.5, 800), size: Math.round(clamp(onScreen * 0.8, 48, 58)), minSize: 48, maxWidth: LYR.w, ...paperLyric() };
+      const st: LyricStyle = { family: F.archivo(87.5, 800), size: lyricV2(this.fit ? this.fit.size / KT : null), minSize: V2.lyrMin, maxWidth: LYR.w, ...paperLyric() };
       const lay = layoutLyric(c, ly.line, st);
       const inK = ease.outExpo(prog(t, ly.line.start - 0.35, ly.line.start + 0.2));
       c.translate(LYR.x, LYR.base - (lay.height - lay.size) + (1 - inK) * 16);
@@ -362,7 +443,7 @@ export default class Origami extends Scene {
       c.font = font(F.mono(500), 18);
       c.letterSpacing = '4px';
       c.fillStyle = rgba('sepia', 0.55);
-      c.fillText(`♪  ${song.title}${song.artist ? '  ·  ' + song.artist : ''}`.toUpperCase(), LYR.x, LYR.base - 20);
+      c.fillText(`♪  ${song.title}${song.artist ? '  ·  ' + song.artist : ''}`.toUpperCase(), LYR.x, LYR.base - 30);
       c.letterSpacing = '0px';
     }
     c.restore();
@@ -396,6 +477,7 @@ export default class Origami extends Scene {
   override dispose() {
     for (const g of this.geoms) g.dispose();
     this.paperMat.dispose(); this.shadowMat.dispose(); this.craneShadowMat.dispose(); this.craneMat.dispose();
+    for (const m of this.tintMats) m.dispose();
     super.dispose();
   }
 }

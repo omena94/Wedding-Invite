@@ -12,14 +12,15 @@
 //  - 轉速依 BPM 選 33⅓ 或 45（印在標籤上）。
 // v2（2026-09-29「留言尺寸與版面比例標準 v2」）：紙卡上的留言在畫面上 40～60 px（依字數）、署名 26～32，
 // 紙卡在畫面上 ≤ 430 高；溝紋上的歌詞 40～52（不比留言大）。字級都照相機在那一點的放大率換成桌面字級。
-// 紙卡變小之後桌面空出來：燈光裡有灰塵慢慢飄，唱盤邊緣一圈頻閃點（真的唱盤校轉速用的）在燈下一閃一閃。
+// 補的動畫是唱盤自己的東西：轉盤邊緣一圈頻閃點（真的唱盤校轉速用的），旁邊一盞小頻閃燈每一拍閃一下，
+// 點在頻閃下看起來幾乎不動、照拍子一格一格往前爬。
 import * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides } from '../engine/scene';
 import { FSPass, Layer2D, makeRT, W, H, SCALE } from '../engine/gl';
 import { LineBatch } from '../engine/lines';
 import { F, font, layout, loadText } from '../engine/type';
 import { LIN, rgba } from '../engine/palette';
-import { clamp, ease, lerp, prog, pulse, noise1, hash, TAU } from '../engine/util';
+import { clamp, ease, lerp, prog, pulse, noise1, TAU } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
 import { sparkHead, sparkParticles, beatAfter, signature, drawHeart, COUPLE_EN, COUPLE_ZH, DATE_DOTS } from './_motifs';
 import { V2, msgMaxFor, lyricV2, sigV2, fitClauses as fitClausesV2 } from './_v2';
@@ -45,6 +46,8 @@ const CARD = { x: 1400, y: 525, w: 540, maxH: 556, top: 244 };
 const CARD_PX = 2;
 /** 燈照在桌面上的中心。 */
 const LAMP = { x: 1050, y: 330 };
+/** 頻閃燈：轉盤左上邊緣外面一點（桌面座標）。 */
+const STROBE = { x: 600 - Math.sin(0.78) * (640 + 50), y: 790 - Math.cos(0.78) * (640 + 50) };
 /** 螢幕上的小字（曲目、註腳）的圖層範圍。 */
 const INFO_R = { x: 96, y: 90, w: 900, h: 910 };
 const INFO_X = 128;
@@ -66,7 +69,7 @@ const BG = () => new FSPass(FRAG_VINYL, {
   uHinv: { value: new THREE.Matrix3() }, uDepth: { value: new THREE.Vector3(0, 0, 1) }, uFocus: { value: new THREE.Vector2(1, 10) },
   uLamp: { value: new THREE.Vector2(LAMP.x, LAMP.y) },
   uC: { value: new THREE.Vector2(C.x, C.y) }, uR: { value: R_REC }, uRl: { value: R_LAB }, uTh: { value: 0 }, uFan: { value: 0 },
-  uFanK: { value: 1 }, uIn: { value: 1 }, uHat: { value: 0 },
+  uFanK: { value: 1 }, uIn: { value: 1 }, uHat: { value: 0 }, uStb: { value: new THREE.Vector4(0, 0, -9999, -9999) },
   uS: { value: new THREE.Vector2() }, uE: { value: new THREE.Vector2() }, uP: { value: new THREE.Vector2(PIVOT.x, PIVOT.y) }, uLift: { value: 0 },
   uLab: { value: null }, uTxt: { value: null }, uTR: { value: new THREE.Vector4(TR.x, TR.y, TR.w, TR.h) },
   uCard: { value: null }, uCardG: { value: new THREE.Vector4() }, uCardS: { value: new THREE.Vector2(1, 1) }, uCardK: { value: new THREE.Vector3() },
@@ -656,6 +659,9 @@ export default class Vinyl extends Scene {
     // 對焦在唱針（正在唱的字）與紙卡之間：比唱針遠的地方才開始糊
     (u.uFocus!.value as THREE.Vector2).set(cam.mag(st.st.x, st.st.y) - 0.02, 1 / 0.08);
     u.uTh!.value = st.th;
+    // 頻閃點：每一拍往前爬半格（看起來「幾乎」不動，才看得出是頻閃），頻閃燈在拍點上閃一下
+    const beatF = au.beatAt(t);
+    (u.uStb!.value as THREE.Vector4).set((Math.floor(beatF) + ease.outCubic(beatF % 1)) * 0.5 * (TAU / 180), pulse(t, au.timeOfBeat(Math.floor(beatF + 1e-4)), 0.12) * inK, STROBE.x, STROBE.y);
     // 反光扇形：每小節轉四分之一圈（逆時針，跟唱片同向），下拍時剛好有一片掃過正上方的唱針
     u.uFan!.value = -0.5 * Math.PI * f.bar + 0.35;
     u.uFanK!.value = inK * (0.8 + 0.3 * f.a.kick + 0.4 * touch);
@@ -705,7 +711,12 @@ export default class Vinyl extends Scene {
         }
       }
     }
-    this.drawDust(t, inK);
+    // 頻閃燈本身：轉盤邊緣一顆小小的燈，在拍點上亮一下
+    {
+      const q = cam.proj(STROBE.x, STROBE.y), k = (0.25 + 1.6 * pulse(t, au.timeOfBeat(Math.floor(au.beatAt(t) + 1e-4)), 0.12)) * inK, S = LIN.signal;
+      this.glow.seg2(q.x, q.y, q.x + 0.01, q.y, 16, [S[0] * 0.25 * k, S[1] * 0.25 * k, S[2] * 0.25 * k], 0.5);
+      this.glow.seg2(q.x - 5, q.y, q.x + 5, q.y, 5, [S[0] * 1.6 * k, S[1] * 1.6 * k, S[2] * 1.6 * k], 1);
+    }
     if (this.glow.count) this.glow.render(renderer, out);
 
     // 螢幕上的兩小群字（像片頭的小字，不跟著桌面動）
@@ -718,24 +729,6 @@ export default class Vinyl extends Scene {
       zoom: 1 + 0.004 * kick + 0.005 * db + 0.008 * touch,
       shake: [2.5 * touch * noise1(t * 40, 1), 2.5 * touch * noise1(t * 43, 2)] as [number, number],
     };
-  }
-
-  /**
-   * 燈光裡的灰塵（v2 多補的環境動態）：在燈照到的那一團空氣裡慢慢飄、轉到光裡亮一下。
-   * 桌面上方的空氣換到畫面上：以燈照在桌上的中心投影到畫面為準，往上飄。
-   */
-  private drawDust(t: number, k: number) {
-    const B = LIN.bone, cam = this.cam, lp = cam.proj(LAMP.x, LAMP.y);
-    for (let i = 0; i < 44; i++) {
-      const h = (n: number) => hash(i, n, 71);
-      const u = (h(1) + t * (0.008 + 0.014 * h(2))) % 1;
-      const x = lp.x + (h(3) - 0.5) * 900 + 30 * Math.sin(t * 0.4 + i);
-      const y = lp.y + 380 - u * 760 + 12 * Math.sin(t * 0.7 + i * 1.3);
-      const d = Math.hypot((x - lp.x) / 520, (y - lp.y) / 420);
-      const a = k * Math.exp(-d * d) * (0.12 + 0.3 * h(4)) * (0.5 + 0.5 * Math.sin(t * (0.8 + h(5)) + i * 2)) * Math.sin(Math.PI * u);
-      if (a < 0.015) continue;
-      this.glow.seg2(x, y, x + 0.6, y + 0.6, 1.8, [B[0] * a, B[1] * a, B[2] * a], 1);
-    }
   }
 
   /** 唱臂：從軸心伸到唱頭座後端（唱頭座往唱片中心偏一點角度，像真的唱臂）。 */

@@ -18,20 +18,28 @@ import { fitText, type FitResult } from '../engine/text';
 import { Lyrics, type Line } from '../engine/lyrics';
 import { lyricAt, layoutLyric, beatAfter, signature, fillWithHearts, WEDDING_DATE, type LyricLayout } from './_motifs';
 import { stagger, homography, type P2 } from './_t11';
+import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 } from './_v2';
+import { LineBatch } from '../engine/lines';
+import { LIN } from '../engine/palette';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'machine', paper: false, energy: [0.45, 1], bars: [4, 8], weight: 1 };
 
 // ---------------------------------------------------------------- 板面（邏輯像素，y 向下）
-const BW = 1680, BH = 720;
+const BW = 1680, BH = 760;
 /** 燈珠間距（板面 px）：再大中文就糊了，再小看不出是 LED。 */
 const PITCH = 4.4;
 /** 主畫面（留言；沒有留言時是歌詞）。 */
-const MAIN = { x: 90, y: 214, w: 1500, h: 340, cx: 840 };
+const MAIN = { x: 90, y: 190, w: 1500, h: 414, cx: 840 };
 /** 下排跑馬燈（歌詞）。 */
 /** 字級 56：板子投影到螢幕上約縮成九成，看到的還是 ≥ 48 px。 */
-const STRIP = { x0: 70, x1: 1610, base: 670, size: 56, y0: 604, y1: 704 };
+const STRIP = { x0: 70, x1: 1610, base: 712, y0: 614, y1: 748 };
+/**
+ * v2：鏡頭拉遠，板子在畫面左邊（螢幕上約 900 × 410，≈ 畫面 18%），右邊是照明塔、光束、看台——場景是主角。
+ * 板子中心、鏡頭距離（窗格開始 → 結束，慢慢推近）。
+ */
+const CAM = { cx: 680, cy: 396, z0: 2980, z1: 2780 };
 /** 比分的七段數字。 */
-const DIG = { w: 58, h: 100, th: 12 };
+const DIG = { w: 48, h: 82, th: 10 };
 const FAM_MSG = F.ming(700);
 const FAM_LYR = F.archivo(87.5, 800);
 const [, , WED_DAY] = String(WEDDING_DATE).split('-').map(Number) as [number, number, number];
@@ -40,12 +48,12 @@ const INVITE = '掃描右下角 QR code，把你的祝福送上記分板';
 
 /** 鏡頭：板子在 3D 裡（Z 距離、左右轉 yaw、仰角 pitch），投影出四個角。 */
 const FOCAL = 1400;
-function quad(Z: number, yaw: number, pitch: number, cy: number): P2[] {
+function quad(Z: number, yaw: number, pitch: number, cx: number, cy: number): P2[] {
   return [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([sx, sy]) => {
     const x = (sx! * BW) / 2, y = (sy! * BH) / 2;
     // 右邊比較遠（觀眾在左邊）、下緣比較近（仰望）
     const z = Z + x * Math.sin(yaw) - y * Math.sin(pitch);
-    return { x: 960 + (FOCAL * x * Math.cos(yaw)) / z, y: cy + (FOCAL * y * Math.cos(pitch)) / z };
+    return { x: cx + (FOCAL * x * Math.cos(yaw)) / z, y: cy + (FOCAL * y * Math.cos(pitch)) / z };
   });
 }
 const BOARD: P2[] = [{ x: 0, y: 0 }, { x: BW, y: 0 }, { x: BW, y: BH }, { x: 0, y: BH }];
@@ -54,6 +62,7 @@ const LED_FRAG = /* glsl */ `
 uniform sampler2D content; uniform sampler2D hot;
 uniform mat3 Hs;
 uniform float power; uniform float flick; uniform float glowK; uniform float kick; uniform float k;
+uniform vec3 beams; uniform float beatPh; uniform float hat; uniform float t;
 vec3 dec(vec4 c) { return c.a > 0.0 ? toLinear(c.rgb / c.a) * c.a : vec3(0.0); }
 // 遠處照明燈的散景：幾顆很淡、很軟的圓
 vec3 bokeh(vec2 sp) {
@@ -76,6 +85,27 @@ void main() {
   // 夜空：上面被球場照明打亮一點點（霧），往下暗；遠處幾顆燈的散景
   float yy = sp.y / ${H}.0;
   vec3 col = mix(C_INK2 * 1.25 + C_SIGNAL * 0.004, C_INK * 0.85, smoothstep(0.0, 0.8, yy)) + bokeh(sp) * k;
+  // 右下角 HUD（QR、留言數）那一塊的背景要乾淨：光束、霧都不進去
+  float hud = smoothstep(0.0, 160.0, max(1320.0 - sp.x, 790.0 - sp.y));
+  // 照明塔（右邊）：細桅杆、上面一排排燈；三道光束從燈組斜斜打下來、穿過飄動的霧，每個小節線換一次角度
+  vec2 L0 = vec2(1590.0, 128.0);
+  float haze = 0.55 + 0.45 * fbm(sp / 260.0 + vec2(t * 0.05, -t * 0.02), 3);
+  for (int i = 0; i < 3; i++) {
+    float a = i == 0 ? beams.x : i == 1 ? beams.y : beams.z;
+    vec2 dir = vec2(cos(a), sin(a)), rel = sp - L0;
+    float along = dot(rel, dir), across = abs(dot(rel, vec2(-dir.y, dir.x)));
+    float wdt = 18.0 + along * 0.16;
+    float cone = exp(-pow(across / wdt, 2.0)) * smoothstep(0.0, 80.0, along) * exp(-along / 1100.0);
+    col += mix(C_BONE, C_EMBER, 0.35) * cone * haze * (0.05 + 0.05 * kick) * hud * k;
+  }
+  float mast = pxLine(abs(sp.x - 1590.0), 2.0, 3.2) * step(170.0, sp.y) * step(sp.y, 780.0);
+  col = mix(col, C_INK2 * 1.3, mast * k);
+  vec2 lq = (sp - vec2(1488.0, 92.0)) / vec2(20.0, 18.0);
+  if (lq.x >= 0.0 && lq.x < 10.0 && lq.y >= 0.0 && lq.y < 4.0) {
+    float dd = length(fract(lq) - 0.5);
+    col += mix(C_EMBER, vec3(1.0), 0.5) * (1.0 - smoothstep(0.22, 0.4, dd)) * (1.3 + 0.9 * kick) * k;
+  }
+  col += C_EMBER * 0.10 * exp(-length((sp - vec2(1590.0, 128.0)) / vec2(170.0, 90.0))) * (1.0 + kick) * k;
   // 兩根支柱（板面座標往下延伸）
   for (int i = 0; i < 2; i++) {
     float px = i == 0 ? 330.0 : 1350.0;
@@ -105,15 +135,24 @@ void main() {
     col += cc * (0.32 + 0.72 * dotm) * on;
     col += hh * (0.3 + 1.1 * dotm) * glowK * on;
   }
-  // 前景：看台的剪影（最下面一條，邊緣很軟＝離鏡頭很近、失焦）
-  float stand = smoothstep(${H}.0 - 150.0 + 18.0 * sin(sp.x / 140.0), ${H}.0 - 95.0, sp.y);
-  col = mix(col, C_INK * 0.35, stand * 0.92);
+  // 前景：看台上的觀眾剪影（一排頭，拍點上跳一下），手機的小燈跟著拍子左右晃；右下角 HUD 底下不放
+  float left = 1.0 - smoothstep(1180.0, 1320.0, sp.x);
+  float cell = floor(sp.x / 38.0), hop = step(0.5, hash11(cell + 3.0)) * kick * 10.0;
+  float head = ${H}.0 - 120.0 - 16.0 * hash11(cell) - hop + 12.0 * pow(abs(fract(sp.x / 38.0) - 0.5) * 2.0, 2.0);
+  float crowd = smoothstep(head - 2.0, head + 2.0, sp.y);
+  col = mix(col, C_INK * 0.3, crowd * left * 0.96 * k);
+  vec2 pc = floor(sp / vec2(38.0, 60.0));
+  float sway = 7.0 * sin(TAU * beatPh + hash12(pc) * 6.0);
+  vec2 pp = vec2(pc.x * 38.0 + 19.0 + sway, ${H}.0 - 150.0 - 18.0 * hash12(pc + 2.0));
+  float ph_ = (1.0 - smoothstep(1.5, 3.2, length(sp - pp))) * step(0.72, hash12(pc + 5.0)) * step(${H}.0 - 190.0, sp.y) * step(sp.y, ${H}.0 - 120.0);
+  col += mix(C_BONE, C_EMBER, 0.3) * ph_ * (0.8 + 0.8 * hat) * left * k;
   fragColor = vec4(col, 1.0);
 }`;
 
 const BG = () => new FSPass(LED_FRAG, {
   content: { value: null }, hot: { value: null }, Hs: { value: new THREE.Matrix3() },
   power: { value: 1 }, flick: { value: 1 }, glowK: { value: 1 }, kick: { value: 0 }, k: { value: 1 },
+  beams: { value: new THREE.Vector3() }, beatPh: { value: 0 }, hat: { value: 0 }, t: { value: 0 },
 });
 
 // ---------------------------------------------------------------- 七段數字
@@ -169,6 +208,12 @@ export default class Scoreboard extends Scene {
   marquee = '';
   marqueeW = 0;
   lyricsInWindow = false;
+  /** 板子在螢幕上的縮放（板面 px → 螢幕 px），v2 的字級要除以它。 */
+  sB = 0.54;
+  sigBoard = 56;
+  lyrBoard = 84;
+  /** 進球的彩帶（LineBatch）。 */
+  paperBits = this.track(new LineBatch(512, { screen2D: true, blend: 'normal' }));
 
   override async init() {
     const { audio: au, song, lyrics } = this.ctx;
@@ -184,14 +229,21 @@ export default class Scoreboard extends Scene {
     // ---- 時間：第一拍起逐字打出留言（兩小節內、也不超過窗格的四成）
     const beat = au.beatPeriod(s);
     this.tFirst = beatAfter(au, s + Math.min(0.25, beat * 0.4));
+    // 板子在螢幕上的縮放（用窗格中間的鏡頭算，上下兩條邊平均）
+    const q0 = quad((CAM.z0 + CAM.z1) / 2, 0.145, 0.085, CAM.cx, CAM.cy);
+    this.sB = (Math.hypot(q0[1]!.x - q0[0]!.x, q0[1]!.y - q0[0]!.y) + Math.hypot(q0[2]!.x - q0[3]!.x, q0[2]!.y - q0[3]!.y)) / (2 * BW);
     const bar = au.timeOfBar(au.barAt(this.tFirst) + 1) - this.tFirst;
     if (m) {
-      // 板子右邊比較遠（透視會縮小約一成五），字級下限放高一點
-      // 可用高度扣掉上面的「本場最佳」一行（30）與下面的署名（60）：三樣東西永遠不重疊
-      const fit = this.fit = fitText(c, m.text, FAM_MSG, MAIN.w, MAIN.h - 90, { min: 54, max: 150, lineHeight: 1.26, maxLines: 3 });
+      // v2：字級是「螢幕上的 px」，板面上的字要除以板子在螢幕上的縮放（sB）。
+      // 可用高度扣掉上面的「本場最佳」一行與下面的署名：三樣東西永遠不重疊
+      const sB = this.sB, sig = sigV2(msgMaxFor(m.text)) / sB;
+      const o = { min: V2.msgMin / sB, max: msgMaxFor(m.text) / sB, lineHeight: 1.26, maxLines: 4 };
+      const hAvail = MAIN.h - 40 - sig * 1.6;
+      const fit = this.fit = fitClauses(c, m.text, FAM_MSG, MAIN.w, hAvail, o) ?? fitText(c, m.text, FAM_MSG, MAIN.w, hAvail, o);
+      this.sigBoard = sigV2(fit.size * sB) / sB;
       const n = fit.lines.reduce((k, l) => k + Array.from(l).length, 0);
       const times = stagger(au, this.tFirst + beat * 0.5, n, Math.min(2 * bar, 0.4 * (e - s)));
-      const top = MAIN.y + 30 + (MAIN.h - 90 - fit.height) / 2 + fit.size * 0.88;
+      const top = MAIN.y + 40 + (hAvail - fit.height) / 2 + fit.size * 0.88;
       c.font = font(FAM_MSG, fit.size);
       let k = 0;
       fit.lines.forEach((ln, li) => {
@@ -202,7 +254,8 @@ export default class Scoreboard extends Scene {
         }
       });
       this.sigT = (times[n - 1] ?? this.tFirst) + beat * 0.75;
-      this.sigY = top + (fit.lines.length - 1) * fit.lineHeight + 64;
+      this.sigY = top + (fit.lines.length - 1) * fit.lineHeight + fit.size * 0.28 + this.sigBoard + 8;
+      this.lyrBoard = lyricV2(fit.size * sB) / sB;
     }
 
     // ---- 進球：從第二個小節線起每兩小節一次，先進球的一方輪流；另一方兩拍後（小鼓）扳平。一定在窗格結束前扳平。
@@ -218,7 +271,7 @@ export default class Scoreboard extends Scene {
   }
 
   override render(f: Frame, out: THREE.WebGLRenderTarget): PostOverrides {
-    const { renderer } = this.ctx;
+    const { renderer, audio: au } = this.ctx;
     const t = f.t, s = this.ctx.start, e = this.ctx.end;
     const c = this.board.ctx, hc = this.hot.ctx;
     this.board.clear(); this.hot.clear();
@@ -234,7 +287,13 @@ export default class Scoreboard extends Scene {
 
     // ---- 鏡頭：整個窗格慢慢往前推、轉正一點（inOutSine），板子的四個角投影到螢幕上
     const u = (1 - Math.cos(Math.PI * clamp((t - s) / Math.max(1, e - s)))) / 2;
-    const Hs = homography(quad(lerp(1600, 1450, u), lerp(0.17, 0.12, u), 0.085, lerp(452, 448, u)), BOARD);
+    const qd = quad(lerp(CAM.z0, CAM.z1, u), lerp(0.17, 0.12, u), 0.085, CAM.cx, CAM.cy);
+    const Hs = homography(qd, BOARD);
+    // 照明塔的光束：每個小節線換一個角度（0.6 秒 inOutCubic），拍子之間慢慢掃
+    const bf = au.barAt(t), bi = Math.floor(bf + 1e-4), bu = ease.inOutCubic(clamp((t - au.timeOfBar(bi)) / 0.6));
+    const ang = (b: number, i: number) => 2.05 + 0.5 * i + 0.28 * (hash(this.seed, b, i) - 0.5);
+    (this.bg.u.beams!.value as THREE.Vector3).set(...([0, 1, 2].map((i) => lerp(ang(bi - 1, i), ang(bi, i), bu) + 0.04 * Math.sin(t * 0.7 + i))) as [number, number, number]);
+    this.bg.u.beatPh!.value = au.beatAt(t) % 1; this.bg.u.hat!.value = f.a.hat; this.bg.u.t!.value = t;
     (this.bg.u.Hs!.value as THREE.Matrix3).set(Hs[0]!, Hs[1]!, Hs[2]!, Hs[3]!, Hs[4]!, Hs[5]!, Hs[6]!, Hs[7]!, Hs[8]!);
     this.bg.u.content!.value = this.board.upload();
     this.bg.u.hot!.value = this.hot.upload();
@@ -246,9 +305,36 @@ export default class Scoreboard extends Scene {
     this.bg.u.kick!.value = f.a.kick;
     this.bg.u.k!.value = prog(t, s, s + 0.4);
     this.bg.render(renderer, out);
+    this.confetti(t, qd, out);
 
     const goalHit = lastGoal ? pulse(t, lastGoal.t, 0.12) : 0;
     return { bloom: 0.6, vignette: 0.5, grain: 0.05, halation: 0.25, zoom: 1 + 0.006 * goalHit + 0.002 * f.a.kick, flash: 0.012 * goalHit };
+  }
+
+  /**
+   * 進球的彩帶：每一次進球從板子上緣（進球那一隊那一半）噴出一把細紙條（訊號色、紙白），翻著轉著飄下來（2.4 秒）。
+   * q 是板子四個角在螢幕上的位置；種子決定每一片的路線。
+   */
+  private confetti(t: number, q: P2[], out: THREE.WebGLRenderTarget) {
+    const lb = this.paperBits; lb.clear();
+    const top = (u: number) => ({ x: lerp(q[0]!.x, q[1]!.x, u), y: lerp(q[0]!.y, q[1]!.y, u) });
+    // 落到板子前面的那一段不畫（當作飄到板子後面）：彩帶只在板子上方與兩側，不會蓋到留言
+    const x0 = Math.min(q[0]!.x, q[3]!.x) - 6, x1 = Math.max(q[1]!.x, q[2]!.x) + 6, y0 = Math.min(q[0]!.y, q[1]!.y) + 4, y1 = Math.max(q[2]!.y, q[3]!.y);
+    for (const g of this.goals) {
+      const age = t - g.t;
+      if (age < 0 || age > 2.4) continue;
+      for (let i = 0; i < 70; i++) {
+        const h1 = hash(this.seed, g.t, i), h2 = hash(i, g.t, 7), h3 = hash(g.t, i, 11);
+        const o = top(g.team === 0 ? 0.15 + 0.35 * h1 : 0.5 + 0.35 * h1);
+        const vx = (h2 - 0.5) * 420, vy = -260 - 260 * h3;
+        const x = o.x + vx * age + 30 * Math.sin(age * 5 + i), y = o.y + vy * age + 380 * age * age;
+        const rot = age * (6 + 8 * h2) + i, len = 7 + 5 * h3, fl = Math.abs(Math.cos(age * 9 + i));
+        if (x > x0 && x < x1 && y > y0 && y < y1) continue;
+        const col = i % 3 === 0 ? LIN.bone : LIN.signal, a = (1 - clamp((age - 1.6) / 0.8)) * 0.9;
+        lb.seg2(x - Math.cos(rot) * len, y - Math.sin(rot) * len * fl, x + Math.cos(rot) * len, y + Math.sin(rot) * len * fl, 3, [col[0] * 1.1, col[1] * 1.1, col[2] * 1.1], a);
+      }
+    }
+    if (lb.count) lb.render(this.ctx.renderer, out);
   }
 
   /** 上排小小的比分：宣文 13：13 孟庭；進球的一方名字變 GOAL! 閃一拍、數字往上捲。底下一行小字。 */
@@ -282,22 +368,22 @@ export default class Scoreboard extends Scene {
       c.textAlign = side === 0 ? 'right' : 'left';
       const nx = side === 0 ? xs[0]! - 30 : xs[1]! + pairW + 30;
       if (inGoal) {
-        c.font = font(F.archivo(75, 900), 64); c.fillStyle = blink ? rgba('signal') : rgba('bone', 0.75);
-        c.fillText('GOAL!', nx, y + 82);
+        c.font = font(F.archivo(75, 900), 56); c.fillStyle = blink ? rgba('signal') : rgba('bone', 0.75);
+        c.fillText('GOAL!', nx, y + 70);
       } else {
-        c.font = font(F.hei(900), 64); c.fillStyle = rgba('bone', 0.78);
-        c.fillText(side === 0 ? '宣文' : '孟庭', nx, y + 80);
+        c.font = font(F.hei(900), 56); c.fillStyle = rgba('bone', 0.78);
+        c.fillText(side === 0 ? '宣文' : '孟庭', nx, y + 68);
       }
     }
     // 冒號（一拍閃一次）
     c.fillStyle = this.ctx.audio.beatAt(t) % 1 < 0.5 ? rgba('signal', 0.85) : rgba('graphite', 0.5);
-    c.fillRect(cx - 6, y + 26, 12, 12); c.fillRect(cx - 6, y + 62, 12, 12);
+    c.fillRect(cx - 6, y + 22, 12, 12); c.fillRect(cx - 6, y + 52, 12, 12);
     // 底下一行小字：比分狀態
     const tied = score[0] === score[1];
     c.textAlign = 'center';
-    c.font = font(F.hei(500), 22); c.letterSpacing = '4px';
+    c.font = font(F.hei(500), 32); c.letterSpacing = '4px';
     c.fillStyle = tied ? rgba('ash', 0.75) : rgba('signal', 0.8);
-    c.fillText(tied ? TIE : `${last && last.team === 0 ? '宣文' : '孟庭'} 領先（暫時）`, cx, y + 146);
+    c.fillText(tied ? TIE : `${last && last.team === 0 ? '宣文' : '孟庭'} 領先（暫時）`, cx, y + 124);
     c.letterSpacing = '0px'; c.textAlign = 'left';
   }
 
@@ -305,7 +391,7 @@ export default class Scoreboard extends Scene {
   private message(c: CanvasRenderingContext2D, hc: CanvasRenderingContext2D, t: number) {
     const fit = this.fit!;
     // 左上角一行小字：本場最佳（新人：新人致詞）
-    c.font = font(F.hei(700), 22); c.letterSpacing = '6px'; c.fillStyle = rgba('signal', 0.8 * prog(t, this.tFirst, this.tFirst + 0.2));
+    c.font = font(F.hei(700), 32); c.letterSpacing = '6px'; c.fillStyle = rgba('signal', 0.8 * prog(t, this.tFirst, this.tFirst + 0.2));
     c.textAlign = 'center';
     c.fillText(`★ ${this.head} ★`, MAIN.cx, MAIN.y + 4);
     c.letterSpacing = '0px'; c.textAlign = 'left';
@@ -324,8 +410,8 @@ export default class Scoreboard extends Scene {
     }
     if (t >= this.sigT) {
       c.save(); c.globalAlpha = prog(t, this.sigT, this.sigT + 0.1);
-      c.font = font(F.ming(400), 40); c.fillStyle = rgba('ash'); c.textAlign = 'center';
-      fillWithHearts(c, this.sig, MAIN.cx, Math.min(this.sigY, MAIN.y + MAIN.h + 10));
+      c.font = font(F.ming(400), this.sigBoard); c.fillStyle = rgba('ash'); c.textAlign = 'center';
+      fillWithHearts(c, this.sig, MAIN.cx, this.sigY);
       c.restore();
     }
   }
@@ -337,13 +423,13 @@ export default class Scoreboard extends Scene {
     if (!ly) {
       if (!this.lyricsInWindow) {
         c.textAlign = 'center';
-        c.font = font(F.archivo(87.5, 800), 96); c.fillStyle = rgba('bone', 0.9);
+        c.font = font(F.archivo(87.5, 800), lyricV2(null) / this.sB); c.fillStyle = rgba('bone', 0.9);
         c.fillText(`♪ ${song.title}`, MAIN.cx, MAIN.y + 190);
         c.textAlign = 'left';
       }
       return;
     }
-    const st = { family: FAM_LYR, size: 118, minSize: 64, maxWidth: MAIN.w, align: 'center' as const, lineHeight: 1.12 };
+    const st = { family: FAM_LYR, size: lyricV2(null) / this.sB, minSize: V2.lyrMin / this.sB, maxWidth: MAIN.w, align: 'center' as const, lineHeight: 1.12 };
     const lay = layoutLyric(c, ly.line, st);
     const inK = ease.outExpo(prog(t, ly.line.start - 0.35, ly.line.start + 0.1));
     const oy = MAIN.y + (MAIN.h - lay.height) / 2 + lay.size * 0.86 + (1 - inK) * 24;
@@ -390,7 +476,7 @@ export default class Scoreboard extends Scene {
       c.globalAlpha = 1;
     }
     if (ly) {
-      const st = { family: FAM_LYR, size: STRIP.size, minSize: STRIP.size, maxWidth: 1e5 };
+      const st = { family: FAM_LYR, size: this.lyrBoard, minSize: this.lyrBoard, maxWidth: 1e5 };
       const lay = layoutLyric(c, ly.line, st);
       const width = lay.rows[0]?.width ?? 0;
       const inK = ease.outExpo(prog(t, ly.line.start - 0.4, ly.line.start - 0.02));

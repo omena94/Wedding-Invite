@@ -1,9 +1,11 @@
-// 剪紙囍（暗）：暗色的牆上貼著兩張紅紙（訊號色的紙）：左邊一張斗方（菱形），右邊一張長方的窗花。
+// 剪紙囍（暗）：暗色的牆上貼著兩張紅紙（訊號色的紙）：左邊一張大斗方（菱形），右邊一張橫的窗花。
 //  - 第一個拍點起，剪刀沿著窗花中間的「海棠窗」剪一圈（剪到哪、那段切口亮到哪），剪好的紙片翻著掉下去，
 //    後面牆上的主打留言就露出來了（留言是寫在牆上的，一開始被紅紙擋住）。
 //  - 接著剪斗方上的「囍」：字的每一筆（連在一起的一塊）是一刀，一拍剪一塊（塊多就半拍），剪下來的紙片一片片掉下去；
 //    剪完之後的下一個小節線，斗方四邊的一圈小菱形「啪」地一次打穿。刀口在拍點上合起來（喀嚓）。
-//  - 燈打在窗花上（留言是唯一的焦點）：斗方在燈的邊緣、暗一些、小一些，是配角；紅紙在牆上有影子。
+//  - 標準 v2：斗方（剪紙囍）是主視覺、佔左邊大半；窗花縮成 700 × 420 放在右邊，留言 40～60、署名 26～32、歌詞 40～52。
+//    一盞燈照著兩張紙，紅紙在牆上有影子。剪完之後斗方像掛在釘子上一樣，每個小節線被風吹得輕輕晃一下；
+//    牆前一直有零星的紅紙屑慢慢飄下來（剪紙剩下的碎屑），落到下三分之一就暗掉。
 //  - 畫法：紙在一張 Canvas2D 遮罩上（紙在不在、掉下來的紙片），shader 把它畫成有纖維、有摺痕、切口有厚度的紅紙，
 //    並用同一張遮罩算牆上的影子；留言與歌詞在牆與紙之間。剪刀與切口的亮線是 GPU 細線。
 //  - 歌詞在下緣的牆上逐字跟唱。沒有留言：窗花裡露出的是一句邀請。
@@ -17,24 +19,28 @@ import { clamp, ease, prog, hash, pulse, TAU } from '../engine/util';
 import { type FitResult } from '../engine/text';
 import { fillWithHearts } from '../engine/motifs';
 import { lyricAt, drawLyric, layoutLyric, beatAfter, signature, type LyricStyle } from './_motifs';
-import { subRect, rasterPieces, pieceCanvas, contourAt, fitMsg, type Pieces } from './_t13';
+import { subRect, rasterPieces, pieceCanvas, contourAt, type Pieces } from './_t13';
+import { msgMaxFor, lyricV2, sigV2, V2, fitClauses } from './_v2';
+import { fitText } from '../engine/text';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'craft', paper: false, energy: [0.3, 0.9], bars: [4, 8] };
 
 // ---------------------------------------------------------------- 版面（邏輯像素）
 /** 紙的遮罩圖層範圍。 */
-const PR = { x: 120, y: 110, w: 1250, h: 740 };
-/** 斗方：中心與半對角線；裡面的囍（正方形的字框）。 */
-const DC = { x: 420, y: 470 }, DH = 262;
-const GS = 284;
-/** 窗花（長方的紅紙）與中間的海棠窗。 */
-const CT = { x: 790, y: 124, w: 560, h: 690, rot: 0.012 };
-const WIN = { x: CT.x + 38, y: CT.y + 42, w: CT.w - 76, h: CT.h - 84, r: 38 };
+const PR = { x: 100, y: 80, w: 1660, h: 800 };
+/** 斗方：中心與半對角線；裡面的囍（正方形的字框）。斗方掛在上面的角（釘子）上。 */
+const DC = { x: 545, y: 470 }, DH = 345;
+const GS = 376;
+/** 窗花（橫的紅紙）與中間的海棠窗（標準 v2：窗花整張 ≤ 860 × 430）。 */
+const CT = { x: 1010, y: 214, w: 700, h: 420, rot: 0.012 };
+const WIN = { x: CT.x + 34, y: CT.y + 36, w: CT.w - 68, h: CT.h - 72, r: 34 };
+/** 燈的位置（照著兩張紙之間）。 */
+const LAMP = { x: 900, y: 400 };
 /** 牆上的歌詞。 */
-const LYR = { x: 170, base: 948, w: 1170 };
+const LYR = { x: 170, base: 952, w: 1150 };
 const LYR_R = { x: 120, y: 800, w: 1260, h: 190 };
 const FAM_MSG = F.hand(400);
-const INVITE = ['掃描右下角', 'QR code，', '把祝福貼在', '這扇窗上。'];
+const INVITE = ['掃描右下角 QR code，', '把祝福貼在這扇窗上。'];
 
 /** 牆：暖黑、左上一盞燈；紙的影子（遮罩往右下挪、糊一點）與穿過剪空處的光。 */
 const WALL_FRAG = /* glsl */ `
@@ -47,8 +53,8 @@ float paperAt(vec2 p) {
 void main() {
   vec2 p = vec2(FRAG_PX.x, ${H}.0 - FRAG_PX.y);
   vec3 col = C_INK * (0.85 + 0.2 * fbm(p / 380.0, 3)) + C_INK2 * 0.4;
-  // 燈：打在窗花上（留言在這裡），往外暗下去
-  float lamp = 1.0 - smoothstep(0.0, 1250.0, length((p - vec2(${(CT.x + CT.w / 2).toFixed(1)}, ${(CT.y + CT.h * 0.42).toFixed(1)})) * vec2(0.8, 1.0)));
+  // 燈：照著兩張紙，往外暗下去
+  float lamp = 1.0 - smoothstep(0.0, 1300.0, length((p - vec2(${LAMP.x}.0, ${LAMP.y}.0)) * vec2(0.75, 1.0)));
   col += (C_INK2 * 1.7 + C_BLOOD * 0.05) * lamp * lamp;
   // 牆面的細紋（像粉刷過的灰泥）
   col *= 0.96 + 0.05 * snoise(p * 0.08) * snoise(p * 0.013 + 2.0);
@@ -81,12 +87,9 @@ void main() {
   vec3 base = C_SIGNAL * 0.62 + C_BLOOD * 0.2;
   float fib = snoise(p * vec2(0.9, 0.06)) * 0.5 + snoise(p * 0.35 + 7.0) * 0.3;
   vec3 col = base * (0.88 + 0.08 * fib + 0.05 * fbm(p / 260.0, 3));
-  // 燈在左上：紙面整體左上亮、右下暗一點；大鼓時燈閃一下
-  // 燈打在窗花上：窗花亮、斗方在燈的邊緣暗一些（配角）；大鼓時燈閃一下
-  float lampK = 1.0 - smoothstep(180.0, 820.0, length(p - vec2(${(CT.x + CT.w / 2).toFixed(1)}, ${(CT.y + CT.h * 0.42).toFixed(1)})));
-  col *= 0.5 + 0.55 * lampK + 0.05 * uKick;
-  // 燈照不到的地方也比較灰（斗方退成配角）
-  col = mix(vec3(luma(col)), col, 0.55 + 0.45 * lampK);
+  // 燈照著兩張紙：中間亮、往外暗一點；大鼓時燈閃一下
+  float lampK = 1.0 - smoothstep(250.0, 1100.0, length((p - vec2(${LAMP.x}.0, ${LAMP.y}.0)) * vec2(0.75, 1.0)));
+  col *= 0.62 + 0.45 * lampK + 0.05 * uKick;
   // 斗方對摺過（剪紙是對摺剪的）：中間一條直的摺痕
   float crease = pxLine(abs(p.x - ${DC.x}.0), 0.4, 1.6) * step(abs(p.y - ${DC.y}.0) + abs(p.x - ${DC.x}.0), ${DH}.0);
   col *= 1.0 - 0.1 * crease;
@@ -181,25 +184,26 @@ export default class Xi extends Scene {
     const last = this.cuts[this.cuts.length - 1]!.t1;
     this.glyphDone = last;
     this.punchT = Math.min(au.timeOfBar(Math.ceil(au.barAt(last + 0.05))), end - 0.4);
-    for (let e = 0; e < 4; e++) for (let k = 1; k < 10; k++) {
-      const u = k / 10;
+    for (let e = 0; e < 4; e++) for (let k = 1; k < 12; k++) {
+      const u = k / 12;
       const A = [[DC.x, DC.y - DH + 34], [DC.x + DH - 34, DC.y], [DC.x, DC.y + DH - 34], [DC.x - DH + 34, DC.y]][e]!, B = [[DC.x + DH - 34, DC.y], [DC.x, DC.y + DH - 34], [DC.x - DH + 34, DC.y], [DC.x, DC.y - DH + 34]][e]!;
       this.punches.push({ x: A[0]! + (B[0]! - A[0]!) * u, y: A[1]! + (B[1]! - A[1]!) * u, s: 7 + (k % 2) * 3 });
     }
     // 窗花的框上也打一圈小圓孔（跟斗方同一下）
     const fx0 = CT.x + 20, fy0 = CT.y + 22, fx1 = CT.x + CT.w - 20, fy1 = CT.y + CT.h - 22;
-    for (let i = 1; i < 12; i++) { const u = i / 12; this.punches.push({ x: fx0 + (fx1 - fx0) * u, y: fy0, s: -5 }, { x: fx0 + (fx1 - fx0) * u, y: fy1, s: -5 }); }
-    for (let i = 1; i < 16; i++) { const u = i / 16; this.punches.push({ x: fx0, y: fy0 + (fy1 - fy0) * u, s: -5 }, { x: fx1, y: fy0 + (fy1 - fy0) * u, s: -5 }); }
+    for (let i = 1; i < 18; i++) { const u = i / 18; this.punches.push({ x: fx0 + (fx1 - fx0) * u, y: fy0, s: -5 }, { x: fx0 + (fx1 - fx0) * u, y: fy1, s: -5 }); }
+    for (let i = 1; i < 11; i++) { const u = i / 11; this.punches.push({ x: fx0, y: fy0 + (fy1 - fy0) * u, s: -5 }, { x: fx1, y: fy0 + (fy1 - fy0) * u, s: -5 }); }
     // 窗花整張轉了一點點：框上的孔跟著轉
     const ccx = CT.x + CT.w / 2, ccy = CT.y + CT.h / 2, cs = Math.cos(CT.rot), sn = Math.sin(CT.rot);
     for (const pu of this.punches) if (pu.s < 0) { const dx = pu.x - ccx, dy = pu.y - ccy; pu.x = ccx + dx * cs - dy * sn; pu.y = ccy + dx * sn + dy * cs; }
     // ---- 牆上的留言
     const c = this.txt.ctx;
     if (m) {
-      // 八個字以內排成一行（窗是直的，兩行會從詞中間折斷：「新婚快／樂！！！」）
-      const short = Array.from(m.text).length <= 8;
-      this.fit = fitMsg(c, m.text, FAM_MSG, WIN.w - 60, WIN.h - 120, { min: 46, max: 112, lineHeight: 1.34, maxLines: short ? 1 : 9 });
-      this.sigSize = Math.round(clamp(this.fit.size * 0.5, 40, 50));
+      // 標準 v2：字級上限依字數，先照子句排；高度先扣掉署名（署名永遠在最後一行下面）
+      const w = WIN.w - 70, h = WIN.h - 40 - sigV2(msgMaxFor(m.text)) * 2;
+      const o = { min: V2.msgMin, max: msgMaxFor(m.text), lineHeight: 1.34, maxLines: 5 };
+      this.fit = fitClauses(c, m.text, FAM_MSG, w, h, o) ?? fitText(c, m.text, FAM_MSG, w, h, o);
+      this.sigSize = sigV2(this.fit.size);
     }
   }
 
@@ -297,8 +301,20 @@ export default class Xi extends Scene {
     const Mk = this.mask, c = Mk.ctx;
     Mk.clear();
     c.save();
-    if (this.holes) c.drawImage(this.holes, 0, 0, PR.w, PR.h);
+    if (this.holes) {
+      // 窗花那一半照原樣；斗方那一半繞著上面的角（釘子）轉一點點（剪完之後才晃，剪的時候刀口要對得上）
+      const cut = 960 - PR.x;
+      c.save(); c.beginPath(); c.rect(cut, 0, PR.w - cut, PR.h); c.clip();
+      c.drawImage(this.holes, 0, 0, PR.w, PR.h);
+      c.restore();
+      c.save(); c.beginPath(); c.rect(0, 0, cut, PR.h); c.clip();
+      const sway = this.sway(t);
+      c.translate(DC.x - PR.x, DC.y - DH - PR.y); c.rotate(sway); c.translate(-(DC.x - PR.x), -(DC.y - DH - PR.y));
+      c.drawImage(this.holes, 0, 0, PR.w, PR.h);
+      c.restore();
+    }
     c.translate(-PR.x, -PR.y);
+    this.scraps(c, t);
     // 掉下去的紙片：翻著（x 方向縮放 = 在翻面）、轉著、往下加速
     for (const k of this.cuts) {
       const age = t - k.t1;
@@ -344,6 +360,52 @@ export default class Xi extends Scene {
       shake: [punch * 3, punch * 2],
       popupAvoid: [[WIN.x - 20, WIN.y - 20, WIN.w + 40, WIN.h + 40], [LYR.x - 20, LYR.base - 100, LYR.w + 40, 130]],
     };
+  }
+
+  /**
+   * 斗方的擺動（弧度）：剪完、打完孔之後，每個小節線被風推一下（阻尼彈簧，約 1°），偶數小節往右、奇數往左。
+   * 用最近三個小節線的推力疊起來，確定性（只看時間）。
+   */
+  private sway(t: number) {
+    const au = this.ctx.audio;
+    const from = Math.max(this.punchT + 0.3, this.ctx.start);
+    if (!(t > from)) return 0;
+    const bi = Math.floor(au.barAt(t));
+    let a = 0;
+    for (let k = bi - 2; k <= bi; k++) {
+      const tb = au.timeOfBar(k);
+      if (tb < from || t < tb) continue;
+      const u = t - tb;
+      a += (k % 2 ? -1 : 1) * 0.016 * Math.exp(-u * 1.6) * Math.sin(u * 5.2);
+    }
+    return a;
+  }
+
+  /**
+   * 紙屑：剪紙剩下的小紅紙片，一直在牆前慢慢飄下來（在遮罩裡畫，所以一樣是紅紙、一樣有影子）。
+   * 只在左半邊（斗方前面），落到下三分之一就縮小消失，不蓋到窗花裡的留言與下緣的歌詞。
+   */
+  private scraps(c: CanvasRenderingContext2D, t: number) {
+    c.save();
+    c.fillStyle = '#fff';
+    for (let i = 0; i < 16; i++) {
+      const sp = 26 + 30 * hash(i, 1), x0 = 150 + 790 * hash(i, 2);
+      const y = ((t * sp + hash(i, 3) * 900) % 900) + 60;
+      const k = 1 - clamp((y - 700) / 120);
+      if (k <= 0.02) continue;
+      const x = x0 + Math.sin(t * (0.6 + hash(i, 4)) + i) * 26;
+      const sz = (5 + 7 * hash(i, 5)) * k;
+      c.save();
+      c.translate(x, y);
+      c.rotate(t * (hash(i, 6) - 0.5) * 3 + i);
+      c.scale(Math.cos(t * (1.5 + hash(i, 7) * 2) + i) || 0.01, 1);
+      c.beginPath();
+      if (i % 3) { c.moveTo(0, -sz); c.lineTo(sz * 0.7, 0); c.lineTo(0, sz); c.lineTo(-sz * 0.7, 0); }
+      else { c.moveTo(0, -sz); c.lineTo(sz, sz * 0.8); c.lineTo(-sz, sz * 0.8); }
+      c.closePath(); c.fill();
+      c.restore();
+    }
+    c.restore();
   }
 
   override dispose() {
@@ -423,7 +485,7 @@ export default class Xi extends Scene {
     const m = this.msg, fit = this.fit;
     c.textBaseline = 'alphabetic';
     if (m && fit) {
-      const blockH = fit.height + this.sigSize * 1.9;
+      const blockH = fit.height + this.sigSize * 2;
       const top = WIN.y + (WIN.h - blockH) / 2 + fit.size * 0.9;
       c.font = font(FAM_MSG, fit.size);
       c.fillStyle = rgba('bone', 0.95);
@@ -431,11 +493,11 @@ export default class Xi extends Scene {
       c.font = font(FAM_MSG, this.sigSize);
       c.fillStyle = rgba('ash');
       const sig = signature(m.name), sw = c.measureText(sig).width;
-      c.fillText(sig, cx + Math.min(fit.width / 2, WIN.w / 2 - 40) - sw, top + (fit.lines.length - 1) * fit.lineHeight + this.sigSize * 1.8);
+      c.fillText(sig, cx + Math.min(Math.max(fit.width / 2, sw / 2), WIN.w / 2 - 40) - sw, top + (fit.lines.length - 1) * fit.lineHeight + fit.size * 0.3 + this.sigSize * 1.5);
     } else {
-      c.font = font(FAM_MSG, 56);
-      c.fillStyle = rgba('bone', 0.9);
-      INVITE.forEach((ln, i) => { const w = c.measureText(ln).width; c.fillText(ln, cx - w / 2, cy - 110 + i * 78); });
+      c.font = font(FAM_MSG, 44);
+      c.fillStyle = rgba('bone', 0.85);
+      INVITE.forEach((ln, i) => { const w = c.measureText(ln).width; c.fillText(ln, cx - w / 2, cy - 12 + i * 64); });
     }
     c.restore();
     L.upload();
@@ -448,8 +510,7 @@ export default class Xi extends Scene {
     c.translate(-LYR_R.x, -LYR_R.y);
     c.globalAlpha = vis;
     if (ly) {
-      const size = this.fit ? Math.round(clamp(this.fit.size * 0.8, 48, 60)) : 64;
-      const st: LyricStyle = { family: F.archivo(87.5, 800), size, minSize: 48, maxWidth: LYR.w };
+      const st: LyricStyle = { family: F.archivo(87.5, 800), size: lyricV2(this.fit ? this.fit.size : null), minSize: V2.lyrMin, maxWidth: LYR.w };
       const lay = layoutLyric(c, ly.line, st);
       const inK = ease.outExpo(prog(t, ly.line.start - 0.35, ly.line.start + 0.2));
       c.save();

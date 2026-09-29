@@ -15,6 +15,7 @@ import { F, font, loadText } from '../engine/type';
 import { LIN, rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, pulse, hash, TAU } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
+import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 } from './_v2';
 import { Lyrics } from '../engine/lyrics';
 import { lyricAt, layoutLyric, beatAfter, signature, fillWithHearts, DATE_DOTS } from './_motifs';
 import { Paper, stagger, mono, tag } from './_t11';
@@ -28,10 +29,11 @@ const CEN = { x: 520, y: 452 };
 const AMP = { x: 330, y: 300 };
 /** 右頁的文字欄。 */
 const NB = { x: 1004, w: 800 };
-const MSG_BOX = { y: 336, h: 400 };
+/** v2：留言在右頁下半（寬 800、高 ≤ 300），上半給兩個擺；署名一定在 y < 800（右下角 QR 區的上面）。 */
+const MSG_BOX = { y: 468, h: 292 };
 /** 歌詞：有留言時是左頁下方的圖說；沒有留言時放大寫在右頁。 */
 const LYR = { x: 124, base: 956, w: 790 };
-const LYR_N = { x: 1004, base: 560, w: 800, size: 96 };
+const LYR_N = { x: 1004, base: 600, w: 800, size: lyricV2(null) };
 /** 鏡頭推近的最大倍率（字離邊與 QR 的距離是照這個算的）。 */
 const PUSH = 0.025;
 const FAM_MSG = F.hand(700);
@@ -58,6 +60,7 @@ export default class Pendulum extends Scene {
   fit: FitResult | null = null;
   glyphs: { ch: string; x: number; y: number; t: number; w: number }[] = [];
   sigT = Infinity; sigY = 0; conclT = Infinity;
+  sigSize = 30;
   lyrSize = 60;
   lyricsInWindow = false;
 
@@ -85,9 +88,9 @@ export default class Pendulum extends Scene {
     const fam = FAM_MSG;
     const fit = this.fit = m
       // 字級依「可用高度扣掉署名」算：署名永遠在最後一行下面、不重疊
-      ? fitText(c, text, fam, NB.w, MSG_BOX.h - 64, { min: 48, max: 120, lineHeight: 1.3, maxLines: 5 })
+      ? (fitClauses(c, text, fam, NB.w, MSG_BOX.h - 60, { min: V2.msgMin, max: msgMaxFor(text), lineHeight: 1.3, maxLines: 5 }) ?? fitText(c, text, fam, NB.w, MSG_BOX.h - 60, { min: V2.msgMin, max: msgMaxFor(text), lineHeight: 1.3, maxLines: 5 }))
       : fitText(c, text, fam, NB.w, 90, { min: 32, max: 34, lineHeight: 1.3, maxLines: 2 });
-    const top = m ? MSG_BOX.y + fit.size * 0.9 : 690;
+    const top = m ? MSG_BOX.y + fit.size * 0.9 : 700;
     c.font = font(fam, fit.size);
     const chars: { ch: string; x: number; y: number; w: number }[] = [];
     fit.lines.forEach((ln, li) => {
@@ -98,11 +101,13 @@ export default class Pendulum extends Scene {
     this.glyphs = chars.map((g, i) => ({ ...g, t: times[i]! }));
     const tLast = times[times.length - 1] ?? this.tPen;
     this.sigT = tLast + beat * 0.5;
-    this.sigY = top + (fit.lines.length - 1) * fit.lineHeight + 64;
+    // 署名在最後一行（連下伸部）下面
+    this.sigSize = sigV2(fit.size);
+    this.sigY = top + (fit.lines.length - 1) * fit.lineHeight + fit.size * 0.3 + this.sigSize + 10;
     this.conclT = Math.min(e - 0.8, tLast + beat * 1.5);
     this.lyricsInWindow = lyrics.linesIn(s, e).length > 0;
     // 歌詞比留言小一級
-    this.lyrSize = Math.round(clamp(fit.size * 0.66, 48, 60));
+    this.lyrSize = lyricV2(m ? fit.size : null);
     this.drawBase();
   }
 
@@ -127,7 +132,7 @@ export default class Pendulum extends Scene {
     c.strokeStyle = rgba('sepia', 0.2); c.lineWidth = 1;
     c.beginPath(); c.moveTo(CEN.x - AMP.x - 30, CEN.y); c.lineTo(CEN.x + AMP.x + 30, CEN.y); c.moveTo(CEN.x, CEN.y - AMP.y - 30); c.lineTo(CEN.x, CEN.y + AMP.y + 30); c.stroke();
     // 右頁抬頭：一行小字（小字第一群）
-    mono(c, `LAB NOTEBOOK  ·  兩擺耦合實驗${m?.couple ? '  ·  新人親筆' : ''}  ·  ${DATE_DOTS}`, NB.x, 150, { size: 15, tracking: 3, color: rgba('sepia', 0.5) });
+    mono(c, `LAB NOTEBOOK  ·  兩擺耦合實驗${m?.couple ? '  ·  新人親筆' : ''}  ·  ${DATE_DOTS}`, NB.x, 118, { size: 15, tracking: 3, color: rgba('sepia', 0.5) });
   }
 
   override render(f: Frame, out: THREE.WebGLRenderTarget): PostOverrides {
@@ -168,6 +173,11 @@ export default class Pendulum extends Scene {
       const p = this.pen(au.timeOfBar(b));
       const k = pulse(t, au.timeOfBar(b), 0.25);
       c.fillStyle = rgba('sepia', 0.7); c.beginPath(); c.arc(p.x, p.y, 3 + 3 * k, 0, TAU); c.fill();
+      // 小節線上筆甩到最遠，濺出幾滴墨（位置用種子，留在紙上）
+      for (let d = 0; d < 3; d++) {
+        const ang = hash(this.seed, b, d) * TAU, r = 12 + 26 * hash(this.seed, b, d + 7);
+        c.fillStyle = rgba('blood', 0.35 + 0.3 * k); c.beginPath(); c.arc(p.x + Math.cos(ang) * r, p.y + Math.sin(ang) * r, 1.4 + 1.6 * hash(this.seed, b, d + 3), 0, TAU); c.fill();
+      }
     }
     // 筆尖：落下前懸在起點（影子比較遠），落下後貼著紙
     const down = prog(t, t0 - 0.25, t0, ease.inCubic);
@@ -189,21 +199,27 @@ export default class Pendulum extends Scene {
   /** 右頁上方：兩個擺的側視圖，照同一條式子擺（甲擺的兩端落在拍點上）。 */
   private pendulums(c: CanvasRenderingContext2D, t: number) {
     const p = this.pen(t);
-    const items: [number, number, string, number][] = [[NB.x + 60, p.ax, '甲擺　宣文', 0], [NB.x + 300, p.ay, '乙擺　孟庭', 1]];
+    // v2：留言變小之後，右頁上半讓給兩個大大的擺（場景是主角）；擺錘拖一點殘影，看得出在甩
+    const items: [number, number, string, number][] = [[NB.x + 150, p.ax, '甲擺　宣文', 0], [NB.x + 530, p.ay, '乙擺　孟庭', 1]];
     for (const [px, a, name, i] of items) {
-      const py = 196, len = 70, th = a * 0.42;
+      const py = 168, len = 190, th = a * 0.38;
       const bx = px + Math.sin(th) * len, by = py + Math.cos(th) * len;
+      for (let g = 3; g >= 1; g--) {
+        const q = this.pen(t - g * 0.045), ga = (i === 0 ? q.ax : q.ay) * 0.38;
+        c.fillStyle = i === 0 ? rgba('sepia', 0.1 / g) : rgba('blood', 0.12 / g);
+        c.beginPath(); c.arc(px + Math.sin(ga) * len, py + Math.cos(ga) * len, 15, 0, TAU); c.fill();
+      }
       c.strokeStyle = rgba('sepia', 0.8); c.lineWidth = 2;
       c.beginPath(); c.moveTo(px - 26, py); c.lineTo(px + 26, py); c.stroke();
       for (let k = -2; k <= 2; k++) { c.beginPath(); c.moveTo(px + k * 11, py); c.lineTo(px + k * 11 - 7, py - 7); c.stroke(); }
       // 擺動範圍（虛線弧）
       c.setLineDash([3, 4]); c.strokeStyle = rgba('sepia', 0.35); c.lineWidth = 1;
-      c.beginPath(); c.arc(px, py, len, Math.PI / 2 - 0.42, Math.PI / 2 + 0.42); c.stroke(); c.setLineDash([]);
+      c.beginPath(); c.arc(px, py, len, Math.PI / 2 - 0.38, Math.PI / 2 + 0.38); c.stroke(); c.setLineDash([]);
       c.strokeStyle = rgba('sepia'); c.lineWidth = 1.8;
       c.beginPath(); c.moveTo(px, py); c.lineTo(bx, by); c.stroke();
       c.fillStyle = i === 0 ? rgba('sepia') : rgba('blood');
-      c.beginPath(); c.arc(bx, by, 11, 0, TAU); c.fill();
-      tag(c, name, px + 44, py + 40, { size: 17, color: rgba('sepia', 0.6), tracking: 2 });
+      c.beginPath(); c.arc(bx, by, 15, 0, TAU); c.fill();
+      tag(c, name, px + 36, py + 26, { size: 17, color: rgba('sepia', 0.6), tracking: 2 });
     }
   }
 
@@ -225,7 +241,7 @@ export default class Pendulum extends Scene {
     }
     if (m && t >= this.sigT) {
       c.save(); c.globalAlpha *= prog(t, this.sigT, this.sigT + 0.3);
-      c.font = font(F.hand(400), 42); c.fillStyle = rgba('sepia', 0.75); c.textAlign = 'right';
+      c.font = font(F.hand(400), this.sigSize); c.fillStyle = rgba('sepia', 0.75); c.textAlign = 'right';
       fillWithHearts(c, m.couple ? '—— 新郎新娘' : signature(m.name), NB.x + NB.w, this.sigY);
       c.restore();
     }
@@ -233,7 +249,7 @@ export default class Pendulum extends Scene {
     if (m && t >= this.conclT) {
       c.save(); c.globalAlpha *= prog(t, this.conclT, this.conclT + 0.35) * 0.62;
       c.font = font(F.hand(400), 26); c.fillStyle = rgba('sepia');
-      c.fillText(CONCL, NB.x, 812);
+      c.fillText(CONCL, NB.x, 806);
       c.restore();
     }
   }
@@ -250,7 +266,7 @@ export default class Pendulum extends Scene {
       }
       return;
     }
-    const st = { family: F.archivo(100, 800), size: box.size, minSize: 48, maxWidth: box.w, lineHeight: 1.12 };
+    const st = { family: F.archivo(100, 800), size: box.size, minSize: V2.lyrMin, maxWidth: box.w, lineHeight: 1.12 };
     const lay = layoutLyric(c, ly.line, st);
     const inK = ease.outExpo(prog(t, ly.line.start - 0.35, ly.line.start + 0.12));
     const oy = box.base - (lay.height - lay.size) + (1 - inK) * 12;

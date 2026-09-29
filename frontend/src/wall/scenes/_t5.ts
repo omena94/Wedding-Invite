@@ -9,6 +9,8 @@ import { FSPass, W, H, SCALE, makeRT, clearRT } from '../engine/gl';
 import { GLSL_COMMON, THEME_UNIFORMS } from '../engine/glsl/common';
 import { shared } from '../engine/scene';
 import { beatAfter, barAfter } from './_motifs';
+import { fitText, type FitResult } from '../engine/text';
+import { V2, msgMaxFor, msgLen, fitClauses } from './_v2';
 
 /** 窗格的節拍骨架。b0：第一拍；bar0：第一個小節線（太晚就用第二拍）；beat：拍長；bars：窗格裡的小節線。 */
 export interface Grid { b0: number; bar0: number; beat: number; bar: number; bars: number[]; beats: number[] }
@@ -146,11 +148,13 @@ const DOF = () => new FSPass(/* glsl */ `
 export interface DofOpts { focus: number; range: number; maxR: number; falloff?: number }
 
 /** 畫一個三維場景（先清成 bg 色）再經過景深，輸出到 out。 */
-export function renderStage(renderer: THREE.WebGLRenderer, scene: THREE.Scene, cam: THREE.PerspectiveCamera, out: THREE.WebGLRenderTarget, bg: readonly number[], dof: DofOpts) {
+export function renderStage(renderer: THREE.WebGLRenderer, scene: THREE.Scene, cam: THREE.PerspectiveCamera, out: THREE.WebGLRenderTarget, bg: readonly number[], dof: DofOpts, extra?: (rt: THREE.WebGLRenderTarget) => void) {
   const rt = shared('t5.stage.rt', STAGE_RT);
   clearRT(renderer, rt, [bg[0]!, bg[1]!, bg[2]!]);
   renderer.setRenderTarget(rt);
   renderer.render(scene, cam);
+  // 場景之後、景深之前的額外東西（煙、灰塵、火焰的 LineBatch）：一起被景深糊
+  extra?.(rt);
   // 深度：同一個場景用只寫深度的材質再畫一次（半解析度、不取樣）
   const drt = shared('t5.stage.depth', DEPTH_RT);
   clearRT(renderer, drt, [0, 0, 0]);
@@ -196,19 +200,22 @@ export function screenMaterial() {
   return new THREE.ShaderMaterial({
     vertexShader: WORLD_VS,
     fragmentShader: /* glsl */ `
-      uniform sampler2D ui; uniform float on; uniform vec3 sheen; uniform float crt; uniform vec2 res; uniform vec3 refl;
+      uniform sampler2D ui; uniform float on; uniform vec3 sheen; uniform float crt; uniform vec2 res; uniform vec3 refl; uniform float wob; uniform float wobT;
       varying vec3 vW; varying vec3 vN; varying vec2 vUv;
       ${GLSL_COMMON}
       void main() {
         vec2 uv = vUv;
         vec2 c0 = uv - 0.5;
         if (crt > 0.0) uv = 0.5 + c0 * (1.0 + crt * dot(c0, c0)) * (1.0 - crt * 0.18);
+        // 映像管的消磁晃動（wob > 0）：畫面橫向扭一下、顏色偏一點，很快停下來
+        if (wob > 0.0) uv.x += wob * 0.012 * sin(uv.y * 38.0 + wobT * 70.0);
         vec3 c = vec3(0.0);
         if (uv.x > 0.0 && uv.x < 1.0 && uv.y > 0.0 && uv.y < 1.0) {
           vec4 tx = texture2D(ui, uv);
           c = tx.a > 0.0 ? toLinear(tx.rgb / tx.a) : vec3(0.0);
           if (crt > 0.0) c *= 0.74 + 0.26 * smoothstep(0.1, 0.6, abs(fract(uv.y * res.y / 2.0) - 0.5) * 2.0);
         }
+        if (wob > 0.0) c *= vec3(1.0 + wob * 0.25, 1.0 - wob * 0.12, 1.0 + wob * 0.18);
         vec2 e = abs(c0) * 2.0;
         c *= on * (1.0 - 0.14 * pow(max(e.x, e.y), 5.0));
         // 玻璃：菲涅耳＋一條窗光的反射（方向 refl），螢幕關著的時候也看得到
@@ -219,7 +226,7 @@ export function screenMaterial() {
         c += sheen * (0.35 * fr + band * (0.25 + 0.75 * fr));
         gl_FragColor = vec4(c, 1.0);
       }`,
-    uniforms: { ui: { value: null }, on: { value: 1 }, sheen: { value: new THREE.Vector3(0.02, 0.02, 0.02) }, crt: { value: 0 }, res: { value: new THREE.Vector2(1000, 1000) }, refl: { value: new THREE.Vector3(-0.5, 0.7, 0.4) }, ...THEME_UNIFORMS },
+    uniforms: { ui: { value: null }, on: { value: 1 }, sheen: { value: new THREE.Vector3(0.02, 0.02, 0.02) }, crt: { value: 0 }, res: { value: new THREE.Vector2(1000, 1000) }, refl: { value: new THREE.Vector3(-0.5, 0.7, 0.4) }, wob: { value: 0 }, wobT: { value: 0 }, ...THEME_UNIFORMS },
   });
 }
 
@@ -232,13 +239,20 @@ export function tableMaterial() {
     vertexShader: WORLD_VS,
     fragmentShader: /* glsl */ `
       uniform vec3 base; uniform vec3 base2; uniform float grainK; uniform vec3 glowCol; uniform vec3 glowPos; uniform float glowR;
-      uniform vec4 shadow; uniform float shadowRot; uniform float shadowK; uniform vec3 fade; uniform float fadeZ;
+      uniform vec4 shadow; uniform float shadowRot; uniform float shadowK; uniform vec3 fade; uniform float fadeZ; uniform float weave;
       uniform vec3 lampCol; uniform vec3 lampPos; uniform float lampR;
+      uniform float goboK; uniform float goboT; uniform float goboS; uniform vec2 goboDir;
       varying vec3 vW; varying vec3 vN; varying vec2 vUv;
       ${GLSL_COMMON}
       void main() {
         vec2 p = vW.xz;
         float g = fbm(vec2(p.x / 60.0, p.y / 2.2), 3) * 0.65 + fbm(p / 14.0, 2) * 0.35;
+        // 布（weave > 0）：經緯很細的織紋＋大塊柔和的皺褶明暗，取代木紋
+        if (weave > 0.0) {
+          float th = 0.5 + 0.25 * sin(p.x * 22.0) + 0.25 * sin(p.y * 22.0 + sin(p.x * 1.3));
+          float fold = fbm(p / 18.0, 3);
+          g = mix(g, (th - 0.5) * 0.35 + fold * 0.9, weave);
+        }
         vec3 col = mix(base, base2, clamp(0.5 + g * grainK, 0.0, 1.0));
         float d = length(p - glowPos.xz);
         col += glowCol * exp(-d * d / (glowR * glowR));
@@ -250,13 +264,20 @@ export function tableMaterial() {
         vec2 b = abs(q) - shadow.zw;
         float sd = length(max(b, 0.0)) + min(max(b.x, b.y), 0.0);
         col *= 1.0 - shadowK * (0.8 * exp(-max(sd, 0.0) / 1.2) + 0.2 * exp(-max(sd, 0.0) / 6.0));
+        // 窗外的樹影（斑駁的光）：兩層雜訊，一層跟風慢慢漂、一層細的抖動；goboK = 0 就沒有
+        if (goboK > 0.0) {
+          vec2 q2 = p / goboS + goboDir * goboT;
+          float leaf = smoothstep(0.05, 0.4, fbm(q2, 3) + 0.25 * snoise(q2 * 3.1 + vec2(goboT * 0.7, 0.0)));
+          col *= 1.0 - goboK * leaf;
+        }
         col = mix(col, fade, smoothstep(0.0, 1.0, (-vW.z - fadeZ) / 60.0));
         gl_FragColor = vec4(col, 1.0);
       }`,
     uniforms: {
       base: { value: new THREE.Vector3() }, base2: { value: new THREE.Vector3() }, grainK: { value: 0.6 }, glowCol: { value: new THREE.Vector3() }, glowPos: { value: new THREE.Vector3() }, glowR: { value: 12 },
       shadow: { value: new THREE.Vector4() }, shadowRot: { value: 0 }, shadowK: { value: 0.6 }, fade: { value: new THREE.Vector3() }, fadeZ: { value: 40 },
-      lampCol: { value: new THREE.Vector3() }, lampPos: { value: new THREE.Vector3() }, lampR: { value: 30 }, ...THEME_UNIFORMS,
+      lampCol: { value: new THREE.Vector3() }, lampPos: { value: new THREE.Vector3() }, lampR: { value: 30 },
+      goboK: { value: 0 }, goboT: { value: 0 }, goboS: { value: 30 }, goboDir: { value: new THREE.Vector2(0.06, 0.02) }, weave: { value: 0 }, ...THEME_UNIFORMS,
     },
   });
 }
@@ -372,4 +393,86 @@ export function tiltProject(cam: THREE.Vector3, look: THREE.Vector3, fov: number
   const z = v.dot(F), th = Math.tan(fov / 2);
   const nx = v.dot(R) / (z * th * (W / H)), ny = v.dot(U) / (z * th);
   return { x: (nx * 0.5 + 0.5) * W, y: (0.5 - ny * 0.5) * H };
+}
+
+// ================================================================ v2：螢幕上的字級、環境動態
+/**
+ * 螢幕上的縮放：物件（例如手機的螢幕面）本地座標裡兩點之間的距離投影到畫面上是幾 px，除以它們在畫布上的距離（px）
+ * → 「畫面 px ／ 畫布 px」。v2 的字級是畫面上的 px，畫在畫布上要除以這個數。
+ */
+export function projScale(cam: THREE.Camera, obj: THREE.Object3D, a: THREE.Vector3, b: THREE.Vector3, canvasDist: number): number {
+  // 連父物件一起更新：窗格第一次 init 時場景還沒畫過，手機（父）的世界矩陣還是單位矩陣，量出來的倍數會錯
+  obj.updateWorldMatrix(true, false);
+  cam.updateMatrixWorld(true);
+  const pa = toScreen(cam, obj.localToWorld(a.clone())), pb = toScreen(cam, obj.localToWorld(b.clone()));
+  return Math.hypot(pb.x - pa.x, pb.y - pa.y) / canvasDist;
+}
+
+/**
+ * 杯子冒的熱氣（三維 LineBatch，世界寬度）：幾縷細煙從杯口 (x, y, z) 往上飄，邊飄邊左右擺、越高越淡。
+ * 一縷是一條由下往上的折線，整條沿著時間往上捲（相位 = t），所以不用記狀態。
+ */
+export function steam(lb: import('../engine/lines').LineBatch, t: number, x: number, y: number, z: number, h: number, rgb: readonly number[], seed = 1, wisps = 3, width = 1) {
+  for (let k = 0; k < wisps; k++) {
+    const ph = seed * 1.7 + k * 2.3;
+    const N = 18;
+    let px = x, py = y, pz = z;
+    for (let i = 1; i <= N; i++) {
+      const u = i / N;
+      const sway = Math.sin(u * 5 + t * 1.3 + ph) * (0.6 + u * 1.8) + Math.sin(u * 11 - t * 2.1 + ph * 2) * 0.35 * u;
+      const nx = x + sway + (k - (wisps - 1) / 2) * 0.8, ny = y + u * h, nz = z + Math.cos(u * 4 + t + ph) * 0.8 * u;
+      const a = Math.sin(Math.PI * u) * (0.55 + 0.45 * Math.sin(t * 0.9 + ph)) * 0.5;
+      lb.seg(px, py, pz, nx, ny, nz, (0.35 + u * 0.9) * width, rgb[0]!, rgb[1]!, rgb[2]!, a);
+      px = nx; py = ny; pz = nz;
+    }
+  }
+}
+
+/** 光裡的灰塵：盒子 [x0,y0,z0]～[x1,y1,z1] 裡 n 顆，慢慢飄（正弦路徑），在 lit(x, y, z) 回傳的亮度裡才看得到。 */
+export function dust(lb: import('../engine/lines').LineBatch, t: number, box: [number, number, number, number, number, number], n: number, rgb: readonly number[], lit: (x: number, y: number, z: number) => number, seed = 1) {
+  const [x0, y0, z0, x1, y1, z1] = box;
+  for (let i = 0; i < n; i++) {
+    const h1 = hash01(i, seed), h2 = hash01(i, seed + 1), h3 = hash01(i, seed + 2), h4 = hash01(i, seed + 3);
+    const x = x0 + (x1 - x0) * fract01(h1 + 0.013 * t * (0.5 + h4) + 0.05 * Math.sin(t * 0.4 + i));
+    const y = y0 + (y1 - y0) * fract01(h2 - 0.01 * t * (0.3 + h1));
+    const z = z0 + (z1 - z0) * h3 + Math.sin(t * 0.6 + i * 1.3) * 0.6;
+    const k = lit(x, y, z);
+    if (k <= 0.02) continue;
+    const tw = 0.5 + 0.5 * Math.sin(t * (1.5 + h4 * 2) + i);
+    lb.seg(x, y, z, x + 0.05, y + 0.05, z, 0.18 + 0.12 * h3, rgb[0]!, rgb[1]!, rgb[2]!, k * (0.35 + 0.65 * tw));
+  }
+}
+const hash01 = (i: number, s: number) => { const v = Math.sin(i * 127.1 + s * 311.7) * 43758.5453; return v - Math.floor(v); };
+const fract01 = (x: number) => x - Math.floor(x);
+
+/** 燭火（三維 LineBatch，加亮）：一團由粗到細的線，跟著 flick（0..1）晃、拉長。 */
+export function flame(lb: import('../engine/lines').LineBatch, t: number, x: number, y: number, z: number, h: number, rgbCore: readonly number[], rgbGlow: readonly number[], flick: number) {
+  const sway = Math.sin(t * 7.3) * 0.12 + Math.sin(t * 13.1) * 0.06 + flick * 0.15;
+  const hh = h * (1 + 0.25 * flick + 0.08 * Math.sin(t * 11));
+  const N = 6;
+  for (let i = 0; i < N; i++) {
+    const u0 = i / N, u1 = (i + 1) / N;
+    const w = (1 - u0) * 0.9 + 0.15;
+    lb.seg(x + sway * u0 * u0, y + u0 * hh, z, x + sway * u1 * u1, y + u1 * hh, z, w * 1.8, rgbGlow[0]! * 1.2, rgbGlow[1]! * 1.2, rgbGlow[2]! * 1.2, 0.35);
+    lb.seg(x + sway * u0 * u0, y + u0 * hh, z, x + sway * u1 * u1, y + u1 * hh, z, w * 0.8, rgbCore[0]! * 3, rgbCore[1]! * 3, rgbCore[2]! * 3, 0.9);
+  }
+}
+
+/**
+ * v2 的留言排版（畫布座標）：k = 畫面 px／畫布 px。行數越少越好——先試一行、兩行…，照子句斷（fitClauses），
+ * 第一個「字級夠大」（≥ min(44, 上限的 80%)）的就用；都不行才用最小字級塞，最後退回 fitText（下限 36，寧可小一點也不要爆框）。
+ * 短句不會被斷成「新婚快／樂！！！」，長留言也不會因為找最大字級而被斷得很碎。
+ */
+export function fitMsgV2(c: CanvasRenderingContext2D, text: string, family: string, w: number, h: number, k: number, lineHeight = 1.22, maxLines = 9): FitResult {
+  const max = msgMaxFor(text) / k, min = V2.msgMin / k;
+  // 短句（10 字以內）一行放得下（≥ 40）就一行：「新婚快／樂！！！」比小一點難讀多了
+  const good = (msgLen(text) <= 10 ? V2.msgMin : Math.min(44, msgMaxFor(text) * 0.8)) / k;
+  let last: FitResult | null = null;
+  for (let n = 1; n <= maxLines; n++) {
+    const r = fitClauses(c, text, family, w, h, { min, max, lineHeight, maxLines: n });
+    if (!r) continue;
+    if (r.size >= good) return r;
+    last = last ?? r;
+  }
+  return last ?? fitText(c, text, family, w, h, { min: 36 / k, max, lineHeight, maxLines });
 }
