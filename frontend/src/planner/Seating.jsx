@@ -761,7 +761,10 @@ export default function Seating() {
   const guests = useMemo(() => {
     let g = layout?.guests || [];
     const q = search.trim().toLowerCase();
-    if (q) g = g.filter((x) => x.name.toLowerCase().includes(q) || x.persons.some((p) => (p.name || "").toLowerCase().includes(q)));
+    // 2026-09-29 幫手現場帶位也能用電話找：只要輸入的是數字，就比對這一戶的電話（去掉空白與連字號）
+    const qDigits = q.replace(/[^\d]/g, "");
+    const byPhone = qDigits.length >= 4 && qDigits.length === q.replace(/[\s-]/g, "").length;
+    if (q) g = g.filter((x) => x.name.toLowerCase().includes(q) || x.persons.some((p) => (p.name || "").toLowerCase().includes(q)) || (byPhone && (x.phone || "").includes(qDigits)));
     if (sideFilter) g = g.filter((x) => x.side === sideFilter);
     if (onlyUnassigned) g = g.filter((x) => x.unassigned > 0);
     // 還沒安排完的排前面，排好的沉下去，找下一組要排的不用捲
@@ -773,11 +776,15 @@ export default function Seating() {
     const q = search.trim().toLowerCase();
     const set = new Set();
     if (!q) return set;
+    // 用電話找時，畫布上把那一戶的人都標亮（座位指定只有 rsvp_id，電話從賓客清單對回去）
+    const qDigits = q.replace(/[^\d]/g, "");
+    const byPhone = qDigits.length >= 4 && qDigits.length === q.replace(/[\s-]/g, "").length;
+    const phoneHit = new Set(byPhone ? (layout?.guests || []).filter((g) => (g.phone || "").includes(qDigits)).map((g) => g.rsvp_id) : []);
     objects.forEach((o) => (o.assignments || []).forEach((a) => {
-      if ((a.display_name || "").toLowerCase().includes(q) || (a.auto_name || "").toLowerCase().includes(q)) set.add(`${o.id}:${a.seat_index}`);
+      if ((a.display_name || "").toLowerCase().includes(q) || (a.auto_name || "").toLowerCase().includes(q) || phoneHit.has(a.rsvp_id)) set.add(`${o.id}:${a.seat_index}`);
     }));
     return set;
-  }, [objects, search]);
+  }, [objects, search, layout]);
   // 搜尋有打字時，符合的人所在的那幾桌也把名字亮出來，不然只有選到的桌子看得到名字
   const searchTables = useMemo(() => new Set([...searchSeats].map((k) => +k.split(":")[0])), [searchSeats]);
   const highlightSeats = useMemo(() => {
@@ -1078,7 +1085,7 @@ function GuestPanel({ guests, search, setSearch, sideFilter, setSideFilter, only
   const free = table ? freeSeats(table).length : 0;
   return (
     <div>
-      <input type="text" placeholder="搜尋姓名…" value={search} onChange={(e) => setSearch(e.target.value)} style={{ marginBottom: 8 }} />
+      <input type="text" placeholder="搜尋姓名或電話…" value={search} onChange={(e) => setSearch(e.target.value)} style={{ marginBottom: 8 }} />
       <div style={{ marginBottom: 8 }}><Select compact aria-label="篩選親友方" value={sideFilter} onChange={setSideFilter} options={[{ value: "", label: "全部親友" }, { value: "groom", label: "男方親友" }, { value: "bride", label: "女方親友" }]} /></div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
         <Checkbox checked={onlyUnassigned} onChange={setOnlyUnassigned}>只看未安排</Checkbox>
