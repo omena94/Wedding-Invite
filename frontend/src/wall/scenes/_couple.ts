@@ -42,12 +42,17 @@
 // - 雜誌插畫式的單線：線寬約 2.5～4 px（依 h 自動），兩端收尖像筆壓；**boiling line**：每 1/8 秒（種子 floor(t*8)）整張重抖一次，確定性。
 // - 皮膚是固定的淡暖膚色 `SKIN()`（cream 往 fur 混兩成，暗、亮版面都一樣；**暗版面也不能把臉填成底色**，會變成黑色剪影），
 //   五官、白紗上的線用深墨 `ink.feat`。衣服與道具的底是 `ink.fill`（亮版面 = 紙、暗版面 = 比底色亮一點的 ink2），遮住後面的線。
-//   固定色平塗：牛仔褲 `denim`、格紋 `gingham`、狗毛 `fur`／`cream`、項圈 `collar`、網球 `ball`、牽繩 `leash`。黑髮與深色西裝是 `ink.dark`
+//   固定色平塗：牛仔褲 `denim`、孟庭的頭髮 `auburn`、腰上的襯衫 `shirtblue`、狗毛 `cream`／`apricot`／`fur`／`sable`、項圈 `collar`、網球 `ball`、牽繩 `leash`。黑髮與深色西裝是 `ink.dark`
 //   （亮版面 = 墨色平塗；暗版面 = 底色留 bone 輪廓，一樣讀成深色）；白紗是象牙白 `ink.light`。背景不是純色時可以覆寫：`inkFor(false, { fill: rgba('ink2') })`。
 // - 訊號色不在角色身上用：留給版面的互動重點（球的軌跡、揮拍的弧線、擊球的閃光）。愛心用點綴色（`heartPop`）。
-// - 表情只有幾筆：`face: 'smile' | 'grin' | 'o' | 'calm' | 'closed'`（宣文 smile／grin 是瞇眼笑）。可用 opts.face 覆寫。
-// - 宣文：短黑髮（前面一撮）、圓臉、條紋 T 恤＋斜背小包（`bag`，日常預設有）、牛仔褲，墨鏡 `shades`；婚禮：深色西裝、領結。
-//   孟庭：及肩黑髮＋薄瀏海、綠格紋上衣、牛仔褲；婚禮：白紗＋頭紗（`flow` 讓頭髮、頭紗、裙擺往身後飄，`flare` 讓裙擺張開）。
+// - 手繪動畫＋線條：清楚的輪廓線、平塗色塊＋一點點陰影；臉有眼睛形狀、眉毛、鼻子、嘴（宣文加鬍渣、孟庭加紅暈）。
+//   表情 `face: 'smile' | 'grin'（笑瞇眼）| 'o' | 'calm' | 'closed' | 'wink'（眨畫面左邊那隻眼）`，可用 opts.face 覆寫。
+// - 造型照新人給的照片抓特徵（照片只拿來看，**不能**放進專案或畫面）：
+//   宣文：往上抓、一撮一撮的短黑髮、圓而飽滿的臉、細長的小眼睛、平直的粗眉、寬一點的鼻子、淡淡的鬍渣、耳朵露出；
+//   孟庭：紅棕色過肩長髮（兩側有份量、髮尾微捲）、空氣瀏海蓋到眉毛、圓臉、大眼睛、臉頰紅暈、會眨眼。
+//   日常是情侶裝：白 T＋黑色圓領滾邊、袖子兩條黑條紋與黑袖口、胸前小蝴蝶結刺繡、牛仔褲；孟庭腰上綁淺藍襯衫。斜背包 `bag`、墨鏡 `shades` 可選。
+//   婚禮：宣文深色西裝、領結；孟庭白紗＋頭紗（`flow` 讓頭髮、頭紗、裙擺往身後飄，`flare` 讓裙擺張開）。
+//   芃芃：奶油白、額頭與臉頰杏橘色的泰迪熊臉、小三角耳、黑豆眼、奶油色捲尾；QQ：白色、臉頰橘棕、耳尖與額頭中線深色毛尖、常吐舌頭、紅項圈。
 //
 // ================================================================ API 一覽
 //
@@ -201,7 +206,7 @@ export const SKIN = () => mixHex('cream', 'fur', 0.2);
 export function inkFor(paper: boolean, o: Partial<Ink> = {}): Ink {
   const skin = SKIN(), feat = rgba('sepia', 0.9), faint = rgba('sepia', 0.3);
   return paper
-    ? { paper, line: rgba('sepia', 0.94), feat, ground: rgba('paper'), skin, fill: rgba('paper'), dark: rgba('sepia', 0.92), light: rgba('bone'), soft: rgba('sepia', 0.42), faint, ...o }
+    ? { paper, line: rgba('sepia', 0.94), feat, ground: rgba('paper'), skin, fill: rgba('paper'), dark: mixHex('sepia', 'paper', 0.08), light: rgba('bone'), soft: rgba('sepia', 0.42), faint, ...o }
     : { paper, line: rgba('bone', 0.94), feat, ground: rgba('ink'), skin, fill: mixHex('ink2', 'bone', 0.05), dark: rgba('ink'), light: mixHex('bone', 'cream', 0.3), soft: rgba('bone', 0.38), faint, ...o };
 }
 
@@ -586,7 +591,7 @@ const polyOf = (t: { L: Pt[]; R: Pt[] }) => t.L.concat(t.R.slice().reverse());
 // ================================================================ 角色的比例
 export type Who = 'alan' | 'omena';
 export type Hand = 'rest' | 'open' | 'fist' | 'grip' | 'point' | 'peace' | 'flat';
-export type Face = 'smile' | 'grin' | 'o' | 'calm' | 'closed';
+export type Face = 'smile' | 'grin' | 'o' | 'calm' | 'closed' | 'wink';
 
 interface Rig {
   k: number; head: number; neck: number; torso: number;
@@ -600,14 +605,14 @@ interface Rig {
 // 單位 = 這個角色自己的身高。宣文：比較高、肩寬、圓臉；孟庭：纖細（腰、手臂細），頭稍大一點點（比例上）。
 const RIG: Record<Who, Rig> = {
   alan: {
-    k: 1, head: 0.15, neck: 0.04, torso: 0.29, upper: 0.185, fore: 0.15, hand: 0.1,
+    k: 1, head: 0.165, neck: 0.03, torso: 0.29, upper: 0.185, fore: 0.15, hand: 0.1,
     thigh: 0.245, shin: 0.245, ankleH: 0.035, foot: 0.15, heel: 0.035, hipW: 0.052,
-    side: { pelvis: 0.078, waist: 0.07, chest: 0.084, neck: 0.052, neckTop: 0.031 },
-    front: { pelvis: 0.1, waist: 0.094, chest: 0.116, shoulder: 0.13, neck: 0.034 },
+    side: { pelvis: 0.078, waist: 0.07, chest: 0.084, neck: 0.058, neckTop: 0.036 },
+    front: { pelvis: 0.1, waist: 0.094, chest: 0.116, shoulder: 0.13, neck: 0.041 },
     arm: [0.036, 0.027, 0.021], leg: [0.063, 0.044, 0.031],
   },
   omena: {
-    k: 0.93, head: 0.153, neck: 0.043, torso: 0.283, upper: 0.183, fore: 0.148, hand: 0.095,
+    k: 0.93, head: 0.17, neck: 0.034, torso: 0.283, upper: 0.183, fore: 0.148, hand: 0.095,
     thigh: 0.25, shin: 0.247, ankleH: 0.033, foot: 0.14, heel: 0.03, hipW: 0.05,
     side: { pelvis: 0.076, waist: 0.056, chest: 0.069, neck: 0.043, neckTop: 0.026 },
     front: { pelvis: 0.1, waist: 0.07, chest: 0.09, shoulder: 0.103, neck: 0.027 },
@@ -1121,7 +1126,7 @@ export function drawPerson(c: Ctx, who: Who, ps: Pose, o: PersonOpts): Joints {
   const lk: Look = {
     who, om: who === 'omena', wed, ink, front,
     pants: who === 'omena' && wed ? null : wed ? ink.dark : rgba('denim'),
-    flow: o.flow ?? 0, flare: o.flare ?? 0, t, shades: !!o.shades, bag: o.bag ?? (who === 'alan' && !wed), face: o.face ?? ps.face,
+    flow: o.flow ?? 0, flare: o.flare ?? 0, t, shades: !!o.shades, bag: !!o.bag, face: o.face ?? ps.face,
     body: !o.only, armA: o.only ? o.only === 'armA' : !o.hide?.includes('armA'), armB: o.only ? o.only === 'armB' : !o.hide?.includes('armB'),
   };
   const J = front ? solveFront(rg, ps, hp) : solveSide(rg, ps, hp);
@@ -1168,7 +1173,7 @@ function joints(J: Sk, rg: Rig, hp: number, x: number, y: number, sx: number, pe
   const wa = (a: number) => Math.atan2(Math.cos(a), sx * Math.sin(a));
   const rs = front ? rg.front : rg.side;
   const up = vv(PI - J.headAng);
-  const top = at(J.head, up, rg.head * hp * 0.56);
+  const top = at(J.head, up, rg.head * hp * (rg.k === 1 ? 0.78 : 0.62));
   const mouth = front ? at(J.head, up, -rg.head * hp * 0.24) : at2(J.head, up, -rg.head * hp * 0.22, fwd(up), rg.head * hp * 0.3);
   const back = at2(J.waist, J.f1, -rs.waist * hp * 1.6, J.up1, 0.02 * hp);
   const lap = at2(J.pelvis, J.f1, 0.12 * hp, J.up1, 0.06 * hp);
@@ -1187,45 +1192,98 @@ function joints(J: Sk, rg: Rig, hp: number, x: number, y: number, sx: number, pe
   };
 }
 
-// ---------------------------------------------------------------- 衣服的圖案
-/** 條紋 T 恤：垂直於 axis 的粗橫條（墨色）；gap = 條紋週期。 */
-function stripes(p: Pen, poly: Pt[], o: Pt, axis: Pt, gap: number, col: string) {
-  p.clip(poly, (c) => {
-    const nx = -axis.y, ny = axis.x;
-    c.strokeStyle = col;
-    c.lineWidth = gap * 0.44;
-    c.beginPath();
-    for (let k = -14; k <= 14; k++) {
-      const cx = o.x + axis.x * gap * (k + 0.25), cy = o.y + axis.y * gap * (k + 0.25);
-      c.moveTo(cx - nx * gap * 12, cy - ny * gap * 12);
-      c.lineTo(cx + nx * gap * 12, cy + ny * gap * 12);
-    }
-    c.stroke();
-  });
-}
-/** 格紋（gingham）：淡綠底，縱橫兩個方向的半透明色帶，交叉處更深。 */
-function gingham(p: Pen, poly: Pt[], o: Pt, axis: Pt, gap: number) {
-  // 底色用不透明的混色：半透明的話，修圓後自己重疊的地方（下擺轉角）會疊出一塊深色
-  p.fill(poly, p.ink.paper ? mixHex('paper', 'gingham', 0.45) : mixHex('ink2', 'gingham', 0.55));
-  p.clip(poly, (c) => {
-    const nx = -axis.y, ny = axis.x;
-    c.strokeStyle = rgba('gingham', 0.62);
-    c.lineWidth = gap * 0.5;
-    c.beginPath();
-    for (let k = -12; k <= 12; k++) {
-      const ax = o.x + axis.x * gap * k, ay = o.y + axis.y * gap * k;
-      c.moveTo(ax - nx * gap * 12, ay - ny * gap * 12); c.lineTo(ax + nx * gap * 12, ay + ny * gap * 12);
-      const bx = o.x + nx * gap * k, by = o.y + ny * gap * k;
-      c.moveTo(bx - axis.x * gap * 12, by - axis.y * gap * 12); c.lineTo(bx + axis.x * gap * 12, by + axis.y * gap * 12);
-    }
-    c.stroke();
-  });
-}
-/** 上衣的填色（依角色與服裝）。 */
-function topFill(p: Pen, lk: Look, poly: Pt[], o: Pt, axis: Pt, hp: number) {
+// ---------------------------------------------------------------- 衣服
+// 日常服是兩人的情侶裝（照新人給的照片）：白色 T 恤＋黑色圓領滾邊、袖子上兩條黑條紋與黑袖口、胸前一個小小的黑色蝴蝶結刺繡；
+// 孟庭腰上綁一件淺藍襯衫（固定色 shirtblue）。白 T 在暗版面也是白的（衣服是真實的顏色，不跟版面反轉）；黑色細節用 ink.dark。
+const teeColor = (lk: Look) => (lk.ink.paper ? mixHex('bone', 'cream', 0.1) : mixHex('bone', 'cream', 0.2));
+
+/** 上衣的填色（依角色與服裝）＋下半部一點點陰影。 */
+function topFill(p: Pen, lk: Look, poly: Pt[], _o?: Pt, _axis?: Pt, _hp?: number) {
   if (lk.wed) { p.fill(poly, lk.om ? lk.ink.light : lk.ink.dark); return; }
-  if (lk.om) gingham(p, poly, o, axis, 0.022 * hp);
-  else { p.fill(poly, lk.ink.fill); stripes(p, poly, o, axis, 0.028 * hp, lk.ink.line); }
+  p.fill(poly, teeColor(lk));
+  let y0 = Infinity, y1 = -Infinity;
+  for (const q of poly) { y0 = Math.min(y0, q.y); y1 = Math.max(y1, q.y); }
+  shadeY(p, poly, lerp(y0, y1, 0.35), y1, 0.12);
+}
+
+/** 胸前的小蝴蝶結刺繡（黑色細線）：c 中心、s 大小、up 軀幹往上的方向。 */
+function teeBow(p: Pen, c: Pt, up: Pt, s: number, lk: Look) {
+  const f = fwd(up), P = (x: number, y: number) => at2(c, f, x * s, up, y * s);
+  const dk = lk.ink.dark;
+  p.curve([P(0, 0), P(-0.9, 0.55), P(-1.05, -0.2), P(0, 0)], 0.42, dk, false, 0.1);
+  p.curve([P(0, 0), P(0.9, 0.5), P(1.0, -0.25), P(0, 0)], 0.42, dk, false, 0.1);
+  p.line([P(0, 0), P(-0.45, -0.95)], 0.42, dk, 0.3);
+  p.line([P(0, 0), P(0.55, -0.85)], 0.42, dk, 0.3);
+}
+
+/** 黑色圓領滾邊（正面）：畫在脖子之後，蓋在脖子根部。 */
+function collarFront(p: Pen, J: Sk, rg: Rig, lk: Look, hp: number) {
+  if (lk.wed) return;
+  const nw = rg.front.neck * hp * 1.35, f = J.f2;
+  p.curve([at2(J.neck, f, -nw * 1.08, J.up2, 0.006 * hp), at2(J.neck, f, -nw * 0.6, J.up2, -0.022 * hp), at(J.neck, J.up2, -0.03 * hp), at2(J.neck, f, nw * 0.6, J.up2, -0.022 * hp), at2(J.neck, f, nw * 1.08, J.up2, 0.006 * hp)],
+    (0.014 * hp) / p.lw, lk.ink.dark, false, 0.05);
+}
+/** 黑色圓領滾邊（側面）。 */
+function collarSide(p: Pen, J: Sk, rg: Rig, lk: Look, hp: number) {
+  if (lk.wed) return;
+  const rs = rg.side, f = J.f2;
+  p.curve([at2(J.neck, f, -rs.neck * hp * 0.95, J.up2, -0.006 * hp), at2(J.neck, f, 0, J.up2, -0.016 * hp), at2(J.neck, f, rs.neck * hp * 0.95, J.up2, 0.004 * hp)],
+    (0.013 * hp) / p.lw, lk.ink.dark, false, 0.05);
+}
+
+/**
+ * 孟庭腰上綁的淺藍襯衫。back：垂在屁股後面的衣身（畫在腿之前）；front：繞在腰上的一圈、前面的結、兩條垂下來的袖子（畫在上衣之後）。
+ */
+function waistShirt(p: Pen, J: Sk, rg: Rig, lk: Look, hp: number, part: 'back' | 'front') {
+  if (!lk.om || lk.wed) return;
+  const blue = rgba('shirtblue'), fold = mixHex('shirtblue', 'ink', 0.35);
+  const f1 = J.f1, u1 = J.up1, P = J.pelvis;
+  if (lk.front) {
+    const pw = rg.front.pelvis * hp;
+    if (part === 'back') {
+      const drape = smoothPts([at2(P, f1, -pw * 1.08, u1, 0.05 * hp), at2(P, f1, -pw * 1.3, u1, -0.2 * hp), at2(P, f1, 0, u1, -0.24 * hp), at2(P, f1, pw * 1.3, u1, -0.2 * hp), at2(P, f1, pw * 1.08, u1, 0.05 * hp)], true, 3);
+      p.fill(drape, blue);
+      shadeY(p, drape, at(P, u1, 0).y, at(P, u1, -0.24 * hp).y, 0.25);
+      p.line(drape, 0.85, undefined, 0.2, true);
+      return;
+    }
+    const band = smoothPts([at2(P, f1, -pw * 1.1, u1, 0.068 * hp), at2(P, f1, 0, u1, 0.052 * hp), at2(P, f1, pw * 1.1, u1, 0.068 * hp), at2(P, f1, pw * 1.12, u1, 0.018 * hp), at2(P, f1, 0, u1, 0.0), at2(P, f1, -pw * 1.12, u1, 0.018 * hp)], true, 3);
+    p.fill(band, blue);
+    p.line(band, 0.8, undefined, 0.2, true);
+    // 兩條袖子從結垂下來
+    const knot = at2(P, f1, 0.01 * hp, u1, 0.03 * hp);
+    for (const [dx, len, sd] of [[-0.05, 0.17, 1], [0.055, 0.15, 2]] as const) {
+      const sl = tube([knot, at2(P, f1, dx * hp * 0.6, u1, -len * hp * 0.5), at2(P, f1, dx * hp, u1, -len * hp)], [0.022 * hp, 0.02 * hp, 0.016 * hp], 0.05);
+      p.fill(polyOf(sl), blue);
+      p.line(sl.L, 0.75); p.line(sl.R, 0.75);
+      const e0 = sl.L[sl.L.length - 1]!, e1 = sl.R[sl.R.length - 1]!;
+      p.line([e0, e1], 0.6);
+      p.line(sl.C.slice(1, -1), 0.3, fold, 0.5);
+      void sd;
+    }
+    const k = ellipsePts(knot, f1, 0.03 * hp, 0.024 * hp, 14);
+    p.fill(k, blue);
+    p.line(k.concat([k[0]!]), 0.75, undefined, 0.2, true);
+    return;
+  }
+  const pr = rg.side.pelvis * hp;
+  if (part === 'back') {
+    const drape = smoothPts([at2(P, f1, -pr * 0.9, u1, 0.05 * hp), at2(P, f1, -pr * 1.35, u1, -0.22 * hp), at2(P, f1, -pr * 0.1, u1, -0.2 * hp), at2(P, f1, pr * 0.2, u1, 0.02 * hp)], true, 3);
+    p.fill(drape, blue);
+    p.line(drape, 0.85, undefined, 0.2, true);
+    p.curve([at2(P, f1, -pr * 0.8, u1, 0.0), at2(P, f1, -pr * 1.0, u1, -0.14 * hp)], 0.3, fold);
+    return;
+  }
+  const band = tube([at2(P, f1, -pr * 1.08, u1, 0.042 * hp), at2(P, f1, pr * 1.1, u1, 0.036 * hp)], [0.024 * hp, 0.024 * hp], 0);
+  p.fill(polyOf(band), blue);
+  p.line(band.L, 0.8); p.line(band.R, 0.8);
+  const knot = at2(P, f1, pr * 1.12, u1, 0.036 * hp);
+  const sl = tube([knot, at2(P, f1, pr * 1.2, u1, -0.08 * hp), at2(P, f1, pr * 1.15, u1, -0.15 * hp)], [0.02 * hp, 0.018 * hp, 0.015 * hp], 0.05);
+  p.fill(polyOf(sl), blue);
+  p.line(sl.L, 0.75); p.line(sl.R, 0.75);
+  const k = ellipsePts(knot, f1, 0.026 * hp, 0.024 * hp, 14);
+  p.fill(k, blue);
+  p.line(k.concat([k[0]!]), 0.75, undefined, 0.2, true);
 }
 
 // ---------------------------------------------------------------- 手
@@ -1263,12 +1321,16 @@ function drawArm(p: Pen, J: Sk, i: 0 | 1, rg: Rig, lk: Look, ps: Pose, hp: numbe
     const n = { x: -unit(el, wr).y, y: unit(el, wr).x };
     p.line([at(a, n, -r2 * 1.1), at(a, n, r2 * 1.1)], 0.7);
   } else if (!lk.wed) {
-    // 短袖：從肩頭包到上臂一半，圖案跟身體一樣
+    // 短袖：從肩頭包到上臂一半；袖口一圈黑、袖子上兩條黑條紋（情侶 T 的特徵）
     const a = at(sh, u, -r0 * 0.35), b = at(sh, u, dist(sh, el) * 0.46);
     const sl = tube([a, b], [r0 * 1.08, r0 * 1.16], 0.04, 3);
     const shape = sl.L.concat(sl.R.slice().reverse(), [at(sh, u, -r0 * 0.7)]);
     const sm = smoothPts(shape, true, 2);
-    topFill(p, lk, sm, sh, u, hp);
+    topFill(p, lk, sm);
+    const n = { x: -u.y, y: u.x }, dk = lk.ink.dark;
+    for (const k of [-0.3, 0.3]) p.line([at2(sh, u, r0 * 0.2, n, r0 * k), at2(b, u, -0.016 * hp, n, r0 * k * 1.08)], (0.0045 * hp) / p.lw, dk, 0.15);
+    const c = at(b, u, -0.006 * hp);
+    p.line([at(c, n, -r0 * 1.12), at(c, n, r0 * 1.12)], (0.01 * hp) / p.lw, dk, 0.05);
     p.line(sm, 1, undefined, 0.25, true);
   }
   drawHand(p, wr, J.handAng[i], rg.hand * hp, i === 0 ? ps.handA : ps.handB, lk);
@@ -1278,7 +1340,9 @@ function drawArm(p: Pen, J: Sk, i: 0 | 1, rg: Rig, lk: Look, ps: Pose, hp: numbe
 function drawLeg(p: Pen, J: Sk, i: 0 | 1, rg: Rig, lk: Look, hp: number) {
   if (lk.pants) {
     const t = tube([J.hip[i], J.kn[i], J.an[i]], rg.leg.map((r) => r * hp), 0.07);
-    p.fill(polyOf(t), lk.pants);
+    const poly = polyOf(t);
+    p.fill(poly, lk.pants);
+    if (!lk.wed) shadeY(p, poly, J.kn[i].y, J.an[i].y, 0.12);
     p.line(t.L); p.line(t.R);
     // 牛仔褲：外側一條淡淡的車線、褲管反摺
     if (!lk.wed && !lk.front) {
@@ -1343,7 +1407,7 @@ function drawTorsoSide(p: Pen, J: Sk, rg: Rig, lk: Look, hp: number) {
   }
   const shirt = tube([hem, J.waist, J.chest, J.neck], [rs.pelvis * hp * 1.02, rs.waist * hp * 1.08, rs.chest * hp * 1.04, rs.neck * hp], 0.03);
   const poly = polyOf(shirt);
-  topFill(p, lk, poly, J.chest, J.up2, hp);
+  topFill(p, lk, poly);
   p.line(shirt.L); p.line(shirt.R);
   const h0 = shirt.L[0]!, h1 = shirt.R[0]!;
   p.line([h0, h1], 0.85);
@@ -1358,9 +1422,8 @@ function drawTorsoSide(p: Pen, J: Sk, rg: Rig, lk: Look, hp: number) {
     p.line([vT, at2(J.chest, fr, rs.chest * hp * 0.5, J.up2, -0.01 * hp), vB], 0.7, lk.ink.paper ? lk.ink.ground : undefined);
     bowTie(p, at(throat, fr, 0.004 * hp), J.up2, hp, lk);
   } else {
-    // 領口
-    const f = J.f2;
-    p.curve([at2(J.neck, f, rs.neck * hp * 0.85, J.up2, 0.005 * hp), at2(J.neck, f, rs.neck * hp * 0.3, J.up2, -0.022 * hp), at2(J.neck, f, -rs.neck * hp * 0.5, J.up2, -0.006 * hp)], 0.7);
+    // 胸前的小蝴蝶結刺繡
+    teeBow(p, at2(J.chest, J.f2, rs.chest * hp * 0.55, J.up2, lk.om ? 0.02 * hp : -0.02 * hp), J.up2, 0.014 * hp, lk);
   }
   if (lk.bag) {
     // 斜背小包：背帶從肩膀斜過胸口，包包在前面的腰側
@@ -1387,96 +1450,391 @@ function bag(p: Pen, o: Pt, up: Pt, hp: number, lk: Look) {
   p.line([at2(o, f, -w * 0.5, up, hh2 * 0.15), at2(o, f, w * 0.55, up, hh2 * 0.1)], 0.5, lk.ink.paper ? lk.ink.ground : lk.ink.soft);
 }
 
-// ---------------------------------------------------------------- 頭（側面）
-// 頭的輪廓（單位 = 頭高，x 往面向、y 向下，原點在頭的中心）；從後頸繞過頭頂、臉，到下顎角（下顎角 → 後頸是脖子的開口，不畫線）
-const HEAD_SIDE: Record<Who, readonly (readonly [number, number])[]> = {
-  alan: [[-0.2, 0.32], [-0.36, 0.14], [-0.42, -0.08], [-0.36, -0.32], [-0.18, -0.47], [0.08, -0.49], [0.26, -0.38], [0.33, -0.18], [0.34, -0.06],
-    [0.37, 0.02], [0.41, 0.1], [0.35, 0.15], [0.35, 0.2], [0.33, 0.25], [0.31, 0.33], [0.25, 0.42], [0.1, 0.45], [-0.04, 0.36]],
-  omena: [[-0.2, 0.32], [-0.36, 0.14], [-0.41, -0.08], [-0.35, -0.32], [-0.18, -0.46], [0.06, -0.48], [0.24, -0.38], [0.31, -0.18], [0.32, -0.06],
-    [0.34, 0.02], [0.37, 0.09], [0.32, 0.14], [0.32, 0.19], [0.3, 0.24], [0.28, 0.32], [0.21, 0.41], [0.08, 0.43], [-0.04, 0.35]],
-};
-// 頭髮（側面）：宣文短髮（前面一撮翹起）；孟庭及肩（有薄瀏海，下半截會被甩）
-const HAIR_SIDE: Record<Who, readonly (readonly [number, number])[]> = {
-  alan: [[0.28, -0.3], [0.35, -0.42], [0.24, -0.55], [0.02, -0.6], [-0.22, -0.55], [-0.4, -0.38], [-0.46, -0.12], [-0.42, 0.1], [-0.33, 0.24],
-    [-0.22, 0.2], [-0.16, 0.0], [-0.04, -0.1], [0.05, -0.06], [0.08, 0.05], [0.12, -0.14], [0.19, -0.27]],
-  omena: [[0.33, -0.2], [0.32, -0.34], [0.2, -0.5], [-0.02, -0.57], [-0.26, -0.5], [-0.43, -0.3], [-0.49, -0.02], [-0.48, 0.34], [-0.47, 0.66],
-    [-0.42, 0.88], [-0.3, 0.97], [-0.2, 0.9], [-0.13, 0.66], [-0.08, 0.36], [0.02, 0.1], [0.08, -0.1], [0.2, -0.14], [0.31, -0.11]],
-};
+// ---------------------------------------------------------------- 頭（照新人給的照片抓特徵）
+// 宣文：圓而飽滿的臉、細長的小眼睛、平直的粗眉、刺刺往上翹的短黑髮（兩側短）、耳朵露出、人中與下巴淡淡的鬍渣。
+// 孟庭：圓臉、比較大的眼睛（有亮點與睫毛）、臉頰淡紅暈、紅棕色（auburn）過肩長髮、髮尾微捲、空氣感的齊瀏海蓋到眉毛；會眨一隻眼（face 'wink'）。
+// 單位 = 頭高 H，原點在頭的中心；側面 x 往面向、y 向下；正面 x 往畫面右。
+
+/** 臉頰紅暈、舌頭、嘴唇：從固定色 collar（紅）混出來的淡粉紅（不跟主題換）。 */
+const BLUSH = () => mixHex('collar', 'cream', 0.5);
+/** 狗的舌頭（粉紅）。 */
+export const TONGUE = () => mixHex('collar', 'bone', 0.4);
+const LIPS = () => mixHex('collar', 'cream', 0.3);
 
 function headXf(J: Sk, H: number) {
   const a = J.headAng, cs = Math.cos(a), sn = Math.sin(a);
   return (x: number, y: number): Pt => ({ x: J.head.x + (x * cs - y * sn) * H, y: J.head.y + (x * sn + y * cs) * H });
 }
 
+/** 頭髮的顏色：宣文黑髮（ink.dark）、孟庭紅棕色；髮絲線用同色系深一點（黑髮在暗版面用淡灰的髮絲線才看得到層次）。 */
+function hairInk(lk: Look) {
+  return lk.om
+    ? { fill: rgba('auburn'), strand: mixHex('auburn', 'ink', 0.5), shine: mixHex('auburn', 'cream', 0.35), fade: rgba('auburn') }
+    : { fill: lk.ink.dark, strand: lk.ink.paper ? mixHex('sepia', 'paper', 0.45) : mixHex('ink', 'bone', 0.32), shine: lk.ink.paper ? mixHex('sepia', 'paper', 0.3) : mixHex('ink', 'bone', 0.22), fade: lk.ink.paper ? mixHex('sepia', 'paper', 0.42) : mixHex('ink', 'bone', 0.2) };
+}
+
+/** 在 poly 裡面由上往下疊一層淡淡的陰影（平塗＋一點點陰影的動畫感）；from／to 是陰影開始與最深的 y（畫面座標）。 */
+function shadeY(p: Pen, poly: Pt[], y0: number, y1: number, a = 0.14) {
+  p.clip(poly, (c) => {
+    const g = c.createLinearGradient(0, y0, 0, y1);
+    g.addColorStop(0, rgba('sepia', 0));
+    g.addColorStop(1, rgba('sepia', a));
+    c.fillStyle = g;
+    c.fillRect(-1e4, Math.min(y0, y1), 2e4, Math.abs(y1 - y0) + 1e4);
+  });
+}
+
+// 鬍渣的位置（頭的局部座標；固定的亂數，每格都一樣、不抖）
+const STUB_F: [number, number][] = [], STUB_S: [number, number][] = [];
+for (let i = 0; i < 34; i++) {
+  const u = hh(i, 71, 1), v = hh(i, 71, 2);
+  if (i < 13) {
+    STUB_F.push([-0.085 + 0.17 * u, 0.215 + 0.035 * v]);
+    STUB_S.push([0.3 + 0.065 * u, 0.2 + 0.03 * v]);
+  } else {
+    const x = -0.12 + 0.24 * u;
+    STUB_F.push([x, 0.375 + 0.075 * v - 1.2 * x * x]);
+    STUB_S.push([0.2 + 0.13 * u, 0.36 + 0.07 * v]);
+  }
+}
+
+type EyeKind = 'open' | 'smile' | 'closed';
+/**
+ * 一隻眼睛：(cx, cy) 中心、w 寬、h 高（頭的單位）；out = 眼尾的方向（+1 往 x+）。
+ * open：黑眼珠（大眼有亮點）＋粗的上眼皮（大眼眼尾一根睫毛）＋淡淡的下眼皮；smile：笑瞇的 ∩；closed：閉眼的 ∪（大眼有睫毛）。
+ */
+function eye(p: Pen, X: (x: number, y: number) => Pt, H: number, cx: number, cy: number, w: number, h: number, out: number, kind: EyeKind, big: boolean, lk: Look) {
+  const fe = lk.ink.feat;
+  const P = (dx: number, dy: number) => X(cx + out * dx, cy + dy);
+  if (kind === 'smile') { p.curve([P(-w / 2, h * 0.35), P(0, -h * 0.4), P(w / 2, h * 0.3)], big ? 0.72 : 0.7, fe); return; }
+  if (kind === 'closed') {
+    p.curve([P(-w / 2, -h * 0.05), P(0, h * 0.45), P(w / 2, -h * 0.1)], big ? 0.72 : 0.62, fe);
+    if (big) for (const k of [0.12, 0.34]) p.line([P(w * k, h * 0.38), P(w * k + w * 0.07, h * 0.72)], 0.36, fe);
+    return;
+  }
+  const r = h * (big ? 0.6 : 0.55);
+  p.dot(P(w * 0.02, h * 0.1), r * H, fe);
+  if (big) p.dot(P(-w * 0.1, -h * 0.08), r * H * 0.32, rgba('bone'));
+  p.curve([P(-w / 2, h * 0.25), P(-w * 0.12, -h * 0.5), P(w * 0.25, -h * 0.45), P(w / 2, h * 0.08)], big ? 0.82 : 0.76, fe);
+  if (big) p.line([P(w / 2 - w * 0.02, h * 0.06), P(w / 2 + w * 0.15, -h * 0.32)], 0.5, fe);
+  p.curve([P(-w * 0.34, h * 0.48), P(0, h * 0.64), P(w * 0.4, h * 0.4)], 0.3, lk.ink.faint);
+}
+
+/** 臉上的表情 → 左右兩隻眼睛的樣子（wink：畫面左邊那隻閉起來）。 */
+function eyeKinds(lk: Look): [EyeKind, EyeKind] {
+  const f = lk.face;
+  if (f === 'closed') return ['closed', 'closed'];
+  if (f === 'grin') return ['smile', 'smile'];
+  if (f === 'wink') return ['closed', 'open'];
+  return ['open', 'open'];
+}
+
 function drawNeck(p: Pen, J: Sk, rg: Rig, hp: number, lk: Look, front: boolean) {
   const rs = front ? rg.front : rg.side;
   const r0 = front ? rs.neck * hp * 1.1 : rg.side.neck * hp * 0.62, r1 = front ? rs.neck * hp : rg.side.neckTop * hp;
-  const t = tube([at(J.neck, J.up2, -0.01 * hp), at(J.neckTop, vv(PI - J.headAng), 0.015 * hp)], [r0, r1], 0);
-  p.fill(polyOf(t), lk.ink.skin);
+  const top = at(J.neckTop, vv(PI - J.headAng), 0.015 * hp);
+  const t = tube([at(J.neck, J.up2, -0.01 * hp), top], [r0, r1], 0);
+  const poly = polyOf(t);
+  p.fill(poly, lk.ink.skin);
+  // 下巴下面的影子
+  shadeY(p, poly, J.neck.y - 0.01 * hp, top.y, 0.2);
   p.line(t.L, 0.85); p.line(t.R, 0.85);
 }
+
+// ---- 側面
+// 頭的輪廓：從後頸繞過頭頂、額頭、鼻子、嘴、下巴，到下顎角（下顎角 → 後頸是脖子的開口，不畫線）
+const HEAD_SIDE: Record<Who, readonly (readonly [number, number])[]> = {
+  alan: [[-0.22, 0.34], [-0.38, 0.16], [-0.44, -0.06], [-0.38, -0.3], [-0.2, -0.46], [0.06, -0.5], [0.26, -0.4], [0.35, -0.22], [0.37, -0.08],
+    [0.4, 0.02], [0.46, 0.11], [0.39, 0.165], [0.385, 0.21], [0.365, 0.26], [0.355, 0.31], [0.33, 0.39], [0.22, 0.47], [0.06, 0.475], [-0.06, 0.38]],
+  omena: [[-0.2, 0.34], [-0.36, 0.16], [-0.42, -0.06], [-0.36, -0.3], [-0.18, -0.46], [0.06, -0.49], [0.25, -0.4], [0.33, -0.22], [0.35, -0.08],
+    [0.37, 0.02], [0.41, 0.09], [0.355, 0.14], [0.35, 0.19], [0.34, 0.24], [0.33, 0.3], [0.28, 0.39], [0.18, 0.45], [0.05, 0.45], [-0.06, 0.37]],
+};
+// 宣文的頭頂（側面）：圓弧（頭形的橢圓）上面幾撮不規則的凸起（往前一點）
+const SIDE_TUFTS: readonly (readonly [number, number, number, number])[] = [[0.2, 0.045, 0.07, 0.4], [0.03, 0.06, 0.09, 0.45], [-0.18, 0.04, 0.07, 0.35], [-0.34, 0.028, 0.06, 0.3]];
+function alanTopS(x: number) {
+  const e = (x + 0.05) / 0.43;
+  let y = -0.1 - 0.62 * Math.sqrt(Math.max(0, 1 - e * e));
+  for (const [c, a, w, lean] of SIDE_TUFTS) { const z = (c - x) / w, zz = z < 0 ? z * (1 - lean) : z * (1 + lean); y -= a * Math.exp(-zz * zz * 2.2); }
+  return y;
+}
+// 頭髮：宣文往上抓的短髮（圓弧外形、幾撮翹起、後腦與耳上推短）；孟庭有瀏海、長到背中間、髮尾往外翹一點
+const HAIR_SIDE: Record<Who, readonly (readonly [number, number])[]> = {
+  alan: (() => {
+    const out: [number, number][] = [[0.3, -0.3], [0.37, -0.39], [0.4, -0.5], [0.33, -0.51]];
+    for (let i = 0; i <= 30; i++) { const x = 0.28 - (0.73 * i) / 30; out.push([x, alanTopS(x)]); }
+    return out.concat([[-0.47, -0.12], [-0.45, 0.06], [-0.38, 0.17], [-0.28, 0.14], [-0.2, 0.02], [-0.12, -0.1], [-0.02, -0.14], [0.06, -0.1], [0.1, 0.02], [0.14, -0.14], [0.22, -0.24]]);
+  })(),
+  omena: [[0.37, -0.07], [0.39, -0.2], [0.33, -0.4], [0.15, -0.55], [-0.1, -0.58], [-0.33, -0.49], [-0.47, -0.28], [-0.52, 0.0], [-0.54, 0.4], [-0.56, 0.8],
+    [-0.56, 1.2], [-0.52, 1.52], [-0.42, 1.65], [-0.28, 1.6], [-0.24, 1.44], [-0.3, 1.3], [-0.26, 1.0], [-0.2, 0.6], [-0.14, 0.3], [-0.04, 0.08], [0.05, -0.04],
+    [0.15, -0.08], [0.23, -0.05], [0.3, -0.09]],
+};
 
 function drawHeadSide(p: Pen, J: Sk, rg: Rig, lk: Look, hp: number) {
   const H = rg.head * hp, X = headXf(J, H);
   const outline = HEAD_SIDE[lk.who].map(([x, y]) => X(x, y));
-  const sm = smoothPts(outline, false, 3);
-  p.fill(smoothPts(outline, true, 3), lk.ink.skin);
-  p.line(sm, 1, undefined, 0.45);
+  const face = smoothPts(outline, true, 3);
+  p.fill(face, lk.ink.skin);
+  p.line(smoothPts(outline, false, 3), 1, undefined, 0.45);
   const om = lk.om, f = lk.face, fe = lk.ink.feat;
-  // 耳朵（宣文；孟庭的被頭髮蓋住）
-  if (!om) p.curve([X(0.0, -0.06), X(-0.08, -0.09), X(-0.12, 0.0), X(-0.08, 0.1), X(-0.01, 0.1)], 0.62, fe);
-  // 眼睛：宣文笑起來瞇眼（∩），孟庭是點＋一根睫毛
-  const ex = 0.2, ey = -0.02;
-  if (f === 'closed') p.curve([X(ex - 0.05, ey - 0.01), X(ex, ey + 0.025), X(ex + 0.05, ey - 0.01)], 0.6, fe);
-  else if (!om && (f === 'smile' || f === 'grin') || om && f === 'grin') p.curve([X(ex - 0.05, ey + 0.01), X(ex, ey - 0.03), X(ex + 0.05, ey + 0.01)], 0.64, fe);
-  else {
-    p.dot(X(ex + 0.01, ey), H * 0.028, fe);
-    if (om) p.line([X(ex + 0.035, ey - 0.03), X(ex + 0.08, ey - 0.055)], 0.45, fe);
+  // 耳朵（宣文露出來；孟庭的被頭髮蓋住）
+  if (!om) {
+    const ear = [X(0.02, -0.09), X(-0.07, -0.12), X(-0.11, 0.0), X(-0.08, 0.13), X(-0.01, 0.15), X(0.04, 0.09)];
+    p.fill(smoothPts(ear, true, 3), lk.ink.skin);
+    p.curve(ear, 0.72);
+    p.curve([X(-0.02, -0.05), X(-0.07, 0.0), X(-0.04, 0.08)], 0.4, fe);
   }
-  // 眉
-  p.curve(om ? [X(0.14, -0.12), X(0.2, -0.145), X(0.27, -0.13)] : [X(0.13, -0.115), X(0.2, -0.135), X(0.27, -0.12)], om ? 0.5 : 0.62, fe);
+  // 紅暈（孟庭）
+  if (om) p.fill(ellipsePts(X(0.17, 0.16), vv(PI / 2 - J.headAng), 0.075 * H, 0.045 * H, 18), BLUSH(), 0.55);
+  // 眼睛、眉毛（側面只看得到靠鏡頭的那一隻，wink 也閉這隻）
+  const k = eyeKinds(lk);
+  eye(p, X, H, om ? 0.235 : 0.245, om ? 0.01 : 0.0, om ? 0.12 : 0.105, om ? 0.075 : 0.05, -1, k[0] === 'closed' || k[1] === 'closed' ? 'closed' : k[0], om, lk);
+  if (om) p.curve([X(0.17, -0.1), X(0.23, -0.12), X(0.3, -0.105)], 0.45, fe);
+  else p.line([X(0.17, -0.11), X(0.24, -0.118), X(0.33, -0.112)], 1.05, fe, 0.25);
+  // 鼻孔（宣文的鼻子比較寬）
+  p.curve([X(om ? 0.35 : 0.38, om ? 0.13 : 0.145), X(om ? 0.33 : 0.35, om ? 0.12 : 0.13), X(om ? 0.33 : 0.35, om ? 0.105 : 0.11)], 0.4, fe);
+  // 鬍渣（宣文）
+  if (!om) { const sc = rgba('sepia', 0.2); for (const [x, y] of STUB_S) p.dot(X(x, y), 0.0038 * H, sc); }
   // 嘴
   if (f === 'grin') {
-    const m = [X(0.34, 0.2), X(0.22, 0.2), X(0.27, 0.27), X(0.32, 0.26)];
+    const m = [X(0.37, 0.235), X(0.25, 0.24), X(0.3, 0.3), X(0.35, 0.29)];
     p.fill(smoothPts(m, true, 2), fe);
   } else if (f === 'o') {
     const m: Pt[] = [];
-    for (let k = 0; k <= 10; k++) m.push(X(0.31 + Math.cos((k / 10) * TAU) * 0.035, 0.23 + Math.sin((k / 10) * TAU) * 0.04));
+    for (let i = 0; i <= 10; i++) m.push(X(0.33 + Math.cos((i / 10) * TAU) * 0.03, 0.255 + Math.sin((i / 10) * TAU) * 0.035));
     p.line(m, 0.55, fe, 0.2, true);
-  } else if (f === 'calm') p.line([X(0.32, 0.225), X(0.26, 0.225)], 0.55, fe);
-  else p.curve([X(0.33, 0.215), X(0.29, 0.235), X(0.24, 0.21)], 0.6, fe);
+  } else if (f === 'calm') p.line([X(0.35, 0.255), X(0.29, 0.255)], 0.55, fe);
+  else {
+    if (om) p.fill(smoothPts([X(0.345, 0.232), X(0.3, 0.25), X(0.34, 0.268)], true, 2), LIPS(), 0.8);
+    p.curve([X(om ? 0.345 : 0.37, 0.25), X(om ? 0.31 : 0.335, 0.265), X(om ? 0.27 : 0.29, 0.248)], 0.6, fe);
+  }
   if (lk.shades) {
-    const g = [X(0.13, -0.08), X(0.29, -0.08), X(0.28, 0.03), X(0.15, 0.04)];
+    const g = [X(0.15, -0.08), X(0.31, -0.08), X(0.3, 0.03), X(0.17, 0.04)];
     p.fill(g, lk.ink.dark);
     p.line(g.concat([g[0]!]), 0.6, fe, 0.2, true);
-    p.line([X(0.13, -0.06), X(-0.04, -0.04)], 0.6, fe);
+    p.line([X(0.15, -0.06), X(-0.02, -0.04)], 0.6, fe);
   }
+}
+
+/**
+ * 一撮翹起來的頭髮：根部兩點 (x0, y0)、(x1, y1) 剛好在頭髮的外緣上，髮尾在 (tx, ty)，bend 讓它往一邊彎。
+ * 先填色（往下多蓋一點，把外緣那段線蓋掉），再只描兩側的邊，看起來是從頭髮裡長出來的。
+ */
+function hairLock(p: Pen, X: (x: number, y: number) => Pt, x0: number, y0: number, x1: number, y1: number, tx: number, ty: number, bend: number, hc: { fill: string; strand: string }) {
+  const m0 = [(x0 + tx) / 2 - 0.012 + bend, (y0 + ty) / 2], m1 = [(x1 + tx) / 2 + 0.01 + bend * 1.25, (y1 + ty) / 2 + 0.015];
+  const L = [X(x0, y0), X(m0[0]!, m0[1]!), X(tx, ty)], R = [X(tx, ty), X(m1[0]!, m1[1]!), X(x1, y1)];
+  p.fill(smoothPts(L.concat(R.slice(1), [X(x1 - 0.01, y1 + 0.05), X(x0 + 0.01, y0 + 0.05)]), true, 3), hc.fill);
+  p.curve(L, 0.85, undefined, false, 0.45);
+  p.curve(R, 0.85, undefined, false, 0.45);
+  p.curve([X((x0 + x1) / 2, (y0 + y1) / 2 + 0.03), X((x0 + x1) / 2 + bend * 0.6, ((y0 + y1) / 2 + ty) / 2), X(tx - (tx - x0) * 0.12, ty + 0.05)], 0.35, hc.strand, false, 0.6);
 }
 
 function drawHairSide(p: Pen, J: Sk, rg: Rig, lk: Look, hp: number) {
   const H = rg.head * hp, X = headXf(J, H);
-  const fl = lk.flow, t = lk.t;
-  // 孟庭的頭髮下半截：被甩（flow）＋ 一點點隨時間的飄動；頭往後仰時頭髮往下垂（重力）
+  const fl = lk.flow, t = lk.t, hc = hairInk(lk);
+  // 孟庭的長髮：下半截被甩（flow）＋一點點隨時間的飄動；頭往後仰時頭髮往下垂（重力）
   const g = Math.sin(J.headAng);
-  const pts = HAIR_SIDE[lk.who].map(([x, y]) => {
+  const Y = (x: number, y: number) => {
     if (!lk.om || y < 0.3) return X(x, y);
-    const w = clamp((y - 0.3) / 0.7);
-    const sway = -fl * 0.35 * w + Math.sin(t * 2.3 + y * 3) * 0.02 * w;
-    const base = X(x + sway, y);
-    // 頭倒過來時（下腰）末端往下掉
-    return { x: base.x, y: base.y + Math.max(0, -g) * 0.3 * H * w };
+    const w = clamp((y - 0.3) / 1.3);
+    const base = X(x - fl * 0.5 * w + Math.sin(t * 2.3 + y * 2) * 0.025 * w, y);
+    return { x: base.x, y: base.y + Math.max(0, -g) * 0.4 * H * w };
+  };
+  const pts = HAIR_SIDE[lk.who].map(([x, y]) => Y(x, y));
+  const sm = smoothPts(pts, true, lk.om ? 3 : 2);
+  p.fill(sm, hc.fill);
+  // 陰影：頭髮下半截暗一點
+  if (lk.om) shadeY(p, sm, Y(0, 0.3).y, Y(0, 1.5).y, 0.22);
+  p.line(sm, 1, undefined, 0.3, true);
+  if (lk.om) {
+    p.curve([X(0.06, -0.52), X(-0.18, -0.5), X(-0.36, -0.34)], 0.9, hc.shine);
+    p.curve([X(0.2, -0.5), X(0.3, -0.3), X(0.34, -0.12)], 0.4, hc.strand);
+    p.curve([X(0.1, -0.5), X(0.2, -0.3), X(0.22, -0.1)], 0.35, hc.strand);
+    p.curve([Y(-0.05, -0.54), Y(-0.3, -0.3), Y(-0.42, 0.3), Y(-0.44, 1.0), Y(-0.4, 1.4)], 0.4, hc.strand);
+    p.curve([Y(-0.22, -0.48), Y(-0.46, -0.1), Y(-0.5, 0.7), Y(-0.48, 1.3)], 0.35, hc.strand);
+  } else {
+    // 耳朵上面與後腦推短：淡一點
+    p.clip(sm, (c) => {
+      softEllC(c, X(-0.1, -0.06), 0.24 * H, 0.16 * H, J.headAng, hc.fade);
+      softEllC(c, X(-0.42, 0.04), 0.1 * H, 0.18 * H, J.headAng, hc.fade);
+    }, 0.8);
+    // 幾撮翹起來的頭髮（往上往前）與髮絲
+    hairLock(p, X, 0.06, alanTopS(0.06), 0.2, alanTopS(0.2), 0.24, alanTopS(0.13) - 0.085, 0.025, hc);
+    hairLock(p, X, -0.18, alanTopS(-0.18), -0.05, alanTopS(-0.05), -0.06, alanTopS(-0.11) - 0.065, 0.02, hc);
+    for (const [a, b] of [[[0.26, -0.36], [0.33, -0.48]], [[0.12, -0.38], [0.2, -0.56]], [[-0.02, -0.4], [0.02, -0.6]], [[-0.2, -0.38], [-0.2, -0.54]]] as const) {
+      p.curve([X(a[0], a[1]), X((a[0] + b[0]) / 2 - 0.01, (a[1] + b[1]) / 2), X(b[0], b[1])], 0.4, hc.strand, false, 0.6);
+    }
+  }
+}
+
+// ---- 正面
+const FACE_FRONT: Record<Who, { rx: number; jaw: number }> = { alan: { rx: 0.45, jaw: 0.9 }, omena: { rx: 0.43, jaw: 0.82 } };
+// 宣文：刺刺往上翹的頭髮（頭頂最高、兩側短，額頭露出來）
+/** 宣文的頭頂（正面）：圓弧＋幾撮不規則、往右邊斜的凸起 [中心 x, 高, 寬, 斜]。 */
+const FRONT_TUFTS: readonly (readonly [number, number, number, number])[] = [[-0.3, 0.03, 0.07, 0.3], [-0.14, 0.05, 0.085, 0.4], [0.05, 0.065, 0.09, 0.45], [0.25, 0.045, 0.075, 0.4], [0.37, 0.025, 0.06, 0.3]];
+function alanTopF(x: number) {
+  let y = -0.35 - 0.36 * Math.sqrt(Math.max(0, 1 - (x / 0.47) ** 2)) - 0.03 * Math.max(0, 1 - Math.abs(x - 0.05) / 0.3);
+  for (const [c, a, w, lean] of FRONT_TUFTS) { const z = (x - c) / w, zz = z < 0 ? z * (1 - lean) : z * (1 + lean); y -= a * Math.exp(-zz * zz * 2.2); }
+  return y;
+}
+// 宣文（正面）：兩側與鬢角短、耳上推短，髮際線平、額頭露出來，頭頂圓弧、幾撮往上往前翹
+const HAIR_FRONT_ALAN: readonly (readonly [number, number])[] = (() => {
+  const top: [number, number][] = [];
+  for (let i = 0; i <= 44; i++) { const x = -0.44 + (0.89 * i) / 44; top.push([x, alanTopF(x)]); }
+  return [[-0.44, -0.02], [-0.47, -0.22], [-0.46, -0.4] as [number, number], ...top, [0.47, -0.4], [0.48, -0.22], [0.45, -0.02],
+    [0.42, -0.14], [0.39, -0.28], [0.3, -0.33], [0.18, -0.35], [0.06, -0.34], [-0.06, -0.36], [-0.18, -0.34], [-0.3, -0.32], [-0.39, -0.26], [-0.42, -0.14]];
+})();
+// 孟庭：身體後面的長髮（過肩、髮尾往外翹）
+const HAIR_FRONT_OM_BACK: readonly (readonly [number, number])[] = [[-0.5, -0.2], [-0.44, -0.5], [0, -0.64], [0.44, -0.5], [0.5, -0.2], [0.58, 0.2], [0.62, 0.55],
+  [0.69, 0.9], [0.66, 1.2], [0.75, 1.45], [0.65, 1.6], [0.53, 1.52], [0.48, 1.3], [0.0, 1.25], [-0.48, 1.3], [-0.53, 1.52], [-0.65, 1.6], [-0.75, 1.45], [-0.66, 1.2],
+  [-0.69, 0.9], [-0.62, 0.55], [-0.58, 0.2]];
+// 孟庭：頭頂＋臉兩側垂下來的頭髮（有波浪與份量、在臉頰與肩膀前面、髮尾往內捲）；瀏海另外一撮一撮畫
+const HAIR_FRONT_OM_TOP: readonly (readonly [number, number])[] = [[-0.36, 1.1], [-0.5, 1.06], [-0.6, 0.9], [-0.58, 0.7], [-0.62, 0.5], [-0.58, 0.25], [-0.56, 0.0],
+  [-0.52, -0.28], [-0.4, -0.54], [0, -0.67], [0.4, -0.54], [0.52, -0.28], [0.56, 0.0], [0.58, 0.25], [0.62, 0.5], [0.58, 0.7], [0.6, 0.9], [0.5, 1.06], [0.36, 1.1],
+  [0.34, 1.0], [0.42, 0.9], [0.44, 0.66], [0.4, 0.42], [0.41, 0.2], [0.36, -0.02], [0.31, -0.3], [0.12, -0.37], [0, -0.38], [-0.12, -0.37], [-0.31, -0.3],
+  [-0.36, -0.02], [-0.41, 0.2], [-0.4, 0.42], [-0.44, 0.66], [-0.42, 0.9], [-0.34, 1.0]];
+/** 空氣瀏海：每一撮 [根部中心 x, 寬, 髮尾 y, 髮尾往旁邊偏]（不規則，中間有縫看得到額頭）。 */
+const BANGS: readonly (readonly [number, number, number, number])[] = [[-0.3, 0.1, -0.1, 0.03], [-0.2, 0.11, -0.055, 0.035], [-0.11, 0.08, -0.085, -0.01],
+  [-0.02, 0.12, -0.05, 0.02], [0.08, 0.09, -0.08, -0.02], [0.17, 0.11, -0.05, -0.035], [0.27, 0.1, -0.1, -0.03]];
+
+function faceOutline(who: Who, X: (x: number, y: number) => Pt): Pt[] {
+  const { rx, jaw } = FACE_FRONT[who];
+  const out: Pt[] = [];
+  for (let k = 0; k < 28; k++) {
+    const a = (k / 28) * TAU;
+    const c = Math.cos(a), s = Math.sin(a);
+    // 下半臉收成下巴（圓臉收得少），臉頰飽滿
+    const w = s > 0 ? lerp(1, jaw, s * s * s) * (1 + 0.04 * Math.sin(PI * s)) : 1;
+    out.push(X(c * rx * w, s * 0.5));
+  }
+  return out;
+}
+
+function drawHeadFront(p: Pen, J: Sk, rg: Rig, lk: Look, hp: number) {
+  const H = rg.head * hp, X = headXf(J, H);
+  const om = lk.om, f = lk.face, fe = lk.ink.feat;
+  // 宣文的耳朵露在兩側
+  if (!om) {
+    for (const s of [-1, 1]) {
+      const ear = [X(s * 0.4, -0.1), X(s * 0.52, -0.14), X(s * 0.57, 0.02), X(s * 0.51, 0.17), X(s * 0.42, 0.15)];
+      p.fill(smoothPts(ear, true, 3), lk.ink.skin);
+      p.curve(ear, 0.72);
+      p.curve([X(s * 0.47, -0.06), X(s * 0.52, 0.02), X(s * 0.47, 0.1)], 0.38, fe);
+    }
+  }
+  const face = smoothPts(faceOutline(lk.who, X), true, 2);
+  p.fill(face, lk.ink.skin);
+  // 陰影：頭髮下緣與下巴兩側淡淡的暗
+  shadeY(p, face, X(0, 0.22).y, X(0, 0.55).y, 0.1);
+  p.line(face, 1, undefined, 0.2, true);
+  // 紅暈（孟庭）
+  if (om) for (const s of [-1, 1]) p.fill(ellipsePts(X(s * 0.245, 0.175), vv(PI / 2 - J.headAng), 0.08 * H, 0.046 * H, 18), BLUSH(), 0.6);
+  // 眼睛與眉毛
+  const k = eyeKinds(lk);
+  for (const [i, s] of [[0, -1], [1, 1]] as const) {
+    if (om) eye(p, X, H, s * 0.165, 0.045, 0.15, 0.075, s, k[i], true, lk);
+    else {
+      eye(p, X, H, s * 0.175, 0.02, 0.145, 0.052, s, k[i], false, lk);
+      if (k[i] === 'open') p.curve([X(s * 0.12, -0.012), X(s * 0.17, -0.03), X(s * 0.235, -0.012)], 0.3, lk.ink.faint);
+    }
+    if (om) p.curve([X(s * 0.1, -0.06), X(s * 0.17, -0.08), X(s * 0.245, -0.066)], 0.45, fe);
+    else p.line([X(s * 0.075, -0.098), X(s * 0.17, -0.108), X(s * 0.275, -0.1)], 1.25, fe, 0.3);
+  }
+  // 鼻子：宣文寬一點、孟庭小小一筆
+  if (om) p.curve([X(-0.028, 0.168), X(0, 0.186), X(0.028, 0.168)], 0.45, fe);
+  else {
+    for (const s of [-1, 1]) p.curve([X(s * 0.06, 0.12), X(s * 0.072, 0.158), X(s * 0.045, 0.178)], 0.48, fe);
+    p.curve([X(-0.03, 0.184), X(0, 0.19), X(0.03, 0.184)], 0.42, fe);
+  }
+  // 鬍渣（宣文）
+  if (!om) {
+    p.fill(smoothPts([X(-0.1, 0.212), X(0, 0.198), X(0.1, 0.212), X(0.085, 0.248), X(0, 0.238), X(-0.085, 0.248)], true, 2), rgba('sepia', 0.08));
+    p.fill(ellipsePts(X(0, 0.41), vv(PI / 2 - J.headAng), 0.1 * H, 0.05 * H, 18), rgba('sepia', 0.07));
+    const sc = rgba('sepia', 0.2);
+    for (const [x, y] of STUB_F) p.dot(X(x, y), 0.0038 * H, sc);
+  }
+  // 嘴
+  if (f === 'grin') {
+    const m = [X(-0.11, 0.27), X(0.11, 0.27), X(0.07, 0.33), X(0, 0.35), X(-0.07, 0.33)];
+    p.fill(smoothPts(m, true, 2), fe);
+    if (om) p.fill(smoothPts([X(-0.04, 0.33), X(0.04, 0.33), X(0, 0.35)], true, 2), LIPS());
+  } else if (f === 'o') {
+    const m: Pt[] = [];
+    for (let i = 0; i <= 10; i++) m.push(X(Math.cos((i / 10) * TAU) * 0.04, 0.29 + Math.sin((i / 10) * TAU) * 0.045));
+    p.line(m, 0.55, fe, 0.2, true);
+  } else if (f === 'calm') p.line([X(-0.06, 0.29), X(0.06, 0.29)], 0.55, fe);
+  else if (om) {
+    // 孟庭：小小的嘟嘴笑（嘴唇淡粉紅）；wink 時嘴角往一邊斜
+    const sk = f === 'wink' ? 0.012 : 0;
+    p.fill(smoothPts([X(-0.07, 0.29 - sk), X(0, 0.28), X(0.07, 0.29 + sk), X(0.045, 0.312), X(0, 0.322), X(-0.045, 0.312)], true, 2), LIPS(), 0.85);
+    p.curve([X(-0.07, 0.29 - sk), X(0, 0.302), X(0.07, 0.29 + sk)], 0.55, fe);
+  } else {
+    // 宣文：閉著嘴的淺笑、下唇一小筆
+    p.curve([X(-0.09, 0.282), X(0, 0.302), X(0.09, 0.282)], 0.62, fe);
+    p.curve([X(-0.035, 0.335), X(0, 0.34), X(0.035, 0.335)], 0.32, lk.ink.faint);
+  }
+  if (lk.shades) {
+    for (const s of [-1, 1]) {
+      const g = [X(s * 0.05, -0.06), X(s * 0.28, -0.06), X(s * 0.26, 0.07), X(s * 0.07, 0.07)];
+      p.fill(g, lk.ink.dark);
+      p.line(g.concat([g[0]!]), 0.6, fe, 0.2, true);
+    }
+    p.line([X(-0.05, -0.04), X(0.05, -0.04)], 0.6, fe);
+  }
+  const hc = hairInk(lk);
+  if (!om) {
+    const hr = smoothPts(HAIR_FRONT_ALAN.map(([x, y]) => X(x, y)), true, 3);
+    p.fill(hr, hc.fill);
+    // 兩側耳上推短：淡一點
+    p.clip(hr, (c) => {
+      for (const sg of [-1, 1]) softEllC(c, X(sg * 0.47, -0.08), 0.13 * H, 0.2 * H, J.headAng, hc.fade);
+    }, 0.8);
+    p.line(hr, 1, undefined, 0.3, true);
+    // 幾撮翹起來的頭髮（大小、方向都不一樣）
+    hairLock(p, X, -0.03, alanTopF(-0.03), 0.12, alanTopF(0.12), 0.1, alanTopF(0.05) - 0.085, 0.02, hc);
+    hairLock(p, X, 0.2, alanTopF(0.2), 0.32, alanTopF(0.32), 0.33, alanTopF(0.26) - 0.065, 0.015, hc);
+    hairLock(p, X, -0.26, alanTopF(-0.26), -0.14, alanTopF(-0.14), -0.17, alanTopF(-0.2) - 0.055, 0.012, hc);
+    // 髮絲：從髮際線往上往前的幾筆
+    for (let i = 0; i < 6; i++) {
+      const x = -0.3 + i * 0.12 + 0.03 * (hh(i, 5, 4) - 0.5), y0 = -0.37 - 0.02 * hh(i, 5, 1);
+      const yt = alanTopF(x + 0.04) + 0.07 + 0.05 * hh(i, 5, 2);
+      p.curve([X(x, y0), X(x + 0.012, (y0 + yt) / 2), X(x + 0.04, yt)], 0.38, hc.strand, false, 0.7);
+    }
+  } else {
+    const hr = smoothPts(HAIR_FRONT_OM_TOP.map(([x, y]) => X(x, y)), true, 3);
+    p.fill(hr, hc.fill);
+    shadeY(p, hr, X(0, 0.3).y, X(0, 1.05).y, 0.2);
+    p.line(hr, 1, undefined, 0.3, true);
+    // 頭頂的反光（兩小筆）、兩側波浪的髮絲
+    p.curve([X(-0.3, -0.49), X(-0.2, -0.56), X(-0.08, -0.6)], 0.8, hc.shine);
+    p.curve([X(0.1, -0.6), X(0.2, -0.57)], 0.6, hc.shine);
+    for (const s of [-1, 1]) {
+      p.curve([X(s * 0.42, -0.2), X(s * 0.47, 0.2), X(s * 0.5, 0.5), X(s * 0.47, 0.72), X(s * 0.52, 0.95)], 0.38, hc.strand);
+      p.curve([X(s * 0.48, -0.3), X(s * 0.52, 0.1), X(s * 0.56, 0.45), X(s * 0.53, 0.75)], 0.32, hc.strand);
+    }
+    // 空氣瀏海：一撮一撮，根部藏在頭髮下、中間有縫看得到額頭，髮尾剛好蓋到眉毛；縫裡再飄幾根細髮絲
+    for (const [x0, w, tipY, dx] of BANGS) {
+      const L = [X(x0 - w * 0.55, -0.4), X(x0 - w * 0.45, -0.22), X(x0 + dx, tipY)], R = [X(x0 + dx, tipY), X(x0 + w * 0.42, -0.21), X(x0 + w * 0.55, -0.4)];
+      const strand = smoothPts(L.concat(R.slice(1)), true, 3);
+      p.fill(strand, hc.fill);
+      p.curve(L, 0.4, hc.strand, false, 0.5);
+      p.curve(R, 0.4, hc.strand, false, 0.5);
+    }
+    for (const [x, y] of [[-0.25, -0.07], [0.12, -0.065], [0.22, -0.08]] as const) p.curve([X(x - 0.01, -0.3), X(x + 0.01, -0.18), X(x, y)], 0.28, hc.strand, false, 0.6);
+  }
+}
+
+/** 孟庭身體後面的長髮（正面）：畫在身體之前。 */
+function drawHairBackFront(p: Pen, J: Sk, rg: Rig, lk: Look, hp: number) {
+  const H = rg.head * hp, X = headXf(J, H);
+  const fl = lk.flow, t = lk.t, hc = hairInk(lk);
+  const pts = HAIR_FRONT_OM_BACK.map(([x, y]) => {
+    const w = clamp((y - 0.2) / 1.3);
+    return X(x + (-fl * 0.3 + Math.sin(t * 2.1 + x * 3) * 0.02) * w, y);
   });
   const sm = smoothPts(pts, true, 3);
-  p.fill(sm, lk.ink.dark);
+  p.fill(sm, hc.fill);
+  shadeY(p, sm, X(0, 0.2).y, X(0, 1.6).y, 0.3);
   p.line(sm, 1, undefined, 0.3, true);
-  // 髮絲
-  if (lk.om) {
-    p.curve([X(0.12, -0.44), X(0.24, -0.3), X(0.27, -0.14)], 0.42, lk.ink.paper ? lk.ink.ground : lk.ink.soft);
-    p.curve([X(-0.1, -0.48), X(-0.34, -0.26), X(-0.38, 0.2), X(-0.36 - fl * 0.12, 0.6)], 0.42, lk.ink.paper ? lk.ink.ground : lk.ink.soft);
-  } else {
-    p.curve([X(0.25, -0.44), X(0.0, -0.5), X(-0.28, -0.38)], 0.42, lk.ink.paper ? lk.ink.ground : lk.ink.soft);
-    p.curve([X(0.12, -0.36), X(-0.12, -0.36), X(-0.34, -0.18)], 0.4, lk.ink.paper ? lk.ink.ground : lk.ink.soft);
-  }
 }
 
 function drawVeilSide(p: Pen, J: Sk, rg: Rig, lk: Look, hp: number) {
@@ -1562,105 +1920,19 @@ function drawSide(p: Pen, J: Sk, rg: Rig, lk: Look, ps: Pose, hp: number) {
   if (lk.armB) { p.part(R_ARMB); drawArm(p, J, 1, rg, lk, ps, hp); }
   if (lk.body) {
     if (!gown) {
-      p.part(R_LEGB); drawLeg(p, J, 1, rg, lk, hp);
+      p.part(R_LEGB); waistShirt(p, J, rg, lk, hp, 'back'); drawLeg(p, J, 1, rg, lk, hp);
       p.part(R_LEGA); drawLeg(p, J, 0, rg, lk, hp);
     } else {
       p.part(R_SKIRT); drawSkirt(p, J, rg, lk, hp);
     }
-    p.part(R_TORSO); drawTorsoSide(p, J, rg, lk, hp);
-    p.part(R_HEAD); drawNeck(p, J, rg, hp, lk, false); drawHeadSide(p, J, rg, lk, hp);
+    p.part(R_TORSO); drawTorsoSide(p, J, rg, lk, hp); waistShirt(p, J, rg, lk, hp, 'front');
+    p.part(R_HEAD); drawNeck(p, J, rg, hp, lk, false); collarSide(p, J, rg, lk, hp); drawHeadSide(p, J, rg, lk, hp);
     p.part(R_HAIR); drawHairSide(p, J, rg, lk, hp);
   }
   if (lk.armA) { p.part(R_ARMA); drawArm(p, J, 0, rg, lk, ps, hp); }
 }
 
 // ---------------------------------------------------------------- 正面
-const FACE_FRONT: Record<Who, { rx: number; jaw: number }> = { alan: { rx: 0.41, jaw: 0.86 }, omena: { rx: 0.36, jaw: 0.74 } };
-const HAIR_FRONT_ALAN: readonly (readonly [number, number])[] = [[-0.43, 0.02], [-0.47, -0.24], [-0.32, -0.5], [0.0, -0.6], [0.3, -0.52], [0.47, -0.28], [0.44, 0.02],
-  [0.39, -0.14], [0.3, -0.26], [0.12, -0.28], [-0.06, -0.34], [-0.14, -0.27], [-0.3, -0.24], [-0.39, -0.12]];
-const HAIR_FRONT_OM_BACK: readonly (readonly [number, number])[] = [[-0.46, -0.2], [-0.36, -0.5], [0.0, -0.6], [0.36, -0.5], [0.46, -0.2], [0.46, 0.2], [0.5, 0.56],
-  [0.6, 0.8], [0.47, 0.85], [0.33, 0.74], [0.26, 0.4], [-0.26, 0.4], [-0.33, 0.74], [-0.47, 0.85], [-0.6, 0.8], [-0.5, 0.56], [-0.46, 0.2]];
-const HAIR_FRONT_OM_TOP: readonly (readonly [number, number])[] = [[-0.4, 0.1], [-0.44, -0.24], [-0.32, -0.5], [0.0, -0.6], [0.32, -0.5], [0.44, -0.24], [0.4, 0.1],
-  [0.33, -0.14], [0.2, -0.13], [0.06, -0.11], [-0.08, -0.12], [-0.22, -0.13], [-0.33, -0.14]];
-
-function faceOutline(who: Who, X: (x: number, y: number) => Pt): Pt[] {
-  const { rx, jaw } = FACE_FRONT[who];
-  const out: Pt[] = [];
-  for (let k = 0; k < 24; k++) {
-    const a = (k / 24) * TAU;
-    const c = Math.cos(a), s = Math.sin(a);
-    // 下半臉收窄成下巴（圓臉收得少）
-    const w = s > 0 ? lerp(1, jaw, s * s) : 1;
-    out.push(X(c * rx * w, s * 0.5));
-  }
-  return out;
-}
-
-function drawHeadFront(p: Pen, J: Sk, rg: Rig, lk: Look, hp: number) {
-  const H = rg.head * hp, X = headXf(J, H);
-  const om = lk.om, f = lk.face, fe = lk.ink.feat;
-  if (!om) {
-    for (const s of [-1, 1]) {
-      const ear = [X(s * 0.38, -0.08), X(s * 0.49, -0.1), X(s * 0.5, 0.06), X(s * 0.4, 0.12)];
-      p.fill(smoothPts(ear, true, 2), lk.ink.skin);
-      p.curve(ear, 0.75);
-    }
-  }
-  const face = faceOutline(lk.who, X);
-  const sm = smoothPts(face, true, 2);
-  p.fill(sm, lk.ink.skin);
-  p.line(sm, 1, undefined, 0.2, true);
-  const ey = -0.02, ex = om ? 0.15 : 0.16;
-  for (const s of [-1, 1]) {
-    const cx = s * ex;
-    if (f === 'closed') p.curve([X(cx - 0.05, ey - 0.01), X(cx, ey + 0.025), X(cx + 0.05, ey - 0.01)], 0.58, fe);
-    else if (!om && (f === 'smile' || f === 'grin') || om && f === 'grin') p.curve([X(cx - 0.05, ey + 0.012), X(cx, ey - 0.03), X(cx + 0.05, ey + 0.012)], 0.62, fe);
-    else { p.dot(X(cx, ey), H * 0.028, fe); if (om) p.line([X(cx + s * 0.04, ey - 0.025), X(cx + s * 0.075, ey - 0.05)], 0.42, fe); }
-    p.curve(om ? [X(cx - s * 0.06, -0.12), X(cx, -0.145), X(cx + s * 0.06, -0.125)] : [X(cx - s * 0.06, -0.115), X(cx, -0.135), X(cx + s * 0.07, -0.115)], om ? 0.46 : 0.58, fe);
-  }
-  if (f === 'grin') {
-    const m = [X(-0.1, 0.19), X(0.1, 0.19), X(0.0, 0.29)];
-    p.fill(smoothPts(m, true, 3), fe);
-  } else if (f === 'o') {
-    const m: Pt[] = [];
-    for (let k = 0; k <= 10; k++) m.push(X(Math.cos((k / 10) * TAU) * 0.04, 0.23 + Math.sin((k / 10) * TAU) * 0.045));
-    p.line(m, 0.55, fe, 0.2, true);
-  } else if (f === 'calm') p.line([X(-0.05, 0.22), X(0.05, 0.22)], 0.55, fe);
-  else p.curve([X(-0.08, 0.2), X(0, 0.245), X(0.08, 0.2)], 0.58, fe);
-  if (lk.shades) {
-    for (const s of [-1, 1]) {
-      const g = [X(s * 0.05, -0.08), X(s * 0.27, -0.08), X(s * 0.25, 0.04), X(s * 0.07, 0.04)];
-      p.fill(g, lk.ink.dark);
-      p.line(g.concat([g[0]!]), 0.6, fe, 0.2, true);
-    }
-    p.line([X(-0.05, -0.06), X(0.05, -0.06)], 0.6, fe);
-  }
-  if (!om) {
-    const hr = smoothPts(HAIR_FRONT_ALAN.map(([x, y]) => X(x, y)), true, 3);
-    p.fill(hr, lk.ink.dark);
-    p.line(hr, 1, undefined, 0.3, true);
-    p.curve([X(-0.06, -0.33), X(0.16, -0.46), X(0.36, -0.38)], 0.4, lk.ink.paper ? lk.ink.ground : lk.ink.soft);
-  } else {
-    const hr = smoothPts(HAIR_FRONT_OM_TOP.map(([x, y]) => X(x, y)), true, 3);
-    p.fill(hr, lk.ink.dark);
-    p.line(hr, 1, undefined, 0.3, true);
-    p.curve([X(-0.02, -0.5), X(0.1, -0.3), X(0.08, -0.12)], 0.4, lk.ink.paper ? lk.ink.ground : lk.ink.soft);
-    p.curve([X(-0.14, -0.48), X(-0.2, -0.3), X(-0.24, -0.13)], 0.4, lk.ink.paper ? lk.ink.ground : lk.ink.soft);
-  }
-}
-
-function drawHairBackFront(p: Pen, J: Sk, rg: Rig, lk: Look, hp: number) {
-  const H = rg.head * hp, X = headXf(J, H);
-  const fl = lk.flow, t = lk.t;
-  const pts = HAIR_FRONT_OM_BACK.map(([x, y]) => {
-    const w = clamp((y - 0.2) / 0.7);
-    return X(x + (-fl * 0.25 + Math.sin(t * 2.1 + x * 3) * 0.015) * w, y);
-  });
-  const sm = smoothPts(pts, true, 3);
-  p.fill(sm, lk.ink.dark);
-  p.line(sm, 1, undefined, 0.3, true);
-}
-
 function drawVeilFront(p: Pen, J: Sk, rg: Rig, lk: Look, hp: number) {
   const H = rg.head * hp, X = headXf(J, H);
   const fl = lk.flow, t = lk.t;
@@ -1710,7 +1982,7 @@ function drawTorsoFront(p: Pen, J: Sk, rg: Rig, lk: Look, hp: number) {
     return;
   }
   const poly = frontTorso(J, rg, hp, hem, lk.wed ? 1.04 : 1);
-  topFill(p, lk, poly, J.chest, J.up2, hp);
+  topFill(p, lk, poly);
   p.line(poly, 1, undefined, 0.2, true);
   if (lk.wed) {
     // 西裝：白襯衫的 V、翻領、領結、一顆扣子
@@ -1726,8 +1998,8 @@ function drawTorsoFront(p: Pen, J: Sk, rg: Rig, lk: Look, hp: number) {
     p.fill(L, lk.ink.dark);
     p.line(L.concat([L[0]!]), 0.5, undefined, 0.2, true);
   } else {
-    // 領口：圓領（宣文）、小 V 領（孟庭）
-    p.curve(lk.om ? [at(J.neck, f, -nw), at(J.neck, J.up2, -0.035 * hp), at(J.neck, f, nw)] : [at(J.neck, f, -nw), at(J.neck, J.up2, -0.024 * hp), at(J.neck, f, nw)], 0.75);
+    // 胸前的小蝴蝶結刺繡：宣文在下面一點、孟庭在領口旁（照片裡的位置）
+    teeBow(p, lk.om ? at2(J.chest, f, -rs.chest * hp * 0.5, J.up2, 0.035 * hp) : at2(J.chest, f, -rs.chest * hp * 0.55, J.up2, -0.03 * hp), J.up2, 0.016 * hp, lk);
   }
   if (lk.bag) {
     const s0 = at2(J.neck, f, -rs.shoulder * hp * 0.6, J.up2, -0.012 * hp);
@@ -1741,13 +2013,13 @@ function drawFront(p: Pen, J: Sk, rg: Rig, lk: Look, ps: Pose, hp: number) {
   const gown = lk.om && lk.wed;
   if (lk.body) {
     if (gown) { p.part(R_VEIL); drawVeilFront(p, J, rg, lk, hp); }
+    if (lk.om) { p.part(R_HAIR); drawHairBackFront(p, J, rg, lk, hp); }
     if (!gown) {
-      p.part(R_LEGA); drawLeg(p, J, 0, rg, lk, hp);
+      p.part(R_LEGA); waistShirt(p, J, rg, lk, hp, 'back'); drawLeg(p, J, 0, rg, lk, hp);
       p.part(R_LEGB); drawLeg(p, J, 1, rg, lk, hp);
     } else { p.part(R_SKIRT); drawSkirt(p, J, rg, lk, hp); }
-    if (lk.om) { p.part(R_HAIR); drawHairBackFront(p, J, rg, lk, hp); }
-    p.part(R_TORSO); drawTorsoFront(p, J, rg, lk, hp);
-    p.part(R_HEAD); drawNeck(p, J, rg, hp, lk, true); drawHeadFront(p, J, rg, lk, hp);
+    p.part(R_TORSO); drawTorsoFront(p, J, rg, lk, hp); waistShirt(p, J, rg, lk, hp, 'front');
+    p.part(R_HEAD); drawNeck(p, J, rg, hp, lk, true); collarFront(p, J, rg, lk, hp); drawHeadFront(p, J, rg, lk, hp);
   }
   if (lk.armA) { p.part(R_ARMA); drawArm(p, J, 0, rg, lk, ps, hp); }
   if (lk.armB) { p.part(R_ARMB); drawArm(p, J, 1, rg, lk, ps, hp); }
@@ -1922,21 +2194,37 @@ function solveDog(ps: DogPose, s: number): DogSk {
  * 毛茸茸的輪廓：沿著封閉的點往外長出一撮一撮的毛。每一撮是「慢慢長出、很快收回」的鋸齒（毛順著同一個方向），
  * 尖端稍微圓一點；ph 每 1/8 秒變一次（boiling）。amp 是毛的長度。
  */
-function tufts(pts: Pt[], amp: number, count: number, ph: number): Pt[] {
+/**
+ * 蓬鬆的毛邊：沿著封閉的點長出一撮一撮的毛，**每撮的寬度與長度都不一樣**（不是規律的波浪），尖端圓圓的、往同一邊順。
+ * seed 決定這團毛的樣子（固定），ph 每 1/8 秒變一點點（boiling，毛邊輕輕抖）。amp 是毛的平均長度。
+ */
+function tufts(pts: Pt[], amp: number, count: number, ph: number, seed = 1): Pt[] {
   const n = pts.length;
   const out: Pt[] = [];
   let cx = 0, cy = 0;
   for (const p of pts) { cx += p.x; cy += p.y; }
   cx /= n; cy /= n;
+  // 每撮毛的範圍（0..1 沿著輪廓）：寬度 0.5～1.6 倍、長度 0.35～1.35 倍
+  const edges = [0];
+  let acc = 0;
+  const ws: number[] = [];
+  for (let k = 0; k < count; k++) { const w = 0.5 + 1.1 * hh(seed, k, 1); ws.push(w); acc += w; }
+  for (let k = 0; k < count; k++) edges.push(edges[k]! + ws[k]! / acc);
+  let k = 0;
+  const shift = ph * 0.01;
   for (let i = 0; i < n; i++) {
     const p = pts[i]!, q = pts[(i + 1) % n]!, o = pts[(i - 1 + n) % n]!;
     let nx = q.y - o.y, ny = -(q.x - o.x);
     const nl = Math.hypot(nx, ny) || 1;
     nx /= nl; ny /= nl;
     if (nx * (p.x - cx) + ny * (p.y - cy) < 0) { nx = -nx; ny = -ny; }
-    const f = frac((i / n) * count + ph);
-    const k = f < 0.62 ? Math.sin((f / 0.62) * PI * 0.5) ** 1.4 : Math.cos(((f - 0.62) / 0.38) * PI * 0.5) ** 0.8;
-    out.push({ x: p.x + nx * amp * k, y: p.y + ny * amp * k });
+    const u = ((i / n + shift) % 1 + 1) % 1;
+    while (k < count - 1 && u >= edges[k + 1]!) k++;
+    while (k > 0 && u < edges[k]!) k--;
+    const f = (u - edges[k]!) / Math.max(1e-6, edges[k + 1]! - edges[k]!);
+    const h = f < 0.62 ? Math.sin((f / 0.62) * PI * 0.5) ** 1.3 : Math.cos(((f - 0.62) / 0.38) * PI * 0.5) ** 0.7;
+    const a = amp * (0.35 + hh(seed, k, 2)) * (0.92 + 0.16 * hh(seed + 17, k, Math.floor(ph * 20)));
+    out.push({ x: p.x + nx * a * h, y: p.y + ny * a * h });
   }
   return out;
 }
@@ -1950,11 +2238,32 @@ function ellipsePts(c: Pt, ax: Pt, rx: number, ry: number, n = 36, a0 = 0): Pt[]
   return out;
 }
 
-interface DogLook { who: DogWho; ink: Ink; t: number; wag: number; ball: boolean; fur: string; chest: string; seedPh: number }
+/**
+ * 狗的配色（照新人給的照片）：
+ *  - 芃芃：身體大部分奶油白（cream），只有額頭與臉頰是杏橘色（apricot），嘴邊與下巴奶油白；圓圓的泰迪熊臉、黑豆眼、小三角耳。
+ *  - QQ：身體、胸口、嘴邊白色，臉頰橘棕（fur），耳朵尖與額頭中線是深色毛尖（sable）；常吐舌頭笑；紅項圈。
+ */
+interface DogLook {
+  who: DogWho; ink: Ink; t: number; wag: number; ball: boolean; seedPh: number;
+  body: string; chest: string; face: string; muzzle: string; ear: string; tail: string;
+}
+function dogColors(who: DogWho) {
+  if (who === 'penpen') {
+    const cream = rgba('cream');
+    return { body: cream, chest: mixHex('cream', 'bone', 0.35), face: rgba('apricot'), muzzle: mixHex('cream', 'bone', 0.25), ear: mixHex('apricot', 'cream', 0.25), tail: cream };
+  }
+  const white = mixHex('cream', 'bone', 0.75);
+  return { body: white, chest: white, face: rgba('fur'), muzzle: white, ear: rgba('fur'), tail: white };
+}
 
-function furBlob(p: Pen, pts: Pt[], amp: number, count: number, lk: DogLook, color: string, w = 0.8) {
-  const tf = tufts(pts, amp, count, lk.seedPh);
+function furBlob(p: Pen, pts: Pt[], amp: number, count: number, lk: DogLook, color: string, w = 0.8, shade = 0, seed = count * 7 + pts.length) {
+  const tf = smoothPts(tufts(pts, amp, count, lk.seedPh, seed + (lk.who === 'qq' ? 100 : 0)), true, 2);
   p.fill(tf, color);
+  if (shade > 0) {
+    let y0 = Infinity, y1 = -Infinity;
+    for (const q of tf) { y0 = Math.min(y0, q.y); y1 = Math.max(y1, q.y); }
+    shadeY(p, tf, lerp(y0, y1, 0.45), y1, shade);
+  }
   p.line(tf.concat([tf[0]!]), w, undefined, 0.1, true);
   return tf;
 }
@@ -1969,24 +2278,47 @@ function drawDogLeg(p: Pen, L: DogSk['legs'][number], s: number, color: string, 
   p.line(paw.concat([paw[0]!]), 0.65, undefined, 0.2, true);
 }
 
-/** QQ 的頭與背比較深：在 poly 裡、軸線上方 depth 以上蓋一層淡淡的墨色＋細排線（「fur 加線條陰影」）。 */
-function darkSaddle(p: Pen, poly: Pt[], o: Pt, up: Pt, ax: Pt, s: number, depth: number) {
-  p.clip(poly, (c) => {
-    const g0 = at(o, up, depth - 0.05 * s), g1 = at(o, up, depth + 0.06 * s);
-    const gr = c.createLinearGradient(g0.x, g0.y, g1.x, g1.y);
-    gr.addColorStop(0, rgba('sepia', 0)); gr.addColorStop(1, rgba('sepia', 0.3));
-    c.fillStyle = gr;
-    c.beginPath();
-    const a = at2(o, up, depth - 0.05 * s, ax, -2 * s), b = at2(o, up, depth - 0.05 * s, ax, 2 * s), b2 = at(b, up, 2 * s), a2 = at(a, up, 2 * s);
-    c.moveTo(a.x, a.y); c.lineTo(b.x, b.y); c.lineTo(b2.x, b2.y); c.lineTo(a2.x, a2.y); c.closePath(); c.fill();
-    c.strokeStyle = p.ink.soft; c.lineWidth = p.lw * 0.32; c.beginPath();
-    for (let k = -12; k <= 12; k++) {
-      const q = at2(o, ax, k * 0.03 * s, up, depth + 0.02 * s + (k % 2 ? 0.02 * s : 0));
-      const e = at2(q, ax, -0.02 * s, up, 0.05 * s);
-      c.moveTo(q.x, q.y); c.lineTo(e.x, e.y);
-    }
-    c.stroke();
+/** 小小的耳朵（畫在頭之前，大半藏在頭的毛裡，只露出圓圓的毛尖）：QQ 耳尖是深色毛尖、芃芃是杏橘色，都是往耳根漸層。 */
+function dogEar(p: Pen, tri: Pt[], lk: DogLook, w = 0.75) {
+  // 耳尖圓圓的（毛茸茸的毛尖，不是尖三角）
+  const tl = mixP(tri[1]!, tri[0]!, 0.16), tr = mixP(tri[1]!, tri[2]!, 0.16), tc = mixP(tri[1]!, mixP(tri[0]!, tri[2]!, 0.5), 0.04);
+  const ear = smoothPts([tri[0]!, mixP(tri[0]!, tri[1]!, 0.6), tl, tc, tr, mixP(tri[2]!, tri[1]!, 0.6), tri[2]!], true, 3);
+  p.fill(ear, lk.who === 'qq' ? rgba('fur') : lk.body);
+  const tip = tri[1]!, base = mixP(tri[0]!, tri[2]!, 0.5);
+  p.clip(ear, (c) => {
+    const g = c.createLinearGradient(tip.x, tip.y, base.x, base.y);
+    const col = lk.who === 'qq' ? 'sable' : 'apricot';
+    g.addColorStop(0, rgba(col, 0.95)); g.addColorStop(0.55, rgba(col, 0.35)); g.addColorStop(1, rgba(col, 0));
+    c.fillStyle = g; c.fillRect(-1e4, -1e4, 2e4, 2e4);
   });
+  p.line(ear, w, undefined, 0.2, true);
+}
+
+/** 在 clip 裡畫一個邊緣柔和的橢圓（放射漸層：中心 a、邊緣 0）。 */
+function softEll(c: Ctx, q: Pt, rx: number, ry: number, rot: number, col: string, a: number) {
+  c.save();
+  c.translate(q.x, q.y); c.rotate(rot); c.scale(1, ry / rx);
+  const g = c.createRadialGradient(0, 0, 0, 0, 0, rx);
+  g.addColorStop(0, rgba(col, a)); g.addColorStop(0.55, rgba(col, a * 0.85)); g.addColorStop(1, rgba(col, 0));
+  c.fillStyle = g;
+  c.beginPath(); c.arc(0, 0, rx, 0, TAU); c.fill();
+  c.restore();
+}
+/** 同上，但顏色是 CSS 字串（混出來的色）。 */
+function softEllC(c: Ctx, q: Pt, rx: number, ry: number, rot: number, css: string) {
+  c.save();
+  c.translate(q.x, q.y); c.rotate(rot); c.scale(1, ry / rx);
+  const g = c.createRadialGradient(0, 0, rx * 0.55, 0, 0, rx);
+  g.addColorStop(0, css); g.addColorStop(1, css.replace(/,[\d.]+\)$/, ',0)'));
+  c.fillStyle = g;
+  c.beginPath(); c.arc(0, 0, rx, 0, TAU); c.fill();
+  c.restore();
+}
+
+/** 黑豆眼：黑點＋一個小亮點。 */
+function beadEye(p: Pen, c: Pt, r: number, lk: DogLook) {
+  p.dot(c, r, lk.ink.feat);
+  p.dot({ x: c.x - r * 0.35, y: c.y - r * 0.35 }, r * 0.32, rgba('bone'));
 }
 
 function drawDogSide(p: Pen, J: DogSk, ps: DogPose, lk: DogLook) {
@@ -1996,31 +2328,28 @@ function drawDogSide(p: Pen, J: DogSk, ps: DogPose, lk: DogLook) {
   const amp = (0.018 + 0.025 * ps.fluff) * s * fluffy;
   // rank：0 身體、1 頭、2 腳、3 尾巴
   p.part(2);
-  drawDogLeg(p, J.legs[1]!, s, lk.fur);
-  drawDogLeg(p, J.legs[3]!, s, lk.fur, 1.15);
-  // 身體：圓滾滾的一團
+  drawDogLeg(p, J.legs[1]!, s, lk.body);
+  drawDogLeg(p, J.legs[3]!, s, lk.body, 1.15);
+  // 身體：圓滾滾的一團，下半部一點點陰影
   p.part(0);
   const mid = mixP(J.hip, J.sh, 0.5);
-  const body = furBlob(p, ellipsePts(at2(mid, J.up, 0.01 * s, J.ax, -0.02 * s), J.ax, 0.3 * s, 0.19 * s, 90), amp, 20, lk, lk.fur);
-  if (qq) darkSaddle(p, body, mid, J.up, J.ax, s, 0.06 * s);
-  // 近的兩隻腳：後腿大腿是一團毛
+  furBlob(p, ellipsePts(at2(mid, J.up, -0.005 * s, J.ax, -0.02 * s), J.ax, 0.3 * s, 0.215 * s, 110), amp, 17, lk, lk.body, 0.8, 0.16);
+  // 近的兩隻腳
   p.part(2);
-  drawDogLeg(p, J.legs[2]!, s, lk.fur, 1.2);
-  drawDogLeg(p, J.legs[0]!, s, lk.fur);
+  drawDogLeg(p, J.legs[2]!, s, lk.body, 1.2);
+  drawDogLeg(p, J.legs[0]!, s, lk.body);
   // 尾巴：羽毛狀，從屁股往上捲、平貼在背上；搖尾巴 = 繞根部轉
   p.part(3);
   const tailAng = lk.wag * 16 * D;
   const rot = (q: Pt) => { const dx = q.x - J.tailRoot.x, dy = q.y - J.tailRoot.y, c2 = Math.cos(tailAng), s2 = Math.sin(tailAng); return { x: J.tailRoot.x + dx * c2 - dy * s2, y: J.tailRoot.y + dx * s2 + dy * c2 }; };
   const cu = ps.curl;
-  // 羽毛狀的尾巴：一片往前傾、平貼在背上的橢圓（睡覺時繞到身體前面）
   const tcx = rot(at2(J.hip, J.ax, lerp(-0.04, 0.2, cu) * s, J.up, lerp(0.22, -0.15, cu) * s));
   const tAx = rot(at(tcx, { x: J.ax.x * Math.cos(0.3) - J.up.x * Math.sin(0.3), y: J.ax.y * Math.cos(0.3) - J.up.y * Math.sin(0.3) }, 1));
   const tdir = unit(tcx, tAx);
-  const tail = furBlob(p, ellipsePts(tcx, cu > 0.5 ? J.ax : tdir, lerp(0.2, 0.26, cu) * s * fluffy * 0.9, lerp(0.1, 0.07, cu) * s * fluffy, 72), amp * 1.15, 16, lk, lk.fur, 0.72);
-  if (qq) darkSaddle(p, tail, tcx, J.up, J.ax, s, -0.02 * s);
-  // 胸前的鬃毛（QQ 白胸口）
+  furBlob(p, ellipsePts(tcx, cu > 0.5 ? J.ax : tdir, lerp(0.2, 0.26, cu) * s * fluffy * 0.9, lerp(0.1, 0.07, cu) * s * fluffy, 72), amp * 1.15, 16, lk, lk.tail, 0.72);
+  // 胸前的鬃毛
   p.part(0);
-  furBlob(p, ellipsePts(at2(J.sh, J.ax, 0.08 * s, J.up, 0.04 * s), J.ax, 0.15 * s, 0.19 * s, 70), amp * 1.2, 13, lk, lk.chest);
+  furBlob(p, ellipsePts(at2(J.sh, J.ax, 0.08 * s, J.up, 0.03 * s), J.ax, 0.16 * s, 0.2 * s, 80), amp * 1.2, 11, lk, lk.chest);
   // 頭
   p.part(1);
   drawDogHeadSide(p, J, ps, lk, amp);
@@ -2033,37 +2362,46 @@ function drawDogHeadSide(p: Pen, J: DogSk, ps: DogPose, lk: DogLook, amp: number
   // 項圈（QQ）：下巴下面一段紅色，大半埋在毛裡
   if (qq) {
     const c0 = at2(J.neck, J.ax, -0.04 * s, J.up, 0.05 * s), c1 = at2(J.neck, J.ax, 0.07 * s, J.up, -0.06 * s);
-    const band = tube([c0, mixP(c0, c1, 0.5), c1], [0.018 * s, 0.02 * s, 0.018 * s], 0);
+    const band = tube([c0, mixP(c0, c1, 0.5), c1], [0.016 * s, 0.018 * s, 0.016 * s], 0);
     p.fill(polyOf(band), rgba('collar'));
     p.line(band.L, 0.5); p.line(band.R, 0.5);
-    p.dot(at(c1, J.up, -0.02 * s), s * 0.016, rgba('ball'));
   }
-  // 遠的耳朵
-  const earF = [X(0.0, 0.08), X(0.035 - eb, 0.19 - eb * 0.5), X(0.07, 0.07)];
-  p.fill(earF, lk.fur); p.line(earF.concat([earF[0]!]), 0.7, undefined, 0.2, true);
-  // 頭：圓，後腦與臉頰有一點毛
-  const head = furBlob(p, ellipsePts(J.hc, J.hax, 0.115 * s, 0.105 * s, 48, 1.2), amp * 0.45, 9, lk, lk.fur, 0.85);
-  if (qq) {
-    darkSaddle(p, head, J.hc, J.hup, J.hax, s, 0.0);
-    p.fill(smoothPts([X(0.0, -0.02), X(0.08, -0.03), X(0.1, -0.08), X(0.02, -0.1), X(-0.06, -0.07)], true, 3), lk.chest);
-  }
-  // 近的耳朵（小小的尖三角：狐狸臉）
-  const earN = [X(-0.075, 0.06), X(-0.06 - eb * 1.3, 0.185 - eb * 0.8), X(0.0, 0.085)];
-  p.fill(earN, lk.fur); p.line(earN.concat([earN[0]!]), 0.75, undefined, 0.2, true);
-  p.line([X(-0.055, 0.08), X(-0.052 - eb, 0.15 - eb * 0.6)], 0.4, ink.soft);
-  // 嘴筒：短、尖；張嘴時下顎往下
-  const mo = ps.mouth;
-  const top = [X(0.06, 0.03), X(0.16, -0.01), X(0.195, -0.03), X(0.19, -0.05)];
-  const jaw = [X(0.175, -0.06 - mo * 0.03), X(0.13, -0.07 - mo * 0.06), X(0.07, -0.07 - mo * 0.02)];
+  // 兩隻耳朵都在頭之前畫：大半藏在頭的毛裡，只露出圓圓的毛尖
+  dogEar(p, [X(0.01, 0.07), X(0.045 - eb, (qq ? 0.155 : 0.15) - eb * 0.5), X(0.075, 0.065)], lk, 0.7);
+  dogEar(p, [X(-0.075, 0.06), X(-0.05 - eb * 1.3, (qq ? 0.155 : 0.15) - eb), X(-0.015, 0.075)], lk);
+  // 頭：圓（芃芃更圓、毛更蓬）。底色是嘴邊的淺色，上面疊臉的顏色：額頭與臉頰上半，往下漸層
+  const head = furBlob(p, ellipsePts(J.hc, J.hax, (qq ? 0.12 : 0.13) * s, (qq ? 0.11 : 0.12) * s, 60, 1.2), amp * (qq ? 0.5 : 0.7), 10, lk, lk.muzzle, 0.85);
+  const rot = -Math.atan2(J.hax.y, J.hax.x);
+  p.clip(head, (c) => {
+    const top = X(-0.02, 0.13), low = X(0.02, -0.035);
+    const g = c.createLinearGradient(top.x, top.y, low.x, low.y);
+    const col = qq ? 'fur' : 'apricot';
+    g.addColorStop(0, rgba(col, 1)); g.addColorStop(0.6, rgba(col, 0.9)); g.addColorStop(1, rgba(col, 0));
+    c.fillStyle = g; c.fillRect(-1e4, -1e4, 2e4, 2e4);
+    softEll(c, X(-0.02, 0.0), 0.07 * s, 0.06 * s, -rot, col, 0.75);
+    if (qq) {
+      // QQ 額頭中線：細細的深色毛尖，邊緣柔和
+      softEll(c, X(0.06, 0.07), 0.055 * s, 0.012 * s, -rot - 0.6, 'sable', 0.55);
+    }
+  });
+  // 嘴筒：短（芃芃更短）；張嘴時下顎往下、QQ 吐舌頭
+  const mo = qq ? Math.max(ps.mouth, ps.mouth > 0.05 ? 0.45 : 0) : ps.mouth;
+  const sn = qq ? 1 : 0.8;
+  const top = [X(0.06, 0.03), X(0.06 + 0.1 * sn, -0.01), X(0.06 + 0.135 * sn, -0.03), X(0.06 + 0.13 * sn, -0.05)];
+  const jaw = [X(0.06 + 0.115 * sn, -0.06 - mo * 0.03), X(0.06 + 0.07 * sn, -0.07 - mo * 0.06), X(0.07, -0.07 - mo * 0.02)];
   const snout = smoothPts(top.concat(jaw, [X(0.04, -0.05)]), true, 2);
-  p.fill(snout, qq ? lk.chest : lk.fur);
+  p.fill(snout, lk.muzzle);
+  if (qq && mo > 0.3) {
+    const tg = smoothPts([X(0.1, -0.066 - mo * 0.02), X(0.15, -0.07 - mo * 0.04), X(0.155, -0.11 - mo * 0.05), X(0.125, -0.12 - mo * 0.04), X(0.105, -0.1 - mo * 0.03)], true, 3);
+    p.fill(tg, TONGUE());
+    p.line(tg, 0.45, ink.feat, 0.2, true);
+  }
   p.line(smoothPts(top.concat(jaw), false, 2), 0.8, undefined, 0.3);
-  if (mo > 0.4) p.curve([X(0.13, -0.065 - mo * 0.03), X(0.145, -0.09 - mo * 0.05), X(0.105, -0.085 - mo * 0.03)], 0.45, ink.feat); // 舌頭
-  p.dot(X(0.195, -0.028), s * 0.017, ink.feat);
-  // 眼睛
+  p.dot(X(0.06 + 0.135 * sn, -0.028), s * 0.02, ink.feat);
+  // 眼睛（黑豆眼）
   if (ps.eyes === 'closed') p.curve([X(0.03, 0.03), X(0.055, 0.015), X(0.08, 0.03)], 0.5, ink.feat);
-  else if (ps.eyes === 'happy') p.curve([X(0.032, 0.022), X(0.056, 0.042), X(0.08, 0.022)], 0.55, ink.feat);
-  else p.dot(X(0.058, 0.03), s * 0.016, ink.feat);
+  else if (ps.eyes === 'happy' && qq) p.curve([X(0.032, 0.022), X(0.056, 0.042), X(0.08, 0.022)], 0.55, ink.feat);
+  else beadEye(p, X(0.058, 0.03), s * 0.019, lk);
   if (lk.ball) {
     const b = X(0.16, -0.085 - mo * 0.04);
     tennisBall(p.c!, b.x, b.y, 0.05 * s, { ink: lk.ink, t: lk.t, pen: p });
@@ -2077,50 +2415,77 @@ function drawDogFront(p: Pen, ps: DogPose, s: number, lk: DogLook) {
   // 尾巴在背後，從一邊的肩膀後面冒出來
   p.part(3);
   const w = lk.wag * 0.03 * s;
-  furBlob(p, ellipsePts({ x: 0.17 * s + w, y: -0.44 * s }, vv(PI * 0.78), 0.14 * s, 0.08 * s, 50), amp, 12, lk, lk.fur, 0.7);
+  furBlob(p, ellipsePts({ x: 0.17 * s + w, y: -0.44 * s }, vv(PI * 0.78), 0.14 * s, 0.08 * s, 50), amp, 12, lk, lk.tail, 0.7);
   p.part(0);
-  const body = furBlob(p, ellipsePts({ x: 0, y: -0.2 * s }, AX, 0.21 * s, 0.2 * s, 80), amp, 18, lk, lk.fur);
-  if (qq) darkSaddle(p, body, { x: 0, y: -0.2 * s }, { x: 0, y: -1 }, AX, s, 0.12 * s);
+  furBlob(p, ellipsePts({ x: 0, y: -0.2 * s }, AX, 0.23 * s, 0.215 * s, 100), amp, 15, lk, lk.body, 0.8, 0.16);
   p.part(2);
   for (const sg of [-1, 1]) {
     const leg = tube([{ x: sg * 0.07 * s, y: -0.16 * s }, { x: sg * 0.075 * s, y: -0.025 * s }], [0.04 * s, 0.036 * s], 0);
-    p.fill(polyOf(leg), lk.fur); p.line(leg.L, 0.65); p.line(leg.R, 0.65);
+    p.fill(polyOf(leg), lk.body); p.line(leg.L, 0.65); p.line(leg.R, 0.65);
     const paw = ellipsePts({ x: sg * 0.078 * s, y: -0.02 * s }, AX, 0.045 * s, 0.024 * s, 12);
-    p.fill(paw, lk.fur); p.line(paw.concat([paw[0]!]), 0.65, undefined, 0.2, true);
+    p.fill(paw, lk.body); p.line(paw.concat([paw[0]!]), 0.65, undefined, 0.2, true);
   }
   p.part(0);
-  furBlob(p, ellipsePts({ x: 0, y: -0.37 * s }, AX, 0.18 * s, 0.15 * s, 70), amp * 1.2, 14, lk, lk.chest);
+  furBlob(p, ellipsePts({ x: 0, y: -0.37 * s }, AX, 0.2 * s, 0.16 * s, 90), amp * 1.25, 12, lk, lk.chest);
   // 頭
   p.part(1);
   const hc = { x: Math.sin(hTilt) * 0.08 * s, y: -0.53 * s };
   const X = (x: number, y: number) => ({ x: hc.x + (x * Math.cos(hTilt) - y * Math.sin(hTilt)) * s, y: hc.y + (x * Math.sin(hTilt) + y * Math.cos(hTilt)) * s });
   const eb = ps.ears * 0.04;
+  // 耳朵：在頭之前畫，大半藏在毛裡，只露出圓圓的毛尖
   for (const sg of [-1, 1]) {
-    const ear = [X(sg * 0.035, -0.07), X(sg * (0.085 + eb), -0.19 + eb), X(sg * 0.115, -0.05)];
-    p.fill(ear, lk.fur); p.line(ear.concat([ear[0]!]), 0.75, undefined, 0.2, true);
+    dogEar(p, qq ? [X(sg * 0.045, -0.08), X(sg * (0.088 + eb), -0.148 + eb), X(sg * 0.118, -0.07)] : [X(sg * 0.07, -0.085), X(sg * (0.108 + eb), -0.155 + eb), X(sg * 0.14, -0.07)], lk);
   }
-  const head = furBlob(p, ellipsePts(hc, AX, 0.125 * s, 0.11 * s, 50), amp * 0.45, 12, lk, lk.fur, 0.85);
-  if (qq) darkSaddle(p, head, hc, { x: 0, y: -1 }, AX, s, 0.0);
-  // 臉：兩個眼睛、小小的嘴筒（QQ 奶油色）在眼睛下面、鼻頭在嘴筒上緣
-  const muz = smoothPts([X(-0.05, 0.03), X(0, 0.005), X(0.05, 0.03), X(0.04, 0.075), X(0, 0.09), X(-0.04, 0.075)], true, 3);
-  p.fill(muz, qq ? lk.chest : lk.fur); p.line(muz, 0.55, undefined, 0.2, true);
-  p.dot(X(0, 0.03), s * 0.018, lk.ink.feat);
-  if (ps.mouth > 0.3) p.curve([X(-0.025, 0.06), X(0, 0.06 + ps.mouth * 0.035), X(0.025, 0.06)], 0.5, lk.ink.feat);
-  else p.curve([X(-0.022, 0.058), X(0, 0.07), X(0.022, 0.058)], 0.45, lk.ink.feat);
+  // 頭：圓滾滾的一團毛（芃芃更圓、更蓬），底色是嘴邊的淺色；臉的顏色在額頭與臉頰上半，往下漸層
+  const hr = qq ? [0.13, 0.12] : [0.145, 0.135];
+  const head = furBlob(p, ellipsePts(hc, AX, hr[0]! * s, hr[1]! * s, 80), amp * (qq ? 0.8 : 0.95), qq ? 15 : 16, lk, lk.muzzle, 0.85);
+  p.clip(head, (c) => {
+    const col = qq ? 'fur' : 'apricot';
+    const top = X(0, -0.14), low = X(0, qq ? 0.02 : 0.035);
+    const g = c.createLinearGradient(top.x, top.y, low.x, low.y);
+    g.addColorStop(0, rgba(col, 1)); g.addColorStop(0.55, rgba(col, 0.95)); g.addColorStop(1, rgba(col, 0));
+    c.fillStyle = g; c.fillRect(-1e4, -1e4, 2e4, 2e4);
+    // 臉頰上半
+    for (const sg of [-1, 1]) softEll(c, X(sg * (qq ? 0.085 : 0.09), qq ? 0.005 : 0.0), (qq ? 0.07 : 0.065) * s, 0.06 * s, hTilt, col, qq ? 0.95 : 0.8);
+    // 嘴邊與下巴：淺色，範圍大一點
+    softEllC(c, X(0, qq ? 0.07 : 0.075), (qq ? 0.09 : 0.1) * s, (qq ? 0.07 : 0.07) * s, hTilt, lk.muzzle);
+    if (qq) {
+      // 額頭中線的深色毛尖：細、邊緣柔和，兩旁一點點淺色
+      softEll(c, X(0, -0.045), 0.05 * s, 0.022 * s, hTilt + PI / 2, 'cream', 0.45);
+      softEll(c, X(0, -0.07), 0.05 * s, 0.009 * s, hTilt + PI / 2, 'sable', 0.7);
+    }
+  });
+  // 鼻頭：黑色圓三角＋亮點
+  const nose = smoothPts([X(-0.024, 0.02), X(0.024, 0.02), X(0.004, 0.047), X(-0.004, 0.047)], true, 3);
+  p.fill(nose, lk.ink.feat);
+  p.dot(X(-0.008, 0.026), s * 0.006, rgba('bone'));
+  // 嘴：芃芃小小的 w；QQ 張嘴笑、吐粉紅舌頭
+  const mouthOpen = qq ? ps.mouth > 0.05 : ps.mouth > 0.3;
+  if (mouthOpen) {
+    const m = smoothPts([X(-0.045, 0.062), X(0.045, 0.062), X(0.024, 0.098), X(-0.024, 0.098)], true, 3);
+    p.fill(m, lk.ink.feat);
+    const tg = smoothPts([X(-0.02, 0.074), X(0.02, 0.074), X(0.02, 0.112), X(0, 0.126), X(-0.02, 0.112)], true, 3);
+    p.fill(tg, TONGUE());
+    p.line(tg, 0.4, lk.ink.feat, 0.2, true);
+    p.curve([X(-0.055, 0.05), X(-0.03, 0.064), X(0, 0.055), X(0.03, 0.064), X(0.055, 0.05)], 0.5, lk.ink.feat);
+  } else {
+    p.line([X(0, 0.047), X(0, 0.062)], 0.45, lk.ink.feat);
+    p.curve([X(-0.03, 0.058), X(-0.015, 0.07), X(0, 0.062), X(0.015, 0.07), X(0.03, 0.058)], 0.45, lk.ink.feat);
+  }
+  // 眼睛：黑豆眼（芃芃分得開一點）
   for (const sg of [-1, 1]) {
-    const ex = sg * 0.052, ey = -0.012;
+    const ex = sg * (qq ? 0.055 : 0.06), ey = -0.012;
     if (ps.eyes === 'closed') p.curve([X(ex - 0.02, ey), X(ex, ey + 0.012), X(ex + 0.02, ey)], 0.5, lk.ink.feat);
-    else if (ps.eyes === 'happy') p.curve([X(ex - 0.02, ey + 0.008), X(ex, ey - 0.014), X(ex + 0.02, ey + 0.008)], 0.55, lk.ink.feat);
-    else p.dot(X(ex, ey), s * 0.017, lk.ink.feat);
+    else if (ps.eyes === 'happy' && qq) p.curve([X(ex - 0.02, ey + 0.008), X(ex, ey - 0.014), X(ex + 0.02, ey + 0.008)], 0.55, lk.ink.feat);
+    else beadEye(p, X(ex, ey), s * 0.021, lk);
   }
   if (qq) {
-    const t = tube([X(-0.1, 0.1), X(0, 0.135), X(0.1, 0.1)], [0.016 * s, 0.018 * s, 0.016 * s], 0);
+    const t = tube([X(-0.1, 0.105), X(0, 0.135), X(0.1, 0.105)], [0.009 * s, 0.01 * s, 0.009 * s], 0);
     p.fill(polyOf(t), rgba('collar')); p.line(t.L, 0.5); p.line(t.R, 0.5);
-    p.dot(X(0, 0.16), s * 0.016, rgba('ball'));
   }
 }
 
-/** 畫一隻狗（芃芃：全身蓬鬆的橘毛；QQ：白胸口、頭與背深一點、紅項圈）。 */
+/** 畫一隻狗（芃芃：奶油白、額頭與臉頰杏橘色的泰迪熊臉；QQ：白色、臉頰橘棕、耳尖與額頭深色毛尖、吐舌頭、紅項圈）。 */
 export function drawDog(c: Ctx, who: DogWho, ps: DogPose, o: DogOpts): DogJoints {
   const s = o.h * DOG_K[who] * DOG_NORM;
   const ink = o.ink ?? inkFor(false);
@@ -2129,7 +2494,7 @@ export function drawDog(c: Ctx, who: DogWho, ps: DogPose, o: DogOpts): DogJoints
   const lk: DogLook = {
     who, ink, t, ball: !!o.ball,
     wag: o.wag ?? (Number.isNaN(ps.tail) ? Math.sin(t * TAU * 2.2) : ps.tail),
-    fur: rgba('fur'), chest: who === 'qq' ? rgba('cream') : rgba('fur'),
+    ...dogColors(who),
     seedPh: hh(boil, who === 'qq' ? 5 : 9, 1) * 0.5,
   };
   const front = o.view === 'front';
