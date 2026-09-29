@@ -138,6 +138,14 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "idea": "快歌用：40 年代搖擺舞，甩出去、拉回來、拋起來，全在拍點；地板的舞步腳印排成字。"
  },
  {
+  "name": "scooter",
+  "title": "騎機車",
+  "family": "date",
+  "light": false,
+  "couple": true,
+  "idea": "台灣街景（騎樓、招牌、紅綠燈），宣文騎機車載孟庭、踏板站著狗；招牌字是歌詞，路口的看板是留言。"
+ },
+ {
   "name": "lantern",
   "title": "放天燈",
   "family": "date",
