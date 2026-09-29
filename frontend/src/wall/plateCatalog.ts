@@ -138,6 +138,14 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "idea": "快歌用：40 年代搖擺舞，甩出去、拉回來、拋起來，全在拍點；地板的舞步腳印排成字。"
  },
  {
+  "name": "dogportrait",
+  "title": "狗狗肖像",
+  "family": "dog",
+  "light": true,
+  "couple": true,
+  "idea": "美術館的畫框裡是芃芃（或 QQ）的正式肖像（版畫線條），畫框下的銘牌寫著留言與「No.042 館藏」。"
+ },
+ {
   "name": "ringbearer",
   "title": "狗狗戒童",
   "family": "dog",
