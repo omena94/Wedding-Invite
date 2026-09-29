@@ -20,6 +20,7 @@ import { Lyrics, type Line, type Word } from '../engine/lyrics';
 import type { FitResult } from '../engine/text';
 import { layoutMessage, signature, beatAfter } from './_motifs';
 import { drawReveal, phraseSchedule, revealAt, fitCharsF, windowLines, type Rect } from './_t10';
+import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 } from './_v2';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'machine', paper: false, energy: [0.35, 1], bars: [4, 8], weight: 1 };
 
@@ -27,17 +28,19 @@ export const spec: PlateSpecDecl = { group: 'type', family: 'machine', paper: fa
 const N = 16; // 軌數
 const X0 = 112, PITCH = 77; // 第一軌左緣、軌距（十六軌到 x = 1344）
 const chX = (i: number) => X0 + i * PITCH; // 第 i 軌左緣
-const TAPE = { x: 118, y: 108, maxW: 1220, maxH: 236 }; // 留言膠帶（上面的空白處）
-const KNOB_Y = 386, KNOB_R = 18;
-const METER = { y0: 422, y1: 566, n: 12 }; // 電平表（上到下）
+// 留言膠帶（左上的空白處）：標準 v2，連膠帶寬 ≤ 860、只比字多一點邊；右邊空出來的地方放兩個人聲的指針錶
+const TAPE = { x: 118, y: 100, maxW: 860, maxH: 272 };
+const KNOB_Y = 396, KNOB_R = 18;
+const METER = { y0: 430, y1: 566, n: 12 }; // 電平表（上到下）
 const SLOT = { y0: 596, y1: 902 }; // 推桿槽
 const CAP = { h: 84, top: 638, bot: 860 }; // 推頭（中心 y：頂 = 0 dB、底 = -∞）
 const NAMES_Y = 940; // 名字膠帶的中線
 const MASTER = { x0: 1392, x1: 1832 }; // 主控區
-const VU = [{ x: 1404, y: 112, w: 202, h: 168 }, { x: 1622, y: 112, w: 202, h: 168 }];
+const VU = [{ x: 1404, y: 112, w: 202, h: 168, band: 'low' }, { x: 1622, y: 112, w: 202, h: 168, band: 'high' },
+  // 膠帶右邊的兩個小錶：宣文、孟庭兩軌人聲（標準 v2：膠帶變窄，空出來的地方要有東西在動）
+  { x: 1012, y: 118, w: 150, h: 124, band: 'vocal' }, { x: 1180, y: 118, w: 150, h: 124, band: 'mid' }];
 const MF = [{ x: 1470, label: 'MAIN' }, { x: 1570, label: 'LOVE' }]; // 主控推桿（槽的中心 x）
 const MF_Y = { y0: 400, y1: 800 };
-const LYR_SIZE = 54;
 const F_LYR = F.archivo(100, 800);
 
 /** 每一軌的名字（麥克筆寫在膠帶上）與閒置時跟著哪個頻段。 */
@@ -86,6 +89,8 @@ export default class Mixer extends Scene {
   body = '';
   sched: { t: number; chars: number }[] = [];
   tapeW = 600; tapeH = 150;
+  /** 推頭上的歌詞字級、署名字級（標準 v2：歌詞比留言小一點，40～52）。 */
+  lyrSize = 52; sigSize = 30;
   pages: Page[] = [];
   tFirst = 0; tTape = 0; beat = 0.5;
   seed = 1;
@@ -102,11 +107,17 @@ export default class Mixer extends Scene {
     const c = this.dyn.ctx;
     this.beat = au.beatPeriod(s + 0.1);
     // ---- 留言膠帶：字排好，膠帶照字的大小裁
-    this.fit = layoutMessage(c, this.body, F.hand(700), TAPE.maxW - 110, TAPE.maxH - (m ? 84 : 50), { min: 44, max: 84, lineHeight: 1.22, maxLines: 3 });
-    c.font = font(F.hand(700), 32);
+    // 標準 v2：字級上限依字數（40～60），照子句斷行；框的高度先扣掉署名那一列，署名永遠在最後一行下面
+    const fam = F.hand(700), boxW = TAPE.maxW - 100;
+    const boxH = TAPE.maxH - 44 - (m ? 30 + 16 : 0);
+    const o = { min: V2.msgMin, max: msgMaxFor(this.body), lineHeight: 1.18, maxLines: 4 };
+    this.fit = fitClauses(c, this.body, fam, boxW, boxH, o) ?? layoutMessage(c, this.body, fam, boxW, boxH, o);
+    this.sigSize = sigV2(this.fit.size);
+    this.lyrSize = lyricV2(m ? this.fit.size : null);
+    c.font = font(fam, this.sigSize);
     const sigW = m ? c.measureText(signature(m.name)).width : 0;
-    this.tapeW = Math.min(TAPE.maxW, Math.max(this.fit.width, sigW + 40) + 110);
-    this.tapeH = this.fit.height + (m ? 84 : 50);
+    this.tapeW = Math.min(TAPE.maxW, Math.max(this.fit.width, sigW) + 100);
+    this.tapeH = this.fit.height + 44 + (m ? this.sigSize + 16 : 0);
     this.tFirst = beatAfter(au, s + 0.3);
     this.tTape = this.tFirst;
     this.sched = phraseSchedule(au, this.body, this.tFirst, Math.min(8 * this.beat, 0.45 * (e - s)), 4);
@@ -124,7 +135,7 @@ export default class Mixer extends Scene {
   /** 每一行歌詞排到推頭上：一個字（英文一個字）佔幾軌，放不下十六軌就分頁；一頁置中。 */
   private buildPages(lines: Line[], s: number, e: number): Page[] {
     const c = this.dyn.ctx;
-    c.font = font(F_LYR, LYR_SIZE);
+    c.font = font(F_LYR, this.lyrSize);
     const out: Page[] = [];
     for (const line of lines) {
       const items = line.words.map((w) => {
@@ -375,7 +386,7 @@ export default class Mixer extends Scene {
     // ---- 主控區：錶的指針、主推桿
     for (const [j, vu] of VU.entries()) {
       let lv = 0;
-      for (let k = 0; k < 10; k++) lv += au.env(j ? 'high' : 'low', t - k * 0.03) * 0.5 + au.env('rms', t - k * 0.03) * 0.5;
+      for (let k = 0; k < 10; k++) lv += au.env(vu.band, t - k * 0.03) * 0.5 + au.env('rms', t - k * 0.03) * 0.5;
       lv = clamp(lv / 10 * 1.25 + 0.05 * Math.sin(t * 2 + j));
       const px = vu.x + vu.w / 2, py = vu.y + vu.h + 40, a = -Math.PI / 2 - 0.8 + lv * 1.6;
       c.save();
@@ -426,15 +437,16 @@ export default class Mixer extends Scene {
     if (a <= 0.01) return false;
     c.save();
     c.globalAlpha *= a;
-    c.font = font(F_LYR, LYR_SIZE); c.textAlign = 'center'; c.textBaseline = 'alphabetic';
-    const tx = x + w / 2, ty = cy + LYR_SIZE * 0.36;
+    const LS = this.lyrSize;
+    c.font = font(F_LYR, LS); c.textAlign = 'center'; c.textBaseline = 'alphabetic';
+    const tx = x + w / 2, ty = cy + LS * 0.36;
     // 逐字跟唱：還沒唱三成、正在唱訊號色（從左掃過去）、唱完紙白
     c.fillStyle = rgba('bone', 0.3);
     if (p < 1) c.fillText(sl.text, tx, ty);
     if (p > 0) {
       const tw = c.measureText(sl.text).width;
       c.save();
-      c.beginPath(); c.rect(tx - tw / 2 - 6, ty - LYR_SIZE, (tw + 12) * p, LYR_SIZE * 1.4); c.clip();
+      c.beginPath(); c.rect(tx - tw / 2 - 6, ty - LS, (tw + 12) * p, LS * 1.4); c.clip();
       c.fillStyle = p < 1 ? rgba('signal') : rgba('bone', 0.97);
       c.fillText(sl.text, tx, ty);
       c.restore();
@@ -443,7 +455,7 @@ export default class Mixer extends Scene {
     if (!singing) return false;
     hc.save();
     hc.globalAlpha *= a;
-    hc.font = font(F_LYR, LYR_SIZE); hc.textAlign = 'center';
+    hc.font = font(F_LYR, LS); hc.textAlign = 'center';
     hc.fillStyle = rgba('signal', 0.6);
     hc.fillText(sl.text, tx, ty);
     hc.fillStyle = rgba('signal', 0.5); hc.fillRect(x, cy - CAP.h / 2, w, 4);
@@ -474,13 +486,13 @@ export default class Mixer extends Scene {
     // 字
     const shown = fitCharsF(fit.lines, revealAt(this.sched, t, Math.min(0.2, this.beat * 0.4)));
     const fam = F.hand(700);
-    const top = 26 + fit.size * 0.9;
-    drawReveal(c, fit, fam, 40, top, shown, { color: rgba('ink', 0.9) });
+    const top = 22 + fit.size * 0.9;
+    drawReveal(c, fit, fam, 50, top, shown, { color: rgba('ink', 0.9) });
     const done = this.sched.length ? this.sched[this.sched.length - 1]!.t + 0.2 : this.tFirst;
     if (m && t >= done) {
       const k = prog(t, done, done + 0.3);
-      c.font = font(fam, 32); c.fillStyle = rgba('ink', 0.75 * k); c.textAlign = 'right';
-      c.fillText(signature(m.name), this.tapeW - 40, this.tapeH - 22);
+      c.font = font(fam, this.sigSize); c.fillStyle = rgba('ink', 0.75 * k); c.textAlign = 'right';
+      c.fillText(signature(m.name), this.tapeW - 44, this.tapeH - 16);
       c.textAlign = 'left';
     }
     c.restore();

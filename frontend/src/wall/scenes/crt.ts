@@ -18,28 +18,31 @@ import { lyricAt, layoutLyric, drawLyric, layoutMessage, drawMessage, signature,
 import type { FitResult } from '../engine/text';
 import { FAST_GLSL, phraseSchedule, charsAt, fitChars, windowLines, type Rect } from './_t10';
 import { bbox } from './_t11';
+import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 } from './_v2';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'machine', paper: false, energy: [0.2, 1], bars: [4, 8], weight: 1 };
 
 // ---------------------------------------------------------------- 版面（邏輯像素，y 向下）
 /** 木頭機殼。 */
-const CAB = { x0: 212, y0: 106, x1: 1498, y1: 972 };
+// 標準 v2：電視往左移一點，右下角 QR 與時間的底下留乾淨的牆
+const CAB = { x0: 140, y0: 106, x1: 1426, y1: 972 };
 /** 映像管的玻璃面（4:3）。 */
-const SCR = { x0: 264, y0: 158, x1: 1276, y1: 918 };
+const SCR = { x0: 192, y0: 158, x1: 1204, y1: 918 };
 /** 節目畫面的大小（Canvas 像素）：放到玻璃上大約放大 1.05 倍。 */
 const PW = 960, PH = 720;
 const KX = (SCR.x1 - SCR.x0) / PW, KY = (SCR.y1 - SCR.y0) / PH;
 /** 右邊的控制面板：頻道旋鈕、音量旋鈕、喇叭。 */
-const DIAL = { x: 1390, y: 300, r: 62 };
-const VOL = { x: 1390, y: 500, r: 42 };
-const GRILLE = { x0: 1322, x1: 1458, y0: 592, y1: 900 };
+const DIAL = { x: 1318, y: 300, r: 62 };
+const VOL = { x: 1318, y: 500, r: 42 };
+const GRILLE = { x0: 1250, x1: 1386, y0: 592, y1: 900 };
 /** 桶狀變形的強度：邊緣的字大約縮 5%（字級都已經算進去）。 */
 const BARREL = 0.05;
 
 // 節目畫面裡（Canvas 像素）
-const MBOX = { x: 110, y: 188, w: 740, h: 286 }; // 留言
-const LABEL_Y = 150; // 留言上面的小標
-const SUB = { y: 640, size: 58, min: 48, w: 840 }; // 字幕（歌詞）的基線
+// 標準 v2：上半是每一台會動的畫面（PIC_H 以上），留言在下半靠左（寬 760 → 螢幕上約 800、字級 40～60），最下面是字幕
+const PIC_H = 368, PIC_CY = 196;
+const MBOX = { x: 100, y: 410, w: 760, h: 176 }; // 留言（含署名那一列）
+const SUB = { y: 684, w: 860 }; // 字幕（歌詞）的基線
 
 type Kind = 'request' | 'bars' | 'movie' | 'shop';
 const CHANNELS: { ch: number; kind: Kind; name: string; label: string }[] = [
@@ -213,6 +216,8 @@ export default class Crt extends Scene {
   switches: Switch[] = [];
   tOn = 0; tOff = 0; tFirst = 0; beat = 0.5; bar = 2;
   hasLyrics = false;
+  /** 署名、字幕的字級（節目畫布上的 px；標準 v2 換算過）。 */
+  sigSize = 28; lyrSize = 46;
   avoid: Rect[] = [];
   private decoUp = false;
 
@@ -222,7 +227,15 @@ export default class Crt extends Scene {
     this.body = m ? m.text : INVITE;
     await loadText(`${TEXT}${this.body}${m ? signature(m.name) : ''}${song.title}${song.artist}`);
     const c = this.prog.ctx;
-    this.fit = layoutMessage(c, this.body, F.hand(m ? 400 : 700), MBOX.w, MBOX.h, { min: 44, max: m ? 96 : 60, lineHeight: 1.36, maxLines: 5 });
+    // 標準 v2（螢幕 px，除以節目畫面放大的倍數 KX 才是畫在節目畫布上的字級）：字級上限依字數、照子句斷行，
+    // 框高先扣掉署名那一列（署名永遠在最後一行下面）
+    const fam = F.hand(m ? 400 : 700);
+    const sig0 = sigV2(msgMaxFor(this.body)) / KX;
+    const o = { min: Math.ceil(V2.msgMin / KX), max: msgMaxFor(this.body) / KX, lineHeight: 1.3, maxLines: 4 };
+    const boxH = MBOX.h - (m ? sig0 + 10 : 0);
+    this.fit = fitClauses(c, this.body, fam, MBOX.w, boxH, o) ?? layoutMessage(c, this.body, fam, MBOX.w, boxH, o);
+    this.sigSize = sigV2(this.fit.size * KX) / KX;
+    this.lyrSize = lyricV2(m ? this.fit.size * KX : null) / KX;
     this.beat = au.beatPeriod(s + 0.1);
     this.bar = 4 * this.beat;
     this.tOn = s;
@@ -245,10 +258,9 @@ export default class Crt extends Scene {
     this.drawDeco();
 
     // 即時小卡避開：留言（含小標、署名）、字幕
-    const sy0 = LABEL_Y - 34, sy1 = MBOX.y + MBOX.h + 76;
     this.avoid = [
-      this.toScreen([MBOX.x - 20, sy0, MBOX.w + 40, sy1 - sy0], 12),
-      this.toScreen([(PW - SUB.w) / 2, SUB.y - SUB.size * 2.2, SUB.w, SUB.size * 2.6], 12),
+      this.toScreen([MBOX.x - 20, MBOX.y - 40, MBOX.w + 40, MBOX.h + 40], 12),
+      this.toScreen([(PW - SUB.w) / 2, SUB.y - this.lyrSize * 2.2, SUB.w, this.lyrSize * 2.6], 12),
     ];
     const all = bbox(this.avoid);
     this.avoid.push(all);
@@ -347,96 +359,41 @@ export default class Crt extends Scene {
   }
 
   // ---------------------------------------------------------------- 節目畫面
+  /**
+   * 節目畫面（標準 v2）：上半是每一台自己的畫面（會動的主視覺），留言在下半、靠左（跟節目的「點播卡」一樣的位置），
+   * 最下面是字幕。留言與字幕的位置、斷行每一台都一樣，轉台不打斷閱讀。
+   */
   private drawProgram(t: number, ch: (typeof CHANNELS)[number], tSw: number) {
     const L = this.prog, c = L.ctx;
-    const { audio: au, song } = this.ctx;
+    const au = this.ctx.audio;
     L.clear(rgba('ink'));
     c.textBaseline = 'alphabetic';
-    const beatPh = au.beatAt(t) % 1;
+    this.drawPicture(c, t, ch.kind);
 
-    // ---- 背景（每一台不一樣）
-    if (ch.kind === 'request') {
-      const g = c.createRadialGradient(PW / 2, PH * 0.42, 40, PW / 2, PH * 0.42, PW * 0.7);
-      g.addColorStop(0, mixRgba('ink2', 'blood', 0.35)); g.addColorStop(1, rgba('ink'));
-      c.fillStyle = g; c.fillRect(0, 0, PW, PH);
-      // 慢慢轉的放射光（八〇年代的節目布景），大鼓一打亮一點
-      const bt = au.beatAt(t);
-      c.save(); c.translate(PW / 2, PH * 0.42); c.rotate((Math.floor(bt) + ease.outExpo(bt - Math.floor(bt))) * (TAU / 72));
-      c.fillStyle = rgba('signal', 0.035 + 0.03 * this.ctx.audio.hit('kick', t, 0.15));
-      for (let k = 0; k < 18; k++) { c.beginPath(); c.moveTo(0, 0); c.arc(0, 0, 900, (k / 18) * TAU, (k / 18 + 1 / 36) * TAU); c.closePath(); c.fill(); }
-      c.restore();
-      // 雙線花框
-      c.strokeStyle = rgba('signal', 0.3); c.lineWidth = 1.5;
-      c.strokeRect(MBOX.x - 34, LABEL_Y - 52, MBOX.w + 68, MBOX.h + 164);
-      c.fillStyle = rgba('signal', 0.5);
-      for (const [x, y] of [[MBOX.x - 34, LABEL_Y - 52], [MBOX.x + MBOX.w + 34, LABEL_Y - 52], [MBOX.x - 34, LABEL_Y + MBOX.h + 112], [MBOX.x + MBOX.w + 34, LABEL_Y + MBOX.h + 112]] as const) {
-        c.save(); c.translate(x, y); c.rotate(Math.PI / 4); c.fillRect(-6, -6, 12, 12); c.restore();
-      }
-    } else if (ch.kind === 'bars') {
-      // 測試訊號：七條色帶（用色票，不是真的標準色）、下面一排反序的小方塊
-      const cols = ['bone', 'ember', 'ash', 'signal', 'rose', 'blood', 'graphite'];
-      const bw = PW / cols.length;
-      cols.forEach((k, j) => { c.fillStyle = mixRgba(k, 'ink', 0.45); c.fillRect(j * bw, 0, bw + 1, 500); });
-      cols.forEach((k, j) => { c.fillStyle = j % 2 ? rgba('ink') : mixRgba(cols[cols.length - 1 - j]!, 'ink', 0.3); c.fillRect(j * bw, 500, bw + 1, 50); });
-      c.fillStyle = rgba('ink'); c.fillRect(0, 550, PW, PH - 550);
-      // 留言放在一塊黑底上（測試卡中間的框）
-      c.fillStyle = rgba('ink', 0.94);
-      c.fillRect(MBOX.x - 30, LABEL_Y - 46, MBOX.w + 60, MBOX.h + 150);
-      c.strokeStyle = rgba('bone', 0.5); c.lineWidth = 2;
-      c.strokeRect(MBOX.x - 30, LABEL_Y - 46, MBOX.w + 60, MBOX.h + 150);
-    } else if (ch.kind === 'movie') {
-      const g = c.createLinearGradient(0, 96, 0, 560);
-      g.addColorStop(0, mixRgba('ink2', 'graphite', 0.35)); g.addColorStop(1, rgba('ink2'));
-      c.fillStyle = g; c.fillRect(0, 96, PW, 464);
-      // 漏光：左邊一團暖光慢慢飄
-      const lx = 120 + 60 * Math.sin(t * 0.4);
-      const lg = c.createRadialGradient(lx, 300, 10, lx, 300, 420);
-      lg.addColorStop(0, rgba('signal', 0.16)); lg.addColorStop(1, rgba('signal', 0));
-      c.fillStyle = lg; c.fillRect(0, 96, PW, 464);
-      // 上下黑邊（寬銀幕）
-      c.fillStyle = rgba('ink'); c.fillRect(0, 0, PW, 96); c.fillRect(0, 560, PW, PH - 560);
-      c.font = font(F.hei(500), 20); c.letterSpacing = '4px'; c.fillStyle = rgba('ash', 0.6);
-      c.textAlign = 'center';
-      c.fillText(`今晚首播《${song.title || '今晚的歌'}》`, PW / 2, 64);
-      c.textAlign = 'left'; c.letterSpacing = '0px';
-    } else {
-      const g = c.createLinearGradient(0, 0, 0, PH);
-      g.addColorStop(0, mixRgba('blood', 'ink', 0.25)); g.addColorStop(1, rgba('ink'));
-      c.fillStyle = g; c.fillRect(0, 0, PW, PH);
-      // 上面一條特賣帶：一拍閃一下
-      const fl = beatPh < 0.5 ? 1 : 0.82;
-      c.fillStyle = rgba('signal', 0.8 * fl); c.fillRect(0, 62, PW, 40);
-      c.font = font(F.hei(700), 22); c.fillStyle = rgba('ink'); c.letterSpacing = '3px';
-      c.textAlign = 'center';
-      c.fillText('限時特賣　愛情一組　NT$ 無價', PW / 2, 90);
-      c.textAlign = 'left'; c.letterSpacing = '0px';
-    }
-
-    // ---- 留言上面的小標
+    // ---- 留言上面的小標（小、低對比）
     const m = this.msg;
     const label = m ? (m.couple ? '新人的話　FROM THE COUPLE' : ch.label) : '點播專線';
-    const kLab = prog(t, this.tOn + 0.3, this.tOn + 0.5);
-    c.globalAlpha = kLab;
-    c.font = font(F.hei(500), 22); c.letterSpacing = '6px'; c.textAlign = 'center';
-    c.fillStyle = ch.kind === 'bars' ? rgba('bone', 0.6) : rgba('signal', 0.75);
-    c.fillText(label, PW / 2, LABEL_Y);
-    c.textAlign = 'left'; c.letterSpacing = '0px';
+    c.globalAlpha = prog(t, this.tOn + 0.3, this.tOn + 0.5);
+    c.font = font(F.hei(500), 19); c.letterSpacing = '5px';
+    c.fillStyle = ch.kind === 'bars' ? rgba('bone', 0.55) : rgba('signal', 0.7);
+    c.fillText(label, MBOX.x, MBOX.y - 14);
+    c.letterSpacing = '0px';
     c.globalAlpha = 1;
 
-    // ---- 留言（每一台都在同一個位置、同樣斷行，轉台不會打斷閱讀）
+    // ---- 留言
     const fit = this.fit;
     const fam = F.hand(m ? 400 : 700);
     const shown = fitChars(fit.lines, charsAt(this.sched, t));
-    const y0 = MBOX.y + (MBOX.h - fit.height) / 2 + fit.size * 0.92;
-    drawMessage(c, fit, fam, PW / 2, y0, { align: 'center', color: rgba('bone', 0.97), chars: shown });
-    // 署名：留言出完之後
+    const y0 = MBOX.y + fit.size * 0.92;
+    drawMessage(c, fit, fam, MBOX.x, y0, { color: rgba('bone', 0.97), chars: shown });
+    // 署名：留言出完之後，最後一行下面、靠右
     const done = this.sched.length ? this.sched[this.sched.length - 1]!.t : this.tFirst;
     if (m && t >= done) {
       c.globalAlpha = prog(t, done, done + 0.25);
-      c.font = font(F.hand(400), 34); c.fillStyle = rgba('ash');
+      c.font = font(F.hand(400), this.sigSize); c.fillStyle = rgba('ash');
       c.textAlign = 'right';
       const sig = ch.kind === 'shop' ? `${signature(m.name)}（已購買）` : signature(m.name);
-      c.fillText(sig, MBOX.x + MBOX.w, Math.min(MBOX.y + MBOX.h + 44, y0 + (fit.lines.length - 1) * fit.lineHeight + fit.size * 0.35 + 50));
+      c.fillText(sig, MBOX.x + MBOX.w, y0 + (fit.lines.length - 1) * fit.lineHeight + fit.size * 0.3 + this.sigSize + 6);
       c.textAlign = 'left';
       c.globalAlpha = 1;
     }
@@ -447,24 +404,149 @@ export default class Crt extends Scene {
     // ---- 頻道數字（左上，轉台後顯示一小節）：冷面笑話「全頻道聯播」就寫在這裡，不另外放台標
     const osd = 1 - prog(t, tSw + this.bar, tSw + this.bar + 0.3);
     if (osd > 0 && t >= this.tOn + 0.25) {
-      // 老電視的螢幕顯示：墊一塊黑底，蓋在節目上面也看得清楚
       c.globalAlpha = osd;
       c.fillStyle = rgba('ink', 0.78);
-      c.fillRect(38, 44, 250, 112);
-      c.font = font(F.mono(600), 56); c.fillStyle = rgba('signal');
-      c.fillText(`CH ${String(ch.ch).padStart(2, '0')}`, 52, 102);
-      c.font = font(F.hei(500), 18); c.letterSpacing = '3px';
-      c.fillText(`${ch.name}・全頻道聯播`, 56, 138);
+      c.fillRect(38, 40, 236, 100);
+      c.font = font(F.mono(600), 50); c.fillStyle = rgba('signal');
+      c.fillText(`CH ${String(ch.ch).padStart(2, '0')}`, 52, 92);
+      c.font = font(F.hei(500), 17); c.letterSpacing = '3px';
+      c.fillText(`${ch.name}・全頻道聯播`, 56, 124);
       c.letterSpacing = '0px';
       c.globalAlpha = 1;
     }
+    void au;
+  }
+
+  /** 每一台上半的畫面：一直在動，重要的動作落在拍點上。下半（留言、字幕）墊暗，字才清楚。 */
+  private drawPicture(c: CanvasRenderingContext2D, t: number, kind: Kind) {
+    const au = this.ctx.audio, { song } = this.ctx;
+    const bt = au.beatAt(t), bf = bt - Math.floor(bt);
+    const tick = Math.floor(bt) + ease.outExpo(bf); // 一拍走一格（落在拍點上、停住）
+    const kick = au.hit('kick', t, 0.15);
+    if (kind === 'request') {
+      // 點歌台：放射光布景＋一張正在轉的唱片（一拍轉一格），唱片標籤上是點播的歌
+      const g = c.createRadialGradient(PW / 2, PIC_CY, 30, PW / 2, PIC_CY, PW * 0.6);
+      g.addColorStop(0, mixRgba('ink2', 'blood', 0.45)); g.addColorStop(1, rgba('ink'));
+      c.fillStyle = g; c.fillRect(0, 0, PW, PH);
+      c.save(); c.translate(PW / 2, PIC_CY); c.rotate(tick * (TAU / 72));
+      c.fillStyle = rgba('signal', 0.04 + 0.04 * kick);
+      for (let k = 0; k < 18; k++) { c.beginPath(); c.moveTo(0, 0); c.arc(0, 0, 900, (k / 18) * TAU, (k / 18 + 1 / 36) * TAU); c.closePath(); c.fill(); }
+      c.restore();
+      const R = 142;
+      c.save(); c.translate(PW / 2, PIC_CY);
+      c.fillStyle = rgba('ink', 0.95); c.beginPath(); c.arc(0, 0, R, 0, TAU); c.fill();
+      c.strokeStyle = rgba('bone', 0.07); c.lineWidth = 1;
+      for (let r = 56; r < R - 4; r += 5) { c.beginPath(); c.arc(0, 0, r, 0, TAU); c.stroke(); }
+      // 溝紋上的反光（兩道扇形，跟著唱片轉）
+      c.rotate(tick * (TAU / 8));
+      c.fillStyle = rgba('bone', 0.08);
+      for (const a of [0, Math.PI]) { c.beginPath(); c.moveTo(0, 0); c.arc(0, 0, R - 4, a - 0.25, a + 0.25); c.closePath(); c.fill(); }
+      c.fillStyle = mixRgba('signal', 'blood', 0.35); c.beginPath(); c.arc(0, 0, 50, 0, TAU); c.fill();
+      c.fillStyle = rgba('ink'); c.beginPath(); c.arc(0, 0, 5, 0, TAU); c.fill();
+      c.fillStyle = rgba('ink', 0.75); c.font = font(F.hei(700), 13); c.textAlign = 'center';
+      c.fillText('點　播', 0, -18);
+      c.restore(); c.textAlign = 'left';
+      void song;
+    } else if (kind === 'bars') {
+      // 測試訊號：七條色帶（用色票，不是真的標準色）、下面一排反序的小方塊、正中間的測試卡時鐘（一拍走一格）
+      const cols = ['bone', 'ember', 'ash', 'signal', 'rose', 'blood', 'graphite'];
+      const bw = PW / cols.length;
+      cols.forEach((k, j) => { c.fillStyle = mixRgba(k, 'ink', 0.4); c.fillRect(j * bw, 0, bw + 1, PIC_H - 40); });
+      cols.forEach((k, j) => { c.fillStyle = j % 2 ? rgba('ink') : mixRgba(cols[cols.length - 1 - j]!, 'ink', 0.3); c.fillRect(j * bw, PIC_H - 40, bw + 1, 40); });
+      c.fillStyle = rgba('ink'); c.fillRect(0, PIC_H, PW, PH - PIC_H);
+      const cx = PW / 2, cy = PIC_CY, a = -Math.PI / 2 + tick / 12 * TAU;
+      c.fillStyle = rgba('ink', 0.92); c.beginPath(); c.arc(cx, cy, 84, 0, TAU); c.fill();
+      c.strokeStyle = rgba('bone', 0.8); c.lineWidth = 2; c.beginPath(); c.arc(cx, cy, 84, 0, TAU); c.stroke();
+      for (let k = 0; k < 12; k++) { const b = (k / 12) * TAU; c.beginPath(); c.moveTo(cx + Math.cos(b) * 70, cy + Math.sin(b) * 70); c.lineTo(cx + Math.cos(b) * 80, cy + Math.sin(b) * 80); c.stroke(); }
+      c.lineWidth = 4; c.lineCap = 'round';
+      c.beginPath(); c.moveTo(cx, cy); c.lineTo(cx + Math.cos(a) * 62, cy + Math.sin(a) * 62); c.stroke();
+      c.lineWidth = 1; c.lineCap = 'butt';
+    } else if (kind === 'movie') {
+      // 電影台：寬銀幕的夜景（月亮、飄過的雲、遠山），漏光慢慢飄
+      c.fillStyle = rgba('ink'); c.fillRect(0, 0, PW, PH);
+      const top = 64, bot = PIC_H;
+      const g = c.createLinearGradient(0, top, 0, bot);
+      g.addColorStop(0, mixRgba('ink2', 'graphite', 0.2)); g.addColorStop(1, mixRgba('ink2', 'blood', 0.25));
+      c.fillStyle = g; c.fillRect(0, top, PW, bot - top);
+      c.save(); c.beginPath(); c.rect(0, top, PW, bot - top); c.clip();
+      const mx = 700, my = 150;
+      const mg = c.createRadialGradient(mx, my, 20, mx, my, 160);
+      mg.addColorStop(0, rgba('bone', 0.25)); mg.addColorStop(1, rgba('bone', 0));
+      c.fillStyle = mg; c.fillRect(0, top, PW, bot - top);
+      c.fillStyle = mixRgba('bone', 'signal', 0.15); c.beginPath(); c.arc(mx, my, 36, 0, TAU); c.fill();
+      // 雲：三朵，慢慢往右飄（不同速度＝視差）
+      for (const [k, y, sp] of [[0, 120, 14], [1, 190, 22], [2, 250, 34]] as const) {
+        const x = ((t * sp + k * 380) % (PW + 400)) - 200;
+        c.fillStyle = rgba('graphite', 0.35 + 0.1 * k);
+        c.beginPath(); c.ellipse(x, y, 130, 16, 0, 0, TAU); c.fill();
+        c.beginPath(); c.ellipse(x + 60, y - 10, 80, 14, 0, 0, TAU); c.fill();
+      }
+      // 遠山（兩層）
+      for (const [k, base, amp] of [[0, bot - 60, 40], [1, bot - 24, 30]] as const) {
+        c.fillStyle = k ? rgba('ink', 0.95) : mixRgba('ink', 'graphite', 0.3);
+        c.beginPath(); c.moveTo(0, bot);
+        for (let x = 0; x <= PW; x += 20) c.lineTo(x, base - amp * (0.5 + 0.5 * Math.sin(x * 0.011 + k * 2.1) * Math.cos(x * 0.004 + k)));
+        c.lineTo(PW, bot); c.closePath(); c.fill();
+      }
+      const lx = 120 + 60 * Math.sin(t * 0.4);
+      const lg = c.createRadialGradient(lx, 200, 10, lx, 200, 380);
+      lg.addColorStop(0, rgba('signal', 0.14)); lg.addColorStop(1, rgba('signal', 0));
+      c.fillStyle = lg; c.fillRect(0, top, PW, bot - top);
+      c.restore();
+      c.font = font(F.hei(500), 18); c.letterSpacing = '4px'; c.fillStyle = rgba('ash', 0.55);
+      c.textAlign = 'center';
+      c.fillText(`今晚首播《${song.title || '今晚的歌'}》`, PW / 2, 44);
+      c.textAlign = 'left'; c.letterSpacing = '0px';
+    } else {
+      // 購物台：轉盤上的喜餅禮盒（一拍轉一格），旁邊的價格標籤跟著大鼓跳
+      const g = c.createLinearGradient(0, 0, 0, PH);
+      g.addColorStop(0, mixRgba('blood', 'ink', 0.3)); g.addColorStop(0.55, rgba('ink'));
+      c.fillStyle = g; c.fillRect(0, 0, PW, PH);
+      const fl = bf < 0.5 ? 1 : 0.82;
+      c.fillStyle = rgba('signal', 0.8 * fl); c.fillRect(0, 40, PW, 36);
+      c.font = font(F.hei(700), 20); c.fillStyle = rgba('ink'); c.letterSpacing = '3px';
+      c.textAlign = 'center';
+      c.fillText('限時特賣　愛情一組', PW / 2, 65);
+      c.textAlign = 'left'; c.letterSpacing = '0px';
+      // 轉盤（橢圓）＋禮盒：寬度照轉角縮放，看起來在轉
+      const cx = PW / 2, cy = 300;
+      c.fillStyle = rgba('graphite', 0.6); c.beginPath(); c.ellipse(cx, cy + 6, 170, 26, 0, 0, TAU); c.fill();
+      const ang = tick * (TAU / 16);
+      const fw = 120 * Math.abs(Math.cos(ang)), sw = 80 * Math.abs(Math.sin(ang));
+      const bh = 110, by = cy - bh;
+      const front = Math.cos(ang) >= 0;
+      c.fillStyle = mixRgba('bone', 'signal', 0.25); c.fillRect(cx - (fw + sw) / 2, by, fw, bh);
+      c.fillStyle = mixRgba('bone', 'blood', 0.35); c.fillRect(cx - (fw + sw) / 2 + fw, by, sw, bh);
+      // 緞帶：正面中間一條、側面中間一條、上面一個蝴蝶結
+      c.fillStyle = rgba('rose', 0.9);
+      c.fillRect(cx - (fw + sw) / 2 + fw / 2 - 6, by, 12, bh);
+      c.fillRect(cx - (fw + sw) / 2 + fw + sw / 2 - 5, by, 10, bh);
+      c.beginPath(); c.ellipse(cx - 18, by - 10, 20, 11, -0.4, 0, TAU); c.ellipse(cx + 18, by - 10, 20, 11, 0.4, 0, TAU); c.fill();
+      void front;
+      // 價格標籤：大鼓一打跳一下
+      const px = cx + 210, py = 190, pr = 64 * (1 + 0.1 * kick);
+      c.save(); c.translate(px, py); c.rotate(-0.2 + tick * 0.08);
+      c.fillStyle = rgba('signal');
+      c.beginPath();
+      for (let k = 0; k < 24; k++) { const a = (k / 24) * TAU, r = k % 2 ? pr * 0.82 : pr; c.lineTo(Math.cos(a) * r, Math.sin(a) * r); }
+      c.closePath(); c.fill();
+      c.rotate(0.2 - tick * 0.08);
+      c.fillStyle = rgba('ink'); c.font = font(F.hei(900), 26); c.textAlign = 'center';
+      c.fillText('無價', 0, 9);
+      c.restore(); c.textAlign = 'left';
+    }
+    // 下半（留言、字幕）墊一層漸暗，字後面乾淨
+    const dg = c.createLinearGradient(0, PIC_H - 30, 0, PIC_H + 40);
+    dg.addColorStop(0, rgba('ink', 0)); dg.addColorStop(1, rgba('ink', 0.88));
+    c.fillStyle = dg; c.fillRect(0, PIC_H - 30, PW, 70);
+    c.fillStyle = rgba('ink', 0.88); c.fillRect(0, PIC_H + 40, PW, PH - PIC_H - 40);
   }
 
   /** 下面的字幕：一行歌詞（逐字跟唱），底下墊一條半透明的黑帶（電影台就是寬銀幕的黑邊）。純音樂：♪ 歌名 ♪。 */
   private drawSubtitle(c: CanvasRenderingContext2D, t: number, kind: Kind) {
     const { lyrics, song } = this.ctx;
     const ly = lyricAt(lyrics, t, 1.0);
-    const st = { family: F.archivo(100, 800), size: SUB.size, minSize: SUB.min, maxWidth: SUB.w, align: 'center' as const, lineHeight: 1.12,
+    const st = { family: F.archivo(100, 800), size: this.lyrSize, minSize: V2.lyrMin / KX, maxWidth: SUB.w, align: 'center' as const, lineHeight: 1.12,
       active: rgba('signal'), sung: rgba('bone', 0.97), unsung: rgba('bone', 0.32) };
     if (ly) {
       const lay = layoutLyric(c, ly.line, st);
@@ -482,9 +564,9 @@ export default class Crt extends Scene {
       const k = prog(t, this.tOn + 0.4, this.tOn + 0.8);
       const txt = `♪  ${song.title || '今晚的歌'}  ♪`;
       c.globalAlpha = k;
-      c.font = font(F.archivo(100, 700), 46); c.textAlign = 'center';
+      c.font = font(F.archivo(100, 700), this.lyrSize * 0.9); c.textAlign = 'center';
       const w = c.measureText(txt).width + 48;
-      if (kind !== 'movie') { c.fillStyle = rgba('ink', 0.62); c.fillRect(PW / 2 - w / 2, SUB.y - 46, w, 62); }
+      if (kind !== 'movie') { c.fillStyle = rgba('ink', 0.62); c.fillRect(PW / 2 - w / 2, SUB.y - this.lyrSize, w, this.lyrSize * 1.35); }
       c.fillStyle = rgba('bone', 0.9);
       c.fillText(txt, PW / 2, SUB.y);
       c.textAlign = 'left'; c.globalAlpha = 1;

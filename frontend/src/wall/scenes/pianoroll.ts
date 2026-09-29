@@ -18,19 +18,22 @@ import type { FitResult } from '../engine/text';
 import { lyricAt, layoutLyric, layoutMessage, signature, beatAfter, drawHeart, DATE_DOTS, type LyricLayout } from './_motifs';
 import { drawReveal, phraseSchedule, revealAt, fitCharsF, windowLines, type Rect } from './_t10';
 import { pad3 } from './_t11';
+import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 } from './_v2';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'machine', paper: true, energy: [0.2, 0.9], bars: [4, 8], weight: 1 };
 
 // ---------------------------------------------------------------- 版面（邏輯像素，y 向下）
 const ROLL = { x0: 40, x1: 1880 }; // 紙卷的左右緣
-const CARD = { x: 110, y: 100, w: 1230, h: 246 }; // 曲目卡
+// 曲目卡（插在左上的黃銅卡框裡）：標準 v2，寬 ≤ 860，照字的大小裁，只比字多一點邊；右上空出來的地方是收紙軸的齒輪
+const CARD = { x: 110, y: 94, maxW: 860, maxH: 258, padX: 40, padT: 22, padB: 14 };
+const GEAR = { x: 1660, y: 214, r: 118, x2: 1488, y2: 280, r2: 58 };
 const SPOOL = { y0: 356, y1: 398 }; // 收紙軸
 const TRK = 800; // 讀譜條（孔在這一條上響）
 // 孔的欄：右邊留一段空白的紙邊（右下角的 QR 與說明字底下不要有孔，不然字不好讀）
 const HOLES = { x0: 736, x1: 1440, n: 56 };
 const pitch = (HOLES.x1 - HOLES.x0) / HOLES.n;
 const colX = (i: number) => HOLES.x0 + (i + 0.5) * pitch;
-const LYR = { x: 146, w: 540, size: 56, min: 48 }; // 歌詞印在左邊（比曲目卡上的留言小一級）
+const LYR = { x: 146, w: 540 }; // 歌詞印在左邊（字級照標準 v2：比曲目卡上的留言小一點）
 const HOLE_W = 8;
 
 interface Hole { col: number; t0: number; t1: number; kind: 'bass' | 'chord' | 'mel' | 'edge' }
@@ -102,6 +105,8 @@ export default class Pianoroll extends Scene {
   holes: Hole[] = [];
   printed: Printed[] = [];
   v = 70; // 紙速（px/秒）
+  /** 曲目卡的大小（照字裁）、署名與歌詞的字級。 */
+  card = { w: 860, h: 200 }; sigSize = 30; lyrSize = 52;
   tFirst = 0; beat = 0.5;
   hasLyrics = false;
   avoid: Rect[] = [];
@@ -117,18 +122,29 @@ export default class Pianoroll extends Scene {
     this.hasLyrics = windowLines(lyrics, s, e).length > 0;
     const c = this.dyn.ctx;
     // ---- 曲目卡
-    this.fit = layoutMessage(c, this.body, F.ming(700), CARD.w - 120, 150, { min: 44, max: 78, lineHeight: 1.18, maxLines: 3 });
+    // 標準 v2：字級上限依字數，照子句斷行；框高先扣掉署名那一列（署名永遠在最後一行下面）
+    const fam = F.ming(700);
+    this.sigSize = sigV2(Math.min(msgMaxFor(this.body), 52));
+    const sigRow = m ? this.sigSize + 12 : 0;
+    const boxW = CARD.maxW - 2 * CARD.padX, boxH = CARD.maxH - CARD.padT - CARD.padB - sigRow;
+    const o = { min: V2.msgMin, max: msgMaxFor(this.body), lineHeight: 1.18, maxLines: 4 };
+    this.fit = fitClauses(c, this.body, fam, boxW, boxH, o) ?? layoutMessage(c, this.body, fam, boxW, boxH, o);
+    this.sigSize = sigV2(this.fit.size);
+    this.lyrSize = lyricV2(m ? this.fit.size : null);
+    c.font = font(F.hand(700), this.sigSize);
+    const sigW = m ? c.measureText('演奏　' + (m.name || '一位賓客')).width : 0;
+    this.card = { w: Math.min(CARD.maxW, Math.max(this.fit.width, sigW) + 2 * CARD.padX), h: CARD.padT + this.fit.height + (m ? this.sigSize + 12 : 0) + CARD.padB + 8 };
     this.tFirst = beatAfter(au, s + 0.2);
     this.sched = phraseSchedule(au, this.body, this.tFirst, Math.min(8 * this.beat, 0.45 * (e - s)), 4);
 
     // ---- 歌詞：排好每一行；紙速要讓相鄰兩行不疊在一起
-    const st = { family: F.archivo(100, 800), size: LYR.size, minSize: LYR.min, maxWidth: LYR.w, lineHeight: 1.1 };
+    const st = { family: F.archivo(100, 800), size: this.lyrSize, minSize: V2.lyrMin, maxWidth: LYR.w, lineHeight: 1.1 };
     this.printed = lines.map((line) => ({ line, lay: layoutLyric(c, line, st) }));
     let v = 62;
     for (let i = 0; i + 1 < this.printed.length; i++) {
       const a = this.printed[i]!, b = this.printed[i + 1]!;
       const gap = Math.max(0.25, b.line.start - a.line.start);
-      v = Math.max(v, (a.lay.height + LYR.size * 0.55 + 26) / gap);
+      v = Math.max(v, (a.lay.height + this.lyrSize * 0.55 + 26) / gap);
     }
     this.v = clamp(v, 62, 190);
 
@@ -190,7 +206,7 @@ export default class Pianoroll extends Scene {
     this.drawBase();
     // 即時小卡避開：曲目卡、歌詞那一欄（讀譜條上下）
     this.avoid = [
-      [CARD.x - 10, CARD.y - 10, CARD.w + 20, CARD.h + 20],
+      [CARD.x - 10, CARD.y - 10, this.card.w + 20, this.card.h + 20],
       [LYR.x - 16, SPOOL.y1 + 10, LYR.w + 40, H - 96 - SPOOL.y1 - 10],
     ];
   }
@@ -203,22 +219,17 @@ export default class Pianoroll extends Scene {
     const L = this.base, c = L.ctx;
     L.clear();
     const m = this.msg, { song, audio: au } = this.ctx;
-    // 曲目卡：黃銅卡框＋奶油色的卡
-    c.fillStyle = rgba('sepia', 0.18); c.fillRect(CARD.x + 6, CARD.y + 8, CARD.w, CARD.h);
-    const g = c.createLinearGradient(0, CARD.y - 12, 0, CARD.y + CARD.h + 12);
+    // 曲目卡：細的黃銅卡框（6 px）＋奶油色的薄卡、柔柔的影子
+    const cw = this.card.w, ch = this.card.h;
+    c.filter = 'blur(8px)'; c.fillStyle = rgba('sepia', 0.2); c.fillRect(CARD.x + 6, CARD.y + 10, cw, ch); c.filter = 'none';
+    const g = c.createLinearGradient(0, CARD.y - 6, 0, CARD.y + ch + 6);
     g.addColorStop(0, mixRgba('signal', 'bone', 0.35)); g.addColorStop(0.5, mixRgba('signal', 'blood', 0.35)); g.addColorStop(1, rgba('blood'));
-    c.fillStyle = g; c.fillRect(CARD.x - 12, CARD.y - 12, CARD.w + 24, CARD.h + 24);
-    c.fillStyle = mixRgba('paper', 'bone', 0.4); c.fillRect(CARD.x, CARD.y, CARD.w, CARD.h);
-    c.strokeStyle = rgba('sepia', 0.7); c.lineWidth = 1.5; c.strokeRect(CARD.x + 12.5, CARD.y + 12.5, CARD.w - 25, CARD.h - 25);
-    c.strokeStyle = rgba('sepia', 0.35); c.lineWidth = 1; c.strokeRect(CARD.x + 17.5, CARD.y + 17.5, CARD.w - 35, CARD.h - 35);
-    // 卡框的四顆鉚釘
-    for (const [x, y] of [[CARD.x - 4, CARD.y - 4], [CARD.x + CARD.w + 4, CARD.y - 4], [CARD.x - 4, CARD.y + CARD.h + 4], [CARD.x + CARD.w + 4, CARD.y + CARD.h + 4]] as const) {
-      c.fillStyle = rgba('sepia', 0.6); c.beginPath(); c.arc(x, y, 4, 0, Math.PI * 2); c.fill();
+    c.fillStyle = g; c.fillRect(CARD.x - 6, CARD.y - 6, cw + 12, ch + 12);
+    c.fillStyle = mixRgba('paper', 'bone', 0.4); c.fillRect(CARD.x, CARD.y, cw, ch);
+    c.strokeStyle = rgba('sepia', 0.3); c.lineWidth = 1; c.strokeRect(CARD.x + 8.5, CARD.y + 8.5, cw - 17, ch - 17);
+    for (const [x, y] of [[CARD.x - 3, CARD.y - 3], [CARD.x + cw + 3, CARD.y - 3], [CARD.x - 3, CARD.y + ch + 3], [CARD.x + cw + 3, CARD.y + ch + 3]] as const) {
+      c.fillStyle = rgba('sepia', 0.6); c.beginPath(); c.arc(x, y, 3, 0, Math.PI * 2); c.fill();
     }
-    // 卡頂印的一行小字（小、低對比；不放編號與日期，焦點留給留言）
-    c.font = font(F.mono(500), 13); c.letterSpacing = '5px'; c.fillStyle = rgba('sepia', 0.45);
-    c.fillText('WISH ROLL', CARD.x + 40, CARD.y + 40);
-    c.letterSpacing = '0px';
     void m; void au;
     void song;
   }
@@ -244,12 +255,60 @@ export default class Pianoroll extends Scene {
     let glow = this.drawHoles(c, hc, t);
     glow = this.drawLyrics(c, hc, t) || glow;
     this.drawCard(c, t);
+    this.drawGears(c, t);
     void fadeIn;
 
     comp.draw(renderer, L.upload(), out);
     if (glow) comp.draw(renderer, HL.upload(), out, { mode: 'add', tint: [1.8, 1.8, 1.8] });
     // 鏡頭：整段慢慢推近（緩進緩出），大鼓輕輕一震
     return { paper: 1, bloom: 0.45, vignette: 0.28, grain: 0.04, halation: 0.08, zoom: 1 + 0.04 * ease.inOutCubic(f.p) + 0.003 * au.hit('kick', t, 0.12), popupAvoid: this.avoid };
+  }
+
+  /**
+   * 右上的收紙軸齒輪（大小兩個咬在一起）：跟著紙速轉（純函數：角度 = 紙走的距離 / 半徑），
+   * 每個小節線棘爪「喀」地落進一齒（標準 v2：留言卡變小之後，空出來的畫面要有東西在動）。
+   */
+  private drawGears(c: CanvasRenderingContext2D, t: number) {
+    const au = this.ctx.audio, s = this.ctx.start;
+    const dist = (t - s) * this.v;
+    const a1 = dist / GEAR.r, a2 = -dist / GEAR.r2;
+    const gear = (x: number, y: number, r: number, n: number, a: number, spokes: number) => {
+      // 影子（不跟著轉）
+      c.save(); c.filter = 'blur(6px)'; c.fillStyle = rgba('sepia', 0.18);
+      c.beginPath(); c.arc(x + 6, y + 9, r + 6, 0, Math.PI * 2); c.fill(); c.restore();
+      c.save(); c.translate(x, y); c.rotate(a);
+      // 齒
+      c.beginPath();
+      for (let k = 0; k < n; k++) {
+        const b0 = (k / n) * Math.PI * 2, da = (Math.PI * 2) / n;
+        c.lineTo(Math.cos(b0) * r, Math.sin(b0) * r);
+        c.lineTo(Math.cos(b0 + da * 0.12) * (r + 10), Math.sin(b0 + da * 0.12) * (r + 10));
+        c.lineTo(Math.cos(b0 + da * 0.45) * (r + 10), Math.sin(b0 + da * 0.45) * (r + 10));
+        c.lineTo(Math.cos(b0 + da * 0.57) * r, Math.sin(b0 + da * 0.57) * r);
+      }
+      c.closePath();
+      const g = c.createLinearGradient(-r, -r, r, r);
+      g.addColorStop(0, mixRgba('signal', 'bone', 0.3)); g.addColorStop(1, mixRgba('blood', 'sepia', 0.3));
+      c.fillStyle = g; c.fill();
+      c.strokeStyle = rgba('sepia', 0.5); c.lineWidth = 1.2; c.stroke();
+      // 鏤空：輪輻之間挖掉（露出後面的面板）
+      c.fillStyle = mixRgba('paper', 'sepia', 0.12);
+      for (let k = 0; k < spokes; k++) {
+        const b0 = (k / spokes) * Math.PI * 2 + 0.18, b1 = ((k + 1) / spokes) * Math.PI * 2 - 0.18;
+        c.beginPath(); c.arc(0, 0, r * 0.78, b0, b1); c.arc(0, 0, r * 0.3, b1 - 0.1, b0 + 0.1, true); c.closePath(); c.fill();
+      }
+      c.fillStyle = rgba('sepia', 0.7); c.beginPath(); c.arc(0, 0, r * 0.1, 0, Math.PI * 2); c.fill();
+      c.restore();
+    };
+    gear(GEAR.x, GEAR.y, GEAR.r, 36, a1, 6);
+    gear(GEAR.x2, GEAR.y2, GEAR.r2, 18, a2, 4);
+    // 棘爪：每個小節線落進一齒（彈一下）
+    const tb = au.timeOfBar(Math.floor(au.barAt(t) + 1e-6));
+    const kick = Math.exp(-Math.max(0, t - tb) / 0.12) * Math.sin(Math.min(Math.PI, (t - tb) * 30));
+    const px = GEAR.x + GEAR.r + 34, py = GEAR.y - 86, ang = 2.55 - 0.16 * kick;
+    c.strokeStyle = rgba('sepia', 0.8); c.lineWidth = 5; c.lineCap = 'round';
+    c.beginPath(); c.moveTo(px, py); c.lineTo(px + Math.cos(ang) * 64, py + Math.sin(ang) * 64); c.stroke();
+    c.fillStyle = rgba('sepia', 0.85); c.beginPath(); c.arc(px, py, 7, 0, Math.PI * 2); c.fill();
   }
 
   /** 孔：過去的是深色的洞（下緣一道紙的厚度亮邊），正在讀譜條上的透出訊號色的光。長音打成一串短孔。 */
@@ -352,26 +411,24 @@ export default class Pianoroll extends Scene {
     return glow;
   }
 
-  /** 曲目卡上的字：主打留言一個詞組一拍印上去，最後是「演奏」。 */
+  /** 曲目卡上的字：主打留言一個詞組一拍印上去，最後是「演奏　名字」（永遠在留言最後一行下面）。 */
   private drawCard(c: CanvasRenderingContext2D, t: number) {
     const m = this.msg, fit = this.fit;
     const shown = fitCharsF(fit.lines, revealAt(this.sched, t, Math.min(0.18, this.beat * 0.35)));
-    // 留言框扣掉最下面一列署名（署名永遠在留言下面，不會被蓋到）
-    const boxTop = CARD.y + 50, boxH = 150;
-    const y = boxTop + (boxH - fit.height) / 2 + fit.size * 0.88;
-    drawReveal(c, fit, F.ming(700), CARD.x + CARD.w / 2, y, shown, { align: 'center', color: rgba('sepia') });
+    const y = CARD.y + CARD.padT + fit.size * 0.9;
+    drawReveal(c, fit, F.ming(700), CARD.x + CARD.padX, y, shown, { color: rgba('sepia') });
     const done = this.sched.length ? this.sched[this.sched.length - 1]!.t + 0.2 : this.tFirst;
     if (m && t >= done) {
       c.save();
       c.globalAlpha *= prog(t, done, done + 0.3);
       c.textAlign = 'right';
-      c.font = font(F.hei(500), 17); c.letterSpacing = '3px'; c.fillStyle = rgba('sepia', 0.65);
       const nm = m.couple ? '新郎新娘' : m.name || '一位賓客';
-      c.font = font(F.hand(700), 34); c.fillStyle = rgba('sepia', 0.85);
+      const sy = y + (fit.lines.length - 1) * fit.lineHeight + fit.size * 0.3 + this.sigSize + 8;
+      c.font = font(F.hand(700), this.sigSize); c.fillStyle = rgba('sepia', 0.85);
       const nw = c.measureText(nm).width;
-      c.fillText(nm, CARD.x + CARD.w - 40, CARD.y + CARD.h - 22);
-      c.font = font(F.hei(500), 17);
-      c.fillText('演奏', CARD.x + CARD.w - 52 - nw, CARD.y + CARD.h - 26);
+      c.fillText(nm, CARD.x + this.card.w - CARD.padX, sy);
+      c.font = font(F.hei(500), 16); c.letterSpacing = '3px'; c.fillStyle = rgba('sepia', 0.6);
+      c.fillText('演奏', CARD.x + this.card.w - CARD.padX - nw - 12, sy - 3);
       c.letterSpacing = '0px';
       c.restore();
     }

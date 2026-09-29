@@ -21,17 +21,19 @@ export const spec: PlateSpecDecl = { group: 'type', family: 'machine', paper: fa
 
 // ---------------------------------------------------------------- 版面（預設鏡頭下的螢幕像素，y 往下；3D 裡 1 單位 = 1 px）
 /** 機身（正面）。 */
-const HB = { x: 110, y: 176, w: 1700, h: 600, d: 110 };
+const HB = { x: 100, y: 120, w: 1720, h: 720, d: 120 };
 /** 四格大翻牌「小節：拍」與中間的冒號。 */
-const BIGU = { y: 226, w: 206, h: 290, xs: [160, 382, 640, 862], colon: 611 };
+const BIGU = { y: 172, w: 232, h: 432, xs: [150, 398, 690, 938], colon: 660 };
 /** 歌詞：大牌下面一排黑色小牌（牌高依 v2 的歌詞字級決定）。 */
-const LYA = { x: 160, y: 572, maxW: 910 };
+const LYA = { x: 150, y: 650, maxW: 1020 };
 /** 留言的奶油色牌可以用的範圍（右邊）。 */
-const MB = { x: 1136, y: 226, w: 630, h: 430 };
+const MB = { x: 1236, y: 190, w: 540, h: 430 };
 const FRONT_Z = -6;
 const DIST = 540 / Math.tan((15 * Math.PI) / 180);
 /** 鏡頭繞著轉的點（機身中心）。 */
-const PIVOT = new THREE.Vector3(960 - 960, 540 - 476, 0);
+const PIVOT = new THREE.Vector3(960 - 960, 540 - 520, 0);
+/** 桌面（機器底部）：下面畫機器的倒影，畫面下三分之一才不會是一片空的暗色。 */
+const FLOOR_Y = HB.y + HB.h;
 /** 字模圖集裡字佔格高的比例：牌高 = 字級 ÷ 這個比例。 */
 const GB = 150 / 216, GS = 86 / 128;
 
@@ -49,6 +51,22 @@ const CAMS: Cam[] = [
   { yaw: -0.12, pitch: 0.03, dist: 1.03 },
   { yaw: -0.08, pitch: 0.07, dist: 1.0 },
 ];
+
+/** 桌面：蓋在倒影上的暖黑（倒影越往下越淡），右下角 HUD 那一塊整片蓋掉（背景要乾淨）。 */
+const FLOOR = () => new FSPass(/* glsl */ `
+  uniform float uY;
+  uniform float uIn;
+  void main() {
+    vec2 p = vec2(FRAG_PX.x, ${H}.0 - FRAG_PX.y);
+    if (p.y < uY - 2.0) discard;
+    float k = clamp((p.y - uY) / 260.0, 0.0, 1.0);
+    float a = mix(0.9, 0.992, k);
+    a = max(a, smoothstep(1240.0, 1400.0, p.x));
+    vec3 c = C_INK * 0.8 + (C_INK2 - C_INK) * 0.6 * (1.0 - k);
+    // 桌面前緣一條細細的亮邊
+    c += C_BONE * 0.03 * (1.0 - smoothstep(0.0, 2.0, abs(p.y - uY)));
+    fragColor = vec4(c * uIn, a);
+  }`, { uY: { value: 900 }, uIn: { value: 1 } }, { blending: THREE.NormalBlending, transparent: true });
 
 const WALL = () => new FSPass(WALL_FRAG, {
   uShadow: { value: [new THREE.Vector4(), new THREE.Vector4()] }, uPool: { value: new THREE.Vector2(760, 470) }, uIn: { value: 1 },
@@ -69,6 +87,9 @@ function fitGrid(chars: string[], sigRow: number, maxH: number, minH: number): G
 export default class Flipclock extends Scene {
   wall = shared('flipclock.wall', WALL);
   scene3 = new THREE.Scene();
+  /** 機器的所有東西（畫倒影時整組上下翻轉）。 */
+  world = new THREE.Group();
+  floor = shared('flipclock.floor', FLOOR);
   cam = new THREE.PerspectiveCamera(30, W / H, 50, 9000);
   rig = new THREE.Object3D();
   digits!: GlyphAtlas;
@@ -111,7 +132,8 @@ export default class Flipclock extends Scene {
     await loadText(lines.map((l) => l.text).join('') + bigText + sig + COUPLE_EN + title);
 
     // ---- 字模：大牌的數字、小牌（歌詞）、奶油色的牌（留言）
-    this.digits = this.track(new GlyphAtlas(Array.from('0123456789:').map((ch) => ({ ch, family: F_DIG })), 184, 240, { size: 150, fill: 0.86, mip: true }));
+    // 大牌是瘦長的（232 × 432）：圖集的格子照同樣的比例，數字才不會被拉長
+    this.digits = this.track(new GlyphAtlas(Array.from('0123456789:').map((ch) => ({ ch, family: F_DIG })), 140, 260, { size: 214, fill: 0.86, mip: true }));
     const reqA: GlyphReq[] = Array.from(lines.map((l) => l.text).join('') + title).map((ch) => ({ ch, family: F_LYR }));
     this.small = this.track(new GlyphAtlas(reqA, 96, 128, { size: 86, mip: true }));
     this.big = this.track(new GlyphAtlas(Array.from(bigText + sig).map((ch) => ({ ch, family: bigFam })), 168, 216, { size: 150, mip: true }));
@@ -174,16 +196,18 @@ export default class Flipclock extends Scene {
     };
     const st0 = stateAt(b0);
     const chars0 = [...st0.bar, ...st0.beat];
-    this.bigUnits = BIGU.xs.map((x, k) => ({ x: x + BIGU.w / 2, y: BIGU.y + BIGU.h / 2, w: BIGU.w, h: BIGU.h, evs: [], g0: d(chars0[k]!), c0: k === 3 && st0.down ? COL.SIGNAL : COL.GRAPHITE, lights: [] }));
+    this.bigUnits = BIGU.xs.map((x, k) => ({ x: x + BIGU.w / 2, y: BIGU.y + BIGU.h / 2, w: BIGU.w, h: BIGU.h, evs: [], g0: d(chars0[k]!), c0: k === 3 && st0.down ? COL.SIGNAL : COL.ASH, lights: [] }));
     let prev = chars0;
     for (let b = b0 + 1; b <= b1; b++) {
       const st = stateAt(b), tb = au.timeOfBeat(b);
       const chars = [...st.bar, ...st.beat];
       chars.forEach((ch, k) => {
-        const col = k === 3 && st.down ? COL.SIGNAL : COL.GRAPHITE;
-        // 字一樣就不翻（只換顏色）；翻的那一片正好落在拍點上
+        const col = k === 3 && st.down ? COL.SIGNAL : COL.ASH;
+        // 字一樣就不翻（只換顏色）；翻的那一片正好落在拍點上，翻的那一下亮成紙白、0.3 秒後退回灰
         if (ch === prev[k]) { this.bigUnits[k]!.evs.push({ tl: tb, g: d(ch), c: col, d: 0 }); return; }
-        this.bigUnits[k]!.evs.push({ tl: tb + 0.02 * (3 - k), g: d(ch), c: col, k: 0, d: 0.16 });
+        const tl = tb + 0.02 * (3 - k);
+        this.bigUnits[k]!.evs.push({ tl, g: d(ch), c: col === COL.SIGNAL ? col : COL.BONE, k: 0, d: 0.16 });
+        if (col !== COL.SIGNAL) this.bigUnits[k]!.evs.push({ tl: tl + 0.3, g: d(ch), c: col, d: 0 });
       });
       prev = chars;
     }
@@ -285,10 +309,12 @@ export default class Flipclock extends Scene {
     this.cardsCream.mat.uniforms.uCream!.value = 1;
     // 燈的光圈：打在留言那一塊（大牌在光圈邊上，比較暗）
     for (const mm of [this.cardsDig.mat, this.cardsLyr.mat, this.cardsCream.mat, mat]) {
-      (mm.uniforms.uPool!.value as THREE.Vector2).set(wx(this.focus.x - 260), wy(this.focus.y));
-      mm.uniforms.uPoolR!.value = 1250;
+      // 光圈在大牌與留言中間：兩邊都照得到（大牌是主視覺，不要沉在暗處）
+      (mm.uniforms.uPool!.value as THREE.Vector2).set(wx(1000), wy(420));
+      mm.uniforms.uPoolR!.value = 1500;
     }
-    this.scene3.add(this.box, decal, this.cardsDig.mesh, this.cardsLyr.mesh, this.cardsCream.mesh);
+    this.world.add(this.box, decal, this.cardsDig.mesh, this.cardsLyr.mesh, this.cardsCream.mesh);
+    this.scene3.add(this.world);
     this.rig.position.copy(PIVOT);
     this.rig.add(this.cam);
     this.scene3.add(this.rig);
@@ -377,7 +403,7 @@ export default class Flipclock extends Scene {
     const sh = this.wall.u.uShadow!.value as THREE.Vector4[];
     this.screenRect(sh[0]!);
     sh[1]!.set(0, 0, 0, 0);
-    (this.wall.u.uPool!.value as THREE.Vector2).set(this.focus.x - 200, this.focus.y);
+    (this.wall.u.uPool!.value as THREE.Vector2).set(1000, 420);
     this.wall.u.uIn!.value = kIn;
     this.wall.render(renderer, out);
 
@@ -391,6 +417,20 @@ export default class Flipclock extends Scene {
     bm.uniforms.cameraPosition!.value.copy(camPos);
     bm.uniforms.uIn!.value = kIn;
     for (const b of [this.cardsDig, this.cardsLyr, this.cardsCream]) b.mat.uniforms.cameraPosition!.value.copy(camPos);
+    renderer.setRenderTarget(out);
+    // 桌面上的倒影：整組對桌面（機器底部）上下翻轉畫一次，再蓋一層越往下越濃的桌面色（倒影越遠越淡）
+    this.world.scale.y = -1;
+    this.world.position.y = 2 * (540 - FLOOR_Y);
+    this.world.updateMatrixWorld(true);
+    renderer.clearDepth();
+    renderer.render(this.scene3, this.cam);
+    this.world.scale.y = 1;
+    this.world.position.y = 0;
+    this.world.updateMatrixWorld(true);
+    const fp = new THREE.Vector3(0, 540 - FLOOR_Y, FRONT_Z).project(this.cam);
+    this.floor.u.uY!.value = (0.5 - fp.y * 0.5) * H;
+    this.floor.u.uIn!.value = kIn;
+    this.floor.render(renderer, out);
     renderer.setRenderTarget(out);
     renderer.clearDepth();
     renderer.render(this.scene3, this.cam);

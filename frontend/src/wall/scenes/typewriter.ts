@@ -19,22 +19,26 @@ import { Lyrics } from '../engine/lyrics';
 import { lyricAt, layoutLyric, signature, beatAfter, drawHeart, DATE_DOTS } from './_motifs';
 import { stagger, pad3 } from './_t11';
 import { windowLines, type Rect } from './_t10';
+import { msgMaxFor, lyricV2, sigV2, V2 } from './_v2';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'machine', paper: true, energy: [0.3, 1], bars: [4, 8], weight: 1 };
 
 // ---------------------------------------------------------------- 版面（邏輯像素，y 向下）
 // 打字點（字的基線）。鏡頭跟著紙走一半：打字時紙往左、機器（打字點、字籃）往右，各走滑車位移的一半，
-// 所以一行可以打到 800 px 寬：打到頭時整行在 [PX0 − W/2, PX0 + W/2]，歸位後在 [PX0, PX0 + W]，兩邊都在安全範圍內。
-const PX0 = 530, PY = 728;
-const LINE_W = 800;
-const MARGIN_L = 104, SHEET_W = LINE_W + 2 * MARGIN_L; // 信紙
-const TOP_PAD = 64; // 第一行上面留的紙
+// 所以一行可以打到 700 px 寬：打到頭時整行在 [PX0 − W/2, PX0 + W/2]，歸位後在 [PX0, PX0 + W]，兩邊都在安全範圍內。
+// 標準 v2：信紙（留言的容器）寬 ≤ 860，只比字多一點邊。
+const PX0 = 520, PY = 728;
+const LINE_W = 700;
+const MARGIN_L = 64, SHEET_W = LINE_W + 2 * MARGIN_L; // 信紙
+const TOP_PAD = 50; // 第一行上面留的紙
 const PAPER_TOP_MIN = 262; // 紙的上緣最高到這裡（上面是歌詞）
 // 歌詞比留言小一級（MV 原則：焦點是打在紙上的留言）
-const LYR = { x: 132, y: 100, w: 1200, base: 200, size: 54, min: 48 };
+const LYR = { x: 132, y: 100, w: 1200, base: 200 }; // 字級照標準 v2（lyricV2）
 const PLATEN = { y0: 742, y1: 804 };
 const BASKET = { cy: 1300, r: 390, a0: Math.PI * 1.13, a1: Math.PI * 1.87, n: 40 }; // 字籃（扇形，中心 x 跟著打字點）
-const BELL = { dx: -400, y: 900 }; // 鈴（跟著機器走，在打字點左下；右下角是 QR 的位置）
+const BELL = { dx: 430, y: 900 }; // 鈴（跟著機器走，在打字點右下；最右也不會進右下角 QR 的範圍）
+/** 色帶的兩個捲軸（跟著機器走）：每打一個字、每個小節線各轉一格。 */
+const SPOOLS = { dx: 300, y: 860, r: 44 };
 const F_TYPE = F.ming(700);
 
 interface Key { ch: string; line: number; x: number; adv: number; t: number; sig: boolean }
@@ -90,6 +94,8 @@ export default class Typewriter extends Scene {
   lineEnd: number[] = []; // 每一行打完時滑車的位置
   crT: [number, number][] = []; // 每次歸位的時間（開始、結束）
   S = 56; lineH = 80; nLines = 1;
+  /** 署名、歌詞的字級（標準 v2）。 */
+  sigSize = 30; lyrSize = 52;
   tFirst = 0; tDone = 0; beat = 0.5;
   /** 打字點現在在畫面上的 x（跟著滑車走一半）。 */
   px = PX0;
@@ -124,22 +130,27 @@ export default class Typewriter extends Scene {
         }
         maxX = Math.max(maxX, x);
       });
-      // 署名：放得下就接在最後一行右邊，不然另起一行（靠右）
+      // 署名永遠另起一行、靠右（在留言最後一行的下面，不會跟留言擠在一起），字級照標準 v2（26～32）
       let sigLine = line;
       if (sig) {
-        const sw = Array.from(sig).reduce((a, ch) => a + advOf(ch, S * 0.72), 0);
-        // 署名永遠另起一行、靠右（在留言最後一行的下面，不會跟留言擠在一起）
+        const ss = sigV2(S);
+        const sw = Array.from(sig).reduce((a, ch) => a + advOf(ch, ss), 0);
         sigLine = line + 1;
         let sx = LINE_W - sw;
-        for (const ch of Array.from(sig)) { out.push({ ch, line: sigLine, x: sx, adv: advOf(ch, S * 0.72), sig: true }); sx += advOf(ch, S * 0.72); }
+        for (const ch of Array.from(sig)) { out.push({ ch, line: sigLine, x: sx, adv: advOf(ch, ss), sig: true }); sx += advOf(ch, ss); }
       }
       const n = sigLine + 1, lh = Math.round(S * 1.45);
-      return { out, n, lh, ok: n <= 6 && maxX <= LINE_W + 0.5 && (n - 1) * lh + S + TOP_PAD <= PY - PAPER_TOP_MIN };
+      // 標準 v2：信紙露出來的高度 ≤ 430
+      const paperH = (n - 1) * lh + S + TOP_PAD + (PLATEN.y0 - PY);
+      return { out, n, lh, ok: n <= 6 && maxX <= LINE_W + 0.5 && (n - 1) * lh + S + TOP_PAD <= PY - PAPER_TOP_MIN && paperH <= V2.boxH };
     };
-    let lo = 40, hi = 84, best = place(lo);
+    // 標準 v2：字級上限依字數（40～60），往下找放得下的
+    let lo: number = V2.msgMin, hi = msgMaxFor(body) + 0.5, best = place(lo);
     for (let k = 0; k < 10; k++) { const mid = (lo + hi) / 2, r = place(mid); if (r.ok) { best = r; lo = mid; } else hi = mid; }
-    this.S = Math.max(44, Math.floor(lo)); best = place(this.S);
+    this.S = Math.max(V2.msgMin, Math.floor(lo)); best = place(this.S);
     this.lineH = best.lh; this.nLines = best.n;
+    this.sigSize = sigV2(this.S);
+    this.lyrSize = lyricV2(m ? this.S : null);
 
     // ---- 打字的時間：一個字一格，換行多兩格（歸位），第一拍起兩小節內（不超過窗格的四成五）打完
     const slots: number[] = [];
@@ -214,6 +225,7 @@ export default class Typewriter extends Scene {
     c.save(); c.translate(0, -shake);
     this.drawDecal(c);
     this.drawSheet(c, t, car);
+    this.drawSpools(c, t);
     this.drawGuide(c, t, hitAge);
     this.drawBell(c, t);
     c.restore();
@@ -244,7 +256,7 @@ export default class Typewriter extends Scene {
     c.textBaseline = 'alphabetic';
     for (const k of this.keys) {
       if (k.t > t) break;
-      const sz = k.sig ? S * 0.72 : S;
+      const sz = k.sig ? this.sigSize : S;
       const x = ox + k.x, y = base0 + k.line * lh;
       if (y > PLATEN.y0 + 4) continue;
       // 每個字的墨色、位置、角度都有一點點不一樣（字模磨損、色帶新舊）
@@ -269,7 +281,7 @@ export default class Typewriter extends Scene {
 
   /** 放紙的斜板上的廠牌（自己編的）：跟著機器走，紙往上捲會把它蓋住。 */
   private drawDecal(c: CanvasRenderingContext2D) {
-    const x = this.px + 420, y = 432;
+    const x = this.px + 420, y = 318;
     c.save();
     c.textAlign = 'center';
     c.font = font(F.serif(600, true), 60); c.fillStyle = rgba('blood', 0.2);
@@ -296,6 +308,41 @@ export default class Typewriter extends Scene {
     // 打字點的小刻度（紅色的指標）
     c.fillStyle = rgba('blood', 0.8);
     c.beginPath(); c.moveTo(PX, PY + 34); c.lineTo(PX - 6, PY + 44); c.lineTo(PX + 6, PY + 44); c.closePath(); c.fill();
+  }
+
+  /**
+   * 色帶的兩個捲軸（左右各一，跟著機器走）：每打一個字，色帶往前走一格、捲軸跟著轉一下；
+   * 打完之後每個小節線色帶再自動走一格（標準 v2：留言打完，機器也不會整個停住）。
+   */
+  private drawSpools(c: CanvasRenderingContext2D, t: number) {
+    const au = this.ctx.audio, s = this.ctx.start;
+    // 轉了幾格：已經打的字數＋窗格開始後過了幾個小節線；最近一格用彈簧補間（純函數，看時間算）
+    let n = 0, last = -Infinity;
+    for (const k of this.keys) { if (k.t > t) break; n++; last = k.t; }
+    const b0 = Math.ceil(au.barAt(s) - 1e-6), bNow = Math.floor(au.barAt(t) + 1e-6);
+    const bars = Math.max(0, bNow - b0 + 1);
+    if (bars > 0) last = Math.max(last, au.timeOfBar(bNow));
+    const steps = n + 2 * bars;
+    const ang = (steps - 1 + ease.outBack(prog(t, last, last + 0.12))) * 0.32;
+    const ry = PY + 22;
+    for (const side of [-1, 1] as const) {
+      const x = this.px + side * SPOOLS.dx, y = SPOOLS.y, r = SPOOLS.r;
+      // 色帶：從捲軸上緣拉到打字點兩邊
+      c.strokeStyle = rgba('ink', 0.55); c.lineWidth = 7;
+      c.beginPath(); c.moveTo(x - side * r * 0.2, y - r * 0.75); c.lineTo(this.px + side * 70, ry + 4); c.stroke();
+      // 杯子（金屬）＋捲著的色帶（深色的圓）＋三根輻條
+      c.fillStyle = rgba('sepia', 0.18); c.beginPath(); c.arc(x + 4, y + 6, r + 3, 0, Math.PI * 2); c.fill();
+      const g = c.createRadialGradient(x - r * 0.4, y - r * 0.5, 4, x, y, r);
+      g.addColorStop(0, mixRgba('bone', 'ash', 0.2)); g.addColorStop(1, mixRgba('ash', 'sepia', 0.35));
+      c.fillStyle = g; c.beginPath(); c.arc(x, y, r, 0, Math.PI * 2); c.fill();
+      c.fillStyle = rgba('ink', 0.78); c.beginPath(); c.arc(x, y, r * 0.72, 0, Math.PI * 2); c.fill();
+      c.strokeStyle = mixRgba('ash', 'bone', 0.4); c.lineWidth = 3; c.lineCap = 'round';
+      for (let k = 0; k < 3; k++) {
+        const a = side * ang + (k / 3) * Math.PI * 2;
+        c.beginPath(); c.moveTo(x + Math.cos(a) * r * 0.16, y + Math.sin(a) * r * 0.16); c.lineTo(x + Math.cos(a) * r * 0.62, y + Math.sin(a) * r * 0.62); c.stroke();
+      }
+      c.fillStyle = mixRgba('ash', 'bone', 0.5); c.beginPath(); c.arc(x, y, r * 0.14, 0, Math.PI * 2); c.fill();
+    }
   }
 
   /** 鈴：每一行打完「叮」一下（鈴錘敲下去、一圈聲波、小小的「叮」字）。 */
@@ -376,10 +423,10 @@ export default class Typewriter extends Scene {
     c.letterSpacing = '0px';
     const ly = lyricAt(lyrics, t, 1.4);
     if (!ly) {
-      if (!this.hasLyrics) { c.font = font(F.archivo(100, 800), 60); c.fillStyle = rgba('sepia', 0.9); c.fillText(song.title || '今晚的歌', LYR.x, LYR.base); }
+      if (!this.hasLyrics) { c.font = font(F.archivo(100, 800), this.lyrSize); c.fillStyle = rgba('sepia', 0.9); c.fillText(song.title || '今晚的歌', LYR.x, LYR.base); }
       return false;
     }
-    const st = { family: F.archivo(100, 800), size: LYR.size, minSize: LYR.min, maxWidth: LYR.w, lineHeight: 1.06 };
+    const st = { family: F.archivo(100, 800), size: this.lyrSize, minSize: V2.lyrMin, maxWidth: LYR.w, lineHeight: 1.06 };
     const lay = layoutLyric(c, ly.line, st);
     const y0 = LYR.base - (lay.rows.length - 1) * lay.size * 1.06 * 0.6;
     let glow = false;

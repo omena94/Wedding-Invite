@@ -19,27 +19,30 @@ import { Lyrics } from '../engine/lyrics';
 import { lyricAt, layoutLyric, layoutMessage, signature, beatAfter, drawHeart, COUPLE_ZH, DATE_DOTS } from './_motifs';
 import { drawReveal, phraseSchedule, revealAt, fitCharsF, windowLines, type Rect } from './_t10';
 import { pad3 } from './_t11';
+import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 } from './_v2';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'machine', paper: true, energy: [0, 0.7], bars: [4, 8], weight: 1 };
 
 // ---------------------------------------------------------------- 版面（邏輯像素，y 向下）
 // 正在演奏（歌詞）：比曲目卡上的留言小一級（MV 原則：焦點是留言）
-const LYR = { x: 140, y: 100, w: 1200, base: 200, size: 54, min: 48 };
-const PLATE = { x0: 128, x1: 1372, y0: 244, y1: 704 }; // 機芯的底板
+const LYR = { x: 140, y: 100, w: 1200, base: 200 }; // 字級照標準 v2（lyricV2）
+// 機芯的底板：標準 v2 要場景當主角，機芯拉寬到畫面右邊（右下角 QR 上面）；曲目卡變小放左下
+const PLATE = { x0: 128, x1: 1800, y0: 244, y1: 704 };
 const COMB = { y0: 250, y1: 304 }; // 音梳的底座
-const CYL = { x0: 170, x1: 1284, cy: 522, R: 150 }; // 滾筒
+const CYL = { x0: 170, x1: 1690, cy: 522, R: 150 }; // 滾筒
 const TH_C = -0.7; // 音梳撥到凸點的地方（滾筒上的角度，負的 = 上面）
 const PITCH = 3.4; // 凸點的間距（px）
-const TX0 = 262, TX1 = 1258; // 留言凸點的範圍
+const TX0 = 262, TX1 = 1664; // 留言凸點的範圍
 const TCOLS = Math.floor((TX1 - TX0) / PITCH);
 const GLYPH = 20; // 一個字 20×20 顆凸點（畫面上約 68 px）
 const LINE_ROWS = 32; // 一行字佔幾排（字 20 排＋行距 12 排）
 const BASS = [{ x: 190, every: 4, off: 0 }, { x: 208, every: 16, off: 0 }, { x: 226, every: 4, off: 2 }, { x: 244, every: 16, off: 8 }];
-const CARD = { x: 120, y: 740, w: 1212, h: 244 }; // 曲目卡（一張紙卡斜斜地擺在盒子裡）
+// 曲目卡（一張薄紙卡斜斜地擺在盒子裡，左下）：標準 v2，寬 ≤ 860，照字的大小裁
+const CARD = { x: 120, y: 722, maxW: 860, maxH: 250, padX: 40, padT: 22, padB: 16 };
 const CARD_ROT = -0.008;
 /** 曲目卡的座標系（卡的中心轉一點點）：底圖與字都用同一個。 */
-const cardXform = (c: CanvasRenderingContext2D) => { const cx = CARD.x + CARD.w / 2, cy = CARD.y + CARD.h / 2; c.translate(cx, cy); c.rotate(CARD_ROT); c.translate(-cx, -cy); };
-const FAN = { x: 1326, y: 520 }; // 調速風扇
+const cardXform = (c: CanvasRenderingContext2D, w: number, h: number) => { const cx = CARD.x + w / 2, cy = CARD.y + h / 2; c.translate(cx, cy); c.rotate(CARD_ROT); c.translate(-cx, -cy); };
+const FAN = { x: 1748, y: 520 }; // 調速風扇
 
 const INVITE = '這一盒還沒有曲子：掃描右下角 QR code，把你的祝福做成音樂盒。';
 const TEXT = `正在演奏曲目本盒演奏純音樂${INVITE}${COUPLE_ZH}一位賓客新郎新娘`;
@@ -149,6 +152,8 @@ export default class Musicbox extends Scene {
   bitmap!: Uint8Array; rows = 1;
   tex!: THREE.DataTexture;
   B0 = 0; T0 = 26; beat = 0.5; tFirst = 0;
+  /** 曲目卡的大小（照字裁）、署名與歌詞的字級。 */
+  card = { w: 860, h: 200 }; sigSize = 30; lyrSize = 52;
   hasLyrics = false;
   avoid: Rect[] = [];
   private baseUp = false;
@@ -164,7 +169,17 @@ export default class Musicbox extends Scene {
     this.B0 = Math.round(au.beatAt(s));
     const c = this.dyn.ctx;
     // 留言框扣掉最下面一列署名（署名永遠在留言下面）
-    this.fit = layoutMessage(c, this.body, F.hand(700), CARD.w - 120, 148, { min: 44, max: 80, lineHeight: 1.18, maxLines: 3 });
+    // 標準 v2：字級上限依字數，照子句斷行；框高先扣掉署名那一列（署名永遠在最後一行下面）
+    const fam = F.hand(700);
+    const sig0 = sigV2(Math.min(msgMaxFor(this.body), 52));
+    const boxW = CARD.maxW - 2 * CARD.padX, boxH = CARD.maxH - CARD.padT - CARD.padB - (m ? sig0 + 12 : 0);
+    const o = { min: V2.msgMin, max: msgMaxFor(this.body), lineHeight: 1.18, maxLines: 4 };
+    this.fit = fitClauses(c, this.body, fam, boxW, boxH, o) ?? layoutMessage(c, this.body, fam, boxW, boxH, o);
+    this.sigSize = sigV2(this.fit.size);
+    this.lyrSize = lyricV2(m ? this.fit.size : null);
+    c.font = font(fam, this.sigSize);
+    const sigW = m ? c.measureText(m.couple ? '—— 新郎新娘' : signature(m.name)).width : 0;
+    this.card = { w: Math.min(CARD.maxW, Math.max(this.fit.width, sigW) + 2 * CARD.padX), h: CARD.padT + this.fit.height + (m ? this.sigSize + 12 : 0) + CARD.padB + 6 };
     this.tFirst = beatAfter(au, s + 0.2);
     this.sched = phraseSchedule(au, this.body, this.tFirst, Math.min(8 * this.beat, 0.45 * (e - s)), 4);
     this.makePins(pinText);
@@ -173,7 +188,7 @@ export default class Musicbox extends Scene {
     this.drawBase();
     this.avoid = [
       [LYR.x - 16, LYR.y, LYR.w + 32, 140],
-      [CARD.x - 10, CARD.y - 10, CARD.w + 20, H - 96 - CARD.y + 20],
+      [CARD.x - 10, CARD.y - 10, this.card.w + 20, this.card.h + 20],
     ];
   }
 
@@ -259,10 +274,11 @@ export default class Musicbox extends Scene {
       c.strokeStyle = rgba('bone', 0.5); c.lineWidth = 1.5; c.beginPath(); c.arc(x, (COMB.y0 + COMB.y1) / 2, 8, Math.PI, Math.PI * 1.6); c.stroke();
     }
     // 曲目卡：一張紙卡擺在盒子裡（稍微歪、底下有柔柔的影子），只印一條細框
-    c.save(); cardXform(c);
-    c.filter = 'blur(10px)'; c.fillStyle = rgba('sepia', 0.18); c.fillRect(CARD.x + 8, CARD.y + 14, CARD.w, CARD.h); c.filter = 'none';
-    c.fillStyle = mixRgba('paper', 'bone', 0.5); c.fillRect(CARD.x, CARD.y, CARD.w, CARD.h);
-    c.strokeStyle = rgba('blood', 0.35); c.lineWidth = 1.2; c.strokeRect(CARD.x + 14.5, CARD.y + 14.5, CARD.w - 29, CARD.h - 29);
+    const cw = this.card.w, ch = this.card.h;
+    c.save(); cardXform(c, cw, ch);
+    c.filter = 'blur(10px)'; c.fillStyle = rgba('sepia', 0.18); c.fillRect(CARD.x + 8, CARD.y + 14, cw, ch); c.filter = 'none';
+    c.fillStyle = mixRgba('paper', 'bone', 0.5); c.fillRect(CARD.x, CARD.y, cw, ch);
+    c.strokeStyle = rgba('blood', 0.3); c.lineWidth = 1; c.strokeRect(CARD.x + 9.5, CARD.y + 9.5, cw - 19, ch - 19);
     c.restore();
     void m;
   }
@@ -332,7 +348,7 @@ export default class Musicbox extends Scene {
     comp.draw(renderer, L.upload(), out);
     if (glow) comp.draw(renderer, HL.upload(), out, { mode: 'add', tint: [1.5, 1.5, 1.5] });
     // 鏡頭：整段慢慢推近（緩進緩出）
-    return { paper: 1, bloom: 0.4, vignette: 0.3, grain: 0.04, halation: 0.06, zoom: 1 + 0.04 * ease.inOutCubic(f.p), popupAvoid: this.avoid };
+    return { paper: 1, bloom: 0.4, vignette: 0.3, grain: 0.04, halation: 0.06, zoom: 1 + 0.025 * ease.inOutCubic(f.p), popupAvoid: this.avoid };
   }
 
   /** 正在演奏：這一行歌詞（逐字跟唱；亮版面：正在唱是訊號色的暗部＋螢光筆，唱完墨色）。 */
@@ -347,7 +363,7 @@ export default class Musicbox extends Scene {
       }
       return false;
     }
-    const st = { family: F.archivo(100, 800), size: LYR.size, minSize: LYR.min, maxWidth: LYR.w, lineHeight: 1.08 };
+    const st = { family: F.archivo(100, 800), size: this.lyrSize, minSize: V2.lyrMin, maxWidth: LYR.w, lineHeight: 1.08 };
     const lay = layoutLyric(c, ly.line, st);
     const y0 = LYR.base - (lay.rows.length - 1) * lay.size * 1.08;
     let glow = false;
@@ -378,15 +394,16 @@ export default class Musicbox extends Scene {
   private drawCard(c: CanvasRenderingContext2D, t: number) {
     const m = this.msg, fit = this.fit;
     const shown = fitCharsF(fit.lines, revealAt(this.sched, t, Math.min(0.18, this.beat * 0.35)));
-    const top = CARD.y + 32, boxH = 148;
-    const y = top + (boxH - fit.height) / 2 + fit.size * 0.88;
-    c.save(); cardXform(c);
-    drawReveal(c, fit, F.hand(700), CARD.x + 60, y, shown, { color: rgba('sepia') });
+    const y = CARD.y + CARD.padT + fit.size * 0.9;
+    c.save(); cardXform(c, this.card.w, this.card.h);
+    drawReveal(c, fit, F.hand(700), CARD.x + CARD.padX, y, shown, { color: rgba('sepia') });
     const done = this.sched.length ? this.sched[this.sched.length - 1]!.t + 0.2 : this.tFirst;
     if (m && t >= done) {
       c.save(); c.globalAlpha *= prog(t, done, done + 0.3);
-      c.font = font(F.hand(700), 32); c.fillStyle = rgba('sepia', 0.75); c.textAlign = 'right';
-      c.fillText(m.couple ? '—— 新郎新娘' : signature(m.name), CARD.x + CARD.w - 50, CARD.y + CARD.h - 26);
+      // 署名：留言最後一行的下面、靠右
+      const sy = y + (fit.lines.length - 1) * fit.lineHeight + fit.size * 0.3 + this.sigSize + 8;
+      c.font = font(F.hand(700), this.sigSize); c.fillStyle = rgba('sepia', 0.75); c.textAlign = 'right';
+      c.fillText(m.couple ? '—— 新郎新娘' : signature(m.name), CARD.x + this.card.w - CARD.padX, sy);
       c.restore();
     }
     c.restore();

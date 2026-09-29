@@ -20,16 +20,18 @@ import { Lyrics, type Word } from '../engine/lyrics';
 import { lyricAt, layoutLyric, drawLyric, sparkHead, sparkParticles, beatAfter, drawHeart, signature, COUPLE_ZH } from './_motifs';
 import { stagger, bbox, pad3 } from './_t11';
 import { windowLines, type Rect } from './_t10';
+import { msgMaxFor, lyricV2, sigV2, V2 } from './_v2';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'machine', paper: false, energy: [0.25, 1], bars: [4, 8], weight: 1 };
 
 // ---------------------------------------------------------------- 版面（邏輯像素，y 向下）
 // 收訊紀錄（歌詞）：比電報紙上的留言小一級（MV 原則：焦點是留言）
-const LOG = { x: 140, y: 100, w: 1200, base: 206, size: 54, min: 48 };
+const LOG = { x: 140, y: 100, w: 1200, base: 206 }; // 字級照標準 v2（lyricV2）
 const TAPE = { y0: 330, y1: 396 }; // 紙帶
 const PEN_X = 1290; // 收報機的針（紙帶往左走）
 // 電報紙的格子（下面留一列給署名）
-const GRID = { x: 140, y: 470, w: 730, h: 396 };
+// 標準 v2：電報紙（留言區）連署名寬 ≤ 860、高 ≤ 430，字級 40～60
+const GRID = { x: 140, y: 470, w: 760, h: 350 };
 const KEY = { x: 996, y: 700 }; // 電報鍵（底座左上）
 const KEY_PIVOT = { x: 1296, y: 866 }; // 槓桿的轉軸
 const LEVER_L = 286; // 轉軸到按鈕的距離
@@ -145,6 +147,8 @@ export default class Morse extends Scene {
   wpm = 20;
   avoid: Rect[] = [];
   sender = '';
+  /** 署名、歌詞的字級（標準 v2）。 */
+  sigSize = 30; lyrSize = 52;
   private baseUp = false;
 
   override async init() {
@@ -177,9 +181,11 @@ export default class Morse extends Scene {
       const rows = row + 1;
       return { cw, chh, cols, rows, pos, ok: rows * chh <= GRID.h && rows <= 6 };
     };
-    let lo = 40, hi = 104, best = place(lo);
+    let lo: number = V2.msgMin, hi = msgMaxFor(this.body) + 0.5, best = place(lo);
     for (let k = 0; k < 10; k++) { const mid = (lo + hi) / 2, r = place(mid); if (r.ok) { best = r; lo = mid; } else hi = mid; }
     this.S = Math.floor(lo); best = place(this.S);
+    this.sigSize = sigV2(this.S);
+    this.lyrSize = lyricV2(m ? this.S : null);
     Object.assign(this, { cw: best.cw, chh: best.chh, cols: best.cols, rows: best.rows });
 
     // ---- 發報時間：第一拍起，一拍 1／2／4／8 個字，兩小節（不超過窗格的四成五）內發完；空白不佔拍
@@ -284,7 +290,7 @@ export default class Morse extends Scene {
     c.globalAlpha = 1;
     // 冷面註腳（小、低對比，跟署名同一列、靠左）
     c.font = font(F.hei(500), 14); c.letterSpacing = '2px'; c.fillStyle = rgba('ash', 0.5);
-    c.fillText('＊中文依本局電碼簿發送：♥＝0520', GRID.x, GRID.y + gh + 58);
+    c.fillText('＊中文依本局電碼簿發送：♥＝0520', GRID.x, GRID.y + gh + this.sigSize + 20);
     c.letterSpacing = '0px';
     this.sender = sender;
     void m;
@@ -313,6 +319,7 @@ export default class Morse extends Scene {
     const glowGrid = this.drawGrid(c, hc, t);
     this.drawMarks(t, fadeIn * (1 - exit));
     this.drawKey(c, t, down);
+    this.drawSounder(c, t, down);
 
     comp.draw(renderer, L.upload(), out);
     if (glowLyric || glowGrid) comp.draw(renderer, HL.upload(), out, { mode: 'add', tint: [1.7, 1.7, 1.7] });
@@ -381,7 +388,7 @@ export default class Morse extends Scene {
     const { lyrics, song } = this.ctx;
     const ly = lyricAt(lyrics, t, 1.4);
     if (ly) {
-      const st = { family: F.archivo(100, 800), size: LOG.size, minSize: LOG.min, maxWidth: LOG.w, lineHeight: 1.1 };
+      const st = { family: F.archivo(100, 800), size: this.lyrSize, minSize: V2.lyrMin, maxWidth: LOG.w, lineHeight: 1.1 };
       const lay = layoutLyric(c, ly.line, st);
       const rows = lay.rows.length;
       const y = LOG.base - (rows - 1) * lay.size * 0.55;
@@ -405,7 +412,7 @@ export default class Morse extends Scene {
     if (!this.hasLyrics) {
       const s = this.ctx.start;
       c.save(); c.globalAlpha *= prog(t, s + 0.2, s + 0.6);
-      c.font = font(F.archivo(100, 700), 52); c.fillStyle = rgba('bone', 0.85);
+      c.font = font(F.archivo(100, 700), this.lyrSize); c.fillStyle = rgba('bone', 0.85);
       c.fillText(`本段收訊：純音樂《${song.title || '今晚的歌'}》`, LOG.x, LOG.base);
       c.restore();
     }
@@ -451,11 +458,67 @@ export default class Morse extends Scene {
     if (t >= this.tLast) {
       const gw = this.cols * this.cw, gh = this.rows * this.chh;
       c.save(); c.globalAlpha *= prog(t, this.tLast, this.tLast + 0.3);
-      c.font = font(F.hand(700), 40); c.fillStyle = rgba('bone', 0.9); c.textAlign = 'right';
-      c.fillText(this.msg ? signature(this.sender) : `—— ${this.sender}`, GRID.x + gw + 6, GRID.y + gh + 60);
+      c.font = font(F.hand(700), this.sigSize); c.fillStyle = rgba('bone', 0.9); c.textAlign = 'right';
+      c.fillText(this.msg ? signature(this.sender) : '—— ' + this.sender, GRID.x + gw + 6, GRID.y + gh + this.sigSize + 22);
       c.restore();
     }
     return glow;
+  }
+
+  /**
+   * 收報的響鍵（sounder）：兩個線圈上面一根黃銅銜鐵，電報鍵每按一下它就「喀」地被吸下去、放開彈回來。
+   * 放在右邊的空處（標準 v2：留言區變小，空出來的畫面用這個版面自己的機器補動作），跟電報鍵同一個訊號。
+   */
+  private drawSounder(c: CanvasRenderingContext2D, t: number, down: number) {
+    const s = this.ctx.start;
+    const k = prog(t, s + 0.1, s + 0.45);
+    if (k <= 0) return;
+    const ink = rgba('bone', 0.85), thin = rgba('bone', 0.35);
+    const bx = 1470, by = 772, bw = 330;
+    c.save();
+    c.globalAlpha *= k;
+    c.lineCap = 'round'; c.lineJoin = 'round';
+    // 底座（木頭）
+    c.fillStyle = mixRgba('ink2', 'sepia', 0.5); c.fillRect(bx, by, bw, 30);
+    c.strokeStyle = ink; c.lineWidth = 1.8; c.strokeRect(bx, by, bw, 30);
+    c.strokeStyle = thin; c.lineWidth = 1;
+    for (let x = bx + 8; x < bx + bw; x += 7) { c.beginPath(); c.moveTo(x, by + 29); c.lineTo(x - 9, by + 19); c.stroke(); }
+    // 兩個線圈（直立的圓柱，細線纏繞）
+    for (const cx of [bx + 92, bx + 168]) {
+      const top = by - 118;
+      c.fillStyle = mixRgba('ink2', 'sepia', 0.55); c.fillRect(cx - 26, top, 52, 118);
+      c.strokeStyle = ink; c.lineWidth = 1.6; c.strokeRect(cx - 26, top, 52, 118);
+      c.strokeStyle = rgba('signal', 0.18 + 0.4 * down); c.lineWidth = 1;
+      for (let y = top + 6; y < by - 4; y += 5) { c.beginPath(); c.moveTo(cx - 25, y); c.lineTo(cx + 25, y + 2); c.stroke(); }
+      c.fillStyle = rgba('ink2'); c.fillRect(cx - 18, top - 10, 36, 10);
+      c.strokeStyle = ink; c.strokeRect(cx - 18, top - 10, 36, 10);
+    }
+    // 支架＋轉軸（右邊）
+    const px = bx + 286, py = by - 162;
+    c.fillStyle = mixRgba('blood', 'signal', 0.35);
+    c.beginPath(); c.moveTo(px - 16, by); c.lineTo(px - 10, py + 6); c.lineTo(px + 10, py + 6); c.lineTo(px + 16, by); c.closePath(); c.fill();
+    c.strokeStyle = ink; c.lineWidth = 1.6; c.stroke();
+    // 上下兩顆擋塊（銜鐵在中間敲）
+    const sx = bx + 40;
+    c.fillStyle = mixRgba('ash', 'bone', 0.3);
+    c.fillRect(sx - 7, py - 40, 14, 22); c.strokeStyle = ink; c.lineWidth = 1.2; c.strokeRect(sx - 7, py - 40, 14, 22);
+    c.fillRect(sx - 7, by - 60, 14, 60); c.strokeRect(sx - 7, by - 60, 14, 60);
+    // 銜鐵（黃銅長條）：按下時被吸下來、放開彈回（角度跟電報鍵同一個訊號）
+    const a = -0.05 * (1 - down) + 0.012 * down;
+    c.save(); c.translate(px, py); c.rotate(a);
+    const g = c.createLinearGradient(0, -8, 0, 8);
+    g.addColorStop(0, mixRgba('signal', 'bone', 0.35)); g.addColorStop(0.5, rgba('signal', 0.9)); g.addColorStop(1, rgba('blood'));
+    c.fillStyle = g;
+    c.beginPath(); c.moveTo(8, -7); c.lineTo(-(px - sx) - 16, -6); c.lineTo(-(px - sx) - 16, 7); c.lineTo(8, 8); c.closePath(); c.fill();
+    c.strokeStyle = ink; c.lineWidth = 1.6; c.stroke();
+    c.strokeStyle = rgba('ink', 0.45); c.lineWidth = 1;
+    for (let x = -(px - sx) - 10; x < 4; x += 6) { c.beginPath(); c.moveTo(x, 2); c.lineTo(x + 3, 6); c.stroke(); }
+    c.restore();
+    c.fillStyle = rgba('ink2'); c.beginPath(); c.arc(px, py, 6, 0, TAU); c.fill();
+    c.strokeStyle = ink; c.lineWidth = 1.4; c.stroke();
+    // 敲到的那一下：擋塊上一點火花光（小，不搶留言）
+    if (down > 0.9) { c.fillStyle = rgba('ember', 0.6 * down); c.beginPath(); c.arc(sx, by - 64, 4, 0, TAU); c.fill(); }
+    c.restore();
   }
 
   // ---------------------------------------------------------------- 電報鍵（版畫線稿，側面）
