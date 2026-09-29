@@ -145,7 +145,7 @@ export const spec: PlateSpecDecl = {
 - 轉場：窗格相接就是硬切（大部分在小節線上），這是預設。要自己做轉場設 `handlesTransition = true` 並用 `f.under`／`f.tin`。
 - 固定色（不跟主題換）：`fur`（博美橘毛）、`cream`（奶油色毛、白胸口）、`collar`（紅項圈）、`ball`（網球黃綠）、`denim`（牛仔褲）、
   `gingham`（孟庭的綠格紋）、`leash`（藍牽繩）。只給手繪角色與道具用，不發光。
-- 手繪的新人與狗狗一律用 `scenes/_couple.ts`（見檔頭說明與 TREATMENT.md 的「角色」），不要自己另外畫一套人。
+- 新人與狗狗一律用紙偶（`scenes/_puppet.ts`，見下面「紙偶角色」與 TREATMENT.md 的「角色」），不要自己另外畫一套人，也不要再用 `_couple.ts` 的 `drawPerson／drawDog`。
 - 只改自己的檔（`scenes/<名字>.ts`、`scenes/<名字>-*.ts`；一批版面共用的輔助可以放 `scenes/_<批次代號>.ts`，例如 `_doc.ts`）。引擎、`_motifs.ts`、導演、其他版面：需要改就在回報裡寫清楚，由主導者改。
 
 ## 工具箱
@@ -168,7 +168,7 @@ export const spec: PlateSpecDecl = {
 - `motifs.ts` / `scenes/_motifs.ts`：火花 `sparkHead`、`sparkParticles`、`sparkHead2D`；愛心 `drawHeart`、`heartPoints`；
   **歌詞的聲音** `lyricAt`、`layoutLyric`、`drawLyric`；**留言的聲音** `layoutMessage`、`drawMessage`、`signature`、`msgChars`；
   `COUPLE_EN`、`COUPLE_ZH`、`DATE_DOTS`、`beatAfter`、`barAfter`。
-- **`scenes/_couple.ts`（手繪的新人與狗狗，完整說明在檔頭）**：`drawPerson(c, 'alan'|'omena', pose, {x, y, h, dir, view, outfit, ink, t, reveal})`、
+- **`scenes/_couple.ts`（舊的程式畫角色，2026-09-29 起人物改用 `_puppet.ts` 紙偶；這裡的道具、手繪原語、`drawNote`、`lyricOnPath` 照樣可以用）**：`drawPerson(c, 'alan'|'omena', pose, {x, y, h, dir, view, outfit, ink, t, reveal})`、
   `drawDog(c, 'penpen'|'qq', dogPose, {...})` 回傳關節的畫面座標（手、嘴、項圈…）接道具與牽繩；`h` 是場景尺度（宣文的身高），同一場景的角色傳同一個值。
   姿勢庫 `POSE`（側面）、`FRONT`（正面）、`DOG`，動作用 `beatSwing(t, 拍點)` 算進度，「那一下」（擊球、出手、接到）落在拍點；走路 `walk(f.beat / 2)` 一拍一步。
   `inkFor(paper)` 取線色（暗版面 bone、亮版面 sepia）；手繪原語 `inkLine／inkPath／inkShape／inkPoly／inkRect／inkEllipse／hatch`（boiling line）；

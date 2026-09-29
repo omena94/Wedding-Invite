@@ -4,7 +4,7 @@
 每個版面都是 `src/wall/scenes/<名字>.ts`，自己 `export const spec` 宣告排程參數（見 ENGINE.md）；
 **每個都要跑過 `qa` 並打開總表與全尺寸截圖檢查**才算完成。
 
-- **group**：`couple` = 手繪新人／狗狗互動（用 `scenes/_couple.ts`，是點綴），`type` = 文字／圖像版面（大部分）。
+- **group**：`couple` = 新人／狗狗互動（紙偶動畫 `scenes/_puppet.ts`，是點綴），`type` = 文字／圖像版面（大部分）。
 - **family**：系列，同系列不會連著出現。
 - 亮 = 紙底（`paper: true`，回傳 `paper: 1`）；暗 = 深色底。
 - 每個版面都要照 TREATMENT.md 的跟唱規則與留言規則：歌詞逐字跟唱、留言讀得完、沒有留言／沒有歌詞也成立。
