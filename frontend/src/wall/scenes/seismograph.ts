@@ -6,10 +6,12 @@
 //    畫面震一下；留言紙條上蓋下一個圓章「心動震度 7」。
 //  - 歌詞是寫在紙上的標註：一句歌詞從筆的位置出現、跟著紙往上捲，一條細引線拉到它開始唱的那一刻的波形上（標一個小圓圈，
 //    像地震學家標「初動」），照跟唱規則逐字亮（亮版面：正在唱的是訊號色的暗部）。紙速依歌詞排好：唱的時候一定還在報告下方讀得到。
-//  - 焦點：主打留言是觀測員夾在記錄紙上的一張手寫紙條（真的紙：有陰影、迴紋針、稍微歪），一段一段寫上去，署名；
+//  - 紙的右緣還有一支「計時筆」：每個小節線往外打一下，在紙上留一個小刻痕（窗格裡每小節的小事件）。
+//  - 主打留言是觀測員夾在記錄紙右上角的一張小手寫紙條（真的紙：有陰影、迴紋針、稍微歪；v2 字級、紙條只比字大一點），一段一段寫上去，署名；
 //    主震那一拍蓋上圓章。紙條上沒有表格、標題或編號——只有留言。沒有留言：不放紙條，歌詞放大成焦點，蓋板上一小行邀請。
 //  - 純音樂：標註改成每四小節印一次歌名。
-//  - 鏡頭：整台機器（紙、筆臂、蓋板）是桌上的一個平面，鏡頭稍微從上往下斜斜地看、慢慢推近，對焦在紙條上（蓋板有一點點糊）。
+//  - 鏡頭：整台機器（紙、筆臂、蓋板）是桌上的一個平面，鏡頭稍微從上往下斜斜地看、慢慢推近；
+//    焦點轉移：開場對焦在筆與震波上，留言開始寫的時候移到紙條。
 // 手法：紙、格線、打孔、蓋板是一個 GLSL pass（只改捲動量）；震波與筆臂是 LineBatch（一般混色的墨線）；
 // 紙上的標註一張 Canvas 層（每格重畫，因為整張紙在動）；紙條一張小 Canvas 層（內容變了才重畫）；全部畫進離屏圖再用 _t8 的舞台拍。
 import type * as THREE from 'three';
@@ -22,7 +24,8 @@ import { clamp, ease, lerp, prog, pulse, noise1, hash } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
 import { Lyrics, type Line } from '../engine/lyrics';
 import { layoutLyric, type LyricLayout, type LyricStyle, drawHeart, signature, beatAfter, COUPLE_ZH } from './_motifs';
-import { blit, winBars, label, INVITE, T8_TEXT, Stage, camMove } from './_t8';
+import { blit, winBars, label, INVITE, T8_TEXT, Stage, camMove, type StageCam } from './_t8';
+import { V2, msgMaxFor, lyricV2, sigV2, fitClauses } from './_v2';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'machine', paper: true, energy: [0.25, 1], bars: [4, 8], weight: 1 };
 
@@ -30,7 +33,7 @@ export const spec: PlateSpecDecl = { group: 'type', family: 'machine', paper: tr
 /** 記錄紙（左右邊界）。 */
 const PX0 = 110, PX1 = 1340;
 /** 震波的中線、最大擺幅（撞到擋塊）。 */
-const CX = 322, AMAX = 190;
+const CX = 350, AMAX = 220;
 /** 筆尖（靜止時）的高度、筆臂長度（支點在畫面外下方）。 */
 const PEN_Y = 826, ARM = 440;
 /** 蓋板的上緣。 */
@@ -38,10 +41,14 @@ const COVER_Y = 900;
 /** 標註（歌詞）的左緣與寬度。 */
 const LX = 560, LW = 770;
 /** 地震報告卡（畫面上的範圍；卡片本身在裡面稍微歪一點）。 */
-const CARD = { x: 552, y: 84, w: 800, h: 620 };
-const CW = 760; // 紙條的寬
+const CARD = { x: 700, y: 84, w: 700, h: 520 };
+const CW = 620; // 紙條的寬（v2：留言區 ≤ 860×430）
 /** 紙條裡：留言第一行的頂端。 */
-const MSG_TOP = 40;
+const MSG_TOP = 34;
+/** 基本機位（沒有加鏡頭運動）：init 用它換算字級。 */
+const CAM: StageCam = { yaw: -0.04, pitch: 0.1, roll: -0.01, zoom: 1.06, x: 0, y: 6, dof: 0.9, room: [0, 0, 0], paper: true };
+/** 紙右緣的計時筆（每小節打一個刻痕）。 */
+const TICK_X = 1296;
 /** 紙上標註層的範圍。 */
 const PAP = { x: PX0, y: 40, w: PX1 - PX0, h: COVER_Y - 40 };
 /** 震波取樣率（預先算好）。 */
@@ -120,6 +127,8 @@ export default class Seismograph extends Scene {
   tau0 = 0;
   v = 40;
   tQ = 0;
+  /** 內容上的字級（已經換算過舞台縮放）：署名、歌詞。 */
+  sigPx = 30; lyrPx = 50;
   beat = 0.5;
   notes: Note[] = [];
   fit: FitResult | null = null;
@@ -146,9 +155,17 @@ export default class Seismograph extends Scene {
     // 紙條：先排留言，才知道紙條多高、下面剩多少空間給歌詞。沒有留言就沒有紙條（歌詞往上用整個右半邊）
     const cc = this.card.ctx;
     const text = m ? m.text : INVITE;
-    this.fit = fitText(cc, text, F.hand(400), CW - 80, 330, { min: 48, max: 92, lineHeight: 1.24, maxLines: 5 });
+    // v2 字級：標準是螢幕 px，除以舞台在紙條那裡的縮放倍數；字級依「紙條最大高度扣掉署名」算
+    const zM = this.stage.scaleAt(CAM, CARD.x + CARD.w / 2, CARD.y + 200);
+    const zL = this.stage.scaleAt(CAM, LX + LW / 2, 700);
+    const o = { min: V2.msgMin / zM, max: msgMaxFor(text) / zM, lineHeight: 1.24, maxLines: 5 };
+    const bh = V2.boxH / zM - MSG_TOP - 100;
+    this.fit = fitClauses(cc, text, F.hand(400), CW - 64, bh, o) ?? fitText(cc, text, F.hand(400), CW - 64, bh, o);
     const f0 = this.fit;
-    this.cardH = m ? Math.min(CARD.h - 60, Math.ceil(MSG_TOP + f0.size * 0.92 + (f0.lines.length - 1) * f0.lineHeight + 60 + 40)) : -60;
+    this.sigPx = sigV2(f0.size * zM) / zM;
+    this.lyrPx = lyricV2(m ? f0.size * zM : null) / zL;
+    // 紙條高 = 最後一行的基線＋署名＋下緣一點點（容器只比字大一點）
+    this.cardH = m ? Math.ceil(MSG_TOP + f0.size * 0.92 + (f0.lines.length - 1) * f0.lineHeight + f0.size * 0.5 + this.sigPx + 34) : -60;
     const n = this.fit.lines.reduce((a, l) => a + Array.from(l).length, 0);
     const t0 = beatAfter(au, s + 0.12);
     const dur = clamp(0.055 * n + 0.3, 0.6, 3.2), step = beat / 2;
@@ -160,7 +177,7 @@ export default class Seismograph extends Scene {
     const c = this.pap.ctx;
     const zoneTop = CARD.y + this.cardH + 34, zoneBot = PEN_Y - 14;
     // 有留言時歌詞小一級（留言是焦點）；沒有留言時歌詞是焦點
-    const st: LyricStyle = { family: F.archivo(100, 800), size: m ? 56 : 76, minSize: 48, maxWidth: LW, lineHeight: 1.1, active: rgba('blood'), sung: rgba('sepia', m ? 0.85 : 0.95), unsung: rgba('sepia', 0.26) };
+    const st: LyricStyle = { family: F.archivo(100, 800), size: this.lyrPx, minSize: V2.lyrMin / zL, maxWidth: LW, lineHeight: 1.1, active: rgba('blood'), sung: rgba('sepia', m ? 0.85 : 0.95), unsung: rgba('sepia', 0.26) };
     const span = (zoneBot + 60) / 64 + 2; // 紙上看得到多久以前
     if (lyrics.has) {
       for (const l of lyrics.linesIn(s - span, e + 1)) {
@@ -252,6 +269,27 @@ export default class Seismograph extends Scene {
       ink.seg2(prev.x, prev.y, p.x, p.y, 1.6 + 0.8 * wet, [lerp(se[0], bl[0], wet), lerp(se[1], bl[1], wet), lerp(se[2], bl[2], wet)], 0.92);
       prev = p;
     }
+  }
+
+  /** 計時筆：紙右緣一條細線，每個小節線往左打一下（留下一個小刻痕，跟著紙往上捲）。 */
+  private drawTicks(t: number) {
+    const ink = this.ink, se = LIN.sepia;
+    const au = this.ctx.audio;
+    const tMin = t - (PEN_Y + 40) / this.v;
+    ink.seg2(TICK_X, 60, TICK_X, PEN_Y, 1.2, se, 0.35);
+    for (let b = Math.ceil(au.barAt(tMin)); ; b++) {
+      const tb = au.timeOfBar(b);
+      if (tb > t) break;
+      const y = PEN_Y - this.v * (t - tb);
+      // 剛打下去的刻痕是濕的、比較長，一下子縮成固定長度
+      const wet = Math.exp(-(t - tb) / 0.4);
+      const len = 26 + 30 * Math.exp(-(t - tb) / 0.12);
+      ink.seg2(TICK_X, y, TICK_X - len, y, 2 + wet, [lerp(se[0], LIN.blood[0], wet), lerp(se[1], LIN.blood[1], wet), lerp(se[2], LIN.blood[2], wet)], 0.85);
+    }
+    // 筆尖（一個小點）：打刻痕的那一下往左跳
+    const lb = au.timeOfBar(Math.floor(au.barAt(t)));
+    const k = Math.exp(-Math.max(0, t - lb) / 0.1);
+    ink.seg2(TICK_X - 50 * k, PEN_Y, TICK_X - 50 * k + 0.01, PEN_Y, 7, LIN.blood, 1);
   }
 
   /** 筆臂：從畫面外的支點伸上來，一根細長的桿子＋筆尖的小墨水匣。 */
@@ -366,7 +404,7 @@ export default class Seismograph extends Scene {
       let idx = 0;
       const top = MSG_TOP + fit.size * 0.92;
       fit.lines.forEach((ln, li) => {
-        let x = 40;
+        let x = 32;
         const y = top + li * fit.lineHeight;
         for (const ch of Array.from(ln)) {
           const ta = this.charT[idx++] ?? 0;
@@ -379,13 +417,14 @@ export default class Seismograph extends Scene {
           x += cw;
         }
       });
-      const sy = top + (fit.lines.length - 1) * fit.lineHeight + 62;
-      if (sigK > 0) label(c, signature(m.name) + (m.couple ? '（新人）' : ''), 40, sy, F.hand(400), 36, rgba('sepia', 0.7 * sigK));
+      const sy = top + (fit.lines.length - 1) * fit.lineHeight + fit.size * 0.5 + this.sigPx;
+      if (sigK > 0) label(c, signature(m.name) + (m.couple ? '（新人）' : ''), 32, sy, F.hand(400), this.sigPx, rgba('sepia', 0.7 * sigK));
       // 圓章：主震那一拍蓋下去（從大變小、有點歪、印泥不均）
       if (stampK > 0) {
         c.save();
         // 蓋在紙條右下角（壓過紙邊，不蓋到留言）
-        c.translate(CW - 96, this.cardH - 20);
+        c.translate(CW - 70, this.cardH - 16);
+        c.scale(0.78, 0.78);
         c.rotate(-0.21);
         const sc = lerp(1.8, 1, stampK);
         c.scale(sc, sc);
@@ -437,6 +476,7 @@ export default class Seismograph extends Scene {
     this.ink.clear();
     this.drawNotes(t, rt);
     this.drawTrace(t);
+    this.drawTicks(t);
     this.ink.render(renderer, rt);
     this.drawCard(t, rt);
     if (!this.plateUp) { this.plate.upload(); this.plateUp = true; }
@@ -446,11 +486,14 @@ export default class Seismograph extends Scene {
     this.ink.render(renderer, rt);
     // 鏡頭：桌上的機器，從上往下斜斜地看、慢慢推近；對焦在紙條（沒有紙條就是歌詞）
     const mv = camMove(au, s, e, t, { inYaw: 0.06, inZoom: 0.05, push: 0.04, sway: 0.008 });
-    const focus: [number, number] = this.msg ? [CARD.x + CW / 2, CARD.y + this.cardH / 2] : [LX + 300, 560];
+    // 焦點轉移：開場對焦在筆與震波，留言開始寫時花一拍半移到紙條（沒有紙條就移到歌詞）
+    const t0 = this.charT[0] ?? s + 0.5;
+    const fk = ease.inOutCubic(prog(t, t0, t0 + 1.5 * this.beat));
+    const tgt: [number, number] = this.msg ? [CARD.x + CW / 2, CARD.y + this.cardH / 2] : [LX + 300, 700];
+    const focus: [number, number] = [lerp(CX, tgt[0], fk), lerp(PEN_Y - 200, tgt[1], fk)];
     const desk: [number, number, number] = [lerp(LIN.paper[0], LIN.sepia[0], 0.12) * 0.97, lerp(LIN.paper[1], LIN.sepia[1], 0.12) * 0.97, lerp(LIN.paper[2], LIN.sepia[2], 0.12) * 0.97];
     this.stage.draw(renderer, out, {
-      yaw: -0.04 + mv.yaw, pitch: 0.1, roll: -0.01, zoom: 1.06 + mv.zoom, x: 0, y: 6,
-      dof: 0.9, focus, room: desk, paper: true,
+      ...CAM, yaw: CAM.yaw + mv.yaw, zoom: CAM.zoom + mv.zoom, focus, room: desk,
     });
     // 主震：畫面震一下
     const q = pulse(t, this.tQ, 0.18);

@@ -1,12 +1,13 @@
 // 李薩如圖形（機器 B，暗）：暗房間裡一台老示波器的映像管特寫，切在 X-Y 模式。CH1 接宣文、CH2 接孟庭。
-//  - 鏡頭：映像管在空間裡、稍微側一點（留言那一側比較近），進場從更斜、更遠的地方在第一拍前後落定，之後慢慢推近，
-//    每兩小節輕輕搖一下；對焦在留言上，離得遠的地方（圖形那側）有一點點景深。
-//  - 玻璃上左邊是李薩如曲線：整條一直亮著（電子束走得慢的轉角比較亮），一顆「寫字」的亮點一拍繞一圈、拖著剛打到的磷光；
-//    每一拍相位「喀」地轉一格（outExpo），每個小節線換一組頻率比、越來越像愛心，最後一個小節線鎖定成一顆愛心（點綴色）。
-//    心形線本來就是幾個諧波的和，所以真的是示波器畫得出來的圖。圖形刻意比留言暗：它是場景，不是焦點。
-//  - 焦點是主打留言：用磷光寫在玻璃右邊（手寫字，最大、最亮），一段一段打出來（剛出現是燙的訊號色、冷成紙白），署名在後面。
-//  - 歌詞也是玻璃上的磷光字，在下緣、小一級（逐字跟唱）。角落只有一小行讀數（X-Y 頻率比、兩個頻道是誰）。
-//  - 沒有留言：玻璃右邊寫歌詞（大）＋一行小小的邀請。純音樂：下緣寫歌名。
+//  - 鏡頭：映像管在空間裡、稍微側一點，進場從更斜、更遠的地方在第一拍前後落定，之後慢慢推近，每兩小節輕輕搖一下；
+//    焦點轉移：開場對焦在圖形上，留言開始出現時焦點慢慢移到留言（v2 標準的「開場先看場景」）。
+//  - 主視覺是玻璃上的李薩如曲線（很大、在畫面左中）：整條一直亮著（電子束走得慢的轉角比較亮），一顆「寫字」的亮點一拍繞一圈、
+//    拖著剛打到的磷光；每一拍相位「喀」地轉一格（outExpo），每個小節線換一組頻率比（上一個圖形留下一道慢慢褪掉的殘影）、
+//    越來越像愛心，最後一個小節線鎖定成一顆愛心（點綴色）。心形線本來就是幾個諧波的和，所以真的是示波器畫得出來的圖。
+//  - 主打留言：用磷光寫在玻璃右邊一小塊（手寫字，v2 字級），一段一段打出來（剛出現是燙的訊號色、冷成紙白），署名在最後一行下面。
+//  - 歌詞也是玻璃上的磷光字，在左下（逐字跟唱、比留言小）。角落只有一小行讀數（X-Y 頻率比、兩個頻道是誰）。
+//  - 沒有留言：右邊只有一行小小的邀請，歌詞一樣在左下。純音樂：左下寫歌名。
+// 字級照「留言尺寸與版面比例標準 v2」（_v2.ts），標準是螢幕 px：畫在玻璃上的字要除以舞台在那裡的縮放倍數。
 // 手法：玻璃（GLSL）＋曲線（LineBatch）＋字（Canvas 小圖層）先畫進離屏圖，再用 _t8 的舞台當成空間裡的平面拍（透視、景深、外框、房間）。
 import type * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
@@ -17,18 +18,25 @@ import { LIN, rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, lerp, prog, TAU, hash, frameIdx } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
 import { sparkHead, sparkParticles, lyricAt, layoutLyric, drawLyric, signature, beatAfter, COUPLE_ZH } from './_motifs';
-import { blit, winBars, label, INVITE, T8_TEXT, Stage, camMove } from './_t8';
+import { blit, winBars, label, INVITE, T8_TEXT, Stage, camMove, type StageCam } from './_t8';
+import { V2, msgMaxFor, lyricV2, sigV2, fitClauses } from './_v2';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'machine', paper: false, energy: [0.2, 0.9], bars: [4, 8], weight: 1 };
 
 // ---------------------------------------------------------------- 玻璃上的版面（內容座標，px）
-/** 圖形的中心與振幅（刻度格是以中心為準的 6×6 大格，一格 90 px）。 */
-const FC = { x: 470, y: 470 };
-const AMP = 250;
-/** 主打留言的框。 */
-const MS = { x: 880, y: 190, w: 860, h: 600 };
-/** 歌詞（玻璃下緣；右邊不超過 1300，才不會被鏡頭帶進右下角 QR 那一區）。 */
-const LY = { x: 170, y: 820, w: 1140, h: 180 };
+/** 圖形的中心與振幅（主視覺：刻度格是以中心為準的 6×6 大格，一格 110 px）。 */
+const FC = { x: 700, y: 486 };
+const AMP = 318;
+const GRID = 110;
+/** 主打留言的框（玻璃右邊一小塊；v2：螢幕上 ≤ 860×430，這裡換算後約 560×400）。 */
+const MS = { x: 1190, y: 300, w: 660, h: 470 };
+/** 歌詞（玻璃左下；右邊不超過 1240，才不會被鏡頭帶進右下角 QR 那一區）。 */
+const LY = { x: 190, y: 862, w: 1050, h: 150 };
+/** 基本機位（沒有加鏡頭運動）：init 用它換算字級。 */
+const CAM: StageCam = {
+  yaw: -0.085, pitch: 0.035, roll: 0.004, zoom: 0.84, x: -40, y: -10,
+  dof: 1.1, bezel: 64, radius: 70, glass: 1, room: [0, 0, 0], glow: 0.018,
+};
 /** 曲線取樣點數。 */
 const NS = 640;
 const [GROOM, BRIDE] = COUPLE_ZH.split(/\s*&\s*/) as [string, string];
@@ -59,14 +67,14 @@ const GLASS = () => new FSPass(/* glsl */ `
     vec2 q = p - vec2(${FC.x}.0, ${FC.y}.0);
     float r = length(q);
     vec3 beamC = mix(C_SIGNAL, C_ROSE, heart);
-    g += beamC * beamI * (0.022 * exp(-r / 260.0) + 0.006 * exp(-r / 800.0));
+    g += beamC * beamI * (0.026 * exp(-r / 320.0) + 0.006 * exp(-r / 900.0));
     g += C_SIGNAL * 0.05 * (1.0 - on) * exp(-r / 500.0);
     // 刻度格：6×6 大格＋兩條軸上的小刻度，很淡
     vec2 aq = abs(q);
-    float inside = step(aq.x, 270.6) * step(aq.y, 270.6);
-    vec2 m = abs(fract(q / 90.0 + 0.5) - 0.5) * 90.0;
+    float inside = step(aq.x, ${3 * GRID}.6) * step(aq.y, ${3 * GRID}.6);
+    vec2 m = abs(fract(q / ${GRID}.0 + 0.5) - 0.5) * ${GRID}.0;
     float major = max(pxLine(m.x, 0.3, 1.1), pxLine(m.y, 0.3, 1.1)) * inside;
-    vec2 mm = abs(fract(q / 18.0 + 0.5) - 0.5) * 18.0;
+    vec2 mm = abs(fract(q / ${GRID / 5}.0 + 0.5) - 0.5) * ${GRID / 5}.0;
     float ticks = (pxLine(mm.x, 0.3, 1.1) * step(aq.y, 5.0) + pxLine(mm.y, 0.3, 1.1) * step(aq.x, 5.0)) * inside;
     g += mix(C_BONE, C_SIGNAL, 0.35) * (major * 0.03 + ticks * 0.05) * (0.6 + beamI * exp(-r / 420.0)) * on;
     fragColor = vec4(g, 1.0);
@@ -89,6 +97,10 @@ export default class Lissajous extends Scene {
   figs: Fig[] = [];
   beat = 0.5;
   fit: FitResult | null = null;
+  /** 內容上的字級（已經換算過舞台縮放）：署名、歌詞。 */
+  sigPx = 30; lyrPx = 52;
+  /** 留言開始出現的時間（焦點轉移用）。 */
+  tMsg = 0;
   charT: number[] = [];
   typedEnd = 0;
   private msgKey = '';
@@ -115,17 +127,27 @@ export default class Lissajous extends Scene {
       this.figs.push({ a: r[0], b: r[1], heart: false, w: 0.7 * ((i + 1) / (mid.length + 1)) ** 1.3, t0: b });
     });
     this.figs.push({ a: 1, b: 1, heart: true, w: 1, t0: tH });
-    // 主打留言：第一拍開始一段一段打出來（八分音符一組，最多 3 秒）
+    // v2 字級：標準是螢幕 px，除以舞台在留言／歌詞那裡的縮放倍數，才是畫在玻璃上的字級
+    const zM = this.stage.scaleAt(CAM, MS.x + MS.w / 2, MS.y + MS.h / 2);
+    const zL = this.stage.scaleAt(CAM, LY.x + LY.w / 2, LY.y + LY.h / 2);
+    // 主打留言：第二拍開始一段一段打出來（八分音符一組，最多 3 秒）——開場先看一拍圖形
     if (m) {
       const c = this.msgL.ctx;
-      this.fit = fitText(c, m.text, F.hand(400), MS.w, MS.h - 110, { min: 52, max: 132, lineHeight: 1.26, maxLines: 6 });
+      const o = { min: V2.msgMin / zM, max: msgMaxFor(m.text) / zM, lineHeight: 1.28, maxLines: 6 };
+      // 字級依「框的高度扣掉署名那一行」算，署名永遠在最後一行下面
+      const bw = MS.w, bh = MS.h - 70;
+      this.fit = fitClauses(c, m.text, F.hand(400), bw, bh, o) ?? fitText(c, m.text, F.hand(400), bw, bh, o);
+      const scr = this.fit.size * zM;
+      this.sigPx = sigV2(scr) / zM;
+      this.lyrPx = lyricV2(scr) / zL;
       const n = this.fit.lines.reduce((a, l) => a + Array.from(l).length, 0);
-      const t0 = beatAfter(au, s + 0.12);
+      const t0 = beatAfter(au, s + 0.12, 1);
+      this.tMsg = t0;
       const dur = clamp(0.05 * n + 0.3, 0.6, 3), step = beat / 2;
       const per = Math.ceil(n / Math.max(1, Math.round(dur / step)));
       this.charT = Array.from({ length: n }, (_, i) => t0 + Math.floor(i / per) * step);
       this.typedEnd = this.charT[n - 1] ?? t0;
-    }
+    } else this.lyrPx = lyricV2(null) / zL;
   }
 
   // ---------------------------------------------------------------- 曲線
@@ -182,8 +204,8 @@ export default class Lissajous extends Scene {
     const em = LIN.ember;
     const on = prog(t, s, s + 0.4);
     const kick = this.ctx.audio.hit('kick', t, 0.13);
-    // 圖形是場景不是焦點：比留言暗（有留言時再壓低一點），鎖定成愛心時亮回來
-    const dim = this.msg ? 0.62 + 0.3 * heartK : 0.8;
+    // 圖形是主視覺，但留言要讀得清楚：有留言時稍微壓低一點，鎖定成愛心時亮回來
+    const dim = this.msg ? 0.75 + 0.25 * heartK : 0.9;
     const gain = dim * (0.8 + 0.5 * kick) * (1 + 2.5 * (1 - on));
     const pts = this.pts;
     for (let i = 0; i <= NS; i++) this.point((i / NS) * TAU, fi, dl, amp, pts[i]!);
@@ -204,6 +226,20 @@ export default class Lissajous extends Scene {
       L.seg2(a.x + j, a.y, b.x + j, b.y, 1.9 + 1.2 * hot, [lerp(base[0] * k, em[0] * 2.6, hot * 0.6), lerp(base[1] * k, em[1] * 2.6, hot * 0.6), lerp(base[2] * k, em[2] * 2.6, hot * 0.6)], 1);
       L.seg2(a.x, a.y, b.x, b.y, 10, [base[0] * 0.04 * bf * gain, base[1] * 0.04 * bf * gain, base[2] * 0.04 * bf * gain], 1);
     }
+    // 殘影：換了頻率比之後，上一個圖形在玻璃上留一道一拍半慢慢褪掉的磷光（每個小節線的小事件）
+    if (fi.i > 0) {
+      const ghost = 0.35 * (1 - prog(t, cur.t0, cur.t0 + 1.5 * this.beat));
+      if (ghost > 0.01) {
+        const prev = this.figs[fi.i - 1]!, o = this.tmpA;
+        let px = 0, py = 0;
+        for (let i = 0; i <= NS / 2; i++) {
+          this.shape(prev, (i / (NS / 2)) * TAU, dl, o);
+          const x = FC.x + o.x * amp, y = FC.y + o.y * amp;
+          if (i) L.seg2(px, py, x, y, 1.6, [LIN.signal[0] * ghost, LIN.signal[1] * ghost, LIN.signal[2] * ghost], 1);
+          px = x; py = y;
+        }
+      }
+    }
     const h = this.headAt(t);
     if (h) {
       sparkParticles(L, t, (tb) => this.headAt(tb), { rate: 45, life: 0.26, speed: 110, gravity: 260, seed: (this.ctx.params.seed ?? 1) + 5, intensity: 0.7 });
@@ -217,19 +253,13 @@ export default class Lissajous extends Scene {
     const m = this.msg;
     const L = this.msgL, c = L.ctx;
     if (!m) {
-      L.clear();
-      const ly = lyricAt(this.ctx.lyrics, t);
-      if (ly) {
-        const st = { family: F.archivo(100, 800), size: 104, minSize: 64, maxWidth: MS.w, lineHeight: 1.08 };
-        const lay = layoutLyric(c, ly.line, st);
-        c.save(); c.translate(0, (MS.h - 120 - lay.height) / 2 + lay.size * 0.8);
-        drawLyric(c, ly.line, t, st, lay, ly.k);
-        c.restore();
-      } else if (!this.ctx.lyrics.has) {
-        label(c, `♪ ${this.ctx.song.title || '今晚的歌'}`, 0, 300, F.archivo(100, 800), 96, rgba('bone', 0.9));
+      // 沒有留言：右邊只有一行小小的邀請（歌詞在左下），畫一次就好
+      if (this.msgKey !== 'invite') {
+        this.msgKey = 'invite';
+        L.clear();
+        label(c, INVITE, 0, MS.h / 2, F.hei(500), 24, rgba('ash', 0.6), { tracking: 2 });
+        L.upload();
       }
-      label(c, INVITE, 0, MS.h - 30, F.hei(500), 22, rgba('ash', 0.6), { tracking: 2 });
-      L.upload();
       blit(this.ctx, L.texture, MS.x, MS.y, MS.w, MS.h, out);
       return;
     }
@@ -243,8 +273,9 @@ export default class Lissajous extends Scene {
       const fit = this.fit!;
       c.font = font(F.hand(400), fit.size);
       c.textBaseline = 'alphabetic';
-      // 留言在框裡垂直置中（加上署名的高度）
-      const top = (MS.h - 70 - fit.height) / 2 + fit.size * 0.95;
+      // 留言在框裡垂直置中（連署名一起算）；署名在最後一行下面、跟最後一行隔半個留言字高
+      const sigGap = fit.size * 0.55 + this.sigPx;
+      const top = (MS.h - sigGap - fit.height) / 2 + fit.size * 0.92;
       let idx = 0;
       fit.lines.forEach((ln, li) => {
         let x = 0;
@@ -262,17 +293,16 @@ export default class Lissajous extends Scene {
         }
       });
       if (sigK > 0) {
-        const sy = top + (fit.lines.length - 1) * fit.lineHeight + 76;
-        label(c, signature(m.name) + (m.couple ? '（新人）' : ''), Math.min(MS.w, fit.width + 20), sy, F.hand(400), 40, rgba('ash', sigK), { align: 'right' });
+        const sy = top + (fit.lines.length - 1) * fit.lineHeight + sigGap;
+        label(c, signature(m.name) + (m.couple ? '（新人）' : ''), 0, sy, F.hand(400), this.sigPx, rgba('ash', sigK));
       }
       L.upload();
     }
     blit(this.ctx, L.texture, MS.x, MS.y, MS.w, MS.h, out);
   }
 
-  /** 下緣的歌詞（有留言時；比留言小一級、比較暗）。 */
+  /** 左下的歌詞（v2：比留言小；沒有留言時也不超過 52）。 */
   private drawLyrics(t: number, out: THREE.WebGLRenderTarget) {
-    if (!this.msg) return;
     const { lyrics, song } = this.ctx;
     const ly = lyricAt(lyrics, t);
     const key = ly ? '' : lyrics.has ? 'gap' : 'title';
@@ -281,13 +311,13 @@ export default class Lissajous extends Scene {
       const L = this.lyrL, c = L.ctx;
       L.clear();
       if (ly) {
-        const st = { family: F.archivo(100, 700), size: 62, minSize: 52, maxWidth: LY.w, lineHeight: 1.08, sung: rgba('bone', 0.72), unsung: rgba('bone', 0.22) };
+        const st = { family: F.archivo(100, 700), size: this.lyrPx, minSize: this.lyrPx * 0.8, maxWidth: LY.w, lineHeight: 1.08, sung: rgba('bone', this.msg ? 0.75 : 0.92), unsung: rgba('bone', 0.24) };
         const lay = layoutLyric(c, ly.line, st);
         c.save(); c.translate(0, (LY.h - lay.height) / 2 + lay.size * 0.8);
         drawLyric(c, ly.line, t, st, lay, ly.k);
         c.restore();
       } else if (key === 'title') {
-        label(c, `♪  ${song.title || '今晚的歌'}${song.artist ? '  ·  ' + song.artist : ''}`, 0, 110, F.archivo(100, 700), 52, rgba('bone', 0.6));
+        label(c, `♪  ${song.title || '今晚的歌'}${song.artist ? '  ·  ' + song.artist : ''}`, 0, LY.h / 2 + this.lyrPx * 0.35, F.archivo(100, 700), this.lyrPx, rgba('bone', 0.6));
       }
       L.upload();
     }
@@ -325,12 +355,13 @@ export default class Lissajous extends Scene {
     this.drawReadout(t, rt);
     this.drawMessage(t, rt);
     this.drawLyrics(t, rt);
-    // 鏡頭：映像管在房間裡，留言那側比較近；對焦在留言上
+    // 鏡頭：映像管在房間裡。焦點轉移：開場對焦在圖形上，留言開始出現時花一拍半移到留言
     const mv = camMove(this.ctx.audio, s, e, t, { inYaw: -0.1, inZoom: 0.07, push: 0.04, sway: 0.012 });
+    const fk = this.msg ? ease.inOutCubic(prog(t, this.tMsg, this.tMsg + 1.5 * this.beat)) : 0;
+    const focus: [number, number] = [lerp(FC.x, MS.x + MS.w / 2, fk), lerp(FC.y, MS.y + MS.h / 2, fk)];
     this.stage.draw(renderer, out, {
-      yaw: -0.085 + mv.yaw, pitch: 0.035, roll: 0.004, zoom: 0.84 + mv.zoom, x: -40, y: -10,
-      dof: 1.1, focus: [MS.x + MS.w / 2, MS.y + MS.h / 2], bezel: 64, radius: 70, glass: 1,
-      room: [LIN.ink[0] * 0.55, LIN.ink[1] * 0.55, LIN.ink[2] * 0.55], glow: 0.018,
+      ...CAM, yaw: CAM.yaw + mv.yaw, zoom: CAM.zoom + mv.zoom, focus,
+      room: [LIN.ink[0] * 0.55, LIN.ink[1] * 0.55, LIN.ink[2] * 0.55],
     });
     void clearRT;
     return { bloom: 0.75, halation: 0.3, vignette: 0.5 };

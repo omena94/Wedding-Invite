@@ -19,6 +19,7 @@ import { clamp, ease, lerp, prog, pulse, hash } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
 import { lyricAt, layoutLyric, drawLyric, signature, sparkParticles, drawHeart, COUPLE_ZH } from './_motifs';
 import { blit, winBeats, INVITE, T8_TEXT, camMove } from './_t8';
+import { V2, msgMaxFor, lyricV2, sigV2, fitClauses } from './_v2';
 import { playfieldMaterial, solidMaterial, ballMaterial, MAX_LAMPS } from './pinball-gl';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'machine', paper: false, energy: [0.45, 1], bars: [4, 8], weight: 1 };
@@ -38,11 +39,12 @@ const GRAV = 820; // 檯面上的重力（往近端）
 const PATTERN = ['FR', 'A', 'C', 'B', 'L', 'SL', 'FL', 'C', 'FL', 'B', 'A', 'C', 'L', 'SR', 'FR', 'A'] as const;
 type Kind = typeof PATTERN[number];
 /** 背箱（畫面座標）。 */
-const BB = { x: 216, y: 36, w: 1140, h: 410 };
-const GLASS = { x: 20, y: 16, w: 1100, h: 300 }; // 背箱裡：玻璃（留言）
-const DISP = { x: 20, y: 326, w: 1100, h: 70 }; // 背箱裡：顯示板（歌詞）
+// v2 標準：留言區（連玻璃）≤ 860×430。背箱是機器本身的一部分，放在檯面遠端的正上方（不會蓋住檯面）
+const BB = { x: 530, y: 36, w: 860, h: 380 };
+const GLASS = { x: 18, y: 14, w: 824, h: 280 }; // 背箱裡：玻璃（留言）
+const DISP = { x: 18, y: 304, w: 824, h: 62 }; // 背箱裡：顯示板（歌詞）
 /** 玻璃上：留言的左右留白、署名那一行的高度。 */
-const GPAD = 44, SIG_H = 58;
+const GPAD = 36;
 /** 鏡頭往下平移（px）：背箱比較高，檯面整個往下移一點，遠端才不會被蓋住。 */
 const VIEW_DY = -46;
 const TEXT = `${T8_TEXT}${COUPLE_ZH}（）♪`;
@@ -74,6 +76,8 @@ export default class Pinball extends Scene {
   fit: FitResult | null = null;
   charT: number[] = [];
   typedEnd = 0;
+  /** 署名、歌詞的字級（v2）。 */
+  sigPx = 30; lyrPx = 48;
   private geos: THREE.BufferGeometry[] = [];
   private mats: THREE.Material[] = [];
   private pf!: THREE.RawShaderMaterial;
@@ -97,7 +101,13 @@ export default class Pinball extends Scene {
     const c = this.box.ctx;
     const text = m ? m.text : INVITE;
     // 字級依「玻璃高度扣掉署名那一行」算，署名永遠在最後一行下面
-    this.fit = fitText(c, text, F.hand(400), GLASS.w - GPAD * 2, GLASS.h - 40 - SIG_H, { min: 48, max: 96, lineHeight: 1.22, maxLines: 4 });
+    // v2 字級（背箱是平面的，畫面 px 就是畫布 px）；字級依「玻璃高度扣掉署名那一行」算，署名永遠在最後一行下面
+    const o = { min: V2.msgMin, max: msgMaxFor(text), lineHeight: 1.24, maxLines: 5 };
+    const probe = sigV2(o.max);
+    const bh = GLASS.h - 30 - (o.max * 0.5 + probe);
+    this.fit = fitClauses(c, text, F.hand(400), GLASS.w - GPAD * 2, bh, o) ?? fitText(c, text, F.hand(400), GLASS.w - GPAD * 2, bh, o);
+    this.sigPx = sigV2(this.fit.size);
+    this.lyrPx = lyricV2(m ? this.fit.size : null);
     const n = this.fit.lines.reduce((a, l) => a + Array.from(l).length, 0);
     const hs = this.hits.filter((h) => h.t >= s + 0.02).slice(0, 6);
     const chunks = Math.max(1, Math.min(hs.length, Math.ceil(n / 3)));
@@ -342,7 +352,8 @@ export default class Pinball extends Scene {
     if (m) {
       // 焦點：留言（撞一下亮一段；還沒亮的字是玻璃上淡淡的印刷）。字級已經扣掉署名的高度，署名在最後一行下面
       c.font = font(F.hand(400), fit.size);
-      const top = GLASS.y + 20 + (GLASS.h - 40 - SIG_H - fit.height) / 2 + fit.size * 0.92;
+      const sigH = fit.size * 0.5 + this.sigPx;
+      const top = GLASS.y + 16 + (GLASS.h - 30 - sigH - fit.height) / 2 + fit.size * 0.92;
       let idx = 0;
       fit.lines.forEach((ln, li) => {
         let x = GLASS.x + GPAD;
@@ -360,20 +371,20 @@ export default class Pinball extends Scene {
       });
       const sk = clamp((t - this.typedEnd - this.beat * 0.5) / 0.3);
       if (sk > 0) {
-        const sy = top + (fit.lines.length - 1) * fit.lineHeight + SIG_H;
-        c.font = font(F.hand(400), 34); c.fillStyle = rgba('ash', sk);
+        const sy = top + (fit.lines.length - 1) * fit.lineHeight + sigH;
+        c.font = font(F.hand(400), this.sigPx); c.fillStyle = rgba('ash', sk);
         c.fillText(signature(m.name) + (m.couple ? '（新人）' : ''), GLASS.x + GPAD, sy);
       }
     } else if (ly) {
       // 沒有留言：歌詞放大到玻璃上
-      const st = { family: F.archivo(100, 800), size: 100, minSize: 60, maxWidth: GLASS.w - GPAD * 2, lineHeight: 1.06 };
+      const st = { family: F.archivo(100, 800), size: this.lyrPx, minSize: V2.lyrMin, maxWidth: GLASS.w - GPAD * 2, lineHeight: 1.1 };
       const lay = layoutLyric(c, ly.line, st);
       c.save();
       c.translate(GLASS.x + GPAD, GLASS.y + (GLASS.h - lay.height) / 2 + lay.size * 0.8);
       drawLyric(c, ly.line, t, st, lay, ly.k);
       c.restore();
     } else if (!lyrics.has) {
-      c.font = font(F.archivo(100, 800), 84); c.fillStyle = rgba('bone', 0.9);
+      c.font = font(F.archivo(100, 800), this.lyrPx); c.fillStyle = rgba('bone', 0.9);
       c.fillText(`♪  ${song.title || '今晚的歌'}`, GLASS.x + GPAD, GLASS.y + GLASS.h / 2 + 30);
     }
     // 顯示板：有留言時是歌詞（小一級）；沒有留言時是 INSERT COIN 與邀請
@@ -385,13 +396,15 @@ export default class Pinball extends Scene {
       const bl = ((au.beatAt(t) % 1) + 1) % 1 < 0.5;
       c.font = font(F.archivo(125, 900), 30); c.letterSpacing = '6px';
       c.fillStyle = bl ? rgba('ember', 0.8) : rgba('ember', 0.25);
-      c.fillText('INSERT COIN', DISP.x + GPAD, DISP.y + 46);
+      c.font = font(F.archivo(125, 900), 24);
+      c.fillText('INSERT COIN', DISP.x + GPAD, DISP.y + 44);
       const iw = c.measureText('INSERT COIN').width;
       c.letterSpacing = '0px';
+      // 邀請放在玻璃下緣（顯示板太窄，放不下 INSERT COIN 加一整句）
       c.font = font(F.hei(500), 22); c.fillStyle = rgba('ash', 0.7);
-      c.fillText(INVITE, DISP.x + GPAD + iw + 40, DISP.y + 45);
+      c.fillText(INVITE, DISP.x + GPAD + iw + 36, DISP.y + 45, DISP.w - GPAD * 2 - iw - 36);
     } else if (ly) {
-      const st = { family: F.archivo(100, 700), size: 52, minSize: 48, maxWidth: DISP.w - GPAD * 2, lineHeight: 1.0, align: 'center' as const, sung: rgba('bone', 0.75), unsung: rgba('bone', 0.22) };
+      const st = { family: F.archivo(100, 700), size: this.lyrPx, minSize: V2.lyrMin, maxWidth: DISP.w - GPAD * 2, lineHeight: 1.0, align: 'center' as const, sung: rgba('bone', 0.75), unsung: rgba('bone', 0.22) };
       const lay = layoutLyric(c, ly.line, st);
       // 一行放不下（折成兩行）就縮到放得下的高度
       const k = Math.min(1, (DISP.h - 12) / (lay.height + lay.size * 0.25));

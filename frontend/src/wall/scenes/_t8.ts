@@ -182,6 +182,16 @@ export class Stage {
     return { x: W / 2 + this.v.x * s + (cam.x ?? 0), y: H / 2 - this.v.y * s + (cam.y ?? 0), z: this.v.z };
   }
 
+  /**
+   * 內容座標 (u, v) 附近，內容 1 px 在畫面上是幾 px（v2 標準的字級是「螢幕上的 px」，畫在內容上的字要除以這個倍數）。
+   * 用沒有加鏡頭運動的基本機位算；窗格裡的慢推只會多幾個百分比。
+   */
+  scaleAt(cam: StageCam, u: number, v: number) {
+    const a = this.project(cam, u - 50, v), b = this.project(cam, u + 50, v);
+    const c = this.project(cam, u, v - 50), d = this.project(cam, u, v + 50);
+    return Math.sqrt(Math.hypot(b.x - a.x, b.y - a.y) * Math.hypot(d.x - c.x, d.y - c.y)) / 100;
+  }
+
   draw(renderer: THREE.WebGLRenderer, out: THREE.WebGLRenderTarget, cam: StageCam) {
     const P = [this.project(cam, 0, 0), this.project(cam, W, 0), this.project(cam, W, H), this.project(cam, 0, H)];
     const m = squareToQuad(P.map((p) => [p.x, p.y]));
