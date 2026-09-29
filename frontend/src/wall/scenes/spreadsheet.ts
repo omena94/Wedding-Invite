@@ -1,10 +1,11 @@
 // 試算表（批次 T6・螢幕 B，亮）：白天、一台亮著的螢幕上開著一張試算表，鏡頭斜斜地貼近，淺景深。
-// MV 檢修後：不再是整張「介面截圖」，只留三樣東西——
-//  - 右邊一大格合併儲存格，主打留言被「貼上」在裡面（手寫字，整個畫面最大最清楚）：仙女棒先沿著外框描一圈，
-//    接著一行一行貼上，外框變成複製時的虛線（螞蟻線）跟著拍子跑。沒有留言時這一格是空白的，等你來寫。
-//  - 上面的公式列：fx 後面就是正在唱的歌詞（逐字跟唱，小一級）；沒在唱時顯示選到那一格的公式（=SUM(愛)）。
-//  - 左邊的「幸福統計表」往後退、糊在景深裡：一拍填一列，選取框像拖曳填滿一樣往下滑，最後一列算出 ∞。
-// 圖表、分頁、狀態列、儲存格標籤都拿掉了；小字只剩欄名列號與表格裡的數字（低對比）。
+// 螢幕（整張試算表一直在動）是主視覺；留言標準 v2：留言在右邊一格不大的合併儲存格裡（螢幕上 40～60 px）。
+//  - 右上的合併儲存格 E2:I8：主打留言被「貼上」在裡面（粗文楷）：仙女棒先沿著外框描一圈，接著一行一行貼上，
+//    外框變成複製時的虛線（螞蟻線）跟著拍子跑；署名在最後一行下面。沒有留言時是空白的一格，游標在閃。
+//  - 上面的公式列：fx 後面就是正在唱的歌詞（逐字跟唱，比留言小一級）；沒在唱時顯示選到那一格的公式。
+//  - 左邊的「幸福統計表」：一拍填一列，選取框像拖曳填滿一樣往下滑，最後一列算出 ∞，之後每個小節線「重新計算」閃一下。
+//  - 右下的長條圖：一拍長一根（高度是那一拍的音量），滿了就往左捲。
+//  - 鏡頭：開場對焦在左邊的表格，留言貼上時焦點移到合併儲存格；整個窗格慢慢推近。牆上有百葉窗的光影慢慢移動。
 // 手法：螢幕內容畫在一張 Canvas 層（mipmap），用 _t6 的 ScreenRig 擺進三維空間（左邊往後退、兩個對焦範圍：公式列與留言），
 // 房間是一個 GLSL pass（淺色的牆、螢幕下緣的影子、一道斜斜的窗光）。
 import * as THREE from 'three';
@@ -17,7 +18,9 @@ import { clamp, ease, hash, lerp, prog } from '../engine/util';
 import type { FitResult } from '../engine/text';
 import type { Lyrics } from '../engine/lyrics';
 import { lyricAt, drawLyric, layoutLyric, drawMessage, signature, sparkHead, sparkParticles, beatAfter, COUPLE_ZH } from './_motifs';
-import { beatsIn, inOut, fitMessage, ScreenRig, mipRT, blitToRT, loadPlateText } from './_t6';
+import { fitText } from '../engine/text';
+import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 } from './_v2';
+import { beatsIn, inOut, ScreenRig, mipRT, blitToRT, loadPlateText } from './_t6';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'screen', paper: true, energy: [0.25, 0.8], bars: [4, 8], weight: 1 };
 
@@ -36,8 +39,11 @@ const COLS = [
 ];
 const GRID_R = 1560;
 const rowY = (r: number) => ROW0 + (r - 1) * RH;
-/** 合併儲存格 E1:I12（主打留言）。 */
-const MERGE = { x: 670, y: rowY(1), w: GRID_R - 670, h: rowY(13) - rowY(1) };
+/** 合併儲存格 E2:I8（主打留言；v2：螢幕上約 700×350，放在畫面右側）。 */
+const MERGE = { x: 670, y: rowY(2), w: GRID_R - 670, h: rowY(9) - rowY(2) };
+/** 長條圖（E10:I15）。 */
+const CHART = { x: 690, y: rowY(10) + 8, w: GRID_R - 710, h: SH - rowY(10) - 40 };
+const SLOTS = 20;
 const TOTAL_ROW = 6;
 
 const [GROOM, BRIDE] = COUPLE_ZH.split(/\s*&\s*/) as [string, string];
@@ -52,17 +58,19 @@ const TEXT = `項目合計總計這一格留給你的祝福掃描右下角寫下
 
 // 房間：淺色的牆（紙色，比螢幕暗一點，才不會刺眼）、螢幕下緣投在桌上的影子、一道斜斜的窗光
 const BG = () => new FSPass(/* glsl */ `
-  uniform vec2 c; uniform vec2 r; uniform float k;
+  uniform vec2 c; uniform vec2 r; uniform float k; uniform float t;
   void main() {
     vec2 p = vec2(FRAG_PX.x, ${H}.0 - FRAG_PX.y);
     float n = fbm(p / 420.0, 3);
     vec3 col = C_PAPER * (0.8 + 0.03 * n - 0.1 * smoothstep(300.0, 1100.0, p.y));
-    float beam = smoothstep(0.0, 260.0, 600.0 - abs(p.x * 0.8 + p.y * 0.55 - 900.0));
-    col += C_PAPER * 0.07 * beam;
+    float beam = smoothstep(0.0, 260.0, 600.0 - abs(p.x * 0.8 + p.y * 0.55 - 900.0 + t * 6.0));
+    // 百葉窗：斜斜的光條，跟著時間很慢地滑過牆面（環境的動態）
+    float slat = smoothstep(0.35, 0.65, 0.5 + 0.5 * sin((p.y * 0.9 - p.x * 0.35) / 22.0 + t * 0.35));
+    col += C_PAPER * (0.05 + 0.05 * slat) * beam;
     vec2 d = (p - c - vec2(0.0, r.y * 0.9)) / vec2(r.x * 1.05, r.y * 0.28);
     col *= 1.0 - 0.18 * exp(-dot(d, d) * 1.4);
     fragColor = vec4(col * mix(0.85, 1.0, k), 1.0);
-  }`, { c: { value: new THREE.Vector2(960, 540) }, r: { value: new THREE.Vector2(800, 500) }, k: { value: 1 } });
+  }`, { c: { value: new THREE.Vector2(960, 540) }, r: { value: new THREE.Vector2(800, 500) }, k: { value: 1 }, t: { value: 0 } });
 
 interface Key { t: number; c0: number; r0: number; c1: number; r1: number; formula: string }
 interface Sel { key: Key; x: number; y: number; w: number; h: number; since: number }
@@ -79,6 +87,9 @@ export default class Spreadsheet extends Scene {
   keys: Key[] = [];
   fit: FitResult | null = null;
   msgTop = 0;
+  /** 合併儲存格附近「螢幕 px ÷ 貼圖 px」（v2 的字級是螢幕上的 px，畫在貼圖上要除以它）。 */
+  ls = 0.8;
+  msgScreen: number | null = null;
   tPaste = 0; tTrace = 0; tTotal = 0;
 
   override async init() {
@@ -103,17 +114,31 @@ export default class Spreadsheet extends Scene {
       const r = this.rows[row - 2]!;
       this.keys.push({ t: B(i), c0: col, r0: row, c1: col, r1: row, formula: col === 3 ? r.fd : col === 1 ? r.b : r.c });
     }
+    // 量合併儲存格附近的縮放（用鏡頭推到最近時的姿勢算，字級取保守的一邊）
+    this.pose(e);
+    const m0 = this.rig.toScreen(MERGE.x + MERGE.w / 2, MERGE.y + MERGE.h / 2), m1 = this.rig.toScreen(MERGE.x + MERGE.w / 2 + 100, MERGE.y + MERGE.h / 2);
+    this.ls = clamp(Math.hypot(m1.x - m0.x, m1.y - m0.y) / 100, 0.5, 1.2);
     const c = this.scr.ctx;
     const text = this.msg ? this.msg.text : '這一格留給你的祝福';
-    // 亮螢幕上細的手寫字會發灰：留言用粗一點的文楷
-    this.fit = fitMessage(c, text, F.hand(700), MERGE.w - 110, MERGE.h - (this.msg ? 190 : 260), { min: 52, max: this.msg ? 136 : 84, lineHeight: 1.26 });
-    const block = this.fit.height + (this.msg ? 90 : 120);
-    this.msgTop = MERGE.y + Math.max(40, (MERGE.h - block) / 2) + this.fit.size * 0.9;
+    // 亮螢幕上細的手寫字會發灰：留言用粗一點的文楷。字級照 v2（螢幕上 40～60），換成貼圖上的字級
+    const ls = this.ls, fam = F.hand(700);
+    const max = (this.msg ? msgMaxFor(text) : 48) / ls, min = V2.msgMin / ls;
+    const sigH = this.msg ? (sigV2(max * ls) / ls) * 1.9 : 70;
+    const o = { min, max, lineHeight: 1.3, maxLines: 5 };
+    const w = MERGE.w - 90, h = MERGE.h - 60 - sigH;
+    this.fit = fitClauses(c, text, fam, w, h, o) ?? fitText(c, text, fam, w, h, o);
+    this.msgScreen = this.msg ? this.fit.size * ls : null;
+    const block = this.fit.height + sigH;
+    this.msgTop = MERGE.y + Math.max(26, (MERGE.h - block) / 2) + this.fit.size * 0.9;
   }
 
   override dispose() { this.rig.dispose(); super.dispose(); }
 
-  /** 鏡頭：斜斜貼近，左邊（表格）往後退；整個窗格很慢地往留言推，每個小節線再推一點點。 */
+  /**
+   * 鏡頭：斜斜貼近，左邊（表格）往後退；整個窗格很慢地推近，每個小節線再推一點點。
+   * 螢幕的右下角停在 HUD（x ≥ 1360、y ≥ 830）的上面，那一區只看得到牆。
+   * 焦點轉移：開場對焦在左邊的表格，留言貼上時移到合併儲存格與公式列。
+   */
   private pose(t: number) {
     const au = this.ctx.audio, s = this.ctx.start, e = this.ctx.end;
     const u = ease.inOutCubic(clamp((t - s) / Math.max(1, e - s)));
@@ -121,11 +146,12 @@ export default class Spreadsheet extends Scene {
     const step = Math.min(6, Math.floor(bars) + prog(bars - Math.floor(bars), 0, 0.3, ease.outExpo));
     const inK = prog(t, s, s + 0.8, ease.outCubic);
     this.rig.pose({
-      fx: MERGE.x + MERGE.w * 0.45, fy: SH * 0.52, cx: lerp(1010, 980, u), cy: 560,
-      scale: lerp(0.8, 0.86, u) * (1 + 0.01 * step) * lerp(0.95, 1, inK), rx: -0.04, ry: lerp(-0.34, -0.28, u) - 0.05 * (1 - inK), rz: 0.008,
+      fx: SW * 0.5, fy: SH * 0.5, cx: lerp(770, 760, u), cy: lerp(446, 440, u),
+      scale: lerp(0.7, 0.735, u) * (1 + 0.006 * step) * lerp(0.95, 1, inK), rx: -0.04, ry: lerp(-0.32, -0.27, u) - 0.05 * (1 - inK), rz: 0.008,
     });
-    // 對焦：公式列（歌詞）與合併儲存格（留言）；左邊的表格糊掉
-    this.rig.focus(MERGE.x - 20, MERGE.y - 20, SW, SH, 85, [FB.x, FB.y - 10, FB.x + FB.w, FB.y + FB.h + 10]);
+    const fk = prog(t, this.tTrace, this.tPaste + 0.5, ease.inOutCubic);
+    this.rig.focus(lerp(RH_X, MERGE.x - 20, fk), lerp(ROW0, MERGE.y - 20, fk), lerp(MERGE.x, SW, fk), lerp(rowY(8), MERGE.y + MERGE.h + 20, fk), 120,
+      [FB.x, FB.y - 10, FB.x + FB.w, FB.y + FB.h + 10]);
   }
 
   override render(f: Frame, out: THREE.WebGLRenderTarget): PostOverrides {
@@ -137,6 +163,7 @@ export default class Spreadsheet extends Scene {
     (this.bg.u.c!.value as THREE.Vector2).set(c0.x, c0.y);
     (this.bg.u.r!.value as THREE.Vector2).set(Math.abs(c1.x - c0.x), Math.abs(c1.y - c0.y));
     this.bg.u.k!.value = k;
+    this.bg.u.t!.value = t;
     this.bg.render(renderer, out);
     const head = this.drawScreen(t);
     blitToRT(renderer, this.ctx.comp, this.scr.texture, this.scrRT);
@@ -169,6 +196,7 @@ export default class Spreadsheet extends Scene {
     const sel = this.selection(t);
     this.drawGrid(c, sel);
     this.drawTable(c, t);
+    this.drawChart(c, t);
     this.drawSelection(c, sel);
     const head = this.drawMerge(c, t);
     this.drawFormulaBar(c, t, sel, this.ctx.lyrics);
@@ -187,10 +215,13 @@ export default class Spreadsheet extends Scene {
     c.fillRect(RH_X, sel.y, RH_W, sel.h);
     c.fillStyle = rgba('sepia', 0.12);
     for (const x of [...COLS.map((cl) => cl.x), GRID_R]) {
-      if (x > MERGE.x && x < MERGE.x + MERGE.w) c.fillRect(x, HDR_Y, 1, HDR_H);
+      if (x > MERGE.x && x < MERGE.x + MERGE.w) { c.fillRect(x, HDR_Y, 1, MERGE.y - HDR_Y); c.fillRect(x, MERGE.y + MERGE.h, 1, CHART.y - MERGE.y - MERGE.h - 8); }
       else c.fillRect(x, HDR_Y, 1, SH - HDR_Y);
     }
-    for (let y = ROW0; y <= SH; y += RH) c.fillRect(RH_X, y, (y > MERGE.y && y < MERGE.y + MERGE.h ? MERGE.x : GRID_R) - RH_X, 1);
+    for (let y = ROW0; y <= SH; y += RH) {
+      const blocked = (y > MERGE.y && y < MERGE.y + MERGE.h) || y > CHART.y - 8;
+      c.fillRect(RH_X, y, (blocked ? MERGE.x : GRID_R) - RH_X, 1);
+    }
     c.font = font(F.mono(500), 18); c.fillStyle = rgba('sepia', 0.4); c.textAlign = 'center';
     for (const col of COLS) c.fillText(col.k, col.x + col.w / 2, HDR_Y + 25);
     for (let r = 1; rowY(r) + RH <= SH + 4; r++) c.fillText(String(r), RH_X + RH_W / 2, rowY(r) + RH / 2 + 6);
@@ -247,7 +278,10 @@ export default class Spreadsheet extends Scene {
     if (t >= this.tTotal) {
       const d = COLS[3]!;
       const u = prog(t, this.tTotal + 0.08, this.tTotal + 0.4, ease.outBack);
-      c.fillStyle = rgba('signal', 0.3 * (1 - prog(t, this.tTotal, this.tTotal + 0.8)) + 0.12);
+      // 之後每個小節線「重新計算」一次：底色亮一下
+      const bar = this.ctx.audio.barAt(t), sinceBar = (bar - Math.floor(bar)) * 4 * this.ctx.audio.beatPeriod(t);
+      const recalc = t > this.tTotal + 1 ? Math.max(0, 1 - sinceBar / 0.4) : 0;
+      c.fillStyle = rgba('signal', 0.3 * (1 - prog(t, this.tTotal, this.tTotal + 0.8)) + 0.12 + 0.3 * recalc);
       c.fillRect(d.x + 1, rowY(TOTAL_ROW) + 4, d.w - 1, RH - 4);
       c.save();
       c.translate(d.x + d.w - 12, rowY(TOTAL_ROW) + 46);
@@ -257,6 +291,33 @@ export default class Spreadsheet extends Scene {
       c.restore();
     }
     c.textAlign = 'left';
+  }
+
+  /** 右下的長條圖：一拍長一根（高度是那一拍的音量），滿了就往左捲（停在拍點）。 */
+  private drawChart(c: CanvasRenderingContext2D, t: number) {
+    const au = this.ctx.audio, P = CHART;
+    c.fillStyle = rgba('paper', 0.9); c.fillRect(P.x, P.y, P.w, P.h);
+    c.strokeStyle = rgba('sepia', 0.25); c.lineWidth = 1.2; c.strokeRect(P.x + 0.5, P.y + 0.5, P.w - 1, P.h - 1);
+    c.font = font(F.hei(700), 22); c.fillStyle = rgba('sepia', 0.55);
+    c.fillText('幸福指數', P.x + 18, P.y + 34);
+    const bx = P.x + 18, by = P.y + 52, bw = P.w - 36, bh = P.h - 70;
+    c.fillStyle = rgba('sepia', 0.3); c.fillRect(bx, by + bh, bw, 1.2);
+    const done = this.beats.filter((b) => b <= t);
+    const n = done.length;
+    if (!n) return;
+    const slot = bw / SLOTS, w = slot * 0.62;
+    const last = done[n - 1]!;
+    const shift = n > SLOTS ? n - SLOTS - 1 + prog(t, last, last + 0.25, ease.outExpo) : 0;
+    c.save(); c.beginPath(); c.rect(bx, by - 4, bw, bh + 4); c.clip();
+    for (let i = Math.max(0, n - SLOTS - 1); i < n; i++) {
+      const b = done[i]!;
+      const v = clamp(0.25 + 0.8 * au.env('rms', b + 0.04) + 0.12 * (hash(i, 7) - 0.5), 0.12, 0.98);
+      const g = prog(t, b, b + 0.22, ease.outBack);
+      const h = bh * v * g;
+      c.fillStyle = i === n - 1 ? rgba('blood', 0.85) : rgba('sepia', 0.28);
+      c.fillRect(bx + (i - shift) * slot + (slot - w) / 2, by + bh - h, w, h);
+    }
+    c.restore();
   }
 
   /** 仙女棒描外框時的筆尖（貼圖座標），沒在描是 null。 */
@@ -298,7 +359,7 @@ export default class Spreadsheet extends Scene {
     }
     if (tr < 1) return head;
     const fit = this.fit!;
-    const x = M.x + 56;
+    const x = M.x + 44;
     if (m) {
       // 一行一行貼上：每行一個快速的左到右擦入，整則在一小節內貼完
       const nl = fit.lines.length;
@@ -313,9 +374,11 @@ export default class Spreadsheet extends Scene {
       const tSig = this.tPaste + nl * step + 0.15;
       const ka = prog(t, tSig, tSig + 0.35);
       if (ka > 0) {
+        // 署名：v2 的 26～32（螢幕上），在最後一行下面、靠右
+        const sz = sigV2(fit.size * this.ls) / this.ls;
         c.save(); c.globalAlpha *= ka;
-        c.font = font(F.hand(400), 52); c.fillStyle = rgba('sepia', 0.72); c.textAlign = 'right';
-        c.fillText(signature(m.name), M.x + M.w - 60, this.msgTop + fit.height - fit.size * 0.9 + 86);
+        c.font = font(F.hand(700), sz); c.fillStyle = rgba('sepia', 0.72); c.textAlign = 'right';
+        c.fillText(signature(m.name), M.x + M.w - 40, this.msgTop + (nl - 1) * fit.lineHeight + fit.size * 0.35 + sz * 1.3);
         c.restore();
       }
     } else {
@@ -328,8 +391,8 @@ export default class Spreadsheet extends Scene {
       const blink = Math.floor(au.beatAt(t) * 2) % 2 === 0 ? 0.9 : 0;
       c.fillStyle = rgba('blood', blink);
       c.fillRect(x + c.measureText(last).width + 10, this.msgTop + fit.height - fit.size * 1.75, 4, fit.size * 1.05);
-      c.font = font(F.hei(500), 26); c.fillStyle = rgba('sepia', 0.45);
-      c.fillText('掃描右下角 QR code，寫下想對新人說的話', x, this.msgTop + fit.height - fit.size * 0.9 + 80);
+      c.font = font(F.hei(500), 28); c.fillStyle = rgba('sepia', 0.45);
+      c.fillText('掃描右下角 QR code，寫下想對新人說的話', x, this.msgTop + fit.height - fit.size * 0.9 + 64);
       c.restore();
     }
     return head;
@@ -350,8 +413,8 @@ export default class Spreadsheet extends Scene {
     const ly = lyricAt(lyrics, t);
     const maxW = FB.x + FB.w - FB_TEXT_X - 24;
     if (ly) {
-      const size = this.msg ? 62 : 72;
-      const st = { family: F.archivo(100, 700), size, minSize: 54, maxWidth: maxW, active: rgba('blood'), sung: rgba('sepia', 0.92), unsung: rgba('sepia', 0.26), lineHeight: 1.1 };
+      const size = lyricV2(this.msgScreen) / this.ls;
+      const st = { family: F.archivo(100, 700), size, minSize: V2.lyrMin / this.ls, maxWidth: maxW, active: rgba('blood'), sung: rgba('sepia', 0.92), unsung: rgba('sepia', 0.26), lineHeight: 1.1 };
       const lay = layoutLyric(c, ly.line, st);
       c.save(); c.translate(FB_TEXT_X, FB.y + (FB.h - lay.height) / 2 + lay.size * 0.8);
       drawLyric(c, ly.line, t, st, lay, ly.k);

@@ -1,6 +1,7 @@
 // 氣象報告（批次 T6・螢幕 B，亮）：一張印出來的「地面天氣圖」擺在桌上，鏡頭斜斜地從上面看、很慢地滑過去。
 // MV 檢修後：整張圖先畫進一張「紙」的貼圖，再用 _t6 的 ScreenRig 擺在桌面上（透視、遠端景深、紙下的影子）。紙上只留：
-//  - 主打留言：用手寫字直接寫在紙上左半邊的海面（「今日天氣小語」），整個畫面最大最清楚；署名在下面。
+//  - 主打留言：用手寫字直接寫在紙上左半邊的海面（「今日天氣小語」）；留言標準 v2：螢幕上 40～60 px，署名在下面。
+//  - 雲的影子一片一片慢慢飄過紙面（環境的動態），一群候鳥（幾個小小的 V）每兩小節從右往左飛過地圖。
 //  - 歌詞：紙的上緣印著「今日預報」那一行（逐字跟唱，小一級）；純音樂時是「晴時多雲　偶陣愛」。
 //  - 右半邊的天氣圖：等壓線（GLSL 算氣壓場、畫等值線），台灣東邊一團「愛情高氣壓」，最裡面幾圈是愛心形的，
 //    大鼓一打就像心跳一樣往外鼓一下；「愛情暖鋒」每個小節線往台灣推進一段；台北上空的太陽光芒一拍轉一格；幾支風標。
@@ -17,14 +18,18 @@ import { clamp, ease, hash, lerp, prog, TAU } from '../engine/util';
 import type { FitResult } from '../engine/text';
 import type { Lyrics } from '../engine/lyrics';
 import { lyricAt, drawLyric, layoutLyric, beatAfter, signature, drawMessage, sparkHead, sparkParticles } from './_motifs';
-import { taiwanIn, VENUE, fitMessage, inOut, ScreenRig, loadPlateText } from './_t6';
+import { taiwanIn, VENUE, inOut, ScreenRig, loadPlateText } from './_t6';
+import { fitText } from '../engine/text';
+import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 } from './_v2';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'screen', paper: true, energy: [0.15, 0.75], bars: [4, 8], weight: 1 };
 
 // ---------------------------------------------------------------- 紙（1920×1080 的貼圖座標，y 向下）
 const X0 = 120;
 const LYR_Y = 206; // 歌詞基線
-const MSG = { x: X0, y: 340, w: 900, h: 560 }; // 留言（含署名）
+const MSG = { x: X0, y: 340, w: 900, h: 480 }; // 留言（含署名）
+/** 紙面上 1 px 在畫面上大約多大（鏡頭推到最近時的橫向縮放）：v2 的字級是螢幕上的 px。 */
+const LS = 0.85;
 const TW_BOX = { x: 1150, y: 250, h: 470 }; // 台灣（中心經度的 x、北端 y、南北高度）
 const HIGH = { x: 1540, y: 520, s: 150 }; // 愛情高氣壓的中心與大小（px）
 const LOW = { x: 1800, y: 170, s: 100 };
@@ -59,7 +64,7 @@ function pressure(px: number, py: number, pulse = 0) {
 // 紙：奶茶色、雲紋、纖維；等壓線只在右半邊的地圖清楚，往左（留言那邊）淡掉，字後面才乾淨
 const SHEET = () => new FSPass(/* glsl */ `
   ${HEART_GLSL}
-  uniform float pulse;
+  uniform float pulse; uniform float t;
   float pressure(vec2 p) {
     float hs = ${HIGH.s}.0 * (1.0 + 0.035 * pulse);
     vec2 h = vec2((p.x - ${HIGH.x}.0) / hs, (${HIGH.y}.0 - p.y) / hs + 0.55);
@@ -83,8 +88,11 @@ const SHEET = () => new FSPass(/* glsl */ `
     float dh = sdHeart(vec2((p.x - ${HIGH.x}.0) / hs, (${HIGH.y}.0 - p.y) / hs + 0.55));
     col = mix(col, mix(col, C_SIGNAL, 0.28), smoothstep(0.35, -0.05, dh));
     col = mix(col, C_SEPIA, line);
+    // 雲的影子：很淡、很慢地從右上往左下飄（字那一邊更淡，字要清楚）
+    float cl = smoothstep(0.1, 0.55, fbm(p / 520.0 + vec2(t * 0.035, -t * 0.02), 3));
+    col *= 1.0 - cl * mix(0.03, 0.08, smoothstep(900.0, 1200.0, p.x));
     fragColor = vec4(col, 1.0);
-  }`, { pulse: { value: 0 } });
+  }`, { pulse: { value: 0 }, t: { value: 0 } });
 
 // 桌面：比紙暗一點的淺色（亮版面，但紙要是最亮的東西），紙下面一圈柔和的影子
 const TABLE = () => new FSPass(/* glsl */ `
@@ -112,6 +120,7 @@ export default class Weather extends Scene {
   msg: Msg | null = this.ctx.params.message ?? null;
   fit: FitResult | null = null;
   b0 = 0; tMsg = 0; msgTop = 0;
+  sigSize = 36; msgScreen: number | null = null;
   labels: { x: number; y: number; v: number }[] = [];
   barbs: Barb[] = [];
   private baseDrawn = false;
@@ -146,12 +155,21 @@ export default class Weather extends Scene {
       const x = 1000 + hash(seed, i) * 820, y = 280 + hash(seed, i + 99) * 620;
       if (Math.hypot(x - HIGH.x, y - HIGH.y) < 170 || (x > TW_BOX.x - 170 && x < TW_BOX.x + 130 && y > TW_BOX.y - 40 && y < TW_BOX.y + TW_BOX.h + 20)) continue;
       if (this.barbs.some((b) => Math.hypot(b.x - x, b.y - y) < 170)) continue;
+      // 紙的右下角在畫面上落在 HUD（QR、留言數）底下，那一區不放東西
+      if (x > 1420 && y > 700) continue;
       this.barbs.push({ x, y, ph: hash(seed, i + 7) });
     }
     const c = this.live.ctx;
     const text = this.msg ? this.msg.text : '今天的天氣小語，還沒有收到。';
-    this.fit = fitMessage(c, text, F.hand(700), MSG.w, MSG.h - (this.msg ? 90 : 120), { min: 56, max: this.msg ? 124 : 76, lineHeight: 1.24 });
-    const block = this.fit.height + (this.msg ? 90 : 90);
+    // 留言：v2 的字級（螢幕上 40～60，照字數）換成紙面上的字級；署名另外佔一行
+    const fam = F.hand(700);
+    const o = { min: V2.msgMin / LS, max: (this.msg ? msgMaxFor(text) : 46) / LS, lineHeight: 1.3, maxLines: 5 };
+    this.sigSize = sigV2(o.max * LS) / LS;
+    const h = MSG.h - this.sigSize * 2.2;
+    this.fit = fitClauses(c, text, fam, MSG.w, h, o) ?? fitText(c, text, fam, MSG.w, h, o);
+    this.msgScreen = this.msg ? this.fit.size * LS : null;
+    this.sigSize = sigV2(this.fit.size * LS) / LS;
+    const block = this.fit.height + this.sigSize * 2;
     this.msgTop = MSG.y + Math.max(0, (MSG.h - block) / 2) + this.fit.size * 0.9;
   }
 
@@ -164,6 +182,7 @@ export default class Weather extends Scene {
     const pulse = au.hit('kick', t, 0.16);
     // 1) 紙
     this.sheetBg.u.pulse!.value = pulse;
+    this.sheetBg.u.t!.value = t;
     this.sheetBg.render(renderer, this.paperRT);
     if (!this.baseDrawn) { this.drawBase(); this.baseDrawn = true; }
     comp.draw(renderer, this.base.texture, this.paperRT);
@@ -267,6 +286,19 @@ export default class Weather extends Scene {
       const a = Math.atan2(q.y - p.y, q.x - p.x);
       c.beginPath(); c.arc(p.x, p.y, 12, a + Math.PI, a + TAU); c.closePath(); c.fill();
     }
+    // 候鳥：每兩小節一群（五隻小小的 V）從右往左飛過地圖，翅膀一拍拍一下（窗格中段的小事件）
+    const bar2 = au.barAt(t) / 2, gi = Math.floor(bar2), gu = bar2 - gi;
+    if (gu < 0.8) {
+      const fx = lerp(1880, 1020, ease.inOutQuad(gu / 0.8)), fy = 220 + 140 * hash(gi, 3);
+      const flap = Math.sin(bt * Math.PI * 2) * 0.5 + 0.5;
+      c.strokeStyle = rgba('sepia', 0.55 * Math.min(1, gu * 8, (0.8 - gu) * 8)); c.lineWidth = 2.2; c.lineCap = 'round';
+      for (let j = 0; j < 5; j++) {
+        const bx = fx + [0, 34, 34, 68, 68][j]!, by = fy + [0, -20, 20, -40, 40][j]! * 0.8;
+        const wv = 5 + 6 * flap;
+        c.beginPath(); c.moveTo(bx - 9, by - wv); c.lineTo(bx, by); c.lineTo(bx + 9, by - wv); c.stroke();
+      }
+      c.lineCap = 'butt';
+    }
     // 台北上空的太陽：光芒一拍轉一格（outBack，停住）
     const tw = taiwanIn(TW_BOX.x, TW_BOX.y, TW_BOX.h);
     const v = tw.proj(VENUE[0], VENUE[1]);
@@ -304,9 +336,9 @@ export default class Weather extends Scene {
     c.fillText('今日預報', X0, LYR_Y - 78);
     c.letterSpacing = '0px';
     const ly = lyricAt(lyrics, t);
-    const size = this.msg ? 66 : 80;
+    const size = lyricV2(this.msgScreen) / LS;
     if (ly) {
-      const st = { family: F.archivo(100, 800), size, minSize: 54, maxWidth: 1360 - X0, active: rgba('blood'), sung: rgba('sepia', 0.92), unsung: rgba('sepia', 0.24), lineHeight: 1.1 };
+      const st = { family: F.archivo(100, 800), size, minSize: V2.lyrMin / LS, maxWidth: 1360 - X0, active: rgba('blood'), sung: rgba('sepia', 0.92), unsung: rgba('sepia', 0.24), lineHeight: 1.1 };
       const lay = layoutLyric(c, ly.line, st);
       c.save(); c.translate(X0, LYR_Y - (lay.height - lay.size) * 0.5);
       drawLyric(c, ly.line, t, st, lay, ly.k);
@@ -330,8 +362,8 @@ export default class Weather extends Scene {
       drawMessage(c, fit, F.hand(700), X0, this.msgTop, { chars, color: rgba('sepia', 0.97) });
       const ka = prog(t, this.tMsg + 0.6, this.tMsg + 1.0);
       c.save(); c.globalAlpha *= ka;
-      c.font = font(F.hand(400), 52); c.fillStyle = rgba('sepia', 0.72);
-      c.fillText(signature(this.msg.name), X0 + 10, this.msgTop + fit.height - fit.size * 0.9 + 84);
+      c.font = font(F.hand(700), this.sigSize); c.fillStyle = rgba('sepia', 0.7);
+      c.fillText(signature(this.msg.name), X0 + 10, this.msgTop + (fit.lines.length - 1) * fit.lineHeight + fit.size * 0.35 + this.sigSize * 1.35);
       c.restore();
     } else {
       drawMessage(c, fit, F.hand(700), X0, this.msgTop, { chars, color: rgba('sepia', 0.6) });

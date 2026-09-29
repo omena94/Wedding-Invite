@@ -1,7 +1,8 @@
 // 新聞快報（批次 T6・螢幕 B，暗）：自己設計的「喜訊台」新聞（不像任何一家真的電視台），在暗暗的客廳裡的一台電視上播。
 // MV 檢修後：整個新聞畫面先畫進一張「電視訊號」貼圖，再用 _t6 的 ScreenRig 擺成客廳裡的一台電視（邊框、玻璃反光、
 // 電視的光灑在牆上與矮櫃上），鏡頭整個窗格很慢地往電視推近、轉正。電視上的新聞只留三樣：
-//  - 頭條＝主打留言（思源宋體、大、紙白底），署名是「—— 阿哲　現場報導」；面板從下往上長，長留言面板比較高。
+//  - 頭條＝主打留言（思源宋體；留言標準 v2：螢幕上 40～60 px），放在半透明的暗色字幕條上（只比字多一點邊距），
+//    署名「—— 阿哲　現場報導」在最後一行下面；字幕條從下往上長，長留言比較高。
 //    「快訊」標籤在第一拍切進來，每個小節線頭條上緣掃過一道光。沒有留言時頭條是「現正播放：歌名」＋一句邀請。
 //  - 跑馬燈是歌詞：速度跟著歌聲走——正在唱的字永遠停在「讀頭」的位置（逐字跟唱）。純音樂時跑固定的快訊。
 //  - 背景的線框地球：開場轉到台灣、推進到婚禮現場，賓客從世界各地沿大圓弧線飛過來（一拍一條），現場在大鼓上泛漣漪。
@@ -17,7 +18,9 @@ import { clamp, ease, lerp, prog, mulberry32 } from '../engine/util';
 import { Lyrics, type Line } from '../engine/lyrics';
 import type { FitResult } from '../engine/text';
 import { sparkHead, sparkParticles, beatAfter, barAfter, signature, drawMessage, COUPLE_ZH } from './_motifs';
-import { TAIWAN, VENUE, beatsIn, fitMessage, inOut, ScreenRig, loadPlateText } from './_t6';
+import { TAIWAN, VENUE, beatsIn, inOut, ScreenRig, loadPlateText } from './_t6';
+import { fitText } from '../engine/text';
+import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 } from './_v2';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'screen', paper: false, energy: [0.35, 1], bars: [4, 8], weight: 1 };
 
@@ -28,7 +31,8 @@ const LABEL_H = 62; // 快訊標籤（貼在頭條面板上緣）
 const HEAD_B = 826; // 頭條面板的下緣（固定）；面板往上長，長留言的面板比較高
 const HEAD_MIN_Y = 330; // 面板最高到這裡
 const TK = { y: 846, h: 108, labelW: 108 }; // 跑馬燈
-const TK_SIZE = 72;
+/** 電視在畫面上的縮放（最小、最大）：v2 的字級是螢幕上的 px，電視訊號裡的字級要除以它。 */
+const TV_MIN = 0.66, TV_MAX = 0.7;
 const HEAD_X = 600; // 跑馬燈的讀頭（正在唱的字停在這裡）
 const SEP = '　◆　';
 const TICKER_IDLE = ['現場天氣：降愛機率百分之百', '交通：往幸福的路上一路順暢', '掃描右下角 QR code，你的祝福就是下一則頭條', '芃芃與 QQ 已就位', '喜宴菜色：一道比一道更甜'];
@@ -114,6 +118,8 @@ export default class News extends Scene {
   private sMat!: THREE.RawShaderMaterial;
   fit: FitResult | null = null;
   headH = 200;
+  /** 頭條字幕條的寬、署名字級、跑馬燈字級（電視訊號座標）。 */
+  headW = 800; sigSize = 40; tkSize = 70;
   /** 頭條面板的上緣（依留言長短）。 */
   headY = 600;
   tLand = 0; tPush = 0; b0 = 0;
@@ -145,7 +151,8 @@ export default class News extends Scene {
     const rnd = mulberry32((this.ctx.params.seed ?? 1) * 7 + 3);
     const launches = beatsIn(au, this.tLand, e - beat * 0.5);
     launches.forEach((bt, i) => {
-      if (i >= 8) return;
+      // 整個窗格都有賓客飛過來：兩拍一條（窗格長時中段也一直有小事件）
+      if (i % 2 || i >= 40) return;
       const lon = VENUE[0] + (rnd() - 0.5) * 300, lat = (rnd() - 0.35) * 110;
       const from = norm(llToV(lon, lat));
       this.arcs.push({ from, t0: bt, ang: Math.acos(clamp(dot(from, this.venue), -1, 1)) });
@@ -162,12 +169,24 @@ export default class News extends Scene {
     // 頭條
     const c = this.ui.ctx;
     const headText = this.msg ? this.msg.text : `現正播放：${song.title || '今晚的歌'}`;
-    // 頭條（留言）：電視上會縮小，字級下限拉高；署名在面板裡的最後一行
-    this.fit = fitMessage(c, headText, F.ming(700), XR - X0 - 80, HEAD_B - HEAD_MIN_Y - 64 - (this.msg ? 70 : 0), { min: 66, max: 120, lineHeight: 1.2 });
-    this.headH = this.fit.height + 64 + (this.msg ? 70 : 0);
+    // 頭條（留言）：v2 的字級是螢幕上的 px，電視訊號裡要除以電視的縮放（下限用最小的縮放、上限用最大的，
+    // 螢幕上才會落在 40～60）；字幕條寬不超過螢幕上 860 px。署名在最後一行下面。
+    const fam = F.ming(700);
+    const o = { min: V2.msgMin / TV_MIN, max: (this.msg ? msgMaxFor(headText) : 48) / TV_MAX, lineHeight: 1.26, maxLines: 5 };
+    const mw = Math.min(XR - X0 - 80, 860 / TV_MAX - 80);
+    this.sigSize = this.msg ? sigV2(o.max * TV_MAX) / TV_MAX : 0;
+    const mh = Math.min(HEAD_B - HEAD_MIN_Y, 430 / TV_MAX) - 60 - this.sigSize * 1.9;
+    this.fit = fitClauses(c, headText, fam, mw, mh, o) ?? fitText(c, headText, fam, mw, mh, o);
+    const msgScreen = this.msg ? this.fit.size * TV_MAX : null;
+    if (this.msg) this.sigSize = sigV2(msgScreen!) / TV_MAX;
+    this.headH = this.fit.height + 56 + (this.msg ? this.sigSize * 1.9 : 0);
     this.headY = HEAD_B - this.headH;
+    c.font = font(fam, this.fit.size);
+    this.headW = Math.max(460, this.fit.width + 90);
+    // 跑馬燈（歌詞）：比留言小一級（v2）
+    this.tkSize = lyricV2(msgScreen) / TV_MAX;
     // 跑馬燈：把這個窗格附近的歌詞排成一條長帶子
-    c.font = font(F.archivo(100, 700), TK_SIZE);
+    c.font = font(F.archivo(100, 700), this.tkSize);
     const sepW = c.measureText(SEP).width;
     let x = 0;
     for (const ln of lyrics.linesIn(s - 30, e + 30)) {
@@ -177,7 +196,7 @@ export default class News extends Scene {
       x += w + sepW;
     }
     this.crawl.total = x;
-    c.font = font(F.hei(700), TK_SIZE * 0.9);
+    c.font = font(F.hei(700), this.tkSize * 0.9);
     this.idleW = c.measureText(TICKER_IDLE.join(SEP) + SEP).width;
   }
 
@@ -219,7 +238,8 @@ export default class News extends Scene {
     this.broadcast(f, this.tv);
     const u = ease.inOutQuad(clamp((t - s) / Math.max(1, e - s)));
     const kick = f.a.kick;
-    this.rig.pose({ fx: W / 2, fy: H / 2, cx: lerp(890, 916, u), cy: lerp(462, 478, u), scale: lerp(0.68, 0.73, u) * (1 + 0.004 * kick), rx: 0.025, ry: lerp(0.16, 0.08, u), rz: -0.005 });
+    // 電視在畫面左上，右下角 HUD 那一區只看得到矮櫃與暗暗的牆
+    this.rig.pose({ fx: W / 2, fy: H / 2, cx: lerp(850, 872, u), cy: lerp(440, 452, u), scale: lerp(TV_MIN, TV_MAX, u) * (1 + 0.004 * kick), rx: 0.025, ry: lerp(0.16, 0.08, u), rz: -0.005 });
     const c0 = this.rig.toScreen(W / 2, H / 2), c1 = this.rig.toScreen(W, H);
     (this.room.u.c!.value as THREE.Vector2).set(c0.x, c0.y);
     (this.room.u.r!.value as THREE.Vector2).set(Math.abs(c1.x - c0.x), Math.abs(c1.y - c0.y));
@@ -420,32 +440,36 @@ export default class News extends Scene {
     if (hu > 0 && this.fit) {
       const fit = this.fit;
       const hh2 = this.headH;
-      c.fillStyle = rgba('bone', 0.95); c.fillRect(X0, this.headY, (XR - X0) * hu, hh2);
+      const HW = this.headW;
+      // v2：輕的容器——半透明的暗色字幕條，上緣一條細細的紙白線，只比字多一點邊距
+      c.fillStyle = rgba('ink', 0.62); c.fillRect(X0, this.headY, HW * hu, hh2);
+      c.fillStyle = rgba('bone', 0.35); c.fillRect(X0, this.headY, HW * hu, 1.5);
       // 每個小節線，上緣掃過一道訊號色的光
       const bar = au.barAt(t), ph = bar - Math.floor(bar);
       const sweep = prog(ph, 0, 0.35, ease.inOutCubic);
       if (t > b0 + 0.6 && sweep < 1) {
-        const sx = X0 + (XR - X0) * sweep;
-        c.fillStyle = rgba('signal', 0.9 * (1 - sweep)); c.fillRect(Math.max(X0, sx - 160), this.headY, sx - Math.max(X0, sx - 160), 5);
+        const sx = X0 + HW * sweep;
+        c.fillStyle = rgba('signal', 0.9 * (1 - sweep)); c.fillRect(Math.max(X0, sx - 160), this.headY, sx - Math.max(X0, sx - 160), 4);
       }
-      c.fillStyle = rgba('signal', 0.95); c.fillRect(X0, this.headY, 8, hh2);
-      c.save(); c.beginPath(); c.rect(X0, this.headY, (XR - X0) * hu, hh2); c.clip();
+      c.fillStyle = rgba('signal', 0.95); c.fillRect(X0, this.headY, 6, hh2);
+      c.save(); c.beginPath(); c.rect(X0, this.headY, HW * hu, hh2); c.clip();
       // 頭條一行一行從下面冒上來（每行錯開 0.08 秒）
       fit.lines.forEach((ln, i) => {
         const ku = prog(t, b0 + 0.25 + i * 0.08, b0 + 0.6 + i * 0.08, ease.outExpo);
         if (ku <= 0) return;
         const one: FitResult = { ...fit, lines: [ln] };
-        const y = this.headY + 30 + fit.size * 0.92 + i * fit.lineHeight + (1 - ku) * 40;
+        const y = this.headY + 28 + fit.size * 0.92 + i * fit.lineHeight + (1 - ku) * 40;
         c.save(); c.globalAlpha *= ku;
-        drawMessage(c, one, F.ming(700), X0 + 40, y, { color: rgba('ink', 0.96) });
+        drawMessage(c, one, F.ming(700), X0 + 40, y, { color: rgba('bone', 0.97) });
         c.restore();
       });
       // 署名＝記者：「—— 阿哲　現場報導」（面板裡的最後一行，靠右）
       if (m) {
         const bu = prog(t, b0 + 0.5, b0 + 0.9, ease.outCubic);
         c.save(); c.globalAlpha *= bu;
-        c.font = font(F.hand(400), 50); c.fillStyle = rgba('ink', 0.72); c.textAlign = 'right';
-        c.fillText(`${signature(m.name)}　現場報導`, XR - 40, this.headY + hh2 - 34);
+        const sy = this.headY + 28 + fit.size * 0.92 + (fit.lines.length - 1) * fit.lineHeight + fit.size * 0.35 + this.sigSize * 1.35;
+        c.font = font(F.hand(400), this.sigSize); c.fillStyle = rgba('ash', 0.95); c.textAlign = 'right';
+        c.fillText(`${signature(m.name)}　現場報導`, X0 + HW - 30, sy);
         c.textAlign = 'left';
         c.restore();
       }
@@ -493,7 +517,7 @@ export default class News extends Scene {
     c.font = font(F.hei(900), lyrics.has ? 44 : 32); c.fillStyle = rgba('ink'); c.textAlign = 'center';
     c.fillText(lyrics.has ? '♪' : '即時', X0 + TK.labelW / 2, TK.y + TK.h / 2 + (lyrics.has ? 16 : 11));
     c.textAlign = 'left';
-    const x0 = X0 + TK.labelW + 12, base = TK.y + TK.h / 2 + TK_SIZE * 0.36;
+    const x0 = X0 + TK.labelW + 12, base = TK.y + TK.h / 2 + this.tkSize * 0.36;
     c.save();
     c.beginPath(); c.rect(x0, TK.y, XR - x0, TK.h); c.clip();
     if (this.crawl.lines.length) {
@@ -501,7 +525,7 @@ export default class News extends Scene {
       let hsum = 0;
       for (let i = 0; i < 5; i++) hsum += this.headAt(t - i * 0.05);
       const head = hsum / 5;
-      c.font = font(F.archivo(100, 700), TK_SIZE);
+      c.font = font(F.archivo(100, 700), this.tkSize);
       for (const cl of this.crawl.lines) {
         const lx = HEAD_X + cl.x - head;
         if (lx > XR || lx + cl.w < x0) continue;
@@ -517,11 +541,11 @@ export default class News extends Scene {
           }
         });
         c.fillStyle = rgba('signal', 0.7);
-        c.fillText('◆', lx + cl.w + TK_SIZE * 0.55, base - 2);
+        c.fillText('◆', lx + cl.w + this.tkSize * 0.55, base - 2);
       }
     } else {
       // 純音樂：固定的快訊，等速往左跑
-      c.font = font(F.hei(700), TK_SIZE * 0.9); c.fillStyle = rgba('bone', 0.9);
+      c.font = font(F.hei(700), this.tkSize * 0.9); c.fillStyle = rgba('bone', 0.9);
       const txt = TICKER_IDLE.join(SEP) + SEP;
       const off = ((t * 120) % this.idleW + this.idleW) % this.idleW;
       for (let x = x0 - off; x < XR; x += this.idleW) c.fillText(txt, x, base);

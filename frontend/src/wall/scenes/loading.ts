@@ -1,6 +1,7 @@
 // 安裝進度（批次 T6・螢幕 B，暗）：「正在安裝：婚姻 v1.0」。
-// MV 檢修後：一台螢幕擺在暗房裡，鏡頭從側面慢慢橫移過去；螢幕上只剩最少的東西——
-//  - 主打留言就是這一版的「更新內容」：手寫字、螢幕上最大最亮（焦點）；署名在下面。
+// MV 檢修後：一台螢幕擺在暗房裡，鏡頭從側面慢慢橫移過去。留言標準 v2：螢幕（一直在跑的安裝畫面）是主視覺——
+//  - 右半邊是「磁碟區塊圖」：每一拍寫入一批區塊（剛寫入的是訊號色、慢慢冷卻成暗暗的紙白），一道讀寫頭的光掃過去。
+//  - 主打留言就是這一版的「更新內容」：左半邊，手寫字，螢幕上 40～60 px；署名在最後一行下面（26～32 px）。
 //  - 一條細細的進度條，尖端是仙女棒的火花：一拍往前衝一下；衝到 99% 就卡住（冷面笑話：剩餘時間「一輩子」），
 //    大鼓一打螢幕跟著抖；最後一個小節線才跳到 100%：整條亮起來、閃一下、鏡頭往前一推，標籤改成「安裝完成」。
 //  - 歌詞在進度條下面（逐字跟唱，小一級）；純音樂時寫正在安裝的元件（早餐輪流做.dll、兩人份的鑰匙……）。
@@ -17,7 +18,9 @@ import { clamp, ease, hash, lerp, prog, frameIdx } from '../engine/util';
 import type { FitResult } from '../engine/text';
 import type { Lyrics } from '../engine/lyrics';
 import { lyricAt, drawLyric, layoutLyric, sparkHead, sparkParticles, beatAfter, signature, drawMessage } from './_motifs';
-import { beatsIn, lastBeatBefore, fitMessage, inOut, ScreenRig, mipRT, blitToRT, loadPlateText } from './_t6';
+import { fitText } from '../engine/text';
+import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 } from './_v2';
+import { beatsIn, lastBeatBefore, inOut, ScreenRig, mipRT, blitToRT, loadPlateText } from './_t6';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'screen', paper: false, energy: [0.35, 1], bars: [4, 8], weight: 1 };
 
@@ -25,7 +28,11 @@ export const spec: PlateSpecDecl = { group: 'type', family: 'screen', paper: fal
 const SW = 1600, SH = 900;
 const MX = 110; // 左右邊界
 const LABEL_Y = 104;
-const MSG_BOX = { x: MX, y: 150, w: SW - 2 * MX, h: 400 }; // 留言（含署名）
+const MSG_BOX = { x: MX, y: 150, w: 780, h: 420 }; // 留言（含署名），左半邊
+const MAP = { x: 960, y: 150, w: SW - MX - 960, h: 420 }; // 磁碟區塊圖，右半邊
+const CELL = 26;
+/** 螢幕上的 px ÷ 貼圖 px（鏡頭推到最近時，保守估計）：v2 的字級是螢幕上的 px。 */
+const LS = 0.72;
 const BAR = { x: MX, y: 640, w: SW - 2 * MX, h: 10 };
 const LYR_Y = 790; // 歌詞基線
 /** 純音樂時「正在寫入」輪流寫這些（一小節換一個）。 */
@@ -60,6 +67,8 @@ export default class Loading extends Scene {
   vals: number[] = []; // 每一拍跳到的百分比
   b0 = 0; t99 = 0; t100 = 0; tMsg = 0;
   fit: FitResult | null = null;
+  sigSize = 40;
+  msgScreen: number | null = null;
   seed = 0;
 
   override async init() {
@@ -89,8 +98,14 @@ export default class Loading extends Scene {
     this.tMsg = b0 + Math.min(beat * 0.5, 0.3);
     const c = this.scr.ctx;
     const text = this.msg ? this.msg.text : '這一版還沒有新的祝福。掃描右下角 QR code，把你的祝福加進下一版';
-    // 留言：署名另外佔一行；沒有留言時的邀請小一號（焦點讓給歌詞）
-    this.fit = fitMessage(c, text, F.hand(400), MSG_BOX.w, MSG_BOX.h - (this.msg ? 70 : 0), { min: 52, max: this.msg ? 132 : 58, lineHeight: 1.26 });
+    // 留言：v2 的字級（螢幕上 40～60，照字數），換成貼圖上的字級；署名另外佔一行；沒有留言時的邀請小一號（焦點讓給歌詞）
+    const fam = F.hand(400);
+    const o = { min: V2.msgMin / LS, max: (this.msg ? msgMaxFor(text) : 42) / LS, lineHeight: 1.3, maxLines: 5 };
+    this.sigSize = this.msg ? sigV2(o.max * LS) / LS : 0;
+    const h = MSG_BOX.h - (this.msg ? this.sigSize * 2 : 0);
+    this.fit = fitClauses(c, text, fam, MSG_BOX.w, h, o) ?? fitText(c, text, fam, MSG_BOX.w, h, o);
+    this.msgScreen = this.msg ? this.fit.size * LS : null;
+    if (this.msg) this.sigSize = sigV2(this.msgScreen!) / LS;
   }
 
   override dispose() { this.rig.dispose(); super.dispose(); }
@@ -116,10 +131,10 @@ export default class Loading extends Scene {
     const done = t >= this.t100 ? ease.outExpo(clamp((t - this.t100) / 0.5)) : 0;
     const fi = frameIdx(t);
     const jit = stalled ? kick * 3 : 0;
-    const scale = lerp(0.86, 0.92, u) * (1 + 0.04 * done);
+    const scale = lerp(0.72, 0.75, u) * (1 + 0.03 * done);
     this.rig.pose({
-      fx: SW * 0.46, fy: SH * 0.5, cx: lerp(930, 870, u) + jit * (hash(fi, 1) - 0.5), cy: 520 + jit * (hash(fi, 2) - 0.5),
-      scale, rx: -0.06, ry: lerp(-0.3, -0.2, u), rz: 0.01,
+      fx: SW * 0.5, fy: SH * 0.5, cx: lerp(850, 800, u) + jit * (hash(fi, 1) - 0.5), cy: lerp(440, 430, u) + jit * (hash(fi, 2) - 0.5),
+      scale, rx: -0.06, ry: lerp(0.26, 0.17, u), rz: 0.01,
     });
     // 對焦：留言與進度條那一段清楚，四邊（尤其往後退的左邊）慢慢糊
     this.rig.focus(MX * 0.5, 60, SW - MX * 0.5, SH - 50, 120);
@@ -171,12 +186,13 @@ export default class Loading extends Scene {
     c.fillStyle = fin ? rgba('signal', 0.85) : rgba('ash', 0.6);
     c.fillText(fin ? '安裝完成　婚姻 v1.0' : '正在安裝　婚姻 v1.0', MX, LABEL_Y);
     c.letterSpacing = '0px';
+    this.drawMap(c, t, pr.v / 100, fin);
     // 主打留言：第一拍後一行一行浮上來；署名在下面
     const fit = this.fit!;
     const nl = fit.lines.length;
     // 留言＋署名整塊在標籤與進度條之間垂直置中（短留言不會只擠在上面）
-    const blockH = fit.height + (this.msg ? 84 : 0);
-    const top = MSG_BOX.y + Math.max(0, (MSG_BOX.h + 40 - blockH) / 2) + fit.size * 0.95;
+    const blockH = fit.height + (this.msg ? this.sigSize * 1.9 : 0);
+    const top = MSG_BOX.y + Math.max(0, (MSG_BOX.h - blockH) / 2) + fit.size * 0.95;
     fit.lines.forEach((ln, i) => {
       const ku = prog(t, this.tMsg + i * 0.12, this.tMsg + 0.5 + i * 0.12, ease.outCubic);
       if (ku <= 0) return;
@@ -187,8 +203,8 @@ export default class Loading extends Scene {
     if (this.msg) {
       const ka = prog(t, this.tMsg + 0.3 + nl * 0.12, this.tMsg + 0.8 + nl * 0.12);
       c.save(); c.globalAlpha *= ka;
-      c.font = font(F.hand(400), 46); c.fillStyle = rgba('ash', 0.95);
-      c.fillText(signature(this.msg.name), MX + 6, top + (nl - 1) * fit.lineHeight + 84);
+      c.font = font(F.hand(400), this.sigSize); c.fillStyle = rgba('ash', 0.95);
+      c.fillText(signature(this.msg.name), MX + 6, top + (nl - 1) * fit.lineHeight + fit.size * 0.35 + this.sigSize * 1.35);
       c.restore();
     }
     // 進度條：細細一條；卡住時尖端跟著大鼓亮；完成時整條亮起來
@@ -209,13 +225,35 @@ export default class Loading extends Scene {
     return fin || t < this.b0 ? null : { x: BAR.x + BAR.w * p, y: BAR.y + BAR.h / 2 };
   }
 
+  /**
+   * 磁碟區塊圖：每一格有自己的寫入順序（亂數，但偏左先寫，像真的磁碟），進度超過就寫入；
+   * 剛寫入是訊號色、慢慢冷卻成暗暗的紙白。每一拍一道讀寫頭的光從左掃到右（次要動作落在拍點）；完成時整片亮一次。
+   */
+  private drawMap(c: CanvasRenderingContext2D, t: number, p: number, fin: boolean) {
+    const au = this.ctx.audio;
+    const cols = Math.floor(MAP.w / CELL), rows = Math.floor(MAP.h / CELL);
+    const bt = au.beatAt(t), sweep = prog(bt - Math.floor(bt), 0, 0.45, ease.inOutCubic);
+    const flash = fin ? Math.exp(-(t - this.t100) * 3) : 0;
+    for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) {
+      const r = (0.72 * hash(i, j, this.seed) + 0.28 * i / cols) * 0.985;
+      const x = MAP.x + i * CELL, y = MAP.y + j * CELL;
+      if (p < r) { c.strokeStyle = rgba('bone', 0.07); c.lineWidth = 1.2; c.strokeRect(x + 1.5, y + 1.5, CELL - 7, CELL - 7); continue; }
+      const age = clamp((p - r) / 0.06);
+      const near = Math.max(0, 1 - Math.abs(i / cols - sweep) * 6) * (1 - sweep);
+      c.fillStyle = age < 0.35 ? rgba('ember', 0.9) : age < 1 ? rgba('signal', 0.75 - 0.35 * age) : rgba('bone', 0.07 + 0.22 * near + 0.5 * flash);
+      c.fillRect(x + 1, y + 1, CELL - 6, CELL - 6);
+    }
+    // 讀寫頭：一條細細的直線跟著拍子掃過去
+    if (!fin && t >= this.b0) { c.fillStyle = rgba('signal', 0.4 * (1 - sweep)); c.fillRect(MAP.x + sweep * cols * CELL, MAP.y - 10, 3, rows * CELL + 14); }
+  }
+
   /** 歌詞（逐字跟唱，比留言小一級）；純音樂或兩句之間寫正在安裝的元件。 */
   private drawLyric(c: CanvasRenderingContext2D, t: number) {
     const lyrics: Lyrics = this.ctx.lyrics;
     const ly = lyricAt(lyrics, t);
-    const size = this.msg ? 60 : 72;
+    const size = lyricV2(this.msgScreen) / LS;
     if (ly) {
-      const st = { family: F.archivo(100, 800), size, minSize: 54, maxWidth: SW - 2 * MX, lineHeight: 1.12 };
+      const st = { family: F.archivo(100, 800), size, minSize: V2.lyrMin / LS, maxWidth: SW - 2 * MX, lineHeight: 1.12 };
       const lay = layoutLyric(c, ly.line, st);
       c.save(); c.translate(MX, LYR_Y - (lay.height - lay.size));
       drawLyric(c, ly.line, t, st, lay, ly.k);
@@ -226,7 +264,7 @@ export default class Loading extends Scene {
       const item = LOG[((i % LOG.length) + LOG.length) % LOG.length]!;
       const u = prog(au.barAt(t) - i, 0, 0.12, ease.outExpo);
       c.save(); c.globalAlpha *= u;
-      c.font = font(F.hei(700), 50); c.fillStyle = rgba('bone', lyrics.has ? 0.3 : 0.6);
+      c.font = font(F.hei(700), size * 0.85); c.fillStyle = rgba('bone', lyrics.has ? 0.3 : 0.6);
       c.fillText(item, MX, LYR_Y);
       c.restore();
     }

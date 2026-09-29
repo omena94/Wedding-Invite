@@ -1,7 +1,8 @@
 // 片尾名單（批次 T6・螢幕 B，暗）：電影院銀幕上的片尾名單，用放映機放出來的樣子。
 //  - 名單以畫面中線偏左的「脊線」對齊：職稱靠右、名字靠左（片尾名單的老規矩），往上捲；
 //    捲動跟著拍子：每一拍一開始衝一下、拍尾放慢（「頓一下」），像放映機一格一格拉片。
-//  - 捲到主打留言那一段就停住：名字（訊號色，小一號）＋留言（手寫字，置中、整個畫面最大），停到讀得完再繼續往下捲；
+//  - 捲到主打留言那一段就停住：留言（手寫字，置中；留言標準 v2：40～60 px、寬 ≤ 860）＋下面的署名（訊號色，26～32 px），
+//    停到讀得完再繼續往下捲；放映機的光裡有灰塵慢慢飄；
 //    停住的時候名單其他部分暗下去，只剩留言那一段亮著（MV 檢修：一個焦點），整個窗格鏡頭很慢地推近一點。
 //    其他賓客的署名（「共同演出」）、本片歌曲、工作人員（攝影：在場每一支手機；燈光：仙女棒……）、冷面的聲明，
 //    最後停在「宣文 & 孟庭（未完，待續）」。
@@ -15,9 +16,10 @@ import { FSPass, Layer2D, W, H } from '../engine/gl';
 import { F, font } from '../engine/type';
 import { rgba } from '../engine/palette';
 import { clamp, ease, hash, lerp, prog, frameIdx } from '../engine/util';
-import { readSeconds, type FitResult } from '../engine/text';
+import { readSeconds, fitText, type FitResult } from '../engine/text';
 import { lyricAt, drawLyric, layoutLyric, beatAfter, drawMessage, COUPLE_ZH, COUPLE_EN, DATE_DOTS } from './_motifs';
-import { fitMessage, inOut, subRect, type Rect, loadPlateText } from './_t6';
+import { inOut, subRect, type Rect, loadPlateText } from './_t6';
+import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 } from './_v2';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'screen', paper: false, energy: [0, 0.7], bars: [6, 12], weight: 1 };
 
@@ -39,13 +41,24 @@ const TEXT = `演出新郎新娘特別演出博美祝福共同演出本片歌曲
 
 // 背景：暗場、放映機的亮斑，逐格一點點閃爍
 const BG = () => new FSPass(/* glsl */ `
-  uniform float flick; uniform float k;
+  uniform float flick; uniform float k; uniform float t;
   void main() {
     vec2 p = vec2(FRAG_PX.x, ${H}.0 - FRAG_PX.y);
     float r = length((p - vec2(${SPINE}.0, 500.0)) / vec2(1150.0, 640.0));
-    vec3 col = C_INK * 0.85 + (C_INK2 - C_INK) * 1.6 * exp(-r * r * 1.8) * flick * k;
+    float spot = exp(-r * r * 1.8);
+    vec3 col = C_INK * 0.85 + (C_INK2 - C_INK) * 1.6 * spot * flick * k;
+    // 放映機光裡的灰塵：小小的亮點慢慢往上飄、明滅（環境的動態；中間的字附近很淡）
+    for (int i = 0; i < 2; i++) {
+      float sc = i == 0 ? 64.0 : 110.0;
+      vec2 q = p / sc + vec2(t * 0.03 * (1.0 + float(i)), t * 0.07);
+      vec2 id = floor(q); vec2 f = fract(q) - 0.5;
+      vec2 o = hash22(id + float(i) * 13.0) - 0.5;
+      float sp = smoothstep(0.045, 0.0, length(f - o * 0.8)) * step(0.82, hash12(id + 7.7 + float(i)));
+      float tw = 0.5 + 0.5 * sin(t * 1.7 + hash12(id) * 6.28);
+      col += C_BONE * 0.04 * sp * tw * (0.3 + 0.7 * smoothstep(300.0, 700.0, abs(p.x - ${SPINE}.0))) * k;
+    }
     fragColor = vec4(col, 1.0);
-  }`, { flick: { value: 1 }, k: { value: 1 } });
+  }`, { flick: { value: 1 }, k: { value: 1 }, t: { value: 0 } });
 
 // 名單＋片子的質感：取樣很長的名單圖層（fast：預乘、sRGB → 自己解），上下漸隱；灰塵、刮痕、黑邊
 const FILM = () => new FSPass(/* glsl */ `
@@ -108,6 +121,7 @@ export default class Credits extends Scene {
   msgC = 0; // 主打留言那一段的中心（名單座標）
   endC = 0; // 最後一張卡的中心
   castTop = 0;
+  msgScreen: number | null = null;
   /** 主打留言那一段的上下緣（名單座標），即時小卡避開用。 */
   msgSpan: [number, number] = [0, 0];
   fit: FitResult | null = null;
@@ -166,27 +180,30 @@ export default class Credits extends Scene {
     const top = y;
     header('祝福', 'With Love From');
     if (m) {
-      this.fit = fitMessage(mc, `「${m.text}」`, F.hand(400), RW - 120, 400, { min: 56, max: 100, lineHeight: 1.28 });
+      // v2：留言 40～60（照字數；整個窗格會慢推 3%，上限先除掉），寬 ≤ 860；署名在留言下面（26～32）
+      const body = `「${m.text}」`, fam = F.hand(400);
+      const o = { min: V2.msgMin, max: msgMaxFor(m.text) / 1.03, lineHeight: 1.32, maxLines: 5 };
+      this.fit = fitClauses(mc, body, fam, 860, 360, o) ?? fitText(mc, body, fam, 860, 360, o);
       const fit = this.fit;
-      push(92, (c, yy) => {
-        c.textAlign = 'center'; c.font = font(F.ming(700), 46); c.fillStyle = rgba('signal', 0.9);
-        c.fillText(m.name || '一位賓客', SP, yy + 56);
-        if (m.couple) { c.font = font(F.mono(500), 18); c.letterSpacing = '4px'; c.fillStyle = rgba('ash'); c.fillText('FROM THE COUPLE', SP, yy + 88); c.letterSpacing = '0px'; }
-        c.textAlign = 'left';
-      });
-      y += 20;
+      const sz = sigV2(fit.size);
+      this.msgScreen = fit.size;
       y += 10;
-      push(fit.height + 30, (c, yy) => {
-        c.font = font(F.hand(400), fit.size);
+      push(fit.height + sz * 0.9 + 20, (c, yy) => {
+        c.font = font(fam, fit.size);
         fit.lines.forEach((ln, i) => {
           const one: FitResult = { ...fit, lines: [ln] };
-          drawMessage(c, one, F.hand(400), SP, yy + fit.size * 0.9 + i * fit.lineHeight, { align: 'center', color: rgba('bone', 0.96) });
+          drawMessage(c, one, fam, SP, yy + fit.size * 0.9 + i * fit.lineHeight, { align: 'center', color: rgba('bone', 0.96) });
         });
+      });
+      push(sz * 2.2, (c, yy) => {
+        c.textAlign = 'center'; c.font = font(F.ming(700), sz); c.fillStyle = rgba('signal', 0.9);
+        c.fillText(`—— ${m.name || '一位賓客'}${m.couple ? '（新人）' : ''}`, SP, yy + sz);
+        c.textAlign = 'left';
       });
     } else {
       push(200, (c, yy) => {
         c.textAlign = 'center';
-        c.font = font(F.hand(400), 58); c.fillStyle = rgba('bone', 0.95);
+        c.font = font(F.hand(400), 50); c.fillStyle = rgba('bone', 0.95);
         c.fillText('你的名字，也可以出現在這裡', SP, yy + 70);
         c.font = font(F.hei(500), 28); c.fillStyle = rgba('ash', 0.95);
         c.fillText('掃描右下角 QR code，寫一則給新人', SP, yy + 140);
@@ -292,6 +309,7 @@ export default class Credits extends Scene {
     const wx = (hash(fi, 1) - 0.5) * 1.4, wy = (hash(fi, 2) - 0.5) * 1.8 + 2.5 * kick;
     this.bg.u.flick!.value = flick;
     this.bg.u.k!.value = k;
+    this.bg.u.t!.value = t;
     this.bg.render(renderer, out);
     const ry = this.rollY(t);
     const F2 = this.film;
@@ -318,7 +336,7 @@ export default class Credits extends Scene {
     c.textBaseline = 'alphabetic';
     const ly = lyricAt(lyrics, t);
     if (ly) {
-      const st = { family: F.archivo(100, 700), size: 54, minSize: 48, maxWidth: SUB.w - 40, align: 'center' as const, lineHeight: 1.12 };
+      const st = { family: F.archivo(100, 700), size: lyricV2(this.msgScreen), minSize: V2.lyrMin, maxWidth: SUB.w - 40, align: 'center' as const, lineHeight: 1.12 };
       const lay = layoutLyric(c, ly.line, st);
       const yb = SUB.h - 24 - (lay.height - lay.size);
       // 字幕的陰影（片子上燒進去的字幕常常有一圈暗邊，讀起來才清楚）
