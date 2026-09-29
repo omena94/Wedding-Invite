@@ -141,6 +141,7 @@ export const spec: PlateSpecDecl = {
   fade, flash, shake:[x,y], zoom, invert`。預設值在 `engine/post.ts`。
 - **亮版面**（紙底）一定要回傳 `paper: 1`。
 - 版面裡的字不要進右下角 HUD 區（`HUD_SAFE`：x ≥ 1360、y ≥ 830），離四邊至少 96 px（投影機會裁邊）。
+  新祝福進來時，HUD 的留言數會演約 3 秒特效：數字滾動、放大發光、波紋、愛心往左上噴、「+1」浮起（`engine/hud.ts` 的 `bumpNumber`）。特效也在這一區裡，所以這一區要保持乾淨。
 - 轉場：窗格相接就是硬切（大部分在小節線上），這是預設。要自己做轉場設 `handlesTransition = true` 並用 `f.under`／`f.tin`。
 - 固定色（不跟主題換）：`fur`（博美橘毛）、`cream`（奶油色毛、白胸口）、`collar`（紅項圈）、`ball`（網球黃綠）、`denim`（牛仔褲）、
   `gingham`（孟庭的綠格紋）、`leash`（藍牽繩）。只給手繪角色與道具用，不發光。
