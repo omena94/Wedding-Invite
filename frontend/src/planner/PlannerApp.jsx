@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { BrowserRouter, NavLink, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import {
   Users, Wallet, CalendarDays, FolderOpen,
-  Settings as SettingsIcon, LogOut, Lock, LogIn, Home as HomeIcon, Armchair, Images, Gift, NotebookPen, PartyPopper, Camera, Monitor, ExternalLink, MessageSquareHeart,
+  Settings as SettingsIcon, LogOut, Lock, LogIn, Home as HomeIcon, Armchair, Images, Gift, NotebookPen, PartyPopper, Camera, Monitor, ExternalLink, MessageSquareHeart, LayoutGrid,
 } from "lucide-react";
 import { adminLogin, clearToken, getRole, getToken, setRole, setToken, fetchMe } from "../api.js";
 import Guests from "./Guests.jsx";
@@ -15,6 +15,7 @@ import Seating from "./Seating.jsx";
 import Photos from "./Photos.jsx";
 import GuestPhotos from "./GuestPhotos.jsx";
 import Wall from "./Wall.jsx";
+import WallPlates from "./WallPlates.jsx";
 import Gifts from "./Gifts.jsx";
 import Memos from "./Memos.jsx";
 import Program from "./Program.jsx";
@@ -37,6 +38,7 @@ const NAV = [
   { to: "/photos", label: "婚紗照", icon: Images, perm: ["photos"] }, // 2026-09-28 新人要求改名
   { to: "/day-photos", label: "當天照片", icon: Camera, perm: ["guest_photos"] }, // 2026-09-27 賓客上傳的原檔
   { to: "/wall", label: "現場留言", icon: MessageSquareHeart, perm: ["wall"] }, // 2026-09-28 賓客在 /wish 留言、會場大螢幕、歌單
+  { to: "/wall-plates", label: "大螢幕版面", icon: LayoutGrid, perm: ["wall"] }, // 2026-09-28 所有版面的縮圖、預覽、開關、換版面節奏
   { to: "/settings", label: "設定", icon: SettingsIcon, perm: ["settings"] },
 ];
 
@@ -92,6 +94,7 @@ export default function PlannerApp() {
             <Route path="/photos" element={<Allowed ok={can("photos")} home={home}><Photos /></Allowed>} />
             <Route path="/day-photos" element={<Allowed ok={can("guest_photos")} home={home}><GuestPhotos /></Allowed>} />
             <Route path="/wall" element={<Allowed ok={can("wall")} home={home}><Wall /></Allowed>} />
+            <Route path="/wall-plates" element={<Allowed ok={can("wall")} home={home}><WallPlates /></Allowed>} />
             <Route path="/settings" element={<Allowed ok={can("settings")} home={home}><SettingsPage /></Allowed>} />
             <Route path="*" element={<Navigate to={home} replace />} />
           </Routes>

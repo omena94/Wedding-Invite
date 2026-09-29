@@ -33,7 +33,7 @@ export async function login(password: string) {
 }
 
 export interface FeedMessage { id: number; name: string; text: string; created_at: string; source?: string }
-export interface Feed { messages: FeedMessage[]; count: number; open: boolean; moderation: boolean; songs_rev: string }
+export interface Feed { messages: FeedMessage[]; count: number; open: boolean; moderation: boolean; songs_rev: string; plates_off?: string[]; pace?: 'fast' | 'normal' | 'slow' }
 export const fetchFeed = () => api<Feed>('/api/planner/wall/feed');
 
 export interface SongRow {

@@ -59,8 +59,12 @@ BROADCAST_KEYS = ("broadcast_subject", "broadcast_body", "broadcast_target", "br
 GUEST_UPLOAD_KEY = "guest_upload_open"  # 2026-09-27 婚禮當天賓客上傳照片（/upload）
 WALL_OPEN_KEY = "wall_open"  # 婚禮當天現場留言（/wish），留言會上會場大螢幕
 WALL_MODERATION_KEY = "wall_moderation"  # 現場留言要不要先審核
+# 2026-09-28 新人可以在後台把不喜歡的大螢幕版面關掉（逗號分隔的版面名稱，例如 "aurora,disco"）
+WALL_PLATES_OFF_KEY = "wall_plates_off"
+# 2026-09-28 大螢幕換版面的節奏：fast／normal（預設，空字串也是）／slow
+WALL_PACE_KEY = "wall_pace"
 PERMISSION_KEY = "role_permissions"  # 2026-09-27 各角色能用的功能（JSON），見 permissions.py
-ALL_KEYS = (PHASE2_KEY, SEAT_KEY, PHOTOS_KEY, GUEST_UPLOAD_KEY, WALL_OPEN_KEY, WALL_MODERATION_KEY, *INFO_KEYS, *BANQUET_KEYS, *SEATING_KEYS, *BROADCAST_KEYS, PERMISSION_KEY)
+ALL_KEYS = (PHASE2_KEY, SEAT_KEY, PHOTOS_KEY, GUEST_UPLOAD_KEY, WALL_OPEN_KEY, WALL_MODERATION_KEY, WALL_PLATES_OFF_KEY, WALL_PACE_KEY, *INFO_KEYS, *BANQUET_KEYS, *SEATING_KEYS, *BROADCAST_KEYS, PERMISSION_KEY)
 
 
 def get_setting(db: Session, key: str) -> str:

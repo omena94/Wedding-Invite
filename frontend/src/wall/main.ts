@@ -8,6 +8,7 @@
 //  - 開發模式 ?dev=1：不連後端，用 dev/fixtures 的假留言與本機的測試音檔（見 vite.config.js 的 wall-dev），
 //    加上 ?export=1 給截圖腳本（scripts/wall-render.mjs）用。
 import { Engine, SCENES, type SongRuntime } from './engine/engine';
+import { PLATE_CATALOG } from './plateCatalog';
 import { AudioData } from './engine/audio';
 import { Lyrics } from './engine/lyrics';
 import { PW, PH } from './engine/gl';
@@ -25,6 +26,8 @@ import { analyzeArrayBuffer } from './analysis/client';
 const Q = new URLSearchParams(location.search);
 const DEV = Q.has('dev');
 const EXPORT = Q.has('export');
+// 後台「大螢幕版面」頁的預覽：/wall?plate=名字，只播這個版面，← → 換下一個
+const PREVIEW = EXPORT ? null : Q.get('plate');
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const canvas = $<HTMLCanvasElement>('c');
@@ -215,6 +218,8 @@ async function pollFeed(initial = false) {
     const f = await fetchFeed();
     feedFails = 0;
     await pool.sync(f.messages, initial);
+    director.off = new Set(f.plates_off ?? []);
+    director.pace = f.pace ?? 'normal';
     if (f.songs_rev !== songsRev) {
       songsRev = f.songs_rev;
       const rows = (await fetchSongs()).filter((s) => s.enabled).sort((a, b) => a.sort_order - b.sort_order || a.id - b.id);
@@ -302,6 +307,7 @@ function bindUi() {
     if ((ev.target as HTMLElement).tagName === 'INPUT') return;
     const k = ev.key;
     if (k === ' ') { ev.preventDefault(); togglePlay(); }
+    else if (PREVIEW && (k === 'ArrowRight' || k === 'ArrowLeft')) setPreview(previewIdx + (k === 'ArrowRight' ? 1 : -1));
     else if (k === 'ArrowRight' && !DEV) void nextSong();
     else if (k === 'ArrowLeft' && !DEV) void prevSong();
     else if (k === 'ArrowUp') setVolume(player.volume + 0.1);
@@ -324,6 +330,41 @@ async function togglePlay() {
   if (silent) { if (playing) silentStart = performance.now() - t * 1000; return; }
   if (playing) await player.play().catch(() => { playing = false; }); else player.pause();
   updateUi();
+}
+
+// ------------------------------------------------------------------ 版面預覽（/wall?plate=名字）
+// 2026-09-28 新人要在後台看每個版面的樣子：用真的歌單、真的留言播，只是導演每個窗格都用指定的版面。
+// 左上角標出現在是哪個版面，← → 或標籤上的按鈕換上一個／下一個（清單順序跟後台一樣）。
+const previewList = PLATE_CATALOG.map((p) => p.name).filter((n) => n !== 'title' && SCENES.includes(n));
+let previewIdx = -1;
+function setupPreview() {
+  const tag = $<HTMLDivElement>('preview-tag');
+  tag.hidden = false;
+  tag.addEventListener('click', (e) => {
+    const b = (e.target as HTMLElement).closest('button');
+    if (b) { e.stopPropagation(); setPreview(previewIdx + Number(b.dataset.step)); }
+  });
+  setPreview(Math.max(0, previewList.indexOf(PREVIEW!)));
+}
+function setPreview(i: number) {
+  if (!previewList.length) return;
+  previewIdx = (i + previewList.length) % previewList.length;
+  const name = previewList[previewIdx]!;
+  director.force = { scene: name };
+  Q.set('plate', name);
+  history.replaceState(null, '', `${location.pathname}?${Q.toString()}`);
+  // 馬上換：現在這個窗格在下一拍收掉，後面排好的丟掉，導演會從那一拍開始排新的版面
+  const au = engine.song?.audio;
+  if (au) {
+    const at = Math.max(t + 0.05, au.nextBeat(t + 0.05));
+    const now = engine.timeline.find((e) => t >= e.start && t < e.end);
+    engine.drop(at);
+    if (now) engine.cut(now.id, at);
+  }
+  const info = PLATE_CATALOG.find((p) => p.name === name);
+  $('preview-tag').innerHTML = `<button type="button" data-step="-1" title="上一個（←）">‹</button>`
+    + `<span><b>${previewIdx + 1}/${previewList.length}　${info?.title ?? name}</b>${director.off.has(name) ? '<em>（現場已關閉）</em>' : ''}<small>${info?.idea ?? ''}</small></span>`
+    + `<button type="button" data-step="1" title="下一個（→）">›</button>`;
 }
 
 // ------------------------------------------------------------------ 開發模式的資料來源
@@ -456,6 +497,8 @@ async function boot() {
     try {
       const f = await fetchFeed();
       await pool.sync(f.messages, true);
+      director.off = new Set(f.plates_off ?? []);
+      director.pace = f.pace ?? 'normal';
       songsRev = f.songs_rev;
       playlist = (await fetchSongs()).filter((s) => s.enabled).sort((a, b) => a.sort_order - b.sort_order || a.id - b.id);
     } catch (e) {
@@ -467,6 +510,7 @@ async function boot() {
   }
   if (EXPORT) { setupExport(); return; }
   bindUi();
+  if (PREVIEW) setupPreview();
   // ?song=歌的 id：從那一首開始播（後台「在大螢幕試播」用）
   const want = Number(Q.get('song'));
   if (playlist.length) { setStatus(`歌單 ${playlist.length} 首，準備第一首…`); await playIndex(want ? Math.max(0, indexOfSong(want)) : 0); setStatus('準備好了'); }

@@ -46,7 +46,12 @@ page.on('pageerror', (e) => logs.push(`[pageerror] ${e.message}`));
 try {
   const scale = opt('scale');
   // 指定了版面就只載那一個（加上片頭卡、karaoke）：版面很多，全部載入要等很久
-  const only = opt('scene') && !argv.includes('--all-scenes') ? `&only=${encodeURIComponent(opt('scene'))}` : '';
+  // thumbs 模式：一次載全部要拍的版面（名單從 plateCatalog 來，或 --names a,b）
+  const thumbNames = mode === 'thumbs'
+    ? (opt('names') ? opt('names').split(',') : [...readFileSync(path.join(ROOT, 'src', 'wall', 'plateCatalog.ts'), 'utf8').matchAll(/"name": "([a-z0-9]+)"/g)].map((m) => m[1]))
+    : [];
+  const onlyList = mode === 'thumbs' ? thumbNames.join(',') : opt('scene');
+  const only = onlyList && !argv.includes('--all-scenes') ? `&only=${encodeURIComponent(onlyList)}` : '';
   await page.goto(`${url}/wall.html?dev=1&export=1${scale ? `&scale=${scale}` : ''}${only}`);
   await page.waitForFunction(() => window.__wall?.ready || window.__wall?.error, null, { timeout: 180000 });
   const err = await page.evaluate(() => window.__wall.error);
@@ -208,6 +213,31 @@ try {
     writeFileSync(path.join(outDir, `${outName}.json`), JSON.stringify(report, null, 1));
     console.log(`QA ${outName}：效能 ${report.perf} ms／格、確定性 ${report.deterministic ? (report.detNoise ? '通過（只有 GPU 捨入雜訊）' : '通過') : '不通過（同一時間點畫兩次不一樣）'}、錯誤 ${report.errors.length} 個`);
     console.log(path.join(outDir, `${outName}.jpg`));
+  } else if (mode === 'thumbs') {
+    // 後台「大螢幕版面」頁的縮圖：每個版面用長留言、燭光金主題，在窗格後段拍一張 480×270，存到 public/wall-thumbs/<名字>.jpg
+    const FAST = 'Test Band - Fast Pop.mp3';
+    const outDir = path.join(ROOT, 'public', 'wall-thumbs');
+    mkdirSync(outDir, { recursive: true });
+    const cf = path.join(CACHE, `${FAST.replace(/[^\w.-]+/g, '_')}.json`);
+    let an = existsSync(cf) ? JSON.parse(readFileSync(cf, 'utf8')) : null;
+    let ok = 0;
+    for (const name of thumbNames) {
+      try {
+        const inf = await page.evaluate((o) => window.__wall.setup(o), { song: FAST, scene: name, message: 3, theme: 'gold', analysis: an, from: 20, to: 36.4, params: name === 'title' ? { kind: 'song' } : undefined });
+        an ??= inf.analysis;
+        await page.evaluate((tt) => window.__wall.still(tt), name === 'title' ? 22 : 31);
+        const b64 = await page.evaluate(async () => {
+          const cv = new OffscreenCanvas(480, 270);
+          cv.getContext('2d').drawImage(document.getElementById('c'), 0, 0, 480, 270);
+          const bl = new Uint8Array(await (await cv.convertToBlob({ type: 'image/jpeg', quality: 0.82 })).arrayBuffer());
+          let s = ''; for (let i = 0; i < bl.length; i += 0x8000) s += String.fromCharCode(...bl.subarray(i, i + 0x8000));
+          return btoa(s);
+        });
+        writeFileSync(path.join(outDir, `${name}.jpg`), Buffer.from(b64, 'base64'));
+        ok++;
+      } catch (e) { console.log(`✘ ${name}：${String(e).slice(0, 200)}`); }
+    }
+    console.log(`縮圖 ${ok}/${thumbNames.length} 張 → ${outDir}`);
   } else if (mode === 'profile') {
     // CPU 剖析：畫 n 格，列出最花時間的函式（找效能瓶頸用）
     const cdp = await page.context().newCDPSession(page);

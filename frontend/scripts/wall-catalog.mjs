@@ -1,0 +1,46 @@
+#!/usr/bin/env node
+// 產生大螢幕的版面清單（src/wall/plateCatalog.ts），給後台「大螢幕版面」頁用：中文名稱、系列、亮暗、有沒有人物、一句話點子。
+// 來源是 docs/wall/CATALOG.md 的表格＋最早的 11 個版面；只列 scenes/ 裡真的有的檔（沒做或被拿掉的不列）。
+// 新增或刪除版面後跑一次：node scripts/wall-catalog.mjs
+import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const md = readFileSync(path.join(ROOT, '..', 'docs', 'wall', 'CATALOG.md'), 'utf8');
+
+// 最早的 11 個版面（CATALOG 只列名字，這裡補中文名與分類）
+const ORIGINAL = [
+  ['title', '歌名卡／邀請卡', 'title', false, '每首歌開頭的歌名卡；每隔幾分鐘出現一次放大 QR 的邀請卡'],
+  ['karaoke', '跟唱', 'type', false, '最單純的版面：留言與逐字跟唱的歌詞'],
+  ['sparkler', '仙女棒寫字', 'light', false, '仙女棒的火花在暗色信紙上一個字一個字寫出留言'],
+  ['slam', '大字重擊', 'type', false, '副歌用：歌詞或留言一拍一組大字打上來'],
+  ['certificate', '結婚書約', 'doc', true, '桌上的祝福登記表，留言是祝福內容，最後蓋章'],
+  ['heartbeat', '心電圖', 'machine', false, '暗房裡的監護儀，心跳跟著大鼓；留言是前面的醫囑紙條'],
+  ['stars', '星空', 'nature', false, '電影感夜空：留言是天上的大字，每個字跟著一顆星亮起'],
+  ['banknote', '愛情準備銀行', 'doc', true, '桌上一張鈔票，雕刻紋與交扣的戒指，留言印在鈔票上'],
+  ['mosaic', '祝福牆', 'type', false, '很多則留言排成牆，主打那則放大、其他退成背景'],
+  ['fireworks', '煙火', 'light', false, '火花升空炸開，夜空裡的留言被煙火照亮'],
+  ['vinyl', '黑膠唱片', 'machine', false, '唱片在轉，歌詞沿溝紋；留言是桌上的紙卡'],
+];
+
+const rows = [];
+for (const [name, title, family, light, idea] of ORIGINAL) rows.push({ name, title, family, light, couple: false, idea });
+let section = '';
+for (const line of md.split(/\r?\n/)) {
+  if (line.startsWith('## ')) section = line;
+  const m = /^\| `([a-z0-9]+)` \| ([^|]+) \| ([a-z]+) \| (亮|暗) \| (.+) \|\s*$/.exec(line);
+  if (!m) continue;
+  const [, name, title, family, tone, idea] = m;
+  if (rows.some((r) => r.name === name)) continue;
+  rows.push({ name, title: title.trim(), family, light: tone === '亮', couple: section.includes('新人互動'), idea: idea.trim() });
+}
+const scenes = path.join(ROOT, 'src', 'wall', 'scenes');
+const built = rows.filter((r) => existsSync(path.join(scenes, `${r.name}.ts`)));
+const out = `// 自動產生（node scripts/wall-catalog.mjs），不要手改：大螢幕版面清單，後台「大螢幕版面」頁用。
+export interface PlateInfo { name: string; title: string; family: string; light: boolean; couple: boolean; idea: string }
+export const PLATE_CATALOG: PlateInfo[] = ${JSON.stringify(built, null, 1)};
+`;
+writeFileSync(path.join(ROOT, 'src', 'wall', 'plateCatalog.ts'), out);
+const missing = rows.filter((r) => !built.includes(r)).map((r) => r.name);
+console.log(`版面 ${built.length} 個（清單上還沒做或已拿掉：${missing.length} 個）`);

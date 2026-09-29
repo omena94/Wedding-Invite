@@ -257,3 +257,25 @@ def test_songs(setup, monkeypatch):
     (tmp / "wall" / next(p.name for p in (tmp / "wall").iterdir())).unlink()
     codes = sorted(c.get(f"/api/planner/wall/songs/{x}/audio", headers=COUPLE).status_code for x in (b["id"], d["id"]))
     assert codes == [200, 404]
+
+
+def test_plates_off(setup):
+    """後台關掉的大螢幕版面：設定存成逗號分隔，feed 回傳清單；奇怪的名稱擋掉。"""
+    c, _db, _ = setup
+    assert _feed(c)["plates_off"] == []
+    r = c.patch("/api/planner/settings", json={"wall_plates_off": "aurora, disco,aurora"}, headers=COUPLE)
+    assert r.status_code == 200, r.text
+    assert _feed(c)["plates_off"] == ["aurora", "disco"]
+    r = c.patch("/api/planner/settings", json={"wall_plates_off": "<script>"}, headers=COUPLE)
+    assert r.status_code == 400
+    r = c.patch("/api/planner/settings", json={"wall_plates_off": ""}, headers=COUPLE)
+    assert r.status_code == 200 and _feed(c)["plates_off"] == []
+
+
+def test_pace(setup):
+    """換版面的節奏：預設 normal；只接受 fast／normal／slow。"""
+    c, _db, _ = setup
+    assert _feed(c)["pace"] == "normal"
+    assert c.patch("/api/planner/settings", json={"wall_pace": "fast"}, headers=COUPLE).status_code == 200
+    assert _feed(c)["pace"] == "fast"
+    assert c.patch("/api/planner/settings", json={"wall_pace": "turbo"}, headers=COUPLE).status_code == 400

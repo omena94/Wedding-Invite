@@ -65,6 +65,10 @@ export class Director {
   private lastInvite = -Infinity;
   /** 外部可以強制下一個窗格用哪個版面（開發模式、截圖用）。 */
   force: { scene: string; params?: Record<string, any> } | null = null;
+  /** 新人在後台關掉的版面（feed 的 plates_off）：不排。 */
+  off = new Set<string>();
+  /** 換版面的節奏（後台設定 wall_pace）：fast／normal／slow。 */
+  pace: 'fast' | 'normal' | 'slow' = 'normal';
 
   constructor(private engine: Engine, private pool: MessagePool) {}
 
@@ -144,11 +148,18 @@ export class Director {
     params.seed = Math.floor(this.rnd(4) * 1e6);
     params.energy = energy;
 
-    // 長度：版面偏好，但要夠讀完留言
+    // 長度：版面偏好，但要夠讀完留言。
+    // 2026-09-28 新人覺得「有時候 4、5 句歌詞才換一個版面」太久：改成照秒數算（快歌慢歌換的頻率差不多），
+    // 後台可選節奏——快：4～7 秒（約每 1～2 句）、中（預設）：6～10 秒（約每 2 句）、慢：照版面自己的小節數（原本的樣子）。
     const barLen = Math.max(0.8, au.timeOfBar(Math.floor(au.barAt(from)) + 1) - au.timeOfBar(Math.floor(au.barAt(from))));
-    const need = msg ? readSeconds(msg.text) + 3.5 : 0;
-    const minD = Math.max(bars[0] * barLen, need, first ? 3.5 : 4);
-    const maxD = Math.max(minD + barLen, bars[1] * barLen, need + 2 * barLen);
+    if (!first && this.pace !== 'slow' && scene !== 'title') {
+      const [s0, s1] = this.pace === 'fast' ? [4, 7] : [6, 10];
+      const b0 = Math.max(2, Math.round(s0 / barLen));
+      bars = [b0, Math.max(b0 + 1, Math.round(s1 / barLen))];
+    }
+    const need = msg ? readSeconds(msg.text) + (this.pace === 'slow' ? 3.5 : 2) : 0;
+    const minD = Math.max(bars[0] * barLen, need, first ? 3.5 : this.pace === 'fast' ? 3 : 4);
+    const maxD = Math.max(minD + barLen, bars[1] * barLen, need + (this.pace === 'slow' ? 2 : 1) * barLen);
     let end = first ? this.introEnd(from, minD, Math.min(maxD, 8 * barLen)) : this.bestCut(from, minD, maxD, (minD + maxD) / 2);
     // 剩下的尾巴太短（不到 5 秒）：這個窗格直接撐到歌曲結束
     if (dur - end < 5) end = dur;
@@ -167,7 +178,7 @@ export class Director {
   private plates(): PlateSpec[] {
     const out: PlateSpec[] = [];
     for (const name of this.engine.classes.keys()) {
-      if (name === 'title') continue;
+      if (name === 'title' || this.off.has(name)) continue;
       const base = PLATES.find((p) => p.name === name);
       const decl = this.engine.specs.get(name) ?? {};
       out.push({ energy: [0, 1], bars: [4, 8], lyricsOnly: true, weight: 1, group: 'type', ...base, ...decl, name });

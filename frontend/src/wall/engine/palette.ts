@@ -25,6 +25,11 @@ export const HEX = {
   denim: '#58789A', // 牛仔褲
   gingham: '#86A98B', // 孟庭的綠格紋上衣
   leash: '#4F86C6', // 遛狗的藍色牽繩
+  // 2026-09-28 新人給了參考照（只看、不放進影片）：孟庭是紅棕色長髮；QQ 耳朵與額頭有深色毛尖；芃芃臉是杏橘色
+  auburn: '#8E4B30', // 孟庭的紅棕色頭髮
+  sable: '#4A3B33', // QQ 耳朵、額頭的深灰黑毛尖
+  apricot: '#E3A566', // 芃芃臉頰、額頭的杏橘色
+  shirtblue: '#A9C3DE', // 孟庭綁在腰上的淺藍襯衫
 };
 
 export type PaletteKey = keyof typeof HEX;

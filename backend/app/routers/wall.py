@@ -26,7 +26,7 @@ from ..database import get_db
 from ..models import WallMessage, WallSong
 from ..permissions import require_perm
 from ..security import optional_staff
-from ..stage import WALL_MODERATION_KEY, WALL_OPEN_KEY, is_on
+from ..stage import WALL_MODERATION_KEY, WALL_OPEN_KEY, WALL_PACE_KEY, WALL_PLATES_OFF_KEY, get_setting, is_on
 from ..storage import LocalStore
 
 router = APIRouter(tags=["wall"])
@@ -225,6 +225,9 @@ def wall_feed(db: Session = Depends(get_db)):
         "open": is_on(db, WALL_OPEN_KEY),
         "moderation": is_on(db, WALL_MODERATION_KEY),
         "songs_rev": _songs_rev(db),
+        # 後台關掉的版面：大螢幕的導演不會再排到它們
+        "plates_off": [x for x in (get_setting(db, WALL_PLATES_OFF_KEY) or "").split(",") if x.strip()],
+        "pace": get_setting(db, WALL_PACE_KEY) or "normal",
     }
 
 

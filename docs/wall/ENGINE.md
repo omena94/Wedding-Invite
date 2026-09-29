@@ -41,6 +41,13 @@
 - 型別檢查：`npx tsc --noEmit -p src/wall`（只看自己的檔：`| grep scenes/你的版面`）。
 - 截圖工具會印出 `SCENE ERRORS` 與瀏覽器錯誤——一定要看。
 
+### 後台「大螢幕版面」頁（新增或拿掉版面後要做的事）
+
+- `node scripts/wall-catalog.mjs`：從 `docs/wall/CATALOG.md` 重新產生 `src/wall/plateCatalog.ts`（中文名稱、系列、亮暗、點子；只列 scenes/ 裡有的檔）。
+- `node scripts/wall-render.mjs thumbs`（或 `--names a,b` 只拍幾個）：重拍 `public/wall-thumbs/<名字>.jpg` 縮圖。版面改過樣子也要重拍。
+- `/wall?plate=名字`：預覽模式，導演每個窗格都用這個版面，← → 換上一個／下一個（順序跟清單一樣）。
+- 新人在後台關掉的版面存在設定 `wall_plates_off`、換版面節奏存在 `wall_pace`（fast／normal／slow），feed 會帶給大螢幕，導演照著排。
+
 ## 資料
 
 - `ctx.lyrics`（`engine/lyrics.ts`）：`lines[]`，每行 `text, start, end, words[]`，每個字 `{w, start, end, o}`（`o` 是在行內的位置）。

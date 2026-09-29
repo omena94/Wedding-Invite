@@ -31,6 +31,14 @@
       #ui-song { font-weight: 700; max-width: 420px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
       #ui-next, #ui-status { color: #a1978a; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 360px; }
       #ui-status.bad { color: #ff9a7a; }
+      /* 版面預覽（/wall?plate=）：左上角標出現在的版面，左右按鈕換版面 */
+      #preview-tag { position: fixed; top: 14px; left: 14px; z-index: 30; display: flex; align-items: center; gap: 10px; max-width: min(760px, 70vw);
+        padding: 8px 10px; border-radius: 12px; background: rgba(12, 10, 9, 0.72); color: #f2ebdf; font: 14px/1.4 "Noto Sans TC", system-ui, sans-serif; }
+      #preview-tag span { display: flex; flex-direction: column; min-width: 0; }
+      #preview-tag small { color: #a1978a; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      #preview-tag em { color: #ff9a7a; font-style: normal; font-size: 12px; margin-left: 6px; }
+      #preview-tag button { width: 34px; height: 34px; border-radius: 8px; border: 1px solid #5f5850; background: #17140f; color: #f2ebdf; font-size: 20px; cursor: pointer; flex-shrink: 0; }
+      #preview-tag button:hover { background: #2a241c; }
       #gate { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(8, 7, 6, .72); }
       #gate[hidden] { display: none; }
       .gate-card { width: min(520px, calc(100vw - 32px)); padding: 36px 32px; border-radius: 20px; text-align: center;
@@ -57,6 +65,7 @@
   </head>
   <body>
     <div id="wrap"><canvas id="c"></canvas></div>
+    <div id="preview-tag" hidden></div>
     <div id="ui" role="toolbar" aria-label="大螢幕操作">
       <div class="grp"><button id="ui-prev-btn" type="button" title="上一首（←）">上一首</button><button id="ui-play" class="primary" type="button" title="空白鍵">暫停</button><button id="ui-next-btn" type="button" title="下一首（→）">下一首</button></div>
       <div class="grp" style="flex-direction:column;align-items:flex-start;gap:0"><span id="ui-song">—</span><span id="ui-next"></span></div>
