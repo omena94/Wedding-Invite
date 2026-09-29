@@ -18,7 +18,8 @@ import { rgba, LIN } from '../engine/palette';
 import { clamp, ease, prog, lerp, hash, springStep, TAU } from '../engine/util';
 import type { Line } from '../engine/lyrics';
 import { lyricAt, beatAfter, signature, drawMessage, COUPLE_ZH } from './_motifs';
-import { paperSignal, singColor, glyphProgress, fitLine, fitMsg, lyricSize, slowPush, no3, INVITE_SMALL, type Rect } from './_t20';
+import { paperSignal, singColor, glyphProgress, fitLine, fitV2, slowPush, no3, INVITE_SMALL, type Rect, SYMBOLS } from './_t20';
+import { lyricV2, sigV2, msgMaxFor, V2 } from './_v2';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'water', paper: true, energy: [0.3, 0.9], bars: [4, 8] };
 
@@ -149,17 +150,19 @@ export default class Sailboat extends Scene {
     const text = m ? m.text : NO_MSG;
     const sigText = m ? (m.couple ? `—— ${COUPLE_ZH}` : signature(m.name)) : '';
     const lines = lyrics.linesIn(s - 2, e + 1);
-    await loadText(text + sigText + NO_MSG + INVITE_SMALL + NOTE.join('') + this.title + lines.map((l) => l.text).join('') + '幸福號FROM THE COUPLE · 新人No.0123456789');
+    await loadText(text + sigText + NO_MSG + INVITE_SMALL + NOTE.join('') + this.title + lines.map((l) => l.text).join('') + '幸福號FROM THE COUPLE · 新人No.0123456789' + SYMBOLS);
 
     // ---- 帆面上的字（畫一次）：貼圖座標 x 由左（後緣）往右（桅杆），y 由上（帆頂）往下
     const c = this.sailTex.ctx;
     const pad = { l: 58, r: 46, t: 48, b: 40 };
-    const tagH = m?.couple ? 38 : 0;
-    const sigSize = 44;
-    const reserve = m ? sigSize + 22 : 60;
+    const tagH = m?.couple ? 34 : 0;
+    // 帆上寫字的那一塊約 590×370（標準 v2 的留言區以內）；署名的高度先照字級上限扣掉，永遠在最後一行下面
+    const reserve = m ? sigV2(msgMaxFor(text)) + 20 : 52;
     const bw = SW - pad.l - pad.r, bh = SH - pad.t - pad.b;
-    const fit = fitMsg(c, text, MSG_FAM, bw, bh - reserve - tagH, { min: 44, max: m ? 104 : 56, lineHeight: 1.26, maxLines: 6, oneLine: 68, lines: m ? undefined : NO_MSG_LINES });
-    this.lyrSize = lyricSize(m ? fit.size : null, 60);
+    // 沒有主打留言時歌詞是焦點：帆上的句子小一點
+    const fit = fitV2(c, text, MSG_FAM, bw, bh - reserve - tagH, { lineHeight: 1.26, maxLines: 6, max: m ? undefined : 44, lines: m ? undefined : NO_MSG_LINES });
+    const sigSize = sigV2(fit.size);
+    this.lyrSize = lyricV2(m ? fit.size : null);
     const blockH = tagH + fit.height + reserve;
     const top = pad.t + (bh - blockH) / 2;
     const x0 = pad.l + (bw - fit.width) / 2;
@@ -172,7 +175,7 @@ export default class Sailboat extends Scene {
       c.font = font(MSG_FAM, sigSize);
       const sw = measure(sigText, MSG_FAM, sigSize);
       c.fillStyle = paperSignal(0.95);
-      c.fillText(sigText, Math.max(x0 + fit.width - sw, pad.l), top + tagH + fit.height + 18 + sigSize * 0.9);
+      c.fillText(sigText, Math.max(x0 + fit.width - sw, pad.l), top + tagH + fit.height + 16 + sigSize * 0.9);
     } else {
       c.font = font(F.hei(500), 24); c.letterSpacing = '1px'; c.fillStyle = rgba('sepia', 0.75);
       const iw = measure(INVITE_SMALL, F.hei(500), 24) + 20;
@@ -230,7 +233,7 @@ export default class Sailboat extends Scene {
     let f = this.flagSize.get(line.i);
     if (f) return f;
     const maxW = FLAG.maxLen - 110;
-    const size1 = fitLine(line.text, LYR_FAM, maxW, this.lyrSize, 48);
+    const size1 = fitLine(line.text, LYR_FAM, maxW, this.lyrSize, V2.lyrMin);
     if (layout(line.text, LYR_FAM, size1).width <= maxW + 1 || line.words.length < 2) {
       f = { size: size1, rows: [{ text: line.text, i0: 0, w: layout(line.text, LYR_FAM, size1).width }] };
     } else {
@@ -243,7 +246,7 @@ export default class Sailboat extends Scene {
       }
       const o = line.words[best]!.o;
       const t1 = line.text.slice(0, o).trimEnd(), t2 = line.text.slice(o);
-      const size = clamp(Math.floor((100 * maxW) / bestW), 48, Math.min(56, this.lyrSize));
+      const size = clamp(Math.floor((100 * maxW) / bestW), V2.lyrMin, this.lyrSize);
       f = { size, rows: [{ text: t1, i0: 0, w: layout(t1, LYR_FAM, size).width }, { text: t2, i0: Array.from(line.text.slice(0, o)).length, w: layout(t2, LYR_FAM, size).width }] };
     }
     this.flagSize.set(line.i, f);
@@ -284,6 +287,7 @@ export default class Sailboat extends Scene {
     this.back.clear(); this.front.clear();
     this.drawSea(roll, t);
     this.drawGulls(t);
+    this.drawClouds(f.lt);
     this.drawStays(xf);
     if (this.back.count) this.back.render(renderer, out);
 
@@ -305,6 +309,7 @@ export default class Sailboat extends Scene {
     this.drawFlag(c, xf, t, roll);
     this.drawNotes(c);
     comp.draw(renderer, L.upload(), out);
+    this.drawBowSpray(t, xf);
     if (this.front.count) this.front.render(renderer, out);
     return { paper: 1, popupAvoid: this.avoid, bloom: 0.1, bloomThreshold: 1.8, halation: 0.02, vignette: 0.16, grain: 0.04, ca: 0.3, zoom: slowPush(f.p) };
   }
@@ -348,6 +353,52 @@ export default class Sailboat extends Scene {
     const seg = (a: readonly [number, number], b: readonly [number, number]) => this.back.seg2(a[0], a[1], b[0], b[1], 1.3, ink, 0.8);
     seg(P(4, MAST_TOP + 4), P(-690, -6));
     seg(P(4, MAST_TOP + 30), P(SAIL.peak[0] + 40, SAIL.peak[1] - 4));
+  }
+
+  /**
+   * 鋼筆線的積雲：兩朵在右邊天空（前帆的右邊）、一朵低低地在左邊海平線上，慢慢往左飄（遠的慢、近的快：視差）。
+   * 畫在帆後面那一批，帆與前帆會擋住它們。
+   */
+  private drawClouds(lt: number) {
+    const ink = LIN.sepia;
+    for (const [cx, cy, sc, sp, a] of [[1700, 214, 1, 7, 0.5], [1500, 420, 0.7, 4, 0.38], [300, 540, 0.8, 5, 0.34]] as const) {
+      const x0 = cx - sp * lt;
+      // 上緣是一串大小不一的半圓的外輪廓（積雲），下緣一條平的線
+      const bumps = [[-70, 22], [-30, 34], [16, 42], [58, 28], [90, 18]] as const;
+      const top = (x: number) => {
+        let y = 0;
+        for (const [bx, r] of bumps) { const d = x - bx; if (Math.abs(d) < r) y = Math.max(y, Math.sqrt(r * r - d * d)); }
+        return y;
+      };
+      let px = -92, py = top(-92);
+      for (let x = -88; x <= 108; x += 4) {
+        const y = top(x);
+        if (py > 0 || y > 0) this.back.seg2(x0 + px * sc, cy - py * sc, x0 + x * sc, cy - y * sc, 1.4, ink, a);
+        px = x; py = y;
+      }
+      this.back.seg2(x0 - 92 * sc, cy, x0 + 108 * sc, cy, 1.2, ink, a * 0.8);
+      // 雲底一兩道細的陰影線
+      this.back.seg2(x0 - 60 * sc, cy - 6 * sc, x0 + 40 * sc, cy - 6 * sc, 1, ink, a * 0.45);
+    }
+  }
+
+  /** 船首浪花：每個小節線的那陣風把船往前推，船首切開的浪花往前上方濺起、落回水面（0.7 秒）。 */
+  private drawBowSpray(t: number, xf: { x: number; y: number; r: number }) {
+    const au = this.ctx.audio;
+    const bi = Math.floor(au.barAt(t) + 1e-4), tb = au.timeOfBar(bi), age = t - tb;
+    if (tb < this.b0 - 0.01 || age > 0.7) return;
+    const cs = Math.cos(xf.r), sn = Math.sin(xf.r);
+    const bx = xf.x + cs * 440 - sn * 10, by = Math.min(WATER - 4, xf.y + sn * 440 + cs * 10);
+    const ink = LIN.sepia, k = 1 - age / 0.7;
+    for (let i = 0; i < 16; i++) {
+      const h1 = hash(bi, i, 1), h2 = hash(bi, i, 2);
+      const ang = -Math.PI * (0.18 + 0.42 * h1), sp = 180 + 240 * h2;
+      const x = bx + Math.cos(ang) * sp * age, y = by + Math.sin(ang) * sp * age + 700 * age * age;
+      if (y > WATER + 6) continue;
+      const r = 2.2 + 3.4 * hash(bi, i, 3);
+      this.front.seg2(x, y, x + 0.01, y, r * 2 + 1.6, ink, k);
+      this.front.seg2(x, y, x + 0.01, y, r * 2, LIN.paper, k);
+    }
   }
 
   /** 兩隻海鷗（細線的 m 字），翅膀在拍點拍一下。 */

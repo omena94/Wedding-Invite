@@ -7,6 +7,7 @@ import { rgba, mixRgba, LIN } from '../engine/palette';
 import { clamp } from '../engine/util';
 import { font, layout, measure } from '../engine/type';
 import { fitText, type FitResult } from '../engine/text';
+import { V2, msgMaxFor, fitClauses } from './_v2';
 
 export type Rect = [number, number, number, number];
 
@@ -99,6 +100,12 @@ export function fitLine(text: string, family: string, maxW: number, max: number,
   return clamp(Math.floor((100 * maxW) / Math.max(1, w)), min, max);
 }
 
+/**
+ * 這批版面會畫到的符號與小字（♪ 歌名、—— 署名、· 分隔、α 星名、＊註腳、喜浪印章、完工…）：init 時跟著 loadText 預載，
+ * 第一次畫才不會先用系統備援字型（畫兩次不一樣，確定性會不過）。
+ */
+export const SYMBOLS = '♪—–·•α＊：／　喜浪完工限兩人RAINBPMVEGALYRALTAIRAQLSONG0123456789';
+
 /** 留言編號：No.042。 */
 export const no3 = (n: number) => `No.${String(n).padStart(3, '0')}`;
 
@@ -148,3 +155,15 @@ export function lyricSize(msgSize: number | null, base = 60): number {
 
 /** 窗格的慢推鏡（整個窗格推近 3%，in-out）：讓平面的版面有一點電影鏡頭的空氣感。 */
 export const slowPush = (p: number, amt = 0.03) => 1 + amt * (p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2);
+
+/**
+ * 照「留言尺寸標準 v2」排留言：字級上限依字數（msgMaxFor）、下限 40；先照子句斷行（fitClauses，不會把下一句的頭留在行尾），
+ * 放不下才交給 fitText。`lines` 給了就照它斷（自己寫的句子）。`h` 要先扣掉署名的高度，署名才永遠在最後一行下面。
+ */
+export function fitV2(c: CanvasRenderingContext2D, text: string, family: string, w: number, h: number,
+  o: { lineHeight: number; maxLines?: number; max?: number; lines?: string[] }): FitResult {
+  const max = Math.min(o.max ?? 99, msgMaxFor(text));
+  if (o.lines) return fitMsg(c, text, family, w, h, { min: V2.msgMin, max, lineHeight: o.lineHeight, lines: o.lines });
+  const q = { min: V2.msgMin, max, lineHeight: o.lineHeight, maxLines: o.maxLines ?? 5 };
+  return fitClauses(c, text, family, w, h, q) ?? fitText(c, text, family, w, h, q);
+}

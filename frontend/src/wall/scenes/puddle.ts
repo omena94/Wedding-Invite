@@ -12,12 +12,13 @@ import * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
 import { FSPass, Layer2D, W, H } from '../engine/gl';
 import { F, font, layout, loadText, measure } from '../engine/type';
-import { rgba } from '../engine/palette';
+import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, hash, mulberry32, lerp } from '../engine/util';
 import type { FitResult } from '../engine/text';
 import { Lyrics, type Line } from '../engine/lyrics';
 import { lyricAt, layoutLyric, beatAfter, signature, drawMessage, COUPLE_ZH, type LyricStyle, type LyricLayout } from './_motifs';
-import { no3, fitMsg, lyricSize, slowPush, INVITE_SMALL, DECODE_GLSL, type Rect } from './_t20';
+import { no3, fitV2, slowPush, INVITE_SMALL, DECODE_GLSL, type Rect, SYMBOLS } from './_t20';
+import { lyricV2, sigV2, msgMaxFor, V2 } from './_v2';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'water', paper: false, energy: [0.15, 0.75], bars: [4, 8] };
 
@@ -33,7 +34,8 @@ const BLOBS: [number, number, number, number][] = [
 const VP = { x: 760, y: 560 };
 /** 歌詞浮在水面上方一帶、留言倒影在中間。 */
 const LYR = { x: 214, y: 262, maxW: 1110 };
-const BOX = { x: 214, y: 360, w: 1100, h: 440 };
+/** 倒影裡的留言（標準 v2：≤ 860×430，放在水窪的左下，右半邊留給漣漪、落葉、路燈的倒影）。 */
+const BOX = { x: 214, y: 520, w: 820, h: 360 };
 const LYR_STYLE: LyricStyle = { family: F.archivo(100, 700), size: 66, minSize: 52, maxWidth: LYR.maxW, align: 'left', lineHeight: 1.12 };
 const MSG_FAM = F.hand(700);
 const NO_MSG = '雨天也好，晴天也好，一起就好。';
@@ -47,6 +49,7 @@ uniform vec4 uDrop[${N_DROP}];   // x, y, 落水時間, 強度
 uniform float uDropV[${N_DROP}]; // 漣漪速度
 uniform int uN;
 uniform float uT;
+uniform vec3 uSweep;             // 對街開過的車：車燈的反光掃過水面（x 位置、強度、方向）
 uniform vec4 uReveal;            // 留言浮出：中心 xy、開始時間、速度
 uniform float uIn;
 ${DECODE_GLSL}
@@ -116,6 +119,15 @@ void main() {
   float spec = pow(max(dot(n, normalize(vec3(0.3, -0.42, 1.0))), 0.0), 900.0);
   float spec2 = pow(max(dot(n, normalize(vec3(-0.34, 0.2, 1.0))), 0.0), 700.0);
   wcol += C_EMBER * spec * 1.6 + C_BONE * spec2 * 0.35;
+  // 車燈：一道很寬的暖光從水面掃過去，漣漪上的反光跟著亮（每兩小節一台車）
+  if (uSweep.y > 0.0) {
+    // 光走在水窪的上半部（留言在左下，不要被光洗掉）
+    float band = exp(-pow((p.x - uSweep.x) / 190.0, 2.0)) * exp(-pow((p.y - 330.0) / 230.0, 2.0));
+    vec3 Ls = normalize(vec3((uSweep.x - p.x) / 700.0, -0.12, 1.0));
+    float sp3 = pow(max(dot(n, Ls), 0.0), 320.0);
+    // 光斑本身是一道很淡的暖光＋漣漪上一條條的反光
+    wcol += (mix(C_BONE, C_EMBER, 0.5) * 0.05 * band + C_EMBER * sp3 * band * 1.6) * uSweep.y;
+  }
   // 環本身：朝光的一側亮一點點、背光的一側暗一點點（很淡，只是讓水面有起伏）
   wcol *= 1.0 + clamp(dot(grad, vec2(0.5, -0.7)) * 5.0, -0.35, 0.35);
   wcol += C_BONE * min(rings, 1.2) * 0.15;
@@ -153,6 +165,7 @@ const BG = () => new FSPass(FRAG, {
   uDrop: { value: Array.from({ length: N_DROP }, () => new THREE.Vector4()) },
   uDropV: { value: new Array(N_DROP).fill(RING_V) },
   uN: { value: 0 }, uT: { value: 0 }, uReveal: { value: new THREE.Vector4() }, uIn: { value: 1 },
+  uSweep: { value: new THREE.Vector3() },
 });
 
 interface Drop { x: number; y: number; t: number; a: number; v: number }
@@ -184,11 +197,11 @@ export default class Puddle extends Scene {
     const text = m ? m.text : NO_MSG;
     const sigText = m ? (m.couple ? `—— ${COUPLE_ZH}` : signature(m.name)) : '';
     const lines = lyrics.linesIn(s - 2, e + 1);
-    await loadText(text + sigText + NO_MSG + INVITE_SMALL + NOTE1 + NOTE2 + this.title + lines.map((l) => l.text).join('') + 'FROM THE COUPLE · 新人No.0123456789');
+    await loadText(text + sigText + NO_MSG + INVITE_SMALL + NOTE1 + NOTE2 + this.title + lines.map((l) => l.text).join('') + 'FROM THE COUPLE · 新人No.0123456789' + SYMBOLS);
 
     this.drawCity();
     const [box, msgSize] = this.drawMsg(text, sigText);
-    this.lyrSt = { ...LYR_STYLE, size: lyricSize(m ? msgSize : null, 62), minSize: 48 };
+    this.lyrSt = { ...LYR_STYLE, size: lyricV2(m ? msgSize : null), minSize: V2.lyrMin };
 
     // ---- 雨滴：留言那一滴、每一拍一滴（隨機落在水窪裡，避開字的正中間一點）、歌詞每個字一滴
     const rnd = mulberry32(this.seed);
@@ -281,10 +294,12 @@ export default class Puddle extends Scene {
   /** 倒影裡的留言（像對街招牌的倒影）：畫一次，回傳範圍。 */
   private drawMsg(text: string, sigText: string): [Rect, number] {
     const c = this.msgL.ctx, m = this.msg;
-    const tagH = m?.couple ? 40 : 0;
-    const sigSize = 44;
-    const reserve = m ? sigSize + 30 : 70;
-    const fit: FitResult = fitMsg(c, text, MSG_FAM, BOX.w, BOX.h - reserve - tagH, { min: 46, max: m ? 118 : 54, lineHeight: 1.28, maxLines: 4, oneLine: 72, lines: m ? undefined : NO_MSG_LINES });
+    const tagH = m?.couple ? 34 : 0;
+    // 署名的高度先照字級上限扣掉：署名永遠在最後一行下面
+    const reserve = m ? sigV2(msgMaxFor(text)) + 24 : 60;
+    // 沒有主打留言時歌詞是焦點：倒影裡的句子小一點
+    const fit: FitResult = fitV2(c, text, MSG_FAM, BOX.w, BOX.h - reserve - tagH, { lineHeight: 1.28, maxLines: 4, max: m ? undefined : 44, lines: m ? undefined : NO_MSG_LINES });
+    const sigSize = sigV2(fit.size);
     const blockH = tagH + fit.height + reserve;
     const top = BOX.y + (BOX.h - blockH) / 2;
     // 字後面墊一層很淡的暗，城市的窗才不會跟字搶
@@ -294,10 +309,10 @@ export default class Puddle extends Scene {
     c.fillRect(BOX.x - 20, top - 10, fit.width + 40, blockH + 20);
     c.restore();
     if (m?.couple) {
-      c.font = font(F.mono(500), 18);
+      c.font = font(F.mono(500), 16);
       c.letterSpacing = '4px';
       c.fillStyle = rgba('signal', 0.9);
-      c.fillText('FROM THE COUPLE · 新人', BOX.x, top + 18);
+      c.fillText('FROM THE COUPLE · 新人', BOX.x, top + 16);
       c.letterSpacing = '0px';
     }
     drawMessage(c, fit, MSG_FAM, BOX.x, top + tagH + fit.size * 0.9, { color: rgba('bone', 0.95) });
@@ -306,15 +321,15 @@ export default class Puddle extends Scene {
       c.font = font(MSG_FAM, sigSize);
       const sw = measure(sigText, MSG_FAM, sigSize);
       c.fillStyle = rgba('signal', 0.85);
-      c.fillText(sigText, BOX.x + Math.max(fit.width, sw) - sw, top + tagH + fit.height + 24 + sigSize * 0.9);
+      c.fillText(sigText, BOX.x + Math.max(fit.width, sw) - sw, top + tagH + fit.height + 18 + sigSize * 0.9);
       w = Math.max(w, sw);
     } else {
-      c.font = font(F.hei(500), 30);
+      c.font = font(F.hei(500), 26);
       c.letterSpacing = '2px';
       c.fillStyle = rgba('ash', 0.9);
-      c.fillText(INVITE_SMALL, BOX.x, top + fit.height + 54);
+      c.fillText(INVITE_SMALL, BOX.x, top + fit.height + 46);
       c.letterSpacing = '0px';
-      w = Math.max(w, measure(INVITE_SMALL, F.hei(500), 30) + 40);
+      w = Math.max(w, measure(INVITE_SMALL, F.hei(500), 26) + 40);
     }
     this.msgL.upload();
     return [[BOX.x, top, w, blockH], fit.size];
@@ -333,12 +348,20 @@ export default class Puddle extends Scene {
     u.uN!.value = live.length;
     u.uT!.value = t;
     (u.uReveal!.value as THREE.Vector4).set(this.reveal.x, this.reveal.y, this.reveal.t, this.reveal.v);
+    // 車燈：從第一個拍點之後，每逢雙數小節一台車開過（1.6 秒掃過整個水窪；左右輪流）
+    const au = this.ctx.audio;
+    const bar2 = Math.floor(au.barAt(t) / 2) * 2, tc = au.timeOfBar(bar2), ac = t - tc;
+    if (tc >= this.b0 - 0.05 && ac < 1.6) {
+      const dir = (bar2 / 2) % 2 ? -1 : 1, q = ease.inOutCubic(ac / 1.6);
+      (u.uSweep!.value as THREE.Vector3).set(dir > 0 ? lerp(-300, 2200, q) : lerp(2200, -300, q), Math.sin(Math.PI * ac / 1.6), dir);
+    } else (u.uSweep!.value as THREE.Vector3).set(0, 0, 1);
     u.uIn!.value = prog(t, s, s + 0.3);
     this.bg.render(renderer, out);
 
     const L = this.lyr;
     L.clear();
     const c = L.ctx;
+    this.drawLeaf(c, t, f.lt);
     this.drawLyrics(c, t);
     this.drawNotes(c, t);
     comp.draw(renderer, L.upload(), out);
@@ -389,6 +412,44 @@ export default class Puddle extends Scene {
       }
       c.restore();
     }
+    c.restore();
+  }
+
+  /**
+   * 一片落葉浮在水窪右半邊（留言的另一側），慢慢漂；漣漪經過時被抬起、轉一下（照 CPU 上同樣的漣漪公式算，確定性）。
+   * 葉子用暗部色（blood 混 ink），不發光、不搶留言。
+   */
+  private drawLeaf(c: CanvasRenderingContext2D, t: number, lt: number) {
+    const x0 = 1210 - 9 * lt, y0 = 690 + 14 * Math.sin(lt * 0.35);
+    // 漣漪經過：每一滴的前緣掃過葉子時給一個起伏
+    let bump = 0, tilt = 0;
+    for (const d of this.drops) {
+      const age = t - d.t;
+      if (age < 0 || age > LIFE) continue;
+      const dx = x0 - d.x, dy = y0 - d.y, r = Math.hypot(dx, dy), sd = r - d.v * age;
+      const g = Math.exp(-(sd * sd) / 900) * d.a * Math.exp(-age * 1.55);
+      bump += g;
+      tilt += g * Math.sign(dx || 1) * Math.cos(sd * 0.15);
+    }
+    const a = 0.6 + 0.12 * lt + 0.35 * tilt;
+    c.save();
+    c.globalAlpha = prog(t, this.ctx.start, this.ctx.start + 0.4);
+    c.translate(x0, y0 - 4 * bump);
+    c.rotate(a);
+    c.scale(1.5 * (1 + 0.06 * bump), 1.5 * (1 + 0.06 * bump));
+    // 葉子的影子（水面上一點點暗）
+    c.fillStyle = rgba('ink', 0.5);
+    c.beginPath(); c.ellipse(5, 6, 34, 14, 0, 0, Math.PI * 2); c.fill();
+    c.fillStyle = mixRgba('blood', 'ink', 0.35, 0.95);
+    c.beginPath();
+    c.moveTo(-36, 0); c.quadraticCurveTo(-6, -20, 34, 0); c.quadraticCurveTo(-6, 20, -36, 0);
+    c.fill();
+    c.strokeStyle = mixRgba('blood', 'bone', 0.35, 0.6);
+    c.lineWidth = 1.1;
+    c.beginPath(); c.moveTo(-36, 0); c.lineTo(30, 0);
+    for (let k = -2; k <= 2; k++) { const xx = k * 11; c.moveTo(xx, 0); c.lineTo(xx + 9, -8); c.moveTo(xx, 0); c.lineTo(xx + 9, 8); }
+    c.moveTo(-36, 0); c.lineTo(-48, 5);
+    c.stroke();
     c.restore();
   }
 

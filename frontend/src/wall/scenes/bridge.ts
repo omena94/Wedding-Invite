@@ -13,9 +13,9 @@ import { LineBatch } from '../engine/lines';
 import { F, font, layout, loadText, measure } from '../engine/type';
 import { rgba, mixRgba, LIN } from '../engine/palette';
 import { clamp, ease, prog, lerp, hash, TAU } from '../engine/util';
-import { wrap } from '../engine/text';
 import { lyricAt, layoutLyric, drawLyric, beatAfter, barAfter, signature, sparkHead, sparkParticles, COUPLE_ZH, type LyricStyle } from './_motifs';
-import { no3, lyricSize, slowPush, INVITE_SMALL, type Rect } from './_t20';
+import { no3, fitV2, slowPush, INVITE_SMALL, type Rect, SYMBOLS } from './_t20';
+import { lyricV2, sigV2, msgMaxFor, V2 } from './_v2';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'water', paper: false, energy: [0.2, 0.85], bars: [4, 8] };
 
@@ -28,12 +28,11 @@ const STAR_L = { x: ARC.cx - ARC.half - 40, y: 0 }, STAR_R = { x: ARC.cx + ARC.h
 STAR_L.y = STAR_R.y = ARC_CY - Math.sqrt(ARC.R * ARC.R - (ARC.half + 40) ** 2) + 26;
 /** 喜鵲的數量（左右各半）。 */
 const N_BIRD = 14;
-/** 橋下的字：第一行離橋多遠、行距。 */
 /**
- * 橋下的字：第一行基線離橋頂多遠、最寬多寬。算過：寬 940 時，最外側的字頂也在喜鵲尾巴之下
+ * 橋下的字：第一行基線離橋頂多遠、最寬多寬（標準 v2 的留言區 ≤ 860 寬）。算過：寬 940 以內，最外側的字頂都在喜鵲尾巴之下
  * （橋在兩端比中間低 d²/2R，字的弧比橋緩，所以兩端的間隙最小）。
  */
-const TXT = { gap: 130, maxW: 940 };
+const TXT = { gap: 130, maxW: 820 };
 /** 字那幾行的弧的半徑：比橋大，字只微微跟著橋拱彎（兩端轉 6° 左右）。 */
 const TXT_R = 4000;
 const LYR = { x: 150, y: 918, maxW: 1150 };
@@ -64,8 +63,10 @@ void main() {
   vec2 ab = b - a; float h = clamp(dot(p - a, ab) / dot(ab, ab), 0.0, 1.0);
   float d = length(p - a - ab * h);
   float band = exp(-d * d / (2.0 * 190.0 * 190.0));
-  float cloud = 0.55 + 0.45 * fbm(p / 210.0 + vec2(0.0, uT * 0.004), 5);
-  float dust = smoothstep(0.1, 0.5, fbm(p / 130.0 + 7.3, 4)) * exp(-d * d / (2.0 * 70.0 * 70.0));
+  // 銀河是一條河：雲氣與塵埃沿著河道慢慢往下游流（右上 → 左下）
+  vec2 pf = p - normalize(ab) * uT * 13.0;
+  float cloud = 0.55 + 0.45 * fbm(pf / 210.0, 5);
+  float dust = smoothstep(0.1, 0.5, fbm(pf / 130.0 + 7.3, 4)) * exp(-d * d / (2.0 * 70.0 * 70.0));
   float mw = band * cloud * (1.0 - 0.75 * dust);
   vec2 q = abs(p - (uClear.xy + uClear.zw * 0.5)) - uClear.zw * 0.5;
   float clearK = 1.0 - 0.55 * (1.0 - smoothstep(-20.0, 90.0, max(q.x, q.y)));
@@ -127,7 +128,7 @@ export default class Bridge extends Scene {
     const text = m ? m.text : NO_MSG;
     const sigText = m ? (m.couple ? `—— ${COUPLE_ZH}` : signature(m.name)) : '';
     const lines = lyrics.linesIn(s - 2, e + 1);
-    await loadText(text + sigText + NO_MSG + INVITE_SMALL + NOTE2 + this.title + lines.map((l) => l.text).join('') + '鵲橋施工進度：／隻喜鵲到位織女牛郎FROM THE COUPLE · 新人No.0123456789');
+    await loadText(text + sigText + NO_MSG + INVITE_SMALL + NOTE2 + this.title + lines.map((l) => l.text).join('') + '鵲橋施工進度：／隻喜鵲到位織女牛郎FROM THE COUPLE · 新人No.0123456789' + SYMBOLS);
 
     // ---- 喜鵲：一對一對（左一隻、右一隻）半拍一對，從兩岸往中間；最後一對落在第一個拍點後的小節線（窗格太短就早一點）
     const pairs = N_BIRD / 2;
@@ -149,16 +150,14 @@ export default class Bridge extends Scene {
 
     // ---- 橋下的字：每一行是一段很緩的弧（半徑比橋大很多，字最多轉 5° 左右，讀起來還是平的），行內置中
     const c = this.layer.ctx;
-    let size = 64, rows: string[] = [];
     const lh = 1.34;
-    for (; size >= 44; size -= 2) {
-      c.font = font(MSG_FAM, size);
-      rows = m ? wrap(c, text, TXT.maxW) : NO_MSG_ROWS;
-      if ((rows.length <= (m ? 3 : 2) && Math.max(...rows.map((r) => c.measureText(r).width)) <= TXT.maxW) || size <= 44) break;
-    }
-    if (!m) size = Math.min(size, 52);
+    // 標準 v2：寫字的那一塊 ≤ 820×約 300（連署名）；署名的高度先照字級上限扣掉，永遠在最後一行下面。
+    // 沒有主打留言時歌詞是焦點：橋下的句子小一點
+    const reserve = m ? sigV2(msgMaxFor(text)) + 20 : 50;
+    const fit = fitV2(c, text, MSG_FAM, TXT.maxW, 300 - reserve, { lineHeight: lh, maxLines: 4, max: m ? undefined : 44, lines: m ? undefined : NO_MSG_ROWS });
+    const size = fit.size, rows = fit.lines;
     this.size = size;
-    this.lyr = { ...LYR_STYLE, size: lyricSize(m ? size : null, 58), minSize: 48 };
+    this.lyr = { ...LYR_STYLE, size: lyricV2(m ? size : null), minSize: V2.lyrMin };
     const y0 = ARC.apex + TXT.gap;
     let maxRow = 0;
     rows.forEach((row, i) => {
@@ -177,19 +176,19 @@ export default class Bridge extends Scene {
     const lastY = y0 + (rows.length - 1) * size * lh;
     let bottom = lastY + size * 0.3;
     if (m) {
-      const ss = Math.max(40, Math.round(size * 0.72));
+      const ss = sigV2(size);
       const sw = measure(sigText, F.hand(700), ss);
-      this.sig = { text: sigText, x: ARC.cx + maxRow / 2 - sw, y: lastY + size * 0.4 + ss * 1.1, size: ss, t: this.done + 0.2 };
+      this.sig = { text: sigText, x: ARC.cx + maxRow / 2 - sw, y: lastY + size * 0.36 + ss * 1.15, size: ss, t: this.done + 0.2 };
       bottom = this.sig.y + 12;
       if (m.couple) this.tag = 'FROM THE COUPLE · 新人';
     } else {
-      this.invite = { x: ARC.cx, y: lastY + size * 1.1 + 12, t: this.done + 0.25 };
+      this.invite = { x: ARC.cx, y: lastY + size * 0.4 + 40, t: this.done + 0.25 };
       bottom = this.invite.y + 12;
     }
 
     // ---- 範圍：字、歌詞
     const top = y0 - size * 0.95;
-    const halfW = Math.max(maxRow, m ? 0 : measure(INVITE_SMALL, F.hei(500), 30)) / 2 + 30;
+    const halfW = Math.max(maxRow, m ? 0 : measure(INVITE_SMALL, F.hei(500), 26)) / 2 + 30;
     this.clear = [ARC.cx - halfW, top - 10, halfW * 2, bottom - top + 20];
     this.avoid = [[ARC.cx - ARC.half - 90, ARC.apex - 90, ARC.half * 2 + 180, bottom - ARC.apex + 110], [LYR.x - 20, LYR.y - 90, LYR.maxW + 40, 120]];
     for (const line of lines) layoutLyric(c, line, this.lyr);
@@ -229,6 +228,15 @@ export default class Bridge extends Scene {
     if (this.glow.count) this.glow.render(renderer, out);
     void au;
     return { bloom: 0.7, vignette: 0.45, popupAvoid: this.avoid, zoom: slowPush(f.p) };
+  }
+
+  /** 這一格有沒有喜鵲在跳：橋搭好之後，每逢雙數小節輪到一隻（0.7 秒）。 */
+  private hopAt(t: number): { bird: Bird; q: number } | null {
+    const au = this.ctx.audio;
+    const b2 = Math.floor(au.barAt(t) / 2) * 2, tb = au.timeOfBar(b2) + au.beatPeriod(au.timeOfBar(b2));
+    const q = (t - tb) / 0.7;
+    if (tb < this.done + 0.3 || q < 0 || q > 1) return null;
+    return { bird: this.birds[Math.floor(hash(b2, this.seed, 11) * this.birds.length)]!, q };
   }
 
   /** 橋搭好之後，每個小節線一點火花（跑 0.6 小節）。 */
@@ -275,6 +283,13 @@ export default class Bridge extends Scene {
       } else {
         x = target.x; y = target.y; ang = b.th;
         flap = -0.12 * Math.sin(Math.PI * ease.outCubic(bph)) * (1 + 0.5 * hash(b.th * 100, 3));
+        // 橋搭好之後，每兩小節輪到一隻喜鵲跳起來拍拍翅膀再落回原位（窗格中段的小事件）
+        const hop = this.hopAt(t);
+        if (hop && hop.bird === b) {
+          const k = Math.sin(Math.PI * hop.q);
+          y -= 26 * k; x += Math.sin(b.th) * -26 * k;
+          flap = Math.sin(hop.q * Math.PI * 5) * 0.9 * k;
+        }
       }
       this.bird(c, x, y, ang, b.s, flap);
     }
@@ -366,7 +381,7 @@ export default class Bridge extends Scene {
     }
     if (this.invite && t >= this.invite.t) {
       c.globalAlpha = prog(t, this.invite.t, this.invite.t + 0.4);
-      c.font = font(F.hei(500), 30);
+      c.font = font(F.hei(500), 26);
       c.letterSpacing = '2px';
       c.fillStyle = rgba('ash', 0.95);
       c.textAlign = 'center';

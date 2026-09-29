@@ -15,7 +15,8 @@ import { F, font, layout, loadText, measure } from '../engine/type';
 import { rgba } from '../engine/palette';
 import { clamp, ease, prog, hash, lerp, TAU } from '../engine/util';
 import { lyricAt, layoutLyric, drawLyric, beatAfter, signature, COUPLE_ZH, type LyricStyle } from './_motifs';
-import { paperSignal, fitMsg, no3, lyricSize, slowPush, INVITE_SMALL, type Rect } from './_t20';
+import { paperSignal, fitV2, no3, slowPush, INVITE_SMALL, type Rect, SYMBOLS } from './_t20';
+import { lyricV2, sigV2, msgMaxFor, V2 } from './_v2';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'water', paper: true, energy: [0.3, 1], bars: [4, 8] };
 
@@ -25,8 +26,8 @@ const NB = 40;
 const WAND = { x: 186, y: 430, rx: 50, ry: 58, rot: -0.3 };
 const LYR = { x: 150, y: 214, maxW: 1150 };
 const LYR_STYLE: LyricStyle = { family: F.archivo(100, 700), size: 60, minSize: 48, maxWidth: LYR.maxW, align: 'left' };
-/** 留言最後排好的位置。 */
-const BOX = { x: 340, y: 600, w: 980, h: 310 };
+/** 留言最後排好的位置（標準 v2：≤ 860×430，畫面左下三分之一；上面與右邊留給泡泡）。 */
+const BOX = { x: 340, y: 610, w: 820, h: 300 };
 const MSG_FAM = F.hand(700);
 const NO_MSG = '泡泡會破，祝福不會。';
 const NOTE = '本泡泡內含祝福，破掉後自動送達。';
@@ -115,6 +116,8 @@ export default class Bubbles extends Scene {
   invite: { x: number; y: number } | null = null;
   title = '';
   avoid: Rect[] = [];
+  /** 一陣陣的風（雙數小節線）：沒有字的泡泡被吹走、大泡泡被推一下。 */
+  gusts: number[] = [];
   /** 歌詞字級：有留言時比留言小一號，沒有留言時歌詞是焦點。 */
   lyrSize = 60;
 
@@ -127,16 +130,18 @@ export default class Bubbles extends Scene {
     const text = m ? m.text : NO_MSG;
     const sigText = m ? (m.couple ? `—— ${COUPLE_ZH}` : signature(m.name)) : '';
     const lines = lyrics.linesIn(s - 2, e + 1);
-    await loadText(text + sigText + NO_MSG + INVITE_SMALL + NOTE + this.title + lines.map((l) => l.text).join('') + 'FROM THE COUPLE · 新人No.0123456789');
+    await loadText(text + sigText + NO_MSG + INVITE_SMALL + NOTE + this.title + lines.map((l) => l.text).join('') + 'FROM THE COUPLE · 新人No.0123456789' + SYMBOLS);
 
     // ---- 留言排好的樣子（字最後落在這裡）
     const c = this.layer.ctx;
     const tagH = m?.couple ? 34 : 0;
-    const sigSize = 42;
-    const reserve = m ? sigSize + 16 : 56;
-    const fit = fitMsg(c, text, MSG_FAM, BOX.w, BOX.h - reserve - tagH, { min: 44, max: m ? 100 : 56, lineHeight: 1.26, maxLines: 4, oneLine: 64 });
+    // 署名的高度先照字級上限扣掉：署名永遠在最後一行下面（K 情境也一樣）
+    const reserve = m ? sigV2(msgMaxFor(text)) + 16 : 52;
+    // 沒有主打留言時歌詞是焦點：泡泡裡的句子小一點
+    const fit = fitV2(c, text, MSG_FAM, BOX.w, BOX.h - reserve - tagH, { lineHeight: 1.26, maxLines: 4, max: m ? undefined : 44 });
+    const sigSize = sigV2(fit.size);
     this.size = fit.size;
-    this.lyrSize = lyricSize(m ? fit.size : null, 60);
+    this.lyrSize = lyricV2(m ? fit.size : null);
     const blockH = tagH + fit.height + reserve;
     const top = BOX.y + (BOX.h - blockH) / 2;
 
@@ -200,26 +205,36 @@ export default class Bubbles extends Scene {
       this.sig = { text: sigText, x: BOX.x + Math.max(fit.width, sw) - sw, y: top + tagH + fit.height + 12 + sigSize * 0.9, size: sigSize };
       if (m.couple) this.tag = { x: BOX.x, y: top + 14 };
     } else {
-      this.invite = { x: BOX.x, y: top + fit.height + 46 };
+      this.invite = { x: BOX.x, y: top + fit.height + 42 };
     }
     for (const line of lines) layoutLyric(c, line, this.lyrStyle());
-    const bw = Math.max(fit.width, m ? 0 : measure(INVITE_SMALL, F_HEI, 28));
+    const bw = Math.max(fit.width, m ? 0 : measure(INVITE_SMALL, F_HEI, 26));
+    // 風：第一個拍點之後，每逢雙數小節一陣
+    for (let b = Math.ceil(au.barAt(this.b0) / 2) * 2; au.timeOfBar(b) < e; b += 2) this.gusts.push(au.timeOfBar(b));
     // 即時小卡避開：歌詞、留言排好的位置、泡泡飄的那一帶（泡泡裡也是字）
     this.avoid = [[LYR.x - 20, LYR.y - 90, LYR.maxW + 40, 120], [BOX.x - 20, top - 20, bw + 40, blockH + 30], [300, 260, 1060, 280]];
   }
 
   private lyrStyle(): LyricStyle {
-    return { ...LYR_STYLE, size: this.lyrSize, minSize: 48, active: paperSignal(), sung: rgba('sepia', 0.94), unsung: rgba('sepia', 0.3) };
+    return { ...LYR_STYLE, size: this.lyrSize, minSize: V2.lyrMin, active: paperSignal(), sung: rgba('sepia', 0.94), unsung: rgba('sepia', 0.3) };
   }
 
   /** 泡泡在 t 時的位置（從泡泡棒出來，先快後慢，左右輕輕晃）。 */
   private pos(b: Bubble, t: number) {
-    if (b.w < 0) return { x: b.gx + 18 * Math.sin(t * 0.4 + b.seed * 9), y: b.gy + 14 * Math.sin(t * 0.55 + b.seed * 4) };
+    // 背景的大泡泡：風來時被推一下、慢慢彈回來（像被繩子牽著）
+    if (b.w < 0) {
+      let dx = 0;
+      for (const tg of this.gusts) { const a = t - tg; if (a > 0 && a < 5) dx += 46 * (1 - Math.exp(-3 * a)) * Math.exp(-0.8 * a) * (0.6 + 0.4 * b.seed); }
+      return { x: b.gx + 18 * Math.sin(t * 0.4 + b.seed * 9) - dx, y: b.gy + 14 * Math.sin(t * 0.55 + b.seed * 4) - dx * 0.25 };
+    }
     const age = Math.max(0, t - b.tb);
     // 從棒子吹出來：很快飄到目標（0.4 秒內），途中往上拱一點，之後慢慢往上浮、左右輕輕晃
     const k = 1 - Math.exp(-age * 6);
     const x0 = WAND.x + 46, y0 = WAND.y - 10;
-    const x = lerp(x0, b.gx, k) + 8 * Math.sin(age * 2.2 + b.seed * 9) * k;
+    // 沒有字的小泡泡會被風吹走（有字的要落回自己的位置，不吹）
+    let wind = 0;
+    if (!b.text) for (const tg of this.gusts) if (tg > b.tb && t > tg) wind += 150 * (1 - Math.exp(-2.4 * (t - tg)));
+    const x = lerp(x0, b.gx, k) + 8 * Math.sin(age * 2.2 + b.seed * 9) * k + wind;
     const y = lerp(y0, b.gy, k) - 12 * age + 5 * Math.sin(age * 1.7 + b.seed * 5) - 40 * Math.sin(Math.PI * k);
     return { x, y };
   }
@@ -343,7 +358,7 @@ export default class Bubbles extends Scene {
     }
     if (this.invite && t > this.done) {
       c.globalAlpha = prog(t, this.done, this.done + 0.4);
-      c.font = font(F_HEI, 28); c.letterSpacing = '2px'; c.fillStyle = rgba('sepia', 0.75);
+      c.font = font(F_HEI, 26); c.letterSpacing = '2px'; c.fillStyle = rgba('sepia', 0.75);
       c.fillText(INVITE_SMALL, this.invite.x, this.invite.y);
       c.letterSpacing = '0px';
     }

@@ -16,10 +16,11 @@ import { LineBatch } from '../engine/lines';
 import { F, font, layout, loadText, measure, textPoints } from '../engine/type';
 import { rgba, mixRgba, LIN } from '../engine/palette';
 import { clamp, ease, prog, lerp, hash, TAU } from '../engine/util';
-import { fitText, type FitResult } from '../engine/text';
+import type { FitResult } from '../engine/text';
 import { Lyrics, type Line } from '../engine/lyrics';
 import { lyricAt, layoutLyric, beatAfter, signature, COUPLE_ZH, type LyricStyle } from './_motifs';
-import { paperSignal, no3, lyricSize, slowPush, INVITE_SMALL, type Rect } from './_t20';
+import { paperSignal, no3, fitV2, slowPush, INVITE_SMALL, type Rect, SYMBOLS } from './_t20';
+import { lyricV2, sigV2, msgMaxFor, V2 } from './_v2';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'water', paper: true, energy: [0.35, 1], bars: [4, 8] };
 
@@ -31,8 +32,11 @@ const WALL = { base: 528, amp: 66, lam: 560 };
 const FORE = { base: 994, amp: 30, lam: 270, rise: 250, x0: 1280, x1: 1640 };
 /** 前景白浪拱起來的浪尖（尖的，浪爪往左捲）。 */
 const FORE_PEAK = { x: 1600, h: 58, w: 150 };
-/** 刻在浪身上的留言：可用的框（上面離浪尖夠遠、下面在前景小浪之上、右邊讓出小卡的格子）。 */
-const BOX = { x: 156, y: 598, w: 1170, h: 316 };
+/**
+ * 刻在浪身上的留言：可用的框（上面離浪尖夠遠、下面在前景小浪之上）。標準 v2：寫留言的那一塊 ≤ 860×430、放在畫面左下，
+ * 浪身右半邊空出來給浪、小船與前景白浪。
+ */
+const BOX = { x: 156, y: 610, w: 820, h: 300 };
 const LYR_STYLE: LyricStyle = { family: F.archivo(100, 700), size: 66, minSize: 50, maxWidth: 1180, align: 'left', lineHeight: 1.1 };
 const LYR_X = 156;
 const MSG_FAM = F.ming(900);
@@ -42,6 +46,7 @@ const NOTE = '今日海象：浪高一百年　風向：往幸福　潮汐：滿
 
 const FRAG = /* glsl */ `
 uniform float uT, uIn, uAmp;
+uniform float uDrift;   // 霞往左飄（窗格內的時間 × 速度）
 uniform vec4 uPh;       // 遠浪三層與浪牆的相位（px）
 uniform float uPhF;     // 前景小浪的相位
 uniform vec4 uClear;    // 留言的範圍（浪身在這裡全黑，不刻線，字才讀得清楚）
@@ -107,8 +112,10 @@ vec2 printAt(vec2 p) {
     // 天空：頂端一條色版的漸層、兩條橫向的霞（版畫的雲）
     tone = 0.5 * (1.0 - smoothstep(40.0, 190.0, p.y));
     // 霞：兩片長長的、邊緣不齊的橫帶，裡面刻細橫線（不描邊，才不會像按鈕）
-    float m1 = sdSegment(p, vec2(1260.0, 214.0), vec2(1820.0, 214.0)) - 13.0 + 7.0 * snoise(p / vec2(70.0, 30.0));
-    float m2 = sdSegment(p, vec2(1080.0, 158.0), vec2(1500.0, 158.0)) - 9.0 + 6.0 * snoise(p / vec2(60.0, 26.0) + 4.0);
+    // 兩片霞速度不同（遠近視差）
+    vec2 pm1 = p + vec2(uDrift, 0.0), pm2 = p + vec2(uDrift * 0.6, 0.0);
+    float m1 = sdSegment(pm1, vec2(1260.0, 214.0), vec2(1820.0, 214.0)) - 13.0 + 7.0 * snoise(pm1 / vec2(70.0, 30.0));
+    float m2 = sdSegment(pm2, vec2(1080.0, 158.0), vec2(1500.0, 158.0)) - 9.0 + 6.0 * snoise(pm2 / vec2(60.0, 26.0) + 4.0);
     float mist = 1.0 - smoothstep(-1.0, 1.0, min(m1, m2));
     tone = max(tone, mist * 0.42);
     ink = max(ink, hatch(p.y / 4.0, 0.22) * mist);
@@ -137,7 +144,7 @@ void main() {
 }`;
 
 const BG = () => new FSPass(FRAG, {
-  uT: { value: 0 }, uIn: { value: 1 }, uAmp: { value: 1 },
+  uT: { value: 0 }, uIn: { value: 1 }, uAmp: { value: 1 }, uDrift: { value: 0 },
   uPh: { value: new THREE.Vector4() }, uPhF: { value: 0 },
   uClear: { value: new THREE.Vector4() }, uClearK: { value: 1 }, uReg: { value: new THREE.Vector2(2.5, 1.5) },
 });
@@ -170,6 +177,8 @@ export default class Ocean extends Scene {
   avoid: Rect[] = [];
   clear: Rect = [0, 0, 0, 0];
   phF = 0;
+  /** 遠浪第三層（小船坐的那一層）的相位。 */
+  phB2 = 0;
 
   override async init() {
     const { audio: au, song, lyrics } = this.ctx;
@@ -182,16 +191,19 @@ export default class Ocean extends Scene {
     const text = m ? m.text : NO_MSG;
     const sigText = m ? (m.couple ? `—— ${COUPLE_ZH}` : signature(m.name)) : '';
     const lines = lyrics.linesIn(s - 2, e + 1);
-    await loadText(text + sigText + NO_MSG + INVITE_SMALL + NOTE + this.head + this.title + lines.map((l) => l.text).join('') + 'FROM THE COUPLE · 新人第景');
+    await loadText(text + sigText + NO_MSG + INVITE_SMALL + NOTE + this.head + this.title + lines.map((l) => l.text).join('') + 'FROM THE COUPLE · 新人第景' + SYMBOLS);
 
     // ---- 留言：刻在浪身上（左對齊，下面留署名的位置）
     const c = this.layer.ctx;
-    const tagH = m?.couple ? 40 : 0;
-    const sigSize = 44;
-    const reserve = m ? sigSize + 26 : 64;
-    this.fit = fitText(c, text, MSG_FAM, BOX.w, BOX.h - reserve - tagH, { min: 46, max: m ? 108 : 52, lineHeight: 1.3, maxLines: 4 });
+    const tagH = m?.couple ? 34 : 0;
+    // 署名的高度先照字級上限扣掉（署名永遠在最後一行下面，K 情境四行也不會壓到）
+    const sigMax = sigV2(msgMaxFor(text));
+    const reserve = m ? sigMax + 22 : 56;
+    // 沒有主打留言時歌詞是焦點：浪身上的冷面句子小一點
+    this.fit = fitV2(c, text, MSG_FAM, BOX.w, BOX.h - reserve - tagH, { lineHeight: 1.3, maxLines: 4, max: m ? undefined : 44 });
     const fit = this.fit;
-    this.lyrSize = lyricSize(m ? fit.size : null, 60);
+    const sigSize = sigV2(fit.size);
+    this.lyrSize = lyricV2(m ? fit.size : null);
     const blockH = tagH + fit.height + reserve;
     const top = BOX.y + (BOX.h - blockH) / 2;
     const n = fit.lines.reduce((a, l) => a + Array.from(l).length, 0);
@@ -222,12 +234,12 @@ export default class Ocean extends Scene {
     const blockW = Math.max(maxW, m ? measure(sigText, SIG_FAM, sigSize) : 0);
     if (m) {
       const sw = measure(sigText, SIG_FAM, sigSize);
-      this.sig = { text: sigText, x: BOX.x + Math.max(maxW, sw) - sw, y: top + tagH + fit.height + 22 + sigSize * 0.9, size: sigSize, t: tm0 + dur + 0.25 };
-      if (m.couple) this.tag = { text: 'FROM THE COUPLE · 新人', x: BOX.x, y: top + 18 };
+      this.sig = { text: sigText, x: BOX.x + Math.max(maxW, sw) - sw, y: top + tagH + fit.height + 18 + sigSize * 0.9, size: sigSize, t: tm0 + dur + 0.25 };
+      if (m.couple) this.tag = { text: 'FROM THE COUPLE · 新人', x: BOX.x, y: top + 16 };
     } else {
-      this.invite = { x: BOX.x, y: top + fit.height + 50, t: tm0 + dur + 0.3 };
+      this.invite = { x: BOX.x, y: top + fit.height + 44, t: tm0 + dur + 0.3 };
     }
-    this.clear = [BOX.x - 20, top - 16, Math.max(blockW, m ? 0 : measure(INVITE_SMALL, F.hei(500), 30)) + 40, blockH + 26];
+    this.clear = [BOX.x - 20, top - 16, Math.max(blockW, m ? 0 : measure(INVITE_SMALL, F.hei(500), 26)) + 40, blockH + 26];
 
     // ---- 歌詞：先排好這個窗格會唱到的每一行
     for (const line of lines) layoutLyric(c, line, this.lyrStyle());
@@ -237,7 +249,7 @@ export default class Ocean extends Scene {
   }
 
   private lyrStyle(): LyricStyle {
-    return { ...LYR_STYLE, size: this.lyrSize, minSize: 48, active: paperSignal(), sung: rgba('sepia', 0.94), unsung: rgba('sepia', 0.32) };
+    return { ...LYR_STYLE, size: this.lyrSize, minSize: V2.lyrMin, active: paperSignal(), sung: rgba('sepia', 0.94), unsung: rgba('sepia', 0.32) };
   }
 
   /** 整排浪往右推：每一拍推一段（outCubic，推完停住），遠浪推得少。 */
@@ -277,6 +289,8 @@ export default class Ocean extends Scene {
     const g0 = this.glyphs[0];
     u.uClearK!.value = g0 ? prog(t, g0.t - 0.45, g0.t + 0.1, ease.inOutCubic) : 1;
     u.uT!.value = t;
+    u.uDrift!.value = 11 * f.lt;
+    this.phB2 = -P * 19 - 20;
     this.bg.render(renderer, out);
 
     // ---- 字
@@ -284,6 +298,7 @@ export default class Ocean extends Scene {
     L.clear();
     const c = L.ctx;
     const inK = prog(t, s + 0.1, s + 0.45);
+    this.drawBoat(c, f.lt, inK);
     this.drawLyrics(c, t, inK);
     this.drawMessage(c, t);
     this.drawNotes(c, t, inK);
@@ -369,7 +384,7 @@ export default class Ocean extends Scene {
     }
     if (this.tag) {
       c.globalAlpha = prog(t, this.b0, this.b0 + 0.3);
-      c.font = font(F.mono(500), 18);
+      c.font = font(F.mono(500), 16);
       c.letterSpacing = '4px';
       c.fillStyle = rgba('paper', 0.75);
       c.fillText(this.tag.text, this.tag.x, this.tag.y);
@@ -377,12 +392,57 @@ export default class Ocean extends Scene {
     }
     if (this.invite) {
       c.globalAlpha = prog(t, this.invite.t, this.invite.t + 0.4);
-      c.font = font(F.hei(500), 30);
+      c.font = font(F.hei(500), 26);
       c.letterSpacing = '2px';
       c.fillStyle = rgba('paper', 0.78);
       c.fillText(INVITE_SMALL, this.invite.x, this.invite.y);
       c.letterSpacing = '0px';
     }
+    c.restore();
+  }
+
+  /** 遠浪第三層的上緣（跟 shader 的 yB2 同一個公式）。 */
+  private b2Y(x: number) { return 436 - 19 * peaked(x + this.phB2, 224); }
+
+  /**
+   * 遠方的一艘小舟（木刻的剪影：墨色的船身、紙白的帆、訊號色的小旗）：坐在第三層遠浪上，浪每拍推過來時被抬起、傾斜，
+   * 整個窗格慢慢往左漂。不畫人（規則）。
+   */
+  private drawBoat(c: CanvasRenderingContext2D, lt: number, inK: number) {
+    const x = 1280 - 15 * lt;
+    // 船底兩端各量一次浪的高度：船跟著浪傾斜，不會被尖浪頭一下子頂起來
+    const ya = this.b2Y(x - 26), yb = this.b2Y(x + 26), ym = this.b2Y(x);
+    const y = Math.min((ya + yb) / 2, ym + 6);
+    const ang = Math.atan2(yb - ya, 52) * 0.8;
+    c.save();
+    c.globalAlpha = inK;
+    // 船身的下緣埋在浪裡：只畫浪面以上的部分
+    c.beginPath();
+    c.moveTo(x - 90, 250);
+    for (let k = -90; k <= 90; k += 6) c.lineTo(x + k, this.b2Y(x + k) + 3);
+    c.lineTo(x + 90, 250);
+    c.closePath();
+    c.clip();
+    c.translate(x, y);
+    c.rotate(ang);
+    c.scale(1.35, 1.35);
+    c.lineJoin = 'round';
+    c.fillStyle = rgba('sepia', 0.95);
+    c.beginPath();
+    c.moveTo(-38, -8); c.quadraticCurveTo(-4, -4, 40, -12); c.lineTo(30, 4); c.lineTo(-30, 4); c.closePath();
+    c.fill();
+    // 桅與帆（帆面刻兩道橫線，像木刻的留白）
+    c.strokeStyle = rgba('sepia', 0.95);
+    c.lineWidth = 2.2;
+    c.beginPath(); c.moveTo(-2, -8); c.lineTo(-2, -64); c.stroke();
+    c.fillStyle = rgba('paper', 1);
+    c.beginPath(); c.moveTo(0, -62); c.quadraticCurveTo(26, -38, 22, -12); c.lineTo(0, -12); c.closePath();
+    c.fill();
+    c.lineWidth = 1.6; c.stroke();
+    c.lineWidth = 1;
+    c.beginPath(); c.moveTo(2, -44); c.lineTo(20, -44); c.moveTo(2, -28); c.lineTo(23, -28); c.stroke();
+    c.fillStyle = paperSignal(0.9);
+    c.beginPath(); c.moveTo(-2, -64); c.lineTo(-16, -60); c.lineTo(-2, -56); c.closePath(); c.fill();
     c.restore();
   }
 
@@ -446,16 +506,20 @@ export default class Ocean extends Scene {
       const x0 = n * WALL.lam - ph, y0 = this.wallY(x0, ph, amp) + 2;
       const r = hash(n, this.seed);
       // 捲的程度有上限：捲過頭會變成一個圈，不像浪爪
-      this.claw(segs, x0, y0, 1, 96 + 50 * r, 0.32 + 0.4 * curlK + 0.08 * r);
+      this.claw(segs, x0, y0, 1, 96 + 50 * r, 0.28 + 0.26 * curlK + 0.06 * r);
       // 泡沫：最近三拍，每拍從這一爪噴出一把
       const bi = Math.floor(au.beatAt(t));
       for (let b = bi - 2; b <= bi; b++) {
         const tb = au.timeOfBeat(b);
         const age = t - tb;
         if (age < 0 || age > 1.1 || tb < this.ctx.start) continue;
-        for (let i = 0; i < 9; i++) {
+        // 平常每拍一小把；小節線上輪到的那一爪噴一大把（窗格裡每小節一個小事件）
+        const bar = au.barAt(tb), onBar = Math.abs(bar - Math.round(bar)) < 0.06;
+        const big = onBar && ((n % 3) + 3) % 3 === ((Math.round(bar) % 3) + 3) % 3;
+        const cnt = big ? 24 : 6, spK = big ? 1.5 : 1;
+        for (let i = 0; i < cnt; i++) {
           const h1 = hash(n, b, i, 1), h2 = hash(n, b, i, 2), h3 = hash(n, b, i, 3);
-          const ang = -Math.PI * (0.15 + 0.5 * h1), sp = 160 + 260 * h2;
+          const ang = -Math.PI * (0.15 + 0.5 * h1), sp = (160 + 260 * h2) * spK;
           const px = x0 + 40 + Math.cos(ang) * sp * age, py = y0 - 10 + Math.sin(ang) * sp * age + 420 * age * age;
           const rr = 2.5 + 4 * h3;
           const k = 1 - age / 1.1;
@@ -467,7 +531,7 @@ export default class Ocean extends Scene {
     }
     // 前景白浪的浪尖：往左捲（兩道浪一左一右，對著彼此）
     const fx = FORE_PEAK.x, fy = this.foreY(fx, this.phF) + 2;
-    this.claw(segs, fx, fy, -1, 128, 0.4 + 0.35 * curlK);
+    this.claw(segs, fx, fy, -1, 128, 0.34 + 0.22 * curlK);
     // 先畫墨色的邊（粗一點），再畫紙白的指頭：相鄰的指頭會黏在一起，像一整片浪花
     for (const [ax, ay, bx, by, w] of segs) lb.seg2(ax, ay, bx, by, w + 3.4, ink, 1);
     for (const [ax, ay, bx, by, w] of segs) lb.seg2(ax, ay, bx, by, w, pap, 1);
