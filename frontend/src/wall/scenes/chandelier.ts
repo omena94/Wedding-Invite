@@ -9,6 +9,9 @@
 //  - 進場：線稿由上往下描出來、燈泡依序亮；退場最後一拍所有墜子一起閃一下、整盞燈稍微暗下。
 //  - 一格只有一個焦點（MV 融合原則）：鏡頭往下看一點、吊燈的上半截出畫（像仰拍），把下半部整片留給留言；
 //    留言是最大的字、歌詞墜子小一級；線稿與天花板的藻井都調淡，只留左上一小群低對比的標籤。
+// v2（2026-09-29「留言尺寸與版面比例標準 v2」）：吊燈放回畫面正中、鏡頭近一點、少切掉一點（吊燈才是主角），
+// 留言縮到 v2 字級（40～60 px，依字數）放在吊燈正下方的下三分之一（≤ 830×300），署名 26～32，歌詞墜子 40～52。
+// 多補的動畫是吊燈自己的：每個小節線，燈泡由前往後繞一圈依序亮一下（像調光器的追光），落在拍點上。
 import * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
 import { FSPass, Layer2D, W, H } from '../engine/gl';
@@ -20,17 +23,18 @@ import { fitText, type FitResult } from '../engine/text';
 import type { Line } from '../engine/lyrics';
 import { lyricAt, beatAfter, signature, COUPLE_EN } from './_motifs';
 import { glyphStates, glyphColor, no3, INVITE_SMALL, preloadText, fitFew, fitWithSig, type GlyphState } from './_t19';
+import { V2, msgMaxFor, lyricV2, sigV2, fitClauses } from './_v2';
 import { buildModel, CEIL, HOOP, LYRIC_ARC, type Model, type StrandDef } from './chandelier-model';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'light', paper: false, energy: [0.35, 1], bars: [4, 8] };
 
 /** 鏡頭：在吊燈前下方往上看；view offset 把吊燈中軸放在畫面 x = CX、整盞往上推（上半截出畫，下面留給留言）。 */
-const CAM = { y: -0.5, z: 7.8, lookY: 0.7, fov: 36, dy: 205 };
-const CX = 780;
+const CAM = { y: -0.5, z: 6.9, lookY: 0.7, fov: 36, dy: 115 };
+const CX = 960;
 /** 歌詞：墜子下的字（字級、最寬、左右界線）。 */
-const LYR = { size: 50, min: 48, maxW: 1060, x0: 150, x1: 1320 };
+const LYR: { size: number; min: number; maxW: number; x0: number; x1: number } = { size: V2.lyrMax, min: V2.lyrMin, maxW: 1150, x0: 300, x1: 1620 };
 /** 留言的框（吊燈下方，最下面一行留給署名）：整個畫面最大的字。 */
-const MSG = { x: 150, y: 604, w: 1180, h: 356 };
+const MSG = { x: 530, y: 710, w: 830, h: 290 };
 const MSG_FAM = F.ming(700);
 const LYR_FAM = F.archivo(100, 700);
 const NAME_FAM = F.serif(600);
@@ -150,7 +154,7 @@ export default class Chandelier extends Scene {
   msgStatic = false;
   tStatic = Infinity;
   /** 歌詞墜子的字級：有留言時小一級（留言是焦點），沒有留言時歌詞就是焦點、大一點。 */
-  lyrSize = this.msg ? LYR.size : 60;
+  lyrSize: number = LYR.size;
 
   override async init() {
     const { audio: au, song } = this.ctx;
@@ -164,8 +168,15 @@ export default class Chandelier extends Scene {
     const c = this.layer.ctx;
     // 有留言：字級依「框高扣掉署名那一列」找（fitWithSig），署名一定在最後一行下面，整塊（含署名）在框裡垂直置中。
     // 沒有留言時邀請是配角（比歌詞小一點）
-    const blk = m ? fitWithSig(c, text, MSG_FAM, MSG.w, MSG.h, { min: 48, max: 116, lineHeight: 1.28, maxLines: 4 }, { ratio: 0.45, min: 40, max: 48 }) : null;
-    this.fit = blk ? blk.fit : fitFew(c, text, MSG_FAM, MSG.w, MSG.h - 58, { min: 48, max: 56, lineHeight: 1.28, maxLines: 4 });
+    const o = { min: V2.msgMin, max: m ? msgMaxFor(text) : 48, lineHeight: 1.3, maxLines: 5 };
+    let blk = m ? fitWithSig(c, text, MSG_FAM, MSG.w, MSG.h, o, { ratio: 0.6, min: V2.sigMin, max: V2.sigMax }) : null;
+    // 照標點斷行（字級只小一點點也值得）
+    if (m && blk) {
+      const cl = fitClauses(c, text, MSG_FAM, MSG.w, MSG.h - V2.sigMax * 1.6, o);
+      if (cl && cl.size >= blk.fit.size * 0.88) { const ss = sigV2(cl.size), sd = cl.size * 0.34 + ss * 1.02; blk = { fit: cl, sigSize: ss, sigDy: sd, height: cl.height + sd + ss * 0.26 }; }
+    }
+    this.fit = blk ? blk.fit : fitFew(c, text, MSG_FAM, MSG.w, MSG.h - 58, { min: 40, max: 48, lineHeight: 1.28, maxLines: 4 });
+    this.lyrSize = lyricV2(m ? this.fit.size : null);
     const fit = this.fit;
     // 留言塊在吊燈正下方置中（塊內靠左），寬的時候貼齊左右界線
     const bx = clamp(CX - fit.width / 2, MSG.x, MSG.x + MSG.w - fit.width);
@@ -330,7 +341,8 @@ export default class Chandelier extends Scene {
     const isCJK = /[　-鿿가-힯]/.test(text);
     let adv = measureAt(size), gapK = isCJK ? 0.42 : 0.5;
     const total = (a: number[][], sz: number, gk: number) => a.reduce((s2, x) => s2 + x.reduce((p, q) => p + q, 0), 0) + (a.length - 1) * sz * gk;
-    while (total(adv, size, gapK) > LYR.maxW && gapK > 0.2) gapK -= 0.04;
+    // 墜子會盪：字距不能擠到比 0.32 個字寬還小（盪的時候相鄰兩串會疊在一起），寧可字小一點
+    while (total(adv, size, gapK) > LYR.maxW && gapK > 0.32) gapK -= 0.04;
     while (total(adv, size, gapK) > LYR.maxW && size > LYR.min) { size = Math.max(LYR.min, size - 2); adv = measureAt(size); }
     const tw = total(adv, size, gapK);
     const left = clamp(CX - tw / 2, LYR.x0, LYR.x1 - tw);
@@ -451,7 +463,11 @@ export default class Chandelier extends Scene {
       const a = b.a + rot;
       const [x, y] = this.proj(Math.sin(a) * b.r, b.y, Math.cos(a) * b.r);
       const fl = 0.92 + 0.08 * Math.sin(t * 21.7 + i * 1.9) * Math.sin(t * 13.1 + i * 0.7);
-      const I = on * fl * (0.85 + 0.25 * f.a.kick) * exitK * (0.7 + 0.3 * depth(Math.cos(a) * b.r));
+      // 追光：每個小節線，一道亮光由正前方順著燈臂繞一圈（0.9 秒），經過的燈泡亮一下
+      const barT = au.timeOfBar(Math.floor(au.barAt(t) + 1e-4));
+      const ph = (t - barT) / 0.9, ang = (((b.a / TAU) % 1) + 1) % 1;
+      const chase = ph < 1.1 ? Math.exp(-(((ang - ph) * 9) ** 2)) : 0;
+      const I = on * fl * (0.85 + 0.25 * f.a.kick + 1.1 * chase) * exitK * (0.7 + 0.3 * depth(Math.cos(a) * b.r));
       const e = LIN.ember;
       // 光暈用幾層越來越淡的圓點疊出柔邊（單一大圓點看起來像一片平平的圓片）
       for (const [w, a] of [[40, 0.05], [28, 0.08], [18, 0.14]] as const) G.seg2(x, y, x + 0.01, y, w, [sg[0] * I, sg[1] * I, sg[2] * I], a);
@@ -536,13 +552,14 @@ export default class Chandelier extends Scene {
       const id = 500 + ti;
       const sw = this.swing({ id, a, r: HOOP.r, y: HOOP.y, len, beads: 3, ph: 0.07, pr: 0.034, spin: ti * 1.3, tier: 2 }, t, kNow);
       // 這串的字正在唱：唱到的那一刻閃一下、盪一下
-      let I = 0, ax = sw.ax, az = sw.az;
+      // 掛字的墜子盪小一點（一般水晶串的一半）：盪太大，相鄰兩串的字會疊在一起讀不出來
+      let I = 0, ax = sw.ax * 0.5, az = sw.az * 0.5;
       if (line && gs) for (const wi of tk.words) {
         const w = line.words[wi]!;
         if (t >= w.start) {
           const dt = t - w.start;
           I = Math.max(I, pulse(t, w.start, 0.13));
-          ax += 0.1 * Math.exp(-dt / 0.5) * Math.sin(dt * 10);
+          ax += 0.06 * Math.exp(-dt / 0.5) * Math.sin(dt * 10);
         }
       }
       const g = Math.max(0.02, grow);

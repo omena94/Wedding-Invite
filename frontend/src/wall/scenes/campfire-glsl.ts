@@ -49,21 +49,28 @@ void main() {
   float lvl = uLvl * uIn;
   float fl = uFlick;
 
+  // ---- 熱浪（v2）：火的上方，空氣受熱讓後面的星星與樹影左右扭動（只影響背景，不影響火與前景）
+  vec2 pb = p;
+  {
+    vec2 hq = vec2(p.x - FB.x, FB.y - p.y);
+    float hz = exp(-hq.x * hq.x / (2.0 * 150.0 * 150.0)) * smoothstep(120.0, 360.0, hq.y) * (1.0 - smoothstep(560.0, 820.0, hq.y));
+    pb.x += hz * uLvl * (4.5 * sin(p.y / 13.0 - uT * 9.0) + 2.5 * sin(p.y / 5.0 + uT * 13.0));
+  }
   // ---- 夜空：底色往地平線稍微浮起來一點
   vec3 col = mix(C_INK, C_INK2, 0.35 + 0.65 * smoothstep(80.0, HZ, p.y));
   // 星星：很少很少，hi-hat 閃
   if (p.y < HZ - 90.0) {
-    vec2 cell = floor(p / 96.0);
+    vec2 cell = floor(pb / 96.0);
     vec2 h2 = hash22(cell + 17.0);
     if (h2.x < 0.3) {
       vec2 sp = (cell + 0.2 + 0.6 * hash22(cell + 3.1)) * 96.0;
-      float d = length(p - sp);
+      float d = length(pb - sp);
       float tw = 0.55 + 0.45 * sin(uT * (1.3 + h2.y * 2.0) + h2.y * 40.0) + uHat * step(0.7, h2.y) * 1.2;
       col += C_BONE * (1.0 - smoothstep(0.4, 1.6, d)) * (0.18 + 0.3 * h2.y) * tw * uIn * smoothstep(40.0, 300.0, p.y);
     }
   }
   // 遠處的樹影：地平線上一排暗暗的輪廓（比天空再暗一點），火附近被照到一點點
-  float tree = HZ - 46.0 - 70.0 * (0.5 + 0.5 * snoise(vec2(p.x / 150.0, 2.7))) - 26.0 * snoise(vec2(p.x / 38.0, 8.1));
+  float tree = HZ - 46.0 - 70.0 * (0.5 + 0.5 * snoise(vec2(pb.x / 150.0, 2.7))) - 26.0 * snoise(vec2(pb.x / 38.0, 8.1));
   float inTree = smoothstep(tree - 1.0, tree + 1.0, p.y);
   vec3 treeCol = C_INK * 0.7 + C_SIGNAL * 0.018 * lvl * exp(-abs(p.x - FB.x) / 380.0);
   col = mix(col, treeCol, inTree);

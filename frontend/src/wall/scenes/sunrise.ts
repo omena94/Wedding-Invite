@@ -7,6 +7,10 @@
 //    （剛印上的字帶一點訊號色，像還沒乾的印泥）。
 //  - 冷面註記：「日出時刻 06:13」「本日天氣：晴，喜氣指數 100%」「日出時間以新人起床為準」。
 //  - 畫法：整張風景（含每層紙的影子）在 sunrise-glsl.ts 的一個 shader 裡畫；字用一張 Canvas2D 疊上去。
+// v2（2026-09-29「留言尺寸與版面比例標準 v2」）：寫留言的那朵雲縮到 ≤ 820×370、移到右上（太陽在左下，對角線構圖），
+// 雲邊只比字多一點；留言照 v2 字級（40～60 px，依字數、照標點斷行），署名 26～32，光芒上的歌詞 40～52（不比留言大）。
+// 空出來的天空讓給光芒；多補的動畫是這片海自己的：一艘小小的剪紙帆船在第一層浪後面往右開（船底被浪擋住、
+// 跟著每拍推一下的浪起伏點頭），太陽在海上的倒影紙條每拍左右錯動一下（波光）。
 import * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
 import { FSPass, Layer2D, W, H } from '../engine/gl';
@@ -17,7 +21,8 @@ import { fitText, type FitResult } from '../engine/text';
 import type { Line } from '../engine/lyrics';
 import { layoutLyric, drawLyric, beatAfter, signature, type LyricStyle, type LyricLayout } from './_motifs';
 import { paperSignal, no3, INVITE_SMALL, preloadText, fitWithSig, type MsgBlock } from './_t19';
-import { FRAG_SUNRISE, N_RAYS, N_CIRC } from './sunrise-glsl';
+import { V2, msgMaxFor, lyricV2, sigV2, fitClauses } from './_v2';
+import { FRAG_SUNRISE, N_RAYS, N_CIRC, WAVE_A } from './sunrise-glsl';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'light', paper: true, energy: [0.25, 0.9], bars: [4, 8] };
 
@@ -32,9 +37,16 @@ const RAY_LEN = 2600;
 const STRIP_ANG = [-8.5, -11.5, -9.5, -12].map((a) => a * DEG);
 /** 歌詞從離圓心多遠開始寫、寫到哪裡為止：左端讓開左邊兩格即時小卡（x ≤ 554），右端停在右邊的格子之前。 */
 const D0 = SUN.r + 112, LYR_RIGHT = 1335;
-const LYR_STYLE: LyricStyle = { family: F.archivo(100, 700), size: 52, minSize: 48, maxWidth: 800, lineHeight: 1.14 };
-/** 雲上的留言：中心與可用的框。 */
-const CLOUD = { cx: 880, cy: 292, w: 780, h: 214 };
+const LYR_STYLE: LyricStyle = { family: F.archivo(100, 700), size: V2.lyrMax, minSize: V2.lyrMin, maxWidth: 800, lineHeight: 1.14 };
+/**
+ * 雲上的留言：中心與可用的框（含署名）。v2：放右上（太陽在左下），字框 640 寬、雲邊再多 40 px，
+ * 整朵雲（連上緣的圓凸、兩側的圓）約 ≤ 820×370；雲的下緣停在歌詞光芒的上面。
+ */
+const CLOUD = { cx: 1310, cy: 292, w: 640, h: 250 };
+/** 兩朵沒有字的小雲（中心、大小）：一朵在左上、一朵在主雲右下，讓天空有前後。 */
+const SMALL: [number, number, number][] = [[560, 176, 0.85], [1700, 600, 0.9]];
+/** 紙船：一個窗格最多開多遠（右端停在 HUD 的左邊）、多快（px／秒）。 */
+const BOAT = { x0: -110, xMax: 1240, speed: 95, scale: 1 };
 const MSG_FAM = F.hand(700);
 const NO_MSG = '今天的太陽，為你們升起。';
 const FOOT = '＊本日天氣：晴，喜氣指數 100%。日出時間以新人起床為準。';
@@ -57,7 +69,17 @@ const BG = () => new FSPass(FRAG_SUNRISE, {
   uCloudBox: { value: new THREE.Vector4() },
   uWave: { value: new THREE.Vector3() },
   uInkK: { value: 0.28 },
+  uBoat: { value: new THREE.Vector4() },
+  uGlint: { value: 0 },
 });
+
+/** 第一層浪在 x 的高度與坡度（跟 sunrise-glsl.ts 的 waveY(x, WAVE_A, uWave.x, 1.0) 同一個公式）：紙船貼著它起伏。 */
+function waveA(x: number, ph: number): [number, number] {
+  const xx = x + ph;
+  const y = WAVE_A + 7 * Math.sin(xx / 92 + 0.8) + 3.5 * Math.sin(xx / 39 + 2.3);
+  const dy = (7 / 92) * Math.cos(xx / 92 + 0.8) + (3.5 / 39) * Math.cos(xx / 39 + 2.3);
+  return [y, dy];
+}
 
 /** 兩個 rgba() 字串之間混色（剛印上的字從訊號色冷卻成墨色）。 */
 function mixCss(a: string, b: string, k: number): string {
@@ -86,6 +108,8 @@ export default class Sunrise extends Scene {
   bodyR: [number, number, number] = [0, 0, 0];
   cloudBox: [number, number, number, number] = [0, 0, 0, 0];
   lyr = new Map<number, LyrLay>();
+  /** 雲上留言的字級（算歌詞字級用）；沒有留言是 null。 */
+  msgSize: number | null = null;
   title = '';
   avoid: Rect[] = [];
   head = '';
@@ -112,19 +136,30 @@ export default class Sunrise extends Scene {
     let blockW = 0, blockH = 0;
     let blk: MsgBlock | null = null;
     if (m) {
-      // 字級依「框高扣掉署名那一列」找（fitWithSig）：署名一定在最後一行下面、不重疊
-      blk = fitWithSig(c, text, MSG_FAM, CLOUD.w, CLOUD.h - tagH + 66, { min: 48, max: 110, lineHeight: 1.26, maxLines: 4 }, { ratio: 0.5, min: 40, max: 48 });
+      // 字級依「框高扣掉署名那一列」找（fitWithSig）：署名一定在最後一行下面、不重疊。v2：上限照字數（msgMaxFor）
+      const o = { min: V2.msgMin, max: msgMaxFor(text), lineHeight: 1.28, maxLines: 5 };
+      const h = CLOUD.h - tagH;
+      blk = fitWithSig(c, text, MSG_FAM, CLOUD.w, h, o, { ratio: 0.6, min: V2.sigMin, max: V2.sigMax });
+      // 照標點斷行（「…到現／在，終於…」很難讀）：字級只小一點點就用它
+      const cl = fitClauses(c, text, MSG_FAM, CLOUD.w, h - V2.sigMax * 1.6, o);
+      if (cl && cl.size >= blk.fit.size * 0.88) {
+        const ss = sigV2(cl.size), sd = cl.size * 0.34 + ss * 1.02;
+        blk = { fit: cl, sigSize: ss, sigDy: sd, height: cl.height + sd + ss * 0.26 };
+      }
       this.fit = blk.fit;
+      this.msgSize = blk.fit.size;
     } else {
       // 沒有留言：雲上的標語是配角（焦點是光芒上的歌詞），字小一級
-      this.fit = fitText(c, text, MSG_FAM, CLOUD.w, 120, { min: 48, max: 58, lineHeight: 1.28, maxLines: 2 });
+      this.fit = fitText(c, text, MSG_FAM, CLOUD.w, 120, { min: V2.msgMin, max: 48, lineHeight: 1.28, maxLines: 2 });
     }
     const fit = this.fit;
-    const sigSize = blk ? blk.sigSize : 40;
+    const sigSize = blk ? blk.sigSize : V2.sigMax;
     const sigText = m ? signature(m.name) : '';
     const sigW = m ? measure(sigText, MSG_FAM, sigSize) : 0;
-    const inviteH = m ? 0 : 50;
-    blockW = Math.max(fit.width, sigW);
+    const inviteH = m ? 0 : 46;
+    // 沒有留言時邀請那一行比標語寬，雲也要包得住它
+    const invW = m ? 0 : measure(INVITE_SMALL, F.hei(500), 24, 2);
+    blockW = Math.max(fit.width, sigW, invW);
     blockH = tagH + (blk ? blk.height : fit.height + inviteH);
     const top = CLOUD.cy - blockH / 2;
     const n = fit.lines.reduce((a, l) => a + Array.from(l).length, 0);
@@ -145,23 +180,25 @@ export default class Sunrise extends Scene {
       this.invite = { x: CLOUD.cx, y: top + fit.height + 40 };
     }
 
-    // ---- 雲的形狀：身體是圓角矩形，上緣一排大小不一的圓（中間高）、兩側各一個圓
+    // ---- 雲的形狀：身體是圓角矩形，上緣一排大小不一的圓（中間高）、兩側各一個圓。
+    // v2：雲只比字多一點（身體左右各 40、上下各 26 px 的邊），圓凸也收小，整朵 ≤ 約 820×370
     const rnd = mulberry32(this.seed);
     const bx = CLOUD.cx, by = top + blockH / 2;
-    const hw = Math.max(blockW, 260) / 2 + 62, hh = Math.max(blockH / 2 + 38, 96);
-    this.bodies = [[bx, by, hw, hh], [1590, 262, 92, 24], [372, 196, 78, 20]];
-    this.bodyR = [Math.min(hh, 64), 24, 20];
+    const hw = Math.max(blockW, 240) / 2 + 40, hh = Math.max(blockH / 2 + 26, 80);
+    const [s1, s2] = SMALL as [[number, number, number], [number, number, number]];
+    this.bodies = [[bx, by, hw, hh], [s1[0], s1[1], 92 * s1[2], 24 * s1[2]], [s2[0], s2[1], 92 * s2[2], 24 * s2[2]]];
+    this.bodyR = [Math.min(hh, 56), 24 * s1[2], 24 * s2[2]];
     const circ: [number, number, number, number][] = [];
-    const nb = clamp(Math.round((hw * 2) / 170), 2, 6);
+    const nb = clamp(Math.round((hw * 2) / 150), 2, 6);
     for (let i = 0; i < nb; i++) {
       const fx = (i + 0.5) / nb;
       // 圓凸出去不要頂到畫面上緣（上緣至少留 50 px）
-      const r = Math.min((56 + 58 * Math.sin(Math.PI * fx)) * (0.85 + 0.3 * rnd()) * clamp(hh / 118, 0.85, 1.15), (by - hh - 50) / 0.6);
-      circ.push([bx - hw + 36 + fx * (hw * 2 - 72) + (rnd() - 0.5) * 26, by - hh + r * 0.4, r, 0]);
+      const r = Math.min((40 + 44 * Math.sin(Math.PI * fx)) * (0.85 + 0.3 * rnd()) * clamp(hh / 110, 0.85, 1.1), (by - hh - 50) / 0.55);
+      circ.push([bx - hw + 30 + fx * (hw * 2 - 60) + (rnd() - 0.5) * 22, by - hh + r * 0.45, r, 0]);
     }
-    circ.push([bx - hw + hh * 0.3, by + hh * 0.12, hh * 0.86, 0], [bx + hw - hh * 0.3, by + hh * 0.08, hh * 0.8, 0]);
-    // 兩朵沒有字的小雲（右上、左上），讓天空有前後
-    for (const [g, cx, cy, sc] of [[1, 1590, 262, 1], [2, 372, 196, 0.85]] as const) {
+    circ.push([bx - hw + hh * 0.35, by + hh * 0.1, hh * 0.62, 0], [bx + hw - hh * 0.35, by + hh * 0.06, hh * 0.58, 0]);
+    // 兩朵沒有字的小雲，讓天空有前後
+    for (const [g, [cx, cy, sc]] of [[1, s1], [2, s2]] as const) {
       circ.push([cx - 48 * sc, cy - 14 * sc, 34 * sc, g], [cx + 6 * sc, cy - 28 * sc, 46 * sc, g], [cx + 56 * sc, cy - 10 * sc, 30 * sc, g]);
     }
     this.circ = circ.slice(0, N_CIRC);
@@ -196,8 +233,8 @@ export default class Sunrise extends Scene {
     if (L) return L;
     const ang = STRIP_ANG[line.i % STRIP_ANG.length]!;
     const st: LyricStyle = {
-      // 有留言時歌詞比留言小一級；沒有留言時歌詞就是焦點、大一點
-      ...LYR_STYLE, size: this.msg ? LYR_STYLE.size : 62, maxWidth: (LYR_RIGHT - SUN.x) / Math.cos(ang) - D0,
+      // 有留言時歌詞比留言小一級；沒有留言時歌詞就是焦點（一樣不超過 52，v2）
+      ...LYR_STYLE, size: lyricV2(this.msgSize), maxWidth: (LYR_RIGHT - SUN.x) / Math.cos(ang) - D0,
       active: paperSignal(), sung: rgba('sepia', 0.94), unsung: rgba('sepia', 0.3),
     };
     const lay = layoutLyric(this.layer.ctx, line, st);
@@ -245,6 +282,14 @@ export default class Sunrise extends Scene {
     const beats = Math.max(0, bi - au.beatAt(b0));
     const tick = Math.floor(beats) + ease.outCubic(clamp((beats % 1) / 0.4));
     (u.uWave!.value as THREE.Vector3).set(9 * tick, -12 * tick, 7 * tick);
+    // 波光：倒影紙條跟著同一個拍子左右錯動
+    u.uGlint!.value = 1.9 * tick;
+    // 紙船：從左邊畫外駛進來，整個窗格等速往右開（窗格結束時剛好到 xMax，不進 HUD）；
+    // 船身貼著第一層浪的高度與坡度，浪每拍推一下，船就跟著起伏、點一下頭
+    const vB = Math.min(BOAT.speed, (BOAT.xMax - BOAT.x0) / Math.max(1, e - s));
+    const xB = BOAT.x0 + vB * Math.max(0, t - s);
+    const [yW, slope] = waveA(xB, 9 * tick);
+    (u.uBoat!.value as THREE.Vector4).set(xB, yW - 5, 0.8 * Math.atan(slope), BOAT.scale);
 
     // ---- 雲
     const slide = (1 - prog(t, b0, b0 + 0.6, ease.outExpo)) * 1150;
@@ -279,7 +324,6 @@ export default class Sunrise extends Scene {
     this.drawMessage(c, t, slide - 30 * pw);
     this.drawNotes(c, t);
     comp.draw(renderer, L.upload(), out);
-    void e;
     // 鏡頭：整個窗格很慢地推近（inOutSine）
     const push = 1 + 0.03 * (0.5 - 0.5 * Math.cos(Math.PI * f.p));
     return { paper: 1, popupAvoid: this.avoid, bloom: 0.12, bloomThreshold: 1.8, halation: 0.02, vignette: 0.18, grain: 0.04, ca: 0.4, zoom: push };
@@ -396,7 +440,7 @@ export default class Sunrise extends Scene {
     if (this.invite) {
       const last = this.glyphs[this.glyphs.length - 1];
       c.globalAlpha = prog(t, (last?.t ?? this.b0) + 0.3, (last?.t ?? this.b0) + 0.7);
-      c.font = font(F.hei(500), 26);
+      c.font = font(F.hei(500), 24);
       c.letterSpacing = '2px';
       c.fillStyle = rgba('sepia', 0.72);
       c.textAlign = 'center';

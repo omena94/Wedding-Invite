@@ -5,6 +5,9 @@
 //    字的浮出時間在 init 就算好（確定性、跟畫面上的光束對得起來）。
 //  - 冷面註記：「燈號：每小節閃一次　能見距離：一輩子」「＊本燈塔不收過路費，只收祝福。」
 //  - 沒有主打留言：霧裡浮出「今晚，燈塔只為一艘船導航」＋邀請；純音樂：船上掛歌名。
+// v2（2026-09-29「留言尺寸與版面比例標準 v2」）：霧裡的留言照 v2 字級（40～60 px，依字數）、左上一塊 ≤ 800×300，
+// 署名 26～32，船燈歌詞 40～52（不比留言大）。夜海、燈塔、光束才是畫面的主體；多補的動畫是這片海自己的：
+// 每個小節線（和大鼓）浪打在岬角的岩石上，白色的浪花往上濺、再落回海裡，岩腳一圈泡沫慢慢退掉。
 import * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
 import { FSPass, Layer2D, W, H } from '../engine/gl';
@@ -16,17 +19,18 @@ import { fitText, type FitResult } from '../engine/text';
 import { Lyrics, type Line } from '../engine/lyrics';
 import { lyricAt, drawLyric, layoutLyric, beatAfter, signature, COUPLE_ZH, type LyricStyle, type LyricLayout } from './_motifs';
 import { no3, INVITE_SMALL, preloadText, fitWithSig } from './_t19';
+import { V2, msgMaxFor, lyricV2, sigV2, fitClauses } from './_v2';
 import { FRAG_LIGHTHOUSE, beamDir, beamAt, facing, CAM, LAMP } from './lighthouse-glsl';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'light', paper: false, energy: [0.2, 0.8], bars: [4, 8] };
 
 /** 霧裡的留言：左上的天空（右邊是燈塔，右上角留給即時小卡）。 */
-const BOX = { x: 150, y: 196, w: 1080, h: 292 };
+const BOX = { x: 150, y: 220, w: 800, h: 300 };
 /** 歌詞船隊：基線在地平線下（船比燈塔近一點），右端停在岬角之前。 */
 const LYR = { x: 150, base: 704, maxW: 1060 };
 /** 船與船之間多拉開的水面、整行多出來的船頭與駕駛艙寬度、船頭伸出去的長度。 */
 const BOAT_GAP = 80, BOAT_EXTRA = 78, BOW = 32;
-const LYR_STYLE: LyricStyle = { family: F.archivo(100, 700), size: 52, minSize: 48, maxWidth: LYR.maxW, align: 'left' };
+const LYR_STYLE: LyricStyle = { family: F.archivo(100, 700), size: V2.lyrMax, minSize: V2.lyrMin, maxWidth: LYR.maxW, align: 'left' };
 const MSG_FAM = F.ming(700);
 const SIG_FAM = F.hand(400);
 const NOTE = '＊本燈塔不收過路費，只收祝福。';
@@ -59,7 +63,7 @@ export default class Lighthouse extends Scene {
   t0 = 0;
   avoid: [number, number, number, number][] = [];
   /** 歌詞（船燈）的字：有留言時比留言小一級，沒有留言時歌詞就是焦點、大一點。 */
-  lyrStyle: LyricStyle = { ...LYR_STYLE, size: this.msg ? 52 : 60 };
+  lyrStyle: LyricStyle = { ...LYR_STYLE };
 
   /** 小節相位（0 = 小節線）：光束的轉角。 */
   private u(t: number) { const b = this.ctx.audio.barAt(t); return b - Math.floor(b); }
@@ -77,8 +81,15 @@ export default class Lighthouse extends Scene {
     const c = this.layer.ctx;
     // 沒有留言時霧裡的標語是配角（焦點是歌詞的船隊），字小一級
     // 有留言：字級依「框高扣掉署名那一列」找（fitWithSig），署名一定在最後一行下面、不會壓到地平線的船
-    const blk = m ? fitWithSig(c, text, MSG_FAM, BOX.w, BOX.h + 96, { min: 48, max: 108, lineHeight: 1.34, maxLines: 5 }, { ratio: 0.5, min: 44, max: 56 }) : null;
-    const fit = blk ? blk.fit : fixedLines(c, NO_MSG, MSG_FAM, BOX.w, 60);
+    const o = { min: V2.msgMin, max: m ? msgMaxFor(text) : 48, lineHeight: 1.34, maxLines: 5 };
+    let blk = m ? fitWithSig(c, text, MSG_FAM, BOX.w, BOX.h, o, { ratio: 0.6, min: V2.sigMin, max: V2.sigMax }) : null;
+    // 照標點斷行（字級只小一點點也值得）
+    if (m && blk) {
+      const cl = fitClauses(c, text, MSG_FAM, BOX.w, BOX.h - V2.sigMax * 1.6, o);
+      if (cl && cl.size >= blk.fit.size * 0.88) { const ss = sigV2(cl.size), sd = cl.size * 0.34 + ss * 1.02; blk = { fit: cl, sigSize: ss, sigDy: sd, height: cl.height + sd + ss * 0.26 }; }
+    }
+    const fit = blk ? blk.fit : fixedLines(c, NO_MSG, MSG_FAM, BOX.w, 48);
+    this.lyrStyle = { ...LYR_STYLE, size: lyricV2(m ? fit.size : null) };
     this.size = fit.size;
     const top = BOX.y + fit.size;
     this.glyphs = [];
@@ -180,7 +191,8 @@ export default class Lighthouse extends Scene {
     if (this.sig && t >= this.sig.t) {
       const a = prog(t, this.sig.t, this.sig.t + 0.5, ease.outCubic);
       c.font = font(this.sig.fam, this.sig.size);
-      if (this.msg) { c.fillStyle = rgba('ash', 0.95 * a); c.fillText(this.sig.text, this.sig.x, this.sig.y); }
+      // 署名用紙白（光束掃過時霧會變亮，灰色的署名會被霧吃掉）
+      if (this.msg) { c.fillStyle = rgba('bone', 0.82 * a); c.fillText(this.sig.text, this.sig.x, this.sig.y); }
       else { c.letterSpacing = '2px'; c.fillStyle = rgba('ash', 0.9 * a); c.fillText(this.sig.text, this.sig.x, this.sig.y); c.letterSpacing = '0px'; }
     }
 
@@ -196,6 +208,9 @@ export default class Lighthouse extends Scene {
         this.glow.seg2(x - hw, yy, x + hw, yy, 1.1, [col[0] * 0.5 * fl, col[1] * 0.5 * fl, col[2] * 0.5 * fl], 0.8 - k * 0.15);
       }
     }
+
+    // ---- 浪打岩石
+    this.spray(t, f.a.kick * inK);
 
     // ---- 歌詞船隊
     const ly = lyricAt(lyrics, t);
@@ -213,6 +228,53 @@ export default class Lighthouse extends Scene {
       flash: 0.02 * glare * glare, zoom: push,
       popupAvoid: this.avoid,
     };
+  }
+
+  /**
+   * 浪打在岬角的岩石上（v2 多補的動畫，這片海自己的事件）：每個小節線一個大浪、大鼓一個小浪，
+   * 白色的浪花從岩石斜面往左上濺起、受重力落回海裡；岩腳一圈泡沫跟著亮一下再退掉。
+   * 岩石斜面照 lighthouse-glsl.ts 的 rockTop：x < 1190 時每往左 1 px 往下 1.35 px。
+   */
+  private spray(t: number, kick: number) {
+    const au = this.ctx.audio, lb = this.glow, B = LIN.bone;
+    const rockY = (x: number) => 742 + (1190 - x) * 1.35;
+    const hits: { t: number; k: number; id: number }[] = [];
+    const bar = Math.floor(au.barAt(t) + 1e-4);
+    for (const b of [bar, bar - 1]) hits.push({ t: au.timeOfBar(b), k: 1, id: b });
+    for (const [te, st] of au.events('kick', t - 1.2, t + 1e-4)) if (st > 0.5) hits.push({ t: te, k: 0.45 * st, id: Math.round(te * 1000) });
+    for (const h of hits) {
+      const age = t - h.t;
+      if (age < 0 || age > 1.3 || h.t < this.ctx.start) continue;
+      const n = Math.round(70 * h.k) + 10;
+      for (let j = 0; j < n; j++) {
+        const r = (k: number) => hash(h.id, j, k + 51);
+        // 打在斜面下半的一點（x 1040～1150），往左上（離開岩石）濺出去；濺起的高度不到 90 px，不會碰到上面的歌詞船隊
+        const x0 = 1040 + 110 * r(1), y0 = rockY(x0) - 6;
+        const life = 0.6 + 0.6 * r(2);
+        if (age > life) continue;
+        const vx = -(60 + 170 * r(3)) * (0.5 + 0.5 * h.k), vy = -(260 + 300 * r(4)) * (0.5 + 0.5 * h.k);
+        const pos = (a: number) => ({ x: x0 + vx * a, y: y0 + vy * a + 900 * a * a });
+        const q = pos(age), q0 = pos(Math.max(0, age - 0.05));
+        // 落回海面（比濺起的地方低一點）就不見了：不要一路掉到畫面底下變成雨
+        if (q.y > y0 + 30) continue;
+        const a = (1 - age / life) * (0.6 + 0.4 * h.k);
+        // 水花本體（白）＋一團很淡的水霧（寬、透明），整片看起來才像浪花，不像一條條虛線
+        lb.seg2(q.x, q.y, q.x + 0.01, q.y, 10 + 30 * age, [B[0] * 0.025 * a, B[1] * 0.025 * a, B[2] * 0.025 * a], 0.25);
+        lb.seg2(q0.x, q0.y, q.x, q.y, 1.8 + 1.6 * r(5), [B[0] * 1.5 * a, B[1] * 1.5 * a, B[2] * 1.5 * a], Math.min(1, a * 1.6));
+      }
+      // 岩腳的泡沫：沿著斜面水線的一條白線，亮一下再退掉
+      const fa = Math.exp(-age / 0.5) * h.k;
+      if (fa > 0.03) {
+        // 一條沿著斜面的連續泡沫線（稍微離開岩面一點、有一點起伏）
+        let px = 1000, py = rockY(1000) + 6;
+        for (let x = 1012; x <= 1190; x += 12) {
+          const y = rockY(x) + 6 + 2.5 * Math.sin(x * 0.13 + t * 3);
+          lb.seg2(px - 3, py, x - 3, y, 3, [B[0] * 0.9 * fa, B[1] * 0.9 * fa, B[2] * 0.9 * fa], fa);
+          px = x; py = y;
+        }
+      }
+    }
+    void kick;
   }
 
   /**

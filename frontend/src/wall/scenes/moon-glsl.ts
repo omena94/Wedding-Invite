@@ -124,5 +124,24 @@ void main() {
     // 月緣一圈細線（暗面的輪廓也看得到）
     col += C_BONE * 0.12 * aaStroke(rpx - uR, 1.0) * uIn;
   }
+  // ---- 薄雲（v2 多補的動畫，夜空自己的）：兩條很薄的雲帶慢慢往左飄，飄過月亮時擋住一點月光、
+  //      雲的下緣被月光鑲一道銀邊；留言那一塊雲幾乎是透明的（字不能被擋）
+  {
+    float band = exp(-pow((p.y - (uC.y - uR * 0.72)) / 60.0, 2.0)) + 0.8 * exp(-pow((p.y - (uC.y + uR * 0.86)) / 52.0, 2.0));
+    if (band > 0.01) {
+      // 大尺度、只取兩層的 fbm：雲是一大片很淡的紗，不是一團團小斑點
+      float n = fbm(vec2(p.x / 620.0 + uT * 0.03, p.y / 110.0 + 3.7), 2);
+      float cl = smoothstep(-0.1, 0.45, n) * band;
+      vec2 qt = (p - uTxt.xy) / max(uTxt.zw, vec2(1.0));
+      cl *= 1.0 - 0.9 * (1.0 - smoothstep(0.85, 1.15, length(qt))) * uTxtK;
+      float onMoon = aaFill(rpx - uR - 40.0);
+      // 雲本身：比夜空亮一點點的灰（被月光從背後照），在月亮前面是擋光的暗灰
+      vec3 cloudCol = mix(C_INK2 * 1.6, mix(C_INK2, C_ASH, 0.35), onMoon);
+      col = mix(col, cloudCol, cl * mix(0.28, 0.42, onMoon) * uIn);
+      // 銀邊：雲的下緣、靠近月亮的地方亮一點
+      float edge = smoothstep(-0.05, 0.15, n) * (1.0 - smoothstep(0.15, 0.4, n)) * band;
+      col += C_BONE * 0.04 * edge * exp(-max(rpx - uR, 0.0) / (uR * 0.6)) * illum * uIn;
+    }
+  }
   fragColor = vec4(col, 1.0);
 }`;

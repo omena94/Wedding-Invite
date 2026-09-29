@@ -8,6 +8,8 @@ import { H } from '../engine/gl';
 /** 光芒的格數、雲的圓形數（JS 端的 uniform 陣列長度要一致）。 */
 export const N_RAYS = 12;
 export const N_CIRC = 28;
+/** 第一層浪的基準高度（sunrise.ts 的紙船照同一個公式貼著它走）。 */
+export const WAVE_A = 868;
 
 export const FRAG_SUNRISE = /* glsl */ `
 uniform vec2 uSun;          // 太陽圓心
@@ -24,6 +26,8 @@ uniform vec2 uGOff[3];      // 雲的位移（滑進來、慢慢飄）
 uniform vec4 uCloudBox;     // 所有雲的外框（外面就不用算雲，省時間）
 uniform vec3 uWave;         // 三層浪的橫向位移（每拍推一下）
 uniform float uInkK;        // 太陽的墨混多少暗部（訊號色太接近紙色的主題混多一點，JS 端依色票算）
+uniform vec4 uBoat;         // 紙船：甲板中點 xy、傾斜角（正的船頭往下）、縮放（0 = 不畫）
+uniform float uGlint;       // 波光：倒影紙條左右錯動的相位（每拍推一下）
 
 // 太陽的墨：訊號色帶一點暗部，淺的主題（香檳）在紙上才有份量
 vec3 sunInk() { return mix(C_SIGNAL, C_BLOOD, uInkK); }
@@ -69,6 +73,32 @@ void clouds(vec2 q, out float d0, out float d1, out float d2) {
     else if (c.w < 1.5) d1 = min(d1, length(q - uGOff[1] - c.xy) - c.z);
     else d2 = min(d2, length(q - uGOff[2] - c.xy) - c.z);
   }
+}
+
+// 梯形（上緣半寬 r1、下緣半寬 r2、半高 he，y 向下）與三角形的距離場（照 Inigo Quilez 的公式）
+float sdTrap(vec2 p, float r1, float r2, float he) {
+  vec2 k1 = vec2(r2, he), k2 = vec2(r2 - r1, 2.0 * he);
+  p.x = abs(p.x);
+  vec2 ca = vec2(p.x - min(p.x, (p.y < 0.0) ? r1 : r2), abs(p.y) - he);
+  vec2 cb = p - k1 + k2 * clamp(dot(k1 - p, k2) / dot(k2, k2), 0.0, 1.0);
+  float s = (cb.x < 0.0 && ca.y < 0.0) ? -1.0 : 1.0;
+  return s * sqrt(min(dot(ca, ca), dot(cb, cb)));
+}
+float sdTri(vec2 p, vec2 p0, vec2 p1, vec2 p2) {
+  vec2 e0 = p1 - p0, e1 = p2 - p1, e2 = p0 - p2;
+  vec2 v0 = p - p0, v1 = p - p1, v2 = p - p2;
+  vec2 q0 = v0 - e0 * clamp(dot(v0, e0) / dot(e0, e0), 0.0, 1.0);
+  vec2 q1 = v1 - e1 * clamp(dot(v1, e1) / dot(e1, e1), 0.0, 1.0);
+  vec2 q2 = v2 - e2 * clamp(dot(v2, e2) / dot(e2, e2), 0.0, 1.0);
+  float s = sign(e0.x * e2.y - e0.y * e2.x);
+  vec2 d = min(min(vec2(dot(q0, q0), s * (v0.x * e0.y - v0.y * e0.x)), vec2(dot(q1, q1), s * (v1.x * e1.y - v1.y * e1.x))), vec2(dot(q2, q2), s * (v2.x * e2.y - v2.y * e2.x)));
+  return -sqrt(d.x) * sign(d.y);
+}
+// 紙船（船頭朝右）的三張紙：船身、主帆（桅杆後面）、前帆；q 是船的座標（原點在甲板中點，y 向下，未縮放）
+void boatD(vec2 q, out float hull, out float sail, out float jib) {
+  hull = sdTrap(q - vec2(0.0, 8.0), 46.0, 28.0, 8.0);
+  sail = sdTri(q, vec2(2.0, -66.0), vec2(2.0, -6.0), vec2(-40.0, -6.0));
+  jib = sdTri(q, vec2(9.0, -56.0), vec2(9.0, -9.0), vec2(38.0, -9.0));
 }
 
 float waveY(float x, float base, float ph, float k) {
@@ -126,16 +156,31 @@ void main() {
   const float HZ = 800.0;
   vec3 sea = mix(C_SEPIA, ink, 0.3);   // 海帶一點太陽的顏色
   col = sheetE(col, HZ - p.y, HZ - so.y, mix(C_PAPER, sea, 0.15), 0.18);
-  // 太陽在海上的倒影：幾條越來越短的紙條
+  // 太陽在海上的倒影：幾條越來越短的紙條；每拍各自往左或往右錯開一點（波光，v2）
   for (int i = 0; i < 5; i++) {
     float fi = float(i);
     float y = HZ + 17.0 + fi * (15.0 + fi * 4.5);
     float hl = (118.0 - fi * 21.0) * (uR / 172.0);
-    float d = sdSegment(p, vec2(uSun.x - hl, y), vec2(uSun.x + hl, y)) - (6.0 - fi * 0.7);
+    float sx = (6.0 + fi * 2.5) * sin(fi * 2.4 + uGlint);
+    float d = sdSegment(p, vec2(uSun.x - hl + sx, y), vec2(uSun.x + hl + sx, y)) - (6.0 - fi * 0.7);
     col = mix(col, mix(C_PAPER, ink, 0.34), aaFill(d));
   }
+  // ---- 紙船（v2）：畫在第一層浪的後面，船底被浪擋住；帆是白紙、前帆吃到一點太陽的顏色
+  if (uBoat.w > 0.0) {
+    vec2 q = rot2(uBoat.z) * (p - uBoat.xy) / uBoat.w, qs = rot2(uBoat.z) * (so - uBoat.xy) / uBoat.w;
+    if (max(abs(q.x), abs(qs.x)) < 80.0 && min(q.y, qs.y) > -90.0 && max(q.y, qs.y) < 40.0) {
+      float h0, s0, j0, h1, s1, j1;
+      boatD(q, h0, s0, j0);
+      boatD(qs, h1, s1, j1);
+      float k = uBoat.w;
+      col = sheetE(col, s0 * k, s1 * k, mix(C_PAPER, C_BONE, 0.9), 0.16);
+      col = sheetE(col, j0 * k, j1 * k, mix(C_PAPER, ink, 0.4), 0.12);
+      col = mix(col, mix(C_PAPER, C_SEPIA, 0.7), aaFill((sdSegment(q, vec2(5.0, -70.0), vec2(5.0, 0.0)) - 1.4) * k));
+      col = sheetE(col, h0 * k, h1 * k, mix(C_PAPER, sea, 0.85), 0.2);
+    }
+  }
   // 三層浪，越近越深
-  float yA = waveY(p.x, 868.0, uWave.x, 1.0), yAs = waveY(so.x, 868.0, uWave.x, 1.0);
+  float yA = waveY(p.x, ${WAVE_A}.0, uWave.x, 1.0), yAs = waveY(so.x, ${WAVE_A}.0, uWave.x, 1.0);
   col = sheetE(col, yA - p.y, yAs - so.y, mix(C_PAPER, sea, 0.26), 0.18);
   float yB = waveY(p.x, 934.0, uWave.y, 1.3), yBs = waveY(so.x, 934.0, uWave.y, 1.3);
   col = sheetE(col, yB - p.y, yBs - so.y, mix(C_PAPER, sea, 0.38), 0.2);

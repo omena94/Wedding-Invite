@@ -4,6 +4,10 @@
 // 七根都點著時整則讀得到。燭焰在 hi-hat 上被吹歪一下、大鼓時長高一點。歌詞在燭焰上方的暗處（逐字跟唱）。
 // 這是整晚唯一用 three.js 真的 3D mesh 畫的版面（candles-rig.ts）：蠟燭透光、黃銅高光、布褶都跟著燭光變。
 // 鏡頭整個窗格很慢地往前推一點點。
+// v2（2026-09-29「留言尺寸與版面比例標準 v2」）：繡在前擺上的留言照 v2 字級（40～60 px，依字數），繡字的那一塊
+// 只佔前擺左邊 ≤ 820 寬（桌布、蠟燭照樣是整個場景）；署名 26～32；燭焰上方的歌詞 40～52（不比留言大）。
+// 多補的動畫是蠟燭自己的：點著一陣子之後，每個小節有一根蠟燭的蠟淚從蠟頂慢慢流下來、在燭台上凝住；
+// 燭焰被 hi-hat 吹歪的那一下，會冒出一縷細細的煙（只往上飄一小段，不進歌詞）。
 import * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
 import { FSPass, Layer2D, W, H, SCALE, makeRT, sharedMSAA } from '../engine/gl';
@@ -14,12 +18,14 @@ import { clamp, ease, prog, hash, noise1, springStep, lerp } from '../engine/uti
 import { fitText } from '../engine/text';
 import { sparkHead, sparkParticles, lyricAt, drawLyric, layoutLyric, beatAfter, signature, drawMessage, type LyricStyle } from './_motifs';
 import { no3, INVITE_SMALL, preloadText, fitWithSig } from './_t19';
-import { makeRig, U, N, EDGE_Z, CANDLE_Z, candleX, wickTop } from './candles-rig';
+import { V2, msgMaxFor, lyricV2, sigV2, fitClauses } from './_v2';
+import { makeRig, U, N, EDGE_Z, CANDLE_Z, candleX, wickTop, waxTop, HOLDER_H } from './candles-rig';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'light', paper: false, energy: [0, 0.6], bars: [4, 12], lyricsOnly: true };
 
 /** 鏡頭：在桌子正前方略高，往下看一點點；x 偏右，蠟燭那一排落在畫面左邊三分之二（右側留給即時小卡）。 */
-const CAM = { x: 0.52, y: 0.75, z: 5.5, ty: -0.05, push: 0.045 };
+// v2：即時小卡停用了，整排蠟燭放回畫面正中（不再偏左、右邊空一大片暗牆）
+const CAM = { x: 0.0, y: 0.75, z: 5.5, ty: -0.05, push: 0.045 };
 /** 留言貼圖對應到的畫面範圍（窗格中段的鏡頭下）：前擺的上半段。 */
 const TEX = { x: 130, y: 585, w: 1200, h: 400 };
 /** 左邊的網格線：小標、歌詞、留言、註腳都對齊這裡。 */
@@ -30,7 +36,10 @@ const FOOT_Y = 975;
 const FOOTNOTE = '＊燭光為程式模擬，請勿對螢幕許願。';
 const EMPTY = '今晚的燭光，缺你一句祝福。';
 /** 歌詞比留言小一級（留言才是焦點，MV 融合原則）。 */
-const LYR: LyricStyle = { family: F.archivo(100, 700), size: 52, minSize: 48, maxWidth: 1180 };
+const LYR: LyricStyle = { family: F.archivo(100, 700), size: V2.lyrMax, minSize: V2.lyrMin, maxWidth: 1180 };
+/** 繡字那一塊的寬（v2：留言區 ≤ 860）。 */
+const MSG_W = 800;
+// （蠟淚：ease.outQuart 先快後慢）
 
 // 背景：暖暖的暗房間，燭光後面的牆上有一點點光（每根點著的蠟燭一團，很淡）
 const BG = () => new FSPass(/* glsl */ `
@@ -69,7 +78,7 @@ export default class Candles extends Scene {
   rect = new THREE.Vector4();
   avoid: [number, number, number, number][] = [];
   /** 歌詞：有留言時比留言小一級，沒有留言時歌詞就是焦點、大一點。 */
-  lyr: LyricStyle = { ...LYR, size: this.msg ? LYR.size : 62 };
+  lyr: LyricStyle = { ...LYR };
   label = '';
   private tmp = new THREE.Vector3();
 
@@ -105,8 +114,16 @@ export default class Candles extends Scene {
       const fam = F.hand(700);
       // 很短的留言（「♥♥♥」、「恭喜！」）可以更大：愛心這個字形本來就比字小一圈
       // 字級依「可用高度扣掉署名那一列」找（fitWithSig）：署名一定在最後一行下面，整塊也放得進前擺的貼圖
-      const blk = fitWithSig(c, m.text, fam, 1140, 360, { min: 48, max: Array.from(m.text).length <= 4 ? 150 : 116, lineHeight: 1.26, maxLines: 5 }, { ratio: 0.5, min: 44, max: 62 });
+      // v2：字級照字數（40～60，只有愛心可以到 72），照標點斷行；框的高度扣掉署名
+      const o = { min: V2.msgMin, max: msgMaxFor(m.text), lineHeight: 1.3, maxLines: 5 };
+      let blk = fitWithSig(c, m.text, fam, MSG_W, 360, o, { ratio: 0.6, min: V2.sigMin, max: V2.sigMax });
+      const cl = fitClauses(c, m.text, fam, MSG_W, 360 - V2.sigMax * 1.6, o);
+      if (cl && cl.size >= blk.fit.size * 0.88) {
+        const ss = sigV2(cl.size), sd = cl.size * 0.34 + ss * 1.02;
+        blk = { fit: cl, sigSize: ss, sigDy: sd, height: cl.height + sd + ss * 0.26 };
+      }
       const fit = blk.fit;
+      this.lyr = { ...LYR, size: lyricV2(fit.size) };
       const sig = signature(m.name);
       const sigSize = blk.sigSize;
       top = 18 + Math.max(0, (360 - blk.height) * 0.32);
@@ -114,7 +131,7 @@ export default class Candles extends Scene {
       drawMessage(c, fit, fam, x0, base, { color: rgba('bone') });
       c.font = font(fam, sigSize);
       const sw = c.measureText(sig).width;
-      const sx = Math.min(x0 + 1140, Math.max(x0 + fit.width, x0 + sw)) - sw;
+      const sx = Math.min(x0 + MSG_W, Math.max(x0 + fit.width, x0 + sw)) - sw;
       const sy = base + (fit.lines.length - 1) * fit.lineHeight + blk.sigDy;
       c.fillStyle = mixRgba('bone', 'ash', 0.35);
       c.fillText(sig, sx, sy);
@@ -128,12 +145,12 @@ export default class Candles extends Scene {
     } else {
       const fam = F.hand(700);
       // 沒有留言：桌布上的標語是配角（焦點是上方的歌詞），字小一級
-      const fit = fitText(c, EMPTY, fam, 1140, 150, { min: 48, max: 64, lineHeight: 1.25, maxLines: 2 });
+      const fit = fitText(c, EMPTY, fam, MSG_W, 150, { min: 40, max: 48, lineHeight: 1.25, maxLines: 2 });
       top = 60;
       const base = top + fit.size * 0.9;
       drawMessage(c, fit, fam, x0, base, { color: rgba('bone') });
       const y2 = base + (fit.lines.length - 1) * fit.lineHeight + 78;
-      c.font = font(F.hei(500), 30); c.letterSpacing = '2px'; c.fillStyle = mixRgba('bone', 'ash', 0.45);
+      c.font = font(F.hei(500), 28); c.letterSpacing = '2px'; c.fillStyle = mixRgba('bone', 'ash', 0.45);
       c.fillText(INVITE_SMALL, x0, y2);
       c.letterSpacing = '0px';
       bottom = y2 + 10;
@@ -267,6 +284,9 @@ export default class Candles extends Scene {
       c.fillText(`${this.label}已點燃 ${lit}／${N}`, LX, LABEL_Y);
       c.letterSpacing = '0px';
     }
+    // 蠟淚、燭煙（畫在蠟燭上面：投影到畫面）
+    this.drawDrips(c, t);
+    this.drawSmoke(c, t, hats);
     c.font = font(F.mono(500), 15); c.letterSpacing = '2px'; c.fillStyle = rgba('ash', 0.36 * prog(t, this.tl[N - 1]!, this.tl[N - 1]! + 0.8));
     c.fillText(FOOTNOTE, LX, FOOT_Y);
     c.letterSpacing = '0px';
@@ -284,6 +304,64 @@ export default class Candles extends Scene {
     if (this.glow.count) this.glow.render(renderer, out);
 
     return { bloom: 0.85, bloomRadius: 0.8, halation: 0.3, vignette: 0.5, grain: 0.05, popupAvoid: this.avoid };
+  }
+
+  /**
+   * 蠟淚：整排點著之後，每個小節線有一根蠟燭（種子挑）的蠟從蠟頂流下來——一顆圓圓的蠟珠拖著一條越來越長的蠟痕，
+   * 先快後慢（蠟冷了就凝住），流到燭台杯口停住；流過的痕跡留著。蠟被燭光照著：亮面紙白、暗面偏燭光色。
+   */
+  private drawDrips(c: CanvasRenderingContext2D, t: number) {
+    const au = this.ctx.audio, last = this.tl[N - 1]!;
+    const b0 = Math.ceil(au.barAt(last + 0.3) - 1e-6);
+    const b1 = Math.floor(au.barAt(t) + 1e-4);
+    // 每兩小節一滴（太多會變成一條條白線），流一小段就凝住（蠟冷得很快）
+    for (let b = b0; b <= b1; b++) {
+      if (((b % 2) + 2) % 2) continue;
+      const tb = au.timeOfBar(b);
+      if (tb > t) break;
+      const k = Math.floor(hash(this.seed, b, 3) * N), side = hash(this.seed, b, 4) < 0.5 ? -1 : 1;
+      const u = ease.outQuart(clamp((t - tb) / 2.4));
+      const len = (waxTop(k) - HOLDER_H) * (0.12 + 0.16 * hash(this.seed, b, 5));
+      const x = candleX(k) + side * 0.016, yTop = waxTop(k) - 0.006, yEnd = yTop - len;
+      const y = lerp(yTop, yEnd, u);
+      const a = this.toScreen({ x, y: yTop, z: CANDLE_Z + 0.02 }), p = this.toScreen({ x, y, z: CANDLE_Z + 0.02 });
+      const w = Math.max(3, (this.toScreen({ x: x + 0.012, y, z: CANDLE_Z }).x - p.x));
+      const g = c.createLinearGradient(p.x - w, 0, p.x + w, 0);
+      g.addColorStop(0, mixRgba('bone', 'signal', 0.35, 0.6)); g.addColorStop(0.5, rgba('bone', 0.72)); g.addColorStop(1, mixRgba('bone', 'blood', 0.4, 0.55));
+      c.fillStyle = g;
+      // 蠟痕（上細下粗）＋底下的蠟珠
+      c.beginPath();
+      c.moveTo(a.x - w * 0.35, a.y); c.lineTo(a.x + w * 0.35, a.y);
+      c.lineTo(p.x + w * 0.55, p.y - w); c.lineTo(p.x - w * 0.55, p.y - w);
+      c.closePath(); c.fill();
+      c.beginPath(); c.ellipse(p.x, p.y - w * 0.4, w * 0.75, w * 1.05, 0, 0, Math.PI * 2); c.fill();
+    }
+  }
+
+  /**
+   * 燭煙：hi-hat 把燭焰吹歪的那一下，火焰上方冒一縷細細的灰煙，往上飄、左右捲、很快散掉（只飄 60～90 px，不進歌詞）。
+   */
+  private drawSmoke(c: CanvasRenderingContext2D, t: number, hats: [number, number][]) {
+    c.save();
+    c.lineCap = 'round';
+    for (const [et, st] of hats) {
+      const age = t - et;
+      if (age < 0 || age > 1.1 || st < 0.35) continue;
+      const k = Math.floor(hash(Math.round(et * 1000), 13) * N);
+      if (t < this.tl[k]! + 0.3) continue;
+      const base = this.toScreen({ x: candleX(k), y: wickTop(k) + 0.07, z: CANDLE_Z });
+      const rise = 55 * ease.outCubic(age / 1.1), fade = (1 - age / 1.1) * st;
+      c.strokeStyle = rgba('ash', 0.28 * fade);
+      c.lineWidth = 2 + 4 * age;
+      c.beginPath();
+      for (let i = 0; i <= 10; i++) {
+        const v = i / 10, y = base.y - rise * v;
+        const x = base.x + Math.sin(v * 5 + age * 6 + k) * (3 + 10 * v) * (0.4 + age);
+        if (i) c.lineTo(x, y); else c.moveTo(x, y);
+      }
+      c.stroke();
+    }
+    c.restore();
   }
 
   override dispose() {

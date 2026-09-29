@@ -8,6 +8,9 @@
 //  - 一格只有一個焦點（MV 融合原則）：留言最大最亮、歌詞小一級、標籤與註腳只剩兩小行低對比的 mono；鏡頭整個窗格慢慢往火推近。
 //  - 冷面註記：「＊本營火為程式模擬，會場內請勿生火。」
 //  - 沒有主打留言：火星組成「今晚的營火，缺你一句祝福。」＋邀請；純音樂：圓木上刻歌名。
+// v2（2026-09-29「留言尺寸與版面比例標準 v2」）：火星組成的留言照 v2 字級（40～60 px，依字數）、左邊一塊 ≤ 820×430，
+// 署名 26～32；圓木上的歌詞 40～52（不比留言大）。營火才是畫面的主體，多補的動畫都是營火自己的：
+// 火上方的熱氣讓後面的樹影與星星扭動（熱浪）；每兩小節柴「啪」地爆一下，一把大火星往兩側拋出去、畫弧落下。
 import * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
 import { FSPass, Layer2D, W, H } from '../engine/gl';
@@ -19,15 +22,16 @@ import { fitText, type FitResult } from '../engine/text';
 import { Lyrics, type Line } from '../engine/lyrics';
 import { lyricAt, drawLyric, layoutLyric, beatAfter, signature, type LyricStyle, type LyricLayout } from './_motifs';
 import { no3, INVITE_SMALL, preloadText, fitWithSig } from './_t19';
+import { V2, msgMaxFor, lyricV2, sigV2, fitClauses } from './_v2';
 import { FRAG_CAMPFIRE, FIRE, BENCH, TONGUES } from './campfire-glsl';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'light', paper: false, energy: [0.3, 0.95], bars: [4, 8] };
 
 /** 留言：左邊的半空（火在右邊），整個畫面最大最亮的東西。 */
-const BOX = { x: 150, y: 206, w: 860, h: 540 };
+const BOX = { x: 150, y: 250, w: 820, h: 430 };
 /** 歌詞刻在圓木剖面上：比留言小一級（留言才是焦點），左邊留一點木頭。 */
 const LYR = { x: 168, base: 938, maxW: 1080 };
-const LYR_STYLE: LyricStyle = { family: F.archivo(75, 700), size: 52, minSize: 48, maxWidth: LYR.maxW, align: 'left', lineHeight: 1.12 };
+const LYR_STYLE: LyricStyle = { family: F.archivo(75, 700), size: V2.lyrMax, minSize: V2.lyrMin, maxWidth: LYR.maxW, align: 'left', lineHeight: 1.12 };
 /** 手寫體用粗的那一款：遠處的桌子也要一眼讀得到。 */
 const MSG_FAM = F.hand(700);
 const NOTE = '＊本營火為程式模擬，會場內請勿生火。';
@@ -71,7 +75,7 @@ export default class Campfire extends Scene {
   b0 = 0;
   avoid: [number, number, number, number][] = [];
   /** 刻在圓木上的歌詞：有留言時比留言小一級，沒有留言時歌詞就是焦點、大一點。 */
-  lyrStyle: LyricStyle = { ...LYR_STYLE, size: this.msg ? 52 : 62 };
+  lyrStyle: LyricStyle = { ...LYR_STYLE };
 
   override async init() {
     const { audio: au, song } = this.ctx;
@@ -85,12 +89,23 @@ export default class Campfire extends Scene {
 
     // ---- 留言排版：字級依「框高扣掉署名那一列」找，署名一定在最後一行下面（fitWithSig）
     const c = this.layer.ctx;
-    const blk = m ? fitWithSig(c, text, MSG_FAM, BOX.w, BOX.h, { min: 48, max: 124, lineHeight: 1.3, maxLines: 6 }, { ratio: 0.52, min: 44, max: 64 }) : null;
+    let blk = m ? fitWithSig(c, text, MSG_FAM, BOX.w, BOX.h, { min: V2.msgMin, max: msgMaxFor(text), lineHeight: 1.32, maxLines: 5 }, { ratio: 0.6, min: V2.sigMin, max: V2.sigMax }) : null;
+    // 照標點斷行（「…現在，終於／等到…」很難讀）：字級只小一點點就用它
+    if (m && blk) {
+      const ss = V2.sigMax, cl = fitClauses(c, text, MSG_FAM, BOX.w, BOX.h - ss * 1.6, { min: V2.msgMin, max: msgMaxFor(text), lineHeight: 1.32, maxLines: 5 });
+      if (cl && cl.size >= blk.fit.size * 0.88) {
+        const sigSize = sigV2(cl.size), sigDy = cl.size * 0.34 + sigSize * 1.02;
+        blk = { fit: cl, sigSize, sigDy, height: cl.height + sigDy + sigSize * 0.26 };
+      }
+    }
     const fit: FitResult = blk
       ? blk.fit
-      : fixedLines(c, NO_MSG, MSG_FAM, BOX.w, 64, 1.3); // 沒有留言：標語是配角，焦點是圓木上的歌詞
+      : fixedLines(c, NO_MSG, MSG_FAM, BOX.w, 48, 1.3); // 沒有留言：標語是配角，焦點是圓木上的歌詞
     this.size = fit.size;
-    const top = BOX.y + fit.size;
+    this.lyrStyle = { ...LYR_STYLE, size: lyricV2(m ? fit.size : null) };
+    // 整塊（含署名）在框裡上下置中
+    const blockH = blk ? blk.height : fit.height + 60;
+    const top = BOX.y + Math.max(0, (BOX.h - blockH) / 2) + fit.size;
     const glyphs: { ch: string; x: number; y: number; w: number }[] = [];
     fit.lines.forEach((ln, i) => {
       const lay = layout(ln, MSG_FAM, fit.size);
@@ -178,13 +193,14 @@ export default class Campfire extends Scene {
     const fade = inK * (1 - prog(t, e - 0.22, e));
     c.globalAlpha = hc.globalAlpha = fade;
 
-    // ---- 一般的火星（一直有一點，小鼓一大把）
+    // ---- 一般的火星（一直有一點，小鼓一大把）；每兩小節柴爆一下
     this.embers(t, lvl);
+    this.pops(t, lvl);
 
     // ---- mono 註記：只剩兩小行、低對比（配角）
     c.font = font(F.mono(500), 16); c.letterSpacing = '3px'; c.fillStyle = rgba('ash', 0.5);
     c.textBaseline = 'alphabetic';
-    c.fillText(this.label, BOX.x, 124);
+    c.fillText(this.label, BOX.x, 150);
     c.fillStyle = rgba('ash', 0.36);
     c.fillText(NOTE, BOX.x, 810);
     c.letterSpacing = '0px';
@@ -265,6 +281,33 @@ export default class Campfire extends Scene {
     for (const [te, st] of ev) {
       const cnt = Math.round(10 + 22 * st);
       for (let j = 0; j < cnt; j++) draw(j + Math.round(te * 1000) * 64, te + j * 0.004, 1, 1);
+    }
+  }
+
+  /**
+   * 柴「啪」地爆一下（v2 多補的小事件）：每兩小節的小節線，一把又大又亮的火星從柴堆往兩側拋出去，
+   * 受重力畫弧落下、冷掉——跟一直往上飄的火星不一樣，看得出是一個事件。
+   */
+  private pops(t: number, lvl: number) {
+    const au = this.ctx.audio, lb = this.glow, s = LIN.signal, em = LIN.ember;
+    const b = Math.floor(au.barAt(t) + 1e-4);
+    for (const bb of [b, b - 1]) {
+      if (((bb % 2) + 2) % 2 !== 0) continue;
+      const tb = au.timeOfBar(bb);
+      if (tb < this.t0 || t - tb > 1.4) continue;
+      const age = t - tb;
+      for (let j = 0; j < 18; j++) {
+        const h = (k: number) => hash(bb, j, k + 31);
+        const side = j % 2 ? 1 : -1;
+        const vx = side * (160 + 260 * h(1)), vy = -(260 + 320 * h(2)) * (0.8 + 0.3 * Math.min(1.2, lvl));
+        const life = 0.8 + 0.6 * h(3);
+        if (age > life) continue;
+        const x0 = FIRE.x + side * (20 + 40 * h(4)), y0 = FIRE.y - 40 - 30 * h(5);
+        const pos = (a: number) => ({ x: x0 + vx * a, y: y0 + vy * a + 620 * a * a });
+        const q = pos(age), q0 = pos(Math.max(0, age - 0.035));
+        const k = 1 - age / life, I = (1.2 + 2.6 * k * k);
+        lb.seg2(q0.x, q0.y, q.x, q.y, 1.6 + 1.4 * k, [lerp(s[0], em[0], k) * I, lerp(s[1], em[1], k) * I, lerp(s[2], em[2], k) * I], Math.min(1, k * 1.5));
+      }
     }
   }
 

@@ -7,6 +7,10 @@
 //  - 冷面註記：「觀測地點：婚宴會場 · 天氣：晴」「＊本月相僅供參考，今晚一律以滿月計。」
 //  - 沒有主打留言：滿月上寫「今晚月色真美。」（有名的告白梗）＋新人名字與日期、邀請掃 QR；長窗格時月相改成一小節前進一相。
 //  - 純音樂：軌道上寫歌名。
+// v2（2026-09-29「留言尺寸與版面比例標準 v2」）：月亮照樣是大大的場景（留言寫在月面上，是場景物件），
+// 只把月面上的留言縮到 v2 字級（40～60 px，依字數）、署名 26～32，軌道上的歌詞 40～52（不比留言大）。
+// 多補的動畫是夜空自己的：兩條薄雲帶慢慢往左飄過月亮（擋一點光、下緣鑲銀邊，留言那一塊雲是透明的）；
+// 每四小節一對喜鵲從月亮前面飛過去（鵲橋），翅膀一拍一拍。
 import * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
 import { FSPass, Layer2D, W, H } from '../engine/gl';
@@ -18,6 +22,7 @@ import { fitText, charCount } from '../engine/text';
 import type { Line } from '../engine/lyrics';
 import { sparkHead, sparkParticles, lyricAt, beatAfter, signature, drawHeart, COUPLE_ZH, DATE_DOTS } from './_motifs';
 import { glyphStates, glyphColor, alongPath, no3, INVITE_SMALL, preloadText, fitWithSig, type PathGlyph } from './_t19';
+import { V2 as STD, msgMaxFor, lyricV2, sigV2, fitClauses } from './_v2';
 import { FRAG_MOON } from './moon-glsl';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'light', paper: false, energy: [0, 0.7], bars: [4, 8] };
@@ -117,6 +122,8 @@ export default class Moon extends Scene {
   titleArc: ArcLyric | null = null;
   avoid: [number, number, number, number][] = [];
   baseSig = '';
+  /** 月面上留言的字級（算軌道上歌詞的字級用）；沒有留言是 null。 */
+  msgSize: number | null = null;
 
   override async init() {
     const { audio: au, song, lyrics } = this.ctx;
@@ -147,18 +154,24 @@ export default class Moon extends Scene {
     if (m) {
       // 字越多月亮越大：60 字時月面要能排 44～48 px
       // （MV 檢修：留言是焦點，要明顯比軌道上的歌詞大，所以月亮可以再大一點、框再高一點）
-      this.R = clamp(310 + (charCount(m.text) - 8) * 2, 310, 372);
+      // v2：月亮是場景（大小固定），字照 v2 字級排在月面中間
+      this.R = 340;
       const R = this.R;
       // 框：月面內接的扁長方形（寬 1.46R 時上下緣還在月面內），下面留一列給署名
       const bw = R * 1.46, bh = R * 1.16 - 40;
       // 字級依「框高扣掉署名那一列」找（fitWithSig）：署名一定在最後一行下面、不重疊
-      const sigO = { ratio: 0.46, min: 38, max: 52 };
-      let blk = fitWithSig(c, m.text, MSG_FAM, bw, bh + 40, { min: 46, max: 110, lineHeight: 1.28, maxLines: 7 }, sigO);
-      // 短短一句（「新婚快樂！！！」）不要被折成兩行：一行穿過月面正中間（那裡最寬），夠大就用一行
+      const sigO = { ratio: 0.6, min: STD.sigMin, max: STD.sigMax };
+      const o = { min: STD.msgMin, max: msgMaxFor(m.text), lineHeight: 1.3, maxLines: 7 };
+      let blk = fitWithSig(c, m.text, MSG_FAM, bw, bh + 40, o, sigO);
+      // 照標點斷行（字級只小一點點也值得）
+      const cl = fitClauses(c, m.text, MSG_FAM, bw, bh + 40 - STD.sigMax * 1.6, o);
+      if (cl && cl.size >= blk.fit.size * 0.88) { const ss = sigV2(cl.size), sd = cl.size * 0.34 + ss * 1.02; blk = { fit: cl, sigSize: ss, sigDy: sd, height: cl.height + sd + ss * 0.26 }; }
+      // 短短一句（「新婚快樂！！！」）不要被折成兩行：一行穿過月面正中間（那裡最寬）
       if (charCount(m.text) <= 12) {
-        const one = fitWithSig(c, m.text, MSG_FAM, R * 1.7, bh + 40, { min: 44, max: 120, lineHeight: 1.3, maxLines: 1 }, sigO);
-        if (one.fit.lines.length === 1 && one.fit.size >= 58) blk = one;
+        const one = fitWithSig(c, m.text, MSG_FAM, R * 1.7, bh + 40, { ...o, maxLines: 1 }, sigO);
+        if (one.fit.lines.length === 1 && one.fit.size >= blk.fit.size * 0.95) blk = one;
       }
+      this.msgSize = blk.fit.size;
       const fit = blk.fit, ss = blk.sigSize;
       const top = C.y - R * 0.03 - blk.height / 2 + fit.size;
       let order = 0;
@@ -185,7 +198,7 @@ export default class Moon extends Scene {
       this.R = 320;
       const R = this.R;
       // 沒有留言時焦點是軌道上的歌詞：月面上的字小一級
-      const big = Math.min(66, Math.floor((R * 1.42) / Array.from(EMPTY).length));
+      const big = Math.min(STD.lyrMax, Math.floor((R * 1.42) / Array.from(EMPTY).length));
       const nameSize = 40, dateSize = 20, invSize = 22;
       const yBig = C.y - R * 0.12, yName = yBig + big * 1.05, yDate = yName + 46, yInv = C.y + R * 0.66;
       const put = (text: string, fam: string, size: number, y: number, a: number, order: number, spacing = 0) => {
@@ -274,6 +287,8 @@ export default class Moon extends Scene {
 
     // ---- 月面上的字：滿月的那一拍起逐字顯影；退場時被明暗交界吃掉（顯影完、退場前在不會變的那一層）
     if (t >= this.tDev && !still) this.drawGlyphs(c, t, phi);
+    // ---- 喜鵲：每四小節一對從月亮上緣前面飛過去
+    this.drawMagpies(c, t, inK);
 
     // ---- 軌道虛線：拍點上往前流一格
     const beat = au.beatAt(t);
@@ -295,6 +310,56 @@ export default class Moon extends Scene {
     // 鏡頭：整個窗格很慢地推近（inOutSine）
     const push = 1 + 0.03 * (0.5 - 0.5 * Math.cos(Math.PI * f.p));
     return { bloom: 0.7, vignette: 0.55, zoom: push, popupAvoid: this.avoid };
+  }
+
+  /**
+   * 喜鵲（v2 多補的小事件，鵲橋的暗示）：每四小節的小節線起，一對喜鵲從右往左飛過月亮的上緣（在留言上面，不擋字），
+   * 飛一小節多一點。剪影（墨色，落在亮的月面上最清楚）；翅膀「往下拍」落在每一拍上（次要動作跟著節拍），
+   * 兩隻一前一後、高低錯開、拍翅差半拍。
+   */
+  private drawMagpies(c: CanvasRenderingContext2D, t: number, k: number) {
+    const au = this.ctx.audio, s = this.ctx.start;
+    const b = Math.floor(au.barAt(t) + 1e-4);
+    const b0 = b - (((b % 4) + 4) % 4) + 1;
+    const t0 = au.timeOfBar(b0), t1 = au.timeOfBar(b0 + 1) + (au.timeOfBar(b0 + 1) - t0) * 0.4;
+    if (t < t0 || t > t1 || t0 < s + 0.5) return;
+    const u = (t - t0) / (t1 - t0);
+    // 飛行高度：月面上緣附近，而且一定在留言那一塊的上面（長留言的第一行比較高時跟著往上）
+    const yFly = Math.min(C.y - this.R * 0.78, this.box.y - 44);
+    c.save();
+    c.globalAlpha *= k * Math.min(1, u * 8, (1 - u) * 8);
+    c.fillStyle = rgba('ink2', 0.95);
+    for (const [dx, dy, ph] of [[0, 0, 0], [78, 30, 0.5]] as const) {
+      const x = lerp(C.x + this.R * 1.25, C.x - this.R * 1.35, u) + dx;
+      const y = yFly + dy - 24 * Math.sin(u * Math.PI);
+      // 拍翅：拍點上翅膀在最高處，前 35% 拍用力往下拍、剩下的時間慢慢收回去
+      const bp = au.beatAt(t) + ph, fr = bp - Math.floor(bp);
+      const flap = fr < 0.35 ? lerp(1, -0.75, ease.inOutCubic(fr / 0.35)) : lerp(-0.75, 1, ease.inOutQuad((fr - 0.35) / 0.65));
+      this.magpie(c, x, y, 22, flap);
+    }
+    c.restore();
+  }
+
+  /** 一隻往左飛的喜鵲剪影：圓頭短喙、紡錘形身體、長長的楔形尾巴，翅膀是一片會上下拍的弧形（flap 1 最高、-1 最低）。 */
+  private magpie(c: CanvasRenderingContext2D, x: number, y: number, s: number, flap: number) {
+    // 身體＋頭
+    c.beginPath(); c.ellipse(x, y, s * 0.85, s * 0.3, -0.06, 0, TAU); c.fill();
+    c.beginPath(); c.arc(x - s * 0.88, y - s * 0.1, s * 0.25, 0, TAU); c.fill();
+    c.beginPath(); c.moveTo(x - s * 1.08, y - s * 0.16); c.lineTo(x - s * 1.42, y - s * 0.04); c.lineTo(x - s * 1.08, y + s * 0.02); c.fill();
+    // 長尾巴：往後、稍微往下，尾端比根部寬一點（喜鵲的尾巴跟身體差不多長）
+    c.beginPath();
+    c.moveTo(x + s * 0.6, y - s * 0.1); c.lineTo(x + s * 2.25, y + s * 0.12);
+    c.lineTo(x + s * 2.2, y + s * 0.36); c.lineTo(x + s * 0.6, y + s * 0.14);
+    c.fill();
+    // 翅膀：肩在身體前半，翼尖往後上（或後下）掃；翅膀水平時從側面看只剩一條薄片
+    const tipY = y - s * 1.45 * flap, tipX = x + s * (0.55 + 0.25 * (1 - Math.abs(flap)));
+    const midY = y - s * 0.8 * flap;
+    c.beginPath();
+    c.moveTo(x - s * 0.35, y - s * 0.08);
+    c.quadraticCurveTo(x - s * 0.2, midY - s * 0.12, tipX - s * 0.15, tipY);
+    c.lineTo(tipX + s * 0.08, tipY + s * 0.1 * Math.sign(flap || 1));
+    c.quadraticCurveTo(x + s * 0.45, midY + s * 0.2 * Math.sign(flap || 1), x + s * 0.3, y + s * 0.02);
+    c.closePath(); c.fill();
   }
 
   /** 月面上的字（逐字顯影；lit 跟 shader 同一個公式，只在退場時有差）。 */
@@ -356,7 +421,7 @@ export default class Moon extends Scene {
   private arcFor(c: CanvasRenderingContext2D, line: Line): ArcLyric {
     let a = this.arcCache.get(line.i);
     // 歌詞：有留言時比留言小一級，沒有留言時歌詞就是焦點、大一點
-    if (!a) { a = this.arcLayout(c, line.text, line, this.msg ? 52 : 62); this.arcCache.set(line.i, a); }
+    if (!a) { a = this.arcLayout(c, line.text, line, lyricV2(this.msgSize)); this.arcCache.set(line.i, a); }
     return a;
   }
 
@@ -370,7 +435,7 @@ export default class Moon extends Scene {
     const r1 = room(-18);
     let size = size0;
     const full = width(text, size);
-    if (full > r1.hi - r1.lo) size = Math.max(48, (size * (r1.hi - r1.lo)) / full);
+    if (full > r1.hi - r1.lo) size = Math.max(STD.lyrMin, (size * (r1.hi - r1.lo)) / full);
     const place = (s: string, off: number, from: number) => {
       const r = off < 0 ? r1 : room(off);
       const w = width(s, size);
