@@ -17,6 +17,7 @@ import { clamp } from '../engine/util';
 import { Lyrics, type Line } from '../engine/lyrics';
 import { GLSL_COMMON, THEME_UNIFORMS } from '../engine/glsl/common';
 import { signature, COUPLE_ZH, DATE_DOTS, fillWithHearts, heartPoints, type LyricStyle } from './_motifs';
+import { V2, msgMaxFor, sigV2, fitClauses } from './_v2';
 
 export type Rect = [number, number, number, number];
 export type P2 = { x: number; y: number };
@@ -133,6 +134,34 @@ export function layMsg(c: CanvasRenderingContext2D, text: string, sigText: strin
   let sig = sMax, fit = fitAt(sig);
   sig = clamp(Math.round(fit.size * 0.42), sMin, sMax);
   fit = fitAt(sig);
+  return placeMsg(c, fit, family, sigText, sig, sigFamily, box, o.align ?? 'center', o.valign);
+}
+
+/**
+ * 留言尺寸標準 v2（docs/wall/TREATMENT.md、_v2.ts）的留言排版：字級上限照字數（msgMaxFor），下限 40；
+ * 署名 26～32；先照子句斷行（fitClauses，不要斷出「這一天，要／一直」），放不下才交給 fitText。
+ * k：畫布（或貼圖）上 1 個螢幕 px 是幾個 px——字寫在會縮放的物件上（3D 布幕、有鏡頭推近的平面）時用來換算，
+ * 回傳的 screen 是留言在螢幕上的字級（給 lyricV2 算歌詞字級）。
+ * max：螢幕 px 的字級上限（預設照字數 msgMaxFor）；拿來排「當焦點的歌詞」時傳 V2.lyrMax。
+ */
+export function layMsgV2(c: CanvasRenderingContext2D, text: string, sigText: string, family: string, box: { x: number; y: number; w: number; h: number },
+  o: { k?: number; max?: number; lineHeight?: number; maxLines?: number; sigFamily?: string; align?: 'left' | 'center'; valign?: 'top' | 'middle' } = {}): MsgLay & { screen: number } {
+  const k = o.k ?? 1, lh = o.lineHeight ?? 1.3, maxLines = o.maxLines ?? 5;
+  const sigFamily = o.sigFamily ?? family;
+  const opt = { min: V2.msgMin * k, max: (o.max ?? msgMaxFor(text)) * k, lineHeight: lh, maxLines };
+  const fitAt = (sigPx: number) => {
+    const room = box.h - (sigText ? sigPx * 1.9 : 0);
+    return fitClauses(c, text, family, box.w, room, opt) ?? fitText(c, text, family, box.w, room, opt);
+  };
+  let sig = sigText ? sigV2(opt.max / k) * k : 0;
+  let fit = fitAt(sig);
+  sig = sigText ? sigV2(fit.size / k) * k : 0;
+  fit = fitAt(sig);
+  return { ...placeMsg(c, fit, family, sigText, sig, sigFamily, box, o.align ?? 'left', o.valign), screen: fit.size / k };
+}
+
+/** 把找好字級與斷行的留言放進框裡（署名在最後一行下面、靠右對齊最長那一行），算出每個字的位置。 */
+function placeMsg(c: CanvasRenderingContext2D, fit: FitResult, family: string, sigText: string, sig: number, sigFamily: string, box: { x: number; y: number; w: number; h: number }, align: 'left' | 'center', valign?: 'top' | 'middle'): MsgLay {
   c.font = font(family, fit.size);
   const widths = fit.lines.map((l) => c.measureText(l).width);
   const maxW = Math.max(...widths);
@@ -140,10 +169,9 @@ export function layMsg(c: CanvasRenderingContext2D, text: string, sigText: strin
   const sigW = sigText ? c.measureText(sigText).width : 0;
   const gap = sigText ? Math.max(fit.lineHeight * 0.72, sig * 1.6) : 0;
   const blockH = fit.size + (fit.lines.length - 1) * fit.lineHeight + gap + (sigText ? sig * 0.25 : 0);
-  const top = box.y + (o.valign === 'top' ? 0 : Math.max(0, (box.h - blockH) / 2));
+  const top = box.y + (valign === 'top' ? 0 : Math.max(0, (box.h - blockH) / 2));
   const base0 = top + fit.size * 0.88;
   const cx = box.x + box.w / 2;
-  const align = o.align ?? 'center';
   const lines = fit.lines.map((ln, i) => ({ text: ln, x: align === 'center' ? cx - widths[i]! / 2 : box.x, y: base0 + i * fit.lineHeight, w: widths[i]! }));
   const right = align === 'center' ? cx + maxW / 2 : box.x + maxW;
   const sigY = lines[lines.length - 1]!.y + gap;

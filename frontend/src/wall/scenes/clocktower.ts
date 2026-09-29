@@ -15,8 +15,9 @@ import { F, font, loadText } from '../engine/type';
 import { clamp, ease, prog, hash, lerp, pulse } from '../engine/util';
 import { type Line } from '../engine/lyrics';
 import { lyricAt, COUPLE_ZH, DATE_DOTS } from './_motifs';
+import { V2, lyricV2 } from './_v2';
 import {
-  T25_TEXT, T25_INVITE, sigOf, winBars, winBeats, stagger, layMsg, msgGlyphs, glyphMask, glyphStates, MASK_GLSL,
+  T25_TEXT, T25_INVITE, sigOf, winBars, winBeats, stagger, layMsg, layMsgV2, msgGlyphs, glyphMask, glyphStates, MASK_GLSL,
   type MaskGlyph, type GlyphMask, type MsgLay, type Rect,
 } from './_t25';
 
@@ -24,23 +25,28 @@ export const spec: PlateSpecDecl = { group: 'type', family: 'journey', paper: fa
 
 // ---------------------------------------------------------------- 幾何（世界座標＝鏡頭休息時的畫面座標，y 向下）
 /** 鐘面中心、外框（拱石內緣）、鐘面、字的那一圈（字的中心）、刻度圈。 */
-const CLK = { x: 720, y: 288 };
-const R_STONE = 272, R_BEZ = 224, R_DIAL = 202, R_RING = 152, R_TICK = 188;
+const CLK = { x: 980, y: 326 };
+const R_STONE = 290, R_BEZ = 244, R_DIAL = 222, R_RING = 168, R_TICK = 206;
 /** 指針長度：比字的那一圈短，跳到哪裡都不會蓋住歌詞。 */
-const L_MIN = 116, L_HR = 80;
+const L_MIN = 128, L_HR = 88;
 /** 塔身左右緣（外面是夜空）、腰線（石頭的橫帶）。 */
-const TOWER = { x0: 96, x1: 1500 };
-const BAND = { y0: 572, y1: 598 };
-/** 銅牌（外框）與字的範圍（扣掉邊框）；最下面離畫面底 ≥ 96、右邊不進 QR 區。 */
-const PLQ = { x: 226, y: 620, w: 1100, h: 384 };
-const HEAD_Y = 664;
-const MSG_BOX = { x: 290, y: 682, w: 972, h: 286 };
+const TOWER = { x0: 150, x1: 1610 };
+const BAND = { y0: 634, y1: 660 };
+/**
+ * 銅牌（外框）與字的範圍（扣掉邊框）。留言標準 v2：銅牌 820×300（≤ 860×430），掛在塔身左下，
+ * 鐘面與塔身是主視覺；最下面離畫面底 ≥ 96、右邊不進 QR 區。
+ */
+const PLQ = { x: 170, y: 690, w: 820, h: 300 };
+const HEAD_Y = 726;
+const MSG_BOX = { x: 214, y: 744, w: 732, h: 214 };
+/** 塔身右下一扇拱窗（裡面點著燈），給空出來的牆一點生氣；不放到右下角 QR 底下。 */
+const WINDOW = { x: 1150, y: 706, w: 96, h: 200 };
 /** 鐘面一圈的字的資料貼圖範圍（1.25 倍解析度，鏡頭推近也清楚）。 */
 const RING_RECT: Rect = [CLK.x - R_DIAL, CLK.y - R_DIAL, R_DIAL * 2, R_DIAL * 2];
 const RING_SCALE = 1.25;
 const PLQ_RECT: Rect = [PLQ.x, PLQ.y, PLQ.w, PLQ.h];
 /** 月亮（塔身外面、右上）。 */
-const MOON = { x: 1712, y: 214, r: 44 };
+const MOON = { x: 1780, y: 206, r: 40 };
 const MAXG = 64;
 const FAM_LYR = F.archivo(75, 700);
 const FAM_MSG = F.ming(900);
@@ -55,6 +61,7 @@ const BG = () => new FSPass(/* glsl */ `
   uniform float angM, angH;            // 分針、時針（弧度，順時針，從 12 點起）
   uniform vec3 bells;                  // 最近三次鐘響過了幾秒（沒有是 99）
   uniform float lamp;                  // 銅牌的燈 0..1
+  uniform float sweep;                 // 街上開過去的車燈掃過塔身（0..1；沒有是 -1）
   uniform sampler2D ring; uniform float ringOn; uniform float ringA; uniform vec2 gs[${MAXG}];
   uniform sampler2D nums; uniform float numA;
   uniform sampler2D plq; uniform float shown; uniform float plqOn;
@@ -138,6 +145,33 @@ const BG = () => new FSPass(/* glsl */ `
       s += (C_SIGNAL * 0.05 + C_BONE * 0.018) * pool * lamp;
       // 鐘面透出來的光：拱石附近暖一點
       s += C_SIGNAL * 0.012 * exp(-max(0.0, length(p - C) - ${R_STONE}.0) / 120.0);
+      // 拱窗：窗框是深色的石頭，裡面一盞暖燈（燭光一樣慢慢晃），十字的窗櫺
+      vec2 wq = p - vec2(${WINDOW.x + WINDOW.w / 2}.0, ${WINDOW.y + WINDOW.h}.0);
+      float wr = ${WINDOW.w / 2}.0;
+      // 拱形：下面是長方形、上面半圓；窗框是同樣的形狀大一圈
+      float archY = -${WINDOW.h}.0 + wr;
+      float inW = wq.y > archY ? step(abs(wq.x), wr) * step(wq.y, 0.0) : step(length(wq - vec2(0.0, archY)), wr);
+      float frameW = wq.y > archY ? step(abs(wq.x), wr + 12.0) * step(wq.y, 10.0) : step(length(wq - vec2(0.0, archY)), wr + 12.0);
+      if (frameW > 0.5) s = C_INK * 0.8 + C_INK2 * 0.3;
+      if (inW > 0.5) {
+        float fl = 0.85 + 0.1 * sin(t * 7.3) + 0.05 * sin(t * 13.1 + 1.0);
+        // 燈在窗子裡面偏下（看不到燈本身，只看到牆被照亮的一團），窗洞四周的石頭厚度擋掉一圈光：不要一整片平平的色塊
+        vec2 lq = (wq - vec2(-10.0, -${Math.round(WINDOW.h * 0.35)}.0)) / vec2(70.0, 110.0);
+        float glow = 0.35 + 0.75 * exp(-dot(lq, lq));
+        float edge = wq.y > archY ? min(wr - abs(wq.x), -wq.y) : wr - length(wq - vec2(0.0, archY));
+        float recess = smoothstep(0.0, 14.0, edge);
+        vec3 wc = (C_SIGNAL * 0.2 + C_EMBER * 0.06) * fl * glow * (0.45 + 0.55 * recess);
+        float bars = max(1.0 - smoothstep(2.0, 3.5, abs(wq.x)), 1.0 - smoothstep(2.0, 3.5, abs(wq.y + ${Math.round(WINDOW.h * 0.55)}.0)));
+        s = mix(wc, C_INK * 0.5, bars);
+      }
+      // 窗子的光灑在旁邊的牆上
+      s += C_SIGNAL * 0.02 * exp(-length(wq + vec2(0.0, ${WINDOW.h / 2}.0)) / 120.0) * (1.0 - inW);
+      // 街上的車燈：一道很寬的暖白光從左掃到右（只照到塔身下半）
+      if (sweep >= 0.0) {
+        float sx = mix(-400.0, 2300.0, sweep);
+        float band = exp(-pow((p.x - sx + (p.y - 1080.0) * 0.35) / 220.0, 2.0)) * smoothstep(560.0, 900.0, p.y);
+        s += (C_BONE * 0.05 + C_SIGNAL * 0.02) * band * (1.0 - inW);
+      }
       col = s;
     }
 
@@ -258,6 +292,7 @@ const BG = () => new FSPass(/* glsl */ `
           br += C_SIGNAL * 1.6 * glint * m0.a * plqOn;
         }
       }
+      if (sweep >= 0.0) br += (C_BONE * 0.06 + C_SIGNAL * 0.03) * exp(-pow((p.x - mix(-400.0, 2300.0, sweep) + (p.y - 1080.0) * 0.35) / 220.0, 2.0));
       col = br;
     }
     // 銅牌下面的影子
@@ -281,7 +316,7 @@ const BG = () => new FSPass(/* glsl */ `
   angM: { value: 0 }, angH: { value: 0 }, bells: { value: new THREE.Vector3(99, 99, 99) }, lamp: { value: 0 },
   ring: { value: null }, ringOn: { value: 0 }, ringA: { value: 0 }, gs: { value: Array.from({ length: MAXG }, () => new THREE.Vector2()) },
   nums: { value: null }, numA: { value: 1 },
-  plq: { value: null }, shown: { value: 0 }, plqOn: { value: 0 },
+  plq: { value: null }, shown: { value: 0 }, plqOn: { value: 0 }, sweep: { value: -1 },
 });
 
 // 量字寬用的小畫布（排版只在 init 做）
@@ -362,7 +397,9 @@ export default class ClockTower extends Scene {
   tPull = 0;
   pull = false;
   hour0 = 7;
-  lyrSize = 56;
+  lyrSize = 52;
+  msgSize: number | null = null;
+  sweeps: number[] = [];
 
   override async init() {
     const { audio: au, lyrics, song } = this.ctx;
@@ -380,11 +417,6 @@ export default class ClockTower extends Scene {
     this.hour0 = 1 + Math.floor(hash(this.seed, 3) * 11);
 
     // ---- 鐘面一圈的字：每句歌詞一張資料貼圖；數字一張
-    this.lyrSize = m ? 52 : 58;
-    for (const ln of lines) {
-      const { items } = ringGlyphs(lineUnits(ln), FAM_LYR, this.lyrSize, 48);
-      this.rings.set(ln, this.track(glyphMask(items.slice(0, MAXG), RING_RECT, RING_SCALE, 2)));
-    }
     const numItems: MaskGlyph[] = [];
     NUMERALS.forEach((nm, i) => {
       const a = (i / 12) * Math.PI * 2, size = 46, w = measure(nm, FAM_NUM, size);
@@ -407,7 +439,9 @@ export default class ClockTower extends Scene {
     };
     if (m) {
       small(HEAD, HEAD_Y, 20);
-      this.lay = layMsg(c, m.text, sigOf(m), FAM_MSG, MSG_BOX, { min: 52, max: 136, lineHeight: 1.28, maxLines: 4, sigFamily: FAM_SMALL, sigSize: [34, 46], fewer: 0.82 });
+      const lay = layMsgV2(c, m.text, sigOf(m), FAM_MSG, MSG_BOX, { lineHeight: 1.3, maxLines: 4, sigFamily: FAM_SMALL, align: 'center' });
+      this.lay = lay;
+      this.msgSize = lay.screen;
       items.push(...msgGlyphs(this.lay));
       const n = this.lay.glyphs.length;
       const maxDur = Math.max(0.8, Math.min(1.6 * bar, 0.45 * (e - this.tRev)));
@@ -415,12 +449,22 @@ export default class ClockTower extends Scene {
     } else {
       // 沒有留言：名字（比歌詞小一級）與一行邀請
       small(EMPTY_HEAD, HEAD_Y + 6, 22);
-      this.lay = layMsg(c, COUPLE_ZH, '', FAM_MSG, { x: MSG_BOX.x, y: MSG_BOX.y + 40, w: MSG_BOX.w, h: 130 }, { min: 48, max: lyrics.has ? 56 : 96, maxLines: 1 });
+      // 名字比鐘面的歌詞小（沒有留言時焦點是歌詞）；純音樂時大一點
+      this.lay = layMsg(c, COUPLE_ZH, '', FAM_MSG, { x: MSG_BOX.x, y: MSG_BOX.y + 30, w: MSG_BOX.w, h: 110 }, { min: 40, max: lyrics.has ? 44 : 60, maxLines: 1 });
       items.push(...msgGlyphs(this.lay));
-      small(T25_INVITE, MSG_BOX.y + 226, 22);
+      small(T25_INVITE, MSG_BOX.y + 176, 20);
       this.times = stagger(au, this.tRev + 0.05, this.lay.glyphs.length, 1.2);
     }
     this.plq = this.track(glyphMask(items.slice(0, 250), PLQ_RECT, 1, 2));
+
+    // ---- 鐘面一圈的字（v2：比留言小 4 px，40～52）：每句歌詞一張資料貼圖
+    this.lyrSize = lyricV2(this.msgSize);
+    for (const ln of lines) {
+      const { items: ri } = ringGlyphs(lineUnits(ln), FAM_LYR, this.lyrSize, V2.lyrMin);
+      this.rings.set(ln, this.track(glyphMask(ri.slice(0, MAXG), RING_RECT, RING_SCALE, 2)));
+    }
+    // 車燈：每兩個小節（從第二個小節線起）街上開過一台車
+    this.sweeps = this.bars.filter((b, i) => b > this.tRev + 0.1 && i % 2 === 1);
   }
 
   /** 鏡頭：貼近鐘面 → 第一個小節線退後（落在小節線上）→ 很慢地推近。 */
@@ -429,7 +473,7 @@ export default class ClockTower extends Scene {
     const s = this.ctx.start, e = this.ctx.end;
     const beat = au.beatPeriod(s);
     const rest = { x: 960, y: 540, z: 1 };
-    const close = { x: CLK.x + 40, y: CLK.y + 70, z: 1.2 };
+    const close = { x: CLK.x, y: CLK.y + 60, z: 1.2 };
     let k = 1;
     if (this.pull) k = ease.inOutCubic(prog(t, this.tPull - beat * 0.9, this.tPull));
     const push = ease.inOutQuad(prog(t, this.tRev, e));
@@ -472,6 +516,9 @@ export default class ClockTower extends Scene {
     u.lamp!.value = lamp * (this.msg ? 1 : 0.55) * (1 - 0.6 * ease.inCubic(prog(t, e - 0.35, e)));
     u.plq!.value = this.plq!.tex;
     u.plqOn!.value = 1;
+    // 車燈掃過：1.3 秒從左到右
+    const sw = this.sweeps.filter((b) => b <= t).pop();
+    u.sweep!.value = sw !== undefined && t - sw < 1.3 ? ease.inOutQuad((t - sw) / 1.3) : -1;
     // 擦亮到第幾個字（小數＝這個字擦到哪）
     let shown = 0;
     for (let i = 0; i < this.times.length; i++) {

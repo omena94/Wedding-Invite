@@ -2,8 +2,11 @@
 //  - 地圖：一圈一圈的等高線（每五條一條加粗的計曲線）、很淡的山影、方格網、摺過的痕；山頂在右上方，旁邊印著小小的山名與標高。
 //  - 路線：一條虛線（訊號色的暗部）從右下角的登山口出發，「一拍走一段」地往山頂延伸（每一拍猛地畫出一段、停住），
 //    線頭是一個小圓點，每一拍脈動一下；窗格最後一小節前走到山頂，山頂的小旗子「啪」地立起來、晃兩下。
-//  - 主打留言是有人用筆寫在地圖左上角的註記（畫面的焦點）：第一拍起一個字一個字寫出來，署名在最後一行下面，
+//  - 主打留言是有人用筆寫在地圖左邊的註記（畫面的焦點）：第一拍起一個字一個字寫出來，署名在最後一行下面，
 //    一道手畫的箭頭從註記指到山頂的旗子。註記後面的等高線淡掉，字才讀得清楚。
+//    留言標準 v2：註記的字 40～60（字級上限照字數），淡掉的那一塊 ≤ 760×360，整張地圖（等高線、路線、山頂）是主視覺。
+//  - 每一拍線頭往上走一段時，線頭所在高度的那一條等高線從線頭往兩邊「描」一圈（訊號色的暗部，慢慢退掉），
+//    線頭旁邊的小字海拔跟著跳；窗格裡一直有東西照拍子在動。
 //  - 歌詞是沿途的地名：左下方的地名標籤（字距拉開的無襯線字，照跟唱規則逐字變色），一條點線拉到路線的線頭。
 //  - 沒有留言：歌詞放大成地圖上的大地名（焦點），左下角一行小字邀請。純音樂：地名是歌名。
 // 手法：地圖（等高線、山影、方格、摺痕）在一個 shader 裡算（PlaneCam：地圖是空間裡的平面，鏡頭會推、會搖）；
@@ -15,20 +18,24 @@ import { FSPass, Layer2D, W, H } from '../engine/gl';
 import { F, font, loadText } from '../engine/type';
 import { rgba } from '../engine/palette';
 import { clamp, ease, prog, hash, lerp, pulse, polylineLengths, pointAtLength, type V2 } from '../engine/util';
-import { lyricAt, layoutLyric, drawLyric, lyricSizeFor, drawHeart, type LyricStyle } from './_motifs';
+import { lyricAt, layoutLyric, drawLyric, drawHeart, type LyricStyle } from './_motifs';
+import { V2 as SZ, lyricV2 } from './_v2';
 import { PlaneCam, camUniforms, CAM_GLSL } from './_t14';
 import {
-  T25_TEXT, T25_INVITE, sigOf, winBars, winBeats, stagger, layMsg, msgGlyphs, glyphMask, paperLyric, MASK_GLSL,
+  T25_TEXT, T25_INVITE, sigOf, winBars, winBeats, stagger, layMsgV2, msgGlyphs, glyphMask, paperLyric, MASK_GLSL,
   type GlyphMask, type MsgLay, type Rect,
 } from './_t25';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'journey', paper: true, energy: [0.1, 0.8], bars: [4, 8] };
 
-/** 山頂、註記（留言）的範圍、地名（歌詞）的位置。 */
+/**
+ * 山頂、註記（留言）的範圍、地名（歌詞）的位置。
+ * 留言標準 v2：註記寫在地圖左邊（字的範圍 700×300，淡掉的那一塊再大 30 px 一圈），右半邊是山與路線。
+ */
 const SUMMIT = { x: 1500, y: 300 };
-const NOTE = { x: 170, y: 150, w: 1080, h: 420 };
+const NOTE = { x: 176, y: 236, w: 700, h: 300 };
 const LYR = { x: 176, y: 820, w: 1000 };
-const LYR_SOLO = { x: 176, y: 300, w: 1180 };
+const LYR_SOLO = { x: 176, y: 420, w: 1100 };
 /** 路線（地圖座標）：從右下角的登山口繞上山頂。 */
 const ROUTE: V2[] = [
   { x: 1150, y: 1010 }, { x: 1240, y: 930 }, { x: 1150, y: 862 }, { x: 1250, y: 790 }, { x: 1400, y: 760 },
@@ -38,11 +45,14 @@ const FAM_MSG = F.hand(700);
 const FAM_LYR = F.archivo(100, 800);
 const PEAK = '幸福山　▲ 2027 m';
 const LEGEND = '等高距 20 m　·　計曲線 100 m　·　比例尺 1 : 25,000';
+/** 登山口的海拔（線頭旁的小字從這裡往上跳到山頂的 2027 m）。 */
+const ALT0 = 380, ALT1 = 2027;
 
 const BG = () => new FSPass(/* glsl */ `
   uniform float t;
   uniform sampler2D ov; uniform sampler2D st; uniform sampler2D mm; uniform vec4 mmR; uniform float shown; uniform float hasMsg;
   uniform vec4 clean;
+  uniform vec2 head; uniform float trace; uniform float traceK; // 線頭（地圖座標）、描等高線走到多遠、亮度
   ${CAM_GLSL}
   ${MASK_GLSL}
   // 地形：山頂一座、左邊一座矮一點的山、一條往左下延伸的稜線、fbm 起伏
@@ -76,11 +86,18 @@ const BG = () => new FSPass(/* glsl */ `
     float dq = sdBox(P - clean.xy, clean.zw * 0.5);
     float quiet = 1.0 - 0.72 * (1.0 - smoothstep(-30.0, 90.0, dq));
     float cl = max(line * 0.15, idx * 0.32) * quiet;
+    // 線頭所在高度的那一條等高線：從線頭往外描（trace＝描到的半徑），描過的地方亮一下再慢慢退回一般的線
+    float hq = floor(height(head) / ci + 0.5);
+    float dc = abs(v - hq) / max(fw, 1e-4);
+    float cur = (1.0 - smoothstep(0.6, 1.8, dc)) * traceK * quiet;
+    float rr = length(P - head);
+    cur *= smoothstep(trace + 30.0, trace - 30.0, rr) * (0.45 + 0.55 * exp(-max(0.0, trace - rr) / 260.0));
     // 山影：西北來的光（很淡）
     vec2 gr = vec2(dFdx(h), dFdy(h)) / max(length(vec2(dFdx(P.x), dFdy(P.x))), 1e-3);
     float shade = clamp(dot(normalize(vec3(-gr * 0.9, 1.0)), normalize(vec3(-0.6, -0.6, 0.7))), 0.0, 1.0);
     vec3 col = paper * (0.93 + 0.1 * shade * quiet);
     col = mix(col, C_SEPIA, cl * 0.75);
+    col = mix(col, C_BLOOD, cur * 0.85);
     // 方格網（每 240 px 一條，很淡）
     vec2 gq = abs(fract(P / 240.0 + 0.5) - 0.5) * 240.0;
     float grid = 1.0 - smoothstep(0.3, 1.2, min(gq.x, gq.y) / max(fwidth(P.x), 1e-3));
@@ -114,6 +131,7 @@ const BG = () => new FSPass(/* glsl */ `
   }`, {
   t: { value: 0 }, ov: { value: null }, st: { value: null }, mm: { value: null }, mmR: { value: new THREE.Vector4(0, 0, 1, 1) },
   shown: { value: 0 }, hasMsg: { value: 0 }, clean: { value: new THREE.Vector4(-9999, -9999, 1, 1) },
+  head: { value: new THREE.Vector2() }, trace: { value: 0 }, traceK: { value: 0 },
   ...camUniforms(),
 });
 
@@ -154,7 +172,9 @@ export default class Topo extends Scene {
     // ---- 註記（留言）
     const c = document.createElement('canvas').getContext('2d')!;
     if (m) {
-      this.lay = layMsg(c, m.text, sigOf(m), FAM_MSG, NOTE, { min: 58, max: 150, lineHeight: 1.26, maxLines: 4, sigSize: [40, 54], align: 'left', fewer: 0.78 });
+      // 地圖在畫面上約 1:1（鏡頭落定後只推近 3%），字級直接照螢幕 px
+      const lay = layMsgV2(c, m.text, sigOf(m), FAM_MSG, NOTE, { lineHeight: 1.3, maxLines: 5, align: 'left' });
+      this.lay = lay;
       // 手寫：每一行稍微往右下斜一點
       const items = msgGlyphs(this.lay).map((g) => ({ ...g, y: g.y + (g.x - NOTE.x) * 0.012, rot: 0.012 }));
       const rect: Rect = [NOTE.x - 40, NOTE.y - 40, NOTE.w + 80, NOTE.h + 120];
@@ -162,9 +182,9 @@ export default class Topo extends Scene {
       this.mmRect = rect;
       const maxDur = Math.max(0.8, Math.min(1.7 * bar, 0.45 * (e - this.tFirst)));
       this.times = stagger(au, this.tFirst, items.length, maxDur);
-      this.lyrStyle = { ...this.lyrStyle, size: lyricSizeFor(this.lay.fit.size), maxWidth: LYR.w };
+      this.lyrStyle = { ...this.lyrStyle, size: lyricV2(lay.screen), minSize: SZ.lyrMin, maxWidth: LYR.w };
     } else {
-      this.lyrStyle = { ...this.lyrStyle, size: 84, minSize: 56, maxWidth: LYR_SOLO.w, tracking: 10 };
+      this.lyrStyle = { ...this.lyrStyle, size: lyricV2(null), minSize: SZ.lyrMin, maxWidth: LYR_SOLO.w, tracking: 8 };
     }
 
     // ---- 固定的小字：山名與標高、圖例、（有留言）註記指到旗子的箭頭、（沒有留言）邀請
@@ -255,6 +275,12 @@ export default class Topo extends Scene {
     c.fillStyle = rgba('blood'); c.beginPath(); c.arc(head.x, head.y, 9 + 3 * pr, 0, Math.PI * 2); c.fill();
     c.strokeStyle = rgba('blood', 0.5 * pr); c.lineWidth = 2;
     c.beginPath(); c.arc(head.x, head.y, 14 + 26 * (1 - pr), 0, Math.PI * 2); c.stroke();
+    // 線頭旁邊的海拔（冷面的讀數：一拍跳一次，走到山頂正好 2027 m）
+    if (t >= this.tFirst && sl < full - 1) {
+      const alt = Math.round((ALT0 + (ALT1 - ALT0) * (sl / full)) / 10) * 10;
+      c.font = font(F.mono(500), 18); c.fillStyle = rgba('sepia', 0.62);
+      c.fillText(`${alt} m`, head.x + 22, head.y + 6);
+    }
     // 山頂的旗子：一直在（目的地），走到的那一刻「啪」地立起來、晃兩下
     const arr = t - this.tArrive;
     const pop = arr < 0 ? 0.72 : 0.72 + 0.28 * Math.min(1.15, 1 - Math.exp(-arr * 9) * Math.cos(arr * 22));
@@ -295,7 +321,7 @@ export default class Topo extends Scene {
         c.setLineDash([]);
       }
     } else if (!lyrics.linesIn(s, e).length) {
-      c.font = font(FAM_LYR, this.msg ? 48 : 84); c.letterSpacing = `${this.msg ? 6 : 10}px`; c.fillStyle = rgba('sepia', 0.85 * prog(t, s, s + 0.5));
+      c.font = font(FAM_LYR, this.lyrStyle.size); c.letterSpacing = `${this.msg ? 6 : 8}px`; c.fillStyle = rgba('sepia', 0.85 * prog(t, s, s + 0.5));
       c.fillText(song.title, pos.x, pos.y);
       c.letterSpacing = '0px';
     }
@@ -313,10 +339,19 @@ export default class Topo extends Scene {
       shown = i + k;
     }
     u.shown!.value = shown;
+    // ---- 描等高線：路線每走一段（拍點），線頭那個高度的等高線從線頭往外描一圈
+    (u.head!.value as THREE.Vector2).set(head.x, head.y);
+    const rb = this.beats.filter((b) => b >= this.tFirst - 1e-3 && b <= this.tArrive + 1e-3 && b <= t).pop();
+    if (rb === undefined) { u.trace!.value = 0; u.traceK!.value = 0; }
+    else {
+      const age = t - rb;
+      u.trace!.value = 1900 * ease.outCubic(clamp(age / (au.beatPeriod(t) * 1.8)));
+      u.traceK!.value = 0.55 + 0.45 * Math.exp(-age * 2.2);
+    }
     const box = this.lay?.box;
     const cv = u.clean!.value as THREE.Vector4;
     if (box) cv.set(box[0] + box[2] / 2, box[1] + box[3] / 2, box[2] + 60, box[3] + 60);
-    else cv.set(LYR_SOLO.x + 560, LYR_SOLO.y - 30, 1300, 200);
+    else cv.set(LYR_SOLO.x + 520, LYR_SOLO.y - 20, 1160, 150);
     this.bg.render(renderer, out);
 
     return {

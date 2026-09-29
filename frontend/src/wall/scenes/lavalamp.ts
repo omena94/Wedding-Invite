@@ -4,8 +4,9 @@
 //  - 歌詞是蠟聚成的字：一句快要唱的時候，瓶子中間的蠟慢慢聚攏成字（從一團糊糊的蠟收成清楚的字形），
 //    還沒唱的字是暗紅的蠟，唱到的那一刻燒成訊號色（會發光），唱完變成淡淡的奶白色；唱完一句字又化開。
 //    浮過字的蠟塊會淡到字的後面，字才讀得清楚。
-//  - 主打留言寫在燈旁邊那張卡片上（畫面的焦點，比燈裡的字大）：切進來時燈還沒全亮，第一拍「喀」一聲燈亮起來，
+//  - 主打留言寫在燈右邊牆上的一張小卡片上（畫面的焦點，比燈裡的字大）：切進來時燈還沒全亮，第一拍「喀」一聲燈亮起來，
 //    暖暖的光照亮卡片（靠燈的那邊亮、遠的那邊暗），字一個一個寫出來；卡片用一段紙膠帶貼在牆上。署名在最後一行下面。
+//    留言標準 v2：卡片 760×380（字 40～60），燈是主視覺；燈的光穿過蠟塊，在旁邊的牆上投出放大、慢慢往上漂的蠟影。
 //  - 沒有留言：燈放大在畫面中間，蠟的字就是主角；桌上一行小字邀請。純音樂：蠟裡浮出新人的名字。
 // 手法：牆、桌、燈（底座、玻璃、液體、蠟、蠟字、反光）、卡片的打光與陰影全在一個 shader。
 // 蠟字與卡片上的字都是 init() 畫好的資料貼圖（_t25 glyphMask：覆蓋率、第幾個字、字裡的掃描順序），
@@ -17,9 +18,10 @@ import { F, font, loadText } from '../engine/type';
 import { rgba } from '../engine/palette';
 import { clamp, ease, prog, hash, pulse, lerp } from '../engine/util';
 import { type Line } from '../engine/lyrics';
-import { lyricAt, lyricSizeFor, COUPLE_ZH } from './_motifs';
+import { lyricAt, COUPLE_ZH } from './_motifs';
+import { V2, lyricV2 } from './_v2';
 import {
-  T25_TEXT, T25_INVITE, sigOf, winBars, winBeats, stagger, layMsg, glyphMask, glyphStates, MASK_GLSL,
+  T25_TEXT, T25_INVITE, sigOf, winBars, winBeats, stagger, layMsgV2, glyphMask, glyphStates, MASK_GLSL,
   type GlyphMask, type MsgLay, type Rect, type MaskGlyph,
 } from './_t25';
 
@@ -27,11 +29,15 @@ export const spec: PlateSpecDecl = { group: 'type', family: 'journey', paper: fa
 
 const MAXG = 64;
 const NB = 10;
-/** 卡片（有留言）：中心、大小、角度；字的範圍（卡片座標，左上為 0）。 */
-const CARD = { cx: 1236, cy: 492, w: 1000, h: 668, ang: -0.022 };
-const CARD_TXT = { x: 70, y: 66, w: 860, h: 520 };
+/**
+ * 卡片（有留言）：中心、大小、角度；字的範圍（卡片座標，左上為 0）。
+ * 留言標準 v2：卡片 760×380 貼在畫面右邊的牆上（燈在左邊，是主視覺），下緣離 HUD 很遠。
+ */
+const CARD = { cx: 1310, cy: 490, w: 760, h: 380, ang: -0.022 };
+const CARD_TXT = { x: 52, y: 44, w: 656, h: 266 };
 const FAM_MSG = F.hand(700);
-const FAM_LYR = F.archivo(75, 900);
+// 蠟字比較小（40～52）：900 的黑體筆畫會黏成一團，用 700
+const FAM_LYR = F.archivo(75, 700);
 const FOOT = '＊本燈每一小節冒一顆泡泡，請勿搖晃。';
 /** 卡片上的字模範圍（卡片的外框再大一點）。 */
 const MM_RECT: Rect = [CARD.cx - CARD.w / 2 - 30, CARD.cy - CARD.h / 2 - 30, CARD.w + 60, CARD.h + 60];
@@ -39,7 +45,7 @@ const MM_RECT: Rect = [CARD.cx - CARD.w / 2 - 30, CARD.cy - CARD.h / 2 - 30, CAR
 /** 燈的輪廓（燈座高 230、玻璃高 520、燈帽高 100，乘上 k）：玻璃在高度 h（0 = 瓶底、1 = 瓶口）的半寬。 */
 const glassW = (h: number) => 92 - 20 * h + 82 * Math.sin(Math.PI * Math.min(h * 1.25, 1));
 interface Lamp { cx: number; yb: number; k: number }
-const LAMP_MSG: Lamp = { cx: 468, yb: 902, k: 1 };
+const LAMP_MSG: Lamp = { cx: 560, yb: 985, k: 1.12 };
 const LAMP_SOLO: Lamp = { cx: 960, yb: 956, k: 1.2 };
 
 const BG = () => new FSPass(/* glsl */ `
@@ -79,7 +85,10 @@ const BG = () => new FSPass(/* glsl */ `
     // ---- 牆：燈照在牆上的一大團暖光
     float dl = length((p - lc) / vec2(1.0, 1.25));
     vec3 col = C_INK * 0.7 + C_INK2 * 0.25 * (0.9 + 0.1 * fbm(p / 260.0, 2));
-    col += warm * 0.16 * power * exp(-dl / (420.0 * k)) + warm * 0.04 * power * exp(-dl / (1100.0 * k));
+    // 燈泡的光穿過蠟塊，在牆上投出放大的蠟影（跟著蠟塊慢慢往上漂；只在燈附近，照不到卡片）
+    vec2 bulb = vec2(cx, yg0);
+    float wsh = smoothstep(0.35, 1.2, blobField(bulb + (p - bulb) / 2.7, 0.0)) * (1.0 - smoothstep(-40.0, 20.0, p.y - yg0));
+    col += warm * power * (0.18 * exp(-dl / (460.0 * k)) + 0.05 * exp(-dl / (1100.0 * k))) * (1.0 - 0.62 * wsh);
     // ---- 桌面
     if (p.y > yb - 4.0) {
       float z = p.y - yb;
@@ -132,8 +141,9 @@ const BG = () => new FSPass(/* glsl */ `
         P += 1.6 * exp(-(yg0 - p.y) / (26.0 * k)) * (1.0 + 0.25 * sin(p.x * 0.03 + t * 0.7));
         P += 0.5 * exp(-(p.y - yg1) / (12.0 * k));
         // 蠟字：聚攏的程度（半徑從糊到清楚）
-        float r = mix(18.0, 2.0, lineK);
-        float T = textAt(p, r) * 2.3 * smoothstep(0.0, 0.5, lineK);
+        float r = mix(18.0, 1.2, lineK);
+        // （字變小了：門檻放在覆蓋率五成左右，筆畫才不會加粗到黏在一起）
+        float T = textAt(p, r) * 1.85 * smoothstep(0.0, 0.5, lineK);
         // 蠟塊與蠟字分開取門檻：字永遠在上面（蠟塊浮過去不會把字吃掉），靠近的時候彼此黏過去一點（融合）
         float Ptot = P + T * 0.5;
         float wax = smoothstep(0.92, 1.08, Ptot);
@@ -176,7 +186,8 @@ const BG = () => new FSPass(/* glsl */ `
       if (cp.a > 0.0) {
         // 光：離燈越近越亮（左邊暖、右邊暗一點），不要暗到字讀不清
         float dd = length(p - lc);
-        float L = (0.14 + 0.8 * power * exp(-max(0.0, dd - 240.0) / 540.0)) * cardA;
+        // （卡片在右邊、離燈遠一點：光衰減放緩，最遠的角也讀得清楚）
+        float L = (0.2 + 0.72 * power * exp(-max(0.0, dd - 420.0) / 950.0)) * cardA;
         // 卡片的四角暗一點（紙有一點點彎）
         vec2 cl = rot2(-cardR.w) * (p - cardR.xy) / vec2(${CARD.w / 2}.0, ${CARD.h / 2}.0);
         L *= 1.0 - 0.12 * dot(cl, cl) * 0.5;
@@ -206,21 +217,27 @@ const BG = () => new FSPass(/* glsl */ `
 let mc: CanvasRenderingContext2D | null = null;
 const measure = (s: string, fam: string, size: number) => { mc ??= document.createElement('canvas').getContext('2d')!; mc.font = font(fam, size); return mc.measureText(s).width; };
 
-/** 一行歌詞（或一段字）在瓶子裡排成幾排：詞不拆開，每排置中；放不下就縮字級（最小 48）。 */
+/** 一行歌詞（或一段字）在瓶子裡排成幾排：詞不拆開，每排置中；放不下就縮字級（最小 40，留言標準 v2 的歌詞下限）。 */
 function waxRows(units: { ch: string; gap: number }[][], fam: string, size0: number, cx: number, cy: number, maxW: number, maxRows = 4): { items: MaskGlyph[]; rect: Rect } {
   let size = size0;
   let rows: typeof units[] = [];
+  // 沒有空白隔開的詞併成一段（中文歌詞一個字一個詞，不併的話會斷在「一句一句話」的中間）；一段放不下一排才拆成一個一個字
+  const phrases: typeof units = [];
+  let curP: typeof units[number] = [];
+  for (const u of units) { curP.push(...u); if (u.at(-1)!.gap > 0.1) { phrases.push(curP); curP = []; } }
+  if (curP.length) phrases.push(curP);
   for (let tries = 0; tries < 8; tries++) {
     rows = [];
     let cur: typeof units = [], w = 0;
-    for (const u of units) {
+    const pieces = phrases.flatMap((ph) => (ph.reduce((s, x) => s + measure(x.ch, fam, size), 0) <= maxW ? [ph] : ph.map((x) => [x])));
+    for (const u of pieces) {
       const uw = u.reduce((s, x) => s + measure(x.ch, fam, size), 0);
       const gap = cur.length ? (cur[cur.length - 1]!.at(-1)!.gap * size) : 0;
       if (cur.length && w + gap + uw > maxW) { rows.push(cur); cur = [u]; w = uw; } else { cur.push(u); w += gap + uw; }
     }
     if (cur.length) rows.push(cur);
-    if (rows.length <= maxRows || size <= 48) break;
-    size = Math.max(48, size * 0.9);
+    if (rows.length <= maxRows || size <= V2.lyrMin) break;
+    size = Math.max(V2.lyrMin, size * 0.9);
   }
   const lh = size * 1.1;
   const items: MaskGlyph[] = [];
@@ -286,8 +303,9 @@ export default class LavaLamp extends Scene {
     let msgSize: number | null = null;
     if (m) {
       // 卡片上的留言（卡片座標 → 畫面座標：繞卡片中心轉 ang）
-      this.lay = layMsg(c, m.text, sigOf(m), FAM_MSG, { ...CARD_TXT, x: 0, y: 0 }, { min: 56, max: 150, lineHeight: 1.3, maxLines: 5, sigSize: [40, 54], align: 'left', fewer: 0.8 });
-      msgSize = this.lay.fit.size;
+      const lay = layMsgV2(c, m.text, sigOf(m), FAM_MSG, { ...CARD_TXT, x: 0, y: 0 }, { lineHeight: 1.3, maxLines: 5, align: 'left' });
+      this.lay = lay;
+      msgSize = lay.screen;
       const ca = Math.cos(CARD.ang), sa = Math.sin(CARD.ang);
       const toScr = (x: number, y: number) => {
         const lx = CARD_TXT.x + x - CARD.w / 2, ly = CARD_TXT.y + y - CARD.h / 2;
@@ -301,7 +319,7 @@ export default class LavaLamp extends Scene {
       const maxDur = Math.max(0.8, Math.min(1.7 * bar, 0.45 * (e - this.tOn)));
       this.times = stagger(au, this.tOn + au.beatPeriod(s) * 0.5, items.length, maxDur);
     }
-    this.lyrSize = m ? Math.min(lyricSizeFor(msgSize), 52) : 64;
+    this.lyrSize = lyricV2(msgSize);
     for (const ln of lines) {
       const { items, rect } = waxRows(lineUnits(ln), FAM_LYR, this.lyrSize, L.cx, cy, maxW, 5);
       this.masks.set(ln, { m: this.track(glyphMask(items.slice(0, MAXG), rect, 1, 2)), rect });
@@ -309,7 +327,7 @@ export default class LavaLamp extends Scene {
     if (!lyrics.linesIn(s, e).length) {
       // 純音樂：蠟裡浮出新人的名字
       const units = Array.from(COUPLE_ZH.replace(/\s*&\s*/, '&')).map((ch) => [{ ch, gap: 0.04 }]);
-      const { items, rect } = waxRows(units, FAM_LYR, m ? 52 : 68, L.cx, cy, maxW, 3);
+      const { items, rect } = waxRows(units, FAM_LYR, m ? lyricV2(msgSize) : V2.lyrMax, L.cx, cy, maxW, 3);
       this.names = { m: this.track(glyphMask(items, rect, 1, 2)), rect };
     }
 
@@ -329,13 +347,13 @@ export default class LavaLamp extends Scene {
         cc.fillRect(x0 + rx * CARD.w, y0 + ry * CARD.h, 1 + 2 * hash(i, 4), 1);
       }
       // 註腳
-      cc.font = font(F.hei(500), 20); cc.letterSpacing = '2px'; cc.fillStyle = rgba('sepia', 0.5);
-      cc.fillText(FOOT, x0 + CARD_TXT.x, y0 + CARD.h - 44);
+      cc.font = font(F.hei(500), 18); cc.letterSpacing = '2px'; cc.fillStyle = rgba('sepia', 0.5);
+      cc.fillText(FOOT, x0 + CARD_TXT.x, y0 + CARD.h - 24);
       cc.letterSpacing = '0px';
       // 紙膠帶：上緣中間一段，貼在牆上（半透明、兩端鋸齒）
       cc.fillStyle = rgba('bone', 0.5);
       cc.beginPath();
-      const tw = 190, th = 46, tx = -tw / 2 + 30, ty = y0 - th * 0.55;
+      const tw = 150, th = 40, tx = -tw / 2 + 24, ty = y0 - th * 0.55;
       cc.moveTo(tx, ty);
       for (let i = 0; i <= 6; i++) cc.lineTo(tx + tw + (i % 2 ? 5 : 0), ty + (th * i) / 6);
       for (let i = 6; i >= 0; i--) cc.lineTo(tx + (i % 2 ? 5 : 0), ty + (th * i) / 6);
@@ -343,8 +361,9 @@ export default class LavaLamp extends Scene {
       cc.fill();
       cc.restore();
     } else {
-      cc.font = font(F.hei(500), 20); cc.letterSpacing = '3px'; cc.fillStyle = rgba('ash', 0.55);
-      cc.fillText(T25_INVITE, 180, 1000 - 30);
+      // 邀請寫在牆上、桌緣上面一點（寫在桌緣上會被燈光的明暗吃掉，讀不清楚）
+      cc.font = font(F.hei(500), 20); cc.letterSpacing = '3px'; cc.fillStyle = rgba('ash', 0.85);
+      cc.fillText(T25_INVITE, 262, LAMP_SOLO.yb - 40);
       cc.letterSpacing = '0px';
     }
     this.card.upload();

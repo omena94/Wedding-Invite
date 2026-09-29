@@ -4,7 +4,10 @@
 //    第一拍起留言一個字一個字印上去（剛印的油墨濕濕的、一下就乾）。
 //  - 郵票下面連著一條邊紙（中間隔一排齒孔），邊紙上印的是歌詞，照跟唱規則逐字變色；郵票框的角落一個小小的版號。
 //  - 郵戳在拍點蓋下：第一個小節線（留言開始印之後），郵戳的影子從上面壓過來、「砰」地蓋在郵票右上角與信封上
-//    （圓形日戳＋往右的波浪線，油墨有斑駁），畫面一震。之後每個小節線鏡頭換一個角度（快、落在小節線上）。
+//    （圓形日戳＋往右的波浪線，油墨有斑駁），畫面一震。之後每個小節線鏡頭換一個角度（快、落在小節線上），
+//    接下來兩個小節線信封右邊再「砰、砰」蓋上兩個橡皮章（限時專送、永久保存）。
+//  - 版畫是活的：天空的放射刻線很慢地轉，兩朵刻線畫的雲從左往右飄過太陽。
+//  - 留言標準 v2：郵票本身還是很大（它就是場景），寫字的那一塊 630×420、字 40～60；版畫放寬，當郵票的主角。
 //  - 沒有留言：郵票上印新人的名字與日期（比歌詞小），邊紙的歌詞放大是主角；信封上一行小字邀請。
 // 手法：信封、郵票的紙與齒孔、版畫、油墨都在一個 shader（PlaneCam：信封是空間裡的平面）。郵票上的字是 init() 畫好的資料貼圖
 // （_t25 glyphMask，依序印出）；郵票的框與小字、郵戳各是一張 init 畫一次的 Canvas；邊紙的歌詞是每格重畫的一張。
@@ -14,10 +17,11 @@ import { FSPass, Layer2D, W, H } from '../engine/gl';
 import { F, font, loadText } from '../engine/type';
 import { rgba } from '../engine/palette';
 import { clamp, ease, prog, lerp, pulse } from '../engine/util';
-import { lyricAt, layoutLyric, drawLyric, lyricSizeFor, COUPLE_ZH, DATE_DOTS, type LyricStyle } from './_motifs';
+import { lyricAt, layoutLyric, drawLyric, COUPLE_ZH, DATE_DOTS, type LyricStyle } from './_motifs';
+import { V2, lyricV2 } from './_v2';
 import { PlaneCam, camUniforms, CAM_GLSL } from './_t14';
 import {
-  T25_TEXT, T25_INVITE, sigOf, winBars, winBeats, stagger, layMsg, msgGlyphs, glyphMask, paperLyric, MASK_GLSL,
+  T25_TEXT, T25_INVITE, sigOf, winBars, winBeats, stagger, layMsgV2, msgGlyphs, glyphMask, paperLyric, MASK_GLSL,
   type GlyphMask, type MsgLay, type Rect,
 } from './_t25';
 
@@ -27,12 +31,20 @@ export const spec: PlateSpecDecl = { group: 'type', family: 'journey', paper: tr
 const ST = { x: 236, y: 112, w: 1180, h: 704 };
 const SELV = { y0: 816, y1: 968 };
 const PERF = 30; // 齒孔間距
-const IMG = { x: 1060, y: 176, w: 300, h: 576 };
-const TXT = { x: 306, y: 232, w: 716, h: 510 };
+const IMG = { x: 980, y: 176, w: 380, h: 576 };
+/** 郵票上寫字的那一塊（留言標準 v2：≤ 860×430）；面值、國名那一行固定在 HEAD_Y。 */
+const TXT = { x: 306, y: 262, w: 630, h: 420 };
+const HEAD_Y = 216;
 const LYR = { x: 306, y: 922, w: 1020 };
 /** 郵戳：圓心與半徑；波浪線往右延伸。 */
 const PM = { x: 1330, y: 250, r: 132 };
 const PM_RECT: Rect = [PM.x - 170, PM.y - 170, 900, 340];
+/** 信封右邊的兩個橡皮章（畫在同一張圖：第一個在紅色、第二個在綠色通道，shader 分開蓋）。 */
+const RS_RECT: Rect = [1440, 430, 440, 360];
+const RUBBER = [
+  { text: '限時專送', x: 1610, y: 520, rot: -0.1 },
+  { text: '永久保存', x: 1660, y: 680, rot: 0.06 },
+];
 const FAM_MSG = F.ming(900);
 const FAM_LYR = F.archivo(100, 800);
 const COUNTRY = '愛情郵政　·　LOVE POST';
@@ -43,6 +55,7 @@ const BG = () => new FSPass(/* glsl */ `
   uniform float t;
   uniform sampler2D st; uniform sampler2D ly; uniform sampler2D pm; uniform float pmK; uniform float pmShadow;
   uniform sampler2D mm; uniform vec4 mmR; uniform float shown; uniform float hasMsg;
+  uniform sampler2D rs; uniform vec2 rsK;
   ${CAM_GLSL}
   ${MASK_GLSL}
   const vec4 IM = vec4(${IMG.x}.0, ${IMG.y}.0, ${IMG.w}.0, ${IMG.h}.0);
@@ -68,13 +81,22 @@ const BG = () => new FSPass(/* glsl */ `
     float horizon = 0.56 + 0.03 * sin(u.x * 7.0);
     float ink = 0.0;
     if (u.y < horizon) {
-      // 天空：從太陽放射出去的刻線（越往上越密越暗）
+      // 天空：從太陽放射出去的刻線（越往上越密越暗；整圈很慢地轉，版畫是活的）
       vec2 d = u - sun;
-      float ang = atan(d.y * IM.w, d.x * IM.z);
-      float rays = hatch(ang * 22.0, 0.25 + 0.45 * smoothstep(0.1, 0.9, length(d * vec2(1.0, 1.6))));
+      float ang = atan(d.y * IM.w, d.x * IM.z) + t * 0.02;
+      float rays = hatch(ang * 26.0, 0.25 + 0.45 * smoothstep(0.1, 0.9, length(d * vec2(1.0, 1.6))));
       float r = length((u - sun) * IM.zw);
-      ink = r < 52.0 ? 0.0 : rays * smoothstep(52.0, 70.0, r);
-      ink = max(ink, 1.0 - smoothstep(0.8, 2.0, abs(r - 58.0))); // 太陽的外圈
+      ink = r < 58.0 ? 0.0 : rays * smoothstep(58.0, 76.0, r);
+      ink = max(ink, 1.0 - smoothstep(0.8, 2.0, abs(r - 64.0))); // 太陽的外圈
+      // 兩朵雲（刻線畫法：白的雲身、一圈細輪廓、下半截幾條橫線），從左往右慢慢飄過太陽
+      for (int i = 0; i < 2; i++) {
+        float fi = float(i);
+        vec2 cp = vec2(fract(0.15 + fi * 0.55 + t * (0.011 + fi * 0.004)) * 1.6 - 0.3, 0.2 + fi * 0.16);
+        vec2 q = (u - cp) * IM.zw / vec2(92.0 - fi * 20.0, 30.0 - fi * 6.0);
+        float cd = length(q) - 1.0 + 0.3 * fbm(q * 1.3 + fi * 7.0, 2) + 0.25 * sin(q.x * 3.0);
+        if (cd < 0.0) ink = (q.y > 0.25 && q.y < 0.75) ? step(0.55, fract(q.y * 5.0)) * 0.9 : 0.0;
+        ink = max(ink, 1.0 - smoothstep(0.02, 0.07, abs(cd)));
+      }
     } else {
       // 山：兩層，遠的淡（橫刻線）、近的濃（斜的交叉刻線）
       float near = 0.74 + 0.06 * sin(u.x * 5.0 + 1.3);
@@ -137,6 +159,13 @@ const BG = () => new FSPass(/* glsl */ `
       }
       col = mix(col, sc, 1.0 - smoothstep(-0.5, 0.5, sd));
     }
+    // ---- 信封上的橡皮章（紅：第一個、綠：第二個），油墨斑駁
+    vec2 ru = (P - vec2(${RS_RECT[0]}.0, ${RS_RECT[1]}.0)) / vec2(${RS_RECT[2]}.0, ${RS_RECT[3]}.0);
+    if (ru.x > 0.0 && ru.y > 0.0 && ru.x < 1.0 && ru.y < 1.0) {
+      vec4 rc = fastLayer(texture(rs, vec2(ru.x, 1.0 - ru.y)));
+      float grr = smoothstep(0.2, 0.7, 0.55 + 0.5 * fbm(P / 4.0 + 3.0, 3) + 0.3 * fbm(P / 50.0, 2));
+      col = mix(col, mix(C_BLOOD, C_SEPIA, 0.3), max(rc.r * rsK.x, rc.g * rsK.y) * grr * 0.78);
+    }
     // ---- 郵戳：蓋下去之前先有一團影子壓過來；蓋下之後是斑駁的油墨
     vec2 pu = (P - PR.xy) / PR.zw;
     if (pu.x > 0.0 && pu.y > 0.0 && pu.x < 1.0 && pu.y < 1.0) {
@@ -151,6 +180,7 @@ const BG = () => new FSPass(/* glsl */ `
   }`, {
   t: { value: 0 }, st: { value: null }, ly: { value: null }, pm: { value: null }, pmK: { value: 0 }, pmShadow: { value: 0 },
   mm: { value: null }, mmR: { value: new THREE.Vector4(0, 0, 1, 1) }, shown: { value: 0 }, hasMsg: { value: 0 },
+  rs: { value: null }, rsK: { value: new THREE.Vector2() },
   ...camUniforms(),
 });
 
@@ -162,6 +192,10 @@ export default class Stamp extends Scene {
   ly = this.track(new Layer2D(W, H, undefined, { fast: true }));
   /** 郵戳（init 畫一次，只蓋住郵戳那一塊）。 */
   pm = this.track(new Layer2D(PM_RECT[2], PM_RECT[3], 1, { fast: true }));
+  /** 橡皮章（init 畫一次，只蓋住信封右邊那一塊）。 */
+  rs = this.track(new Layer2D(RS_RECT[2], RS_RECT[3], 1, { fast: true }));
+  /** 橡皮章蓋下去的時間（窗格太短就不蓋：Infinity）。 */
+  tRub = [Infinity, Infinity];
   cam = new PlaneCam();
   msg: Msg | null = this.ctx.params.message ?? null;
   mm: GlyphMask | null = null;
@@ -171,32 +205,37 @@ export default class Stamp extends Scene {
   bars: number[] = [];
   tFirst = 0;
   tStrike = 0;
-  lyrStyle: LyricStyle = { family: FAM_LYR, size: 52, minSize: 48, maxWidth: LYR.w, tracking: 2, ...paperLyric() };
+  lyrStyle: LyricStyle = { family: FAM_LYR, size: 52, minSize: V2.lyrMin, maxWidth: LYR.w, tracking: 2, ...paperLyric() };
 
   override async init() {
     const { audio: au, lyrics, song } = this.ctx;
     const s = this.ctx.start, e = this.ctx.end, m = this.msg;
     const lines = lyrics.linesIn(s - 0.5, e + 0.5);
-    await loadText(`${T25_TEXT}${COUNTRY}${PM_TOP}${PM_BOT}${PLATE}∞郵資${m?.text ?? ''}${m ? sigOf(m) : ''}${lines.map((l) => l.text).join('')}${song.title}`);
+    await loadText(`${T25_TEXT}${COUNTRY}${PM_TOP}${PM_BOT}${PLATE}∞郵資${RUBBER.map((r) => r.text).join('')}${m?.text ?? ''}${m ? sigOf(m) : ''}${lines.map((l) => l.text).join('')}${song.title}`);
     const bar = au.timeOfBar(au.barAt(s) + 1) - au.timeOfBar(au.barAt(s));
     const beat = au.beatPeriod(s);
     this.tFirst = winBeats(au, s + 0.1, e)[0] ?? s + 0.2;
     this.bars = winBars(au, s, e);
     // 郵戳：第一拍之後至少兩拍的第一個小節線；窗格短就在第三拍
     this.tStrike = this.bars.find((b) => b >= this.tFirst + beat * 1.9) ?? (winBeats(au, s, e)[2] ?? this.tFirst + beat * 2);
+    // 橡皮章：郵戳之後的下兩個小節線（窗格結束前半拍以內的不蓋，才看得到蓋上去）
+    const later = this.bars.filter((b) => b > this.tStrike + 0.01 && b < e - beat * 0.5);
+    this.tRub = [later[0] ?? Infinity, later[1] ?? Infinity];
 
     // ---- 郵票上的字
     const c = document.createElement('canvas').getContext('2d')!;
     const text = m ? m.text : COUPLE_ZH;
     const sig = m ? sigOf(m) : DATE_DOTS;
-    this.lay = layMsg(c, text, sig, FAM_MSG, TXT, { min: m ? 50 : 44, max: m ? 150 : (lyrics.has ? 64 : 110), lineHeight: 1.3, maxLines: 5, sigFamily: F.ming(700), sigSize: [34, 46], align: 'left', fewer: 0.62 });
+    // 郵票在畫面上約 1:1（鏡頭只在 0.975～1 倍之間換角度），字級直接照螢幕 px；
+    // 沒有留言時郵票上是新人的名字（比邊紙的歌詞小；純音樂時名字是主角，可以到 60）
+    const lay = layMsgV2(c, text, sig, FAM_MSG, TXT, { max: m ? undefined : (lyrics.has ? 44 : V2.msgMax), lineHeight: 1.3, maxLines: 6, sigFamily: F.ming(700), align: 'left' });
+    this.lay = lay;
     const items = msgGlyphs(this.lay);
     this.mmRect = [TXT.x - 30, TXT.y - 30, TXT.w + 60, TXT.h + 60];
     this.mm = this.track(glyphMask(items, this.mmRect, 1, 2));
     const maxDur = Math.max(0.8, Math.min(1.6 * bar, 0.45 * (e - this.tFirst)));
     this.times = stagger(au, this.tFirst, items.length, maxDur);
-    if (m) this.lyrStyle = { ...this.lyrStyle, size: lyricSizeFor(this.lay.fit.size) };
-    else this.lyrStyle = { ...this.lyrStyle, size: 76, minSize: 52 };
+    this.lyrStyle = { ...this.lyrStyle, size: lyricV2(m ? lay.screen : null) };
 
     // ---- 郵票的框、面值、國名、邊紙的版號；信封上的邀請（沒有留言）
     const g = this.st.ctx;
@@ -207,10 +246,10 @@ export default class Stamp extends Scene {
     g.lineWidth = 1;
     g.strokeRect(ST.x + 42, ST.y + 42, ST.w - 84, ST.h - 84);
     g.fillStyle = ink;
-    g.font = font(F.serif(600), 58); g.fillText('∞', TXT.x, TXT.y - 6);
+    g.font = font(F.serif(600), 58); g.fillText('∞', TXT.x, HEAD_Y + 10);
     g.font = font(F.hei(500), 20); g.letterSpacing = '6px';
-    g.fillText('郵資', TXT.x + 64, TXT.y - 16);
-    g.fillText(COUNTRY, TXT.x + 190, TXT.y - 16);
+    g.fillText('郵資', TXT.x + 64, HEAD_Y);
+    g.fillText(COUNTRY, TXT.x + 190, HEAD_Y);
     g.letterSpacing = '0px';
     // 版號：郵票框的左下角（不要放到邊紙右邊：那裡是右下角 QR 的範圍）
     g.font = font(F.mono(500), 16); g.fillStyle = rgba('sepia', 0.5);
@@ -258,6 +297,25 @@ export default class Stamp extends Scene {
       p.stroke();
     }
     this.pm.upload();
+
+    // ---- 橡皮章：雙線的方框、字距拉開的粗黑體（第一個畫紅色、第二個畫綠色：shader 當兩張遮罩用）
+    const r = this.rs.ctx;
+    this.rs.clear();
+    RUBBER.forEach((rb, i) => {
+      r.save();
+      r.translate(rb.x - RS_RECT[0], rb.y - RS_RECT[1]);
+      r.rotate(rb.rot);
+      r.strokeStyle = r.fillStyle = i === 0 ? '#f00' : '#0f0';
+      r.font = font(F.hei(900), 28); r.letterSpacing = '10px';
+      const w = r.measureText(rb.text).width;
+      r.lineWidth = 4; r.strokeRect(-w / 2 - 22, -34, w + 36, 64);
+      r.lineWidth = 2; r.strokeRect(-w / 2 - 14, -26, w + 20, 48);
+      r.textAlign = 'center';
+      r.fillText(rb.text, 5, 10);
+      r.restore();
+    });
+    r.letterSpacing = '0px';
+    this.rs.upload();
   }
 
   override render(f: Frame, out: THREE.WebGLRenderTarget): PostOverrides {
@@ -298,7 +356,7 @@ export default class Stamp extends Scene {
       drawLyric(c, ly.line, t, this.lyrStyle, lay, ly.k);
       c.restore();
     } else if (!lyrics.linesIn(s, e).length) {
-      c.font = font(FAM_LYR, 48); c.letterSpacing = '4px'; c.fillStyle = rgba('sepia', 0.8 * prog(t, s, s + 0.5));
+      c.font = font(FAM_LYR, this.lyrStyle.size); c.letterSpacing = '4px'; c.fillStyle = rgba('sepia', 0.8 * prog(t, s, s + 0.5));
       c.fillText(`♪ ${song.title}`, LYR.x, LYR.y);
       c.letterSpacing = '0px';
     }
@@ -321,9 +379,11 @@ export default class Stamp extends Scene {
     u.pm!.value = this.pm.texture;
     u.pmK!.value = t >= this.tStrike ? 1 : 0;
     u.pmShadow!.value = t < this.tStrike ? ease.inQuad(prog(t, this.tStrike - beat * 0.6, this.tStrike)) : 0;
+    u.rs!.value = this.rs.texture;
+    (u.rsK!.value as THREE.Vector2).set(t >= this.tRub[0]! ? 1 : 0, t >= this.tRub[1]! ? 1 : 0);
     this.bg.render(renderer, out);
 
-    const hitK = pulse(t, this.tStrike, 0.07);
+    const hitK = Math.max(pulse(t, this.tStrike, 0.07), 0.6 * pulse(t, this.tRub[0]!, 0.06), 0.6 * pulse(t, this.tRub[1]!, 0.06));
     const box = this.lay?.box;
     return {
       paper: 1, bloom: 0.3, vignette: 0.42, grain: 0.05,

@@ -115,7 +115,8 @@ const DARK_FRAG = frag(`
   c += C_BONE * 0.04 * (1.0 - smoothstep(0.0, 0.012, abs(vW.y - ${KICK_H.toFixed(3)}))) * uLight;
   fragColor = vec4(c, 1.0);
 `);
-// 布幕：深色的絨布，上面是燈泡排的字（留言：全倒之後依序亮起來；沒有留言：歌詞，照跟唱規則）；四周一圈跑馬燈
+// 布幕：深色的絨布，上面是燈泡排的字（留言：全倒之後依序亮起來；沒有留言：歌詞，照跟唱規則）；
+// 字的四周一圈跑馬燈（留言標準 v2：燈框只比字大一點，uFrame = 框的畫布座標 x0, y0, x1, y1），全倒那一下整圈一起亮（uBurst）
 const BACK_FRAG = frag(`
   vec2 p = vec2(vUv.x * ${BACK_PX.w}.0, (1.0 - vUv.y) * ${BACK_PX.h}.0);
   // 絨布：直的布紋、上面打下來的一片光
@@ -143,18 +144,31 @@ const BACK_FRAG = frag(`
     }
     c = mix(c, tc, m.a);
   }
-  // 跑馬燈：四周一圈小燈泡，全倒之後跟著拍子跑
-  vec2 e = vec2(min(p.x, ${BACK_PX.w}.0 - p.x), min(p.y, ${BACK_PX.h - 120}.0 - p.y));
-  float along = e.x < e.y ? p.y : p.x;
-  float k = floor(along / 46.0);
-  vec2 bc = e.x < e.y ? vec2(e.x, fract(along / 46.0) * 46.0) : vec2(fract(along / 46.0) * 46.0, e.y);
-  float bulb = 1.0 - smoothstep(6.0, 8.0, length(bc - vec2(e.x < e.y ? 30.0 : 23.0, e.x < e.y ? 23.0 : 30.0)));
-  if (min(e.x, e.y) < 44.0 && min(e.x, e.y) > 14.0) {
-    float on = step(0.5, fract((k + uChase) / 3.0)) * uMarq;
+  // 跑馬燈：字外面一圈小燈泡（離框邊 15 px，四個角各一顆，間距約 40 px），沿著框一圈編號，全倒之後跟著拍子跑；
+  // 燈框內緣一條很細的線
+  vec2 fw = uFrame.zw - uFrame.xy;
+  vec2 e = vec2(min(p.x - uFrame.x, uFrame.z - p.x), min(p.y - uFrame.y, uFrame.w - p.y));
+  float em = min(e.x, e.y);
+  if (em > -20.0 && em < 50.0) {
+    float ix = fw.x - 30.0, iy = fw.y - 30.0;
+    float nx = max(1.0, floor(ix / 40.0 + 0.5)), ny = max(1.0, floor(iy / 40.0 + 0.5));
+    float stx = ix / nx, sty = iy / ny;
+    vec2 q = p - uFrame.xy - 15.0;
+    float bxi = clamp(floor(q.x / stx + 0.5), 0.0, nx), byi = clamp(floor(q.y / sty + 0.5), 0.0, ny);
+    // 最近的一顆：上、右、下、左四邊各找一個候選（順時針編號）
+    float d = length(q - vec2(bxi * stx, 0.0)), idx = bxi;
+    float dR = length(q - vec2(ix, byi * sty)); if (dR < d) { d = dR; idx = nx + byi; }
+    float dB = length(q - vec2(bxi * stx, iy)); if (dB < d) { d = dB; idx = nx + ny + (nx - bxi); }
+    float dL = length(q - vec2(0.0, byi * sty)); if (dL < d) { d = dL; idx = 2.0 * nx + ny + (ny - byi); }
+    float bulb = 1.0 - smoothstep(5.5, 7.5, d);
+    float on = max(step(0.5, fract((idx + uChase) / 3.0)) * uMarq, uBurst);
     c = mix(c, mix(C_BLOOD * 0.25, C_EMBER * 1.3 + C_SIGNAL * 0.6, on), bulb);
+    // 燈泡照在布上的一點光
+    c += (C_SIGNAL * 0.05 + C_EMBER * 0.02) * on * exp(-d / 14.0) * (1.0 - bulb);
   }
+  c = mix(c, C_ASH * 0.12 * (0.5 + 0.5 * uMarq), (1.0 - smoothstep(0.6, 1.6, abs(em - 36.0))) * step(0.0, em) * 0.8);
   fragColor = vec4(c * uDim, 1.0);
-`, `uniform sampler2D uMask; uniform vec4 uRect; uniform float uShown; uniform float uMode; uniform vec2 uGs[${MAXG}]; uniform float uLyrA; uniform float uChase; uniform float uMarq;
+`, `uniform sampler2D uMask; uniform vec4 uRect; uniform float uShown; uniform float uMode; uniform vec2 uGs[${MAXG}]; uniform float uLyrA; uniform float uChase; uniform float uMarq; uniform vec4 uFrame; uniform float uBurst;
 ${MASK_GLSL}`);
 
 const PIN_PROFILE: [number, number][] = [
@@ -187,6 +201,7 @@ export class BowlingRig {
     this.backMat = mk(BACK_FRAG, {
       uMask: { value: null }, uRect: { value: new THREE.Vector4(0, 0, 1, 1) }, uShown: { value: 0 }, uMode: { value: 0 },
       uGs: { value: Array.from({ length: MAXG }, () => new THREE.Vector2()) }, uLyrA: { value: 1 }, uChase: { value: 0 }, uMarq: { value: 0 },
+      uFrame: { value: new THREE.Vector4(0, 0, 1, 1) }, uBurst: { value: 0 },
     });
     // ---- 倒影：球瓶與球的鏡像（y 翻過來），先畫，球道半透明蓋在上面
     const mirror = new THREE.Group();
