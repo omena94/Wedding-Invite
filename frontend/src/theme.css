@@ -557,6 +557,9 @@ tbody tr:last-child td { border-bottom: none; }
   .pl-brand-title { margin-top: 0; }
   .pl-nav { flex-direction: row; overflow-x: auto; gap: 4px; padding-bottom: 4px; }
   .pl-nav a { white-space: nowrap; padding: 8px 10px; font-size: 13px; }
+  /* 手機是橫向捲動列，不摺疊：群組攤平、藏起群組標題 */
+  .pl-side .pl-nav .pl-nav-group, .pl-side .pl-nav .pl-nav-group .pl-nav-group-items { display: contents; } /* 選擇器要比檔尾的桌機規則長，才蓋得過 */
+  .pl-side .pl-nav .pl-nav-group-head { display: none; }
   .pl-side-foot { flex-direction: row; justify-content: space-between; align-items: center; }
   .pl-main { padding: 18px 14px 60px; }
   .pl-grid-2 { grid-template-columns: 1fr; gap: 0; }
@@ -1547,3 +1550,17 @@ tbody tr:last-child td { border-bottom: none; }
 .menu-row.change .menu-name { color: var(--rose-accent); text-decoration: line-through; text-decoration-color: rgba(195,139,124,.6); }
 .menu-note { width: 100%; min-width: 180px; padding: 6px 10px; font-size: 13px; border: 1px solid transparent; background: transparent; border-radius: 8px; }
 .menu-note:hover, .menu-note:focus { border-color: var(--border-highlight); background: #fff; }
+
+/* 後台左側選單摺疊式分組（2026-09-29） */
+.pl-nav-group { display: flex; flex-direction: column; gap: 2px; }
+.pl-nav-group-head {
+  display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 12px; border-radius: 12px; border: none; background: none;
+  font: inherit; font-size: 14px; font-weight: 600; color: var(--milk-tea-900); cursor: pointer; text-align: left; transition: background 0.15s;
+}
+.pl-nav-group-head:hover { background: var(--bg-card-subtle); }
+.pl-nav-group.current:not(.open) .pl-nav-group-head { background: var(--milk-tea-50); border: 1px solid var(--border-soft); padding: 9px 11px; }
+.pl-nav-chev { margin-left: auto; opacity: .55; transition: transform 0.2s; }
+.pl-nav-group.open .pl-nav-chev { transform: rotate(180deg); }
+.pl-nav-group-items { display: flex; flex-direction: column; gap: 2px; margin-left: 19px; padding-left: 8px; border-left: 1px solid var(--border-soft); }
+.pl-nav-group-items a { padding: 8px 10px; font-size: 13.5px; }
+.pl-nav-group:not(.open) .pl-nav-group-items { display: none; }
