@@ -59,7 +59,7 @@ def _authorized_record(db, payload, role):
 def _receipt(record):
     return GuestReceipt(name=record.name, attending=record.attending, adult_count=record.adult_count,
                         child_count=record.child_count, details_completed=record.details_completed,
-                        main_course=record.main_course, access_token=access_token(record, receipt=True))
+                        veg_count=record.veg_count, access_token=access_token(record, receipt=True))
 
 
 @router.post("/rsvp/verification")
@@ -142,8 +142,7 @@ def lookup(payload: LookupIn, db: Session = Depends(get_db), role: str | None = 
         baby_chair_count=record.baby_chair_count,
         veg_type=record.veg_type,
         dietary_note=record.dietary_note,
-        main_course=record.main_course,
-        kids_meal_count=record.kids_meal_count,
+        veg_count=record.veg_count,
         remark=record.remark,
         children=[{"height": c.get("height")} for c in record.children],
         access_token=access_token(record),
@@ -163,20 +162,13 @@ def submit_phase2(payload: Phase2Details, db: Session = Depends(get_db), role: s
     if not record.attending:
         raise HTTPException(400, "您先前回覆無法出席，若有變動請直接聯繫我們 🙏")
 
-    # 每位大人恰好一份主餐，驗證完成前不修改紀錄。
-    if any(k not in {"牛排", "雞腿排", "鮭魚排", "素食"} or v < 0 for k, v in payload.main_course.items()):
-        raise HTTPException(400, "請從提供的主餐中選擇，份數不可為負數")
-    mains = {k: v for k, v in payload.main_course.items() if v > 0}
-    if sum(mains.values()) != payload.adult_count:
-        raise HTTPException(400, "請為每位大人選一份主餐，主餐總份數須等於大人人數")
+    # 2026-09-29 改自助餐：不再選主餐與兒童餐，只問素食幾位；驗證完成前不修改紀錄。
+    if payload.veg_count > payload.adult_count:
+        raise HTTPException(400, "素食人數不可超過大人人數")
     if payload.baby_chair_count > payload.child_count:
         raise HTTPException(400, "兒童椅數量不可超過小孩人數")
-    if payload.kids_meal_count > payload.child_count:
-        raise HTTPException(400, "兒童餐點份數不可超過小孩人數，請調整後再送出")
     record.adult_count = payload.adult_count
     record.child_count = payload.child_count
-    record.main_course_json = json.dumps(mains, ensure_ascii=False)
-    record.kids_meal_count = payload.kids_meal_count
     # 每個小孩的身高（依人數對齊；賓客不能改計價方式，保留後台原本指定的）
     old_children = record.children
     new_children = []
@@ -192,8 +184,7 @@ def submit_phase2(payload: Phase2Details, db: Session = Depends(get_db), role: s
     record.veg_type = payload.veg_type
     record.dietary_note = payload.dietary_note
     record.remark = payload.remark
-    # 素食人數 = 主餐「素食」份數（給統計用）
-    record.veg_count = mains.get("素食", 0)
+    record.veg_count = payload.veg_count
     record.details_completed = True
     record.details_updated_at = func.now()
     db.commit()

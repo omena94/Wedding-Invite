@@ -187,15 +187,12 @@ def get_stats(db: Session = Depends(get_db)):
         dp_resp[key] += 1
         dp_ppl[key] += people(r)
 
-    # 素食類型 + 主餐份數（只算已填詳細的）
+    # 素食類型（只算已填詳細的；2026-09-29 起自助餐不再有主餐與兒童餐）
     done = [r for r in attending if r.details_completed]
     veg_types: dict[str, int] = {}
-    main_totals: dict[str, int] = {}
     for r in done:
         if (r.veg_count or 0) > 0 and r.veg_type and r.veg_type != "無":
             veg_types[r.veg_type] = veg_types.get(r.veg_type, 0) + 1
-        for dish, cnt in r.main_course.items():
-            main_totals[dish] = main_totals.get(dish, 0) + int(cnt)
 
     groom = [r for r in attending if r.side == "groom"]
     bride = [r for r in attending if r.side == "bride"]
@@ -218,8 +215,6 @@ def get_stats(db: Session = Depends(get_db)):
         total_baby_chairs=s(done, "baby_chair_count"),
         total_veg=s(done, "veg_count"),
         veg_types=veg_types,
-        main_course_totals=main_totals,
-        total_kids_meals=s(done, "kids_meal_count"),
     )
     cache.set_cached_stats(stats.model_dump())
     return stats
@@ -254,12 +249,7 @@ def update_rsvp(rsvp_id: int, payload: RsvpAdminUpdate, db: Session = Depends(ge
         raise HTTPException(404, "找不到這筆資料")
 
     data = payload.model_dump(exclude_unset=True)
-    # 主餐要序列化存入，並同步素食人數
-    mains = data.pop("main_course", None)
-    if mains is not None:
-        clean = {k: int(v) for k, v in mains.items() if v and int(v) > 0}
-        record.main_course_json = json.dumps(clean, ensure_ascii=False)
-        record.veg_count = clean.get("素食", 0)
+    # 2026-09-29 自助餐：素食人數直接存（veg_count），主餐與兒童餐已取消
 
     children = data.pop("children", None)
     if children is not None:
@@ -273,7 +263,7 @@ def update_rsvp(rsvp_id: int, payload: RsvpAdminUpdate, db: Session = Depends(ge
 
     db.commit()
     db.refresh(record)
-    cache.invalidate_stats()  # 人數/主餐可能被改，統計快取重算
+    cache.invalidate_stats()  # 人數/素食可能被改，統計快取重算
     return record
 
 
@@ -303,7 +293,7 @@ def export_csv(db: Session = Depends(get_db)):
     writer = csv.writer(buf)
     writer.writerow([
         "姓名", "親友方", "出席", "日期偏好", "大人", "幼童", "小孩身高",
-        "詳細已填", "主餐", "兒童餐點", "兒童座椅", "素食人數", "素食類型",
+        "詳細已填", "兒童座椅", "素食人數", "素食類型",
         "飲食備註", "賓客備註", "電話", "Email", "想說的話",
         "桌次（座位圖）", "內部備註", "填表時間",
     ])
@@ -321,7 +311,6 @@ def export_csv(db: Session = Depends(get_db)):
                 labels.append(lab)
         seat_labels[r.id] = "、".join(labels)
     for r in rows:
-        main_str = "、".join(f"{k}x{v}" for k, v in r.main_course.items()) if r.details_completed else ""
         writer.writerow([
             r.name, side_map.get(r.side, r.side),
             "出席" if r.attending else "不克出席",
@@ -329,7 +318,6 @@ def export_csv(db: Session = Depends(get_db)):
             r.adult_count, r.child_count,
             "/".join(str(c["height"]) if c["height"] is not None else "?" for c in r.children),
             "是" if r.details_completed else "否",
-            main_str, r.kids_meal_count,
             r.baby_chair_count, r.veg_count, r.veg_type, r.dietary_note,
             r.remark, r.phone, r.email, r.message,
             seat_labels.get(r.id, ""),

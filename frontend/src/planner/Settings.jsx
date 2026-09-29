@@ -85,7 +85,7 @@ export default function SettingsPage() {
         <div className="panel-head"><div className="panel-title"><Info size={18} /> 目前階段</div><span className="helper-text">直接切換就生效</span></div>
         <div className="pl-stage-row">
           <StageCard on locked label="第一階段意願調查" value="一直開放（/rsvp）" />
-          <StageCard on={!!stage.phase2_open} busy={!!busy} label="第二階段出席與主餐" value={stage.phase2_open ? `已開放（自 ${fmtDateTime(stage.phase2_open_at)}）` : "尚未開放"}
+          <StageCard on={!!stage.phase2_open} busy={!!busy} label="第二階段出席確認" value={stage.phase2_open ? `已開放（自 ${fmtDateTime(stage.phase2_open_at)}）` : "尚未開放"}
             onChange={(v) => save({ phase2_open_at: v ? localToISO(nowLocal()) : "" }, "p2")} />
           <StageCard on={values.seat_open === "1"} busy={!!busy} label="婚禮當天桌次查詢" value={values.seat_open === "1" ? "開放中（/seat）" : "關閉"}
             onChange={(v) => save({ seat_open: v ? "1" : "0" }, "seat")} />
