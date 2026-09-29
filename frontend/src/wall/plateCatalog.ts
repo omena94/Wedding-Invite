@@ -218,6 +218,14 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "idea": "從後排看兩人的背影和狗狗的頭，大銀幕上放的是歌詞（跟唱），爆米花在小鼓跳；片頭字卡是留言。"
  },
  {
+  "name": "proposal",
+  "title": "求婚",
+  "family": "wedding",
+  "light": false,
+  "couple": true,
+  "idea": "日常服：宣文單膝跪下（預備）、在小節線打開戒指盒（訊號色的光），背後的城市夜景窗戶亮成留言的字。"
+ },
+ {
   "name": "cake",
   "title": "切蛋糕",
   "family": "wedding",
