@@ -52,6 +52,8 @@ const live: LiveInfo = {
 const engine = new Engine(canvas, live);
 engine.debug = DEV;
 const director = new Director(engine, pool);
+// 截圖／驗收要可重現：同一首歌每次排一樣；現場每次播都重新洗牌
+director.fixedSeed = EXPORT;
 
 let playlist: SongRow[] = [];
 let songsRev = '';

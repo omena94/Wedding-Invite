@@ -78,9 +78,16 @@ export class Director {
     this.startAt = startAt;
     this.idx = 0;
     this.history = [];
+    this.salt = this.fixedSeed ? 0 : Math.floor(Math.random() * 1e6);
   }
 
-  private rnd(k: number) { return hash(this.song.info.id, this.idx, k); }
+  /**
+   * 這一次播放的亂數種子：每次開始一首歌都換（2026-09-28 新人：「模板可以不要每次都一樣順序嗎」）。
+   * 截圖／驗收（fixedSeed）固定 0，同一首歌排出來才會一樣。
+   */
+  private salt = 0;
+  fixedSeed = false;
+  private rnd(k: number) { return hash(this.song.info.id, this.idx, k, this.salt); }
 
   /** 每一格呼叫：時間軸上 t 之後至少要排到 t + 6 秒。 */
   update(t: number) {
