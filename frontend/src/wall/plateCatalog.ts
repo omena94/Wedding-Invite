@@ -154,6 +154,14 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "idea": "平溪天燈：兩人在天燈上寫字（留言），點火、放手在小節線，天燈升空，遠處已經有一片寫著其他留言的天燈。"
  },
  {
+  "name": "coffee",
+  "title": "咖啡拉花",
+  "family": "home",
+  "light": true,
+  "couple": true,
+  "idea": "俯視兩杯咖啡，拉花在拍點畫出愛心與葉子，旁邊的咖啡店黑板菜單寫著歌詞與留言。"
+ },
+ {
   "name": "toast",
   "title": "乾杯",
   "family": "wedding",
