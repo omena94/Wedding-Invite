@@ -1,37 +1,43 @@
 // 織布機（暗）：夜裡的工作室，一台織布機的經線從畫面上方的布一路垂到鏡頭前，梭子在拍點上「咻」地穿過去、
-// 筘（打緯的那根橫木）在拍點「啪」地往上一打，布就多織了一段——主打留言是用金線（這首歌的訊號色）織進深色布裡的字。
-//  - 一個焦點：留言是布上的織紋字，一梭一梭由上往下長出來（每一梭織半行字），織完是一整塊金線織錦，停在畫面中間讀。
-//    署名也織在布上（最後幾梭）。新織的那一段先鬆鬆地躺在織口下面、比較暗，筘一打就縮上去、亮一下。
-//  - 歌詞是畫面前景下緣的一行字（經線在前景是虛的），逐字跟唱，比留言小一級。沒有留言時歌詞放大當主角，
-//    布上改織新人的名字（灰白線、小一點），下面一行小小的邀請；純音樂：歌名一行小字。
-//  - 鏡頭：從下往上仰看（前景的經線比較近、布往上退遠），跟著織口慢慢往下移，最後停在整塊布；切進來時從上方搖下來落定。
+// 筘（打緯的那根橫木）在拍點「啪」地往上一打，布就多織了一段。
+// 2026-09-29 依「留言尺寸與版面比例標準 v2」重做構圖：
+//  - 場景是主視覺：整塊布都在織——左邊是用金線（這首歌的訊號色）織進深色布裡的主打留言（40～60 px，照 _v2），
+//    右邊同一排緯線織出一大片菱形花紋（金、深紅、骨白三色），每一梭花紋跟著字一起長出來。
+//    留言織完之後織布機不停：每一小節再織一條裝飾帶（梭子穿過、筘打一下），畫面一直有事件。
+//  - 署名用灰白線織在最後一行下面（26～32 px）。新織的那一段先暗暗地躺在織口下面，筘一打就縮上去、亮一下。
+//  - 歌詞是畫面前景下緣的一行字（經線在前景是虛的），逐字跟唱，40～52 px、比留言小。沒有留言時歌詞是焦點（52 px），
+//    布上改織新人的名字（灰白線），下面一行小小的邀請；純音樂：歌名一行小字。
+//  - 鏡頭：從下往上、斜斜地仰看（前景的經線比較近、布往上退遠），跟著織口往下移，織完停在整塊布；切進來時從上方搖下來落定。
 //    經線在織口下面分成兩層（開口），梭子從兩層中間穿過（前面那層蓋在梭子上）。
-// 手法：一個全螢幕 shader（PlaneCam 把每個像素打回布面座標：經線、緯線的圓柱明暗、金線的高光、筘、梭子都在這裡算），
-// 字是 _t14 的字模貼圖（只用覆蓋率：每一格緯線看一次）；歌詞是螢幕座標的 Canvas 圖層。
+// 手法：一個全螢幕 shader（PlaneCam 把每個像素打回布面座標：經線、緯線的圓柱明暗、金線的高光、花紋、筘、梭子都在這裡算），
+// 字是 _t14 的字模貼圖（只用覆蓋率：每一格緯線看一次）；花紋是格子座標的函數；歌詞是螢幕座標的 Canvas 圖層。
 import * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
 import { FSPass, Layer2D, W, H } from '../engine/gl';
 import { F, font, loadText } from '../engine/type';
 import { rgba } from '../engine/palette';
 import { clamp, ease, prog, hash, lerp } from '../engine/util';
-import { fitText } from '../engine/text';
-import { lyricAt, lyricSizeFor, COUPLE_ZH } from './_motifs';
+import { lyricAt, COUPLE_ZH } from './_motifs';
 import { grid, stagger, layoutRows, drawRows, darkInk } from './_t4';
-import { PlaneCam, camUniforms, CAM_GLSL, orderMask, lineItems, msgBlock, INVITE, type OrderMask, type MsgBlock, type Rect } from './_t14';
+import { PlaneCam, camUniforms, CAM_GLSL, orderMask, lineItems, msgBlockV2, INVITE, type OrderMask, type MsgBlock, type Rect } from './_t14';
+import { lyricV2 } from './_v2';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'craft', paper: false, energy: [0.3, 1], bars: [4, 8], weight: 1 };
 
-/** 有留言：留言＋署名織在這一塊。 */
-const MSG_BOX = { x: 290, y: 150, w: 1340, h: 560 };
-/** 沒有留言：新人的名字織在這一塊。 */
-const NAME_BOX = { x: 290, y: 190, w: 1340, h: 200 };
-/** 歌詞（螢幕座標，前景）：有留言時一行小的，沒有留言時大的。 */
-const LYR_S = { x: 170, y: 952, w: 1140 };
-const LYR_B = { x: 170, y: 900, w: 1160 };
+/** 有留言：留言＋署名織在左邊這一塊（螢幕上寬 ≤ 860、高 ≤ 430，init 依鏡頭縮放換算）；右邊是花紋。 */
+const MSG_BOX = { x: 200, y: 200, w: 820, h: 420 };
+/** 沒有留言：新人的名字織在左邊這一塊。 */
+const NAME_BOX = { x: 200, y: 230, w: 820, h: 140 };
+/** 花紋的右緣（布面座標）。 */
+const PAT_X1 = 1780;
+/** 歌詞（螢幕座標，前景）：有留言時一行，沒有留言時最多兩行。 */
+const LYR_S = { x: 170, y: 956, w: 1100 };
+const LYR_B = { x: 170, y: 920, w: 1140 };
 const FAM_W = F.hei(700);
 const FAM_LYR = F.archivo(100, 700);
 const FAM_SIG = F.hei(700); // 署名也是織的：粗一點的黑體，縮成格子才讀得到
-const MS = 0.5;
+/** 字模的解析度：織出來的字很小（一格 2～3 px），用全解析度取樣筆畫才不會斷。 */
+const MS = 1;
 
 const BG = () => new FSPass(/* glsl */ `
   ${CAM_GLSL}
@@ -39,7 +45,7 @@ const BG = () => new FSPass(/* glsl */ `
   uniform float ws; uniform float ph; uniform float y0;
   uniform float fell; uniform float band; uniform float shX; uniform float shDir; uniform float crossing;
   uniform float reedY; uniform float slam; uniform float snap; uniform float t;
-  uniform float focus; uniform float aperture;
+  uniform float focus; uniform float aperture; uniform vec2 pat;
 
   // 字模：這一格（經線 ci、緯線 ri）是不是字（2 = 愛心）
   float cellInk(float ci, float ri) {
@@ -49,6 +55,26 @@ const BG = () => new FSPass(/* glsl */ `
     if (mu.x < 0.0 || mu.y < 0.0 || mu.x > 1.0 || mu.y > 1.0) return 0.0;
     vec4 m = texture(mask, mu);
     return m.a > 0.5 ? (m.r > 0.75 ? 2.0 : (m.r > 0.25 ? 3.0 : 1.0)) : 0.0;
+  }
+
+  // 右邊的菱形花紋（格子座標的函數，所以一梭一梭織出來、之後不會變）：一格 = 經線 ws × 緯線 ph，照 px 算成正的菱形。
+  // 回傳 0 = 底、1 = 金、2 = 深紅、3 = 骨白
+  float patInk(float ci, float ri) {
+    float x = (ci + 0.5) * ws;
+    // 只有這個窗格織的這一段有花紋（上面的布頭不要跟花紋疊在一起）；左右兩邊各一條深紅的直條把花紋框成一塊
+    if (ri < 0.0) return 0.0;
+    if (abs(x - (pat.x - 22.0)) < ws * 1.1 || abs(x - (pat.y + 22.0)) < ws * 1.1) return 2.0;
+    if (x < pat.x || x > pat.y) return 0.0;
+    float P = 120.0;
+    float u = mod(x - pat.x, P) - P * 0.5, v = mod((ri + 0.5) * ph + P * 0.25, P) - P * 0.5;
+    float d = abs(u) + abs(v);
+    if (d > 52.0 && d < 57.0) return 2.0;
+    if (d > 32.0 && d < 37.0) return 1.0;
+    if (d < 10.0) return 3.0;
+    // 菱形與菱形之間的小十字（金）
+    float dc = abs(abs(u) - P * 0.5) + abs(abs(v) - P * 0.5);
+    if (dc < 7.0) return 1.0;
+    return 0.0;
   }
 
   // 經線（直的圓柱）：覆蓋率與明暗；離焦（blur 大）時條紋糊成平均的灰
@@ -84,6 +110,7 @@ const BG = () => new FSPass(/* glsl */ `
       float ri = floor((yy - y0) / ph), fy = (yy - y0) / ph - ri;
       float ci = floor(P.x / ws), fx = P.x / ws - ci;
       float ink = cellInk(ci, ri);
+      float pk = ink > 0.5 ? 0.0 : patInk(ci, ri);
       // 布頭：兩條細細的深色訊號線（布邊的裝飾，還沒到字）
       float stripe = step(abs(yy - (y0 - 44.0)), ph * 0.9) + step(abs(yy - (y0 - 28.0)), ph * 0.9);
       // 再上面一排菱形花紋（之前織好的布頭）
@@ -91,6 +118,8 @@ const BG = () => new FSPass(/* glsl */ `
       if (rr > 0.0 && rr < 11.0) { float dx = abs(mod(ci, 12.0) - 6.0), dy = abs(floor(rr) - 5.0); if (abs(dx + dy - 4.5) < 0.75) stripe = 1.0; }
       vec3 ground = mix(C_INK2, C_GRAPHITE, 0.16) * (0.85 + 0.3 * hash12(vec2(ci * 0.37, ri)));
       vec3 wc = ink > 2.5 ? C_BONE * 0.62 : (ink > 1.5 ? C_ROSE * 0.7 : (ink > 0.5 ? C_SIGNAL * 0.7 : (stripe > 0.5 ? C_BLOOD * 0.8 : ground)));
+      // 花紋比留言暗一點（留言是焦點）：金 → 訊號色的暗部、深紅 → blood、骨白 → 灰白
+      if (pk > 2.5) wc = C_BONE * 0.26; else if (pk > 1.5) wc = C_BLOOD * 0.55; else if (pk > 0.5) wc = mix(C_BLOOD, C_SIGNAL, 0.5) * 0.4;
       // 緯線：橫的圓柱，平紋一上一下（在上面的地方鼓起來；在下面的地方露出一小截經線）
       float over = mod(ci + ri, 2.0);
       float bump = sqrt(max(0.0, 1.0 - (2.0 * fy - 1.0) * (2.0 * fy - 1.0)));
@@ -174,7 +203,7 @@ const BG = () => new FSPass(/* glsl */ `
   ws: { value: 6 }, ph: { value: 4 }, y0: { value: 150 },
   fell: { value: 400 }, band: { value: 30 }, shX: { value: -999 }, shDir: { value: 1 }, crossing: { value: 0 },
   reedY: { value: 470 }, slam: { value: 0 }, snap: { value: 1 }, t: { value: 0 },
-  focus: { value: 1600 }, aperture: { value: 10 },
+  focus: { value: 1600 }, aperture: { value: 10 }, pat: { value: new THREE.Vector2(1100, PAT_X1) },
 });
 
 export default class Loom extends Scene {
@@ -187,10 +216,16 @@ export default class Loom extends Scene {
   mask: OrderMask | null = null;
   block: MsgBlock | null = null;
   ws = 6; ph = 4;
-  /** 織的範圍（布面 y）：從 top 織到 bottom，一梭 band 高。 */
-  top = 150; bottom = 700; band = 40;
+  /** 織的範圍（布面 y）：從 top 開始；留言（或名字）織到 bottom，之後每小節一條裝飾帶。 */
+  top = 150; bottom = 700;
+  /** 每一梭的時間與它織的高度。 */
   passes: number[] = [];
+  bands: number[] = [];
+  /** 留言那幾梭是前 nMsg 梭。 */
+  nMsg = 0;
   cross = 0.25;
+  /** 花紋從哪裡開始（布面 x）。 */
+  patX0 = 1100;
   lyr = { ...LYR_S, size: 52 };
   hasLyrics = false;
   avoid: Rect[] = [];
@@ -204,29 +239,36 @@ export default class Loom extends Scene {
     const names = COUPLE_ZH.replace(/\s*&\s*/, ' ♥ ');
     await loadText(`${m?.text ?? ''}${m ? (m.couple ? '—— 新郎新娘' : m.name) : ''}${names}${INVITE}${song.title}${song.artist}——一位賓客`);
 
+    // 鏡頭在留言那一塊的縮放（織完、停下來的姿勢）：畫在布上的字級要除以它，畫面上才是標準的大小
+    this.top = MSG_BOX.y - 16; this.bottom = MSG_BOX.y + MSG_BOX.h;
+    this.cam.set(this.pose(e - 0.5));
+    const k = this.cam.toScreen(MSG_BOX.x + MSG_BOX.w / 2, MSG_BOX.y + MSG_BOX.h / 2).scale;
     let items;
     if (m) {
-      const b = (this.block = msgBlock(c, m, FAM_W, MSG_BOX, { align: 'center', sigFamily: FAM_SIG, sigMin: 62, sigMax: 72, min: 52, max: 140, lineHeight: 1.24, maxLines: 5 }));
-      this.ph = clamp(b.fit.size / 20, 3, 7);
+      const bw = Math.min(MSG_BOX.w, 860 / k), bh = Math.min(MSG_BOX.h, 430 / k);
+      const b = (this.block = msgBlockV2(c, m, FAM_W, { x: MSG_BOX.x, y: MSG_BOX.y, w: bw, h: bh }, { align: 'left', valign: 'top', sigFamily: FAM_SIG, scale: k, lineHeight: 1.3, sigSize: 32 }));
+      // 一行字約 15 條緯線：小字也讀得到，織紋又不會細到看不見
+      this.ph = clamp(b.fit.size / 18, 2.2, 4.5);
       items = lineItems(b.lines, FAM_W, b.fit.size);
       const sg = b.sig;
       // 署名用灰白線織（R = 128），跟金線的留言分開
       items.push(...lineItems([{ text: sg.text, x: sg.x, y: sg.y }], FAM_SIG, sg.size, items.length).map((it) => ({ ...it, tag: 128 })));
       this.top = b.box[1] - 16;
-      this.bottom = b.box[1] + b.box[3] + 22;
-      this.lyr = { ...LYR_S, size: lyricSizeFor(b.fit.size) };
+      this.bottom = b.box[1] + b.box[3] + 20;
+      this.patX0 = Math.max(b.box[0] + b.box[2], ...b.lines.map((l) => l.x + l.w)) + 90;
+      this.lyr = { ...LYR_S, size: lyricV2(b.fit.size * k) };
       this.avoid = [b.box];
     } else {
-      // 沒有留言：織新人的名字（小一點、灰白線），歌詞在前景當主角
-      const ft = fitText(c, names, FAM_W, NAME_BOX.w, NAME_BOX.h, { min: 60, max: 104, maxLines: 1 });
-      c.font = font(FAM_W, ft.size);
+      // 沒有留言：織新人的名字（灰白線、56 px），歌詞在前景當焦點
+      const size = 56 / k;
+      c.font = font(FAM_W, size);
       const w = c.measureText(names).width;
-      const y = NAME_BOX.y + (NAME_BOX.h + ft.size * 0.8) / 2;
-      items = lineItems([{ text: names, x: NAME_BOX.x + (NAME_BOX.w - w) / 2, y }], FAM_W, ft.size);
-      this.ph = clamp(ft.size / 20, 3, 6);
+      items = lineItems([{ text: names, x: NAME_BOX.x, y: NAME_BOX.y + (NAME_BOX.h + size * 0.8) / 2 }], FAM_W, size).map((it) => ({ ...it, tag: 128 }));
+      this.ph = clamp(size / 18, 2.2, 4.5);
       this.top = NAME_BOX.y;
       this.bottom = NAME_BOX.y + NAME_BOX.h;
-      this.lyr = { ...LYR_B, size: 76 };
+      this.patX0 = NAME_BOX.x + w + 110;
+      this.lyr = { ...LYR_B, size: lyricV2(null) };
       this.avoid = [[NAME_BOX.x, NAME_BOX.y, NAME_BOX.w, NAME_BOX.h]];
     }
     this.ws = this.ph * 1.3;
@@ -242,9 +284,17 @@ export default class Loom extends Scene {
     if (first - s < 0.22) first = au.timeOfBeat(au.beatAt(first) + 1);
     this.passes = stagger(au, first, n, maxDur);
     n = this.passes.length;
-    this.band = H0 / n;
+    this.nMsg = n;
+    this.bands = this.passes.map(() => H0 / n);
     const gap = n > 1 ? this.passes[1]! - this.passes[0]! : gr.beat;
     this.cross = clamp(gap * 0.62, 0.12, 0.3);
+    // 留言織完之後：每一小節（最後一小節不算）再織一條裝飾帶，最多 6 條
+    const done = this.passes[n - 1]! + 0.1;
+    for (const b of gr.bars) {
+      if (b <= done + this.cross || b > e - gr.beat * 1.5 || this.passes.length >= n + 6) continue;
+      this.passes.push(b);
+      this.bands.push(clamp(this.ph * 7, 20, 30));
+    }
   }
 
   /** 到 t 為止打緊了幾梭。 */
@@ -253,15 +303,16 @@ export default class Loom extends Scene {
   /** 鏡頭：從上方搖下來落定，跟著織口往下（每一梭推一點、緩進緩出），織完慢慢拉開看整塊布；最後半拍往下甩開。 */
   private pose(t: number) {
     const s = this.ctx.start, e = this.ctx.end;
-    const n = this.passes.length;
     const land = prog(t, s, s + 0.7, ease.outExpo);
     // 織口在布上的位置（每一梭在拍點跳一段，中間用緩動接起來）
-    const k = this.done(t);
+    // 還沒排好梭子（init 裡算縮放時）：當成已經織完、停好的姿勢
+    const nm = Math.max(1, this.nMsg);
+    const k = Math.min(this.done(t), nm);
     const prev = k > 0 ? this.passes[k - 1]! : s;
-    const frac = k < n ? ease.inOutCubic(clamp((t - prev) / Math.max(0.1, this.passes[k]! - prev))) : 0;
-    const woven = clamp((k + frac) / n);
-    const tEnd = this.passes[n - 1] ?? s;
-    const settle = prog(t, tEnd, tEnd + 2.2, ease.inOutCubic);
+    const frac = k < nm && this.passes[k] !== undefined ? ease.inOutCubic(clamp((t - prev) / Math.max(0.1, this.passes[k]! - prev))) : 0;
+    const woven = this.nMsg ? clamp((k + frac) / nm) : 1;
+    const tEnd = this.passes[nm - 1] ?? s;
+    const settle = this.nMsg ? prog(t, tEnd, tEnd + 2.2, ease.inOutCubic) : 1;
     const exit = prog(t, e - 0.4, e, ease.inCubic);
     const side = hash(this.seed, 5) < 0.5 ? -1 : 1;
     const F0 = 1500;
@@ -285,7 +336,8 @@ export default class Loom extends Scene {
     const u = this.bg.u;
     this.cam.apply(u);
     const n = this.passes.length, k = this.done(t);
-    const fell = this.top + this.band * k;
+    let fell = this.top;
+    for (let i = 0; i < k; i++) fell += this.bands[i]!;
     // 下一梭正在穿：拍點前 cross 秒內
     const next = k < n ? this.passes[k]! : Infinity;
     const cu = (t - (next - this.cross)) / this.cross;
@@ -305,7 +357,8 @@ export default class Loom extends Scene {
     // 緯線的格子從織的起點算（字模跟格子對齊）
     u.y0!.value = this.top;
     u.fell!.value = fell;
-    u.band!.value = this.band;
+    u.band!.value = k > 0 ? this.bands[k - 1]! : 30;
+    (u.pat!.value as THREE.Vector2).set(this.patX0, PAT_X1);
     u.shX!.value = shX; u.shDir!.value = dir; u.crossing!.value = crossing ? 1 : 0;
     u.reedY!.value = fell + 8 + reedOff;
     u.slam!.value = k > 0 ? Math.exp(-(t - last) / 0.18) : 0;
@@ -324,16 +377,16 @@ export default class Loom extends Scene {
     c.fillStyle = gy; c.fillRect(0, 760, W, 320);
     const ly = lyricAt(lyrics, t);
     if (ly) {
-      const st = { family: FAM_LYR, size: this.lyr.size, minSize: 48, maxW: this.lyr.w, maxRows: 2, align: 'left' as const };
+      const st = { family: FAM_LYR, size: this.lyr.size, minSize: 40, maxW: this.lyr.w, maxRows: this.msg ? 1 : 2, align: 'left' as const };
       const lay = layoutRows(c, ly.line, st);
       c.save(); c.translate(this.lyr.x, this.lyr.y - (lay.rows.length - 1) * lay.lineHeight);
       drawRows(c, lay, FAM_LYR, t, darkInk(), ly.k * k0);
       c.restore();
     }
     if (!this.msg) {
-      c.font = font(F.hei(500), this.hasLyrics ? 26 : 34); c.letterSpacing = '3px';
-      c.fillStyle = rgba('ash', 0.85 * k0);
-      c.fillText(INVITE, LYR_B.x, this.hasLyrics ? 1000 : 930);
+      c.font = font(F.hei(500), this.hasLyrics ? 22 : 30); c.letterSpacing = '3px';
+      c.fillStyle = rgba('ash', 0.8 * k0);
+      c.fillText(INVITE, LYR_B.x, this.hasLyrics ? 1004 : 930);
       c.letterSpacing = '0px';
     }
     if (!this.hasLyrics) {

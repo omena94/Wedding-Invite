@@ -7,14 +7,15 @@
 //    CPU 這邊用 toScreen() 算同一個點在螢幕上的位置（LineBatch 的針、梭子、板擦）。
 //  - 「依序出現的字模」orderMask：字畫成一張資料貼圖，A = 字的覆蓋率、G = 第幾個字、B = 字裡面的掃描順序（0..1）、
 //    R = 愛心。shader 拿「現在唱到／繡到第幾個字的哪裡」就能決定哪些像素出現，一針一針、一梭一梭、一指一指都用它。
-//  - 留言＋署名的排版（署名永遠在最後一行下面，字級依扣掉署名之後的高度算，QA 的 K 情境）。
+//  - 留言＋署名的排版（照 v2 標準的字級；署名永遠在最後一行下面，字級依扣掉署名之後的高度算，QA 的 K 情境）。
 import * as THREE from 'three';
 import { font, layout } from '../engine/type';
 import { clamp } from '../engine/util';
 import type { Msg } from '../engine/scene';
-import type { FitResult } from '../engine/text';
+import { fitText, type FitResult } from '../engine/text';
 import { heartPoints, signature } from './_motifs';
 import { fitMsg } from './_t4';
+import { V2, msgMaxFor, sigV2, fitClauses } from './_v2';
 
 export type Rect = [number, number, number, number];
 export type P2 = { x: number; y: number };
@@ -225,6 +226,7 @@ export interface MsgBlock {
 /**
  * 在框裡排一則留言＋署名：字級依「框高扣掉署名那一行」算（署名永遠在最後一行下面、不重疊），整塊在框裡垂直置中。
  * align = 'left'（署名靠右對齊最長那行）或 'center'（署名靠右、留言置中）。
+ * （舊版：別的批次的版面還在用，行為不能改。照 v2 標準排的版面用 msgBlockV2。）
  */
 export function msgBlock(c: CanvasRenderingContext2D, m: Msg, family: string, box: { x: number; y: number; w: number; h: number }, o: { align?: 'left' | 'center'; sigFamily: string; sigMin?: number; sigMax?: number; min?: number; max?: number; lineHeight?: number; maxLines?: number; sigText?: string }): MsgBlock {
   const sigMin = o.sigMin ?? 40, sigMax = o.sigMax ?? 54;
@@ -248,6 +250,50 @@ export function msgBlock(c: CanvasRenderingContext2D, m: Msg, family: string, bo
   const right = o.align === 'center' ? cx + maxW / 2 : box.x + maxW;
   const sigY = lines[lines.length - 1]!.y + gap;
   const sigX = Math.min(box.x + box.w - sigW, Math.max(box.x, right - sigW + sigSize * 0.6));
+  const x0 = Math.min(...lines.map((l) => l.x), sigX), x1 = Math.max(right, sigX + sigW);
+  return { fit, family, lines, sig: { text: sigText, x: sigX, y: sigY, size: sigSize, w: sigW }, box: [x0, top, x1 - x0, sigY + sigSize * 0.3 - top] };
+}
+
+/**
+ * 在框裡排一則留言＋署名，照「留言尺寸與版面比例標準 v2」（_v2.ts）：
+ *  - 字級是「螢幕上的 px」：留言 40～msgMaxFor(字數)、署名 sigV2。scale = 這一塊在畫面上的縮放（1 頁面 px = scale 螢幕 px），
+ *    畫在頁面座標的字級要除以它（鏡頭推近時頁面上的字要小一點，畫面上才是標準的大小）。
+ *  - 照子句斷行（fitClauses），放不下才交給 fitText；字級依「框高扣掉署名那一行」算，署名永遠在最後一行下面、不重疊。
+ *  - 整塊在框裡垂直置中（valign = 'top' 就貼著上緣）。
+ * align = 'left'（署名靠右對齊最長那行）或 'center'（留言置中、署名靠右）。
+ */
+export function msgBlockV2(c: CanvasRenderingContext2D, m: Msg, family: string, box: { x: number; y: number; w: number; h: number }, o: { align?: 'left' | 'center'; valign?: 'middle' | 'top'; sigFamily: string; lineHeight?: number; maxLines?: number; sigText?: string; scale?: number; sigSize?: number }): MsgBlock {
+  const k = o.scale ?? 1;
+  const text = m.text;
+  const lh = o.lineHeight ?? 1.32, maxLines = o.maxLines ?? 5;
+  const lo = V2.msgMin / k, hi = msgMaxFor(text) / k;
+  // 先用最大的署名估一次高度排留言，再照排出來的字級算署名、重排一次（署名小了，留言可能可以大一點）
+  const fitOnce = (sig: number) => {
+    const h = box.h - sig * 1.9;
+    return fitClauses(c, text, family, box.w, h, { min: lo, max: hi, lineHeight: lh, maxLines })
+      ?? fitText(c, text, family, box.w, h, { min: lo, max: hi, lineHeight: lh, maxLines });
+  };
+  let fit = fitOnce(V2.sigMax / k);
+  // sigSize：版面可以指定署名的螢幕字級（例如織出來的字太小會讀不到，用標準的上限 32）
+  const sigOf = (msgPx: number) => (o.sigSize ?? sigV2(msgPx)) / k;
+  let sigSize = sigOf(fit.size * k);
+  fit = fitOnce(sigSize);
+  sigSize = sigOf(fit.size * k);
+  const sigText = o.sigText ?? (m.couple ? '—— 新郎新娘' : signature(m.name));
+  c.font = font(family, fit.size);
+  const widths = fit.lines.map((l) => c.measureText(l).width);
+  const maxW = Math.max(...widths);
+  c.font = font(o.sigFamily, sigSize);
+  const sigW = c.measureText(sigText).width;
+  const gap = Math.max(fit.lineHeight * 0.95, sigSize * 1.8);
+  const blockH = fit.size + (fit.lines.length - 1) * fit.lineHeight + gap;
+  const top = box.y + (o.valign === 'top' ? 0 : Math.max(0, (box.h - blockH) / 2));
+  const base0 = top + fit.size * 0.9;
+  const cx = box.x + box.w / 2;
+  const lines = fit.lines.map((ln, i) => ({ text: ln, x: o.align === 'center' ? cx - widths[i]! / 2 : box.x, y: base0 + i * fit.lineHeight, w: widths[i]! }));
+  const right = o.align === 'center' ? cx + maxW / 2 : box.x + maxW;
+  const sigY = lines[lines.length - 1]!.y + gap;
+  const sigX = Math.min(box.x + box.w - sigW, Math.max(box.x, right - sigW));
   const x0 = Math.min(...lines.map((l) => l.x), sigX), x1 = Math.max(right, sigX + sigW);
   return { fit, family, lines, sig: { text: sigText, x: sigX, y: sigY, size: sigSize, w: sigW }, box: [x0, top, x1 - x0, sigY + sigSize * 0.3 - top] };
 }

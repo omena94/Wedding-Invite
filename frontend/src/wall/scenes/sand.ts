@@ -1,32 +1,44 @@
 // 沙畫（暗）：從上往下看一個燈箱，玻璃上鋪了一層沙，燈從下面透上來——沙厚的地方是暗的，手指撥開的地方透出暖暖的光。
-//  - 一個焦點：主打留言是被手指撥開的字（手寫的文楷、筆畫粗粗圓圓的），拍點上一個字一個字撥出來：
-//    剛撥開的地方最亮，筆畫兩邊被推開的沙堆起一道暗暗的邊。署名寫完留言後的下一拍撥出來。
-//  - 歌詞在留言下面一條「沙帶」裡：還沒唱的字是淺淺的一道（沙薄一點、透一點點光）、唱到的字撥開透出訊號色的光、唱完是暖白的光；
-//    換句的時候一隻看不見的手把沙抹回去（一道抹痕由左往右掃過），新的一句再寫上去。比留言小一級。
-//  - 拍點上也撥出線條：上方一道波浪（每一拍長一段）。窗格最後半拍，一大把沙從一邊抹過整個燈箱（下一幅）。
-//  - 沒有留言：歌詞放大在中間，下面一行淺淺的邀請；純音樂又沒有留言：撥出新人的名字。
+// 2026-09-29 依「留言尺寸與版面比例標準 v2」重做構圖：
+//  - 場景是主視覺：右邊一幅沙畫在拍點上一筆一筆畫出來——一彎月亮、兩道山稜、山上一棵樹、一條彎彎的小路、一顆一顆的星星；
+//    畫完之後每一小節手指再彈出一顆流星（窗格長時中段也一直有事件）。右下角 HUD 底下是堆高的沙（暗），不擋時間與 QR。
+//  - 留言在左邊，是被手指撥開的字（霞鶩文楷，40～60 px，照 _v2），拍點上一個字一個字撥出來：剛撥開的地方最亮，
+//    筆畫兩邊被推開的沙堆起一道暗暗的邊；愛心底下透玫瑰色的光。署名在最後一行下面（26～32 px）。
+//  - 歌詞在下面一條「沙帶」裡（40～52 px，比留言小）：還沒唱的字是淺淺的一道、唱到的字撥開透出訊號色的光、唱完是暖白的光；
+//    換句的時候一隻看不見的手把沙抹回去（一道抹痕由左往右掃過），新的一句再寫上去。
+//  - 窗格最後半拍，一大把沙從一邊抹過整個燈箱（下一幅）。
+//  - 沒有留言：歌詞在左邊當焦點（52 px、最多兩行），下面一行淺淺的邀請；純音樂又沒有留言：撥出新人的名字。
 // 手法：一個全螢幕 shader（PlaneCam：燈箱是一張平面；沙的厚度＝底紋 − 撥開的字＋被推開的沙），留言是 _t14 的「依序出現」字模
-// （每個字撥開的時間在 uniform 陣列），歌詞與波浪畫在燈箱座標的 Canvas 圖層（透明度 = 撥開多少）。
+// （每個字撥開的時間在 uniform 陣列），沙畫、歌詞畫在燈箱座標的 Canvas 圖層（透明度 = 撥開多少）。
 import * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
 import { FSPass, Layer2D, W, H } from '../engine/gl';
 import { F, font, loadText } from '../engine/type';
 import { rgba } from '../engine/palette';
 import { clamp, ease, prog, hash } from '../engine/util';
-import { fitText } from '../engine/text';
-import { lyricAt, lyricSizeFor, COUPLE_ZH } from './_motifs';
+import { lyricAt, COUPLE_ZH } from './_motifs';
 import { grid, stagger, layoutRows, drawRows, type KaraokeInk } from './_t4';
-import { PlaneCam, camUniforms, CAM_GLSL, orderMask, lineItems, msgBlock, INVITE, type OrderMask, type MsgBlock, type MaskItem, type Rect } from './_t14';
+import { PlaneCam, camUniforms, CAM_GLSL, orderMask, lineItems, msgBlockV2, INVITE, type OrderMask, type MsgBlock, type MaskItem, type Rect } from './_t14';
+import { lyricV2 } from './_v2';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'craft', paper: false, energy: [0.05, 0.7], bars: [4, 8], weight: 1 };
 
 /** 燈箱的發光範圍（燈箱座標）。 */
 const BOX = { x0: 110, y0: 80, x1: 1810, y1: 1000 };
-const MSG_BOX = { x: 250, y: 200, w: 1420, h: 500 };
+/** 留言在左邊這一塊（螢幕上寬 ≤ 860、高 ≤ 430，init 依鏡頭縮放換算），沙畫在右邊。 */
+const MSG_BOX = { x: 200, y: 250, w: 800, h: 430 };
 /** 歌詞的沙帶：有留言時在下面一行；沒有留言時放大在中間。 */
-const LYR_S = { x: 260, y: 858, w: 1060 };
-const LYR_B = { x: 260, y: 520, w: 1400 };
-const WAVE_Y = 150;
+const LYR_S = { x: 220, y: 880, w: 1080 };
+const LYR_B = { x: 220, y: 440, w: 780 };
+
+// ---------------------------------------------------------------- 沙畫（燈箱座標，右半邊）
+type Pt = [number, number];
+/** 一筆：一串點（照畫的順序）、筆寬、開始時間與長度。 */
+interface Stroke { pts: Pt[]; w: number; t0: number; d: number; dot?: boolean }
+const arc = (cx: number, cy: number, r: number, a0: number, a1: number, n = 40): Pt[] => Array.from({ length: n + 1 }, (_, i) => { const a = a0 + ((a1 - a0) * i) / n; return [cx + Math.cos(a) * r, cy + Math.sin(a) * r]; });
+const wave = (x0: number, y0: number, x1: number, y1: number, amp: number, k: number, ph: number, n = 60): Pt[] => Array.from({ length: n + 1 }, (_, i) => { const u = i / n; return [x0 + (x1 - x0) * u, y0 + (y1 - y0) * u - amp * Math.sin(Math.PI * u * k + ph) * Math.sin(Math.PI * u)]; });
+/** 近的山稜的高度（樹、小路要長在它上面）：跟 wave(1020, 660, 1740, 620, 70, 1.6, 0.4) 同一條線。 */
+const HILL = (x: number) => { const u = (x - 1020) / 720; return 660 - 40 * u - 70 * Math.sin(Math.PI * u * 1.6 + 0.4) * Math.sin(Math.PI * u); };
 const FAM_MSG = F.hand(700);
 const FAM_LYR = F.hand(700);
 const MAXC = 80;
@@ -72,9 +84,11 @@ const BG = () => new FSPass(/* glsl */ `
     // 手掌抹勻的沙：大片的濃淡很平順，加上一道道弧形的抹紋與細細的沙粒
     // 中間的沙薄一點（燈箱中央透出一團暖光），往四周越來越厚
     vec2 cc = (P - vec2(960.0, 470.0)) / vec2(900.0, 560.0);
-    float D = 1.42 - 0.36 * exp(-dot(cc, cc) * 1.6) + 0.07 * snoise(P / 520.0) + 0.035 * snoise(P / 110.0);
+    float D = 1.32 - 0.4 * exp(-dot(cc, cc) * 1.6) + 0.07 * snoise(P / 520.0) + 0.035 * snoise(P / 110.0);
     D += 0.035 * sin(length(P - vec2(1500.0, -300.0)) / 17.0 + 2.5 * snoise(P / 380.0));
     D += 0.07 * (hash12(floor(P * 0.9)) - 0.5) * sat(1.4 - px);
+    // 右下角：推到角落堆高的沙（燈透不過來，HUD 的字才讀得清楚）
+    D += 0.9 * smoothstep(1180.0, 1440.0, P.x) * smoothstep(700.0, 860.0, P.y);
     // 撥開的字：邊緣是手指撥出來的毛邊；字裡面留一點點沙；字的旁邊被推開的沙堆高一點
     vec2 jit = vec2(snoise(P / 5.0), snoise(P / 5.0 + 9.1)) * 1.5;
     float d0 = dug(P + jit);
@@ -128,9 +142,10 @@ export default class Sand extends Scene {
   block: MsgBlock | null = null;
   items: MaskItem[] = [];
   times: { s: number; d: number }[] = [];
-  /** 波浪每一拍長一段。 */
-  waveBeats: number[] = [];
+  /** 沙畫的每一筆（月亮、山、樹、小路、星星、之後每小節一顆流星）。 */
+  strokes: Stroke[] = [];
   lyr0 = { ...LYR_S, size: 52 };
+  k = 1;
   hasLyrics = false;
   avoid: Rect[] = [];
 
@@ -142,23 +157,24 @@ export default class Sand extends Scene {
     this.hasLyrics = lyrics.linesIn(s, e).length > 0;
     const names = COUPLE_ZH.replace(/\s*&\s*/, ' ♥ ');
     await loadText(`${m?.text ?? ''}${m ? (m.couple ? '—— 新郎新娘' : m.name) : ''}${names}${INVITE}${song.title}${song.artist}——一位賓客`);
+    // 鏡頭在留言那一塊的縮放（窗格中間的姿勢）：畫在燈箱上的字級要除以它，畫面上才是標準的大小
+    this.cam.set(this.pose((s + e) / 2));
+    const k = (this.k = this.cam.toScreen(MSG_BOX.x + MSG_BOX.w / 2, MSG_BOX.y + MSG_BOX.h / 2).scale);
     let items: MaskItem[] = [];
     if (m) {
-      const b = (this.block = msgBlock(c, m, FAM_MSG, MSG_BOX, { align: 'center', sigFamily: FAM_MSG, sigMin: 54, sigMax: 64, min: 50, max: 140, lineHeight: 1.3, maxLines: 5 }));
+      const b = (this.block = msgBlockV2(c, m, FAM_MSG, { x: MSG_BOX.x, y: MSG_BOX.y, w: Math.min(MSG_BOX.w, 860 / k), h: Math.min(MSG_BOX.h, 430 / k) }, { align: 'left', sigFamily: FAM_MSG, scale: k, lineHeight: 1.34 }));
       items = lineItems(b.lines, FAM_MSG, b.fit.size);
       // 署名字小：不加粗（加粗會糊成一團）
-      items.push(...lineItems([{ text: b.sig.text, x: b.sig.x, y: b.sig.y }], FAM_MSG, b.sig.size, items.length).map((it) => ({ ...it, thick: 0 })));
-      this.lyr0 = { ...LYR_S, size: lyricSizeFor(b.fit.size) };
-      this.avoid = [b.box, [LYR_S.x, LYR_S.y - 70, LYR_S.w, 100]];
+      items.push(...lineItems([{ text: b.sig.text, x: b.sig.x, y: b.sig.y }], FAM_MSG, b.sig.size, items.length).map((it) => ({ ...it, thick: 0.4 })));
+      this.lyr0 = { ...LYR_S, size: lyricV2(b.fit.size * k) / k };
+      this.avoid = [this.cam.screenRect(b.box, 10)];
     } else {
-      this.lyr0 = { ...LYR_B, size: 110 };
+      this.lyr0 = { ...LYR_B, size: lyricV2(null) / k };
       if (!this.hasLyrics) {
-        const ft = fitText(c, names, FAM_MSG, 1200, 240, { min: 90, max: 170, maxLines: 1 });
-        c.font = font(FAM_MSG, ft.size);
-        const w = c.measureText(names).width;
-        items = lineItems([{ text: names, x: (W - w) / 2, y: 480 + ft.size * 0.35 }], FAM_MSG, ft.size);
+        const size = 60 / k;
+        items = lineItems([{ text: names, x: LYR_B.x, y: 470 }], FAM_MSG, size);
       }
-      this.avoid = [[LYR_B.x, 300, LYR_B.w, 360]];
+      this.avoid = [this.cam.screenRect([LYR_B.x, 320, LYR_B.w, 260], 10)];
     }
     this.items = items;
     if (items.length) {
@@ -168,11 +184,42 @@ export default class Sand extends Scene {
       this.times = ts.map((t0, i) => ({ s: t0, d: clamp(((ts[i + 1] ?? t0 + gr.beat) - t0) * 0.85, 0.08, 0.45) }));
       const x0 = Math.min(...items.map((g) => g.x)) - 30, x1 = Math.max(...items.map((g) => g.x + g.w)) + 30;
       const y0 = Math.min(...items.map((g) => g.y - g.size)) - 30, y1 = Math.max(...items.map((g) => g.y + g.size * 0.35)) + 30;
-      const thick = clamp(items[0]!.size * 0.01, 0.5, 1.5);
+      const thick = clamp(items[0]!.size * 0.012, 0.5, 1);
       this.mask = this.track(orderMask(items, [x0, y0, x1 - x0, y1 - y0], MS, 'diag', 3, thick));
     }
-    // 波浪：從第一拍開始每一拍長一段（最多兩小節長完）
-    this.waveBeats = gr.beats.filter((b) => b >= gr.b0).slice(0, 8);
+    // ---- 沙畫：一拍一筆（兩小節內、或窗格的六成內畫完），之後每一小節一顆流星
+    const R = (i: number) => hash(this.seed, i);
+    const tx = 1300 + (R(1) - 0.5) * 60;
+    const shapes: Omit<Stroke, 't0' | 'd'>[] = [
+      { pts: arc(1560, 250, 70, Math.PI * 0.42, Math.PI * 1.58), w: 22 }, // 月亮（一彎）
+      // 遠的山稜（細、在上面），在樹那裡斷開（樹在它前面）
+      { pts: wave(1060, 520, 1740, 500, 26, 2.2, 1.2).filter(([x]) => x < tx - 70), w: 6 },
+      { pts: wave(1060, 520, 1740, 500, 26, 2.2, 1.2).filter(([x]) => x > tx + 70), w: 6 },
+      { pts: wave(1020, 660, 1740, 620, 70, 1.6, 0.4), w: 12 }, // 近的山稜
+      { pts: [[tx, HILL(tx) - 4], [tx - 3, HILL(tx) - 80], [tx + 2, HILL(tx) - 130]], w: 11 }, // 樹幹
+      // 樹冠：一圈蓬蓬的輪廓（半徑帶五個鼓起來的包），從樹幹頂端繞一圈回來
+      { pts: Array.from({ length: 49 }, (_, i): Pt => { const a = Math.PI * 0.5 + (i / 48) * Math.PI * 2; const r = 56 + 11 * Math.abs(Math.sin(a * 2.5)); return [tx + Math.cos(a) * r * 1.1, HILL(tx) - 185 - Math.sin(a) * r * 0.9 + 0]; }), w: 8 },
+      // 小路：從畫面下方彎彎地走上山、走到樹下
+      { pts: Array.from({ length: 30 }, (_, i): Pt => { const u = i / 29; const x = 1150 + (tx - 60 - 1150) * u + 50 * Math.sin(u * Math.PI * 1.5); return [x, 800 - (800 - HILL(x) - 8) * u]; }), w: 6 },
+    ];
+    // 星星：避開月亮與樹
+    for (let i = 0; i < 6; i++) {
+      const x = 1060 + R(10 + i) * 640, y = 140 + R(20 + i) * 280;
+      if (Math.hypot(x - 1560, y - 250) < 120 || (Math.abs(x - tx) < 100 && y > HILL(tx) - 260)) continue;
+      shapes.push({ pts: [[x, y]], w: 9 + R(30 + i) * 6, dot: true });
+    }
+    const ts = stagger(au, gr.b0, shapes.length, Math.min(gr.bar * 2, Math.max(gr.beat * 2, (e - gr.b0) * 0.6)));
+    const per = ts.length > 1 ? ts[1]! - ts[0]! : gr.beat;
+    shapes.forEach((sh, i) => this.strokes.push({ ...sh, t0: ts[i]!, d: sh.dot ? 0.12 : clamp(per * 0.9, 0.15, 0.5) }));
+    const done = ts[ts.length - 1]! + per;
+    let j = 0;
+    for (const b of gr.bars) {
+      if (b < done || b > e - gr.beat * 2 || j >= 6) continue;
+      const x = 1080 + R(40 + j) * 560, y = 130 + R(50 + j) * 200, len = 70 + R(60 + j) * 50;
+      this.strokes.push({ pts: [[x, y], [x - len * 0.9, y + len * 0.35]], w: 4, t0: b, d: clamp(gr.beat * 0.6, 0.12, 0.3) });
+      this.strokes.push({ pts: [[x, y]], w: 9, t0: b, d: 0.1, dot: true });
+      j++;
+    }
   }
 
   /** 換句的抹痕：t 這一刻歌詞帶正在被抹回去的前緣（0..1，沒有在抹 = -1）。換句的時間用二分找（t 的純函數）。 */
@@ -221,28 +268,11 @@ export default class Sand extends Scene {
     const ex = prog(t, e - exD, e - 0.03, ease.inOutCubic);
     u.exitX!.value = ex > 0 ? -300 + ex * 3100 : -1e4;
 
-    // ---- 歌詞與波浪（燈箱座標；透明度 = 撥開多少）
+    // ---- 沙畫與歌詞（燈箱座標；透明度 = 撥開多少）
     const L = this.lyr; L.clear();
     const c = L.ctx;
     c.lineCap = 'round'; c.lineJoin = 'round';
-    // 波浪：上方一道細細的波浪，每一拍長一段
-    const nb = this.waveBeats.length;
-    if (nb) {
-      let k = 0;
-      for (let i = 0; i < nb; i++) k += prog(t, this.waveBeats[i]!, this.waveBeats[i]! + 0.22, ease.outCubic);
-      const len = k / nb;
-      if (len > 0) {
-        c.strokeStyle = rgba('bone', 0.6); c.lineWidth = 9;
-        c.beginPath();
-        const x0 = 250, x1 = 1670, amp = 16;
-        for (let i = 0; i <= 120 * len; i++) {
-          const x = x0 + ((x1 - x0) * i) / 120;
-          const y = WAVE_Y + Math.sin(i / 120 * Math.PI * 5 + hash(this.seed, 4) * 6) * amp;
-          if (i === 0) c.moveTo(x, y); else c.lineTo(x, y);
-        }
-        c.stroke();
-      }
-    }
+    this.drawPicture(c, t);
     const ink: KaraokeInk = { active: rgba('signal'), sung: rgba('bone'), unsung: rgba('bone', 0.3) };
     const ly = lyricAt(lyrics, t);
     const lz = this.lyr0;
@@ -250,7 +280,7 @@ export default class Sand extends Scene {
     const nx = lyrics.nextLine(t), lsl = lyrics.lastLine(t);
     const line = ly?.line ?? (this.msg ? null : nx && nx.start < e ? nx : lsl && lsl.end > s - 4 ? lsl : null);
     if (line) {
-      const st = { family: FAM_LYR, size: lz.size, minSize: 48, maxW: lz.w, maxRows: this.msg ? 1 : 2, align: 'left' as const };
+      const st = { family: FAM_LYR, size: lz.size, minSize: 40 / this.k, maxW: lz.w, maxRows: this.msg ? 1 : 2, align: 'left' as const };
       const lay = layoutRows(c, line, st);
       const y = this.msg ? lz.y : lz.y + lay.size * 0.35 - ((lay.rows.length - 1) * lay.lineHeight) / 2;
       // 換句前一刻：一隻看不見的手把這一句由左往右抹掉
@@ -265,20 +295,40 @@ export default class Sand extends Scene {
       (u.wipe!.value as THREE.Vector3).set(w >= 0 ? fx : -1e4, top - 20, bot + 20);
     } else (u.wipe!.value as THREE.Vector3).set(-1e4, 0, 0);
     if (!this.msg) {
-      c.font = font(F.hand(700), 34); c.fillStyle = rgba('bone', 0.55 * prog(t, s + 0.4, s + 1));
-      c.fillText(INVITE, LYR_B.x, 880);
+      c.font = font(F.hand(700), 28 / this.k); c.fillStyle = rgba('bone', 0.5 * prog(t, s + 0.4, s + 1));
+      c.fillText(INVITE, LYR_B.x, 700);
       if (!this.hasLyrics) {
-        c.font = font(F.mono(500), 20); c.letterSpacing = '4px'; c.fillStyle = rgba('bone', 0.4);
-        c.fillText(`♪  ${song.title}${song.artist ? '  ·  ' + song.artist : ''}`.toUpperCase(), LYR_B.x, 930);
+        c.font = font(F.mono(500), 18 / this.k); c.letterSpacing = '4px'; c.fillStyle = rgba('bone', 0.4);
+        c.fillText(`♪  ${song.title}${song.artist ? '  ·  ' + song.artist : ''}`.toUpperCase(), LYR_B.x, 760);
         c.letterSpacing = '0px';
       }
     } else if (this.msg.couple) {
       c.font = font(F.mono(500), 18); c.letterSpacing = '4px'; c.fillStyle = rgba('signal', 0.6);
-      c.fillText('FROM THE COUPLE  ·  新人', 250, 214);
+      c.fillText('FROM THE COUPLE  ·  新人', MSG_BOX.x, (this.block?.box[1] ?? MSG_BOX.y) - 16);
       c.letterSpacing = '0px';
     }
     u.lyr!.value = L.upload();
     this.bg.render(renderer, out);
-    return { bloom: 0.55, bloomThreshold: 0.9, vignette: 0.55, halation: 0.3, popupAvoid: this.avoid.map((r) => this.cam.screenRect(r, 10)) };
+    return { bloom: 0.55, bloomThreshold: 0.9, vignette: 0.55, halation: 0.3, popupAvoid: this.avoid };
+  }
+
+  /** 畫沙畫：每一筆照時間畫出一段（手指沿著線走），星星在它的那一拍一下子撥開。 */
+  private drawPicture(c: CanvasRenderingContext2D, t: number) {
+    c.strokeStyle = c.fillStyle = rgba('bone', 0.9);
+    for (const st of this.strokes) {
+      const u = prog(t, st.t0, st.t0 + st.d, ease.inOutQuad);
+      if (u <= 0) continue;
+      if (st.dot) {
+        c.beginPath(); c.arc(st.pts[0]![0], st.pts[0]![1], (st.w / 2) * ease.outBack(Math.min(1, u)), 0, Math.PI * 2); c.fill();
+        continue;
+      }
+      const n = st.pts.length - 1, f = u * n, i = Math.floor(f);
+      c.lineWidth = st.w;
+      c.beginPath();
+      c.moveTo(st.pts[0]![0], st.pts[0]![1]);
+      for (let q = 1; q <= Math.min(i, n); q++) c.lineTo(st.pts[q]![0], st.pts[q]![1]);
+      if (i < n) { const a = st.pts[i]!, b = st.pts[i + 1]!, r = f - i; c.lineTo(a[0] + (b[0] - a[0]) * r, a[1] + (b[1] - a[1]) * r); }
+      c.stroke();
+    }
   }
 }

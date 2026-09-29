@@ -1,13 +1,17 @@
 // 黑板（暗）：放學後的教室，一面黑板，粉筆字。
-//  - 一個焦點：主打留言用粉筆大大地寫在黑板正中間，拍點上一個字一個字寫出來（寫的地方掉一點粉筆灰），
-//    粉筆字有顆粒、會斷斷續續（黑板表面粗糙的地方才沾得到粉）；署名寫在最後一行下面。
-//  - 歌詞是黑板最上面一行（像今天的課名），逐字寫：還沒唱的是淡淡的、唱到的字用彩色粉筆（訊號色）、唱完是白粉筆。
-//    換句時板擦在小節線從左到右擦過去，留下一道擦過的白霧，新的一句再寫上去。比留言小一級。
-//  - 右邊是台灣教室黑板一定有的那一欄：「3月13日 星期六」「值日生」——今天的值日生是新郎新娘（宣文、孟庭）。
-//  - 沒有留言：歌詞放大寫在中間（歌詞是焦點）；純音樂又沒有留言：中間寫邀請。
-//  - 最後半拍板擦斜斜地把整面黑板擦掉（下一堂課）。鏡頭像坐在第一排往上看，切進來時從左邊搖過來落定、慢慢推近。
+// 2026-09-29 依「留言尺寸與版面比例標準 v2」重做構圖：
+//  - 場景是主視覺：黑板右半邊，一本正經的老師在拍點上畫一張「幸福指數 vs. 時間」的圖（冷面笑話）：先畫座標軸，
+//    再用彩色粉筆（訊號色）一段一段畫出一條有起有落、一路往上的曲線，畫到「今天」打一個點；之後每一小節往「未來」多畫一段虛線。
+//    寫字的地方掉粉筆灰，黑板上有以前擦過的白霧。
+//  - 留言用粉筆寫在左邊（霞鶩文楷，40～60 px，照 _v2），拍點上一個字一個字寫出來，愛心用玫瑰色粉筆；署名在最後一行下面（26～32 px）。
+//  - 歌詞是黑板最上面一行（像今天的課名，40～52 px、比留言小），逐字寫：還沒唱的是淡淡的、唱到的字用彩色粉筆（訊號色）、唱完是白粉筆。
+//    換句時板擦從左到右擦過去，留下一道擦過的白霧，新的一句再寫上去。
+//  - 右上角是台灣教室黑板一定有的：「3月13日（六）」「值日生　宣文　孟庭」（小、淡）。
+//  - 沒有留言：歌詞放大寫在左邊（52 px、最多兩行），下面一行小小的邀請；純音樂又沒有留言：左邊寫邀請。
+//  - 黑板的下緣、粉筆槽都在右下角 HUD 的上面（HUD 底下是乾淨的牆）。最後半拍板擦斜斜地把整面黑板擦掉（下一堂課）。
+//    鏡頭像坐在第一排往上看，切進來時從左邊搖過來落定、慢慢推近。
 // 手法：一個全螢幕 shader（PlaneCam：黑板是一張平面；石板的顆粒、以前擦過的白霧、粉筆的斷續都在這裡算），
-// 留言是 _t14 的「依序出現」字模（每個字寫的時間在 uniform 陣列），歌詞與右邊那一欄是黑板座標的 Canvas 圖層；粉筆灰用 LineBatch。
+// 留言是 _t14 的「依序出現」字模（每個字寫的時間在 uniform 陣列），歌詞、圖、右上角那一欄是黑板座標的 Canvas 圖層；粉筆灰用 LineBatch。
 import * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
 import { FSPass, Layer2D, W, H } from '../engine/gl';
@@ -15,18 +19,24 @@ import { LineBatch } from '../engine/lines';
 import { F, font, loadText } from '../engine/type';
 import { LIN, rgba } from '../engine/palette';
 import { clamp, ease, prog, hash, lerp } from '../engine/util';
-import { fitText } from '../engine/text';
-import { lyricAt, lyricSizeFor, WEDDING_DATE, COUPLE_ZH } from './_motifs';
+import { lyricAt, WEDDING_DATE, COUPLE_ZH } from './_motifs';
 import { grid, stagger, layoutRows, drawRows, type KaraokeInk } from './_t4';
-import { PlaneCam, camUniforms, CAM_GLSL, orderMask, lineItems, msgBlock, INVITE, type OrderMask, type MsgBlock, type MaskItem, type Rect, type P2 } from './_t14';
+import { PlaneCam, camUniforms, CAM_GLSL, orderMask, lineItems, msgBlockV2, INVITE, type OrderMask, type MsgBlock, type MaskItem, type Rect, type P2 } from './_t14';
+import { lyricV2 } from './_v2';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'craft', paper: false, energy: [0.2, 0.85], bars: [4, 8], weight: 1 };
 
-const BOARD = { x0: 80, y0: 70, x1: 1840, y1: 872 };
-const MSG_BOX = { x: 200, y: 262, w: 1300, h: 540 };
-const LYR_S = { x: 200, y: 196, w: 1290 };
-const BIG = { x: 200, y: 300, w: 1300, h: 420 };
-const DUTY_X = 1600;
+/** 黑板：下緣停在 760（粉筆槽 774～812），右下角 HUD（y ≥ 830）底下是牆。 */
+const BOARD = { x0: 80, y0: 70, x1: 1840, y1: 760 };
+/** 留言在左邊這一塊（螢幕上寬 ≤ 860、高 ≤ 430，init 依鏡頭縮放換算）；歌詞在最上面一行。 */
+const MSG_BOX = { x: 190, y: 250, w: 800, h: 440 };
+const LYR_S = { x: 190, y: 176, w: 1250 };
+/** 沒有留言：歌詞寫在左邊這一塊。 */
+const BIG = { x: 190, y: 280, w: 820, h: 330 };
+/** 右上角的日期與值日生（右對齊）。 */
+const DUTY_R = 1770;
+/** 右半邊的圖：原點、x 軸長、y 軸高。 */
+const GRAPH = { x: 1110, y: 660, w: 560, h: 330 };
 const FAM = F.hand(700);
 const MAXC = 80;
 const MS = 0.5;
@@ -159,6 +169,10 @@ export default class Chalkboard extends Scene {
   items: MaskItem[] = [];
   times: { s: number; d: number }[] = [];
   lyr0 = { ...LYR_S, size: 52, rows: 1 };
+  k = 1;
+  /** 圖：座標軸、曲線、「今天」的點、之後每小節一段虛線（未來）的時間。 */
+  gT = { axes: 0, curve0: 0, curve1: 0, today: 0 };
+  future: number[] = [];
   hasLyrics = false;
   avoid: Rect[] = [];
 
@@ -168,25 +182,34 @@ export default class Chalkboard extends Scene {
     const c = this.lyr.ctx;
     const gr = grid(au, s, e);
     this.hasLyrics = lyrics.linesIn(s, e).length > 0;
-    await loadText(`${m?.text ?? ''}${m ? (m.couple ? '—— 新郎新娘' : m.name) : ''}${INVITE}${DATE_TXT}值日生${NAMES.join('')}${song.title}${song.artist}——一位賓客`);
+    await loadText(`${m?.text ?? ''}${m ? (m.couple ? '—— 新郎新娘' : m.name) : ''}${INVITE}${DATE_TXT}值日生${NAMES.join('')}幸福指數時間今天未來${song.title}${song.artist}——一位賓客`);
+    // 鏡頭在留言那一塊的縮放（窗格中間的姿勢）：畫在黑板上的字級要除以它，畫面上才是標準的大小
+    this.cam.set(this.pose((s + e) / 2));
+    const k = (this.k = this.cam.toScreen(MSG_BOX.x + MSG_BOX.w / 2, MSG_BOX.y + MSG_BOX.h / 2).scale);
     let items: MaskItem[] = [];
     if (m) {
-      const b = (this.block = msgBlock(c, m, FAM, MSG_BOX, { align: 'left', sigFamily: FAM, sigMin: 50, sigMax: 62, min: 50, max: 140, lineHeight: 1.3, maxLines: 5 }));
+      const b = (this.block = msgBlockV2(c, m, FAM, { x: MSG_BOX.x, y: MSG_BOX.y, w: Math.min(MSG_BOX.w, 860 / k), h: Math.min(MSG_BOX.h, 430 / k) }, { align: 'left', sigFamily: FAM, scale: k, lineHeight: 1.34 }));
       items = lineItems(b.lines, FAM, b.fit.size);
-      items.push(...lineItems([{ text: b.sig.text, x: b.sig.x, y: b.sig.y }], FAM, b.sig.size, items.length).map((it) => ({ ...it, thick: 0.4 })));
-      this.lyr0 = { ...LYR_S, size: lyricSizeFor(b.fit.size), rows: 1 };
-      this.avoid = [b.box, [LYR_S.x, LYR_S.y - 60, LYR_S.w, 80]];
+      items.push(...lineItems([{ text: b.sig.text, x: b.sig.x, y: b.sig.y }], FAM, b.sig.size, items.length).map((it) => ({ ...it, thick: 0.3 })));
+      this.lyr0 = { ...LYR_S, size: lyricV2(b.fit.size * k) / k, rows: 1 };
+      this.avoid = [this.cam.screenRect(b.box, 10)];
     } else if (!this.hasLyrics) {
-      // 純音樂又沒有留言：中間寫邀請（兩行）
-      const ft = fitText(c, INVITE, FAM, BIG.w, BIG.h, { min: 70, max: 110, lineHeight: 1.35, maxLines: 2 });
-      const top = BIG.y + (BIG.h - ft.height) / 2 + ft.size * 0.9;
-      items = lineItems(ft.lines.map((ln, i) => ({ text: ln, x: BIG.x, y: top + i * ft.lineHeight })), FAM, ft.size);
-      this.avoid = [[BIG.x, BIG.y, BIG.w, BIG.h]];
+      // 純音樂又沒有留言：左邊寫邀請（52 px、兩行）
+      const size = 52 / k;
+      c.font = font(FAM, size);
+      const parts = INVITE.split('，');
+      items = lineItems(parts.map((ln, i) => ({ text: i === 0 ? ln + '，' : ln, x: BIG.x, y: BIG.y + 120 + i * size * 1.4 })), FAM, size);
+      this.avoid = [this.cam.screenRect([BIG.x, BIG.y, BIG.w, BIG.h], 10)];
     } else {
-      // 沒有留言：歌詞放大寫在中間
-      this.lyr0 = { x: BIG.x, y: BIG.y + 190, w: BIG.w, size: 112, rows: 2 };
-      this.avoid = [[BIG.x, BIG.y, BIG.w, BIG.h]];
+      // 沒有留言：歌詞寫在左邊當焦點（52 px、最多兩行）
+      this.lyr0 = { x: BIG.x, y: BIG.y + 170, w: BIG.w, size: lyricV2(null) / k, rows: 2 };
+      this.avoid = [this.cam.screenRect([BIG.x, BIG.y, BIG.w, BIG.h], 10)];
     }
+    // 圖：第一拍畫座標軸，之後三拍畫曲線，再下一拍點上「今天」；之後每一小節往未來多畫一段虛線
+    const b0 = gr.b0, bt = gr.beat;
+    const tl = stagger(au, b0, 6, Math.min(gr.bar * 1.5, Math.max(bt * 2, (e - b0) * 0.5)));
+    this.gT = { axes: tl[0]!, curve0: tl[1]!, curve1: tl[4]!, today: tl[5]! };
+    this.future = gr.bars.filter((b) => b > tl[5]! + bt && b < e - bt * 1.5).slice(0, 5);
     this.items = items;
     if (items.length) {
       const n = items.length;
@@ -259,20 +282,15 @@ export default class Chalkboard extends Scene {
     const L = this.lyr; L.clear();
     const c = L.ctx;
     c.textBaseline = 'alphabetic';
-    // 日期（橫的）與「值日生」、兩個名字（直的）
-    // 配角：小、淡（MV 融合原則）
-    c.fillStyle = rgba('bone', 0.6);
-    c.font = font(FAM, 26);
-    c.fillText(DATE_TXT, DUTY_X - 10, 170);
-    const vert = (text: string, x: number, y: number, size: number, color: string) => {
-      c.font = font(FAM, size); c.fillStyle = color;
-      Array.from(text).forEach((ch, i) => { const w = c.measureText(ch).width; c.fillText(ch, x - w / 2, y + i * size * 1.08); });
-    };
-    vert('值日生', DUTY_X + 140, 236, 26, rgba('bone', 0.55));
-    NAMES.forEach((nm, i) => vert(nm, DUTY_X + 86 - i * 54, 244, 38, rgba('bone', 0.7)));
-    // 值日生那一欄左邊一條直線（粉筆畫的分隔線）
-    c.strokeStyle = rgba('bone', 0.5); c.lineWidth = 4; c.lineCap = 'round';
-    c.beginPath(); c.moveTo(DUTY_X - 34, 196); c.lineTo(DUTY_X - 30, 800); c.stroke();
+    // 右上角：日期與值日生（配角：小、淡，MV 融合原則）
+    const ks = 1 / this.k;
+    c.textAlign = 'right';
+    c.fillStyle = rgba('bone', 0.55);
+    c.font = font(FAM, 24 * ks);
+    c.fillText(DATE_TXT, DUTY_R, 128);
+    c.fillText(`值日生　${NAMES.join('　')}`, DUTY_R, 128 + 34 * ks);
+    c.textAlign = 'left';
+    this.drawGraph(c, t);
 
     // 歌詞：還沒唱淡淡的、正在唱彩色粉筆、唱完白粉筆；換句時被板擦擦掉
     const ink: KaraokeInk = { active: rgba('signal'), sung: rgba('bone'), unsung: rgba('bone', 0.32) };
@@ -284,7 +302,7 @@ export default class Chalkboard extends Scene {
     const bandV = u.band!.value as THREE.Vector4;
     let eraser: P2 | null = null;
     if (line) {
-      const st = { family: FAM, size: lz.size, minSize: 48, maxW: lz.w, maxRows: lz.rows, align: 'left' as const };
+      const st = { family: FAM, size: lz.size, minSize: 40 / this.k, maxW: lz.w, maxRows: lz.rows, align: 'left' as const };
       const lay = layoutRows(c, line, st);
       const y = lz.rows > 1 ? lz.y - ((lay.rows.length - 1) * lay.lineHeight) / 2 : lz.y;
       const w = this.eraseAt(t);
@@ -300,21 +318,21 @@ export default class Chalkboard extends Scene {
     } else bandV.set(0, 0, -1e4, 0);
     if (!this.hasLyrics && this.msg) {
       const song = this.ctx.song;
-      c.font = font(F.mono(500), 20); c.letterSpacing = '4px'; c.fillStyle = rgba('bone', 0.45);
+      c.font = font(F.mono(500), 18 / this.k); c.letterSpacing = '4px'; c.fillStyle = rgba('bone', 0.45);
       c.fillText(`♪  ${song.title}${song.artist ? '  ·  ' + song.artist : ''}`.toUpperCase(), LYR_S.x, LYR_S.y - 16);
       c.letterSpacing = '0px';
     }
     if (!this.msg && this.hasLyrics) {
-      c.font = font(FAM, 34); c.fillStyle = rgba('bone', 0.55);
-      c.fillText(INVITE, BIG.x, 790);
+      c.font = font(FAM, 28 / this.k); c.fillStyle = rgba('bone', 0.55);
+      c.fillText(INVITE, BIG.x, 690);
     }
     if (this.msg?.couple) {
-      c.font = font(F.mono(500), 18); c.letterSpacing = '4px'; c.fillStyle = rgba('signal', 0.7);
-      c.fillText('FROM THE COUPLE  ·  新人', MSG_BOX.x, MSG_BOX.y - 14);
+      c.font = font(F.mono(500), 18 / this.k); c.letterSpacing = '4px'; c.fillStyle = rgba('signal', 0.7);
+      c.fillText('FROM THE COUPLE  ·  新人', MSG_BOX.x, (this.block?.box[1] ?? MSG_BOX.y) - 16);
       c.letterSpacing = '0px';
     }
     // 最後一擦的板擦（沿著對角線前緣往右下走）
-    if (ex > 0 && ex < 1) { const ey = lerp(160, 820, ex); eraser = { x: exitD - 0.7 * ey + 30, y: ey }; }
+    if (ex > 0 && ex < 1) { const ey = lerp(160, 720, ex); eraser = { x: exitD - 0.7 * ey + 30, y: ey }; }
     (u.eraser!.value as THREE.Vector3).set(eraser?.x ?? 0, eraser?.y ?? 0, eraser ? 1 : 0);
     u.lyr!.value = L.upload();
     this.bg.render(renderer, out);
@@ -335,6 +353,68 @@ export default class Chalkboard extends Scene {
       db.seg2(sp.x, sp.y, sp.x + 0.5, sp.y + 0.5, 1.4 + r2 * 1.4, [bone[0] * a, bone[1] * a, bone[2] * a], 1);
     }
     if (db.count) db.render(renderer, out);
-    return { bloom: 0.45, vignette: 0.55, halation: 0.2, popupAvoid: this.avoid.map((r) => this.cam.screenRect(r, 10)) };
+    return { bloom: 0.45, vignette: 0.55, halation: 0.2, popupAvoid: this.avoid };
+  }
+
+  /** 圖上的曲線：u = 0..1（時間），回傳黑板座標。有起有落、一路往上。 */
+  private curveAt(u: number): P2 {
+    const g = GRAPH;
+    const y = 0.18 * u + 0.62 * Math.pow(u, 2.1) + 0.07 * Math.sin(u * Math.PI * 5) * (1 - u) * u * 3;
+    return { x: g.x + 20 + (g.w - 90) * u, y: g.y - 30 - (g.h - 90) * y };
+  }
+
+  /**
+   * 「幸福指數 vs. 時間」：座標軸（白粉筆）、曲線（彩色粉筆，一段一段畫出來）、「今天」的點、之後每小節一段往上的虛線（未來）。
+   * 畫在歌詞那一層（黑板座標），shader 會把它當粉筆字上質感。
+   */
+  private drawGraph(c: CanvasRenderingContext2D, t: number) {
+    const g = GRAPH, T = this.gT, ks = 1 / this.k;
+    c.lineCap = 'round'; c.lineJoin = 'round';
+    // 座標軸：先畫 y 軸（由下往上），再畫 x 軸（由左往右），各有一個小箭頭
+    const a = prog(t, T.axes, T.axes + 0.35, ease.inOutQuad);
+    if (a > 0) {
+      c.strokeStyle = rgba('bone', 0.85); c.lineWidth = 5;
+      const ya = clamp(a * 2), xa = clamp(a * 2 - 1);
+      c.beginPath(); c.moveTo(g.x, g.y); c.lineTo(g.x, g.y - g.h * ya);
+      if (ya >= 1) { c.moveTo(g.x - 12, g.y - g.h + 16); c.lineTo(g.x, g.y - g.h); c.lineTo(g.x + 12, g.y - g.h + 16); }
+      if (xa > 0) { c.moveTo(g.x, g.y); c.lineTo(g.x + g.w * xa, g.y); }
+      if (xa >= 1) { c.moveTo(g.x + g.w - 16, g.y - 12); c.lineTo(g.x + g.w, g.y); c.lineTo(g.x + g.w - 16, g.y + 12); }
+      c.stroke();
+      // 軸的名字（小、淡）
+      c.fillStyle = rgba('bone', 0.6 * ya);
+      c.font = font(FAM, 22 * ks);
+      c.fillText('幸福指數', g.x + 18, g.y - g.h + 8);
+      c.fillStyle = rgba('bone', 0.6 * xa);
+      c.textAlign = 'right'; c.fillText('時間', g.x + g.w, g.y + 40); c.textAlign = 'left';
+    }
+    // 曲線：三拍畫完（每一拍一段，緩進緩出，落在拍點上）
+    const cu = prog(t, T.curve0, T.curve1, ease.linear);
+    if (cu > 0) {
+      c.strokeStyle = rgba('signal', 0.95); c.lineWidth = 6;
+      c.beginPath();
+      const n = Math.max(1, Math.round(60 * cu));
+      for (let i = 0; i <= n; i++) { const p = this.curveAt((cu * i) / n); if (i === 0) c.moveTo(p.x, p.y); else c.lineTo(p.x, p.y); }
+      c.stroke();
+    }
+    // 今天：曲線的尾巴打一個點，旁邊寫「今天」
+    const td = prog(t, T.today, T.today + 0.2, ease.outBack);
+    if (td > 0) {
+      const p = this.curveAt(1);
+      c.fillStyle = rgba('bone', 0.95);
+      c.beginPath(); c.arc(p.x, p.y, 10 * td, 0, Math.PI * 2); c.fill();
+      c.font = font(FAM, 24 * ks); c.fillStyle = rgba('bone', 0.8 * clamp(td));
+      c.fillText('今天', p.x - 70, p.y - 18);
+    }
+    // 未來：每一小節往右上多一段虛線（越來越陡）
+    let prev = this.curveAt(1);
+    this.future.forEach((ft, i) => {
+      const f = prog(t, ft, ft + 0.3, ease.outCubic);
+      if (f <= 0) return;
+      const nx = { x: prev.x + 36, y: prev.y - 34 - i * 6 };
+      c.strokeStyle = rgba('signal', 0.8); c.lineWidth = 5;
+      c.beginPath(); c.moveTo(prev.x + 8, prev.y - 7); c.lineTo(prev.x + 8 + (nx.x - prev.x - 16) * f, prev.y - 7 + (nx.y - prev.y + 14) * f); c.stroke();
+      if (i === 0) { c.font = font(FAM, 22 * ks); c.fillStyle = rgba('bone', 0.6 * f); c.fillText('未來', nx.x + 10, nx.y + 6); }
+      prev = nx;
+    });
   }
 }
