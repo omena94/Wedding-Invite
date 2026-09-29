@@ -44,6 +44,14 @@ const TIP_UP = 42;
 const LYR = { x: 150, base: 972, w: 1120 };
 const INVITE = '掃描右下角 QR code，把祝福寫上大螢幕';
 const P = { ready: 'cp_cake_ready', cut: 'cp_cake_cut', feed: 'cp_cake_feed', qqBeg: 'qq_beg', qqJump: 'qq_jump' } as const;
+/**
+ * 切下去那一下用哪一張。**暫時**用 ready：cp_cake_cut 裡孟庭低頭看刀、眼睛細得像一條線（新人要求孟庭兩眼一定張開），
+ * 等 Codex 額度恢復重畫好再改回 P.cut。用 ready 的時候切的動作靠整張往下沉（SINK）、碎屑、刀光、切痕表現；
+ * 蛋糕的位置一樣照 cut 那張的刀尖擺，換回來時版面不會動（ready 的刀尖只差十幾 px，一樣藏在最下層裡面）。
+ */
+const CUT_POSE: string = P.ready;
+/** 切下去時整張往下沉多少（px）：用 ready 代替 cut 時刀要跟著人一起壓下去才看得出在切；換回 cut 那張就不用。 */
+const SINK = CUT_POSE === P.cut ? 0 : 22;
 const CLAUSE_END = /[、。，．,.!?！？：；:;）)」』】〕〉》…～~♥]\s*$/;
 
 interface Tier { x: number; y: number; w: number; h: number; rows: string[] }
@@ -152,7 +160,7 @@ export default class Cake extends Scene {
       const tb = au.timeOfBar(b);
       if (tb > e + 0.1) break;
       const ph = k % 3;
-      if (ph === 0) { this.cuts.push(tb); this.keys.push([tb, P.cut]); }
+      if (ph === 0) { this.cuts.push(tb); this.keys.push([tb, CUT_POSE]); }
       else if (ph === 1) { this.feeds.push(tb); this.keys.push([tb, P.feed]); }
       else this.keys.push([tb, P.ready]);
     }
@@ -416,6 +424,8 @@ export default class Cake extends Scene {
       } else {
         const d = t - tc;
         lift += 18 * clamp(1 - d / 0.07);
+        // 往下沉：小節線上一下子壓下去（0.07 秒），停一下再慢慢回來（約一拍半）
+        lift -= SINK * (d < 0.07 ? d / 0.07 : Math.exp(-(d - 0.07) / (bp * 0.8)));
         squash += 0.06 * Math.exp(-d / 0.09) * Math.cos(d * 26);
         rot -= 0.025 * Math.exp(-d / 0.18);
       }
