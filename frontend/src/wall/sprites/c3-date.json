@@ -1,16 +1,23 @@
 {
   "group": "c3-date",
   "series": {
-    "xw_": {"ref":"xw_idle_front","refFrac":0.9518229166666666,"groundFrac":0.9739583333333334,"target":600,"from":"base:xw_"},
-    "mt_": {"ref":"mt_idle_front","refFrac":0.9641927083333334,"groundFrac":0.9837239583333334,"target":600,"from":"base:mt_"},
+    "cp_umbrella_": {"ref":"cp_umbrella_stop","refFrac":0.9518229166666666,"groundFrac":0.9661458333333334,"target":656},
+    "xw_": {"ref":"xw_idle_front","refFrac":0.951171875,"groundFrac":0.9739583333333334,"target":600,"from":"base:xw_"},
+    "mt_": {"ref":"mt_idle_front","refFrac":0.96484375,"groundFrac":0.984375,"target":600,"from":"base:mt_"},
     "pp_": {"ref":"pp_stand","refFrac":0.8310546875,"groundFrac":0.927734375,"target":260,"from":"base:pp_"}
   },
   "sprites": {
-    "mt_picnic_laugh": {"kind":"person","w":399,"h":528,"ax":145.2,"ay":524.4,"ref":600},
-    "mt_picnic_sit": {"kind":"person","w":391,"h":501,"ax":214.5,"ay":497.3,"ref":600},
-    "pp_picnic_sneak": {"kind":"dog","w":285,"h":156,"ax":135.8,"ay":152.6,"ref":260},
-    "pp_picnic_steal": {"kind":"dog","w":298,"h":224,"ax":142.1,"ay":220.4,"ref":260},
-    "xw_picnic_reach": {"kind":"person","w":396,"h":604,"ax":190.6,"ay":599.8,"ref":600},
-    "xw_picnic_sit": {"kind":"person","w":389,"h":557,"ax":182.8,"ay":553.8,"ref":600}
+    "cp_umbrella_stop": {"kind":"couple","w":388,"h":663,"ax":184.6,"ay":658.9,"ref":656,"pts":{"rimL":[43.5,60.6],"top":[236.9,13],"rimR":[380,170.5]}},
+    "cp_umbrella_walk_1": {"kind":"couple","w":363,"h":660,"ax":168.5,"ay":656.7,"ref":656,"pts":{"rimL":[30.1,66.4],"top":[202.4,8.1],"rimR":[348.6,140.4]}},
+    "cp_umbrella_walk_2": {"kind":"couple","w":402,"h":656,"ax":190.9,"ay":651.3,"ref":656,"pts":{"rimL":[36.8,78.1],"top":[212.2,15.3],"rimR":[353.1,149]}},
+    "mt_kite_point": {"kind":"person","w":350,"h":591,"ax":163,"ay":586.8,"ref":600},
+    "mt_picnic_laugh": {"kind":"person","w":399,"h":528,"ax":145.1,"ay":524.1,"ref":600},
+    "mt_picnic_sit": {"kind":"person","w":381,"h":488,"ax":209.1,"ay":484,"ref":600},
+    "pp_picnic_sneak": {"kind":"dog","w":265,"h":146,"ax":126.6,"ay":142.5,"ref":260},
+    "pp_picnic_steal": {"kind":"dog","w":274,"h":206,"ax":130.6,"ay":202.4,"ref":260},
+    "xw_kite_pull_1": {"kind":"person","w":253,"h":604,"ax":107.8,"ay":599.8,"ref":600,"pts":{"hand":[183.6,127.7]}},
+    "xw_kite_pull_2": {"kind":"person","w":307,"h":585,"ax":136.1,"ay":580.9,"ref":600,"pts":{"hand":[200.8,217.2]}},
+    "xw_picnic_reach": {"kind":"person","w":396,"h":604,"ax":190.8,"ay":600.2,"ref":600},
+    "xw_picnic_sit": {"kind":"person","w":389,"h":558,"ax":183,"ay":554.2,"ref":600}
   }
 }

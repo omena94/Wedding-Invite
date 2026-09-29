@@ -138,6 +138,30 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "idea": "桌球桌側面特寫，乒乓在每一拍彈一下（快歌很快、慢歌很慢），歌詞一拍一個詞組跟著球跳。"
  },
  {
+  "name": "frisbee",
+  "title": "飛盤",
+  "family": "sport",
+  "light": true,
+  "couple": true,
+  "idea": "草地，飛盤飛過畫面、芃芃飛身接住（慢動作一拍），飛盤底面寫著留言。"
+ },
+ {
+  "name": "skating",
+  "title": "溜冰",
+  "family": "sport",
+  "light": false,
+  "couple": true,
+  "idea": "冰面俯視或側面，兩人牽手溜冰，冰刀在冰上畫出的線就是歌詞的筆畫（或字沿著軌跡）。"
+ },
+ {
+  "name": "tandem",
+  "title": "雙人腳踏車",
+  "family": "sport",
+  "light": true,
+  "couple": true,
+  "idea": "側面，雙人腳踏車騎過街景（景往後捲），踏板一拍一圈，後面的籃子坐著兩隻狗；留言是車後拖的布條。"
+ },
+ {
   "name": "archery",
   "title": "射箭",
   "family": "sport",
@@ -160,6 +184,38 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": true,
   "idea": "快歌用：40 年代搖擺舞，甩出去、拉回來、拋起來，全在拍點；地板的舞步腳印排成字。"
+ },
+ {
+  "name": "dogwalk",
+  "title": "遛狗",
+  "family": "dog",
+  "light": true,
+  "couple": true,
+  "idea": "紅磚步道、藍色牽繩，兩人各牽一隻狗散步（橫向捲動），狗狗在每棵樹停一下；留言寫在路邊的告示牌。"
+ },
+ {
+  "name": "dogbath",
+  "title": "洗澡",
+  "family": "dog",
+  "light": true,
+  "couple": true,
+  "idea": "浴缸裡的芃芃與 QQ，泡泡在拍點冒出來，每個泡泡裡一個字（留言），狗狗甩水在小鼓。"
+ },
+ {
+  "name": "dognap",
+  "title": "午睡",
+  "family": "dog",
+  "light": true,
+  "couple": true,
+  "idea": "慢歌：沙發上兩人和兩隻狗睡成一團，呼吸起伏跟著節拍，夢泡泡裡是留言。"
+ },
+ {
+  "name": "zoomies",
+  "title": "狗狗暴衝",
+  "family": "dog",
+  "light": false,
+  "couple": true,
+  "idea": "快歌：兩隻狗在客廳繞圈暴衝，速度線、殘影，歌詞被牠們撞得跳起來；人在沙發上看。"
  },
  {
   "name": "dogportrait",
@@ -186,6 +242,14 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "idea": "格紋野餐墊、籃子、三明治，狗狗偷吃；風吹起的餐巾紙上寫著留言。"
  },
  {
+  "name": "kite",
+  "title": "放風箏",
+  "family": "date",
+  "light": true,
+  "couple": true,
+  "idea": "兩人放一只風箏，風箏尾巴的飄帶就是歌詞（逐字亮），線在拍點抖動；留言寫在風箏上。"
+ },
+ {
   "name": "stargaze",
   "title": "看星星",
   "family": "date",
@@ -194,12 +258,28 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "idea": "兩人躺在草地上指著天空，指到的星星連成留言的字（呼應 `stars`，但這裡是人的視角）。慢歌。"
  },
  {
+  "name": "beach",
+  "title": "海邊散步",
+  "family": "date",
+  "light": true,
+  "couple": true,
+  "idea": "海浪一拍一拍打上沙灘，兩人牽手走、狗狗追浪；浪退後沙上留下留言的字，下一道浪沖掉換歌詞。"
+ },
+ {
   "name": "scooter",
   "title": "騎機車",
   "family": "date",
   "light": false,
   "couple": true,
   "idea": "台灣街景（騎樓、招牌、紅綠燈），宣文騎機車載孟庭、踏板站著狗；招牌字是歌詞，路口的看板是留言。"
+ },
+ {
+  "name": "nightmarket",
+  "title": "夜市",
+  "family": "date",
+  "light": false,
+  "couple": true,
+  "idea": "攤位燈泡、招牌，兩人撈金魚／射氣球，射中的氣球破掉露出留言；攤位招牌寫歌詞。"
  },
  {
   "name": "lantern",
@@ -234,6 +314,30 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "idea": "從後排看兩人的背影和狗狗的頭，大銀幕上放的是歌詞（跟唱），爆米花在小鼓跳；片頭字卡是留言。"
  },
  {
+  "name": "paperplane",
+  "title": "紙飛機",
+  "family": "home",
+  "light": false,
+  "couple": true,
+  "idea": "摺紙飛機（摺的步驟在拍點上），射出去飛過畫面，機翼上寫著留言；飛過的軌跡是歌詞。"
+ },
+ {
+  "name": "duet",
+  "title": "KTV 對唱",
+  "family": "music",
+  "light": false,
+  "couple": true,
+  "idea": "包廂：兩人各拿一支麥克風，螢幕上跑歌詞（跟唱，換人唱用不同顏色），桌上的點歌單是留言。"
+ },
+ {
+  "name": "guitar",
+  "title": "彈吉他",
+  "family": "music",
+  "light": true,
+  "couple": true,
+  "idea": "宣文彈吉他、孟庭唱，狗狗跟著搖頭；刷弦在拍點，音符飄出去組成歌詞，譜架上是留言。"
+ },
+ {
   "name": "proposal",
   "title": "求婚",
   "family": "wedding",
@@ -258,12 +362,124 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "idea": "兩只香檳杯在拍點碰杯，氣泡往上冒，冒到頂端組成留言的字。"
  },
  {
+  "name": "bouquet",
+  "title": "丟捧花",
+  "family": "wedding",
+  "light": true,
+  "couple": true,
+  "idea": "孟庭背對賓客往後丟捧花（預備一小節），捧花飛過畫面，接住的人舉起留言。"
+ },
+ {
+  "name": "comic",
+  "title": "四格漫畫",
+  "family": "cartoon",
+  "light": true,
+  "couple": true,
+  "idea": "四格漫畫：兩人的小劇情，對話框裡是留言與歌詞，一格一格在小節線出現；網點與框線。"
+ },
+ {
+  "name": "photobooth",
+  "title": "拍貼機",
+  "family": "cartoon",
+  "light": true,
+  "couple": true,
+  "idea": "四格拍貼條，每小節拍一格（倒數、閃光），四個不同姿勢的線稿，下面手寫留言。"
+ },
+ {
   "name": "debug",
   "title": "深夜寫程式",
   "family": "work",
   "light": false,
   "couple": true,
   "idea": "宣文在雙螢幕前敲鍵盤（一拍一下），螢幕上的建置從紅燈在小節線變綠燈；孟庭下班穿著護理服回來，從後面抱住他。留言是螢幕上一則程式碼審查的留言。"
+ },
+ {
+  "name": "nightshift",
+  "title": "夜班護理站",
+  "family": "work",
+  "light": false,
+  "couple": true,
+  "idea": "孟庭在護理站寫紀錄、推工作車，牆上時鐘和呼叫燈照拍子閃；宣文穿連帽衫提著宵夜（便當、珍奶）來探班。留言寫在交班白板上。"
+ },
+ {
+  "name": "stethoscope",
+  "title": "聽心跳",
+  "family": "work",
+  "light": true,
+  "couple": true,
+  "idea": "孟庭用聽診器聽宣文的胸口，旁邊的心電圖跟著歌的 BPM 跳，聽著聽著心跳越來越快、跳出愛心。留言寫在病歷夾上。"
+ },
+ {
+  "name": "whiteboard",
+  "title": "白板架構圖",
+  "family": "work",
+  "light": true,
+  "couple": true,
+  "idea": "宣文在白板畫系統架構圖，方塊和箭頭照拍子一個一個畫上，最後整張圖連成一顆愛心；孟庭拿紅筆在旁邊打勾。留言寫在白板上的便利貼。"
+ },
+ {
+  "name": "bandaid",
+  "title": "OK 繃",
+  "family": "work",
+  "light": true,
+  "couple": true,
+  "idea": "宣文被紙割到手指，孟庭熟練地消毒、貼上 OK 繃、再在上面畫一顆愛心；芃芃和 QQ 在旁邊歪頭看。留言印在 OK 繃盒上。"
+ },
+ {
+  "name": "servers",
+  "title": "機房",
+  "family": "work",
+  "light": false,
+  "couple": true,
+  "idea": "伺服器機櫃的燈號照拍子閃成波浪；宣文插網路線，孟庭拿著「上線檢查表」一項一項打勾。留言寫在檢查表最後一欄。"
+ },
+ {
+  "name": "courtside",
+  "title": "場邊看球",
+  "family": "hoops",
+  "light": false,
+  "couple": true,
+  "idea": "兩人穿球衣坐在看台吃爆米花，場上球員剪影跑位；進球時兩人跳起來歡呼，爆米花飛起來。留言在場館的大螢幕上。"
+ },
+ {
+  "name": "kisscam",
+  "title": "親親鏡頭",
+  "family": "hoops",
+  "light": false,
+  "couple": true,
+  "idea": "場館大螢幕出現「KISS CAM」愛心框，框到兩人：孟庭害羞捂臉、宣文比愛心，全場觀眾剪影歡呼。留言在大螢幕下方的跑馬燈。"
+ },
+ {
+  "name": "buzzer",
+  "title": "絕殺",
+  "family": "hoops",
+  "light": false,
+  "couple": true,
+  "idea": "最後三秒，球在空中慢動作飛，兩人抓著彼此的手緊張；小節線上球進、紅燈亮，兩人跳起來擁抱。留言在計分板上。"
+ },
+ {
+  "name": "halftime",
+  "title": "中場投籃挑戰",
+  "family": "hoops",
+  "light": false,
+  "couple": true,
+  "idea": "中場休息，宣文上場參加投籃挑戰，一拍投一球，最後一球空心進；孟庭在場邊揮加油棒。留言寫在大支票（獎品看板）上。"
+ },
+ {
+  "name": "basketball",
+  "title": "街頭鬥牛",
+  "family": "hoops",
+  "light": true,
+  "couple": true,
+  "idea": "公園籃球場，兩人一對一：宣文運球（每拍一下）、孟庭蓋火鍋；芃芃和 QQ 在場邊當裁判。留言塗鴉在球場後面的牆上。"
+ },
+ {
+  "name": "concert",
+  "title": "搖滾區",
+  "family": "live",
+  "light": false,
+  "couple": true,
+  "idea": "舞台燈照拍子掃過觀眾，兩人在前排舉手跟唱，舞台大螢幕是歌詞（逐字跟唱）。留言寫在兩人舉的應援手幅上。"
  },
  {
   "name": "boarding",

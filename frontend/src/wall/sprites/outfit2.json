@@ -1,0 +1,24 @@
+{
+  "group": "outfit2",
+  "series": {
+    "xw2_": {"ref":"xw2_idle_front","refFrac":0.8450520833333334,"groundFrac":0.96875,"target":600},
+    "mt2_": {"ref":"mt2_idle_front","refFrac":0.845703125,"groundFrac":0.9694010416666666,"target":600},
+    "cp2_": {"ref":"cp2_selfie","refFrac":0.8404947916666666,"groundFrac":0.9700520833333334,"target":600}
+  },
+  "sprites": {
+    "cp2_selfie": {"kind":"couple","w":343,"h":607,"ax":149.9,"ay":603,"ref":600},
+    "cp2_walk_1": {"kind":"couple","w":559,"h":586,"ax":226.8,"ay":582.1,"ref":600},
+    "cp2_walk_2": {"kind":"couple","w":572,"h":583,"ax":246.3,"ay":579.3,"ref":600},
+    "mt2_idle_front": {"kind":"person","w":228,"h":606,"ax":120.8,"ay":603,"ref":600},
+    "mt2_peace": {"kind":"person","w":237,"h":594,"ax":120.3,"ay":589.6,"ref":600},
+    "mt2_run_1": {"kind":"person","w":324,"h":565,"ax":165.4,"ay":561.9,"ref":600},
+    "mt2_run_2": {"kind":"person","w":382,"h":547,"ax":198.6,"ay":543.4,"ref":600},
+    "mt2_walk_1": {"kind":"person","w":325,"h":580,"ax":141.8,"ay":576.2,"ref":600},
+    "mt2_walk_2": {"kind":"person","w":300,"h":587,"ax":127.9,"ay":583.1,"ref":600},
+    "xw2_idle_front": {"kind":"person","w":208,"h":607,"ax":107.5,"ay":603,"ref":600},
+    "xw2_run_1": {"kind":"person","w":378,"h":550,"ax":194.1,"ay":546.1,"ref":600},
+    "xw2_run_2": {"kind":"person","w":414,"h":455,"ax":178.9,"ay":451.4,"ref":600},
+    "xw2_walk_1": {"kind":"person","w":344,"h":585,"ax":153.5,"ay":580.8,"ref":600},
+    "xw2_walk_2": {"kind":"person","w":351,"h":585,"ax":174.7,"ay":580.8,"ref":600}
+  }
+}

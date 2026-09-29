@@ -25,7 +25,7 @@
     "mt_proposal_stand": {"kind":"person","w":152,"h":607,"ax":77.8,"ay":603,"ref":600},
     "mt_toast_raise": {"kind":"person","w":397,"h":582,"ax":197.2,"ay":578.5,"ref":600,"pts":{"glass":[341.9,12.7,12.3]}},
     "mt_toast_stand": {"kind":"person","w":365,"h":607,"ax":182.8,"ay":603.1,"ref":600,"pts":{"glass":[265.5,95.2,10.7]}},
-    "pp_bouquet": {"kind":"dog","w":300,"h":276,"ax":148.8,"ay":272.3,"ref":260},
+    "pp_bouquet": {"kind":"dog","w":256,"h":257,"ax":131.2,"ay":253.1,"ref":260},
     "xw_proposal_kneel_1": {"kind":"person","w":376,"h":550,"ax":181,"ay":546.6,"ref":600,"pts":{"box":[338,135.3,16.2]}},
     "xw_proposal_kneel_2": {"kind":"person","w":377,"h":550,"ax":181.4,"ay":546.6,"ref":600,"pts":{"box":[342,131.6,16.2]}},
     "xw_proposal_stand": {"kind":"person","w":160,"h":607,"ax":81,"ay":603,"ref":600},

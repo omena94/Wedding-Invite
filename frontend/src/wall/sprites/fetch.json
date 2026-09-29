@@ -1,17 +1,17 @@
 {
   "group": "fetch",
   "series": {
-    "xw_fetch_": {"ref":"xw_idle_front","refFrac":0.9518229166666666,"groundFrac":0.9739583333333334,"target":600,"from":"base:xw_"},
-    "mt_fetch_": {"ref":"mt_idle_front","refFrac":0.9641927083333334,"groundFrac":0.9837239583333334,"target":600,"from":"base:mt_"}
+    "xw_fetch_": {"ref":"xw_idle_front","refFrac":0.951171875,"groundFrac":0.9739583333333334,"target":600,"from":"base:xw_"},
+    "mt_fetch_": {"ref":"mt_idle_front","refFrac":0.96484375,"groundFrac":0.984375,"target":600,"from":"base:mt_"}
   },
   "sprites": {
-    "mt_fetch_clap": {"kind":"person","w":252,"h":600,"ax":109.6,"ay":596.2,"ref":600},
-    "mt_fetch_pet": {"kind":"person","w":314,"h":389,"ax":128.2,"ay":385.1,"ref":600},
-    "mt_fetch_take": {"kind":"person","w":290,"h":389,"ax":121.3,"ay":385.1,"ref":600,"pts":{"hand":[266.2,207.8]}},
-    "mt_fetch_throw_1": {"kind":"person","w":408,"h":564,"ax":172,"ay":560.5,"ref":600},
-    "mt_fetch_throw_2": {"kind":"person","w":405,"h":541,"ax":167.1,"ay":537,"ref":600,"pts":{"hand":[383.7,85.5]}},
-    "xw_fetch_clap": {"kind":"person","w":256,"h":604,"ax":103.2,"ay":600.2,"ref":600},
-    "xw_fetch_pet": {"kind":"person","w":297,"h":411,"ax":129.9,"ay":406.9,"ref":600},
-    "xw_fetch_take": {"kind":"person","w":285,"h":411,"ax":132.4,"ay":407.3,"ref":600,"pts":{"hand":[256.5,249.5]}}
+    "mt_fetch_clap": {"kind":"person","w":251,"h":600,"ax":109.5,"ay":596.2,"ref":600},
+    "mt_fetch_pet": {"kind":"person","w":314,"h":389,"ax":128.5,"ay":385.6,"ref":600},
+    "mt_fetch_take": {"kind":"person","w":290,"h":393,"ax":121.3,"ay":389.3,"ref":600,"pts":{"hand":[266,211.7]}},
+    "mt_fetch_throw_1": {"kind":"person","w":408,"h":565,"ax":171.1,"ay":561.3,"ref":600},
+    "mt_fetch_throw_2": {"kind":"person","w":405,"h":540,"ax":166.2,"ay":536.6,"ref":600,"pts":{"hand":[383.4,85.4]}},
+    "xw_fetch_clap": {"kind":"person","w":257,"h":606,"ax":103.7,"ay":602.3,"ref":600},
+    "xw_fetch_pet": {"kind":"person","w":297,"h":413,"ax":130.8,"ay":408.8,"ref":600},
+    "xw_fetch_take": {"kind":"person","w":286,"h":415,"ax":133.7,"ay":411.3,"ref":600,"pts":{"hand":[257.1,252.6]}}
   }
 }

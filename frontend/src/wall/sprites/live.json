@@ -1,0 +1,23 @@
+{
+  "group": "live",
+  "series": {
+    "xw_live_": {"ref":"xw_live_idle_front","refFrac":0.9231770833333334,"groundFrac":0.9680989583333334,"target":600},
+    "mt_live_": {"ref":"mt_live_idle_front","refFrac":0.8704427083333334,"groundFrac":0.95703125,"target":600},
+    "xw_live_wave_jump": {"ref":"xw_live_idle_front","refFrac":0.9231770833333334,"groundFrac":0.9680989583333334,"target":600},
+    "mt_live_wave_jump": {"ref":"mt_live_idle_front","refFrac":0.8704427083333334,"groundFrac":0.95703125,"target":600}
+  },
+  "sprites": {
+    "mt_live_idle_front": {"kind":"person","w":193,"h":607,"ax":96.3,"ay":602.9,"ref":600},
+    "mt_live_rail_1": {"kind":"person","w":280,"h":664,"ax":100.7,"ay":659.9,"ref":600,"pts":{"hold":[26,189.4,20.2],"phone":[262.1,16.6,18],"band":[242.8,53.9]}},
+    "mt_live_rail_2": {"kind":"person","w":201,"h":679,"ax":115.6,"ay":675.2,"ref":600,"pts":{"hold":[34.6,220.8,20.2],"phone":[160.7,13,18],"band":[168.3,51.2]}},
+    "mt_live_wave_1": {"kind":"person","w":241,"h":661,"ax":99.4,"ay":656.3,"ref":600,"pts":{"stick":[17.1,16.2,17.1],"arm":[13,45.3],"board":[213.2,110.8,17.1],"band":[219.9,143.2]}},
+    "mt_live_wave_2": {"kind":"person","w":313,"h":660,"ax":169.9,"ay":656.3,"ref":600,"pts":{"stick":[18,13.9,17.1],"arm":[51.6,76.7],"board":[283.6,110.8,17.1],"band":[291.7,142.7]}},
+    "mt_live_wave_jump": {"kind":"person","w":310,"h":582,"ax":144.7,"ay":617.1,"ref":600,"height":0.86,"pts":{"stick":[45.3,18.8,17.1],"arm":[44.4,70],"board":[269.7,145.8,17.1],"band":[280,179.1]}},
+    "xw_live_idle_front": {"kind":"person","w":222,"h":607,"ax":111.5,"ay":603.2,"ref":600},
+    "xw_live_rail_1": {"kind":"person","w":355,"h":631,"ax":156.3,"ay":627.3,"ref":600,"pts":{"stick":[19,19,16.9],"band":[25.4,44.4],"hold":[335.1,181.1,19]}},
+    "xw_live_rail_2": {"kind":"person","w":295,"h":632,"ax":98.8,"ay":627.7,"ref":600,"pts":{"stick":[81.7,16.1,16.9],"band":[64.7,36.4],"hold":[275.9,181.9,19]}},
+    "xw_live_wave_1": {"kind":"person","w":275,"h":631,"ax":167.8,"ay":627.3,"ref":600,"pts":{"stick":[19.9,19.9,16.9],"band":[28.3,40.6]}},
+    "xw_live_wave_2": {"kind":"person","w":198,"h":644,"ax":95.4,"ay":640,"ref":600,"pts":{"stick":[42.7,15.7,16.9],"band":[40.2,38.5]}},
+    "xw_live_wave_jump": {"kind":"person","w":324,"h":496,"ax":167.8,"ay":558.5,"ref":600,"height":0.92,"pts":{"stick":[21.6,23.7,16.9],"band":[31.3,44]}}
+  }
+}
