@@ -16,36 +16,45 @@ import { LineBatch } from '../engine/lines';
 import { F, font } from '../engine/type';
 import { LIN, rgba } from '../engine/palette';
 import { clamp, ease, hash, lerp, prog, pulse, springStep } from '../engine/util';
-import { lyricAt, lyricSizeFor, type LyricStyle } from './_motifs';
+import { lyricAt } from './_motifs';
 import { grid, layoutRows, drawRows, paperInk, type Grid } from './_t4';
-import { orderMask, lineItems, msgBlock, type MsgBlock, type OrderMask, type MaskItem } from './_t14';
+import { orderMask, lineItems, type MsgBlock, type OrderMask, type MaskItem } from './_t14';
 import { Stage, camMove } from './_t8';
-import { loadWindow, revealAt, beatsBetween } from './_t18';
+import { loadWindow, revealAt, beatsBetween, v2Block } from './_t18';
+import { lyricV2, V2 } from './_v2';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'science', paper: true, energy: [0.3, 1], bars: [4, 8], weight: 1 };
 
 // ---------------------------------------------------------------- 木板上的位置（正面的圖 = 1920×1080）
-/** 玻璃管的中心 x、管子的上下端、0 度與 100 度的高度、球的中心與半徑。 */
-const TX = 300, T_TOP = 176, Y0 = 860, Y100 = 200, BY = 922, BR = 44;
+// v2（2026-09-29）：溫度計放大成主角（粗玻璃管、大球、寬刻度條），刻字那一塊縮到畫面右上 ≤ 860×430（螢幕 px），
+// 下面加一小張會一直畫的溫度紀錄紙；右下角 HUD 底下只留木板。
+/** 玻璃管的中心 x、半寬、管子的上端、0 度與 100 度的高度、球的中心與半徑。 */
+const TX = 430, TW = 28, T_TOP = 124, Y0 = 820, Y100 = 196, BY = 900, BR = 66;
 const DEG = (Y0 - Y100) / 100;
 /** 刻度條。 */
-const STRIP = { x: 336, y: 168, w: 156, h: 716 };
-/** 刻字的範圍（留言＋署名）。 */
-const MBOX = { x: 600, y: 190, w: 1030, h: 580 };
-/** 鉛筆寫的歌詞：右端停在 HUD 左邊。 */
-const LYR = { x: 590, y: 900, w: 700 };
+const STRIP = { x: 482, y: 112, w: 214, h: 740 };
+/** 刻字的範圍（留言＋署名，木板座標；鏡頭約放大 1.1 倍，螢幕上 ≤ 840×420）。 */
+const MBOX = { x: 900, y: 150, w: 760, h: 380 };
+/** 鏡頭約放大 1.1 倍：木板上的字級 × 1.1 ≈ 螢幕上的字級。 */
+const CAM_S = 1.1;
+/** 鉛筆寫的歌詞。 */
+const LYR = { x: 900, y: 650, w: 720 };
+/** 溫度紀錄紙（一小張方格紙，筆一直在畫）：右端停在 HUD 左邊。 */
+const GRAPH = { x: 900, y: 752, w: 380, h: 104 };
 const FAM_MSG = F.hei(900);
 const FAM_SIG = F.hand(700);
 const FAM_LYR = F.hand(700);
 const EMPTY = '把你的祝福倒進來';
 const INVITE = '掃描右下角 QR code';
 const MARKS: [number, string][] = [[0, '冷靜'], [37, '心動'], [70, '熱戀'], [100, '爆表']];
+const LOG = '祝福溫度紀錄';
 
 const BOARD = () => new FSPass(/* glsl */ `
   uniform sampler2D mask; uniform vec4 mR; uniform float hasMask;
   uniform float fillPos; uniform float chan; uniform float headY; uniform vec2 capP; uniform float capOn; uniform float t;
   uniform vec2 c0; uniform vec2 c1; uniform vec2 c2; uniform vec2 c3;
-  const float TX = ${TX}.0, T_TOP = ${T_TOP}.0, BY = ${BY}.0, BR = ${BR}.0;
+  uniform float steam;
+  const float TX = ${TX}.0, TW = ${TW}.0, T_TOP = ${T_TOP}.0, BY = ${BY}.0, BR = ${BR}.0;
   vec3 liqColor() { return C_PAPER * pow(clamp(C_SIGNAL / max(C_PAPER, vec3(1e-3)), 0.004, 1.0), vec3(2.6)); }
   float seg(vec2 p, vec2 a, vec2 b, out float u) { vec2 pa = p - a, ba = b - a; float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0); u = h * length(ba); return length(pa - ba * h); }
   void main() {
@@ -105,22 +114,33 @@ const BOARD = () => new FSPass(/* glsl */ `
       col = mix(en, col, smoothstep(-1.0, 1.0, ds));
     }
     // ---- 玻璃管與球的影子
-    float dT = min(sdBox(P - vec2(TX + 12.0, (T_TOP + BY) * 0.5 + 12.0), vec2(18.0, (BY - T_TOP) * 0.5)), length(P - vec2(TX + 12.0, BY + 14.0)) - BR);
-    col *= 1.0 - 0.22 * (1.0 - smoothstep(-8.0, 18.0, dT));
+    float dT = min(sdBox(P - vec2(TX + 16.0, (T_TOP + BY) * 0.5 + 16.0), vec2(TW, (BY - T_TOP) * 0.5)), length(P - vec2(TX + 16.0, BY + 18.0)) - BR);
+    col *= 1.0 - 0.24 * (1.0 - smoothstep(-10.0, 24.0, dT));
     // ---- 玻璃管：透明的管壁（左邊一道亮光、兩邊的暗邊），中間的細管裡是紅色的液柱
     float dx = P.x - TX;
-    if (abs(dx) < 18.5 && P.y > T_TOP - 18.0 && P.y < BY) {
-      float edge = smoothstep(18.5, 17.0, abs(dx)) * step(T_TOP, P.y) + (1.0 - smoothstep(17.0, 18.5, length(vec2(dx, P.y - T_TOP)))) * step(P.y, T_TOP);
+    if (abs(dx) < TW + 0.5 && P.y > T_TOP - TW && P.y < BY) {
+      float edge = smoothstep(TW + 0.5, TW - 1.0, abs(dx)) * step(T_TOP, P.y) + (1.0 - smoothstep(TW - 1.0, TW + 0.5, length(vec2(dx, P.y - T_TOP)))) * step(P.y, T_TOP);
       vec3 gc = col * 1.05 + vec3(0.025);
-      gc = mix(gc, C_SEPIA * 0.6, 0.35 * pxLine(abs(abs(dx) - 17.0), 0.6, 1.6));
-      gc += vec3(1.0) * 0.32 * exp(-pow((dx + 9.0) / 2.6, 2.0)) + vec3(1.0) * 0.08 * exp(-pow((dx - 11.0) / 3.0, 2.0));
+      gc = mix(gc, C_SEPIA * 0.6, 0.35 * pxLine(abs(abs(dx) - TW + 1.0), 0.6, 1.6));
+      gc += vec3(1.0) * 0.34 * exp(-pow((dx + TW * 0.5) / 3.6, 2.0)) + vec3(1.0) * 0.09 * exp(-pow((dx - TW * 0.62) / 4.0, 2.0));
       // 液柱（透過管子看起來比較粗）
-      float bore = 1.0 - smoothstep(6.0, 7.2, abs(dx));
+      float bore = 1.0 - smoothstep(9.0, 10.4, abs(dx));
       float filled = step(headY, P.y);
       // 液面是圓的（凸起的頂）
-      float men = 1.0 - smoothstep(6.0, 7.2, length(vec2(dx, (P.y - headY) * 1.6)));
-      float lq = max(bore * filled, men * step(P.y, headY + 8.0) * step(headY - 8.0, P.y));
-      vec3 lcol = liq * (0.85 + 0.3 * exp(-pow((dx + 2.5) / 1.6, 2.0)));
+      float men = 1.0 - smoothstep(9.0, 10.4, length(vec2(dx, (P.y - headY) * 1.5)));
+      float lq = max(bore * filled, men * step(P.y, headY + 10.0) * step(headY - 10.0, P.y));
+      vec3 lcol = liq * (0.84 + 0.32 * exp(-pow((dx + 3.5) / 2.2, 2.0)));
+      // 液柱裡往上冒的小氣泡（慢慢升到液面就不見）
+      float bub = 0.0;
+      for (int i = 0; i < 5; i++) {
+        float fi = float(i);
+        float ph = fract(t * (0.3 + 0.12 * hash11(fi + 1.3)) + hash11(fi + 7.1));
+        float by = mix(BY - 30.0, headY + 14.0, ph);
+        vec2 bp = vec2(TX + (hash11(fi + 3.7) - 0.5) * 9.0, by);
+        float rr = 2.0 + 1.8 * hash11(fi + 5.9);
+        bub = max(bub, pxLine(abs(length(P - bp) - rr), 0.35, 1.1) * step(headY + 8.0, by));
+      }
+      lcol = mix(lcol, mix(liq, vec3(1.0), 0.55), bub * 0.8);
       gc = mix(gc, lcol, lq);
       gc = mix(gc, col * 0.93, bore * (1.0 - lq) * 0.4);
       col = mix(col, gc, edge);
@@ -128,23 +148,37 @@ const BOARD = () => new FSPass(/* glsl */ `
     // ---- 球：玻璃裡面裝滿液體
     float rb = length(P - vec2(TX, BY));
     if (rb < BR + 1.0) {
-      vec3 bc = liq * (0.78 + 0.25 * (1.0 - rb / BR));
-      bc += vec3(1.0) * 0.55 * exp(-pow(length(P - vec2(TX - 15.0, BY - 16.0)) / 8.0, 2.0));
-      bc = mix(bc, col * 1.05 + 0.03, smoothstep(BR - 7.0, BR - 3.0, rb));
+      vec3 bc = liq * (0.76 + 0.28 * (1.0 - rb / BR));
+      bc += vec3(1.0) * 0.55 * exp(-pow(length(P - vec2(TX - BR * 0.34, BY - BR * 0.36)) / 11.0, 2.0));
+      bc = mix(bc, col * 1.05 + 0.03, smoothstep(BR - 9.0, BR - 4.0, rb));
       bc = mix(bc, C_SEPIA * 0.6, 0.35 * pxLine(abs(rb - BR + 1.0), 0.6, 1.6));
       col = mix(bc, col, smoothstep(BR - 0.5, BR + 1.0, rb));
     }
     // ---- 頂端的玻璃塞（爆表時彈飛）
     if (capOn > 0.0) {
       float rc = length(P - capP);
-      vec3 cc = col * 1.06 + 0.03 + vec3(1.0) * 0.4 * exp(-pow(length(P - capP - vec2(-5.0, -5.0)) / 4.0, 2.0));
-      cc = mix(cc, C_SEPIA * 0.6, 0.4 * pxLine(abs(rc - 13.0), 0.6, 1.6));
-      col = mix(cc, col, smoothstep(13.0, 14.5, rc));
+      vec3 cc = col * 1.06 + 0.03 + vec3(1.0) * 0.4 * exp(-pow(length(P - capP - vec2(-6.0, -6.0)) / 5.0, 2.0));
+      cc = mix(cc, C_SEPIA * 0.6, 0.4 * pxLine(abs(rc - 17.0), 0.6, 1.6));
+      col = mix(cc, col, smoothstep(17.0, 18.5, rc));
+    }
+    // ---- 爆表之後管口冒出來的熱氣：三縷往上飄、左右扭的白煙
+    if (steam > 0.0 && P.y < T_TOP - 6.0 && P.y > T_TOP - 330.0) {
+      float hgt = (T_TOP - 6.0 - P.y);
+      float sAcc = 0.0;
+      for (int i = 0; i < 3; i++) {
+        float fi = float(i);
+        float x = TX - 10.0 + fi * 10.0 + sin(hgt / 46.0 - t * 2.2 + fi * 2.1) * (6.0 + hgt * 0.12) + sin(hgt / 17.0 - t * 3.7 + fi) * 3.0;
+        float w = 3.0 + hgt * 0.035;
+        sAcc += exp(-pow((P.x - x) / w, 2.0)) * exp(-hgt / 170.0) * smoothstep(0.0, 30.0, hgt);
+      }
+      // 熱氣比木板亮一點、邊緣帶一點陰影（亮的底上才看得出來）
+      col = mix(col, mix(C_PAPER, vec3(1.0), 0.7), clamp(sAcc * 0.55 * steam, 0.0, 0.6));
+      col *= 1.0 - 0.05 * clamp(sAcc * steam, 0.0, 1.0);
     }
     fragColor = vec4(col, 1.0);
   }`, {
   mask: { value: null }, mR: { value: new THREE.Vector4(0, 0, 1, 1) }, hasMask: { value: 0 },
-  fillPos: { value: -1 }, chan: { value: 0 }, headY: { value: Y0 }, capP: { value: new THREE.Vector2(TX, T_TOP - 16) }, capOn: { value: 1 }, t: { value: 0 },
+  fillPos: { value: -1 }, chan: { value: 0 }, headY: { value: Y0 }, capP: { value: new THREE.Vector2(TX, T_TOP - 20) }, capOn: { value: 1 }, t: { value: 0 }, steam: { value: 0 },
   c0: { value: new THREE.Vector2() }, c1: { value: new THREE.Vector2() }, c2: { value: new THREE.Vector2() }, c3: { value: new THREE.Vector2() },
 });
 
@@ -173,7 +207,7 @@ export default class Thermometer extends Scene {
 
   override async init() {
     const { audio: au, start: s, end: e } = this.ctx;
-    await loadWindow(this.ctx, EMPTY + INVITE + MARKS.map((m) => m[1]).join(''));
+    await loadWindow(this.ctx, EMPTY + INVITE + LOG + MARKS.map((m) => m[1]).join(''));
     const g = (this.g = grid(au, s, e));
     this.tp = revealAt(au, g.b0, e, { minB: 2, maxB: 6 });
     // ---- 刻字（留言＋署名，靠左排；沒有留言就刻邀請）
@@ -181,20 +215,22 @@ export default class Thermometer extends Scene {
     let items: MaskItem[] = [];
     let first = { x: MBOX.x, y: MBOX.y + 60, size: 80 };
     if (this.msg) {
-      const b = (this.block = msgBlock(c, this.msg, FAM_MSG, MBOX, { align: 'left', sigFamily: FAM_SIG, min: 48, max: 140, lineHeight: 1.26, maxLines: 5, sigMin: 42, sigMax: 58 }));
+      // v2：字級照字數（40～60 螢幕 px），木板上的字級要除以鏡頭的放大倍數
+      const b = (this.block = v2Block(c, this.msg, FAM_MSG, MBOX, { align: 'left', sigFamily: FAM_SIG, k: 1 / CAM_S, lineHeight: 1.3, maxLines: 6 }));
       items = lineItems(b.lines, FAM_MSG, b.fit.size, 0);
       const sig = lineItems([{ text: b.sig.text, x: b.sig.x, y: b.sig.y }], FAM_SIG, b.sig.size, items.length).map((q) => ({ ...q, tag: 128, thick: 0 }));
       items = [...items, ...sig];
       first = { x: b.lines[0]!.x, y: b.lines[0]!.y, size: b.fit.size };
-      this.lyrSize = lyricSizeFor(b.fit.size);
+      this.lyrSize = lyricV2(b.screen) / CAM_S;
     } else {
-      const size = 130;
-      const x = MBOX.x, y1 = MBOX.y + 250;
-      items = lineItems([{ text: EMPTY.slice(0, 5), x, y: y1 }, { text: EMPTY.slice(5), x, y: y1 + size * 1.25 }], FAM_MSG, size, 0);
-      const inv = lineItems([{ text: INVITE, x: x + 6, y: y1 + size * 1.25 + 110 }], F.hei(700), 40, items.length).map((q) => ({ ...q, tag: 128 }));
+      // 沒有留言：刻一句邀請（一行 60 px，下面一行小字）
+      const size = Math.round(60 / CAM_S);
+      const x = MBOX.x, y1 = MBOX.y + 150;
+      items = lineItems([{ text: EMPTY, x, y: y1 }], FAM_MSG, size, 0);
+      const inv = lineItems([{ text: INVITE, x: x + 4, y: y1 + size * 1.2 }], F.hei(700), Math.round(30 / CAM_S), items.length).map((q) => ({ ...q, tag: 128 }));
       items = [...items, ...inv];
       first = { x, y: y1, size };
-      this.lyrSize = 64;
+      this.lyrSize = lyricV2(null) / CAM_S;
     }
     this.nChars = items.length;
     const xs = items.map((q) => q.x), ys = items.map((q) => q.y);
@@ -202,8 +238,8 @@ export default class Thermometer extends Scene {
     const x1 = Math.max(...items.map((q) => q.x + q.w)) + 20, y1b = Math.max(...ys.map((y, i) => y + items[i]!.size * 0.3)) + 20;
     this.mask = this.track(orderMask(items, [x0, y0, x1 - x0, y1b - y0], 1, 'x', 3, 0));
     // ---- 溝槽：管子頂端往上、往右，彎進第一個字的左上角
-    const cy = Math.min(128, first.y - first.size * 1.05 - 24);
-    this.ch = [[TX, T_TOP - 4], [TX, cy], [first.x - 30, cy], [first.x + first.size * 0.12, first.y - first.size * 0.62]];
+    const cy = Math.min(92, first.y - first.size * 1.05 - 24);
+    this.ch = [[TX, T_TOP - 6], [TX, cy], [first.x - 36, cy], [first.x + first.size * 0.12, first.y - first.size * 0.62]];
     this.chanLen = this.ch.slice(1).reduce((acc, p, i) => acc + Math.hypot(p[0] - this.ch[i]![0], p[1] - this.ch[i]![1]), 0);
     // ---- 時間：爆表 → 流過溝槽 → 一個字一個字灌滿（兩小節的窗格也來得及）
     this.chanDur = clamp(this.chanLen / 1600, 0.2, 0.45);
@@ -221,16 +257,22 @@ export default class Thermometer extends Scene {
     // ---- 刻度的數字與註記
     this.stat.clear();
     c.textBaseline = 'middle';
-    c.font = font(F.mono(500), 18); c.fillStyle = rgba('sepia', 0.78);
-    for (let v = 0; v <= 100; v += 10) c.fillText(String(v), STRIP.x + 42, Y0 - v * DEG + 1);
+    c.font = font(F.mono(500), 20); c.fillStyle = rgba('sepia', 0.78);
+    for (let v = 0; v <= 100; v += 10) c.fillText(String(v), STRIP.x + 56, Y0 - v * DEG + 1);
     c.font = font(F.hei(700), 20); c.fillStyle = rgba('sepia', 0.72); c.letterSpacing = '3px';
-    for (const [v, s] of MARKS) {
-      const y = Y0 - v * DEG;
-      c.fillText(s, STRIP.x + 90, y + (v === 100 ? 0 : 0));
-    }
+    for (const [v, s] of MARKS) c.fillText(s, STRIP.x + 124, Y0 - v * DEG);
     c.letterSpacing = '0px';
-    c.font = font(F.mono(500), 16); c.fillStyle = rgba('sepia', 0.55);
-    c.fillText('°C', STRIP.x + 42, STRIP.y + 14);
+    c.font = font(F.mono(500), 18); c.fillStyle = rgba('sepia', 0.55);
+    c.fillText('°C', STRIP.x + 56, STRIP.y + 20);
+    // 溫度紀錄紙：一小張方格紙（格子、框、標題），筆畫的線每格畫
+    c.fillStyle = rgba('paper', 0.9); c.fillRect(GRAPH.x, GRAPH.y, GRAPH.w, GRAPH.h);
+    c.strokeStyle = rgba('blood', 0.16); c.lineWidth = 1;
+    for (let x = GRAPH.x + 20; x < GRAPH.x + GRAPH.w; x += 20) { c.beginPath(); c.moveTo(x, GRAPH.y); c.lineTo(x, GRAPH.y + GRAPH.h); c.stroke(); }
+    for (let y = GRAPH.y + 26; y < GRAPH.y + GRAPH.h; y += 26) { c.beginPath(); c.moveTo(GRAPH.x, y); c.lineTo(GRAPH.x + GRAPH.w, y); c.stroke(); }
+    c.strokeStyle = rgba('sepia', 0.35); c.strokeRect(GRAPH.x, GRAPH.y, GRAPH.w, GRAPH.h);
+    c.font = font(F.hei(500), 18); c.fillStyle = rgba('sepia', 0.55); c.letterSpacing = '3px';
+    c.fillText(LOG, GRAPH.x + 2, GRAPH.y - 14);
+    c.letterSpacing = '0px';
     c.textBaseline = 'alphabetic';
     this.stat.upload();
   }
@@ -242,7 +284,35 @@ export default class Thermometer extends Scene {
     const au = this.ctx.audio;
     // 跟著能量微微呼吸；揭曉後跟著響度升降
     const k = prog(t, this.tp + 0.5, this.tp + 1.2);
-    return h + 0.025 * au.env('rms', t) + k * (0.1 * (au.env('rms', t) - 0.5) + 0.025 * au.hit('kick', t, 0.12));
+    return h + 0.025 * au.env('rms', t) + k * (0.12 * (au.env('rms', t) - 0.5) + 0.07 * au.hit('kick', t, 0.12));
+  }
+
+  /**
+   * 溫度紀錄紙：筆一直往右畫，最近 8 秒的液面高度（跟溫度計同一個函數），拍點上筆尖抖一下；
+   * 爆表那一下線衝出格子外。讓溫度計以外的木板也一直有東西在動，而且跟溫度計的點子有關。
+   */
+  private drawGraph(c: CanvasRenderingContext2D, t: number) {
+    const G = GRAPH, span = 8, n = 96;
+    c.save();
+    c.beginPath(); c.rect(G.x, G.y - 30, G.w, G.h + 30); c.clip();
+    c.strokeStyle = rgba('sepia', 0.78); c.lineWidth = 2; c.lineJoin = 'round';
+    c.beginPath();
+    let px = 0, py = 0;
+    for (let i = 0; i <= n; i++) {
+      const tt = t - span + (span * i) / n;
+      if (tt < this.ctx.start) continue;
+      const x = G.x + 6 + ((G.w - 20) * i) / n;
+      const y = G.y + G.h - 8 - clamp(this.level(tt), 0, 1.12) * (G.h - 14);
+      if (!px) c.moveTo(x, y); else c.lineTo(x, y);
+      px = x; py = y;
+    }
+    c.stroke();
+    if (px) {
+      // 筆尖（一個小點）
+      c.fillStyle = rgba('blood', 0.9);
+      c.beginPath(); c.arc(px, py, 4, 0, Math.PI * 2); c.fill();
+    }
+    c.restore();
   }
 
   override render(f: Frame, out: THREE.WebGLRenderTarget): PostOverrides {
@@ -253,10 +323,11 @@ export default class Thermometer extends Scene {
     const headY = Y0 - clamp(h, 0, 1.05) * (Y0 - Y100);
     u.headY!.value = headY;
     u.t!.value = t;
+    u.steam!.value = prog(t, this.tp + 0.2, this.tp + 1.2);
     // 玻璃塞：爆表時往右上彈飛、轉著掉出畫面
     const ct = t - tp;
     u.capOn!.value = ct < 1.2 ? 1 : 0;
-    (u.capP!.value as THREE.Vector2).set(TX + (ct > 0 ? 520 * ct : 0), T_TOP - 16 + (ct > 0 ? -900 * ct + 1400 * ct * ct : 0));
+    (u.capP!.value as THREE.Vector2).set(TX + (ct > 0 ? 520 * ct : 0), T_TOP - 20 + (ct > 0 ? -900 * ct + 1400 * ct * ct : 0));
     u.chan!.value = this.chanLen * prog(t, tp + 0.08, tp + 0.08 + this.chanDur);
     u.fillPos!.value = t < this.f0 ? -1 : (t - this.f0) / this.per;
     (['c0', 'c1', 'c2', 'c3'] as const).forEach((k, i) => (u[k]!.value as THREE.Vector2).set(this.ch[i]![0], this.ch[i]![1]));
@@ -274,7 +345,7 @@ export default class Thermometer extends Scene {
     L.clear();
     const ly = lyricAt(lyrics, t);
     if (ly) {
-      const st = { family: FAM_LYR, size: this.lyrSize, minSize: 48, maxW: LYR.w, maxRows: 2 };
+      const st = { family: FAM_LYR, size: this.lyrSize, minSize: V2.lyrMin / CAM_S, maxW: LYR.w, maxRows: 2 };
       const lay = layoutRows(c, ly.line, st);
       const y = LYR.y - (lay.rows.length - 1) * lay.lineHeight * 0.5;
       const k = ly.k * prog(t, s, s + 0.4);
@@ -285,9 +356,10 @@ export default class Thermometer extends Scene {
       c.strokeStyle = rgba('sepia', 0.5 * k); c.lineWidth = 1.6; c.lineCap = 'round';
       const ax = LYR.x - 22, ay = y - lay.size * 0.35;
       const bx = STRIP.x + STRIP.w + 26;
-      c.beginPath(); c.moveTo(ax, ay); c.lineTo(bx, ay); c.lineTo(bx, headY); c.lineTo(TX + 26, headY); c.stroke();
-      c.beginPath(); c.moveTo(TX + 36, headY - 7); c.lineTo(TX + 26, headY); c.lineTo(TX + 36, headY + 7); c.stroke();
+      c.beginPath(); c.moveTo(ax, ay); c.lineTo(bx, ay); c.lineTo(bx, headY); c.lineTo(TX + TW + 10, headY); c.stroke();
+      c.beginPath(); c.moveTo(TX + TW + 20, headY - 7); c.lineTo(TX + TW + 10, headY); c.lineTo(TX + TW + 20, headY + 7); c.stroke();
     }
+    this.drawGraph(c, t);
     comp.draw(renderer, L.upload(), rt);
 
     // ---- 鏡頭：斜斜地看著木板，揭曉前對焦在液面、揭曉後拉到留言
@@ -310,7 +382,7 @@ export default class Thermometer extends Scene {
       const lq = LIN.paper.map((p, i) => p * Math.pow(clamp(LIN.signal[i]! / Math.max(p, 1e-3), 0.004, 1), 2.6)) as [number, number, number];
       for (let i = 0; i < 22; i++) {
         const an = -Math.PI / 2 + (hash(i, 61, this.seed) - 0.5) * 1.6, v = 260 + 520 * hash(i, 62);
-        const x = TX + Math.cos(an) * v * ct, y = T_TOP - 10 + Math.sin(an) * v * ct + 1500 * ct * ct;
+        const x = TX + Math.cos(an) * v * ct, y = T_TOP - 14 + Math.sin(an) * v * ct + 1500 * ct * ct;
         const p = this.stage.project(cam, x, y), q = this.stage.project(cam, x - Math.cos(an) * 4, y - Math.sin(an) * 4 + 10 * ct);
         const r = 3 + 5 * hash(i, 63);
         D.seg2(q.x, q.y, p.x, p.y, r * 2, lq, 1);

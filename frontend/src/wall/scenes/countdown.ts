@@ -3,8 +3,11 @@
 //    正面亮、側面暗），遠的數字沉在霧裡。一條淡淡的地板格線往遠處延伸，鏡頭往前衝的時候看得出速度。
 //  - 鏡頭一拍往前衝一格：在拍點前半拍起跑、剛好在拍點停住；數字轉進來（側面 → 正面）時稍微過頭再回正，
 //    停住的那一下正面燒成訊號色、慢慢冷卻。下一個數字已經在後面的霧裡等著。
-//  - 有留言：倒數到揭曉（小節線）。「0」停住之後，鏡頭從 0 的洞裡穿過去——穿過的那一刻火花爆開，
-//    洞的另一邊就是留言（懸在黑暗裡的一片字，剛出現是燒紅的，冷卻成紙白），之後慢慢推近。
+//  - 有留言：倒數到揭曉（小節線）。「0」砰地停住、火花從 0 爆開，鏡頭往右平移，0 留在畫面左邊當主角，
+//    留言就懸在 0 的右邊（剛爆出來是燒紅的，冷卻成紙白）。之後 0 每個小節線被點亮一次、輕輕轉，
+//    遠處霧裡一個淡淡的小數字倒數「這一段還剩幾小節」（每小節翻一次），地板格線跟著鏡頭慢慢滑。
+//  - v2（2026-09-29）：留言照「留言尺寸與版面比例標準 v2」（40～60 px、留言區 ≤ 860×430、在畫面右側），
+//    不再穿過 0、不再用整個畫面寫留言：0 與數字的空間是主視覺。
 //  - 沒有留言：一小節一個數字（窗格短就一拍一個），倒數到這個窗格結束（下一段），歌詞是主角。
 //  - 歌詞在數字下面（畫面左下，逐字跟唱；有留言時小一級）。左上一行很小的冷面標籤。
 // 畫法：three.js（MSAA 目標）畫擠出的數字與留言的那一片；背景（霧、地板格線）是全螢幕 shader；火花、灰塵是 LineBatch。
@@ -16,10 +19,11 @@ import { F, font, ot } from '../engine/type';
 import { LIN, rgba } from '../engine/palette';
 import { GLSL_COMMON, THEME_UNIFORMS } from '../engine/glsl/common';
 import { clamp, ease, hash, lerp, prog, pulse, TAU } from '../engine/util';
-import { lyricAt, drawLyric, layoutLyric, lyricSizeFor, fillWithHearts, type LyricStyle } from './_motifs';
+import { lyricAt, drawLyric, layoutLyric, fillWithHearts, type LyricStyle } from './_motifs';
 import { grid, type Grid } from './_t4';
-import { msgBlock, type MsgBlock } from './_t14';
-import { loadWindow, revealAt, beatsBetween } from './_t18';
+import { type MsgBlock } from './_t14';
+import { loadWindow, revealAt, beatsBetween, v2Block } from './_t18';
+import { lyricV2, V2 } from './_v2';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'game', paper: false, energy: [0.4, 1], bars: [4, 8], weight: 1 };
 
@@ -30,13 +34,15 @@ const FPX = (H / 2) / Math.tan(THREE.MathUtils.degToRad(FOV / 2));
 /** 數字停住時離鏡頭多遠、數字之間的距離、數字的中心高度、地板。 */
 const D_HERO = 2080, Z_SP = 3000, DIGIT_Y = 40, FLOOR_Y = -620;
 const GLYPH = 1000, DEPTH = 150;
-/** 留言那一片離「0」多遠。 */
-const MSG_GAP = 3200;
 const FAM_MSG = F.ming(700);
 const FAM_SIG = F.hand(400);
 const FAM_LYR = F.archivo(100, 800);
-/** 留言在那一片上的範圍（那一片跟螢幕一樣大：鏡頭停好時 1 單位 = 1 px）。 */
-const MBOX = { x: 250, y: 170, w: 1420, h: 640 };
+/** 留言那一片（跟螢幕一樣大，鏡頭停好時 1 單位 = 1 px）上寫留言的範圍：畫面右側 ≤ 860×430。 */
+const MBOX = { x: 900, y: 250, w: 840, h: 420 };
+/** 揭曉後 0 停在畫面上的位置（螢幕 px）與留言那一片在 0 前面多少（避免跟 0 搶深度）。 */
+const ZERO_SX = 500, ZERO_SY = 520, PLANE_DZ = 140;
+/** 揭曉後鏡頭最後會推近約 3%：留言的字級先除回來。 */
+const CAM_S = 1.03;
 const LYR = { x: 200, y: 930, w: 1130 };
 const TAG_COUNT = 'COUNTDOWN  ·  倒數計時中，請勿眨眼';
 const TAG_EMPTY = 'COUNTDOWN  ·  下一段還有';
@@ -130,7 +136,7 @@ const BG = () => new FSPass(/* glsl */ `
     // 遠方地平線上一團很淡的暖光
     col += mix(C_BLOOD, C_SIGNAL, 0.5) * 0.035 * exp(-pow(length((sp - vec2(1000.0, 560.0)) / vec2(900.0, 260.0)), 2.0)) * glow;
     // 留言後面一團很淡的暖光（爆開的餘溫）
-    col += mix(C_BLOOD, C_SIGNAL, 0.35) * 0.05 * msgGlow * exp(-pow(length((sp - vec2(960.0, 470.0)) / vec2(820.0, 360.0)), 2.0));
+    col += mix(C_BLOOD, C_SIGNAL, 0.35) * 0.05 * msgGlow * exp(-pow(length((sp - vec2(1320.0, 460.0)) / vec2(620.0, 320.0)), 2.0));
     // 地板的格線：往遠處延伸，越遠越淡
     if (dir.y < -0.0005) {
       float tt = (${FLOOR_Y.toFixed(1)} - camP.y) / dir.y;
@@ -169,14 +175,19 @@ export default class Countdown extends Scene {
   msg: Msg | null = this.ctx.params.message ?? null;
   seed = Number(this.ctx.params.seed ?? 1);
   block: MsgBlock | null = null;
-  lyrSize = 64;
+  lyrSize = 52;
   g!: Grid;
   nums: Num[] = [];
   planeMesh: THREE.Mesh | null = null;
   planeMat: THREE.RawShaderMaterial | null = null;
-  /** 揭曉（0 停住）、開始穿洞、穿過 0 的那一刻、停在留言前。 */
-  tr = Infinity; flyA = Infinity; flyB = Infinity; tCross = Infinity;
-  zMsg = 0;
+  /** 揭曉（0 停住、爆開）與鏡頭平移結束的時間。 */
+  tr = Infinity; panB = Infinity;
+  /** 揭曉後鏡頭停的位置（0 在畫面左邊、留言在右邊）。 */
+  camEnd = { x: 0, y: 0, z: 0 };
+  /** 遠處的小數字：揭曉後每個小節線「還剩幾小節」；兩位數用兩個網格。 */
+  farMat: THREE.RawShaderMaterial | null = null;
+  farBars: number[] = [];
+  farMeshes: THREE.Mesh[][] = [];
   dust: { x: number; y: number; z: number; s: number }[] = [];
 
   override async init() {
@@ -218,15 +229,17 @@ export default class Countdown extends Scene {
       });
       return { v, t, x, rest: (i % 2 === 0 ? 1 : -1) * 0.2, meshes, mat };
     });
-    // ---- 留言那一片：鏡頭停好時 1 單位 = 1 px，所以直接照螢幕排版
+    // ---- 留言那一片：揭曉後鏡頭停好時 1 單位 = 1 px（照螢幕排版），放在 0 的前面一點
     const last = this.nums[this.nums.length - 1]!;
     if (this.msg) {
-      this.flyA = this.tr + 0.3 * B;
-      this.flyB = this.flyA + Math.max(0.55, 1.25 * B);
-      this.zMsg = this.zOf(this.nums.length - 1) - MSG_GAP;
+      const zN = this.zOf(this.nums.length - 1);
+      this.panB = this.tr + Math.max(0.6, 1.6 * B);
+      // 鏡頭：0 落在螢幕 (ZERO_SX, ZERO_SY)
+      const k = D_HERO / FPX;
+      this.camEnd = { x: last.x - (ZERO_SX - 960) * k, y: DIGIT_Y + (ZERO_SY - 540) * k, z: zN + D_HERO };
       const c = this.sheet.ctx;
       this.sheet.clear();
-      const b = (this.block = msgBlock(c, this.msg, FAM_MSG, MBOX, { align: 'center', sigFamily: FAM_SIG, min: 48, max: 150, lineHeight: 1.3, maxLines: 5, sigMin: 40, sigMax: 56 }));
+      const b = (this.block = v2Block(c, this.msg, FAM_MSG, MBOX, { align: 'left', sigFamily: FAM_SIG, k: 1 / CAM_S, lineHeight: 1.32, maxLines: 6 }));
       c.textBaseline = 'alphabetic';
       c.font = font(FAM_MSG, b.fit.size);
       c.fillStyle = rgba('bone', 0.97);
@@ -235,7 +248,7 @@ export default class Countdown extends Scene {
       c.fillStyle = rgba('ash', 0.95);
       c.fillText(b.sig.text, b.sig.x, b.sig.y);
       this.sheet.upload();
-      this.lyrSize = lyricSizeFor(b.fit.size);
+      this.lyrSize = lyricV2(b.screen);
       this.planeMat = new THREE.RawShaderMaterial({
         glslVersion: THREE.GLSL3, vertexShader: PLANE_VERT, fragmentShader: PLANE_FRAG,
         uniforms: { ...THEME_UNIFORMS, tex: { value: this.sheet.texture }, alpha: { value: 0 }, hot: { value: 0 } },
@@ -244,17 +257,33 @@ export default class Countdown extends Scene {
       this.planeMat.blending = THREE.CustomBlending;
       this.planeMat.blendSrc = THREE.OneFactor; this.planeMat.blendDst = THREE.OneMinusSrcAlphaFactor;
       this.planeMesh = new THREE.Mesh(R.plane, this.planeMat);
-      this.planeMesh.position.set(last.x, DIGIT_Y, this.zMsg);
+      // 一片跟螢幕一樣大的平面，放在 0 前面 PLANE_DZ：縮放到「鏡頭停好時 1 單位 = 1 px」
+      const ps = (D_HERO - PLANE_DZ) / FPX;
+      this.planeMesh.position.set(this.camEnd.x, this.camEnd.y, zN + PLANE_DZ);
+      this.planeMesh.scale.set(ps, ps, 1);
       this.planeMesh.frustumCulled = false;
-      // 穿過 0 的時間：鏡頭的 z 經過 0 那一刻（照同一條緩動反算）
-      const z0 = this.zOf(this.nums.length - 1) + D_HERO, z1 = this.zMsg + FPX * 1.06, zc = this.zOf(this.nums.length - 1);
-      for (let k = 0; k <= 200; k++) {
-        const tt = this.flyA + ((this.flyB - this.flyA) * k) / 200;
-        if (lerp(z0, z1, ease.inOutCubic(prog(tt, this.flyA, this.flyB))) <= zc) { this.tCross = tt; break; }
+      // 遠處霧裡的小數字：揭曉後每個小節線換一個「還剩幾小節」
+      const bars = g.bars.filter((x) => x > this.tr + 0.2 && x < e - 0.3);
+      this.farBars = bars;
+      if (bars.length) {
+        this.farMat = new THREE.RawShaderMaterial({
+          glslVersion: THREE.GLSL3, vertexShader: DIGIT_VERT, fragmentShader: DIGIT_FRAG,
+          uniforms: { ...THEME_UNIFORMS, uHeat: { value: 0 }, dHero: { value: D_HERO }, dim: { value: 0.55 } },
+        });
+        const total = bars.length + 1;
+        this.farMeshes = Array.from({ length: total }, (_, i) => {
+          const v = total - 1 - i;
+          return String(v).split('').map((ch, j, arr) => {
+            const m = new THREE.Mesh(R.digits[+ch]!.geo, this.farMat!);
+            m.frustumCulled = false;
+            m.userData.dx = (j - (arr.length - 1) / 2) * R.digits[+ch]!.adv * 0.92;
+            return m;
+          });
+        });
       }
     }
     // 灰塵：沿著整條路散在空中（有景深的小光點，鏡頭衝的時候拉成線）
-    const zEnd = this.msg ? this.zMsg : this.zOf(this.nums.length - 1);
+    const zEnd = this.zOf(this.nums.length - 1) - 6000;
     for (let i = 0; i < 90; i++) {
       this.dust.push({ x: (hash(i, 1, this.seed) - 0.5) * 3600, y: (hash(i, 2) - 0.5) * 2000, z: lerp(D_HERO + 1500, zEnd - 2500, hash(i, 3)), s: hash(i, 4) });
     }
@@ -283,12 +312,12 @@ export default class Countdown extends Scene {
     // 最後一個數字之後
     const drift = 60 * Math.max(0, t - a.t);
     if (!this.msg) return { x: a.x * 0.6, y: 0, z: this.zOf(i) + D_HERO - Math.min(drift, 500) };
-    const z0 = this.zOf(i) + D_HERO - 60 * Math.max(0, Math.min(t, this.flyA) - a.t);
-    const k = ease.inOutCubic(prog(t, this.flyA, this.flyB));
-    const kc = ease.inOutCubic(prog(t, this.flyA, lerp(this.flyA, this.flyB, 0.45)));
-    const push = ease.inOutQuad(prog(t, this.flyB, Math.max(this.flyB + 2, this.ctx.end)));
-    const zStop = this.zMsg + FPX * lerp(1.06, 0.985, push);
-    return { x: lerp(a.x * 0.6, a.x, kc), y: lerp(0, DIGIT_Y, kc), z: t < this.flyB ? lerp(z0, this.zMsg + FPX * 1.06, k) : zStop };
+    // 揭曉：0 停住那一下之後，鏡頭往右平移（0 留在畫面左邊），之後整段慢慢推近、左右很慢地晃
+    const E = this.camEnd;
+    const k = ease.inOutCubic(prog(t, this.tr + 0.12, this.panB));
+    const push = ease.inOutQuad(prog(t, this.panB, Math.max(this.panB + 2, this.ctx.end)));
+    const sway = Math.sin((t - this.tr) * 0.5) * 18 * prog(t, this.panB, this.panB + 1);
+    return { x: lerp(a.x * 0.6, E.x, k) + sway, y: lerp(0, E.y, k), z: lerp(this.zOf(i) + D_HERO, E.z - D_HERO * (1 - 1 / CAM_S), push) };
   }
 
   override render(f: Frame, out: THREE.WebGLRenderTarget): PostOverrides {
@@ -312,8 +341,14 @@ export default class Countdown extends Scene {
       if (depth < -300 || depth > D_HERO + Z_SP * 2.2) continue;
       // 轉進來：側面 → 正面，稍微過頭再回正（在拍點停住）
       const swing = 1 - ease.outBack(prog(t, nm.t - 0.3 * B, nm.t + 0.3 * B), 1.4);
-      const ry = nm.rest + swing * 1.1 * Math.sign(nm.rest);
-      nm.mat.uniforms.uHeat!.value = t >= nm.t ? Math.exp(-(t - nm.t) / (0.55 * B)) : 0;
+      let ry = nm.rest + swing * 1.1 * Math.sign(nm.rest);
+      let heat = t >= nm.t ? Math.exp(-(t - nm.t) / (0.55 * B)) : 0;
+      if (this.msg && i === this.nums.length - 1) {
+        // 揭曉後的 0：轉向留言那一邊一點、每個小節線被點亮一次、跟著節拍輕輕擺
+        ry = lerp(ry, 0.32 + 0.08 * Math.sin((t - this.tr) * 1.1), ease.inOutCubic(prog(t, this.tr + 0.1, this.panB)));
+        for (const tb of this.farBars) if (t >= tb) heat = Math.max(heat, 0.55 * Math.exp(-(t - tb) / (0.6 * B)));
+      }
+      nm.mat.uniforms.uHeat!.value = heat;
       // 穿過 0 以後，0 已經在鏡頭後面；留言出現時前面的數字退暗
       nm.mat.uniforms.dim!.value = 1;
       for (const m of nm.meshes) {
@@ -325,11 +360,37 @@ export default class Countdown extends Scene {
     }
     let alpha = 0, hot = 0;
     if (this.planeMesh && this.planeMat) {
-      alpha = ease.outCubic(prog(t, this.tCross - 0.06, this.tCross + 0.25));
-      hot = 1 - prog(t, this.tCross, this.tCross + 0.9, ease.outQuad);
+      // 鏡頭平移到一大半才出現（不然會被畫面右緣切掉）
+      const a0 = lerp(this.tr, this.panB, 0.55);
+      alpha = ease.outCubic(prog(t, a0, a0 + 0.35));
+      hot = 1 - prog(t, a0 + 0.05, a0 + 1.05, ease.outQuad);
       this.planeMat.uniforms.alpha!.value = alpha;
       this.planeMat.uniforms.hot!.value = alpha > 0 ? hot * 0.85 : 0;
       if (alpha > 0) R.scene.add(this.planeMesh);
+    }
+    // 遠處霧裡的小數字：每個小節線翻一次（舊的轉走、新的轉進來）
+    if (this.farMat && t > this.tr) {
+      const E = this.camEnd;
+      let cur = 0;
+      for (let j = 0; j < this.farBars.length; j++) if (t >= this.farBars[j]!) cur = j + 1;
+      const tb = cur > 0 ? this.farBars[cur - 1]! : this.tr;
+      const flip = ease.outBack(prog(t, tb, tb + 0.35), 1.2);
+      // 放在右上角很遠的霧裡（小、暗），不跟 0 和留言搶
+      const FD = D_HERO + 8200;
+      const fz = E.z - FD, fx = E.x + (1560 - 960) * FD / FPX, fy = E.y + (540 - 175) * FD / FPX;
+      const show = (idx: number, ry: number) => {
+        const ms = this.farMeshes[idx];
+        if (!ms) return;
+        for (const m of ms) {
+          const dx = m.userData.dx as number;
+          m.position.set(fx + Math.cos(ry) * dx, fy, fz - Math.sin(ry) * dx);
+          m.rotation.set(0, ry, 0);
+          R.scene.add(m);
+        }
+      };
+      show(cur, (1 - flip) * -1.4);
+      if (cur > 0 && t < tb + 0.2) show(cur - 1, prog(t, tb, tb + 0.2) * 1.4);
+      this.farMat.uniforms.uHeat!.value = 0.5 * Math.exp(-(t - tb) / 0.35);
     }
 
     // ---- 背景 → MSAA → 3D
@@ -366,16 +427,19 @@ export default class Countdown extends Scene {
       const c = LIN.signal;
       G.seg2(bx, by, a.x, a.y, wd, [c[0] * I + 0.02, c[1] * I + 0.02, c[2] * I + 0.02], 0.9);
     }
-    if (this.tCross < Infinity) {
-      const a = t - this.tCross;
+    if (this.msg && this.tr < Infinity) {
+      const a = t - this.tr;
+      // 0 在畫面上的位置（跟著鏡頭平移）
+      const zc = proj(this.nums[this.nums.length - 1]!.x, DIGIT_Y, this.zOf(this.nums.length - 1));
+      const ox = zc ? zc.x : 960, oy = zc ? zc.y : 540;
       if (a >= 0 && a < 0.7) {
         const q = a / 0.7;
         for (let i = 0; i < 70; i++) {
           const an = hash(i, 41, this.seed) * TAU, sp = 0.4 + 0.6 * hash(i, 42);
-          const r1 = 60 + 1500 * ease.outQuart(q) * sp, r0 = r1 * (0.55 + 0.3 * hash(i, 43));
+          const r1 = 60 + 1100 * ease.outQuart(q) * sp, r0 = r1 * (0.55 + 0.3 * hash(i, 43));
           const I = (1 - q) * (1 - q) * 2.4;
           const c = hash(i, 44) < 0.3 ? LIN.ember : LIN.signal;
-          G.seg2(960 + Math.cos(an) * r0, 540 + Math.sin(an) * r0 * 0.8, 960 + Math.cos(an) * r1, 540 + Math.sin(an) * r1 * 0.8, 1.4 + 1.6 * (1 - q), [c[0] * I, c[1] * I, c[2] * I], 1);
+          G.seg2(ox + Math.cos(an) * r0, oy + Math.sin(an) * r0 * 0.8, ox + Math.cos(an) * r1, oy + Math.sin(an) * r1 * 0.8, 1.4 + 1.6 * (1 - q), [c[0] * I, c[1] * I, c[2] * I], 1);
         }
       }
       // 餘燼：爆開之後在留言四周慢慢往外、往上飄，幾秒內熄掉
@@ -384,7 +448,7 @@ export default class Countdown extends Scene {
           const an = hash(i, 51, this.seed) * TAU, v = 120 + 260 * hash(i, 52), life = 2.5 + 3 * hash(i, 53);
           if (a > life) continue;
           const d = v * 0.6 * (1 - Math.exp(-a / 0.6)) + 18 * a;
-          const x = 960 + Math.cos(an) * (380 + d) * 1.6, y = 470 + Math.sin(an) * (220 + d * 0.6) - 26 * a + 10 * Math.sin(a * 2 + i);
+          const x = ox + Math.cos(an) * (260 + d) * 1.3, y = oy + Math.sin(an) * (220 + d * 0.6) - 26 * a + 10 * Math.sin(a * 2 + i);
           const k = (1 - a / life) * clamp(a / 0.2);
           const I = k * k * (0.5 + 0.9 * hash(i, 54)) * (0.6 + 0.4 * Math.sin(t * 9 + i * 1.7));
           const c = LIN.signal;
@@ -399,7 +463,7 @@ export default class Countdown extends Scene {
     L.clear();
     const ly = lyricAt(lyrics, t);
     if (ly) {
-      const st: LyricStyle = { family: FAM_LYR, size: this.lyrSize, minSize: 48, maxWidth: LYR.w };
+      const st: LyricStyle = { family: FAM_LYR, size: this.lyrSize, minSize: V2.lyrMin, maxWidth: LYR.w };
       const lay = layoutLyric(c, ly.line, st);
       const y = LYR.y - (lay.rows.length > 1 ? lay.size * 1.18 : 0);
       c.save(); c.translate(LYR.x, y);
@@ -415,11 +479,11 @@ export default class Countdown extends Scene {
     }
     comp.draw(renderer, L.upload(), out);
 
-    const flash = this.tCross < Infinity ? 0.12 * pulse(t, this.tCross, 0.07) : 0;
+    const flash = this.msg ? 0.1 * pulse(t, this.tr, 0.07) : 0;
     const avoid: [number, number, number, number] = this.block ? [this.block.box[0], this.block.box[1], this.block.box[2], this.block.box[3]] : [600, 200, 900, 640];
     return {
       bloom: 0.85, vignette: 0.5,
-      zoom: 1 + 0.018 * hitK + 0.03 * pulse(t, this.tCross, 0.12),
+      zoom: 1 + 0.018 * hitK,
       flash,
       popupAvoid: [avoid],
     };
@@ -428,6 +492,7 @@ export default class Countdown extends Scene {
   override dispose() {
     for (const nm of this.nums) nm.mat.dispose();
     this.planeMat?.dispose();
+    this.farMat?.dispose();
     this.rig.scene.clear();
     super.dispose();
   }

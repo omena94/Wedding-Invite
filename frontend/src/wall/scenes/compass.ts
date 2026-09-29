@@ -16,25 +16,29 @@ import { F, font } from '../engine/type';
 import { rgba } from '../engine/palette';
 import { clamp, ease, hash, lerp, prog, springStep, TAU } from '../engine/util';
 import { Lyrics, type Line } from '../engine/lyrics';
-import { lyricAt, lyricSizeFor, fillWithHearts, COUPLE_ZH, DATE_DOTS } from './_motifs';
+import { lyricAt, fillWithHearts, drawHeart, COUPLE_ZH, DATE_DOTS } from './_motifs';
 import { grid, paperInk, type Grid } from './_t4';
-import { PlaneCam, camUniforms, CAM_GLSL, msgBlock, type MsgBlock } from './_t14';
-import { loadWindow, revealAt, beatsBetween } from './_t18';
+import { PlaneCam, camUniforms, CAM_GLSL, type MsgBlock } from './_t14';
+import { loadWindow, revealAt, beatsBetween, v2Block } from './_t18';
+import { lyricV2, V2 } from './_v2';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'science', paper: true, energy: [0.2, 0.85], bars: [4, 8], weight: 1 };
 
 // ---------------------------------------------------------------- 版面（航海圖座標 = 鏡頭在正前方時的螢幕座標）
 /** 錶身（下）的中心、半徑；鉸鏈；打開後蓋子的中心。 */
-const BC = { x: 500, y: 560 }, R = 400;
-const HINGE = 918;
+// v2：整只羅盤往左上收（右下角 HUD 底下要乾淨），蓋子內側寫字的那一塊 ≤ 500×380
+const BC = { x: 470, y: 432 }, R = 350;
+const HINGE = BC.x + R + 18;
 const LC = { x: 2 * HINGE - BC.x, y: BC.y };
 /** 錶面各圈：錶殼內緣、刻度、歌詞的基線、方位字。 */
-const R_FACE = 360, R_TICK0 = 334, R_TICK1 = 354, R_LYR = 292, R_LABEL = 252;
+const R_FACE = 312, R_TICK0 = 290, R_TICK1 = 309, R_LYR = 252, R_LABEL = 216;
 /** 歌詞一圈最多用多大的角度（上半圈、下半圈各一段）。 */
 const ARC_SPAN = 2.45;
 /** 蓋子內側寫字的範圍（打開後的位置）。 */
-const MBOX = { x: LC.x - 270, y: LC.y - 206, w: 540, h: 412 };
+const MBOX = { x: LC.x - 236, y: LC.y - 182, w: 472, h: 364 };
 const NORTH = -Math.PI / 2;
+/** 航海圖下方的航線（轉折點）：羅盤下面、右下角 HUD 的左邊。 */
+const ROUTE: [number, number][] = [[150, 950], [360, 900], [560, 954], [770, 904], [980, 944], [1170, 910]];
 const FAM_MSG = F.ming(700);
 const FAM_SIG = F.hand(400);
 const FAM_LYR = F.archivo(100, 800);
@@ -85,6 +89,9 @@ const BG = () => new FSPass(/* glsl */ `
     ink += 0.22 * pxLine(abs(land) / max(lw, 1e-4), 0.5, 1.5);
     ink += 0.07 * hatch((P.x + P.y) / 7.0, 0.35) * step(0.0, land);
     col = mix(col, C_SEPIA, clamp(ink, 0.0, 1.0));
+    // 航海圖上用鉛筆畫的航線（跟外圈歌詞同一張 Canvas；錶身會蓋在上面）
+    vec4 chA = fastLayer(texture(lyrT, pageUV(P)));
+    col = col * (1.0 - chA.a) + chA.rgb;
     // ---- 影子（錶身與打開的蓋子，偏右下）
     float c = cos(lidA), s = sin(lidA);
     float sc = 1.0 / (1.0 - 0.2 * s);
@@ -116,14 +123,14 @@ const BG = () => new FSPass(/* glsl */ `
         float rt0 = mix(R_TICK0_ + 8.0, R_TICK0_ - 4.0 * big3, big);
         dk = max(dk, pxLine(da, mix(0.35, 0.8, big), mix(1.0, 1.6, big)) * step(rt0, r) * step(r, R_TICK1_));
         dk = max(dk, 0.8 * pxLine(abs(r - R_TICK1_), 0.4, 1.2));
-        dk = max(dk, 0.5 * pxLine(abs(r - 238.0), 0.3, 1.0));
-        dk = max(dk, 0.35 * pxLine(abs(r - 120.0), 0.3, 1.0));
+        dk = max(dk, 0.5 * pxLine(abs(r - 206.0), 0.3, 1.0));
+        dk = max(dk, 0.35 * pxLine(abs(r - 104.0), 0.3, 1.0));
         // 十六方位玫瑰（版畫：每個尖角一半留白、一半刻線）
         float roseInk = 0.0, roseN = 0.0;
         for (int k = 0; k < 16; k++) {
           int lvl = (k % 4 == 0) ? 0 : ((k % 2 == 0) ? 1 : 2);
-          float L = lvl == 0 ? 228.0 : (lvl == 1 ? 160.0 : 108.0);
-          float w = lvl == 0 ? 30.0 : (lvl == 1 ? 22.0 : 15.0);
+          float L = lvl == 0 ? 196.0 : (lvl == 1 ? 140.0 : 94.0);
+          float w = lvl == 0 ? 27.0 : (lvl == 1 ? 19.0 : 13.0);
           float ang = -PI * 0.5 + float(k) * PI / 8.0;
           vec2 p = vec2(cos(ang) * q.x + sin(ang) * q.y, -sin(ang) * q.x + cos(ang) * q.y);
           float d = tri(p, L, w);
@@ -149,9 +156,9 @@ const BG = () => new FSPass(/* glsl */ `
           vec2 nd = vec2(cos(needle), sin(needle));
           vec2 np = vec2(dot(q, nd), -q.x * nd.y + q.y * nd.x);
           vec2 npS = vec2(dot(q - vec2(7.0, 10.0), nd), -(q.x - 7.0) * nd.y + (q.y - 10.0) * nd.x);
-          float dS = max(tri(npS, 272.0, 14.0), tri(vec2(-npS.x, npS.y), 196.0, 14.0));
+          float dS = max(tri(npS, 236.0, 12.5), tri(vec2(-npS.x, npS.y), 170.0, 12.5));
           bc *= 1.0 - 0.28 * smoothstep(-4.0, 6.0, dS) * nOn;
-          float dN = tri(np, 272.0, 14.0), dSo = tri(vec2(-np.x, np.y), 196.0, 14.0);
+          float dN = tri(np, 236.0, 12.5), dSo = tri(vec2(-np.x, np.y), 170.0, 12.5);
           float fN = smoothstep(-0.8, 0.8, dN), fS = smoothstep(-0.8, 0.8, dSo);
           float ridge = np.y > 0.0 ? 0.72 : 1.08;
           vec3 cn = mix(C_BLOOD, C_SIGNAL, 0.38) * ridge;
@@ -275,29 +282,30 @@ export default class Compass extends Scene {
     this.msgL.clear();
     c.textBaseline = 'alphabetic';
     if (this.msg) {
-      const b = (this.block = msgBlock(c, this.msg, FAM_MSG, MBOX, { align: 'center', sigFamily: FAM_SIG, min: 44, max: 108, lineHeight: 1.3, maxLines: 6, sigMin: 36, sigMax: 46 }));
+      // v2：鏡頭停好時蓋子在畫面上差不多 1:1（推近到最後約 0.97～1.0 倍），航海圖座標的字級就是螢幕上的字級
+      const b = (this.block = v2Block(c, this.msg, FAM_MSG, MBOX, { align: 'center', sigFamily: FAM_SIG, k: 1, lineHeight: 1.3, maxLines: 7 }));
       c.font = font(FAM_MSG, b.fit.size);
       c.fillStyle = '#fff';
       for (const ln of b.lines) fillWithHearts(c, ln.text, ln.x, ln.y, '#f00');
       c.font = font(FAM_SIG, b.sig.size);
       fillWithHearts(c, b.sig.text, b.sig.x, b.sig.y, '#f00');
-      this.lyrSize = lyricSizeFor(b.fit.size);
+      this.lyrSize = lyricV2(b.screen);
     } else {
       c.fillStyle = '#fff';
-      c.font = font(FAM_MSG, 78);
+      c.font = font(FAM_MSG, 58);
       // fillWithHearts 照左對齊量位置：自己算置中
       const names = COUPLE_ZH.replace(/\s*&\s*/, ' ♥ ');
       fillWithHearts(c, names, LC.x - c.measureText(names).width / 2, LC.y - 10, '#f00');
       c.textAlign = 'center';
-      c.font = font(F.serif(600), 40);
+      c.font = font(F.serif(600), 32);
       c.letterSpacing = '6px';
-      c.fillText(DATE_DOTS, LC.x, LC.y + 70);
+      c.fillText(DATE_DOTS, LC.x, LC.y + 58);
       c.letterSpacing = '2px';
-      c.font = font(F.hei(500), 26);
-      c.fillText(INVITE, LC.x, LC.y + 150);
+      c.font = font(F.hei(500), 24);
+      c.fillText(INVITE, LC.x, LC.y + 130);
       c.letterSpacing = '0px';
       c.textAlign = 'left';
-      this.lyrSize = 58;
+      this.lyrSize = lyricV2(null);
     }
     this.msgL.upload();
 
@@ -329,7 +337,7 @@ export default class Compass extends Scene {
   }
   a0 = NORTH;
 
-  /** 一行歌詞排成外圈的字（快取）：先試一段，放不下就上下兩段，再不行換窄的字、縮到 48。 */
+  /** 一行歌詞排成外圈的字（快取）：先試一段，放不下就上下兩段，再不行換窄的字、縮到 40（v2 的歌詞下限）。 */
   private ring(line: Line): RingLine {
     const hit = this.rings.get(line);
     if (hit) return hit;
@@ -349,7 +357,7 @@ export default class Compass extends Scene {
       return { k: best, w: bw };
     };
     outer: for (const fm of [FAM_LYR, FAM_LYR_N]) {
-      for (let sz = this.lyrSize; sz >= 48; sz -= 2) {
+      for (let sz = this.lyrSize; sz >= V2.lyrMin; sz -= 2) {
         if (widthOf(fm, sz, 0, text.length) <= cap) { fam = fm; size = sz; split = -1; break outer; }
         if (nW > 1) { const b = bestSplit(fm, sz); if (b.w <= cap) { fam = fm; size = sz; split = b.k; break outer; } }
         fam = fm; size = sz; split = nW > 1 ? bestSplit(fm, sz).k : -1;
@@ -407,6 +415,56 @@ export default class Compass extends Scene {
     return a;
   }
 
+  /**
+   * 航海圖下方用鉛筆畫的航線：每兩小節畫出一段新的航程（在小節線上一筆畫過去、轉折點打一個叉），
+   * 小船照拍子一格一格往前開，終點是一座小島「幸福」。讓羅盤以外空出來的航海圖也有事情在發生。
+   */
+  private drawRoute(c: CanvasRenderingContext2D, t: number) {
+    const g = this.g, au = this.ctx.audio;
+    const pts = ROUTE;
+    const legT = (k: number) => g.b0 + k * 2 * g.bar;
+    // 畫到哪裡（段數，小數 = 這一段畫到一半）
+    let done = 0;
+    for (let k = 0; k < pts.length - 1; k++) done += prog(t, legT(k), legT(k) + 0.55, ease.inOutCubic);
+    c.save();
+    c.strokeStyle = rgba('sepia', 0.55); c.lineWidth = 2; c.setLineDash([7, 9]); c.lineCap = 'round';
+    c.beginPath(); c.moveTo(pts[0]![0], pts[0]![1]);
+    let head = { x: pts[0]![0], y: pts[0]![1] };
+    for (let k = 0; k < pts.length - 1 && k < done; k++) {
+      const a = pts[k]!, b = pts[k + 1]!, q = Math.min(1, done - k);
+      head = { x: lerp(a[0], b[0], q), y: lerp(a[1], b[1], q) };
+      c.lineTo(head.x, head.y);
+    }
+    c.stroke();
+    c.setLineDash([]);
+    // 轉折點的叉
+    c.lineWidth = 1.6;
+    for (let k = 1; k < pts.length - 1 && k <= done; k++) {
+      const [x, y] = pts[k]!;
+      c.beginPath(); c.moveTo(x - 6, y - 6); c.lineTo(x + 6, y + 6); c.moveTo(x + 6, y - 6); c.lineTo(x - 6, y + 6); c.stroke();
+    }
+    // 終點的小島（鉛筆斜線）與「幸福」
+    const [ix, iy] = pts[pts.length - 1]!;
+    c.beginPath(); c.ellipse(ix + 34, iy + 4, 34, 15, -0.1, 0, Math.PI * 2);
+    c.strokeStyle = rgba('sepia', 0.6); c.lineWidth = 1.6; c.stroke();
+    c.save(); c.clip();
+    c.strokeStyle = rgba('sepia', 0.25); c.lineWidth = 1;
+    for (let x = ix - 10; x < ix + 80; x += 6) { c.beginPath(); c.moveTo(x, iy + 22); c.lineTo(x + 20, iy - 14); c.stroke(); }
+    c.restore();
+    c.font = font(F.hei(500), 20); c.fillStyle = rgba('sepia', 0.7); c.letterSpacing = '3px';
+    c.fillText(NORTH_LABEL, ix + 14, iy - 22);
+    c.letterSpacing = '0px';
+    drawHeart(c, ix + 74, iy - 30, 14);
+    // 小船：停在航線畫到的地方，拍點上被浪頂一下
+    const bob = 3 * Math.sin(t * 2.4) - 5 * Math.exp(-(t - au.timeOfBeat(Math.floor(au.beatAt(t)))) / 0.12);
+    const sx = head.x, sy = head.y - 12 + bob;
+    c.fillStyle = rgba('sepia', 0.85);
+    c.beginPath(); c.moveTo(sx - 14, sy); c.lineTo(sx + 14, sy); c.lineTo(sx + 9, sy + 7); c.lineTo(sx - 9, sy + 7); c.closePath(); c.fill();
+    c.beginPath(); c.moveTo(sx, sy - 2); c.lineTo(sx, sy - 22); c.lineTo(sx + 12, sy - 6); c.closePath();
+    c.fillStyle = rgba('blood', 0.85); c.fill();
+    c.restore();
+  }
+
   override render(f: Frame, out: THREE.WebGLRenderTarget): PostOverrides {
     const { renderer, lyrics } = this.ctx;
     const t = f.t, s = this.ctx.start, e = this.ctx.end, g = this.g, B = g.beat, to = this.tOpen;
@@ -432,10 +490,12 @@ export default class Compass extends Scene {
     const land = ease.outExpo(prog(t, s, s + Math.min(1, B * 2)));
     const open = ease.inOutCubic(prog(t, to - 0.5 * B, to + 0.6 * B));
     const push = ease.inOutQuad(prog(t, to + 0.6 * B, Math.max(to + 2, e)));
+    // 羅盤在船上：整張航海圖跟著浪很慢地左右搖（兩小節一個來回）
+    const swell = Math.sin(((t - s) / (2 * g.bar)) * Math.PI * 2) * 0.012;
     this.cam.set({
-      tx: lerp(lerp(640, 600, land), 1010, open) + 20 * push, ty: lerp(575, 560, land) + 6 * push,
-      dist: 1600 * (lerp(lerp(0.86, 0.82, land), 1.02, open) - 0.05 * push),
-      yaw: lerp(-0.08, 0.035, open), pitch: lerp(0.24, 0.16, open) - 0.02 * push, roll: lerp(-0.05, 0, open), level: 0.85,
+      tx: lerp(lerp(540, 500, land), 890, open) + 20 * push, ty: lerp(470, 440, land) + 48 * open + 6 * push,
+      dist: 1600 * (lerp(lerp(0.84, 0.8, land), 1.07, open) - 0.03 * push),
+      yaw: lerp(-0.08, 0.03, open), pitch: lerp(0.24, 0.15, open) - 0.02 * push, roll: lerp(-0.05, 0, open) + swell, level: 0.85,
     });
     this.cam.apply(u);
 
@@ -478,6 +538,7 @@ export default class Compass extends Scene {
       c.globalAlpha = 1;
     }
     c.textAlign = 'left';
+    this.drawRoute(c, t);
     u.lyrT!.value = L.upload();
     u.msgT!.value = this.msgL.texture;
     this.bg.render(renderer, out);
