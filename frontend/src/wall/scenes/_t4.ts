@@ -307,7 +307,32 @@ uniform vec3 lightDir;  // 主光方向（指向光源）
 uniform float focus;    // 焦點的深度（鏡頭空間，單位 = 世界單位）
 uniform float aperture; // 光圈：離焦點一倍距離時的模糊直徑（螢幕 px）
 uniform float ambient;
-float poolLight(vec2 p) { float r = length(p - pool.xy) / pool.z; return mix(1.0, 0.72 + 0.36 * exp(-r * r), pool.w); }
+uniform int goboMode;   // 投在桌上的光影：0 沒有、1 樹葉的碎光影（隨風擺）、2 百葉窗的斜光
+uniform float goboT;    // 光影的時間（風）
+uniform float goboK;    // 光影的濃度
+uniform vec3 goboArea;  // 光影落在哪一邊：方向（xy，單位向量）、從光圈中心往那邊多遠開始
+float goboAt(vec2 p) {
+  if (goboMode == 0) return 0.0;
+  float side = smoothstep(-300.0, 500.0, dot(p - pool.xy, goboArea.xy) - goboArea.z);
+  if (goboMode == 1) {
+    // 樹葉的碎光影：兩層雜訊，被風吹著左右擺（低頻慢擺＋一點點抖）
+    vec2 sway = vec2(0.05 * sin(goboT * 0.8) + 0.012 * sin(goboT * 3.1), 0.03 * sin(goboT * 0.6 + 1.3));
+    float n = fbm(p / 380.0 + sway, 4) + 0.45 * snoise(p / 95.0 + sway * 3.0);
+    return smoothstep(0.08, 0.34, n) * side;
+  }
+  // 百葉窗：斜斜的光條，簾子被風吹得微微晃
+  vec2 r = rot2(0.42) * p;
+  float b = abs(fract(r.y / 150.0 + 0.03 * sin(goboT * 0.7)) - 0.5) * 2.0;
+  return (1.0 - smoothstep(0.3, 0.55, b)) * side;
+}
+uniform float poolFloor; // 光圈外最暗到多少（預設 0.72；燭光之類的低調場景可以壓到 0.4）
+uniform float poolWarm;  // 光圈裡染上訊號色的亮部（燭光、燈泡的暖色），0 = 不染
+float poolLight(vec2 p) { float r = length(p - pool.xy) / pool.z; return mix(1.0, poolFloor + (1.08 - poolFloor) * exp(-r * r), pool.w) * (1.0 - goboK * goboAt(p)); }
+vec3 poolTint(vec2 p) {
+  float r = length(p - pool.xy) / pool.z;
+  vec3 warm = C_EMBER / max(max(C_EMBER.r, C_EMBER.g), max(C_EMBER.b, 1e-3));
+  return mix(vec3(1.0), warm, poolWarm * exp(-r * r));
+}
 float coc(float depth) { return aperture * abs(depth - focus) / max(depth, 1.0); }
 `;
 
@@ -327,6 +352,7 @@ uniform float edge;     // 紙緣的暗線（0..1）
 uniform float opacity;
 uniform vec3 gutter;    // 書溝的陰影：世界 x、寬度、濃度（書本用；其他 0）
 uniform float nSign;    // BackSide 的材質：three.js 會把正反面的定義對調（gl_FrontFacing 永遠是 true），法向量要自己反過來
+uniform float decode;   // 1 = 貼圖是 fast 的 Canvas（預乘、sRGB）：道具用，alpha 當形狀
 void main() {
   vec2 dp = vUv * docPx;
   // 在螢幕上一個像素跨過幾個貼圖像素 → 基本的 mip 層（放大時是負的）
@@ -342,6 +368,8 @@ void main() {
   vec2 o = (c * 0.3) * exp2(max(lod0, 0.0)) / texPx;
   vec4 col = 0.25 * (textureLod(tex, vUv + vec2(o.x, o.y * 0.4), lod) + textureLod(tex, vUv + vec2(-o.x * 0.4, o.y), lod)
     + textureLod(tex, vUv + vec2(-o.x, -o.y * 0.4), lod) + textureLod(tex, vUv + vec2(o.x * 0.4, -o.y), lod));
+  float shapeA = 1.0;
+  if (decode > 0.5) { shapeA = col.a; col.rgb = col.a > 0.0 ? toLinear(col.rgb / col.a) : vec3(0.0); }
   // 打光：主光的漫射＋桌上的光圈；紙緣一條很淡的暗線（紙的厚度）
   // 背面（翻頁的紙）法向量要反過來才照得到光
   float dif = max(dot(normalize(vN) * nSign * (gl_FrontFacing ? 1.0 : -1.0), normalize(lightDir)), 0.0);
@@ -350,12 +378,17 @@ void main() {
   float sd = length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - radius;
   sh *= 1.0 - edge * 0.2 * (1.0 - smoothstep(0.0, 3.0, -sd));
   sh *= 1.0 - gutter.z * exp(-abs(vW.x - gutter.x) / gutter.y);
-  float a = (1.0 - smoothstep(-0.8, 0.8, sd)) * opacity;
-  if (a <= 0.0) discard;
-  fragColor = vec4(col.rgb * sh, a);
+  float a = (1.0 - smoothstep(-0.8, 0.8, sd)) * opacity * shapeA;
+  if (a <= 0.002) discard;
+  fragColor = vec4(col.rgb * sh * poolTint(vW.xy), a);
 }`;
 
-/** 桌面：style 0 = 牛皮紙、1 = 淺色木頭、2 = 亞麻布、3 = 深色漆器（暗版面）。紙的影子最多 6 個（圓角矩形）。 */
+/**
+ * 桌面（每個版面各有自己的場景材質，不要全部都是同一張桌子）：
+ * style 0 = 牛皮紙、1 = 淺色木頭、2 = 白色桌巾（亞麻＋淡淡的緹花）、3 = 深色漆器（暗；hl 是吊燈在漆面上的倒影）、
+ * 4 = 淺色絨布（禮盒內襯）、5 = 木頭地板、6 = 貨架的洞洞板（直立的背板）、7 = 深色絨布、
+ * 8 = 彩券行的玻璃櫃台（暗；底下是一排排刮刮卡，hl 是玻璃上的反光）。goboT 兼當桌面動畫的時間。紙的影子最多 6 個（圓角矩形）。
+ */
 const TABLE_FRAG = /* glsl */ `
 precision highp float;
 precision highp int;
@@ -366,6 +399,7 @@ ${STAGE_LIGHT}
 uniform int style;
 uniform vec4 shA[6];   // 影子：中心 x、y、半寬、半高
 uniform vec4 shB[6];   // 角度、模糊、濃度、圓角
+uniform vec4 hl;       // 漆面上的倒影：世界 x、y、寬、濃度（沿著 y 拉長，像吊燈映在亮面上）
 void main() {
   vec2 p = vW.xy;
   float c = coc(vDepth);
@@ -379,11 +413,59 @@ void main() {
     float ring = sin((p.y + 120.0 * g) / 7.0);
     col = mix(C_PAPER, C_SEPIA, 0.25 + detail * (0.008 * ring + 0.04 * g + 0.01 * snoise(vec2(p.x / 60.0, p.y / 2.5))));
   } else if (style == 2) {
+    // 桌巾：白色亞麻的細織紋＋很淡的緹花（一圈圈的花形，重複排列）
     float wv = sin(p.x * 1.3) * sin(p.y * 1.3);
-    col = mix(C_PAPER, C_SEPIA, 0.1) * (0.95 + detail * (0.02 * wv + 0.025 * fbm(p / 200.0, 3)));
-  } else {
+    vec2 q = mod(p + vec2(0.0, 150.0 * mod(floor(p.x / 300.0), 2.0)), 300.0) - 150.0;
+    float r = length(q), a = atan(q.y, q.x);
+    float petal = 1.0 - smoothstep(0.0, 5.0, abs(r - 58.0 - 18.0 * cos(a * 6.0)));
+    float ring = 1.0 - smoothstep(0.0, 3.0, abs(r - 112.0));
+    col = mix(C_PAPER, C_SEPIA, 0.06) * (0.96 + detail * (0.018 * wv + 0.02 * fbm(p / 200.0, 3) - 0.035 * max(petal, ring * 0.6)));
+  } else if (style == 3) {
     float g = fbm(vec2(p.x / 700.0, p.y / 260.0), 3);
     col = C_INK2 * (0.75 + 0.35 * g * detail) + C_BLOOD * 0.025;
+    vec2 q = (p - hl.xy) / vec2(hl.z, hl.z * 5.0);
+    col += (C_EMBER * 0.35 + C_SIGNAL * 0.15) * hl.w * exp(-dot(q, q)) * (0.8 + 0.2 * detail * g);
+  } else if (style == 4) {
+    // 淺色絨布（禮盒的內襯）：一塊塊壓皺的絨毛明暗、很細的毛；一道寬寬的光澤隨時間慢慢滑過
+    float crush = fbm(p / 150.0, 3);
+    float fib = snoise(p / 2.0);
+    float sheen = smoothstep(-0.1, 0.5, fbm(p / 520.0 + vec2(goboT * 0.02, 0.0), 2));
+    col = mix(C_PAPER, C_BLOOD, 0.2) * (0.74 + 0.1 * crush + 0.1 * sheen + 0.03 * fib * detail);
+  } else if (style == 5) {
+    // 木頭地板：一條條木板（寬 190、長度錯開），每條顏色稍微不同，木紋沿著木板，板縫是暗線
+    float bw = 190.0, len = 1500.0;
+    float row = floor(p.y / bw);
+    float off = hash11(row * 3.7 + 1.3) * len;
+    float cx = floor((p.x + off) / len);
+    float id = hash12(vec2(row, cx));
+    vec2 lp = vec2(mod(p.x + off, len), mod(p.y, bw));
+    float grain = fbm(vec2(lp.x / 600.0 + id * 9.0, lp.y / 12.0 + id * 3.0), 3);
+    float seam = max(1.0 - smoothstep(0.0, 2.2, min(lp.y, bw - lp.y)), 1.0 - smoothstep(0.0, 2.2, min(lp.x, len - lp.x)));
+    col = mix(C_PAPER, C_SEPIA, 0.36 + 0.1 * id + 0.07 * grain * detail) * (1.0 - 0.4 * seam * detail);
+  } else if (style == 6) {
+    // 貨架的背板：洞洞板（烤漆的鐵板、一格一格的圓孔），孔裡是暗的
+    vec2 g = mod(p, 46.0) - 23.0;
+    float hole = 1.0 - smoothstep(4.0, 5.4, length(g));
+    col = mix(C_PAPER, C_ASH, 0.3) * (0.9 + 0.02 * fbm(p / 500.0, 2)) * (1.0 - 0.55 * hole * detail);
+  } else if (style == 8) {
+    // 彩券行的玻璃櫃台：玻璃底下一排排別的刮刮卡（暗暗的），玻璃面上一道斜斜的反光（hl：位置、寬、濃度）
+    vec2 cs = vec2(230.0, 330.0);
+    vec2 cell = floor(p / cs), lp = mod(p, cs);
+    float h = hash12(cell);
+    float inT = step(16.0, lp.x) * step(lp.x, cs.x - 16.0) * step(16.0, lp.y) * step(lp.y, cs.y - 16.0);
+    vec3 tk = h < 0.33 ? mix(C_SIGNAL, C_PAPER, 0.35) : h < 0.66 ? mix(C_BLOOD, C_PAPER, 0.3) : mix(C_PAPER, C_ASH, 0.35);
+    float panel = step(40.0, lp.x) * step(lp.x, cs.x - 40.0) * step(140.0, lp.y) * step(lp.y, cs.y - 50.0);
+    float head = step(16.0, lp.y) * step(lp.y, 70.0);
+    tk = mix(tk, C_ASH, panel * 0.85);
+    tk = mix(tk, tk * 0.6, head * 0.6);
+    col = mix(C_INK2 * 0.7, tk * 0.32 * (0.8 + 0.2 * detail), inT);
+    // 玻璃的反光：一道寬、一道窄
+    float d = (p.x * 0.5 + p.y - hl.x) / hl.z;
+    col += C_BONE * hl.w * (0.05 * exp(-d * d) + 0.035 * exp(-pow(d * 4.0 - 6.0, 2.0)));
+  } else {
+    // 深色絨布：暗暗的訊號色暗部，很細的毛
+    float fib = snoise(p / 2.2) * 0.5 + snoise(p / 5.0) * 0.5;
+    col = mix(C_INK2, C_BLOOD, 0.3) * (0.78 + 0.1 * fbm(p / 400.0, 3) + 0.07 * fib * detail);
   }
   float s = 0.0;
   for (int i = 0; i < 6; i++) {
@@ -394,7 +476,7 @@ void main() {
     float sd = length(max(d, 0.0)) + min(max(d.x, d.y), 0.0) - B.w;
     s = max(s, B.z * (1.0 - smoothstep(-B.y, B.y, sd)));
   }
-  col *= (1.0 - s) * poolLight(p);
+  col *= (1.0 - s) * poolLight(p) * poolTint(p);
   fragColor = vec4(col, 1.0);
 }`;
 
@@ -414,6 +496,8 @@ export class Stage {
     focus: { value: 1000 },
     aperture: { value: 0 },
     ambient: { value: 0.86 },
+    goboMode: { value: 0 }, goboT: { value: 0 }, goboK: { value: 0 }, goboArea: { value: new THREE.Vector3(1, 0, 0) },
+    poolFloor: { value: 0.72 }, poolWarm: { value: 0 },
   };
   tableMat: THREE.RawShaderMaterial;
   table: THREE.Mesh;
@@ -426,6 +510,7 @@ export class Stage {
         ...THEME_UNIFORMS, ...this.U, style: { value: style },
         shA: { value: Array.from({ length: 6 }, () => new THREE.Vector4()) },
         shB: { value: Array.from({ length: 6 }, () => new THREE.Vector4()) },
+        hl: { value: new THREE.Vector4(0, 0, 1, 0) },
       },
       depthTest: false, depthWrite: false,
     });
@@ -442,7 +527,7 @@ export class Stage {
         ...THEME_UNIFORMS, ...this.U, tex: { value: tex },
         texPx: { value: new THREE.Vector2(...texPx) }, docPx: { value: new THREE.Vector2(...docPx) },
         radius: { value: o.radius ?? 0 }, region: { value: new THREE.Vector4(0.5, 0.5, 1, 0) }, edge: { value: o.edge ?? 1 }, opacity: { value: 1 },
-        gutter: { value: new THREE.Vector3(0, 1, 0) }, nSign: { value: o.side === THREE.BackSide ? -1 : 1 },
+        gutter: { value: new THREE.Vector3(0, 1, 0) }, nSign: { value: o.side === THREE.BackSide ? -1 : 1 }, decode: { value: 0 },
       },
       transparent: true, depthTest: o.depthTest ?? false, depthWrite: o.depthWrite ?? o.depthTest ?? false,
       side: o.side ?? THREE.DoubleSide,
@@ -468,11 +553,27 @@ void main() {
   float detail = 1.0 / (1.0 + coc(vDepth) * 0.25);
   vec3 col = ${color};
   float dif = max(dot(n, normalize(lightDir)), 0.0);
-  fragColor = vec4(col * (ambient + (1.0 - ambient) * dif) * poolLight(p), 1.0);
+  fragColor = vec4(col * (ambient + (1.0 - ambient) * dif) * poolLight(p) * poolTint(p), 1.0);
 }`,
       uniforms: { ...THEME_UNIFORMS, ...this.U, nSign: { value: o.side === THREE.BackSide ? -1 : 1 } },
       depthTest: o.depthTest ?? true, depthWrite: o.depthWrite ?? o.depthTest ?? true, side: o.side ?? THREE.DoubleSide,
     });
+  }
+  /**
+   * 桌上的道具（咖啡杯、硬幣、筆…）：畫在一張 fast 的 Canvas 上，alpha 當形狀。uv = 道具在那張 Canvas 上的範圍（左上、寬高，0..1），
+   * 平放在 (x, y)、轉 rot。一樣吃舞台的光與光影（沒有景深模糊：Canvas 沒有 mipmap）。
+   */
+  prop(tex: THREE.Texture, texPx: [number, number], uv: [number, number, number, number], w: number, h: number, x: number, y: number, z = 1, rot = 0) {
+    const mat = this.docMaterial(tex, texPx, [w, h], { edge: 0 });
+    mat.uniforms.decode!.value = 1;
+    const g = new THREE.PlaneGeometry(w, h);
+    const a = g.getAttribute('uv') as THREE.BufferAttribute;
+    for (let i = 0; i < a.count; i++) a.setXY(i, uv[0] + a.getX(i) * uv[2], 1 - uv[1] - (1 - a.getY(i)) * uv[3]);
+    const m = new THREE.Mesh(g, mat);
+    m.position.set(x, y, z); m.rotation.z = rot;
+    m.frustumCulled = false;
+    this.scene.add(m);
+    return m;
   }
   /** 一張平放的紙（w × h，中心在 (x, y)，離桌面 z）。 */
   docMesh(mat: THREE.Material, w: number, h: number, x = 0, y = 0, z = 1, segX = 1, segY = 1) {
@@ -527,3 +628,5 @@ void main() {
 
 /** 紙面（左上原點、y 向下的像素）→ 平放在桌上、中心在 (cx, cy) 的世界座標。 */
 export const docToWorld = (u: number, v: number, dw: number, dh: number, cx = 0, cy = 0, z = 0): V3 => [cx + u - dw / 2, cy + dh / 2 - v, z];
+
+

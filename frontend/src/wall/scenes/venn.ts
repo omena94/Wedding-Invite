@@ -1,5 +1,7 @@
 // 文氏圖（亮）：一張一本正經的集合論插圖。左圓 A = 宣文、右圓 B = 孟庭。
 //  - 開場兩個圓像用圓規畫出來（筆尖繞一圈，一拍畫完），隔得遠遠的；兩個圓只標名字（宣文、孟庭）。
+//  - 兩個集合裡各有十幾個「元素」（小點）在自己的地盤裡輕輕晃；交集出現之後，每個小節線兩邊各有一個元素
+//    跳進交集（拋物線、落在小節線後半拍）——冷面註腳「交集會隨時間變大」就是字面上的意思。
 //  - 接著在拍點上兩個圓「喀、喀」兩下靠過去重疊（outExpo），交集 A ∩ B 用訊號色的螢光筆塗滿——主打留言就寫在交集裡，
 //    一個字一個字落在拍點上。兩邊只屬於自己的部分用版畫的斜線（A 往右上、B 往右下）打陰影。
 //  - 之後每個小節線交集亮一下、兩個圓再往中間貼近一點點（越來越像）；斜線的方向也跟著轉一點。
@@ -11,17 +13,19 @@ import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpec
 import { FSPass, Layer2D, W, H } from '../engine/gl';
 import { F, font, loadText } from '../engine/type';
 import { rgba, mixRgba } from '../engine/palette';
-import { clamp, ease, prog, lerp, TAU } from '../engine/util';
-import { tokens, type FitResult } from '../engine/text';
+import { clamp, ease, prog, lerp, hash, noise1, TAU } from '../engine/util';
+import type { FitResult } from '../engine/text';
 import { lyricAt, beatAfter, signature, fillWithHearts } from './_motifs';
 import { Paper, stagger, pad3, mono, tag, type Rect } from './_t11';
-import { paperLyric, lyricLine, lyricRows, lyricSizeFor } from './_t12';
+import { paperLyric, lyricLine, lyricRows } from './_t12';
+import { V2, msgMaxFor, lyricV2, sigV2 } from './_v2';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'science', paper: true, energy: [0.15, 0.8], bars: [4, 12], weight: 1 };
 
 // ---------------------------------------------------------------- 版面
 /** 兩個圓的中線、半徑；圓心距離從 D0（分開）→ D1（重疊）→ D2（窗格結束時，又貼近一點）。 */
-const CY = 662, CXM = 900, R = 400;
+// 標準 v2：圓小一點（右圓的弧不進右下角 HUD），整張圖是主視覺；交集本身就是寫字的地方
+const CY = 624, CXM = 960, R = 340;
 const D0 = 2 * R + 60, D1 = 0.62 * R, D2 = 0.55 * R;
 const LYR = { x: 124, base: 212, w: 1200, size: 64 };
 const FAM_MSG = F.hand(700);
@@ -49,7 +53,8 @@ const VENN = () => {
     // 交集：訊號色的螢光筆（拍點亮一下），邊緣留一點點白（手塗的不會塗到線上）
     float lens = (1.0 - smoothstep(-8.0, -5.0, dA)) * (1.0 - smoothstep(-8.0, -5.0, dB));
     float streak = 0.9 + 0.1 * sin(p.y * 0.21 + sin(p.x * 0.013) * 2.0);
-    o = over(o, C_SIGNAL, lens * lensK * (0.34 + 0.2 * pulse) * streak);
+    // 螢光筆輕一點（標準 v2：容器要輕），拍點上亮一下
+    o = over(o, C_SIGNAL, lens * lensK * (0.22 + 0.16 * pulse) * streak);
     // 只屬於自己的部分：版畫的斜線（A 往右上、B 往右下），斜線是一條一條畫上去的（hatchK 從左掃到右）
     float sweep = smoothstep(p.x - 60.0, p.x + 60.0, mix(200.0, 1700.0, hatchK));
     vec2 ua = rot2(0.785 + rot) * p, ub = rot2(-0.785 - rot) * p;
@@ -93,7 +98,8 @@ export default class Venn extends Scene {
   lyricsInWindow = false;
   avoid: Rect[] = [];
   /** 歌詞字級：有留言時比留言小一截（一格只有一個焦點）。 */
-  lyrSize = LYR.size;
+  lyrSize: number = LYR.size;
+  sigSize = 30;
 
   override async init() {
     const { audio: au, lyrics, song } = this.ctx;
@@ -115,8 +121,9 @@ export default class Venn extends Scene {
     const c = this.layer.ctx;
     const fam = FAM_MSG;
     const lay = m
-      ? lensFit(c, text, fam, 44, 108, 1.3, 64)
-      : lensFit(c, text, fam, 60, 150, 1.2, 150);
+      // 標準 v2：依字數的上限往下找；可用高度先扣掉署名那一行（署名永遠在最後一行下面）
+      ? lensFit(c, text, fam, V2.msgMin, msgMaxFor(text), 1.3, sigV2(msgMaxFor(text)) + 34)
+      : lensFit(c, text, fam, 60, 72, 1.2, 110);
     const fit = this.fit = { size: lay.size, lines: lay.rows, lineHeight: lay.lh, width: 0, height: 0 };
     c.font = font(fam, fit.size);
     const chars: Omit<Glyph, 't'>[] = [];
@@ -133,15 +140,51 @@ export default class Venn extends Scene {
     const tLast = times[times.length - 1] ?? this.tMsg;
     this.sigT = tLast + beat * 0.5;
     this.sigX = CXM;
-    this.sigY = lay.y0 + (fit.lines.length - 1) * fit.lineHeight + 58;
+    this.sigSize = sigV2(fit.size);
+    this.sigY = lay.y0 + (fit.lines.length - 1) * fit.lineHeight + fit.size * 0.3 + this.sigSize + 12;
     this.lyricsInWindow = lyrics.linesIn(s, e).length > 0;
 
     // ---- 即時小卡避開：交集（留言）與上方的歌詞
     const msgR: Rect = [Math.round(this.box.x - 10), Math.round(this.box.y - 20), Math.round(this.box.w + 20), Math.round(this.box.h + 60)];
-    this.lyrSize = lyricSizeFor(m ? fit.size : null);
+    this.lyrSize = lyricV2(m ? fit.size : null);
     const rows = Math.max(1, lyricRows(c, lyrics.linesIn(s, e), paperLyric(this.lyrSize, LYR.w)));
     const lyr: Rect = [LYR.x - 12, LYR.base - this.lyrSize - 40, LYR.w + 24, this.lyrSize * (rows > 1 ? 2.35 : 1.25) + 52];
     this.avoid = [msgR, msgR, lyr, lyr];
+  }
+
+  /**
+   * 集合的元素：兩邊各 NE 個小點，住在只屬於自己的那一塊（相對自己的圓心，跟著圓一起動），各自輕輕晃（雜訊）、
+   * 大鼓時跳一下。交集出現之後，第 j 個小節線兩邊的第 j 個元素跳進交集，停在交集的上下兩個尖角附近（不蓋到留言）。
+   */
+  private drawElements(c: CanvasRenderingContext2D, t: number, ax: number, bx: number) {
+    const au = this.ctx.audio, NE = 14;
+    const t0 = this.tStep[1]!;
+    const b0 = Math.ceil(au.barAt(t0) + 0.25);
+    const kick = au.hit('kick', t, 0.08);
+    const d = bx - ax, halfH = Math.sqrt(Math.max(0, R * R - (d / 2) ** 2));
+    for (const side of [0, 1]) {
+      const cx = side ? bx : ax, sgn = side ? 1 : -1;
+      for (let i = 0; i < NE; i++) {
+        // 家：外側的半圈（角度 ±70° 以內）、半徑 0.45～0.88 R
+        const a = (hash(i, side, 3) - 0.5) * 2.4;
+        const rr = R * (0.45 + 0.43 * hash(i, side, 4));
+        let x = cx + sgn * Math.cos(a) * rr + noise1(t * 0.6 + i * 3.1, side * 7) * 7;
+        let y = CY + Math.sin(a) * rr + noise1(t * 0.6 + i * 5.3, side * 7 + 1) * 7 - kick * 4 * hash(i, side, 9);
+        let inLens = false;
+        // 第 i 個元素在第 b0 + i 個小節線跳進交集（交集出現之前不跳）
+        const tj = au.timeOfBar(b0 + Math.floor(i / 1));
+        if (i < 6 && t >= tj) {
+          const q = ease.outCubic(clamp((t - tj) / 0.45));
+          const top = i % 2 === 0;
+          const tx = CXM + sgn * (10 + 13 * Math.floor(i / 2)), ty = CY + (top ? -1 : 1) * (halfH - 22 - 7 * Math.floor(i / 2));
+          const hx = x, hy = y;
+          x = lerp(hx, tx, q); y = lerp(hy, ty, q) - Math.sin(Math.PI * q) * 60;
+          inLens = q > 0.9;
+        }
+        c.fillStyle = inLens ? rgba('blood', 0.85) : rgba('sepia', 0.55);
+        c.beginPath(); c.arc(x, y, inLens ? 5 : 4, 0, TAU); c.fill();
+      }
+    }
   }
 
   /** 圓心距：遠遠的 → 拍點上兩下靠過去 → 之後慢慢再貼近一點。 */
@@ -187,6 +230,7 @@ export default class Venn extends Scene {
     c.fillText('宣文', ax - R * 0.72, CY - R * 0.72 + 34); c.fillText('孟庭', bx + R * 0.72, CY - R * 0.72 + 34);
     c.letterSpacing = '0px';
     c.restore();
+    this.drawElements(c, t, ax, bx);
     // ---- 交集：留言一個字一個字寫上去
     const fit = this.fit!;
     c.font = font(FAM_MSG, fit.size); c.textAlign = 'left';
@@ -203,11 +247,11 @@ export default class Venn extends Scene {
     if (t >= this.sigT) {
       c.save(); c.globalAlpha *= prog(t, this.sigT, this.sigT + 0.35);
       if (m) {
-        c.font = font(F.hand(400), 36); c.fillStyle = rgba('sepia', 0.85); c.textAlign = 'center';
+        c.font = font(F.hand(400), this.sigSize); c.fillStyle = rgba('sepia', 0.85); c.textAlign = 'center';
         fillWithHearts(c, this.sig, this.sigX, this.sigY);
       } else {
-        c.font = font(F.hand(700), 40); c.fillStyle = rgba('sepia', 0.9); c.textAlign = 'center';
-        INVITE.split(/(?<=，)/).forEach((ln, i) => c.fillText(ln, CXM, this.sigY + 6 + i * 52));
+        c.font = font(F.hand(700), 30); c.fillStyle = rgba('sepia', 0.85); c.textAlign = 'center';
+        INVITE.split(/(?<=，)/).forEach((ln, i) => c.fillText(ln, CXM, this.sigY - 10 + i * 40));
       }
       c.restore();
     }
@@ -252,10 +296,11 @@ function lensHalf(y: number, d: number) {
 
 /**
  * 把文字排進交集：找最大字級，行寬跟著透鏡變（中間寬、上下窄），整塊垂直置中（下面留 below px 給署名）。
- * 斷行單位用 engine/text 的 tokens（中文禁則、英文不拆字）。回傳每一行、字級、行距與第一行的基線。
+ * 斷行單位是「詞」（瀏覽器內建的中文斷詞），標點黏在前一個詞後面：交集很窄，一行只放得下六七個字，
+ * 照字斷常會斷在詞中間（「到現／在，」），照詞斷就不會。回傳每一行、字級、行距與第一行的基線。
  */
 function lensFit(c: CanvasRenderingContext2D, text: string, family: string, min: number, max: number, lhk: number, below: number) {
-  const toks = tokens(text);
+  const toks = words(text);
   // 好的斷點：標點、愛心、空白（賓客常用愛心或換行當停頓）
   const PUNCT = /(?:[，、。！？；：,.!?;:）」』♥]|\s)\s*$/;
   const tryAt = (size: number, maxRows: number) => {
@@ -282,11 +327,11 @@ function lensFit(c: CanvasRenderingContext2D, text: string, family: string, min:
           cur = next; k++;
         }
         if (!ok) break;
-        // 這一行滿了、後面還有字：往回找四個單位內的標點（或愛心、空白），在它後面斷（「吃／飽」這種斷法很難讀）
+        // 這一行滿了、後面還有字：往回找七個單位內的標點（或愛心、空白），在它後面斷（「吃／飽」這種斷法很難讀）
         if (k < toks.length && i < n - 1) {
-          for (let back = 1; back <= 4 && k - back > start; back++) {
+          for (let back = 1; back <= 7 && k - back > start; back++) {
             const cand = toks.slice(start, k - back).join('');
-            if (PUNCT.test(cand) && c.measureText(cand.trimEnd()).width >= widths[i]! * 0.55) { k -= back; cur = cand; break; }
+            if (PUNCT.test(cand) && c.measureText(cand.trimEnd()).width >= widths[i]! * 0.4) { k -= back; cur = cand; break; }
           }
         }
         rows.push(cur.trim());
@@ -314,4 +359,16 @@ function lensFit(c: CanvasRenderingContext2D, text: string, family: string, min:
   }
   // 最小字級還放不下（不該發生：60 字在最小字級可以排進去）：一行硬排
   return { size: min, rows: [text], lh: min * lhk, y0: CY };
+}
+
+let segmenter: Intl.Segmenter | null = null;
+/** 把留言切成詞（標點、空白黏在前一個詞後面；♥ 自己一個單位）。 */
+function words(text: string): string[] {
+  segmenter ??= new Intl.Segmenter('zh-Hant', { granularity: 'word' });
+  const out: string[] = [];
+  for (const { segment } of segmenter.segment(text)) {
+    if (/[\p{L}\p{N}♥]/u.test(segment) || !out.length) out.push(segment);
+    else out[out.length - 1] += segment;
+  }
+  return out;
 }

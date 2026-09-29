@@ -1,13 +1,16 @@
-// 刮刮卡（批次 T4・紙本 D，亮）：一張「幸福刮刮卡」擺在木頭桌上，一枚硬幣自己在拍點上刮銀漆。
-//  - 焦點是中間那一大格銀漆底下的主打留言：第一拍起硬幣一拍刮一段（Z 字來回、刮在拍點上），一兩小節內整則刮出來，
-//    刮痕有毛邊、邊上留著刮不乾淨的銀。歌詞是卡上印的「本期主題曲」（中等大小，逐字跟唱）。
-//  - 下面三個小圓一拍刮一個，刮出三顆愛心，一條紅線把它們連起來；最後在小節線刮開一小條：恭喜中獎——一輩子。
-//  - 鏡頭：斜斜地拍桌上的卡，一開始貼近，第一拍拉到位；之後跟著硬幣刮到哪一段輕輕移過去，焦點跟著硬幣（景深），
-//    刮完退回全景、慢慢推近。硬幣刮完躺在卡片右下角，每個小節線自己彈起來翻一圈。
-//  - 沒有留言：銀漆底下是一句邀請。純音樂：主題曲那一條寫歌名。
-// 畫法：卡片（印刷紋、表頭放射紋）一個 shader 畫進卡片的 render target；印刷的字與銀漆底下的東西一張不會變的 Canvas；
-// 刮痕是一張遮罩（半解析度）：每格把「到現在為止」的刮痕用 LineBatch 重畫一次（跟時間一一對應，往回跳也對），
-// 銀漆 shader 讀遮罩、加雜訊做毛邊；硬幣與歌詞第二張 Canvas；銀屑 LineBatch。整張卡再交給 _t4 的舞台用透視鏡頭拍（桌面、影子、景深）。
+// 刮刮卡（批次 T4・紙本 D，暗）：彩券行櫃台的深色絨布墊上擺著兩張「幸福刮刮卡」，頭頂一盞聚光燈，一枚硬幣自己在拍點上刮銀漆。
+//  - 左邊那張小卡（v2：留言區 ≤ 860×430）：銀漆底下是主打留言。第一拍起硬幣一拍刮一段（Z 字來回），一兩小節內整則刮出來，
+//    刮痕有毛邊、邊上留著刮不乾淨的銀。留言是手寫字 40～60 px（依字數），署名永遠在最後一行下面。
+//  - 右邊那張是「幸運九宮格」（場景的主角，一直在動）：上面印著「本期主題曲」——現在唱的那一句（比留言小一級，逐字跟唱）；
+//    留言刮完，硬幣飛過去一拍刮一格，刮到中間那一排三顆愛心連成一線（紅筆劃過、火星噴一下），下一個小節線刮開最下面那條：
+//    恭喜中獎——一輩子。刮完硬幣躺到桌上，每個小節線自己彈起來翻一圈。
+//  - 環境：聚光燈照著兩張卡，四周的絨布暗下去；燈跟著大鼓微微一亮；每個小節線銀漆上掃過一道反光；
+//    鏡頭斜斜地拍，跟著硬幣輕輕移，焦點在留言上。
+//  - 沒有留言：銀漆底下是一句邀請。純音樂：主題曲那一格寫歌名。
+// 畫法：兩張卡攤在同一張 render target（展開圖）：印刷紋與表頭放射紋一個 shader、印刷的字與銀漆底下的東西一張不會變的 Canvas、
+// 刮痕是一張遮罩（每格把「到現在為止」的刮痕用 LineBatch 重畫一次，往回跳也對），銀漆 shader 讀遮罩加雜訊做毛邊；
+// 歌詞、連線、硬幣在卡上的影子第二張 Canvas。硬幣本身是桌上的 3D 道具（會抬起來、斜拿著刮、翻面）。
+// 交給 _t4 的舞台拍（絨布、聚光燈、影子、景深）。
 import * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
 import { FSPass, Layer2D, SCALE, makeRT, clearRT } from '../engine/gl';
@@ -15,70 +18,76 @@ import { LineBatch } from '../engine/lines';
 import { F, font, loadText } from '../engine/type';
 import { LIN, rgba } from '../engine/palette';
 import { clamp, ease, hash, lerp, prog, pulse, TAU } from '../engine/util';
-import type { FitResult } from '../engine/text';
-import { lyricAt, signature, drawHeart, fillWithHearts, sparkParticles, WEDDING_DATE } from './_motifs';
-import { grid, stagger, fitMsg, drawFit, layoutRows, drawRows, paperInk, Stage, docRT, camDist, type Grid, type RowsStyle, type P2, type V3 } from './_t4';
+import { fitText, type FitResult } from '../engine/text';
+import { lyricAt, signature, drawHeart, sparkParticles, WEDDING_DATE } from './_motifs';
+import { grid, stagger, drawFit, layoutRows, drawRows, paperInk, Stage, docRT, camDist, type Grid, type RowsStyle, type P2, type V3 } from './_t4';
+import { msgMaxFor, lyricV2, sigV2, V2, fitClauses } from './_v2';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'doc', paper: true, energy: [0.35, 1], bars: [4, 8] };
+// 背景是深色絨布：暗版面（右下角 HUD 用亮字）
+export const spec: PlateSpecDecl = { group: 'type', family: 'doc', paper: false, energy: [0.35, 1], bars: [4, 8] };
 
-// ---------------------------------------------------------------- 卡面（卡片座標，左上原點、y 向下）
-const CW = 1160, CH = 880;
-const HEAD_B = 84; // 表頭（放射紋）的下緣
-const LYR = { x: 44, y: 142, w: CW - 88, h: 128 };
-const MSGP = { x: 40, y: 290, w: CW - 80, h: 372 };
-const CIRC = [0, 1, 2].map((i) => ({ x: 118 + i * 150, y: 760, r: 62 }));
-const PRIZE = { x: 560, y: 716, w: 330, h: 90 };
-const REST = { x: 1040, y: 760 }; // 刮完硬幣躺的地方
-const COIN_R = 52;
-const PANELS: [number, number, number, number][] = [
-  [MSGP.x, MSGP.y, MSGP.w, MSGP.h], ...CIRC.map((c): [number, number, number, number] => [c.x, c.y, -c.r, 0]), [PRIZE.x, PRIZE.y, PRIZE.w, PRIZE.h],
-];
+// ---------------------------------------------------------------- 展開圖（像素，左上原點、y 向下）
+const CA = { x: 0, y: 0, w: 880, h: 480 }; // 留言卡（v2：畫面上約 760×420）
+const CB = { x: 900, y: 0, w: 580, h: 800 }; // 九宮格
+const AW = 1480, AH = 800;
+const HEAD = 58; // 表頭（放射紋）的高
+const MSGP = { x: 30, y: 76, w: 820, h: 376 }; // 留言的銀漆
+const LYR = { x: CB.x + 34, y: 96, w: CB.w - 68, h: 206 }; // 本期主題曲
+const CELL = { x: CB.x + 40, y: 322, w: 156, h: 116, gap: 10 };
+const cellRect = (i: number) => ({ x: CELL.x + (i % 3) * (CELL.w + CELL.gap), y: CELL.y + Math.floor(i / 3) * (CELL.h + CELL.gap), w: CELL.w, h: CELL.h });
+const PRIZE = { x: CB.x + 40, y: 716, w: CB.w - 80, h: 60 };
+const SYMBOLS = ['∞', '♥', '♪', '♥', '♥', '♥', '♪', '♥', '∞']; // 中間那一排三顆愛心 = 中獎
+const PANELS: [number, number, number, number][] = [[MSGP.x, MSGP.y, MSGP.w, MSGP.h], ...Array.from({ length: 9 }, (_, i): [number, number, number, number] => { const r = cellRect(i); return [r.x, r.y, r.w, r.h]; }), [PRIZE.x, PRIZE.y, PRIZE.w, PRIZE.h]];
+const NP = PANELS.length;
 
-const LY: RowsStyle = { family: F.archivo(100, 800), size: 70, minSize: 58, maxW: LYR.w, maxRows: 2, lineHeight: 1.04 };
-const TEXT = '幸福刮刮卡第期中獎機率本期主題曲你的祝福恭喜中獎一輩子兌獎期限永久本券限本人及另一半使用刮出三個即這一格留給你掃描右下角寫下想對新人說的話純音樂新人';
+// 兩張卡在桌上的位置（世界座標，中心）與角度
+const WA = { x: -390, y: -150, rot: -0.035 };
+const WB = { x: 430, y: 70, rot: 0.06 };
+const COIN_R = 58;
+const REST: V3 = [720, -250, 1.5]; // 刮完硬幣躺的地方（桌上，右邊卡片的右下）
+const SIG_K = 1.5; // 署名佔的高度 = 署名字級 × SIG_K（含間距）
+
+const TEXT = '幸福刮刮卡第期幸運九宮格中獎機率本期主題曲恭喜中獎一輩子這一格留給你掃描右下角寫下想對新人說的話純音樂新人';
 const PERIOD = WEDDING_DATE.slice(5).replace('-', '');
 
 // ---------------------------------------------------------------- 卡面的印刷（shader）
 const PRINT_BG = () => new FSPass(/* glsl */ `
+  float rbox(vec2 p, vec4 r, float rad) { vec2 d = abs(p - r.xy - r.zw * 0.5) - r.zw * 0.5 + rad; return length(max(d, 0.0)) + min(max(d.x, d.y), 0.0) - rad; }
   void main() {
-    vec2 p = vec2(FRAG_PX.x, ${CH}.0 - FRAG_PX.y);
+    vec2 p = vec2(FRAG_PX.x, ${AH}.0 - FRAG_PX.y);
     // 紙＋防偽細紋（兩組正弦波交織，訊號色的暗部很淡）
     vec3 col = C_PAPER * (0.985 + 0.012 * snoise(p / 60.0));
     float gy = p.y + 16.0 * sin(p.x / 55.0) + 6.0 * sin(p.x / 13.0);
     float gz = p.y - 16.0 * sin(p.x / 55.0 + 1.6);
     float gl = max(pxLine(abs(mod(gy, 22.0) - 11.0), 0.3, 1.1), pxLine(abs(mod(gz, 22.0) - 11.0), 0.3, 1.1));
     col = mix(col, C_BLOOD, gl * 0.06);
-    // 表頭：從左邊放射出去的條紋（訊號色與暗部交錯）
-    if (p.y < ${HEAD_B}.0) {
-      vec2 q = p - vec2(90.0, 60.0);
+    // 表頭：放射條紋（訊號色與暗部交錯）
+    if (p.y < ${HEAD}.0) {
+      vec2 q = p - vec2(p.x < ${CB.x}.0 ? 70.0 : ${CB.x + 70}.0, 40.0);
       float ray = step(0.5, fract(atan(q.y, q.x) / TAU * 40.0));
       col = mix(col, mix(mix(C_SIGNAL, C_PAPER, 0.55), mix(C_SIGNAL, C_BLOOD, 0.35), ray * 0.5), 0.8);
     }
-    col = mix(col, C_SEPIA, pxLine(abs(p.y - ${HEAD_B}.0), 0.8, 1.8) * 0.7);
-    // 內框
-    vec2 d = abs(p - vec2(${CW / 2}.0, ${CH / 2}.0)) - vec2(${CW / 2 - 16}.0, ${CH / 2 - 16}.0) + 10.0;
-    float sd = length(max(d, 0.0)) + min(max(d.x, d.y), 0.0) - 10.0;
-    col = mix(col, C_BLOOD, pxLine(abs(sd), 0.6, 1.6) * 0.5);
+    col = mix(col, C_SEPIA, pxLine(abs(p.y - ${HEAD}.0), 0.8, 1.8) * 0.7);
+    // 兩張卡的內框
+    float fa = abs(rbox(p, vec4(14.0, 14.0, ${CA.w - 28}.0, ${CA.h - 28}.0), 10.0));
+    float fb = abs(rbox(p, vec4(${CB.x + 14}.0, 14.0, ${CB.w - 28}.0, ${CB.h - 28}.0), 10.0));
+    col = mix(col, C_BLOOD, pxLine(min(fa, fb), 0.6, 1.6) * 0.5);
     fragColor = vec4(col, 1.0);
   }`);
 
 // ---------------------------------------------------------------- 銀漆
 const SILVER = () => new FSPass(/* glsl */ `
   uniform sampler2D mask;
-  uniform vec4 panels[5];
+  uniform vec4 panels[${NP}];
   uniform float sheen;
-  float panelSd(vec2 p, vec4 r) {
-    if (r.z < 0.0) return length(p - r.xy) + r.z; // 圓：中心、負的半徑
-    vec2 c = r.xy + r.zw * 0.5;
-    return sdBox(p - c, r.zw * 0.5 - 8.0) - 8.0;
-  }
   void main() {
-    vec2 p = vec2(FRAG_PX.x, ${CH}.0 - FRAG_PX.y);
+    vec2 p = vec2(FRAG_PX.x, ${AH}.0 - FRAG_PX.y);
     float inside = 0.0, e = 1e9; vec4 R = vec4(0.0);
-    for (int i = 0; i < 5; i++) {
-      float d = panelSd(p, panels[i]);
+    for (int i = 0; i < ${NP}; i++) {
+      vec4 r = panels[i];
+      float d = sdBox(p - r.xy - r.zw * 0.5, r.zw * 0.5 - 8.0) - 8.0;
       float k = 1.0 - smoothstep(-0.7, 0.7, d);
-      if (k > inside) { inside = k; R = panels[i]; e = d; }
+      if (k > inside) { inside = k; R = r; e = d; }
     }
     if (inside <= 0.0) discard;
     // 刮痕：遮罩＋兩層雜訊 → 毛邊；刮乾淨的地方也留幾顆很小的銀點
@@ -95,7 +104,6 @@ const SILVER = () => new FSPass(/* glsl */ `
     col = mix(col, C_ASH * 0.72, (1.0 - smoothstep(-0.8, 0.8, abs(hp.x) + abs(hp.y) - 5.0)) * 0.45);
     float band = exp(-pow((p.x + p.y * 0.6 - sheen) / 70.0, 2.0));
     col *= 0.86 + 0.3 * band;
-    // 刮痕的邊緣：翹起來的銀比較暗；銀漆的邊壓一圈
     col *= 1.0 - 0.28 * smoothstep(0.22, 0.42, v) * (1.0 - scratched);
     col *= 1.0 - 0.18 * pxLine(abs(e + 5.0), 0.5, 1.5);
     fragColor = vec4(col, cover);
@@ -104,24 +112,61 @@ const SILVER = () => new FSPass(/* glsl */ `
   panels: { value: PANELS.map((r) => new THREE.Vector4(...r)) },
 }, { blending: THREE.NormalBlending, transparent: true });
 
-/** 舞台：木頭桌面上的一張卡（整晚共用）。 */
+/** 卡片的網格：展開圖上 rect 那一塊，平放在桌上 (x, y)、轉 rot。 */
+function cardGeo(r: { x: number; y: number; w: number; h: number }) {
+  const g = new THREE.PlaneGeometry(r.w, r.h);
+  const uv = g.getAttribute('uv') as THREE.BufferAttribute;
+  for (let i = 0; i < uv.count; i++) uv.setXY(i, (r.x + uv.getX(i) * r.w) / AW, 1 - (r.y + (1 - uv.getY(i)) * r.h) / AH);
+  return g;
+}
+
+/** 桌上的道具（硬幣、兩枚零錢、一支鉛筆）：畫一次，整晚共用。 */
+function drawProps(c: CanvasRenderingContext2D) {
+  const coin = (cx: number, cy: number, r: number) => {
+    c.save(); c.translate(cx, cy);
+    const gr = c.createLinearGradient(-r, -r, r, r);
+    gr.addColorStop(0, rgba('bone')); gr.addColorStop(0.55, rgba('ash')); gr.addColorStop(1, rgba('bone', 0.95));
+    c.fillStyle = gr; c.beginPath(); c.arc(0, 0, r, 0, TAU); c.fill();
+    c.strokeStyle = rgba('sepia', 0.5); c.lineWidth = 3; c.beginPath(); c.arc(0, 0, r * 0.8, 0, TAU); c.stroke();
+    c.strokeStyle = rgba('sepia', 0.35); c.lineWidth = 2; c.beginPath();
+    for (let i = 0; i < 44; i++) { const a = (i / 44) * TAU; c.moveTo(Math.cos(a) * r * 0.88, Math.sin(a) * r * 0.88); c.lineTo(Math.cos(a) * r * 0.98, Math.sin(a) * r * 0.98); }
+    c.stroke();
+    c.restore();
+  };
+  // 左半：主角硬幣（有愛心）；右上：兩枚零錢；右下：鉛筆
+  coin(128, 128, 120); drawHeart(c, 128, 132, 110);
+  coin(320, 70, 56); coin(440, 72, 50);
+  c.save(); c.translate(270, 190); c.rotate(-0.05);
+  c.fillStyle = rgba('signal', 0.85); c.fillRect(0, -11, 190, 22);
+  c.fillStyle = rgba('sepia', 0.25); c.fillRect(0, 3, 190, 8);
+  c.fillStyle = rgba('bone'); c.beginPath(); c.moveTo(190, -11); c.lineTo(232, 0); c.lineTo(190, 11); c.fill();
+  c.fillStyle = rgba('sepia', 0.85); c.beginPath(); c.moveTo(222, -3); c.lineTo(232, 0); c.lineTo(222, 3); c.fill();
+  c.fillStyle = rgba('rose', 0.8); c.fillRect(-26, -11, 26, 22);
+  c.restore();
+}
+
 function makeRig() {
-  const doc = docRT(CW, CH);
-  const mask = makeRT(CW, CH, { pxScale: SCALE * 0.5, depthBuffer: false });
-  const st = new Stage(1, 30);
-  const mat = st.docMaterial(doc.texture, [doc.width, doc.height], [CW, CH], { radius: 22 });
-  const card = st.docMesh(mat, CW, CH, 0, 0, 1.5);
-  card.rotation.z = -0.022;
-  return { doc, mask, st, mat, card };
+  const doc = docRT(AW, AH);
+  const mask = makeRT(AW, AH, { pxScale: SCALE * 0.5, depthBuffer: false });
+  const st = new Stage(7, 30);
+  // 聚光燈：光圈裡亮、外面很暗（絨布幾乎看不到），光圈染一點暖色
+  st.U.poolFloor.value = 0.3; st.U.poolWarm.value = 0.18; st.U.ambient.value = 0.8;
+  const mat = st.docMaterial(doc.texture, [doc.width, doc.height], [AW, AH], { edge: 0 });
+  const mk = (r: typeof CA, w: typeof WA) => { const m = new THREE.Mesh(cardGeo(r), mat); m.position.set(w.x, w.y, 1.5); m.rotation.z = w.rot; m.frustumCulled = false; st.scene.add(m); return m; };
+  const cardA = mk(CA, WA), cardB = mk(CB, WB);
+  const propsL = new Layer2D(512, 256, SCALE, { fast: true });
+  drawProps(propsL.ctx);
+  const tp: [number, number] = [propsL.canvas.width, propsL.canvas.height];
+  const coin = st.prop(propsL.texture, tp, [0, 0, 0.5, 1], COIN_R * 2.1, COIN_R * 2.1, 0, 0, 12);
+  coin.renderOrder = 5;
+  st.prop(propsL.texture, tp, [0.5, 0, 0.5, 0.52], 250, 130, -120, 330, 1, 0.3); // 兩枚零錢
+  return { doc, mask, st, cardA, cardB, coin };
 }
 
 // ---------------------------------------------------------------- 刮的路徑
-interface Swipe { pts: P2[]; len: number[]; t0: number; t1: number; panel: number; c: P2 }
+interface Swipe { pts: P2[]; len: number[]; t0: number; t1: number; panel: number }
 
-/**
- * Z 字來回：x 從 r.x 到 r.x + r.w，上緣超出 top、下緣超出 bot（負的 = 不到邊，留一圈刮不乾淨的鋸齒銀邊），
- * step = 每一折往右多少。筆寬要比 step 寬，中間才刮得乾淨。
- */
+/** Z 字來回：x 從 r.x 到 r.x + r.w，上緣超出 top、下緣超出 bot（負的 = 不到邊，留一圈刮不乾淨的鋸齒銀邊）。 */
 function zigzag(r: { x: number; y: number; w: number; h: number }, step: number, top: number, bot: number, seed: number): P2[] {
   const pts: P2[] = [];
   const n = Math.max(2, Math.ceil(r.w / step));
@@ -145,25 +190,36 @@ function at(sw: Swipe, u: number): P2 {
   const k = seg > 0 ? (s - sw.len[i - 1]!) / seg : 0;
   return { x: lerp(a.x, b.x, k), y: lerp(a.y, b.y, k) };
 }
+/** 展開圖上的一點 → 世界座標（看它在哪一張卡上）。 */
+function toWorld(p: P2, z = 1.5): V3 {
+  const onB = p.x >= CB.x - 10;
+  const r = onB ? CB : CA, w = onB ? WB : WA;
+  const x = p.x - r.x - r.w / 2, y = r.h / 2 - (p.y - r.y);
+  return [w.x + x * Math.cos(w.rot) - y * Math.sin(w.rot), w.y + x * Math.sin(w.rot) + y * Math.cos(w.rot), z];
+}
 
 const SW = 70; // 刮痕的寬（硬幣的邊）
 
 export default class ScratchCard extends Scene {
-  bgPass = shared('scratchcard.print', PRINT_BG);
-  silver = shared('scratchcard.silver', SILVER);
-  rig = shared('scratchcard.rig', makeRig);
-  /** 不會變的：卡面印刷的字、銀漆底下的留言、愛心、獎項。 */
-  print = this.track(new Layer2D(CW, CH, undefined, { fast: true }));
-  /** 每格重畫：歌詞、硬幣、連線。 */
-  live = this.track(new Layer2D(CW, CH, undefined, { fast: true }));
+  bgPass = shared('scratchcard.print2', PRINT_BG);
+  silver = shared('scratchcard.silver2', SILVER);
+  rig = shared('scratchcard.rig2', makeRig);
+  /** 不會變的：卡面印刷的字、銀漆底下的留言與九宮格。 */
+  print = this.track(new Layer2D(AW, AH, undefined, { fast: true }));
+  /** 每格重畫：歌詞、連線、硬幣在卡上的影子。 */
+  live = this.track(new Layer2D(AW, AH, undefined, { fast: true }));
   scratch = this.track(new LineBatch(2048, { screen2D: true, blend: 'max' }));
   dust = this.track(new LineBatch(2048, { screen2D: true, blend: 'normal' }));
   sparks = this.track(new LineBatch(1024, { screen2D: true, blend: 'add' }));
   msg: Msg | null = this.ctx.params.message ?? null;
   g!: Grid;
   swipes: Swipe[] = [];
-  tPrize = Infinity;
+  tWin = Infinity; tPrize = Infinity;
   fit: FitResult | null = null;
+  /** 留言卡、九宮格在畫面上是展開圖的幾倍（鏡頭停好時量的），v2 的字級要換算。 */
+  sA = 0.75; sB = 0.72;
+  msgScreen: number | null = null;
+  sigSize = 40;
   private printed = false;
 
   override async init() {
@@ -172,47 +228,63 @@ export default class ScratchCard extends Scene {
     await loadText(TEXT + song.title + (this.msg ? signature(this.msg.name) : '') + lyrics.linesIn(s, e).map((l) => l.text).join(''));
     const g = (this.g = grid(au, s, e));
     const seed = (this.ctx.params.seed ?? 7) * 13;
-    // 刮的順序：留言三條×左右兩半（6 段）、三個小圓（3 段）、最後在小節線上刮開獎項那一條。
+    // 鏡頭停好的位置先擺一次，量兩張卡在畫面上的縮放
+    this.look(1, { x: 0, y: 0 }, 0);
+    const st = this.rig.st;
+    const scaleAt = (p: P2) => { const a = st.toScreen(toWorld(p)), b = st.toScreen(toWorld({ x: p.x + 100, y: p.y })); return Math.hypot(b.x - a.x, b.y - a.y) / 100; };
+    this.sA = scaleAt({ x: MSGP.x + MSGP.w / 2 - 50, y: MSGP.y + MSGP.h / 2 });
+    this.sB = scaleAt({ x: LYR.x + LYR.w / 2 - 50, y: LYR.y + LYR.h / 2 });
+    // 刮的順序：留言兩條×左右兩半（4 段）→ 九宮格一拍一格 → 下一個小節線刮開獎項那一條。
     // 相鄰兩段互相超出一點才刮得乾淨；貼著銀漆外緣的那一邊不超出（留一圈鋸齒的銀邊，看得出刮過）
-    const bandH = MSGP.h / 3, IN = 26, OV = 34, EDGE = -4;
+    const bandH = MSGP.h / 2, IN = 26, OV = 34, EDGE = -4;
     const plan: { r: { x: number; y: number; w: number; h: number }; panel: number; top: number; bot: number }[] = [];
-    for (let b = 0; b < 3; b++) for (let hf = 0; hf < 2; hf++) {
+    for (let b = 0; b < 2; b++) for (let hf = 0; hf < 2; hf++) {
       const x0 = hf ? MSGP.x + MSGP.w / 2 - 24 : MSGP.x + IN, x1 = hf ? MSGP.x + MSGP.w - IN : MSGP.x + MSGP.w / 2 + 24;
-      plan.push({ r: { x: x0, y: MSGP.y + b * bandH, w: x1 - x0, h: bandH }, panel: 0, top: b ? OV : EDGE, bot: b < 2 ? OV : EDGE });
+      plan.push({ r: { x: x0, y: MSGP.y + b * bandH, w: x1 - x0, h: bandH }, panel: 0, top: b ? OV : EDGE, bot: b < 1 ? OV : EDGE });
     }
-    CIRC.forEach((c, i) => plan.push({ r: { x: c.x - c.r + 18, y: c.y - c.r, w: 2 * c.r - 36, h: 2 * c.r }, panel: 1 + i, top: 6, bot: 6 }));
+    for (let i = 0; i < 9; i++) { const r = cellRect(i); plan.push({ r: { x: r.x + 18, y: r.y, w: r.w - 36, h: r.h }, panel: 1 + i, top: EDGE, bot: EDGE }); }
     const avail = Math.max(1.2, e - g.b0 - 0.8);
-    // 一段刮多久：到下一段開始前留一點空（硬幣抬起來換位置），最長半秒
     const add = (i: number, t0: number, next: number) => {
       const pl = plan[i]!;
       const pts = zigzag(pl.r, 42, pl.top, pl.bot, seed + i);
-      this.swipes.push({ pts, len: cumLen(pts), t0, t1: t0 + Math.min(0.5, Math.max(0.16, (next - t0) * 0.78)), panel: pl.panel, c: { x: pl.r.x + pl.r.w / 2, y: pl.r.y + pl.r.h / 2 } });
+      this.swipes.push({ pts, len: cumLen(pts), t0, t1: t0 + Math.min(0.5, Math.max(0.16, (next - t0) * 0.78)), panel: pl.panel });
     };
-    const tMsg = stagger(au, g.b0, 6, Math.min(5 * g.beat, avail * 0.45));
+    const tMsg = stagger(au, g.b0, 4, Math.min(3 * g.beat, avail * 0.3));
     tMsg.forEach((t0, i) => add(i, t0, tMsg[i + 1] ?? t0 + (tMsg[1]! - tMsg[0]!)));
-    // 小圓從留言刮完後的下一個半拍開始
-    const symStart = au.timeOfBeat(Math.ceil(au.beatAt(this.swipes[5]!.t1 + 0.05) * 2) / 2);
-    const tSym = stagger(au, symStart, 3, Math.min(2 * g.beat, avail * 0.25));
-    tSym.forEach((t0, i) => add(6 + i, t0, tSym[i + 1] ?? t0 + (tSym[1]! - tSym[0]!)));
-    // 獎項：刮完小圓後的下一個小節線（窗格短就下一拍）
-    const lastSym = this.swipes[this.swipes.length - 1]!.t1;
-    let tp = g.bars.find((b) => b >= lastSym + 0.15) ?? Infinity;
-    if (tp > e - 1.0) tp = au.timeOfBeat(Math.ceil(au.beatAt(lastSym + 0.1)));
+    // 九宮格：留言刮完，硬幣飛過去（一拍），一拍刮一格（短窗格半拍一格）
+    const gStart = au.timeOfBeat(Math.ceil(au.beatAt(this.swipes[3]!.t1 + 0.05)) + 1);
+    const tCell = stagger(au, gStart, 9, Math.min(9 * g.beat, Math.max(1, e - gStart - 1.2)));
+    tCell.forEach((t0, i) => add(4 + i, t0, tCell[i + 1] ?? t0 + (tCell[1]! - tCell[0]!)));
+    this.tWin = this.swipes[4 + 5]!.t1; // 中間那一排的最後一格刮完 = 連成一線
+    const lastCell = this.swipes[this.swipes.length - 1]!.t1;
+    let tp = g.bars.find((b) => b >= lastCell + 0.15) ?? Infinity;
+    if (tp > e - 1.0) tp = au.timeOfBeat(Math.ceil(au.beatAt(lastCell + 0.1)));
     if (tp < e - 0.4) {
       const r = { x: PRIZE.x + IN, y: PRIZE.y, w: PRIZE.w - 2 * IN, h: PRIZE.h };
       const pts = zigzag(r, 42, EDGE, EDGE, seed + 99);
-      this.swipes.push({ pts, len: cumLen(pts), t0: tp, t1: tp + Math.min(0.45, g.beat * 0.9), panel: 4, c: { x: r.x + r.w / 2, y: r.y + r.h / 2 } });
+      this.swipes.push({ pts, len: cumLen(pts), t0: tp, t1: tp + Math.min(0.45, g.beat * 0.9), panel: NP - 1 });
       this.tPrize = tp;
     }
-    // 字級依「可用高度扣掉署名」算：署名一定在留言下面
-    if (this.msg) this.fit = fitMsg(this.print.ctx, this.msg.text, F.hand(700), MSGP.w - 100, MSGP.h - 50 - 70 - 20, { min: 52, max: 120, lineHeight: 1.22, maxLines: 4 });
+    // v2：留言字級照螢幕標準（依字數 40～60）換成卡面字級；可用高度先扣掉署名，照子句斷行
+    if (this.msg) {
+      const c = this.print.ctx, fam = F.hand(700), S = this.sA;
+      const maxS = msgMaxFor(this.msg.text);
+      const sigEst = sigV2(maxS) / S;
+      const boxW = MSGP.w - 90, boxH = MSGP.h - 36 - sigEst * SIG_K;
+      const opt = { min: V2.msgMin / S, max: maxS / S, lineHeight: 1.24, maxLines: 6 };
+      const byW = fitText(c, this.msg.text, fam, boxW, boxH, opt);
+      const byC = fitClauses(c, this.msg.text, fam, boxW, boxH, opt);
+      this.fit = byC && byC.size >= byW.size * 0.9 ? byC : byW;
+      this.msgScreen = this.fit.size * S;
+      this.sigSize = Math.round(sigV2(this.msgScreen) / S);
+    }
   }
 
   override render(f: Frame, out: THREE.WebGLRenderTarget): PostOverrides {
     const { renderer, comp, audio: au } = this.ctx;
     const t = f.t;
     const R = this.rig, doc = R.doc;
-    // ---- 1. 卡面畫進卡片的 render target
+    // ---- 1. 兩張卡畫進展開圖
     this.bgPass.render(renderer, doc);
     if (!this.printed) { this.drawPrint(); this.printed = true; }
     comp.draw(renderer, this.print.texture, doc);
@@ -235,68 +307,67 @@ export default class ScratchCard extends Scene {
     if (this.scratch.count) this.scratch.render(renderer, R.mask);
     const bar = au.barAt(t), bp = bar - Math.floor(bar);
     this.silver.u.mask!.value = R.mask.texture;
-    this.silver.u.sheen!.value = lerp(-300, 1700, ease.outCubic(clamp(bp * 1.6)));
+    this.silver.u.sheen!.value = lerp(-300, AW + 500, ease.outCubic(clamp(bp * 1.6)));
     this.silver.render(renderer, doc);
+    const coin = this.coinAt(t);
     this.dust.clear(); this.sparks.clear();
     this.drawDust(t);
     const L = this.live; L.clear();
     const c = L.ctx;
     this.drawLyric(c, t);
     this.drawWin(c, t);
-    const coin = this.drawCoin(c, t);
+    if (coin.onCard) this.drawCoinShadow(c, coin);
     comp.draw(renderer, L.upload(), doc);
     if (this.dust.count) this.dust.render(renderer, doc);
-    if (this.tPrize < Infinity && t > this.tPrize) {
-      const pz = this.swipes[this.swipes.length - 1]!;
-      sparkParticles(this.sparks, t, (tb) => (tb >= pz.t0 && tb <= pz.t1 ? at(pz, prog(tb, pz.t0, pz.t1, ease.inOutQuad)) : null), { rate: 120, life: 0.5, speed: 280, seed: 5, intensity: 0.6 });
+    if (t > this.tWin - 0.05) {
+      // 連成一線：中間那一排噴一下火星；刮開獎項那一條時再噴一次
+      const y = cellRect(4).y + CELL.h / 2, x0 = cellRect(3).x, x1 = cellRect(5).x + CELL.w;
+      const head = (tb: number) => (tb >= this.tWin && tb <= this.tWin + 0.3 ? { x: lerp(x0, x1, (tb - this.tWin) / 0.3), y } : null);
+      sparkParticles(this.sparks, t, head, { rate: 150, life: 0.5, speed: 260, seed: 5, intensity: 0.6 });
+      if (this.tPrize < Infinity && t > this.tPrize) {
+        const pz = this.swipes[this.swipes.length - 1]!;
+        sparkParticles(this.sparks, t, (tb) => (tb >= pz.t0 && tb <= pz.t1 ? at(pz, prog(tb, pz.t0, pz.t1, ease.inOutQuad)) : null), { rate: 120, life: 0.5, speed: 280, seed: 6, intensity: 0.6 });
+      }
       if (this.sparks.count) this.sparks.render(renderer, doc);
     }
-
-    // ---- 2. 舞台：鏡頭跟著硬幣刮到的那一段移過去、焦點在硬幣上
+    // ---- 2. 硬幣（桌上的 3D 道具）、舞台
+    R.coin.position.set(...coin.p);
+    R.coin.rotation.set(-coin.tilt * 0.6 + coin.spin, 0, -0.5 + 0.12 * Math.sin(t * 7) * coin.tilt);
     this.shoot(t, coin);
     R.st.render(renderer, out);
-    const win = this.tPrize < Infinity ? pulse(t, this.swipes[this.swipes.length - 1]!.t1, 0.12) : 0;
-    return { paper: 1, bloom: 0.3, vignette: 0.3, grain: 0.04, flash: 0.05 * win };
+    const win = pulse(t, this.tWin, 0.12) + (this.tPrize < Infinity ? pulse(t, this.swipes[this.swipes.length - 1]!.t1, 0.12) : 0);
+    return { bloom: 0.45, vignette: 0.45, grain: 0.045, flash: 0.04 * win };
   }
 
-  /** 卡片座標 → 世界座標（卡片平放、稍微轉一點）。 */
-  private world(u: number, v: number, z = 1.5): V3 {
-    const r = this.rig.card.rotation.z, x = u - CW / 2, y = CH / 2 - v;
-    return [x * Math.cos(r) - y * Math.sin(r), x * Math.sin(r) + y * Math.cos(r), z];
-  }
-
-  private shoot(t: number, coin: P2) {
-    const R = this.rig, st = R.st, s = this.ctx.start, g = this.g;
+  /** 鏡頭：k = 開場進度（0 貼近、1 停好），follow = 往硬幣那邊偏多少（世界座標）。 */
+  private look(k: number, follow: P2, push: number) {
+    const st = this.rig.st;
     const D = camDist(30);
-    // 鏡頭看的點：刮到哪一段就往那一段偏一點（每段開始時 outCubic 移過去）；刮完回到整張卡的中間偏上
-    // 卡片放在畫面偏左（鏡頭看卡片中心偏右的地方），右下角的 QR 區留給 HUD
-    const home: P2 = { x: CW / 2 + 170, y: CH * 0.5 };
-    let aim: P2 = home;
-    let prevAim = aim, since = 99;
-    const done = this.swipes.length ? this.swipes[this.swipes.length - 1]!.t1 + 0.4 : s;
-    for (let i = 0; i < this.swipes.length; i++) {
-      const sw = this.swipes[i]!;
-      if (t < sw.t0) break;
-      prevAim = aim;
-      aim = { x: lerp(home.x, sw.c.x, 0.25), y: lerp(home.y, sw.c.y, 0.25) };
-      since = t - sw.t0;
-    }
-    if (t >= done) { prevAim = aim; aim = home; since = t - done; }
-    const k = ease.outCubic(clamp(since / 0.45));
-    const a = { x: lerp(prevAim.x, aim.x, k), y: lerp(prevAim.y, aim.y, k) };
-    // 開場：貼近、比較斜，第一拍 outExpo 拉到位；刮完之後慢慢推近
-    const intro = ease.outExpo(clamp((t - s) / Math.max(0.3, g.b0 - s + 0.35)));
-    const push = t > done ? 0.05 * ease.inOutCubic(clamp((t - done) / Math.max(1, this.ctx.end - done))) : 0;
-    const dist = D * lerp(0.86, 1.14, intro) * (1 - push);
-    const tilt = THREE.MathUtils.degToRad(lerp(30, 21, intro));
-    const yaw = lerp(-0.12, 0.035, intro);
-    const T = this.world(a.x, a.y, 0);
+    // 兩張卡佔滿大半個畫面（場景是主角；留言卡本身仍 ≤ 860×430）
+    const dist = D * lerp(0.95, 1.18, k) * (1 - push);
+    const tilt = THREE.MathUtils.degToRad(lerp(34, 25, k));
+    const yaw = lerp(-0.12, 0.03, k);
+    const T: V3 = [lerp(-250, 30, k) + follow.x, lerp(-150, -20, k) + follow.y, 0];
     st.look([T[0] + Math.sin(yaw) * dist * 0.6, T[1] - Math.sin(tilt) * dist, Math.cos(tilt) * dist], T);
-    st.U.focus.value = st.depthOf(this.world(coin.x, coin.y));
-    st.U.aperture.value = 34;
-    st.U.pool.value.set(-260, 260, 1500, 0.55);
-    const c0 = this.world(CW / 2, CH / 2, 0);
-    st.shadows([{ x: c0[0] + 12, y: c0[1] - 18, w: CW, h: CH, rot: this.rig.card.rotation.z, blur: 26, k: 0.34, r: 22 }]);
+  }
+
+  private shoot(t: number, coin: { p: V3 }) {
+    const st = this.rig.st, s = this.ctx.start, g = this.g, e = this.ctx.end;
+    // 開場貼近左邊的留言卡，第一拍 outExpo 拉到停好的位置；刮的時候鏡頭往硬幣那邊偏一點點，刮完慢慢推近
+    const intro = ease.outExpo(clamp((t - s) / Math.max(0.3, g.b0 - s + 0.35)));
+    const last = this.swipes.length ? this.swipes[this.swipes.length - 1]!.t1 : s;
+    const scratching = t > g.b0 && t < last + 0.4 ? 1 : 0;
+    const fk = ease.inOutCubic(clamp((t - g.b0) / 0.6)) * (1 - ease.inOutCubic(clamp((t - last - 0.4) / 0.8)));
+    const follow = { x: (coin.p[0] - 30) * 0.12 * fk * (scratching || fk > 0 ? 1 : 0), y: (coin.p[1] + 20) * 0.1 * fk };
+    const push = 0.05 * ease.inOutCubic(clamp((t - last) / Math.max(1, e - last)));
+    this.look(intro, follow, push);
+    // 焦點：留言卡（歌詞在右邊那張，景深很淺，兩張都清楚，只有桌子的遠端失焦）
+    st.U.focus.value = st.depthOf(toWorld({ x: MSGP.x + MSGP.w * 0.6, y: MSGP.y + MSGP.h / 2 }));
+    st.U.aperture.value = 16;
+    st.U.pool.value.set(0, 20, 1250, 0.92 + 0.06 * this.ctx.audio.hit('kick', t, 0.1));
+    const sh = (r: typeof CA, w: typeof WA) => ({ x: w.x + 10, y: w.y - 14, w: r.w, h: r.h, rot: w.rot, blur: 22, k: 0.32, r: 10 });
+    const coinSh = coin.p[2] > 3 && !this.coinAt(t).onCard ? [{ x: coin.p[0] + 8 + coin.p[2] * 0.3, y: coin.p[1] - 10 - coin.p[2] * 0.4, w: COIN_R * 1.9, h: COIN_R * 1.9, blur: 8 + coin.p[2] * 0.15, k: 0.3, r: COIN_R }] : [];
+    st.shadows([sh(CA, WA), sh(CB, WB), { x: -110, y: 318, w: 180, h: 60, rot: 0.3, blur: 8, k: 0.3, r: 30 }, ...coinSh]);
   }
 
   // ------------------------------------------------------------ 印刷（畫一次）
@@ -304,142 +375,126 @@ export default class ScratchCard extends Scene {
     const c = this.print.ctx, m = this.msg;
     this.print.clear();
     c.textBaseline = 'alphabetic';
-    // 表頭：小小的卡名與期數（配角，不搶留言）
-    c.font = font(F.hei(900), 24); c.fillStyle = rgba('sepia', 0.9);
-    c.fillText('幸福刮刮卡', 44, 54);
-    c.font = font(F.mono(600), 14); c.letterSpacing = '4px'; c.fillStyle = rgba('sepia', 0.6);
-    c.fillText(`第 ${PERIOD} 期`, 190, 52);
-    c.letterSpacing = '0px';
+    // 表頭：小小的卡名與期數（配角）
+    for (const [x0, title] of [[CA.x, '幸福刮刮卡'], [CB.x, '幸運九宮格']] as const) {
+      c.font = font(F.hei(900), 22); c.fillStyle = rgba('sepia', 0.9);
+      c.fillText(title, x0 + 40, 38);
+      c.font = font(F.mono(600), 13); c.letterSpacing = '4px'; c.fillStyle = rgba('sepia', 0.6);
+      c.fillText(`第 ${PERIOD} 期`, x0 + 170, 37);
+      c.letterSpacing = '0px';
+    }
     c.textAlign = 'right';
-    c.font = font(F.hei(900), 20);
-    const pill = '中獎機率 100%';
-    const pw = c.measureText(pill).width + 30;
-    c.fillStyle = rgba('blood', 0.9);
-    c.beginPath(); c.roundRect(CW - 44 - pw, 26, pw, 38, 19); c.fill();
-    c.fillStyle = rgba('paper');
-    c.fillText(pill, CW - 44 - 15, 52);
+    c.font = font(F.hei(900), 16);
+    const pill = '中獎機率 100%', pw = c.measureText(pill).width + 24;
+    c.fillStyle = rgba('blood', 0.9); c.beginPath(); c.roundRect(CA.w - 36 - pw, 16, pw, 28, 14); c.fill();
+    c.fillStyle = rgba('paper'); c.fillText(pill, CA.w - 36 - 12, 36);
     c.textAlign = 'left';
-    c.font = font(F.hei(700), 18); c.letterSpacing = '3px'; c.fillStyle = rgba('sepia', 0.6);
-    c.fillText('♪ 本期主題曲', LYR.x, LYR.y - 12);
+    c.font = font(F.hei(700), 16); c.letterSpacing = '3px'; c.fillStyle = rgba('sepia', 0.6);
+    c.fillText('♪ 本期主題曲', LYR.x, LYR.y - 10);
     c.letterSpacing = '0px';
-    // 銀漆底下：留言（焦點）
+    // 銀漆底下：留言（焦點）＋署名（永遠在最後一行下面）
     if (m && this.fit) {
-      // 留言＋署名整塊置中；署名永遠在最後一行下面（字級是扣掉署名的高度算的）
-      const fit = this.fit, SIG = 70;
-      const block = fit.height + SIG;
-      const top = MSGP.y + 30 + Math.max(0, (MSGP.h - 50 - block) / 2) + fit.size * 0.86;
-      drawFit(c, fit, F.hand(700), MSGP.x + 50, top, { color: rgba('sepia') });
-      c.font = font(F.hand(700), 48); c.fillStyle = rgba('sepia', 0.8); c.textAlign = 'right';
-      c.fillText(`${signature(m.name)}${m.couple ? '（新人）' : ''}`, MSGP.x + MSGP.w - 44, top + (fit.lines.length - 1) * fit.lineHeight + SIG);
+      const fit = this.fit, sigH = this.sigSize * SIG_K;
+      const block = fit.height + sigH;
+      const top = MSGP.y + 18 + Math.max(0, (MSGP.h - 18 - block) / 2) + fit.size * 0.86;
+      drawFit(c, fit, F.hand(700), MSGP.x + 45, top, { color: rgba('sepia') });
+      c.font = font(F.hand(700), this.sigSize); c.fillStyle = rgba('sepia', 0.8); c.textAlign = 'right';
+      c.fillText(`${signature(m.name)}${m.couple ? '（新人）' : ''}`, MSGP.x + MSGP.w - 40, top + (fit.lines.length - 1) * fit.lineHeight + fit.size * 0.3 + this.sigSize * 1.05);
       c.textAlign = 'left';
     } else {
-      c.font = font(F.hand(700), 92); c.fillStyle = rgba('sepia');
-      c.fillText('這一格留給你', MSGP.x + 50, MSGP.y + 170);
-      c.font = font(F.hand(700), 48); c.fillStyle = rgba('sepia', 0.72);
-      c.fillText('掃描右下角 QR code，寫下想對新人說的話', MSGP.x + 54, MSGP.y + 262);
+      const S = this.sA;
+      c.font = font(F.hand(700), Math.round(60 / S)); c.fillStyle = rgba('sepia');
+      c.fillText('這一格留給你', MSGP.x + 50, MSGP.y + 150);
+      c.font = font(F.hand(700), Math.round(30 / S)); c.fillStyle = rgba('sepia', 0.72);
+      c.fillText('掃描右下角 QR code，寫下想對新人說的話', MSGP.x + 54, MSGP.y + 240);
     }
-    // 三個小圓：愛心；獎項那一條
-    for (const r of CIRC) drawHeart(c, r.x, r.y + 3, 70);
-    c.font = font(F.hei(700), 24); c.fillStyle = rgba('blood', 0.9);
-    c.textAlign = 'center';
-    c.fillText('恭喜中獎：一輩子', PRIZE.x + PRIZE.w / 2, PRIZE.y + PRIZE.h / 2 + 9);
+    // 九宮格：愛心（點綴色）、∞、♪（墨色）
+    SYMBOLS.forEach((sym, i) => {
+      const r = cellRect(i), cx = r.x + r.w / 2, cy = r.y + r.h / 2;
+      if (sym === '♥') { drawHeart(c, cx, cy + 3, 64); return; }
+      c.font = font(sym === '∞' ? F.archivo(100, 700) : F.hei(700), 58); c.fillStyle = rgba('sepia', 0.8); c.textAlign = 'center';
+      c.fillText(sym, cx, cy + 20);
+      c.textAlign = 'left';
+    });
+    c.font = font(F.hei(700), 22); c.fillStyle = rgba('blood', 0.9); c.textAlign = 'center';
+    c.fillText('恭喜中獎：一輩子', PRIZE.x + PRIZE.w / 2, PRIZE.y + PRIZE.h / 2 + 8);
     c.textAlign = 'left';
   }
 
-  // ------------------------------------------------------------ 歌詞（本期主題曲）
+  // ------------------------------------------------------------ 歌詞（本期主題曲，九宮格那張的上面）
   private drawLyric(c: CanvasRenderingContext2D, t: number) {
     const { lyrics, song } = this.ctx;
+    const S = this.sB;
+    const size = lyricV2(this.msgScreen) / S;
+    const st: RowsStyle = { family: F.archivo(100, 800), size, minSize: V2.lyrMin / S, maxW: LYR.w, maxRows: 3, lineHeight: 1.06 };
     const ly = lyricAt(lyrics, t);
     if (ly) {
-      const lay = layoutRows(c, ly.line, LY);
+      const lay = layoutRows(c, ly.line, st);
       const top = LYR.y + (LYR.h - lay.height) / 2 + lay.size * 0.82;
       c.save(); c.translate(LYR.x, top);
-      drawRows(c, lay, LY.family, t, paperInk(), ly.k);
+      drawRows(c, lay, st.family, t, paperInk(), ly.k);
       c.restore();
       return;
     }
-    c.font = font(F.archivo(100, 800), 58); c.fillStyle = rgba('sepia', lyrics.has ? 0.26 : 0.8);
-    c.fillText(song.title || '本期主題曲', LYR.x, LYR.y + 80);
-    if (!lyrics.has) {
-      const w = Math.min(c.measureText(song.title).width, 700);
-      c.font = font(F.hei(500), 20); c.fillStyle = rgba('sepia', 0.55);
-      c.fillText('（純音樂）', LYR.x + w + 20, LYR.y + 78);
-    }
+    c.font = font(st.family, V2.lyrMin / S); c.fillStyle = rgba('sepia', lyrics.has ? 0.26 : 0.8);
+    c.fillText(song.title || '本期主題曲', LYR.x, LYR.y + LYR.h / 2 + 10);
+    if (!lyrics.has) { c.font = font(F.hei(500), 18); c.fillStyle = rgba('sepia', 0.55); c.fillText('（純音樂）', LYR.x, LYR.y + LYR.h / 2 + 56); }
   }
 
   // ------------------------------------------------------------ 硬幣
-  /** 硬幣在 t 的位置、「抬起來」的高度（0 = 貼在卡上刮）、斜拿的程度、翻面的角度。 */
-  private coinAt(t: number): { p: P2; lift: number; tilt: number; spin: number } {
+  /** 硬幣：位置（世界）、抬起來的高度、斜拿的程度、翻面角度；onCard = 貼在卡上（影子畫在卡上）。 */
+  private coinAt(t: number): { p: V3; tilt: number; spin: number; onCard: boolean; doc: P2 | null; lift: number } {
     const sws = this.swipes, s = this.ctx.start;
     const first = sws[0];
-    if (!first) return { p: REST, lift: 0, tilt: 0, spin: 0 };
-    const enter = { x: CW + 160, y: CH + 120 };
+    const restPose = { p: REST, tilt: 0, spin: 0, onCard: false, doc: null, lift: 0 };
+    if (!first) return restPose;
+    const Z = 12; // 貼在卡上刮的時候的高度（硬幣的半徑斜拿著）
     if (t < first.t0) {
-      // 從右下角外面滑進來，第一拍剛好落在起點
+      // 從右下角外面飛進來，第一拍剛好落在起點
       const u = prog(t, Math.max(s, first.t0 - 0.7), first.t0, ease.outCubic);
-      const p0 = first.pts[0]!;
-      return { p: { x: lerp(enter.x, p0.x, u), y: lerp(enter.y, p0.y, u) - Math.sin(u * Math.PI) * 60 }, lift: 1 - u, tilt: 1, spin: 0 };
+      const p0 = toWorld(first.pts[0]!, Z);
+      return { p: [lerp(REST[0], p0[0], u), lerp(REST[1] - 200, p0[1], u), lerp(160, Z, u) + Math.sin(u * Math.PI) * 60], tilt: 1, spin: 0, onCard: u > 0.8, doc: first.pts[0]!, lift: 1 - u };
     }
     for (let i = 0; i < sws.length; i++) {
       const sw = sws[i]!;
       if (t <= sw.t1) {
-        if (t >= sw.t0) return { p: at(sw, prog(t, sw.t0, sw.t1, ease.inOutQuad)), lift: 0, tilt: 1, spin: 0 };
-        // 兩段之間：抬起來、弧線移到下一段的起點
+        if (t >= sw.t0) { const d = at(sw, prog(t, sw.t0, sw.t1, ease.inOutQuad)); return { p: toWorld(d, Z), tilt: 1, spin: 0, onCard: true, doc: d, lift: 0 }; }
+        // 兩段之間：抬起來、弧線移到下一段的起點（從留言卡飛到九宮格時抬高一點）
         const prev = sws[i - 1]!;
         const u = prog(t, prev.t1, sw.t0, ease.inOutCubic);
-        const a = prev.pts[prev.pts.length - 1]!, b = sw.pts[0]!;
-        return { p: { x: lerp(a.x, b.x, u), y: lerp(a.y, b.y, u) - Math.sin(u * Math.PI) * 40 }, lift: Math.sin(u * Math.PI), tilt: 1, spin: 0 };
+        const a = toWorld(prev.pts[prev.pts.length - 1]!, Z), b = toWorld(sw.pts[0]!, Z);
+        const far = Math.hypot(b[0] - a[0], b[1] - a[1]) > 400;
+        const h = Math.sin(u * Math.PI) * (far ? 160 : 40);
+        const same = !far;
+        const da = prev.pts[prev.pts.length - 1]!, db = sw.pts[0]!;
+        return { p: [lerp(a[0], b[0], u), lerp(a[1], b[1], u), Z + h], tilt: 1, spin: far ? ease.inOutCubic(u) * TAU : 0, onCard: same, doc: same ? { x: lerp(da.x, db.x, u), y: lerp(da.y, db.y, u) } : null, lift: Math.sin(u * Math.PI) };
       }
     }
-    // 刮完：躺到卡片右下角；之後每個小節線自己彈起來翻一圈半、在下一拍前落地（閒著也跟著拍子）
+    // 刮完：躺到桌上；之後每個小節線自己彈起來翻一圈半、在下一拍前落地
     const last = sws[sws.length - 1]!;
     const tRest = last.t1 + 0.6;
     if (t < tRest) {
       const u = prog(t, last.t1 + 0.1, tRest, ease.inOutCubic);
-      const a = last.pts[last.pts.length - 1]!;
-      return { p: { x: lerp(a.x, REST.x, u), y: lerp(a.y, REST.y, u) - Math.sin(u * Math.PI) * 70 }, lift: Math.sin(u * Math.PI), tilt: 1 - u, spin: 0 };
+      const a = toWorld(last.pts[last.pts.length - 1]!, Z);
+      return { p: [lerp(a[0], REST[0], u), lerp(a[1], REST[1], u), lerp(Z, REST[2], u) + Math.sin(u * Math.PI) * 90], tilt: 1 - u, spin: 0, onCard: false, doc: null, lift: Math.sin(u * Math.PI) };
     }
     const g = this.g;
     let bi = -1;
     for (let i = 0; i < g.bars.length; i++) if (g.bars[i]! >= tRest + 0.1 && g.bars[i]! <= t) bi = i;
     if (bi >= 0) {
       const b = g.bars[bi]!, u = prog(t, b, b + Math.min(0.5, g.beat * 0.95));
-      if (u < 1) return { p: { x: REST.x, y: REST.y - Math.sin(u * Math.PI) * 110 }, lift: Math.sin(u * Math.PI), tilt: 0, spin: ease.outCubic(u) * Math.PI * 3 };
+      if (u < 1) return { p: [REST[0], REST[1], REST[2] + Math.sin(u * Math.PI) * 130], tilt: 0, spin: ease.outCubic(u) * Math.PI * 3, onCard: false, doc: null, lift: Math.sin(u * Math.PI) };
     }
-    return { p: REST, lift: 0, tilt: 0, spin: 0 };
+    return restPose;
   }
 
-  /** 畫硬幣，回傳它的位置（對焦用）。 */
-  private drawCoin(c: CanvasRenderingContext2D, t: number): P2 {
-    const { p, lift, tilt, spin } = this.coinAt(t);
-    // 刮的時候硬幣是斜拿著的（橢圓），躺平是正圓；翻面時高度跟著 cos 變（看到側邊）
-    const flip = Math.abs(Math.cos(spin));
-    const rx = COIN_R * (1 + 0.1 * lift), ry = Math.max(4, COIN_R * lerp(1, 0.62, tilt) * (1 + 0.1 * lift) * flip);
-    const rot = -0.5 + 0.12 * Math.sin(t * 7) * tilt;
+  /** 硬幣貼在卡上時，卡面上的影子（桌面的影子會被卡片蓋住，所以畫在卡上）。 */
+  private drawCoinShadow(c: CanvasRenderingContext2D, coin: { doc: P2 | null; lift: number }) {
+    if (!coin.doc) return;
     c.save();
-    // 影子：抬越高越遠越淡
-    c.fillStyle = rgba('sepia', 0.2 - 0.09 * lift);
-    c.beginPath(); c.ellipse(p.x + 5 + 26 * lift, p.y + 7 + 34 * lift + 50 * lift * (1 - tilt), rx * 0.98, Math.max(ry, COIN_R * 0.6) * 0.98, rot, 0, TAU); c.fill();
-    c.translate(p.x, p.y); c.rotate(rot);
-    c.fillStyle = rgba('sepia', 0.55);
-    c.beginPath(); c.ellipse(0, 7 * Math.max(tilt, 1 - flip), rx, ry, 0, 0, TAU); c.fill();
-    const gr = c.createLinearGradient(-rx, -ry, rx, ry);
-    gr.addColorStop(0, rgba('bone')); gr.addColorStop(0.55, rgba('ash')); gr.addColorStop(1, rgba('bone', 0.9));
-    c.fillStyle = gr;
-    c.beginPath(); c.ellipse(0, 0, rx, ry, 0, 0, TAU); c.fill();
-    c.strokeStyle = rgba('sepia', 0.5); c.lineWidth = 2;
-    c.beginPath(); c.ellipse(0, 0, rx * 0.8, ry * 0.8, 0, 0, TAU); c.stroke();
-    c.strokeStyle = rgba('sepia', 0.35); c.lineWidth = 1.5;
-    c.beginPath();
-    for (let i = 0; i < 40; i++) {
-      const a = (i / 40) * TAU;
-      c.moveTo(Math.cos(a) * rx * 0.88, Math.sin(a) * ry * 0.88);
-      c.lineTo(Math.cos(a) * rx * 0.98, Math.sin(a) * ry * 0.98);
-    }
-    c.stroke();
-    if (ry > 10) { c.scale(1, ry / rx); drawHeart(c, 0, 2, rx * 0.72); }
+    c.fillStyle = rgba('sepia', 0.2 - 0.08 * coin.lift);
+    c.beginPath(); c.ellipse(coin.doc.x + 10 + 26 * coin.lift, coin.doc.y + 14 + 34 * coin.lift, COIN_R, COIN_R * 0.62, -0.5, 0, TAU); c.fill();
     c.restore();
-    return p;
   }
 
   /** 銀屑：刮的時候從硬幣邊緣噴出去、往下掉（出生時間固定、速度用 hash，往回跳也一樣）。 */
@@ -466,13 +521,10 @@ export default class ScratchCard extends Scene {
 
   // ------------------------------------------------------------ 對獎
   private drawWin(c: CanvasRenderingContext2D, t: number) {
-    // 三顆愛心都刮出來之後：一條紅筆線把三個圓連起來
-    const sym = this.swipes.filter((s) => s.panel >= 1 && s.panel <= 3);
-    if (sym.length !== 3) return;
-    const t0 = sym[2]!.t1 + 0.05;
-    const u = prog(t, t0, t0 + 0.25, ease.outCubic);
+    // 中間那一排三顆愛心刮出來：一條紅筆線劃過去
+    const u = prog(t, this.tWin + 0.02, this.tWin + 0.3, ease.outCubic);
     if (u <= 0) return;
-    const y = CIRC[0]!.y + 4, x0 = CIRC[0]!.x - 40, x1 = CIRC[2]!.x + 40;
+    const y = cellRect(4).y + CELL.h / 2 + 4, x0 = cellRect(3).x + 16, x1 = cellRect(5).x + CELL.w - 16;
     c.save();
     c.strokeStyle = rgba('blood', 0.85); c.lineWidth = 6; c.lineCap = 'round';
     c.beginPath(); c.moveTo(x0, y + 6); c.quadraticCurveTo((x0 + x1) / 2, y - 14, lerp(x0, x1, u), y + 4 - 6 * u); c.stroke();

@@ -14,19 +14,20 @@ import { FSPass, Layer2D } from '../engine/gl';
 import { F, font, loadText } from '../engine/type';
 import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, lerp, prog, pulse, TAU } from '../engine/util';
-import type { FitResult } from '../engine/text';
+import { fitText, type FitResult } from '../engine/text';
 import { lyricAt, signature } from './_motifs';
-import { grid, fitMsg, drawFit, layoutRows, drawRows, paperInk, lastIdx, Stage, docRT, camDist, type Grid, type RowsStyle, type V3 } from './_t4';
+import { grid, drawFit, layoutRows, drawRows, paperInk, lastIdx, Stage, docRT, camDist, type Grid, type RowsStyle, type V3 } from './_t4';
+import { msgMaxFor, lyricV2, sigV2, V2, fitClauses } from './_v2';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'doc', paper: true, energy: [0.2, 0.85], bars: [4, 8] };
 
 // ---------------------------------------------------------------- 紙面（像素，左上原點、y 向下）
 const DW = 1500, DH = 1000;
-const ILL = { x: 70, y: 150, w: 760, h: 600, cx: 440, cy: 470 }; // 步驟圖
-const CAP = { x: 70, y: 780, w: 760, h: 150 }; // 說明文字（歌詞）
-const COL = 862; // 左右欄的分隔線
-const NOTE = { x: 905, y: 250, w: 535, h: 640 }; // 注意事項（留言）
-const LY: RowsStyle = { family: F.archivo(100, 800), size: 70, minSize: 58, maxW: CAP.w, maxRows: 2, lineHeight: 1.04 };
+const ILL = { x: 70, y: 150, w: 720, h: 600, cx: 420, cy: 470 }; // 步驟圖
+const CAP = { x: 70, y: 780, w: 720, h: 150 }; // 說明文字（歌詞）
+const COL = 820; // 左右欄的分隔線
+const NOTE = { x: 858, y: 250, w: 592, h: 640 }; // 注意事項（留言）
+const SIG_K = 1.45; // 署名佔的高度 = 署名字級 × SIG_K
 const STEP_NAMES = ['確認零件', '插入木榫', '對齊・鎖緊', '完成'];
 const TEXT = '組合式愛心組裝說明人組裝所需時間一輩子注意事項請勿單獨組裝本產品需兩人同時操作零件左半心右半心木榫六角扳手耐心確認插入對齊鎖緊完成喀頁這一格留給你的叮嚀掃描右下角寫下想對新人說的話純音樂間奏中';
 
@@ -39,12 +40,39 @@ const PAPER = () => new FSPass(/* glsl */ `
     fragColor = vec4(col, 1.0);
   }`);
 
+/** 工作桌上散落的東西（多出來的螺絲、一根木榫、一支鉛筆）：畫一次，整晚共用。 */
+function drawProps(c: CanvasRenderingContext2D) {
+  // 螺絲（俯視：圓頭＋十字）
+  const screw = (x: number, y: number, r: number) => {
+    const gr = c.createRadialGradient(x - r * 0.3, y - r * 0.3, 1, x, y, r);
+    gr.addColorStop(0, rgba('bone')); gr.addColorStop(1, rgba('ash'));
+    c.fillStyle = gr; c.beginPath(); c.arc(x, y, r, 0, TAU); c.fill();
+    c.strokeStyle = rgba('sepia', 0.6); c.lineWidth = 2; c.stroke();
+    c.lineWidth = 3; c.beginPath(); c.moveTo(x - r * 0.55, y); c.lineTo(x + r * 0.55, y); c.moveTo(x, y - r * 0.55); c.lineTo(x, y + r * 0.55); c.stroke();
+  };
+  screw(40, 40, 26); screw(110, 60, 22); screw(70, 110, 24);
+  // 鉛筆
+  c.save(); c.translate(180, 150);
+  c.fillStyle = rgba('signal', 0.85); c.fillRect(0, -10, 260, 20);
+  c.fillStyle = rgba('sepia', 0.2); c.fillRect(0, 3, 260, 7);
+  c.fillStyle = rgba('bone'); c.beginPath(); c.moveTo(260, -10); c.lineTo(300, 0); c.lineTo(260, 10); c.fill();
+  c.fillStyle = rgba('sepia', 0.85); c.beginPath(); c.moveTo(290, -2.5); c.lineTo(300, 0); c.lineTo(290, 2.5); c.fill();
+  c.restore();
+}
+
 function makeRig() {
   const doc = docRT(DW, DH);
-  const st = new Stage(0, 30);
+  // 說明書攤在剛拆開的瓦楞紙箱上（楞紋、一條封箱膠帶），頭頂一盞工作燈，光圈清楚、四周暗一點
+  const st = new Stage(5, 30);
+  st.U.poolFloor.value = 0.6;
   const mat = st.docMaterial(doc.texture, [doc.width, doc.height], [DW, DH], { radius: 3 });
   const page = st.docMesh(mat, DW, DH, 0, 0, 1);
   page.rotation.z = 0.018;
+  const pl = new Layer2D(512, 192, 2, { fast: true });
+  drawProps(pl.ctx);
+  const tp: [number, number] = [pl.canvas.width, pl.canvas.height];
+  st.prop(pl.texture, tp, [0, 0, 0.3, 0.75], 154, 144, -860, 380, 1, 0.2); // 三顆螺絲
+  st.prop(pl.texture, tp, [0.34, 0.68, 0.62, 0.22], 318, 42, -1000, -330, 1, 0.5); // 鉛筆
   return { doc, st, mat, page };
 }
 
@@ -195,6 +223,10 @@ export default class Manual extends Scene {
   stepBeat: number[] = [];
   per = 4;
   fit: FitResult | null = null;
+  /** 注意事項、說明文字在畫面上是紙面的幾倍（鏡頭停好時量的），v2 的字級要換算。 */
+  sNote = 0.85; sCap = 0.85;
+  msgScreen: number | null = null;
+  sigSize = 36;
   private baseDrawn = false;
 
   override async init() {
@@ -208,7 +240,24 @@ export default class Manual extends Scene {
     this.per = nBeats >= 32 ? Math.floor(nBeats / 16) * 4 : nBeats >= 16 ? 4 : Math.max(1, Math.floor(nBeats / 4));
     // 第一步從窗格一開始就在（零件從第一拍開始掉進來），後面的步驟落在小節線上
     this.stepBeat = [0, 1, 2, 3].map((i) => b0 + i * this.per);
-    if (this.msg) this.fit = fitMsg(this.live.ctx, this.msg.text, F.hand(700), NOTE.w, NOTE.h - 190, { min: 56, max: 118, lineHeight: 1.28 });
+    // 鏡頭停好的位置先擺一次，量注意事項與說明文字在畫面上的縮放
+    this.look(1, 0);
+    const st = this.rig.st;
+    const scaleAt = (u: number, v: number) => { const a = st.toScreen(this.world(u, v)), b = st.toScreen(this.world(u + 100, v)); return Math.hypot(b.x - a.x, b.y - a.y) / 100; };
+    this.sNote = scaleAt(NOTE.x + NOTE.w / 2 - 50, NOTE.y + NOTE.h * 0.4);
+    this.sCap = scaleAt(CAP.x + CAP.w / 2 - 50, CAP.y + CAP.h / 2);
+    // v2：留言字級照螢幕標準（依字數 40～60）換成紙面字級；可用高度先扣掉署名，照子句斷行
+    if (this.msg) {
+      const c = this.live.ctx, S = this.sNote, fam = F.hand(700), maxS = msgMaxFor(this.msg.text);
+      const boxH = Math.min(NOTE.h, 420 / S) - (sigV2(maxS) / S) * SIG_K;
+      const opt = { min: V2.msgMin / S, max: maxS / S, lineHeight: 1.26, maxLines: 7 };
+      const byW = fitText(c, this.msg.text, fam, NOTE.w, boxH, opt);
+      const byC = fitClauses(c, this.msg.text, fam, NOTE.w, boxH, opt);
+      // 照子句斷行比較好讀，但欄位窄時子句一句一行會變得很高：多出來超過一行就用一般的斷法
+      this.fit = byC && byC.size >= byW.size * 0.9 && byC.lines.length <= byW.lines.length + 1 ? byC : byW;
+      this.msgScreen = this.fit.size * S;
+      this.sigSize = Math.round(sigV2(this.msgScreen) / S);
+    }
   }
 
   /** 第 i 步裡第 k 個動作的時間（步驟短時動作跟著壓縮）。 */
@@ -246,22 +295,32 @@ export default class Manual extends Scene {
     return [x * Math.cos(r) - y * Math.sin(r), x * Math.sin(r) + y * Math.cos(r), z];
   }
 
+  /** 鏡頭位置：intro = 開場進度（0 貼近、1 停好），push = 換步驟時往步驟圖推一下。 */
+  private look(intro: number, push: number) {
+    const D = camDist(30);
+    // 說明書偏左上一點：右下角的 QR 區留乾淨（紙的角不要壓在 HUD 下面）
+    const aim = { x: lerp(DW * 0.5 + 190, ILL.cx, 0.25 * push), y: lerp(DH * 0.62, ILL.cy + 40, 0.2 * push) };
+    const T = this.world(aim.x, aim.y, 0);
+    // 幾乎正上方往下看（像在工作桌前看說明書），說明書佔滿大半個畫面
+    const dist = D * lerp(0.98, 1.16, intro) * (1 - 0.06 * push);
+    const tilt = THREE.MathUtils.degToRad(lerp(28, 14, intro));
+    const yaw = lerp(-0.2, -0.06, intro);
+    this.rig.st.look([T[0] + Math.sin(yaw) * dist, T[1] - Math.sin(tilt) * dist, Math.cos(tilt) * dist], T);
+  }
+
   /** 鏡頭：斜斜地拍整張說明書；換步驟時往步驟圖推一下（outExpo）、半小節後慢慢退回來。焦點在留言。 */
   private shoot(t: number, step: number) {
     const st = this.rig.st, g = this.g, s = this.ctx.start;
-    const D = camDist(30);
     const intro = ease.outExpo(clamp((t - s) / Math.max(0.3, g.b0 - s + 0.4)));
     const ts = step > 0 ? this.ctx.audio.timeOfBeat(this.stepBeat[step]!) : -1e9;
     const push = step > 0 ? ease.outExpo(clamp((t - ts) / 0.35)) * (1 - ease.inOutCubic(clamp((t - ts - g.bar * 0.5) / (g.bar * 0.8)))) : 0;
-    const aim = { x: lerp(DW * 0.5, ILL.cx, 0.25 * push), y: lerp(DH * 0.53, ILL.cy + 40, 0.2 * push) };
-    const T = this.world(aim.x, aim.y, 0);
-    const dist = D * lerp(0.95, 1.2, intro) * (1 - 0.06 * push);
-    const tilt = THREE.MathUtils.degToRad(lerp(36, 26, intro));
-    const yaw = lerp(-0.2, -0.06, intro);
-    st.look([T[0] + Math.sin(yaw) * dist, T[1] - Math.sin(tilt) * dist, Math.cos(tilt) * dist], T);
+    this.look(intro, push);
+    st.U.goboT.value = t;
     st.U.focus.value = st.depthOf(this.world(NOTE.x + NOTE.w / 2, NOTE.y + NOTE.h * 0.45));
     st.U.aperture.value = 34;
-    st.U.pool.value.set(-200, 150, 1700, 0.55);
+    // 工作燈：換步驟時燈被碰了一下，光圈左右晃幾下再停（阻尼擺）
+    const sw = step > 0 ? Math.exp(-(t - ts) * 1.6) * Math.sin((t - ts) * 5.5) : 0;
+    st.U.pool.value.set(-120 + 90 * sw, 120, 1350, 0.75);
     const c0 = this.world(DW / 2, DH / 2, 0);
     st.shadows([{ x: c0[0] + 10, y: c0[1] - 14, w: DW, h: DH, rot: this.rig.page.rotation.z, blur: 22, k: 0.3, r: 4 }]);
   }
@@ -330,7 +389,9 @@ export default class Manual extends Scene {
     const st = woodStyle();
     const accent = rgba('blood', 0.9);
     // 步驟越後面零件越少，畫大一點
-    const v: View = { yaw: -0.55, pitch: 0.42, s: [1.05, 1.3, 1.3, 1.45][step]!, ox: ILL.cx + [60, 100, 90, 40][step]!, oy: ILL.cy + 10 };
+    // 每一拍零件輕輕彈一下（次要動作落在拍點；只彈幾 px，不會飄）
+    const au0 = this.ctx.audio, hop = 7 * pulse(t, au0.timeOfBeat(Math.floor(au0.beatAt(t) + 1e-6)), 0.08);
+    const v: View = { yaw: -0.55, pitch: 0.42, s: [1.05, 1.3, 1.3, 1.45][step]!, ox: ILL.cx + [60, 100, 90, 40][step]!, oy: ILL.cy + 10 - hop };
     const drop = (k: number) => { const a = this.act(step, k); return { u: ease.outBack(clamp((t - a) / 0.3), 1.6), a: clamp((t - a) / 0.08) }; };
     if (step === 0) {
       // 零件一拍一個掉進來：A 左半、B 右半、C 木榫 ×2、D 扳手
@@ -453,6 +514,8 @@ export default class Manual extends Scene {
   private drawLyric(c: CanvasRenderingContext2D, t: number) {
     const { lyrics, song } = this.ctx;
     const ly = lyricAt(lyrics, t);
+    // v2：說明文字（歌詞）比留言小一級
+    const LY: RowsStyle = { family: F.archivo(100, 800), size: lyricV2(this.msgScreen) / this.sCap, minSize: V2.lyrMin / this.sCap, maxW: CAP.w, maxRows: 2, lineHeight: 1.06 };
     if (ly) {
       const lay = layoutRows(c, ly.line, LY);
       const top = CAP.y + (CAP.h - lay.height) / 2 + lay.size * 0.84;
@@ -461,7 +524,7 @@ export default class Manual extends Scene {
       c.restore();
       return;
     }
-    c.font = font(F.archivo(100, 800), 60); c.fillStyle = rgba('sepia', lyrics.has ? 0.26 : 0.8);
+    c.font = font(F.archivo(100, 800), Math.round(V2.lyrMin / this.sCap)); c.fillStyle = rgba('sepia', lyrics.has ? 0.26 : 0.8);
     c.fillText(song.title || '組合式愛心', CAP.x, CAP.y + 92);
     if (!lyrics.has) {
       const w = Math.min(c.measureText(song.title).width, 600);
@@ -477,7 +540,7 @@ export default class Manual extends Scene {
     if (t < t0) return;
     if (m && this.fit) {
       const fit = this.fit;
-      const top = NOTE.y + fit.size * 0.9;
+      const top = NOTE.y + fit.size * 0.9 + 10;
       // 手寫：一行一行由左往右寫出來，整則在一小節內寫完
       const per = Math.min(g.beat * 0.5, 2.4 / fit.lines.length);
       fit.lines.forEach((ln, i) => {
@@ -492,8 +555,9 @@ export default class Manual extends Scene {
       const ka = prog(t, ts, ts + 0.3);
       if (ka > 0) {
         c.save(); c.globalAlpha = ka;
-        c.font = font(F.hand(700), 50); c.fillStyle = rgba('sepia', 0.8); c.textAlign = 'right';
-        c.fillText(`${signature(m.name)}${m.couple ? '（新人）' : ''}`, NOTE.x + NOTE.w, Math.min(top + (fit.lines.length - 1) * fit.lineHeight + 84, NOTE.y + NOTE.h));
+        // 署名永遠在最後一行下面（字級是扣掉署名的高度算的）：讓出下伸部再放署名
+        c.font = font(F.hand(700), this.sigSize); c.fillStyle = rgba('sepia', 0.8); c.textAlign = 'right';
+        c.fillText(`${signature(m.name)}${m.couple ? '（新人）' : ''}`, NOTE.x + NOTE.w, top + (fit.lines.length - 1) * fit.lineHeight + fit.size * 0.3 + this.sigSize * 1.05);
         c.restore();
       }
       return;
@@ -501,13 +565,14 @@ export default class Manual extends Scene {
     // 沒有留言：印好的冷面注意事項＋一句邀請
     const u = prog(t, t0, t0 + 0.3);
     c.save(); c.globalAlpha = u;
-    c.font = font(F.hand(700), 78); c.fillStyle = rgba('sepia', 0.92);
-    c.fillText('請勿單獨組裝。', NOTE.x, NOTE.y + 90);
-    c.fillText('本產品需兩人', NOTE.x, NOTE.y + 190);
-    c.fillText('同時操作。', NOTE.x, NOTE.y + 290);
-    c.font = font(F.hand(700), 44); c.fillStyle = rgba('sepia', 0.66);
-    c.fillText('這一格留給你的叮嚀：', NOTE.x, NOTE.y + 420);
-    c.fillText('掃描右下角 QR code', NOTE.x, NOTE.y + 480);
+    // 螢幕上約 52 px 的注意事項三行＋ 30 px 的邀請兩行（欄寬 592，一行最多 9 個字）
+    const S = this.sNote, big = Math.min(Math.round(52 / S), Math.floor(NOTE.w / 9.5)), small = Math.round(30 / S);
+    c.font = font(F.hand(700), big); c.fillStyle = rgba('sepia', 0.92);
+    ['請勿單獨組裝。', '本產品需兩人', '同時操作。'].forEach((ln, i) => c.fillText(ln, NOTE.x, NOTE.y + big * (1 + i * 1.3)));
+    c.font = font(F.hand(700), small); c.fillStyle = rgba('sepia', 0.66);
+    const y0 = NOTE.y + big * 3.6 + small * 1.6;
+    c.fillText('這一格留給你的叮嚀：', NOTE.x, y0);
+    c.fillText('掃描右下角 QR code', NOTE.x, y0 + small * 1.4);
     c.restore();
   }
 }

@@ -14,9 +14,10 @@ import { FSPass, Layer2D } from '../engine/gl';
 import { F, font, loadText } from '../engine/type';
 import { rgba } from '../engine/palette';
 import { clamp, ease, hash, lerp, prog, pulse } from '../engine/util';
-import type { FitResult } from '../engine/text';
+import { fitText, type FitResult } from '../engine/text';
 import { lyricAt, signature } from './_motifs';
-import { grid, stagger, fitMsg, drawFit, layoutRows, drawRows, paperInk, lastIdx, Stage, docRT, camDist, type Grid, type RowsStyle, type V3 } from './_t4';
+import { grid, stagger, drawFit, layoutRows, drawRows, paperInk, lastIdx, Stage, docRT, camDist, type Grid, type RowsStyle, type V3 } from './_t4';
+import { msgMaxFor, lyricV2, sigV2, V2, fitClauses } from './_v2';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'doc', paper: true, energy: [0.3, 0.9], bars: [4, 8] };
 
@@ -32,13 +33,14 @@ const BAR1 = 306;
 const ROW0 = 330, RH = 40, NROW = 5;
 const BAR2 = ROW0 + NROW * RH + 8;
 const ING_Y = BAR2 + 40;
-const SIG = 62; // 署名在留言最後一行下面多少
-const MSG = { x: X0, y: ING_Y + 14, w: X1 - X0, h: LB.y + LB.h - 24 - SIG - (ING_Y + 14) };
+// v2：成分欄（留言）只佔標示的左邊一塊（畫面上 ≤ 860 寬），右邊是一個會跳的「心動指數」錶
+const MSG = { x: X0, y: ING_Y + 14, w: 850, h: LB.y + LB.h - 24 - (ING_Y + 14) };
+const GAUGE = { x: X1 - 150, y: ING_Y + 150, r: 118 };
+const SIG_K = 1.45; // 署名佔的高度 = 署名字級 × SIG_K
 const COL_V = 600, COL_P = 730; // 每份（靠右）、百分比（靠右）
 const BAR_X = 760, BAR_100 = 300; // 長條：100% 的長度
 const BADGE = { x: LB.x + LB.w - 30, y: 96, r: 84 }; // 貼在標示右上角（一半超出框）
 
-const LY: RowsStyle = { family: F.archivo(100, 800), size: 80, minSize: 64, maxW: X1 - X0, maxRows: 2, lineHeight: 1.04 };
 
 interface Row { k: string; v: string; unit: string; pct: number; pctText: string }
 const ROWS: Row[] = [
@@ -97,8 +99,11 @@ function boxGeometry() {
 
 function makeRig() {
   const doc = docRT(AW, AH);
-  const st = new Stage(2, 30);
+  // 商品攝影棚：盒子放在無縫背景紙上（沒有桌子、沒有紋理），一盞大柔光箱從左上打光，鏡頭像轉台一樣慢慢繞
+  const st = new Stage(6, 30);
   st.U.ambient.value = 0.74;
+  // 光圈外面暗一點點：背景紙往後漸暗，盒子站在光裡
+  st.U.poolFloor.value = 0.66;
   const mat = st.docMaterial(doc.texture, [doc.width, doc.height], [AW, AH], { edge: 0, depthTest: true });
   const box = new THREE.Mesh(boxGeometry(), mat);
   box.frustumCulled = false;
@@ -120,6 +125,12 @@ export default class Nutrition extends Scene {
   tMsg = 0; tCircle = Infinity; tBadge = Infinity;
   fit: FitResult | null = null;
   fam = F.ming(700);
+  /** 成分欄、歌詞那一格在畫面上是盒面的幾倍（鏡頭停好時量的），v2 的字級要換算。 */
+  sMsg = 0.8; sLyr = 0.75;
+  msgScreen: number | null = null;
+  sigSize = 36;
+  /** 每兩個小節線「重新計算」一次：數字再轉一次。 */
+  reroll: number[] = [];
   private baseDrawn = false;
 
   override async init() {
@@ -136,7 +147,24 @@ export default class Nutrition extends Scene {
     if (this.tCircle > e - 0.5) this.tCircle = Math.min(after + g.beat, e - 0.6);
     this.tBadge = nextBar(this.tCircle + 0.3);
     if (this.tBadge > e - 0.6) this.tBadge = Infinity;
-    if (this.msg) this.fit = fitMsg(this.live.ctx, this.msg.text, this.fam, MSG.w, MSG.h, { min: 56, max: 116, lineHeight: 1.2, maxLines: 3 });
+    this.reroll = g.bars.filter((b, i) => i % 2 === 0 && b > after + g.bar * 0.8 && b < e - 0.5);
+    // 鏡頭停好的位置先擺一次，量成分欄與歌詞在畫面上的縮放
+    this.look(1, 0, 0);
+    const st = this.rig.st;
+    const scaleAt = (u: number, v: number) => { const a = st.toScreen(this.world(u, v)), b = st.toScreen(this.world(u + 100, v)); return Math.hypot(b.x - a.x, b.y - a.y) / 100; };
+    this.sMsg = scaleAt(MSG.x + MSG.w / 2 - 50, MSG.y + MSG.h / 2);
+    this.sLyr = scaleAt(X0 + 400, LYR.y + LYR.h / 2);
+    // v2：留言字級照螢幕標準（依字數 40～60）換成盒面字級；可用高度先扣掉署名，照子句斷行
+    if (this.msg) {
+      const c = this.live.ctx, S = this.sMsg, maxS = msgMaxFor(this.msg.text);
+      const boxH = MSG.h - (sigV2(maxS) / S) * SIG_K;
+      const opt = { min: V2.msgMin / S, max: maxS / S, lineHeight: 1.22, maxLines: 5 };
+      const byW = fitText(c, this.msg.text, this.fam, MSG.w, boxH, opt);
+      const byC = fitClauses(c, this.msg.text, this.fam, MSG.w, boxH, opt);
+      this.fit = byC && byC.size >= byW.size * 0.9 ? byC : byW;
+      this.msgScreen = this.fit.size * S;
+      this.sigSize = Math.round(sigV2(this.msgScreen) / S);
+    }
   }
 
   override render(f: Frame, out: THREE.WebGLRenderTarget): PostOverrides {
@@ -152,6 +180,7 @@ export default class Nutrition extends Scene {
     this.drawRows(c, t);
     this.drawMessage(c, t);
     this.drawCircle(c, t);
+    this.drawGauge(c, t);
     this.drawBadge(c, t);
     comp.draw(renderer, L.upload(), R.doc);
     // ---- 2. 舞台
@@ -167,27 +196,37 @@ export default class Nutrition extends Scene {
     return [x * Math.cos(r) - y * Math.sin(r), x * Math.sin(r) + y * Math.cos(r), z];
   }
 
+  /** 鏡頭：k = 開場進度（0 貼近盒角、1 停好），push = 慢慢推近，bump = 小節線頂一下。 */
+  private look(k: number, push: number, bump: number, orbit = 0) {
+    const D = camDist(30);
+    // 盒子在畫面偏左上，右下角的 QR 區留乾淨
+    const aim = { x: lerp(LW * 0.84, LW * 0.68, k), y: lerp(LH * 0.5, LH * 0.66 + 20 * push, k) };
+    const T = this.world(aim.x, aim.y);
+    const dist = D * lerp(0.8, 1.4, k) * (1 - 0.06 * push) * (1 - 0.012 * bump);
+    const tilt = THREE.MathUtils.degToRad(lerp(44, 27, k));
+    const yaw = lerp(0.4, 0.13, k) + orbit;
+    this.rig.st.look([T[0] + Math.sin(yaw) * dist, T[1] - Math.sin(tilt) * dist * Math.cos(yaw), Math.cos(tilt) * dist], T);
+  }
+
   private shoot(t: number) {
     const R = this.rig, st = R.st, g = this.g, s = this.ctx.start, e = this.ctx.end;
-    const D = camDist(30);
-    // 開場：貼近右前方的盒角、低一點；第一拍 outExpo 轉到正面偏右（盒子在畫面偏左，右下角留給 QR），
-    // 之後慢慢推向成分欄；每個小節線頂一下
+    // 開場：貼近右前方的盒角、低一點；第一拍 outExpo 轉到正面偏右，之後慢慢推向成分欄；每個小節線頂一下
     const k = ease.outExpo(clamp((t - s) / Math.max(0.3, g.b0 - s + 0.5)));
     const push = ease.inOutCubic(clamp((t - g.b0) / Math.max(1, e - g.b0)));
     const bi = lastIdx(g.bars, t);
     const bump = bi >= 0 && g.bars[bi]! > g.b0 + 0.3 ? pulse(t, g.bars[bi]!, 0.14) : 0;
-    const aim = { x: lerp(LW * 0.84, LW * 0.62, k), y: lerp(LH * 0.5, LH * 0.6 + 20 * push, k) };
-    const T = this.world(aim.x, aim.y);
-    const dist = D * lerp(0.8, 1.26, k) * (1 - 0.07 * push) * (1 - 0.012 * bump);
-    const tilt = THREE.MathUtils.degToRad(lerp(44, 27, k));
-    const yaw = lerp(0.4, 0.13, k);
-    st.look([T[0] + Math.sin(yaw) * dist, T[1] - Math.sin(tilt) * dist * Math.cos(yaw), Math.cos(tilt) * dist], T);
+    // 轉台：停好之後鏡頭很慢地左右繞（整個窗格來回一次），商品攝影的感覺；幅度小，字不會歪到讀不了
+    const orbit = 0.07 * Math.sin(((t - g.b0) / Math.max(2, e - g.b0)) * Math.PI * 2) * k;
+    this.look(k, push, bump, orbit);
+    st.U.goboT.value = t;
     // 焦點：開場在歌詞（表頭那一格），留言印上去的時候拉到成分欄；光圈小：桌巾與盒子遠端微微失焦
     const fk = ease.inOutCubic(clamp((t - this.tMsg) / 0.5));
     const fl = st.depthOf(this.world(LW * 0.4, LYR.y + LYR.h / 2)), fm = st.depthOf(this.world(MSG.x + MSG.w * 0.45, MSG.y + MSG.h * 0.4));
     st.U.focus.value = lerp(fl, fm, fk);
     st.U.aperture.value = 36;
-    st.U.pool.value.set(-300, 200, 1800, 0.55);
+    // 柔光箱：光圈跟著轉台反方向慢慢滑（亮面在盒子上移動），每個小節線閃一下（像拍照的閃燈）
+    const flashK = bi >= 0 && g.bars[bi]! > g.b0 + 0.3 ? pulse(t, g.bars[bi]!, 0.07) : 0;
+    st.U.pool.value.set(-300 - 900 * orbit, 300, 1600, 0.6 - 0.25 * flashK);
     const c0 = this.world(LW / 2, LH / 2, 0);
     st.shadows([{ x: c0[0] + 60, y: c0[1] - 70, w: LW + 40, h: LH + 40, rot: R.box.rotation.z, blur: 70, k: 0.4, r: 20 }, { x: c0[0] + 8, y: c0[1] - 10, w: LW + 4, h: LH + 4, rot: R.box.rotation.z, blur: 10, k: 0.35, r: 4 }]);
   }
@@ -248,6 +287,8 @@ export default class Nutrition extends Scene {
   private drawLyric(c: CanvasRenderingContext2D, t: number) {
     const { lyrics, song } = this.ctx;
     const ly = lyricAt(lyrics, t);
+    // v2：歌詞比留言小一級（40～52 螢幕 px，換成盒面字級）
+    const LY: RowsStyle = { family: F.archivo(100, 800), size: lyricV2(this.msgScreen) / this.sLyr, minSize: V2.lyrMin / this.sLyr, maxW: X1 - X0 - 200, maxRows: 2, lineHeight: 1.06 };
     if (ly) {
       const lay = layoutRows(c, ly.line, LY);
       const top = LYR.y + (LYR.h - lay.height) / 2 + lay.size * 0.84;
@@ -274,7 +315,10 @@ export default class Nutrition extends Scene {
       const t0 = this.rowT[i]!;
       if (t < t0 - 0.02) return;
       const y = ROW0 + i * RH, base = y + 28;
-      const roll = prog(t, t0, t0 + Math.min(0.42, this.g.beat * 0.9));
+      // 每兩個小節線「重新計算」一次：數字再轉一次（一列晚一點點，像一排拉霸依序停下）
+      let rs = t0;
+      for (const b of this.reroll) if (b + i * 0.07 <= t) rs = b + i * 0.07;
+      const roll = prog(t, rs, rs + Math.min(0.42, this.g.beat * 0.9));
       c.font = font(F.hei(500), 20); c.fillStyle = rgba('sepia');
       const uw = r.unit ? c.measureText(r.unit).width + 6 : 0;
       if (r.unit) c.fillText(r.unit, COL_V - uw + 6, base);
@@ -333,7 +377,8 @@ export default class Nutrition extends Scene {
     if (t < t0) return;
     if (m && this.fit) {
       const fit = this.fit;
-      const top = MSG.y + fit.size * 0.9 + Math.max(0, (MSG.h - fit.height) * 0.3);
+      const sigH = this.sigSize * SIG_K;
+      const top = MSG.y + fit.size * 0.9 + Math.max(0, (MSG.h - fit.height - sigH) * 0.3);
       // 印刷滾筒：一行一行由左往右印上去
       fit.lines.forEach((ln, i) => {
         const a = t0 + i * 0.09, u = prog(t, a, a + 0.26, ease.outCubic);
@@ -347,9 +392,9 @@ export default class Nutrition extends Scene {
       const ka = prog(t, ts, ts + 0.3);
       if (ka > 0) {
         c.save(); c.globalAlpha = ka;
-        c.font = font(F.hand(700), 48); c.fillStyle = rgba('sepia', 0.85); c.textAlign = 'right';
-        // 署名永遠在最後一行下面（MSG 的高度已經扣掉署名）
-        c.fillText(`${signature(m.name)}${m.couple ? '（新人）' : ''}`, X1, top + (fit.lines.length - 1) * fit.lineHeight + SIG);
+        c.font = font(F.hand(700), this.sigSize); c.fillStyle = rgba('sepia', 0.85); c.textAlign = 'right';
+        // 署名永遠在最後一行下面（字級是扣掉署名的高度算的）：讓出下伸部再放署名
+        c.fillText(`${signature(m.name)}${m.couple ? '（新人）' : ''}`, MSG.x + MSG.w, top + (fit.lines.length - 1) * fit.lineHeight + fit.size * 0.3 + this.sigSize * 1.05);
         c.restore();
       }
       return;
@@ -357,10 +402,46 @@ export default class Nutrition extends Scene {
     // 沒有留言：成分欄是空的，一句邀請
     const u = prog(t, t0, t0 + 0.3);
     c.save(); c.globalAlpha = u;
-    c.font = font(F.hand(700), 76); c.fillStyle = rgba('sepia', 0.9);
+    const S = this.sMsg;
+    c.font = font(F.hand(700), Math.round(56 / S)); c.fillStyle = rgba('sepia', 0.9);
     c.fillText('你的祝福（尚未添加）', MSG.x, MSG.y + 84);
-    c.font = font(F.hand(700), 46); c.fillStyle = rgba('sepia', 0.66);
-    c.fillText('掃描右下角 QR code，把你的祝福加進成分表', MSG.x, MSG.y + 160);
+    c.font = font(F.hand(700), Math.round(30 / S)); c.fillStyle = rgba('sepia', 0.66);
+    c.fillText('掃描右下角 QR code，把你的祝福加進成分表', MSG.x, MSG.y + 150);
+    c.restore();
+  }
+
+  // ------------------------------------------------------------ 心動指數（成分欄右邊的錶）
+  /** 半圓的錶：指針一直頂在最右邊（超出量表），每一拍被大鼓頂一下、彈回來；小節線時整個錶面亮一下。 */
+  private drawGauge(c: CanvasRenderingContext2D, t: number) {
+    const au = this.ctx.audio, G = GAUGE;
+    const k = prog(t, this.tMsg, this.tMsg + 0.5, ease.outCubic);
+    if (k <= 0) return;
+    c.save();
+    c.globalAlpha = k;
+    c.translate(G.x, G.y);
+    // 刻度：0～100，最右邊一段是訊號色的暗部（「超出量表」）
+    c.strokeStyle = rgba('sepia', 0.85); c.lineWidth = 3;
+    c.beginPath(); c.arc(0, 0, G.r, Math.PI, 0); c.stroke();
+    for (let i = 0; i <= 10; i++) {
+      const a = Math.PI + (i / 10) * Math.PI, l = i % 5 === 0 ? 18 : 10;
+      c.lineWidth = i % 5 === 0 ? 3 : 1.6;
+      c.beginPath(); c.moveTo(Math.cos(a) * G.r, Math.sin(a) * G.r); c.lineTo(Math.cos(a) * (G.r - l), Math.sin(a) * (G.r - l)); c.stroke();
+    }
+    c.strokeStyle = rgba('blood', 0.9); c.lineWidth = 9;
+    c.beginPath(); c.arc(0, 0, G.r - 6, -0.42, 0); c.stroke();
+    // 指針：過了滿刻度還往外頂（大鼓一下就多頂一點、彈簧似地回來），第一次出現時從 0 甩上去
+    const bar = au.barAt(t), fl = 1 - clamp((bar - Math.floor(bar)) * 6);
+    const up = ease.outBack(clamp((t - this.tMsg) / 0.6), 2.2);
+    const ang = Math.PI + Math.PI * (up * 1.02) + 0.1 * au.hit('kick', t, 0.12) + 0.03 * Math.sin(t * 23) * up;
+    c.strokeStyle = rgba('blood'); c.lineWidth = 4; c.lineCap = 'round';
+    c.beginPath(); c.moveTo(0, 0); c.lineTo(Math.cos(ang) * (G.r - 14), Math.sin(ang) * (G.r - 14)); c.stroke();
+    c.fillStyle = rgba('sepia'); c.beginPath(); c.arc(0, 0, 9, 0, Math.PI * 2); c.fill();
+    c.fillStyle = rgba('signal', 0.25 * fl); c.beginPath(); c.arc(0, 0, G.r + 10, Math.PI, 0); c.fill();
+    c.textAlign = 'center';
+    c.font = font(F.hei(700), 20); c.fillStyle = rgba('sepia', 0.85);
+    c.fillText('心動指數', 0, 40);
+    c.font = font(F.hei(500), 16); c.fillStyle = rgba('blood', 0.9);
+    c.fillText('超出量表', 0, 66);
     c.restore();
   }
 

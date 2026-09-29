@@ -174,16 +174,39 @@ void main() {
   float shadow = (1.0 - smoothstep(-14.0, 48.0, dSh)) * 0.3 + (1.0 - smoothstep(-2.0, 7.0, dSh)) * 0.1;
   // 桌面：比紙深一階的暖色（紙才浮得出來），拉長的纖維紋；超出烘焙範圍也要有，所以用程序雜訊
   float grain = 0.5 + 0.3 * snoise(p * vec2(0.0035, 0.024)) + 0.14 * snoise(p * 0.019 + 3.0);
-  vec3 desk = mix(C_PAPER, C_SEPIA, 0.22) * (0.93 + 0.08 * grain) * (1.0 - shadow);
+  // v2：鏡頭拉遠、桌面露出來比較多：桌面比紙深兩階（紙才浮得出來，下面那張舊鈔票也分得出來）
+  vec3 desk = mix(C_PAPER, C_SEPIA, 0.36) * (0.9 + 0.1 * grain) * (1.0 - shadow);
   vec3 paper = C_PAPER * (0.965 + 0.045 * fib);
   // 紙的邊緣一點點磨損的暗；紙不是完全平的，有很淡的起伏
   paper *= (1.0 - 0.05 * smoothstep(-10.0, 0.0, dPaper)) * (1.0 + 0.018 * snoise(p / 430.0 + 1.7));
+  // 底下斜斜壓著一張舊鈔票（整疊的感覺）：同一套外框（取烘焙的底紋，淡一點、舊一點），比上面那張暗
+  {
+    vec2 q2 = rot2(0.075) * (p - nc - vec2(-70.0, 58.0)) + nc;
+    float d2 = sdRBox(q2, nc, nh, 12.0);
+    float in2 = 1.0 - smoothstep(-1.0, 1.0, d2);
+    if (in2 > 0.0) {
+      vec4 bk2 = texture(uBake, vec2(q2.x / ${W}.0, 1.0 - q2.y / ${H}.0));
+      vec3 old = mix(C_PAPER, C_SEPIA, 0.12) * (0.9 + 0.04 * bk2.b);
+      old = mix(old, C_SEPIA, 0.45 * bk2.r);
+      old *= 1.0 - 0.1 * smoothstep(-12.0, 0.0, d2);
+      // 舊鈔票自己落在桌上的影子（很淡）
+      desk = mix(desk, old * (1.0 - 0.55 * shadow), in2);
+    }
+  }
   vec3 col = mix(desk, paper, inPaper);
   // 暖色主光：左上最亮、往右下慢慢暗下去（紙最亮處不超過原本的紙色，不比 bone 刺眼）
   vec2 lq = (p - vec2(380.0, 200.0)) / 1150.0;
   float light = 0.66 + 0.36 * exp(-0.5 * dot(lq, lq));
   // 紙上緣之外的桌面是鏡頭遠處：再暗一點，空間才有深度
   light *= mix(0.84, 1.0, smoothstep(-160.0, 260.0, p.y));
+  // 窗外的樹影：斜斜落在桌面與鈔票的右上半，在風裡很慢地晃（葉縫之間是亮的）；一道窗光很慢地從左掃到右
+  {
+    vec2 lp = p * 0.0024 + vec2(0.25 * sin(uT * 0.42) + 0.06 * sin(uT * 1.3), 0.12 * sin(uT * 0.31 + 1.0));
+    float leafM = smoothstep(700.0, 1900.0, p.x) * smoothstep(900.0, -100.0, p.y);
+    light *= 1.0 - 0.14 * leafM * smoothstep(0.14, 0.3, fbm(lp, 3));
+    float sweep = dot(p, vec2(0.8, 0.6)) - (900.0 + 900.0 * sin(uT * 0.06));
+    light *= 1.0 + 0.07 * exp(-sweep * sweep / (260.0 * 260.0));
+  }
 
   float ink = 0.0;       // 墨色（sepia）
   float tint = 0.0;      // 套色（淺的訊號色）

@@ -10,15 +10,19 @@
 //    留言是整個畫面最大、最清楚的字；沒有留言時是一張寫著邀請的卡（焦點交給歌詞）。
 //  - 純音樂（這個窗格沒有人唱）：溝紋改刻留言（短的）或新人的名字，唱針用閱讀的速度讀過去；卡片改成唱片的製作名單。
 //  - 轉速依 BPM 選 33⅓ 或 45（印在標籤上）。
+// v2（2026-09-29「留言尺寸與版面比例標準 v2」）：紙卡上的留言在畫面上 40～60 px（依字數）、署名 26～32，
+// 紙卡在畫面上 ≤ 430 高；溝紋上的歌詞 40～52（不比留言大）。字級都照相機在那一點的放大率換成桌面字級。
+// 紙卡變小之後桌面空出來：燈光裡有灰塵慢慢飄，唱盤邊緣一圈頻閃點（真的唱盤校轉速用的）在燈下一閃一閃。
 import * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides } from '../engine/scene';
 import { FSPass, Layer2D, makeRT, W, H, SCALE } from '../engine/gl';
 import { LineBatch } from '../engine/lines';
 import { F, font, layout, loadText } from '../engine/type';
 import { LIN, rgba } from '../engine/palette';
-import { clamp, ease, lerp, prog, pulse, noise1, TAU } from '../engine/util';
+import { clamp, ease, lerp, prog, pulse, noise1, hash, TAU } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
 import { sparkHead, sparkParticles, beatAfter, signature, drawHeart, COUPLE_EN, COUPLE_ZH, DATE_DOTS } from './_motifs';
+import { V2, msgMaxFor, lyricV2, sigV2, fitClauses as fitClausesV2 } from './_v2';
 import { FRAG_VINYL, FRAG_DOF } from './vinyl-glsl';
 
 type P2 = { x: number; y: number };
@@ -247,6 +251,11 @@ export default class Vinyl extends Scene {
   cardFit: FitResult | null = null;
   /** 紙卡的寬高（桌面 px）：留言用大卡；邀請、製作名單不是焦點，用小一點的卡。 */
   cardW: number = CARD.w;
+  /** 紙卡那裡相機的放大率（窗格裡的平均）、溝紋上字的最小字級（桌面 px）。 */
+  magCard = 1;
+  minSz = 40;
+  /** 唱針那裡相機的放大率（窗格裡最小、最大）。 */
+  magMin = 1; magMax = 1;
   cardH = 400;
   tDrop = 0;
   beat = 0.5;
@@ -267,13 +276,20 @@ export default class Vinyl extends Scene {
     const singing = lyrics.lines.some((l) => l.words.some((w) => w.end > start + 0.2 && w.start < end - 0.3));
     this.cardKind = this.msg ? 'msg' : 'invite';
     if (!singing && this.msg && this.messageFitsRing(this.msg)) this.cardKind = 'credits';
+    // 相機走完整個窗格，唱針那裡、紙卡那裡各放大幾倍（v2 的字級是畫面上的 px，要換成桌面字級）
+    let magMin = Infinity, magMax = 0, magCard = 0;
+    for (const u of [0, 0.5, 1]) {
+      this.camAt(start + 1.3 + u * Math.max(0, end - start - 1.3));
+      const m = this.cam.mag(C.x, C.y - R0 - 30);
+      magMin = Math.min(magMin, m); magMax = Math.max(magMax, m);
+      magCard += this.cam.mag(CARD.x, CARD.y) / 3;
+    }
+    this.magCard = magCard; this.magMin = magMin; this.magMax = magMax;
     this.layoutCard();
-    // 相機走完整個窗格，唱針那裡最小會放大幾倍：溝紋上的字在螢幕上至少 50 px
-    let magMin = Infinity;
-    for (const u of [0, 0.5, 1]) { this.camAt(start + 1.3 + u * Math.max(0, end - start - 1.3)); magMin = Math.min(magMin, this.cam.mag(C.x, C.y - R0 - 30)); }
-    const minSz = Math.ceil(50 / magMin);
-    const msgSz = this.cardKind === 'msg' && this.cardFit ? this.cardFit.size : 999;
-    this.sz = clamp(Math.round(msgSz * 0.86), minSz, Math.max(minSz, 60));
+    const minSz = Math.ceil(V2.lyrMin / magMin);
+    this.minSz = minSz;
+    const msgScreen = this.cardKind === 'msg' && this.cardFit ? this.cardFit.size * magCard : null;
+    this.sz = Math.max(minSz, Math.round(lyricV2(msgScreen) / magMax));
 
     let knots: [number, number][] = [];
     if (singing) knots = this.buildLyrics(inWin);
@@ -344,7 +360,8 @@ export default class Vinyl extends Scene {
    */
   private buildMessageRing(m: Msg, minSz: number): [number, number][] {
     const { end } = this.ctx;
-    const size = this.sz = Math.max(66, minSz);
+    // 溝紋上的留言：畫面上照 v2（依字數，40～60）
+    const size = this.sz = Math.max(Math.ceil(V2.msgMin / this.magMin), Math.round(msgMaxFor(m.text) / this.magMax));
     const lay = layout(m.text, FAM_MSG, size);
     const n = lay.glyphs.length;
     const t0 = this.tDrop + this.beat * 0.5;
@@ -515,12 +532,19 @@ export default class Vinyl extends Scene {
   /** 卡片的內容排版與高度（桌面 px）。上緣一行極小的標記，內文、署名；沒有標題列、編號、註腳。 */
   private layoutCard() {
     const c = this.txt.ctx;
-    this.cardW = this.cardKind === 'msg' ? CARD.w : this.cardKind === 'credits' ? 440 : 470;
+    // v2：留言的字變小，卡片寬一點點（600），一個子句比較放得下一行，不會斷成「…這一天，要／一直…」
+    this.cardW = this.cardKind === 'msg' ? 600 : this.cardKind === 'credits' ? 440 : 470;
     const inner = this.cardW - 2 * 40;
     if (this.cardKind === 'msg' && this.msg) {
-      // 上 40 + 標記 42、下：署名 64 + 36
-      const maxBody = CARD.maxH - 40 - 42 - 64 - 36;
-      this.cardFit = fitClauses(c, this.msg.text, FAM_MSG, inner, maxBody, { min: 44, max: 96, lineHeight: 1.3, maxLines: 6 });
+      // 上 40 + 標記 42、下：署名 64 + 36；紙卡在畫面上 ≤ 430 高
+      const k = this.magCard;
+      // 透視：卡片的遠端放大率比中心大一點，高度留一點餘裕（410 而不是 430）
+      const maxBody = Math.min(CARD.maxH, 410 / k) - 40 - 42 - 64 - 36;
+      const o = { min: V2.msgMin / k, max: msgMaxFor(this.msg.text) / k, lineHeight: 1.3, maxLines: 5 };
+      // 先試「只在標點處斷行」，放不下再試照子句排（長子句在句子裡面斷），都不行才照一般的平衡斷行
+      const strict = fitClauses(c, this.msg.text, FAM_MSG, inner, maxBody, o);
+      const soft = fitClausesV2(c, this.msg.text, FAM_MSG, inner, maxBody, o);
+      this.cardFit = strict.size >= o.max * 0.999 || !soft || strict.size >= soft.size * 0.95 ? strict : soft;
       this.cardH = 40 + 42 + this.cardFit.height + 64 + 36;
     } else if (this.cardKind === 'credits') {
       this.cardH = 40 + 42 + 3 * 46 + 30;
@@ -553,7 +577,7 @@ export default class Vinyl extends Scene {
       c.font = font(FAM_MSG, fit.size);
       c.fillStyle = BODY;
       fit.lines.forEach((ln, i) => fillHearts(c, ln, pad, y0 + fit.size * 0.92 + i * fit.lineHeight, fit.size, HEART));
-      c.font = font(F.hand(400), 38);
+      c.font = font(F.hand(400), sigV2(fit.size * this.magCard) / this.magCard);
       c.textAlign = 'right';
       c.fillStyle = SIG;
       c.fillText(signature(m.name), w - pad, y0 + fit.height + 54);
@@ -604,7 +628,7 @@ export default class Vinyl extends Scene {
     const slide = Math.min(1, 1 - cin + cout);
     const top = Math.max(CARD.top, CARD.y - this.cardH / 2);
     return {
-      x: CARD.x + (CARD.w - this.cardW) / 2 + slide * 820, y: top + this.cardH / 2 - slide * 40,
+      x: CARD.x + (CARD.w - this.cardW) / 2 - (this.cardW > CARD.w ? 12 : 0) + slide * 820, y: top + this.cardH / 2 - slide * 40,
       rot: lerp(-6, -1.6, clamp(settle, 0, 1.2)) * DEG,
       lift: Math.min(1, (1 - cin) * 1.4 + cout),
       on: slide < 1,
@@ -681,6 +705,7 @@ export default class Vinyl extends Scene {
         }
       }
     }
+    this.drawDust(t, inK);
     if (this.glow.count) this.glow.render(renderer, out);
 
     // 螢幕上的兩小群字（像片頭的小字，不跟著桌面動）
@@ -693,6 +718,24 @@ export default class Vinyl extends Scene {
       zoom: 1 + 0.004 * kick + 0.005 * db + 0.008 * touch,
       shake: [2.5 * touch * noise1(t * 40, 1), 2.5 * touch * noise1(t * 43, 2)] as [number, number],
     };
+  }
+
+  /**
+   * 燈光裡的灰塵（v2 多補的環境動態）：在燈照到的那一團空氣裡慢慢飄、轉到光裡亮一下。
+   * 桌面上方的空氣換到畫面上：以燈照在桌上的中心投影到畫面為準，往上飄。
+   */
+  private drawDust(t: number, k: number) {
+    const B = LIN.bone, cam = this.cam, lp = cam.proj(LAMP.x, LAMP.y);
+    for (let i = 0; i < 44; i++) {
+      const h = (n: number) => hash(i, n, 71);
+      const u = (h(1) + t * (0.008 + 0.014 * h(2))) % 1;
+      const x = lp.x + (h(3) - 0.5) * 900 + 30 * Math.sin(t * 0.4 + i);
+      const y = lp.y + 380 - u * 760 + 12 * Math.sin(t * 0.7 + i * 1.3);
+      const d = Math.hypot((x - lp.x) / 520, (y - lp.y) / 420);
+      const a = k * Math.exp(-d * d) * (0.12 + 0.3 * h(4)) * (0.5 + 0.5 * Math.sin(t * (0.8 + h(5)) + i * 2)) * Math.sin(Math.PI * u);
+      if (a < 0.015) continue;
+      this.glow.seg2(x, y, x + 0.6, y + 0.6, 1.8, [B[0] * a, B[1] * a, B[2] * a], 1);
+    }
   }
 
   /** 唱臂：從軸心伸到唱頭座後端（唱頭座往唱片中心偏一點角度，像真的唱臂）。 */
@@ -853,7 +896,7 @@ function fitClauses(c: CanvasRenderingContext2D, text: string, family: string, w
   const base = fitText(c, text, family, w, h, o);
   if (!/[\p{Script=Han}]/u.test(text)) return base;
   const parts = text.match(/[^，。！？!?,.、~～…；;：:\s]+[，。！？!?,.、~～…；;：:\s]*|[，。！？!?,.、~～…；;：:\s]+/gu) ?? [text];
-  for (let size = o.max; size >= Math.max(o.min, 52); size -= 2) {
+  for (let size = Math.floor(o.max); size >= o.min; size -= 1) {
     c.font = font(family, size);
     const lines: string[] = [];
     let cur = '', ok = true;

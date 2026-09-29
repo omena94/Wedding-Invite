@@ -11,16 +11,23 @@
 //   1 更重：底色字在滿版訊號色上，一次只有一組、撐滿畫面；打完在下一拍組成一塊。退場時眼皮闔上成一條發光的縫。
 //   2 安靜：極細的字、很小、大量的黑；新的一組從下面升上來，舊的往上爬、變淡，整疊慢慢轉。
 //   3 最滿：一組撐滿畫面，打上來的那一下疊影往外擴散、字分裂、畫面震（都很快衰減）；定住的留言幾乎靜止，讀得清楚。
+// v2（2026-09-29「留言尺寸與版面比例標準 v2」）：大字只給歌詞（沒有留言的窗格）與很短的留言（≤ 6 字的那一下重擊）。
+//  - 留言打完組成一塊時照 v2 字級（40～60 px，依字數）、放在畫面左邊一塊 ≤ 800×430 的地方，署名 26～32；
+//    長留言的詞組直接打在最後的位置上（不再一組撐滿畫面）。上方的歌詞帶 40～52（不比留言大）。
+//  - 空出來的右半邊：正在唱的那個詞變成巨大的空心字（很細的描邊、很淡），每個詞在唱到的那一刻「砸」下來再淡掉，
+//    跟著拍子一直在動——保留「重擊」的感覺，但只是背景的紋理，不搶留言（純音樂時砸的是新人的名字）。
 import * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides } from '../engine/scene';
 import { FSPass, Layer2D, W, H } from '../engine/gl';
 import { LineBatch } from '../engine/lines';
 import { F, font, loadText } from '../engine/type';
-import { LIN, rgba, type PaletteKey } from '../engine/palette';
+import { LIN, rgba, mixRgba, type PaletteKey } from '../engine/palette';
 import { clamp, ease, lerp, noise1, prog, pulse } from '../engine/util';
 import { readSeconds } from '../engine/text';
 import type { Line } from '../engine/lyrics';
-import { sparkHead, sparkParticles, drawLyric, layoutLyric, lyricAt, signature, beatAfter, type LyricStyle } from './_motifs';
+import { sparkHead, sparkParticles, drawLyric, layoutLyric, lyricAt, signature, beatAfter, COUPLE_EN, type LyricStyle } from './_motifs';
+import { V2, msgMaxFor, msgLen, lyricV2, sigV2 } from './_v2';
+// （標點、符號不算字：「新婚快樂！！！」是四個字的短句，可以重擊）
 import { layoutSlab, linePieces, textPieces, drawCells, headAt, isEastern, type Piece, type Slab, type Tone } from './slam-type';
 
 /** 舞台左右（離邊 120：規定 96，投影機裁邊再多留一點）。 */
@@ -37,8 +44,13 @@ const TOP = 184, BOTTOM = 780;
 const STRIP_Y = 172, STRIP_W = 1460;
 /** 變化款 1、3 唱歌詞時，大字舞台從歌詞帶下面開始。 */
 const STRIP_TOP = 272;
-/** 留言塊的舞台：上方有歌詞帶時讓開它（中間留一大段空，兩組大字不擠在一起），下面留給署名那一列。 */
-const NOTE_TOP_STRIP = 300, NOTE_TOP = 220, NOTE_BOTTOM = 700;
+/** 留言塊的舞台（v2）：畫面左邊一塊 ≤ 800 寬，上方有歌詞帶時讓開它，下面留給署名那一列。 */
+const NOTE_TOP_STRIP = 330, NOTE_TOP = 300, NOTE_BOTTOM = 690;
+const NOTE_V2_W = 780;
+/** 很短的留言（≤ 這麼多字）打上來的那一下可以一組撐滿畫面（重擊），組成一塊之後一樣照 v2 字級。 */
+const SHORT_SLAM = 6;
+/** 右半邊空心大字的範圍（留言在左邊時）。 */
+const GHOST = { x0: 1000, x1: 1800, y0: 250, y1: 760 };
 /** 署名那一列的基線最低到這裡（鏡頭推到最近時仍在 QR 區 y = 830 上面）。 */
 const SIG_MAX_Y = 786;
 /** 一句唱完後大字留多久（下一句先開始就提早收）。 */
@@ -266,19 +278,23 @@ export default class Slam extends Scene {
     const top = lyric ? (v === 1 || v === 3 ? STRIP_TOP : TOP) : note ? (this.hasStrip ? NOTE_TOP_STRIP : NOTE_TOP) : TOP + 30;
     const bottom = lyric ? BOTTOM : note ? NOTE_BOTTOM : BOTTOM - 84;
     const box = { top, bottom };
-    const align: 'left' | 'center' = v === 0 ? 'left' : 'center';
+    // 留言一律靠左（右半邊給空心大字）；歌詞、邀請照原本的款式
+    const align: 'left' | 'center' = v === 0 || note ? 'left' : 'center';
+    const noteMax = note ? msgMaxFor(this.msg!.text) : 0;
     let slab: Slab;
     if (v === 2) {
       // 安靜款最後組成的樣子也是細的；留言還是整個畫面最大的字
       const quiet = note ? [F.ming(400)] : [F.archivo(125, 300)];
-      slab = layoutSlab(c, pieces, { families: quiet, w: LAD.w, h: Math.min(LADDER_NOTE.bottom - LADDER_NOTE.top, bottom - top), maxRows: 4, maxSize: note ? 112 : kind === 'invite' ? 88 : 96, minSize: 44, align: 'left', pitch: 1.45 });
+      slab = layoutSlab(c, pieces, { families: quiet, w: note ? NOTE_V2_W : LAD.w, h: Math.min(LADDER_NOTE.bottom - LADDER_NOTE.top, bottom - top), maxRows: note ? 5 : 4, maxSize: note ? noteMax : kind === 'invite' ? 88 : 96, minSize: note ? V2.msgMin : 44, align: 'left', pitch: 1.45 });
     } else {
       // 留言保留大小寫：小寫字有下伸部，行距不能用全大寫的 0.96
-      slab = layoutSlab(c, pieces, { families: fams, w: note ? NOTE_W : v === 0 && lyric ? V0_LYRIC_W : SW, h: bottom - top, maxRows: 4, maxSize: lyric ? 470 : 400, minSize: lyric ? 60 : 44, align, pitch: note ? (eastern ? 1.12 : 1.2) : undefined });
+      slab = layoutSlab(c, pieces, { families: fams, w: note ? NOTE_V2_W : v === 0 && lyric ? V0_LYRIC_W : SW, h: bottom - top, maxRows: note ? 5 : 4, maxSize: lyric ? 470 : note ? noteMax : 400, minSize: lyric ? 60 : note ? V2.msgMin : 44, align, pitch: note ? (eastern ? 1.3 : 1.25) : undefined });
     }
-    const singles = v === 1 || v === 3 ? pieces.map((p) => layoutSlab(c, [p], { families: fams, w: SW, h: bottom - top, maxRows: 1, maxSize: 620, minSize: 60, align: 'center' })) : [];
+    // 一組撐滿畫面的重擊：歌詞、邀請，與很短的留言（長留言的詞組直接打在最後的位置上）
+    const bigSingles = !note || msgLen(this.msg!.text.replace(/[\p{P}\p{S}]/gu, '')) <= SHORT_SLAM;
+    const singles = (v === 1 || v === 3) && bigSingles ? pieces.map((p) => layoutSlab(c, [p], { families: fams, w: SW, h: bottom - top, maxRows: 1, maxSize: note ? 260 : 620, minSize: 60, align: 'center' })) : [];
     const rungFam = note ? [F.ming(400)] : [F.archivo(125, 300)];
-    const rungs = v === 2 ? pieces.map((p) => layoutSlab(c, [p], { families: rungFam, w: LAD.w, h: 90, maxRows: 1, maxSize: 64, minSize: 48, track: 0.14, align: 'left' })) : [];
+    const rungs = v === 2 ? pieces.map((p) => layoutSlab(c, [p], { families: rungFam, w: LAD.w, h: 90, maxRows: 1, maxSize: note ? Math.min(noteMax, 56) : 64, minSize: note ? V2.msgMin : 48, track: 0.14, align: 'left' })) : [];
     return { kind, tIn, tOut, pieces, slab, singles, rungs, box, align, line, tAll, tSig, hits: [] };
   }
 
@@ -359,6 +375,7 @@ export default class Slam extends Scene {
       // 退場：整個舞台壓扁成一條線（下一個版面在小節線上切進來）
       c.translate(0, cy); c.scale(1, Math.max(0.006, 1 - ex)); c.translate(0, -cy);
     }
+    if (it && it.kind === 'msg') this.drawGhost(c, t, it);
     if (v === 2) head = this.drawLadder(c, t);
     else if (it) head = it.kind === 'line' ? this.drawLine(c, it, t) : this.drawNote(c, it, t);
     c.restore();
@@ -528,13 +545,13 @@ export default class Slam extends Scene {
     return head;
   }
 
-  /** 變化款 1、3：一次一組、撐滿舞台。 */
-  private drawSingle(c: CanvasRenderingContext2D, it: Item, t: number): P2 | null {
+  /** 變化款 1、3：一次一組、撐滿舞台。`stage`：很短的留言重擊時用整個舞台（組成一塊之後才回到左邊的留言區）。 */
+  private drawSingle(c: CanvasRenderingContext2D, it: Item, t: number, stage?: Box): P2 | null {
     let idx = -1;
     it.pieces.forEach((p, i) => { if (t >= p.t0) idx = i; });
     if (idx < 0) return null;
     const p = it.pieces[idx]!, sl = it.singles[idx]!;
-    const { x: bx, y: by } = this.place(sl, it.box, 'center');
+    const { x: bx, y: by } = this.place(sl, stage ?? it.box, 'center');
     this.guides(c, sl, bx, by, t, 1);
     const t0 = this.v === 3 ? this.retrig(t) : p.t0;
     const sc = this.punch(t, t0, this.v === 3 ? (t0 === p.t0 ? 0.26 : 0.1) : 0.14);
@@ -589,7 +606,8 @@ export default class Slam extends Scene {
     if (whole) {
       if (v === 0) this.drawBuild(c, it, sl, t);
       else this.drawWhole(c, it, t, 0);
-    } else this.drawSingle(c, it, t);
+    } else if (it.singles.length) this.drawSingle(c, it, t, { top: TOP, bottom: BOTTOM });
+    else this.drawBuild(c, it, sl, t);
     let head: P2 | null = null;
     // 署名（或邀請的指引）：打完之後的下一拍，火花在下面劃一條線
     if (t >= it.tSig) {
@@ -597,8 +615,8 @@ export default class Slam extends Scene {
       const lineK = prog(t, it.tSig, it.tSig + this.ctx.audio.beatPeriod(it.tSig) * 0.9, ease.inOutCubic);
       if (it.kind === 'invite') head = this.drawArrow(c, by, sl, ks, lineK, v === 1 ? 'ink' : 'bone');
       else {
-        const size = clamp(sl.size * 0.3, 40, 64);
-        const y = Math.min(by + sl.bottom + size * 1.5, SIG_MAX_Y);
+        const size = sigV2(sl.size);
+        const y = Math.min(by + sl.bottom + size * 1.6, SIG_MAX_Y);
         head = this.drawSigRow(c, bx, y, sl.width, size, F.hand(700), ks, lineK);
       }
     }
@@ -722,7 +740,7 @@ export default class Slam extends Scene {
       if (it.kind === 'msg' && t >= it.tSig) {
         const ks = prog(t, it.tSig, it.tSig + 0.5);
         const lineK = prog(t, it.tSig, it.tSig + this.ctx.audio.beatPeriod(it.tSig) * 0.9, ease.inOutCubic);
-        head = this.drawSigRow(c, bx, Math.min(by + sl.bottom + 84, SIG_MAX_Y - 20), sl.width, 44, F.hand(400), ks, lineK) ?? head;
+        head = this.drawSigRow(c, bx, Math.min(by + sl.bottom + sigV2(sl.size) * 1.7, SIG_MAX_Y - 20), sl.width, sigV2(sl.size), F.hand(400), ks, lineK) ?? head;
       }
       c.restore();
     }
@@ -752,6 +770,48 @@ export default class Slam extends Scene {
     g.addColorStop(1, rgba('bone', 0));
     c.fillStyle = g;
     c.fillRect(-200, y + 19, W + 400, 1);
+  }
+
+  // ---------------------------------------------------------------- 右半邊的空心大字
+  /**
+   * 有留言時右半邊的紋理：正在唱的那個詞（純音樂時是新人的名字，一拍一個）變成巨大的空心字——很細的描邊、很淡，
+   * 唱到（打到）的那一刻大一點、亮一點（訊號色）砸下來，再慢慢淡掉、往後退。只在留言定住之後才明顯（打留言的時候讓位）。
+   */
+  private drawGhost(c: CanvasRenderingContext2D, t: number, it: Item) {
+    const au = this.ctx.audio, v = this.v;
+    let word = '', t0 = -Infinity;
+    const ly = lyricAt(this.ctx.lyrics, t);
+    if (ly) {
+      for (const w of ly.line.words) { if (w.start <= t + 0.02 && w.w.trim()) { word = w.w; t0 = w.start; } }
+    } else if (!this.hasStrip) {
+      // 純音樂：一拍一個（ALAN、&、OMENA 輪流）
+      const bi = Math.floor(au.beatAt(t) + 1e-4), names = COUPLE_EN.split(/\s+/).filter(Boolean);
+      word = names[((bi % names.length) + names.length) % names.length]!;
+      t0 = au.timeOfBeat(bi);
+    }
+    if (!word) return;
+    const age = t - t0;
+    const k = clamp(1 - age / 1.6) * prog(t, it.tAll - 0.3, it.tAll + 0.6);
+    if (k <= 0.01) return;
+    const txt = /[A-Za-z]/.test(word) ? word.toUpperCase() : word;
+    const fam = F.archivo(100, 900);
+    const gw = GHOST.x1 - GHOST.x0, gh = GHOST.y1 - GHOST.y0;
+    c.save();
+    c.font = font(fam, 100);
+    const w100 = Math.max(1, c.measureText(txt).width);
+    const size = Math.min(gh * 0.78, (gw * 0.95 * 100) / w100);
+    const punch = 1 + 0.12 * (1 - ease.outExpo(clamp(age / 0.25))) - 0.05 * clamp(age / 1.6);
+    const cx = (GHOST.x0 + GHOST.x1) / 2, cy = (GHOST.y0 + GHOST.y1) / 2;
+    c.translate(cx, cy); c.scale(punch, punch);
+    c.font = font(fam, size);
+    c.textAlign = 'center'; c.textBaseline = 'middle';
+    // 很淡的實心字（描邊會把字型裡重疊的筆畫輪廓都畫出來，看起來像壞掉）：砸下來那一下是訊號色，再退成底色上的一層薄紗
+    const hot = Math.exp(-age / 0.18);
+    const ink: PaletteKey = v === 1 ? 'ink' : 'bone';
+    // 合成是線性光的混色：很低的透明度看起來就已經夠亮了（0.02 ≈ 很淡的一層灰）
+    c.fillStyle = hot > 0.05 && v !== 1 ? mixRgba(ink, 'signal', hot, (0.02 + 0.03 * hot) * k) : rgba(ink, (v === 1 ? 0.06 : 0.02) * k);
+    c.fillText(txt, 0, 0);
+    c.restore();
   }
 
   // ---------------------------------------------------------------- 樣張的細線
@@ -791,9 +851,11 @@ export default class Slam extends Scene {
   // ---------------------------------------------------------------- 歌詞帶
   /** 上方整句歌詞的樣式：明顯比舞台上的大字小一級（仍 ≥ 48 px）；安靜款用細的。 */
   private stripStyle(): LyricStyle {
-    const base = { size: 52, minSize: 48, maxWidth: STRIP_W };
+    // v2：40～52，有留言時比留言小
+    const note = this.items.find((x) => x.kind === 'msg');
+    const base = { size: lyricV2(note ? note.slab.size : null), minSize: V2.lyrMin, maxWidth: STRIP_W };
     if (this.v === 1) return { ...base, family: F.archivo(100, 700), active: rgba('ink'), sung: rgba('ink', 0.92), unsung: rgba('ink', 0.3) };
-    if (this.v === 2) return { ...base, size: 48, family: F.archivo(125, 300), sung: rgba('bone', 0.85), unsung: rgba('bone', 0.22) };
+    if (this.v === 2) return { ...base, size: Math.min(base.size, 48), family: F.archivo(125, 300), sung: rgba('bone', 0.85), unsung: rgba('bone', 0.22) };
     return { ...base, family: F.archivo(100, 700) };
   }
 

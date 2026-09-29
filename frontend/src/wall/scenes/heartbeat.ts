@@ -11,6 +11,9 @@
 // 座標：監護儀畫面的東西都畫在「螢幕座標」（一張 1920×1080 的 render target），再以透視貼到畫面上；紙條在畫面座標。
 // 效能：Canvas 上傳貼圖是最貴的，所以沒有全螢幕的 Canvas 層——歌詞一條小帶子每格上傳（fast）、判讀與紙條只在內容變的時候上傳，
 // 會閃的小東西都用 LineBatch 在 GPU 畫。
+// v2（2026-09-29「留言尺寸與版面比例標準 v2」）：醫囑紙條縮成左下角一張 ≤ 860 寬的收據（留言 40～60 px、署名 26～32，
+// 露出來的紙 ≤ 430 高）；監護儀的歌詞在畫面上 40～52 px（不比留言大）。監護儀才是畫面的主體：
+// 下半多了第三條波形「呼吸」——跟著這首歌的音量起伏的平滑曲線，同一條掃描線寫過去，每個小節線在曲線上亮一顆小點。
 import * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides } from '../engine/scene';
 import { FSPass, Layer2D, W, H, makeRT } from '../engine/gl';
@@ -20,6 +23,7 @@ import { LIN, rgba } from '../engine/palette';
 import { clamp, ease, fract, lerp, prog, pulse, springStep, TAU } from '../engine/util';
 import { Lyrics } from '../engine/lyrics';
 import { sparkHead, sparkParticles, lyricAt, layoutLyric, beatAfter } from './_motifs';
+import { V2, msgMaxFor, lyricV2 } from './_v2';
 import { pickPulses, ecgAt, Sweep, heartPaths, partial, scanRows, type Pulse, type HeartPaths, type Row } from './heartbeat-ecg';
 import { buildStrip, msgStrip, INVITE_STRIP, STRIP_TEXT, STRIP_FIXED, type Strip } from './heartbeat-strip';
 import { MONITOR, monitorPose, setPose } from './heartbeat-screen';
@@ -38,6 +42,12 @@ const BAND = { x: 120, y: 96, w: 1680, h: 216 };
 // ---------------------------------------------------------------- 前景的紙條（畫面座標）
 const SX = 130; // 紙的左緣（字從 SX + 44 開始，離左邊 ≥ 96）
 const SX_MAX = 1350; // 紙的右緣不超過這裡：再過去、再往下就是右下角 QR 的地盤
+/** v2：紙條主文最寬（紙寬 ≤ 860 = 主文＋左右各 44）。 */
+const STRIP_BODY_W = 772;
+/** 監護儀在畫面上大約是螢幕座標的幾倍（透視、推鏡之後最小約 0.77）：螢幕上的字級要除以它才是螢幕座標的字級。 */
+const MON_S = 0.84;
+/** 第三條波形（呼吸）的基線與振幅（螢幕座標）。 */
+const Y3 = 770, AMP3 = 72;
 const STRIP_TOP = 505; // 紙條最高只到這裡（下面那條線在畫面上最低約到 y = 475）
 const SAFE_B = H - 96; // 最後一行字的基線不能低於這裡（投影機會裁邊）
 
@@ -74,7 +84,7 @@ const BG = () => new FSPass(/* glsl */ `
     col *= 1.0 - 0.02 * step(0.5, fract(p.y / 3.0));
     fragColor = vec4(col, 1.0);
   }`, {
-  t: { value: 0 }, k: { value: 1 }, gridPx: { value: 70 }, box: { value: new THREE.Vector4(X0, X1, Y1 - 150, Y2 + 110) }, yRef: { value: Y1 },
+  t: { value: 0 }, k: { value: 1 }, gridPx: { value: 70 }, box: { value: new THREE.Vector4(X0, X1, Y1 - 150, Y3 + 110) }, yRef: { value: Y1 },
   beamX: { value: 0 }, beamI: { value: 0 },
 });
 
@@ -157,12 +167,13 @@ export default class Heartbeat extends Scene {
     const body = m ? msgStrip(m) : INVITE_STRIP;
     this.strip = buildStrip({
       ...body, bodyFamily: F.hand(400), trace,
-      maxW: SX_MAX - SX - 88, maxH: m ? SAFE_B - STRIP_TOP - STRIP_FIXED : 60, min: m ? 44 : 34, max: m ? 112 : 40,
+      maxW: m ? STRIP_BODY_W : SX_MAX - SX - 88, maxH: m ? Math.min(SAFE_B - STRIP_TOP, V2.boxH) - STRIP_FIXED : 60, min: m ? V2.msgMin : 34, max: m ? msgMaxFor(m.text) : 40,
     });
     this.track(this.strip.layer);
     // 沒有留言：歌詞是焦點（螢幕上約 85 px）。有留言：歌詞是第二層，比紙條上的留言小一級（約七成），
     // 但透視縮放後最遠的字也要 ≥ 48 px（監護儀在畫面上最小約 0.77 倍 → 螢幕座標至少 64）
-    this.lyricSize = m ? clamp((0.72 * this.strip.fit.size) / 0.8, 64, 76) : 104;
+    // v2：畫面上 40～52 px（有留言時不比留言大），換成螢幕座標
+    this.lyricSize = lyricV2(m ? this.strip.fit.size : null) / MON_S;
   }
 
   /** 把一張小圖層（邏輯像素的範圍 x,y,w,h）貼到 target 上的那個位置（Compositor 只會縮放平移）。 */
@@ -207,6 +218,7 @@ export default class Heartbeat extends Scene {
     this.drawNote(t, scr);
     this.drawTrace(0, t, uNow, xb);
     this.drawTrace(1, t, uNow, xb);
+    this.drawBreath(t, uNow, xb);
     this.drawHeartTrace(t);
     this.drawDot(t);
     this.drawBeams(t);
@@ -306,6 +318,48 @@ export default class Heartbeat extends Scene {
         if (I > 0.55) L.seg2(px, py, x, y, 10, scaled(sg, 0.045 * I), 1);
       }
       px = x; py = y; pOld = old; have = true;
+    }
+  }
+
+  /**
+   * 第三條波形「呼吸」：跟著這首歌的音量（rms）起伏的平滑曲線，一小節一次深呼吸；跟心電圖同一條掃描線寫過去，
+   * 上一趟的殘影在右邊變暗。比心電圖細、暗（配角），每個小節線在曲線上亮一顆小點。畫愛心的時候也照樣呼吸。
+   */
+  private drawBreath(t: number, uNow: number, xb: number) {
+    const { audio: au } = this.ctx;
+    const s = this.ctx.start, L = this.L, sw = this.sweep, sg = LIN.signal, bn = LIN.bone;
+    const k0 = Math.floor(uNow), on = prog(t, s + 0.15, s + 0.6);
+    if (on <= 0) return;
+    const breath = (tau: number) => {
+      const bar = au.barAt(tau);
+      return 0.55 * Math.sin(Math.PI * 2 * bar) * (0.55 + 0.45 * au.env('rms', tau)) + 0.35 * (au.env('low', tau) - 0.4);
+    };
+    let px = 0, py = 0, pOld = false, have = false;
+    const N = 380;
+    for (let i = 0; i <= N; i++) {
+      const x = X0 + (WTR * i) / N;
+      let u = k0 + (x - X0) / WTR;
+      const old = u > uNow;
+      if (old) { u -= 1; if (x - xb < GAP) { have = false; continue; } }
+      const tau = sw.tOf(u);
+      if (tau < s - 4) { have = false; continue; }
+      const age = Math.max(0, t - tau);
+      const I = (0.38 + 0.9 * Math.exp(-age / 0.3)) * (old ? 0.6 : 1) * on;
+      const y = Y3 - breath(tau) * AMP3;
+      // 呼吸的曲線本來就是平滑的：前後差很多的只會是掃描線停住（畫愛心）時的接縫，不畫
+      if (have && pOld === old && Math.abs(y - py) < 18) {
+        const hot = Math.exp(-age / 0.08);
+        L.seg2(px, py, x, y, 1.8 + hot, [lerp(sg[0], bn[0], 0.35 + 0.4 * hot) * I, lerp(sg[1], bn[1], 0.35 + 0.4 * hot) * I, lerp(sg[2], bn[2], 0.35 + 0.4 * hot) * I], 1);
+      }
+      px = x; py = y; pOld = old; have = true;
+    }
+    // 小節線：曲線上亮一顆小點（掃描線剛寫過的那幾個）
+    for (let b = Math.ceil(au.barAt(t - 3)); au.timeOfBar(b) <= t; b++) {
+      const tb = au.timeOfBar(b), uu = sw.u(tb);
+      if (uNow - uu > 0.95) continue;
+      const x = X0 + WTR * fract(uu), y = Y3 - breath(tb) * AMP3, k = Math.exp(-(t - tb) / 0.6) * on;
+      if (k < 0.03) continue;
+      this.I.seg2(x, y, x + 0.01, y, 7, scaled(sg, 1.6 * k), 1);
     }
   }
 
@@ -424,7 +478,7 @@ export default class Heartbeat extends Scene {
    */
   private drawLyric(c: CanvasRenderingContext2D, gc: CanvasRenderingContext2D, t: number, ly: NonNullable<ReturnType<typeof lyricAt>>): boolean {
     const line = ly.line;
-    const st = { family: F.archivo(100, 800), size: this.lyricSize, minSize: 64, maxWidth: X1 - LX - 20, lineHeight: 1.08 };
+    const st = { family: F.archivo(100, 800), size: this.lyricSize, minSize: V2.lyrMin / MON_S, maxWidth: X1 - LX - 20, lineHeight: 1.08 };
     const lay = layoutLyric(c, line, st);
     const oy = Y1 - 22 - lay.rows[lay.rows.length - 1]!.y;
     const size = lay.size;
@@ -480,7 +534,7 @@ export default class Heartbeat extends Scene {
     const title = song.title || '今晚的歌';
     const fam = F.archivo(100, 800);
     const maxW = X1 - LX - 20;
-    const size = Math.max(64, Math.min(this.lyricSize * 0.9, fitSize(title, fam, maxW * 0.8)));
+    const size = Math.max(V2.lyrMin / MON_S, Math.min(this.lyricSize * 0.9, fitSize(title, fam, maxW * 0.8)));
     const lay = layout(title, fam, size);
     const y0 = Y1 - 22;
     c.save();

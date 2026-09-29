@@ -6,6 +6,8 @@
 //  - 切片長完的下一拍，甜甜圈轉一下（主打留言所屬的那一塊轉到三點鐘方向，正對著留言），再下一拍那一塊「彈出來」
 //    變成訊號色，一條引線水平拉到圖說括線上。
 //  - 甜甜圈下面的圖例只有色塊與類名；歌詞在左上（逐字跟唱，亮版面：訊號色的暗部＋螢光筆）；註腳一行。
+//  - 標準 v2：甜甜圈是主視覺（放大）；留言 40～60 px、寫在右邊 860 寬的一塊。一支「計票指針」每拍轉四分之一圈
+//    （拍點上一下子轉過去），掃過的那一塊亮一下，像在一張一張點票。
 //  - 沒有留言可以統計：整圈虛線。沒有主打留言：右邊寫一行邀請（比歌詞小，這時歌詞是主角）。
 // 畫法：紙（_t11 的共用紙）→ 甜甜圈、圖例色塊（全螢幕 shader，版畫刻線）→ 字（Canvas2D）。
 import * as THREE from 'three';
@@ -17,25 +19,27 @@ import { clamp, ease, prog, lerp, TAU } from '../engine/util';
 import type { FitResult } from '../engine/text';
 import { lyricAt, beatAfter, signature, fillWithHearts } from './_motifs';
 import { Paper, stagger, tag, type Rect } from './_t11';
-import { paperLyric, lyricLine, fitFew, lyricSizeFor } from './_t12';
+import { paperLyric, lyricLine } from './_t12';
+import { V2, msgMaxFor, lyricV2, sigV2, fitClauses } from './_v2';
+import { fitText } from '../engine/text';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'science', paper: true, energy: [0.3, 0.9], bars: [4, 10], weight: 1 };
 
 // ---------------------------------------------------------------- 版面
 /** 甜甜圈（配角：縮小、放左邊）：圓心、外半徑、內半徑。 */
-const PIE = { x: 330, y: 600, r: 160, r0: 100 };
+const PIE = { x: 470, y: 560, r: 236, r0: 146 };
 /** 圖例：甜甜圈下面兩欄三列（色塊的左緣 x、第一列的中線、列高）。 */
-const LEG = { x: [124, 330], y: 836, row: 38 };
+const LEG = { x: [260, 480], y: 860, row: 36 };
 /** 主打留言（主角）：畫面右邊的一大塊；左邊一條括線。整塊在 y ≤ 800（右下角 QR 在 y ≥ 830）。 */
-const MB = { x: 660, y: 320, w: 1140, h: 480 };
-const RULE_X = 624;
+const MB = { x: 900, y: 330, w: 860, h: 430 };
+const RULE_X = 866;
 const LYR = { x: 124, base: 212, w: 1200, size: 64 };
 const FAM_MSG = F.hand(700);
 const FOOT = '＊統計方法：一則一票，愛心不另計分。';
 const EMPTY_CAP = '本圖還缺你那一塊：掃右下角 QR code 補上。';
 const MAXS = 6;
 /** 署名那一行佔的高度（留言的字級依「可用高度扣掉署名」算，署名永遠在最後一行下面）。 */
-const SIG_H = 76;
+const SIG_H = 60;
 
 interface Cat { key: string; name: string }
 const CATS: Cat[] = [
@@ -62,7 +66,7 @@ function classify(text: string): number {
 
 const CHART = () => {
   const p = new FSPass(/* glsl */ `
-  uniform float cum[${MAXS + 1}]; uniform float grow[${MAXS}]; uniform float ns; uniform float hi; uniform float pop; uniform float rot;
+  uniform float cum[${MAXS + 1}]; uniform float grow[${MAXS}]; uniform float ns; uniform float hi; uniform float pop; uniform float rot; uniform float hand;
   uniform vec2 leg[${MAXS}]; uniform float k; uniform float empty;
   const vec2 C = vec2(${PIE.x}.0, ${PIE.y}.0);
   const float R1 = ${PIE.r}.0, R0 = ${PIE.r0}.0;
@@ -97,6 +101,9 @@ const CHART = () => {
       float m = inA * inR * step(0.001, grow[i]);
       if (m < 0.5) continue;
       float edge = min(min(r - R0, R1 + ex * 6.0 - r), min((ang - a0) * TAU * r, (a1g - ang) * TAU * r));
+      // 計票指針剛掃過的地方亮一下（指針後面拖一小段）
+      float lag = fract(hand - (ang + rot) + 1.0);
+      o = over(o, C_SIGNAL, 0.28 * exp(-lag * 14.0) * step(0.0005, hand));
       if (float(i) == hi && pop > 0.01) {
         o = over(o, C_SIGNAL, 0.85 * min(pop * 2.0, 1.0));
         o = over(o, C_SEPIA, pat(i, p) * 0.3);
@@ -105,6 +112,14 @@ const CHART = () => {
         o = over(o, C_SEPIA, pat(i, p) * 0.45);
       }
       o = over(o, C_SEPIA, pxLine(edge, 0.6, 1.5) * 0.6);
+    }
+    // 計票指針：從圓心畫到外圈外面一點（細墨線，尖端一個小點）
+    if (hand > 0.0005) {
+      float ha = hand * TAU;
+      vec2 hd = vec2(sin(ha), -cos(ha));
+      float hl = sdSegment(p, C + hd * (R0 - 8.0), C + hd * (R1 + 18.0));
+      o = over(o, C_SEPIA, pxLine(hl, 0.5, 1.4) * 0.75);
+      o = over(o, C_SEPIA, (1.0 - smoothstep(3.0, 4.2, length(p - C - hd * (R1 + 18.0)))) * 0.8);
     }
     // 沒有資料：一整圈淡淡的虛線
     if (empty > 0.5) {
@@ -126,7 +141,7 @@ const CHART = () => {
     }
     fragColor = o * k;
   }`, {
-    cum: { value: new Array(MAXS + 1).fill(0) }, grow: { value: new Array(MAXS).fill(0) }, ns: { value: 0 }, hi: { value: -1 }, pop: { value: 0 }, rot: { value: 0 },
+    cum: { value: new Array(MAXS + 1).fill(0) }, grow: { value: new Array(MAXS).fill(0) }, ns: { value: 0 }, hi: { value: -1 }, pop: { value: 0 }, rot: { value: 0 }, hand: { value: 0 },
     leg: { value: Array.from({ length: MAXS }, () => new THREE.Vector2()) }, k: { value: 1 }, empty: { value: 0 },
   }, { blending: THREE.CustomBlending, transparent: true });
   const m = p.mat;
@@ -161,7 +176,8 @@ export default class PieChart extends Scene {
   lyricsInWindow = false;
   avoid: Rect[] = [];
   /** 歌詞字級：有留言時比留言小一截（一格只有一個焦點）。 */
-  lyrSize = LYR.size;
+  lyrSize: number = LYR.size;
+  sigSize = 30;
 
   override async init() {
     const { audio: au, lyrics, song } = this.ctx;
@@ -200,10 +216,11 @@ export default class PieChart extends Scene {
 
     // ---- 主打留言：右邊一大塊，字級依「可用高度扣掉署名」算；一個字一個字落在拍點上
     const c = this.layer.ctx;
+    const fo = { min: V2.msgMin, max: msgMaxFor(capText), lineHeight: 1.3, maxLines: 6 };
     const fit = this.fit = m
-      ? fitFew(c, capText, FAM_MSG, MB.w, MB.h - SIG_H, { min: 64, max: 132, lineHeight: 1.26, maxLines: 5 })
+      ? fitClauses(c, capText, FAM_MSG, MB.w, MB.h - SIG_H, fo) ?? fitText(c, capText, FAM_MSG, MB.w, MB.h - SIG_H, fo)
       // 沒有主打留言：邀請比歌詞小（這時歌詞是主角）
-      : fitFew(c, capText, FAM_MSG, MB.w, 140, { min: 48, max: 54, lineHeight: 1.3, maxLines: 2 });
+      : fitText(c, capText, FAM_MSG, MB.w, 140, { min: 36, max: 40, lineHeight: 1.3, maxLines: 2 });
     const blockH = fit.height + (m ? SIG_H : 0);
     const top = MB.y + (MB.h - blockH) / 2;
     const base0 = top + fit.size * 0.86;
@@ -221,11 +238,12 @@ export default class PieChart extends Scene {
     // 署名：最後一行下面、靠右對齊最寬的那一行（♥ 是符號字型，用逐字排好的位置量）
     const wEnd = Math.max(MB.x + 200, ...chars.map((g) => g.x + Math.max(g.w, g.ch === '♥' ? fit.size : 0)));
     this.sigX = Math.min(MB.x + MB.w, wEnd);
-    this.sigY = base0 + (fit.lines.length - 1) * fit.lineHeight + fit.size * 0.3 + 46;
+    this.sigSize = sigV2(fit.size);
+    this.sigY = base0 + (fit.lines.length - 1) * fit.lineHeight + fit.size * 0.3 + this.sigSize + 12;
     this.blockTop = top - 6;
     this.blockBot = base0 + (fit.lines.length - 1) * fit.lineHeight + fit.size * 0.24;
     this.lyricsInWindow = lyrics.linesIn(s, e).length > 0;
-    this.lyrSize = lyricSizeFor(m ? fit.size : null);
+    this.lyrSize = lyricV2(m ? fit.size : null);
     this.avoid = [[RULE_X - 20, Math.round(top - 20), MB.x + MB.w - RULE_X + 40, Math.round(blockH + 40)]];
   }
 
@@ -247,18 +265,21 @@ export default class PieChart extends Scene {
       const lp = legPos(i); leg[i]!.set(lp.x, lp.y);
     }
     u.ns!.value = empty ? 0 : nS; u.hi!.value = this.hi; u.pop!.value = pop; u.rot!.value = rot; u.k!.value = vis; u.empty!.value = empty ? 1 : 0;
+    // 計票指針：切片長完之後出現，每拍轉四分之一圈（拍點上 outExpo 轉過去、停住）
+    const hb = this.ctx.audio.beatAt(t) - this.ctx.audio.beatAt(this.tRot);
+    const hbi = Math.floor(hb);
+    u.hand!.value = empty || hb < 0 ? 0 : 1e-3 + (hbi + ease.outExpo(clamp((hb - hbi) / 0.4))) * 0.25;
     this.chart.render(renderer, out);
 
     const L = this.layer, c = L.ctx;
     L.clear();
     c.globalAlpha = vis;
     // ---- 配角：圖表的標題、中間的總數（小）、圖例的類名、一行註腳
-    tag(c, '今晚的祝福組成', LEG.x[0]!, PIE.y - PIE.r - 34, { size: 19, color: rgba('sepia', 0.6), tracking: 3 });
     const shown = empty ? 0 : Math.round(this.slices.reduce((a, sl, i) => a + sl.n * (grows[i] ?? 0), 0));
     c.textAlign = 'center';
-    c.font = font(F.archivo(100, 700), 44); c.fillStyle = rgba('sepia', 0.7);
+    c.font = font(F.archivo(100, 700), 48); c.fillStyle = rgba('sepia', 0.7);
     c.fillText(empty ? '?' : String(shown), PIE.x, PIE.y + 10);
-    tag(c, '則祝福', PIE.x, PIE.y + 40, { size: 16, color: rgba('sepia', 0.55), align: 'center' });
+    tag(c, '今晚的祝福', PIE.x, PIE.y + 42, { size: 17, color: rgba('sepia', 0.55), align: 'center' });
     c.textAlign = 'left';
     for (let i = 0; i < nS; i++) {
       const g = grows[i] ?? 0;
@@ -269,7 +290,7 @@ export default class PieChart extends Scene {
       c.restore();
     }
     if (empty) tag(c, '（目前還沒有留言可以統計）', LEG.x[0]!, LEG.y + 6, { size: 19, color: rgba('sepia', 0.62) });
-    tag(c, FOOT, LEG.x[0]!, 984, { size: 16, color: rgba('sepia', 0.5), tracking: 1 });
+    tag(c, FOOT, 124, 984, { size: 16, color: rgba('sepia', 0.5), tracking: 1 });
     this.lyric(c, t);
     // ---- 圖說括線：留言左邊一條細線；引線從彈出來的那一塊水平拉過來（照長度一路畫出來）
     const fit = this.fit!;
@@ -304,7 +325,7 @@ export default class PieChart extends Scene {
     }
     if (this.msg && t >= this.sigT) {
       c.save(); c.globalAlpha *= prog(t, this.sigT, this.sigT + 0.35);
-      c.font = font(F.hand(400), 40); c.fillStyle = rgba('sepia', 0.78); c.textAlign = 'right';
+      c.font = font(F.hand(400), this.sigSize); c.fillStyle = rgba('sepia', 0.78); c.textAlign = 'right';
       fillWithHearts(c, this.sig, this.sigX, this.sigY);
       c.restore();
     }

@@ -5,7 +5,9 @@
 //    是「出射的光」：每一拍從左邊射進一個光脈衝，沿著白光 → 稜鏡 → 色帶一路掃到右邊；
 //    第 k 行在第 k 拍的脈衝掃過時一個字一個字亮起來（燒亮、冷卻成紙白，帶一點色帶的顏色），之後每個脈衝經過都閃一下。
 //  - 每個小節線稜鏡轉一下（outBack：一下子轉過去、晃一下停住），扇形跟著擺；色帶在透鏡後面是平行的，字不會動。
-//  - 歌詞是入射的白光：左上角「入射光」，逐字跟唱。色帶左端標著一本正經的波長；左下是讀數與註腳。
+//  - 歌詞是入射的白光：左上角，逐字跟唱。左下一行註腳。
+//  - 標準 v2：留言字級 40～60、署名 26～32；光路裡飄著細細的灰塵（只有被光照到的地方看得見），畫面一直有空氣在動。
+//  - 稜鏡每轉一下（小節線），玻璃裡的反射就在上面的牆上投出一小道彩虹，跟著滑到新的位置（outExpo），亮一下再穩住。
 //  - 沒有留言：色帶上是「宣文♥孟庭」與一行邀請。純音樂：入射光寫歌名。
 // 畫法：光路、稜鏡、透鏡、色帶全部在一個全螢幕 shader 裡算（扇形用「這個像素在第幾條光線上」反推）；字是 Canvas2D。
 import * as THREE from 'three';
@@ -13,22 +15,24 @@ import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpec
 import { FSPass, Layer2D, W, H } from '../engine/gl';
 import { F, font, loadText } from '../engine/type';
 import { HEX, rgba } from '../engine/palette';
-import { clamp, ease, prog, lerp, TAU } from '../engine/util';
+import { clamp, ease, prog, lerp, hash, TAU } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
 import { lyricAt, beatAfter, signature, fillWithHearts, COUPLE_ZH } from './_motifs';
 import { stagger, pad3, mono, tag, type Rect } from './_t11';
-import { lyricLine, lyricRows, fitFew, lyricSizeFor } from './_t12';
+import { lyricLine, lyricRows } from './_t12';
+import { V2, msgMaxFor, lyricV2, sigV2, fitClauses } from './_v2';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'science', paper: false, energy: [0.3, 1], bars: [4, 10], weight: 1 };
 
 // ---------------------------------------------------------------- 版面
 /** 稜鏡（正三角形）的重心與邊長；白光從畫面左緣射進來。 */
-const PR = { x: 372, y: 566, side: 300 };
+const PR = { x: 392, y: 566, side: 350 };
 const SRC = { x: 128, y: 452 };
 /** 準直透鏡的 x、色帶的右端；留言排在色帶上的範圍。 */
 const LX = 668, BX1 = 1800;
 /** 即時小卡停用之後右邊空出來了：色帶一路延伸到右邊，留言可以排得更大。 */
-const TB = { x: 712, w: 1000 };
+// 標準 v2：留言區寬 ≤ 860（色帶照樣一路延伸到右邊，是光，不是容器）
+const TB = { x: 712, w: 820 };
 const MID_Y = 560;
 const LYR = { x: 124, base: 214, w: 1200, size: 64 };
 const FAM_MSG = F.ming(700);
@@ -58,7 +62,7 @@ const BG = () => new FSPass(/* glsl */ `
   uniform vec2 S; uniform vec2 R;                       // 光源、反射光的終點
   uniform float y0; uniform float y1;                   // 色帶的上下緣（透鏡後）
   uniform float nb; uniform float bands[${MAXB + 1}];    // 色帶數、每條色帶的分界（0..1）
-  uniform float front; uniform float front2; uniform float pk; uniform float pk2; uniform float k; uniform float kick;
+  uniform float front; uniform float front2; uniform float pk; uniform float pk2; uniform float k; uniform float kick; uniform float tt; uniform vec3 cau;
   const float LX = ${LX}.0, BX1 = ${BX1}.0;
   vec3 hueRot(vec3 c, float a) {
     mat3 toY = mat3(0.299, 0.596, 0.211, 0.587, -0.274, -0.523, 0.114, -0.322, 0.312);
@@ -104,6 +108,8 @@ const BG = () => new FSPass(/* glsl */ `
     float beam = pxLine(db, 1.2, 2.4) * 0.9 + exp(-db * db / 60.0) * 0.12;
     beam *= 1.0 - inP;
     col += C_BONE * beam * k * (1.0 + 1.8 * pulseAt(p.x));
+    // 光照到的程度（給灰塵用）：白光、扇形、色帶
+    float lit = min(1.0, pxLine(db, 6.0, 14.0) + exp(-db * db / 300.0) * 0.6) * (1.0 - inP);
     // 表面反射（很淡的一道）
     float dr = sdSegment(p, E, R);
     col += C_BONE * pxLine(dr, 0.5, 1.4) * 0.16 * k * (1.0 - inP) * step(S.x + 4.0, p.x);
@@ -128,7 +134,7 @@ const BG = () => new FSPass(/* glsl */ `
       vec2 X = mix(Xa, Xb, uu), L = vec2(LX, mix(y0, y1, uu));
       float yy = X.y + (p.x - X.x) / max(L.x - X.x, 1.0) * (L.y - X.y);
       // 疊代沒收斂（扇形外面）就不算
-      if (uu >= 0.0 && uu <= 1.0 && p.x >= X.x && abs(p.y - yy) < 1.5) col += spec(uu) * (0.2 + 0.55 * pulseAt(p.x)) * k * bandShade(uu);
+      if (uu >= 0.0 && uu <= 1.0 && p.x >= X.x && abs(p.y - yy) < 1.5) { col += spec(uu) * (0.2 + 0.55 * pulseAt(p.x)) * k * bandShade(uu); lit = max(lit, 0.8); }
     }
     // ---- 透鏡後：平行的色帶，往右慢慢淡掉
     if (p.x >= LX && p.y >= y0 && p.y <= y1) {
@@ -139,7 +145,25 @@ const BG = () => new FSPass(/* glsl */ `
       float edge = 0.0;
       for (int i = 0; i <= ${MAXB}; i++) { if (float(i) > nb) break; edge = max(edge, pxLine(abs(p.y - mix(y0, y1, bands[i])), 0.3, 1.1)); }
       col += spec(uu) * edge * 0.25 * fade * k;
+      lit = max(lit, 0.45 * fade);
     }
+    // ---- 牆上的小彩虹（稜鏡裡的反射投出來的）：沿著一條稍微斜的線展開光譜，上下是柔和的光暈
+    {
+      vec2 cq = rot2(-0.1) * (p - cau.xy);
+      float cu = cq.x / 260.0 + 0.5;
+      if (cu > 0.0 && cu < 1.0) {
+        float edgeK = smoothstep(0.0, 0.18, cu) * smoothstep(1.0, 0.82, cu);
+        col += spec(cu) * exp(-pow(cq.y / 13.0, 2.0)) * edgeK * 0.2 * cau.z * k;
+        col += spec(cu) * exp(-pow(cq.y / 40.0, 2.0)) * edgeK * 0.04 * cau.z * k;
+      }
+    }
+    // ---- 灰塵：每 38 px 的格子裡偶爾一粒，慢慢飄（往右上、左右晃），只有在光裡才亮起來
+    vec2 dq = (p + vec2(-tt * 9.0, tt * 5.0)) / 38.0;
+    vec2 dc = floor(dq), dfr = fract(dq);
+    float dh = hash12(dc + 11.0);
+    vec2 dctr = 0.5 + 0.32 * vec2(sin(tt * (0.5 + dh) + dh * 20.0), cos(tt * (0.4 + dh * 0.7) + dh * 13.0));
+    float mote = (1.0 - smoothstep(0.7, 1.9, length(dfr - dctr) * 38.0)) * step(0.72, dh);
+    col += mix(C_BONE, C_EMBER, 0.35) * mote * lit * (0.5 + 0.5 * hash12(dc + 3.0)) * 0.55 * k;
     // ---- 稜鏡是一塊實心的玻璃（斜投影）：後面的三角形、三條稜、左邊那一面用版畫的刻線打陰影
     vec2 D = vec2(-58.0, -40.0);
     vec2 B0 = V0 + D, B1 = V1 + D, B2 = V2 + D;
@@ -175,7 +199,7 @@ const BG = () => new FSPass(/* glsl */ `
   E: { value: new THREE.Vector2() }, Xa: { value: new THREE.Vector2() }, Xb: { value: new THREE.Vector2() },
   S: { value: new THREE.Vector2(SRC.x, SRC.y) }, R: { value: new THREE.Vector2() },
   y0: { value: 400 }, y1: { value: 700 }, nb: { value: 3 }, bands: { value: new Array(MAXB + 1).fill(0) },
-  front: { value: -1e4 }, front2: { value: -1e4 }, pk: { value: 0 }, pk2: { value: 0 }, k: { value: 1 }, kick: { value: 0 },
+  front: { value: -1e4 }, front2: { value: -1e4 }, pk: { value: 0 }, pk2: { value: 0 }, k: { value: 1 }, kick: { value: 0 }, tt: { value: 0 }, cau: { value: new THREE.Vector3() },
 });
 
 interface Ch { ch: string; x: number; y: number; t: number; band: number }
@@ -185,6 +209,7 @@ export default class Prism extends Scene {
   layer = this.track(new Layer2D(W, H, undefined, { fast: true }));
   hot = this.track(new Layer2D(W, H, 0.5, { fast: true }));
   msg: Msg | null = this.ctx.params.message ?? null;
+  seed = ((this.ctx.params.seed ?? 1) * 419 + (this.ctx.params.message?.id ?? 0) * 71) >>> 0;
   fit: FitResult | null = null;
   chars: Ch[] = [];
   /** 色帶的分界（0..1）、上下緣（px）、每條的顏色（sRGB）。 */
@@ -196,7 +221,8 @@ export default class Prism extends Scene {
   lyricsInWindow = false;
   avoid: Rect[] = [];
   /** 歌詞字級：有留言時比留言小一截（一格只有一個焦點）。 */
-  lyrSize = LYR.size;
+  lyrSize: number = LYR.size;
+  sigSize = 30;
 
   override async init() {
     const { audio: au, lyrics, song } = this.ctx;
@@ -205,8 +231,11 @@ export default class Prism extends Scene {
     this.sig = m ? (m.couple ? '—— 新郎新娘' : signature(m.name)) : '';
     await loadText(`${text}${this.sig}${INVITE}${FOOT}${song.title}${song.artist}入射光出射光稜鏡折射率色散宣文孟庭FIG. 1 · No. 入射角 ° n = 出射光 色 nm ABCF`);
     const c = this.layer.ctx;
-    const fit = this.fit = fitFew(c, text, FAM_MSG, TB.w, 400, { min: 48, max: m ? 124 : 104, lineHeight: 1.5, maxLines: 5 });
-    this.lyrSize = lyricSizeFor(m ? fit.size : null);
+    // 標準 v2：字級依字數的上限往下找（沒有留言時「宣文 ♥ 孟庭」照短句算）；行距 1.5 是色帶的寬度
+    const fo = { min: V2.msgMin, max: msgMaxFor(text), lineHeight: 1.5, maxLines: 5 };
+    const fit = this.fit = fitClauses(c, text, FAM_MSG, TB.w, 400, fo) ?? fitText(c, text, FAM_MSG, TB.w, 400, fo);
+    this.lyrSize = lyricV2(m ? fit.size : null);
+    this.sigSize = sigV2(fit.size);
     const n = fit.lines.length;
     // ---- 色帶：每行一條（行高），上下各一條細的（半行高）；整把光譜以 MID_Y 為中線
     const lh = fit.lineHeight, wing = lh * 0.42;
@@ -239,13 +268,13 @@ export default class Prism extends Scene {
     this.sigT = tLast + beat * 0.5;
     const wMax = Math.max(...fit.lines.map((l) => c.measureText(l).width));
     // 署名在色帶下面靠右；太低的話不能進右下角 QR 的範圍（x ≥ 1360、y ≥ 830）
-    this.sigY = this.y1 + 58;
+    this.sigY = this.y1 + this.sigSize + 22;
     this.sigX = this.sigY > 800 ? Math.min(TB.x + wMax, 1340) : TB.x + wMax;
     this.lyricsInWindow = lyrics.linesIn(s, e).length > 0;
 
     // ---- 即時小卡避開：色帶上的留言（含署名）與左上的歌詞
     const msgR: Rect = [TB.x - 20, Math.round(this.y0 - 10), TB.w + 40, Math.round(this.sigY + (m ? 20 : 70) - this.y0 + 10)];
-    const rows = Math.max(1, lyricRows(c, lyrics.linesIn(s, e), { family: F.archivo(100, 800), size: this.lyrSize, minSize: 48, maxWidth: LYR.w }));
+    const rows = Math.max(1, lyricRows(c, lyrics.linesIn(s, e), { family: F.archivo(100, 800), size: this.lyrSize, minSize: V2.lyrMin, maxWidth: LYR.w }));
     const lyr: Rect = [LYR.x - 12, LYR.base - this.lyrSize - 40, LYR.w + 24, this.lyrSize * (rows > 1 ? 2.35 : 1.25) + 50];
     this.avoid = [msgR, msgR, lyr, lyr];
   }
@@ -295,7 +324,12 @@ export default class Prism extends Scene {
     };
     const p1 = pulse(bi), p0 = pulse(bi - 1);
     u.front!.value = p1.x; u.pk!.value = p1.k; u.front2!.value = p0.x; u.pk2!.value = p0.k;
-    u.k!.value = vis; u.kick!.value = f.a.kick;
+    u.k!.value = vis; u.kick!.value = f.a.kick; u.tt!.value = t;
+    // 牆上的小彩虹：每個小節線滑到新的位置（歌詞下面、色帶上面那一條空的牆），亮一下再穩住
+    const cb = Math.floor(au.barAt(t) + 1e-6), ctb = au.timeOfBar(cb);
+    const cAt = (b: number) => ({ x: lerp(880, 1600, hash(this.seed, b, 5)), y: lerp(292, 346, hash(this.seed, b, 6)) });
+    const c0 = cAt(cb - 1), c1 = cAt(cb), cq = ease.outExpo(clamp((t - ctb) / 0.5));
+    (u.cau!.value as THREE.Vector3).set(lerp(c0.x, c1.x, cq), lerp(c0.y, c1.y, cq), 0.75 + 0.9 * Math.exp(-(t - ctb) / 0.35));
     this.bg.render(renderer, out);
 
     // ---- 顏色：每條色帶的顏色（跟 shader 同一條式子）
@@ -321,13 +355,13 @@ export default class Prism extends Scene {
     const m = this.msg;
     if (m && t >= this.sigT) {
       c.save(); c.globalAlpha *= prog(t, this.sigT, this.sigT + 0.35);
-      c.font = font(F.ming(400), 38); c.fillStyle = rgba('ash'); c.textAlign = 'right';
+      c.font = font(F.ming(400), this.sigSize); c.fillStyle = rgba('ash'); c.textAlign = 'right';
       fillWithHearts(c, this.sig, this.sigX, this.sigY);
       c.restore();
     }
     if (!m) {
       c.save(); c.globalAlpha *= prog(t, this.sigT, this.sigT + 0.4);
-      c.font = font(F.hand(700), 44); c.fillStyle = rgba('bone', 0.9);
+      c.font = font(F.hand(700), 32); c.fillStyle = rgba('bone', 0.85);
       c.fillText(INVITE, TB.x + 4, this.sigY + 10);
       c.restore();
     }
@@ -353,7 +387,7 @@ export default class Prism extends Scene {
       if (!this.lyricsInWindow) { c.font = font(F.archivo(100, 700), 58); c.fillStyle = rgba('bone', 0.88); c.fillText(song.title, LYR.x, LYR.base); }
       return;
     }
-    const st = { family: F.archivo(100, 800), size: this.lyrSize, minSize: 48, maxWidth: LYR.w };
+    const st = { family: F.archivo(100, 800), size: this.lyrSize, minSize: V2.lyrMin, maxWidth: LYR.w };
     const inK = ease.outExpo(prog(t, ly.line.start - 0.35, ly.line.start + 0.1));
     c.save(); c.translate(LYR.x, LYR.base + (1 - inK) * 14);
     lyricLine(c, ly.line, t, st, ly.k * c.globalAlpha);

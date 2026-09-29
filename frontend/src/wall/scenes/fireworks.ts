@@ -11,6 +11,9 @@
 //    唱完的下一拍在天上炸成那段詞（天上的字永遠是已經唱過的，不會跑在歌聲前面）。
 //  - 沒有留言也沒有歌詞（間奏）：炸出新人的名字、愛心（點綴色，只有這裡）、日期，水面上寫一句邀請大家掃 QR。
 // 克制：火藥是細線與火星（pdoom 的 sparkParticles 那種），不是發光的星雲；只有訊號色會發光，字本身是銳利的紙白。
+// v2（2026-09-29「留言尺寸與版面比例標準 v2」）：天上的留言照 v2 字級（40～60 px，依字數）、放在夜空左邊一塊 ≤ 800 寬，
+// 署名 26～32；水面上的歌詞 40～52（不比留言大）。空出來的右半邊夜空一直有煙火：留言停在天上的時候，
+// 每個小節在右邊放一發中型的（落在小節線），不再只有遠方低空的小煙火。沒有留言時天上的歌詞煙火也收小（≤ 80 px）。
 import * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides } from '../engine/scene';
 import { Layer2D, W, H, SCALE, makeRT, clearRT } from '../engine/gl';
@@ -21,6 +24,7 @@ import { clamp, ease, hash, lerp, mulberry32, prog, pulse } from '../engine/util
 import { fitText, readSeconds } from '../engine/text';
 import type { Line, Word } from '../engine/lyrics';
 import { sparkHead, sparkParticles, lyricAt, drawLyric, layoutLyric, beatAfter, barAfter, signature, COUPLE_EN, COUPLE_ZH, DATE_DOTS, type LyricStyle } from './_motifs';
+import { V2, msgMaxFor, lyricV2, sigV2, fitClauses } from './_v2';
 import { HZ, SKY_PASS, drawSkyline, type Light } from './fireworks-sky';
 import { type Shell, type SkyGlyph, type Kind, sampleStars, planGlyphs, rocketAt, drawRocket, drawCrown, drawComets, drawStars, drawEmbers, expand, drawGlyphHeart } from './fireworks-shells';
 
@@ -32,7 +36,10 @@ const SKY = { x0: 170, x1: 1750, y0: 176, y1: 664 };
 const SKY_CX = (SKY.x0 + SKY.x1) / 2;
 /** 歌詞：地平線下面、水面上那條帶子；右邊停在 QR 區（x ≥ 1360）之前。 */
 const LYR = { x: 160, y: 884, maxW: 1170 };
-const LSTYLE: LyricStyle = { family: F.archivo(100, 800), size: 58, minSize: 48, maxWidth: LYR.maxW };
+/** 水面上的歌詞樣式（字級在 init 照留言算：v2 的 40～52，不比留言大）。 */
+const LSTYLE0: LyricStyle = { family: F.archivo(100, 800), size: V2.lyrMax, minSize: V2.lyrMin, maxWidth: LYR.maxW };
+/** 有留言時留言寫在夜空的左邊這一塊（右半邊留給煙火）。 */
+const MSG_W = 800;
 /** 字從燒紅冷卻到紙白要幾秒。 */
 const COOL = 0.9;
 /** 間奏（沒有留言也沒有歌詞）時水面上的一句邀請。 */
@@ -113,6 +120,7 @@ export default class Fireworks extends Scene {
   /** 主打留言（含署名）後面的天空：煙與版畫線在這裡收一點，字後面才乾淨（x0, y0, x1, y1；沒有留言是空的）。 */
   quiet: [number, number, number, number] = [0, 0, 0, 0];
   seed = 1;
+  lstyle: LyricStyle = LSTYLE0;
 
   override async init() {
     const { audio: au, lyrics, song } = this.ctx;
@@ -149,10 +157,15 @@ export default class Fireworks extends Scene {
       // ---------------------------------------------------------------- 主打留言：一行一發
       const m = this.msg, fam = F.hand(700);
       // 字級依「天空高度扣掉署名」算（署名最大 60 px、離最後一行 1.7 倍字高），長留言的署名才不會被擠出天空或壓到最後一行
-      const fit = fitText(c, m.text, fam, SKY.x1 - SKY.x0, SKY.y1 - SKY.y0 - 60 * 1.7, { min: 56, max: 200, lineHeight: 1.2, maxLines: 4 });
-      const sigS = clamp(Math.round(fit.size * 0.42), 44, 60);
-      const top = SKY.y0 + (SKY.y1 - SKY.y0 - (fit.height + sigS * 1.7)) / 2;
-      const bx = SKY_CX - fit.width / 2, base0 = top + fit.size * 0.9;
+      // v2：字級照字數（40～60），照標點斷行，寫在夜空左邊
+      const o = { min: V2.msgMin, max: msgMaxFor(m.text), lineHeight: 1.3, maxLines: 5 };
+      const boxH = Math.min(SKY.y1 - SKY.y0, V2.boxH) - V2.sigMax * 1.7;
+      const byW = fitText(c, m.text, fam, MSG_W, boxH, o), byC = fitClauses(c, m.text, fam, MSG_W, boxH, o);
+      const fit = byC && byC.size >= byW.size * 0.9 ? byC : byW;
+      const sigS = sigV2(fit.size);
+      this.lstyle = { ...LSTYLE0, size: lyricV2(fit.size) };
+      const top = SKY.y0 + 40 + (SKY.y1 - SKY.y0 - 40 - (fit.height + sigS * 1.7)) / 2;
+      const bx = SKY.x0 + 10, base0 = top + fit.size * 0.9;
       const n = fit.lines.length, need = readSeconds(m.text);
       // 節奏：一小節一發；行數多、或窗格不夠讀完，就改成兩拍、一拍一發（整則留言要在一兩小節內出齊）
       let cad = 1;
@@ -209,7 +222,7 @@ export default class Fireworks extends Scene {
       // 歌詞的聲音（Archivo／思源黑體），但用 700 不用 900：火花組成的字細一點比較精緻，墨少光也不會糊成一團
       const fam = F.archivo(100, 700);
       for (const line of lyrics.linesIn(echoFrom, e)) {
-        const ll = layoutLyric(c, line, LSTYLE);
+        const ll = layoutLyric(c, line, this.lstyle);
         for (const [pi, ph] of groupPhrases(line, 4 * beat).entries()) {
           if (!ph.text || ph.end < echoFrom + 0.3 || (this.msg && ph.start < echoFrom)) continue;
           let tl = Math.max(ph.start, echoFrom + 0.1);
@@ -221,7 +234,7 @@ export default class Fireworks extends Scene {
           const hx = LYR.x + (pw.length ? (pw[0]!.x + pw[pw.length - 1]!.x + pw[pw.length - 1]!.w) / 2 : 300);
           // 兩排輪流（上一段燒完前下一段已經開了）：一行詞的第一段在上排、第二段在下排，由上往下讀；
           // 字級壓在 150 以內，兩排才不會疊在一起
-          const fit = fitText(c, ph.text, fam, 1150, 170, { min: 72, max: 140, lineHeight: 1.08, maxLines: 2 });
+          const fit = fitText(c, ph.text, fam, 1150, 170, { min: 56, max: 80, lineHeight: 1.12, maxLines: 2 });
           const row = pi % 2;
           const cy = (row === 0 ? 292 : 530) + (rnd() - 0.5) * 30;
           const cx = clamp(hx + (rnd() - 0.5) * 260, SKY.x0 + fit.width / 2 + 10, SKY.x1 - fit.width / 2 - 10);
@@ -263,7 +276,7 @@ export default class Fireworks extends Scene {
           if (it === 'heart') this.dissolveAt(sh, Math.min(e - dissolve, tb + T + 1.6));
           continue;
         }
-        const fit = fitText(c, it.text, it.fam, 1100, 220, { min: 90, max: it.max, maxLines: 1 });
+        const fit = fitText(c, it.text, it.fam, 1100, 220, { min: 64, max: Math.min(it.max, 110), maxLines: 1 });
         const lay = layout(fit.lines[0]!, it.fam, fit.size);
         const x0 = clamp(cx - lay.width / 2, SKY.x0, SKY.x1 - lay.width), y = cy + fit.size * 0.34;
         const glyphs = lay.glyphs.filter((g) => g.ch.trim()).map((g) => ({ ch: g.ch, x: x0 + g.x, y, w: g.w, size: fit.size, fam: it.fam, heart: false, tg: Infinity, cx: 0, cy: 0, tb: 0 }));
@@ -287,7 +300,11 @@ export default class Fireworks extends Scene {
       const busy = main.some((x) => x.glyphs.length && tb > x.tb - 0.3 && tb < x.tf0 + 1.5);
       const kinds: Kind[] = ['peony', 'willow', 'ring', 'peony'];
       const kind = kinds[Math.floor(hash(k, this.seed, 3) * kinds.length)]!;
-      if (busy) {
+      if (busy && this.msg) {
+        // 留言在左邊：右半邊的夜空放一發中型的（避開天上的字），畫面一直有煙火
+        const R = 150 + rnd() * 80, p = this.spot(tb, R, rnd);
+        shell(kind, { tl, tb, cx: p.x, cy: p.y, lx: launchX(p.x), R, I: 0.9 });
+      } else if (busy) {
         const cx = this.freeX(tb, prevX, rnd), cy = 560 + rnd() * 90;
         shell(kind, { tl, tb, cx, cy, lx: clamp(cx + (rnd() - 0.5) * 120, 200, 1700), R: 115 + rnd() * 70, back: true, I: 0.9 });
         prevX = cx;
@@ -312,7 +329,7 @@ export default class Fireworks extends Scene {
     const c = this.layer.ctx;
     let w = 0, top = Infinity, bottom = -Infinity;
     for (const line of lyricLines) {
-      const lay = layoutLyric(c, line, LSTYLE);
+      const lay = layoutLyric(c, line, this.lstyle);
       const y0 = LYR.y - (lay.height - lay.size) / 2;
       w = Math.max(w, ...lay.rows.map((r) => r.width));
       top = Math.min(top, y0 - lay.size); bottom = Math.max(bottom, y0 + lay.height - lay.size + lay.size * 0.3);
@@ -466,10 +483,10 @@ export default class Fireworks extends Scene {
     c.globalAlpha = kIn;
     const ly = lyricAt(lyrics, t);
     if (ly) {
-      const lay = layoutLyric(c, ly.line, LSTYLE);
+      const lay = layoutLyric(c, ly.line, this.lstyle);
       const y0 = LYR.y - (lay.height - lay.size) / 2;
       c.save(); c.translate(LYR.x, y0);
-      const head = drawLyric(c, ly.line, t, LSTYLE, lay, ly.k * kIn);
+      const head = drawLyric(c, ly.line, t, this.lstyle, lay, ly.k * kIn);
       c.restore();
       if (head) { sparkHead(Fr, LYR.x + head.x, y0 + head.y, t, 0.5, 0.8); }
     } else if (this.invite) {

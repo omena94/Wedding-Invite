@@ -16,7 +16,9 @@ import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, lerp, hash, noise1 } from '../engine/util';
 import { lyricAt, beatAfter, fillWithHearts, DATE_DOTS } from './_motifs';
 import { Paper, stagger, pad3, mono, tag, type Rect } from './_t11';
-import { paperLyric, lyricLine, lyricRows, fitFew, lyricSizeFor } from './_t12';
+import { paperLyric, lyricLine, lyricRows } from './_t12';
+import { V2, msgMaxFor, lyricV2, sigV2, fitClauses } from './_v2';
+import { fitText } from '../engine/text';
 import type { FitResult } from '../engine/text';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'science', paper: true, energy: [0, 0.75], bars: [4, 12], weight: 1 };
@@ -24,17 +26,19 @@ export const spec: PlateSpecDecl = { group: 'type', family: 'science', paper: tr
 // ---------------------------------------------------------------- 版面
 /** 視野：圓心與半徑。 */
 // 視野縮小、靠右（底下的環停在 y ≈ 824，不進右下角 QR 的範圍）；標本卡放大，留言才夠大
-const VC = { x: 1450, y: 470 }, VR = 320;
+// 標準 v2：視野是主視覺，放大（外環在 x = 1360 時 y ≈ 828，不進右下角 HUD）
+const VC = { x: 1250, y: 450 }, VR = 360;
 /** 標本卡與裡面放留言的框。 */
-const CARD = { x: 112, y: 318, w: 930, h: 590 };
+// 標本卡是輕的一張紙，放在畫面左側（寫字的範圍 ≤ 860×430）
+const CARD = { x: 112, y: 440, w: 740, h: 440 };
 /** 卡上寫留言的範圍：抬頭線以下、署名線以上（署名有自己的位置，不會被留言蓋到）。 */
-const MSG_BOX = { x: 156, y: 418, w: 842, h: 356 };
-const LYR = { x: 124, base: 214, w: 920, size: 62 };
+const MSG_BOX = { x: 152, y: 532, w: 660, h: 236 };
+const LYR = { x: 124, base: 214, w: 760, size: 52 };
 const FAM_MSG = F.hand(700);
 const INVITE = '掃描右下角 QR code，把你的祝福放上載玻片。';
 const FOOT = '＊觀察結果：愛會分裂，而且越分越多。';
 /** 每一代細胞的半徑（px）。 */
-const RAD = [100, 78, 60, 46, 35];
+const RAD = [112, 88, 68, 52, 40];
 const MAXC = 16;
 
 const VIEW = () => {
@@ -123,6 +127,19 @@ const VIEW = () => {
     float dr = 0.05 + 0.08 * hash12(dcell + 1.0);
     float deb = (1.0 - smoothstep(0.0, 0.03, abs(length(df) - dr))) * step(0.86, hash12(dcell + 5.0)) * (1.0 - inside);
     col = mix(col, C_SEPIA, deb * 0.18);
+    // ---- 活體樣本：幾隻桿菌在細胞之間慢慢游（沿著利薩茹曲線，身體朝游的方向、左右扭一點）
+    for (int i = 0; i < 5; i++) {
+      float fi = float(i), a = 0.12 + 0.05 * fi, b = 0.1 + 0.045 * fi;
+      vec2 ph = vec2(t * a + fi * 1.7, t * b + fi * 2.9);
+      vec2 bc = vc + drift + vr * 0.7 * vec2(sin(ph.x), cos(ph.y));
+      vec2 vel = vec2(cos(ph.x) * a, -sin(ph.y) * b);
+      vec2 dir = normalize(vel + 1e-5), nrm = vec2(-dir.y, dir.x);
+      bc += nrm * sin(t * 7.0 + fi * 3.0) * 1.6;
+      float d = sdSegment(p, bc - dir * (9.0 + 2.0 * fi), bc + dir * (9.0 + 2.0 * fi)) - 3.6;
+      float body = 1.0 - smoothstep(-0.9 - 3.0 * blur, 0.9 + 3.0 * blur, d);
+      col = mix(col, mix(C_SEPIA, C_BLOOD, 0.35), body * 0.28 * (1.0 - inside));
+      col = mix(col, C_SEPIA, (1.0 - smoothstep(0.3, 1.2 + 3.0 * blur, abs(d))) * 0.35 * (1.0 - inside));
+    }
     // ---- 目鏡裡的十字線（很淡）
     vec2 dp = p - vc;
     float cross = max(pxLine(abs(dp.x), 0.3, 1.0), pxLine(abs(dp.y), 0.3, 1.0));
@@ -170,7 +187,8 @@ export default class Microscope extends Scene {
   lyricsInWindow = false;
   avoid: Rect[] = [];
   /** 歌詞字級：有留言時比留言小一截（一格只有一個焦點）。 */
-  lyrSize = LYR.size;
+  lyrSize: number = LYR.size;
+  sigSize = 30;
 
   override async init() {
     const { audio: au, lyrics, song } = this.ctx;
@@ -194,8 +212,9 @@ export default class Microscope extends Scene {
     const c = this.layer.ctx;
     const text = m ? m.text : INVITE;
     const fit = this.fit = m
-      ? fitFew(c, text, FAM_MSG, MSG_BOX.w, MSG_BOX.h, { min: 56, max: 120, lineHeight: 1.28, maxLines: 5 })
-      : fitFew(c, text, FAM_MSG, MSG_BOX.w, 170, { min: 56, max: 64, lineHeight: 1.3, maxLines: 2 });
+      ? (fitClauses(c, text, FAM_MSG, MSG_BOX.w, MSG_BOX.h, { min: V2.msgMin, max: msgMaxFor(text), lineHeight: 1.28, maxLines: 5 })
+        ?? fitText(c, text, FAM_MSG, MSG_BOX.w, MSG_BOX.h, { min: V2.msgMin, max: msgMaxFor(text), lineHeight: 1.28, maxLines: 5 }))
+      : fitText(c, text, FAM_MSG, MSG_BOX.w, 140, { min: 40, max: 44, lineHeight: 1.3, maxLines: 2 });
     const top = MSG_BOX.y + (MSG_BOX.h - fit.height) / 2 + fit.size * 0.86;
     c.font = font(FAM_MSG, fit.size);
     const chars: Omit<Glyph, 't'>[] = [];
@@ -214,7 +233,8 @@ export default class Microscope extends Scene {
 
     // ---- 即時小卡避開：標本卡、左上的歌詞
     const card: Rect = [CARD.x - 10, CARD.y - 10, CARD.w + 20, CARD.h + 20];
-    this.lyrSize = lyricSizeFor(m ? fit.size : null, LYR.size);
+    this.lyrSize = lyricV2(m ? fit.size : null);
+    this.sigSize = sigV2(fit.size);
     const rows = Math.max(1, lyricRows(c, lyrics.linesIn(s, e), paperLyric(this.lyrSize, LYR.w)));
     const lyr: Rect = [LYR.x - 12, LYR.base - this.lyrSize - 40, LYR.w + 24, this.lyrSize * (rows > 1 ? 2.35 : 1.25) + 52];
     this.avoid = [card, card, lyr, lyr];
@@ -323,7 +343,7 @@ export default class Microscope extends Scene {
     const m = this.msg;
     if (m && t >= this.sigT) {
       c.save(); c.globalAlpha *= prog(t, this.sigT, this.sigT + 0.35);
-      c.font = font(F.hand(400), 38); c.fillStyle = rgba('sepia', 0.85); c.textAlign = 'right';
+      c.font = font(F.hand(400), this.sigSize); c.fillStyle = rgba('sepia', 0.85); c.textAlign = 'right';
       fillWithHearts(c, this.sig, CARD.x + CARD.w - 40, this.sigY);
       c.restore();
     }

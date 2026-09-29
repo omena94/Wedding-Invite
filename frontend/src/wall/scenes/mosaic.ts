@@ -10,6 +10,8 @@
 //  - 歌詞在畫面下緣（電影字幕的位置），牆在那裡暗下來讓字清楚；比主打小一級。
 //  - 窗格很長才順便停第二則（主打先、停最久）；沒有主打留言時才輪流停兩三則。
 //  - 節拍：推進緩進小節線、落地那一拍點火；大鼓讓整面牆微微一亮、hi-hat 讓零星的格子閃一下，點火時一圈光從主打往外擴散。
+// v2（2026-09-29「留言尺寸與版面比例標準 v2」）：主打停住時在畫面左邊一塊 ≤ 830×430（留言 40～60 px、署名 26～32），
+// 歌詞 40～52（不比主打大）；背景牆上的留言跟著主打縮小（上限是主打的 0.42 倍，停住時畫面上約 18 px）——是紋理，不是第二個焦點。
 import * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides } from '../engine/scene';
 import { FSPass, Layer2D, W, H, SCALE } from '../engine/gl';
@@ -19,6 +21,7 @@ import { LIN, rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, pulse, hash, lerp } from '../engine/util';
 import { fitText, readSeconds } from '../engine/text';
 import { sparkHead, sparkParticles, lyricAt, drawLyric, layoutLyric, drawHeart, signature, type LyricStyle } from './_motifs';
+import { V2, msgMaxFor, lyricV2, sigV2, fitClauses } from './_v2';
 import { layoutWall, drawWall, heroHeader, heroLabel, HERO_PAD, HERO_LABEL, HERO_SIG, HERO_RULE_Y, HERO_LABEL_SIZE, type HeroSpec, type WallLayout } from './mosaic-wall';
 import { CamPath, constrain, worldToScreen, zoomOf, type View } from './mosaic-path';
 
@@ -40,7 +43,7 @@ const SKEW = 0.42;
 const COOL = 0.85;
 const HERO_FAMILY = F.hand(700);
 /** 景深的最大模糊半徑（螢幕 px）：停住時牆虛成一片柔和的字紋。 */
-const MAX_BLUR = 7.5;
+const MAX_BLUR = 3.2;
 /** 停住時後面的牆漂多遠（螢幕 px）、放大多少；鏡頭本身再很慢地推近多少。 */
 const DRIFT_PX = 48, DRIFT_SCALE = 0.035, PARK_PUSH = 0.028;
 
@@ -123,7 +126,9 @@ const WALL_PASS = () => new FSPass(/* glsl */ `
     float txt = d.r * (1.0 - hide) * inWall * (1.0 - 0.45 * near);
     float rules = d.b * (1.0 - hide) * inWall * (1.0 - near);
     // 聚光：停在主打上時，整面牆暗下來
-    float L = lum * (1.0 - 0.45 * spot);
+    // v2：主打變小之後背景的字也跟著小（字級上限是主打的 0.42 倍，停住時畫面上約 18 px），
+    // 停住時只稍微暗一點、虛一點：整面牆還看得出是一片密密的字（紋理），畫面才不會空掉
+    float L = lum * (1.0 - 0.3 * spot);
     vec3 col = C_INK + (C_INK2 - C_INK) * (0.5 + 0.5 * snoise(sp / 520.0 + vec2(t * 0.012, 0.0)));
     col += (C_GRAPHITE - C_INK) * 0.22 * pool * lum;
     vec3 ink = mix(C_BONE, C_ROSE, heart);
@@ -214,7 +219,7 @@ export default class Mosaic extends Scene {
   /** 點亮後（冷卻完）的字色：銳利的紙白，不發光（「不描邊、不加光暈的字」）；燒紅的樣子在光暈層。 */
   lit = '';
   /** 歌詞：比主打小一級（主打 80～140 px），至少 48 px。 */
-  lyricStyle: LyricStyle = { family: F.archivo(87.5, 800), size: 62, minSize: 48, maxWidth: LYR.maxW };
+  lyricStyle: LyricStyle = { family: F.archivo(87.5, 800), size: V2.lyrMax, minSize: V2.lyrMin, maxWidth: LYR.maxW };
 
   override async init() {
     const { params, audio: au, lyrics } = this.ctx;
@@ -256,13 +261,17 @@ export default class Mosaic extends Scene {
 
     // ---- 主打格子：先照「停住時」的螢幕尺寸排好，再縮小放進牆裡
     const c = this.lyrL.ctx;
-    const boxW = PARK.x1 - PARK.x0 - 2 * HERO_PAD, boxH = bottom - PARK.top - 2 * HERO_PAD - HERO_LABEL - HERO_SIG;
+    // v2：主打格子（含邊距）≤ 830×430，停在畫面左邊
+    const boxW = 780, boxH = Math.min(bottom - PARK.top, V2.boxH) - 2 * HERO_PAD - HERO_LABEL - HERO_SIG;
     // 停住時推近的倍率：比以前小（約 1.7 倍）——主打格子在牆上就是最大的一塊字，推近時四周的字也不會被放得跟主打一樣大。
     // 留言越多牆越密，推得稍微近一點
-    const zBase = clamp(1.75 * Math.pow(Math.max(1, this.msgs.length) / 18, 0.15), 1.7, 2.5);
+    // v2：主打變小了，推得少一點（約 1.15 倍）：畫面上看得到更多格子、每格小一點，背景才是一整片密密的字，不是一格格空框
+    const zBase = clamp(1.15 * Math.pow(Math.max(1, this.msgs.length) / 18, 0.15), 1.1, 1.7);
     const anchors = heroesMsgs.length === 1 ? [[0.42, 0.5]] : heroesMsgs.length === 2 ? [[0.3, 0.42], [0.7, 0.6]] : [[0.26, 0.36], [0.7, 0.3], [0.44, 0.72]];
     const specs: HeroSpec[] = heroesMsgs.map((m, i) => {
-      const fit = fitText(c, m.text, HERO_FAMILY, boxW, boxH, { min: 56, max: 136, lineHeight: 1.3, maxLines: 4 });
+      const o = { min: V2.msgMin, max: msgMaxFor(m.text), lineHeight: 1.3, maxLines: 5 };
+      const byW = fitText(c, m.text, HERO_FAMILY, boxW, boxH, o), byC = fitClauses(c, m.text, HERO_FAMILY, boxW, boxH, o);
+      const fit = byC && byC.size >= byW.size * 0.9 ? byC : byW;
       const textH = fit.size * 0.92 + (fit.lines.length - 1) * fit.lineHeight + fit.size * 0.28;
       const zoom = zBase * (0.94 + 0.12 * hash(seed, i, 5));
       const [ax, ay] = anchors[i]!;
@@ -273,6 +282,8 @@ export default class Mosaic extends Scene {
       };
     });
     this.wall = layoutWall(this.msgs, specs, seed);
+    // 歌詞不比主打大（有主打時）
+    if (hero0 && specs[0]) this.lyricStyle = { ...this.lyricStyle, size: lyricV2(specs[0].fit.size) };
     // 主打圖層：跟最大的主打格子一樣大（停住時的螢幕尺寸）
     const hw = Math.max(64, ...this.wall.heroes.map((h) => h.w * h.zoom)), hh = Math.max(64, ...this.wall.heroes.map((h) => h.h * h.zoom));
     this.heroL = this.track(new Layer2D(Math.ceil(hw), Math.ceil(hh)));
@@ -344,7 +355,7 @@ export default class Mosaic extends Scene {
       const u0 = hh.x0 + SKEW * HERO_RULE_Y;
       const lastY = lines[lines.length - 1]!.y;
       // 簽名靠右對齊留言的右緣；落在右下角 QR 的高度時往左收，不進 HUD。火花的斜掃最後也掃過它
-      const sigY = lastY + fit.size * 0.28 + 58;
+      const sigY = lastY + fit.size * 0.35 + sigV2(fit.size) * 1.3;
       const sigX = sy + sigY > HUD_Y ? Math.min(hh.right, HUD_X - sx) : hh.right;
       const u1 = Math.max(hh.x1 + SKEW * HERO_RULE_Y, sigX + SKEW * sigY, ...lines.map((l) => l.x + l.lay.width + SKEW * (l.y + 6)));
       const tIgn1 = tIgn0 + clamp(0.45 + (u1 - u0) / 2600, 0.6, 1.15);
@@ -582,7 +593,7 @@ export default class Mosaic extends Scene {
       }
     }
     if (st.sweep > p.sigX - 420 + SKEW * p.sigY) {
-      c.font = font(F.hand(400), 46);
+      c.font = font(F.hand(400), sigV2(size));
       c.fillStyle = rgba('bone', 0.8);
       c.textAlign = 'right';
       c.fillText(signature(h.msg.name), p.sigX, p.sigY);

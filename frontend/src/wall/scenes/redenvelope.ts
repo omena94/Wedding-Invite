@@ -1,4 +1,5 @@
-// 紅包（批次 T4・紙本 D，暗）：一個紅包袋躺在深色的漆器桌上，一盞暖燈打著。紅包袋是訊號色的暗部（blood）的紙，字與花飾燙金。
+// 紅包（批次 T4・紙本 D，暗）：一個紅包袋躺在深色的漆器桌上，上面吊著一盞燈籠（畫面外），燈籠隨著節拍輕輕擺，
+// 暖光與它在亮漆面上拉長的倒影一起左右晃。紅包袋是訊號色的暗部（blood）的紙，字與花飾燙金。
 //  - 開場：鏡頭貼著紅包，仙女棒的火花沿著吉祥話外面那一圈燙金框「畫」出來（畫過的地方燙金才出現，剛畫的還是燒紅的）。
 //  - 吉祥話的位置就是歌詞：中文直排（由右到左、一個字一個字燙上去），正在唱的字燒紅發光、唱完是金、還沒唱的只是淡淡的壓印；
 //    英文句子橫排。
@@ -7,31 +8,33 @@
 //  - 沒有留言：紙上寫「這個紅包留給你」＋一句邀請。純音樂：吉祥話的位置寫歌名。
 // 畫法：紅包（舌蓋＋袋身攤成一張）與紙條各畫進一張 render target；燙金的形狀（框、囍、歌詞）畫在一張遮罩 Canvas（每格重畫，
 // 紅色通道標記「正在唱」），燙金 shader 讀遮罩算凸版的明暗、火花附近的熱、每個小節線掃過的反光。
-// 紅包袋、舌蓋（正面＋背面的內襯）、紙條是 three.js 的網格，交給 _t4 的舞台拍（深色漆器、暖燈、影子、景深）。
+// 紅包袋、舌蓋（正面＋背面的內襯）、紙條是 three.js 的網格，交給 _t4 的舞台拍（深色漆器、燈籠的光與倒影、影子、景深）。
 import * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
 import { FSPass, Layer2D } from '../engine/gl';
 import { LineBatch } from '../engine/lines';
 import { F, font, loadText } from '../engine/type';
 import { rgba } from '../engine/palette';
-import { clamp, ease, lerp, pulse, TAU } from '../engine/util';
-import type { FitResult } from '../engine/text';
+import { clamp, ease, lerp, pulse, noise1, TAU } from '../engine/util';
+import { fitText, type FitResult } from '../engine/text';
 import { Lyrics, type Line, type Word } from '../engine/lyrics';
 import { lyricAt, signature, sparkHead, sparkParticles, COUPLE_EN, DATE_DOTS } from './_motifs';
-import { grid, fitMsg, drawFit, layoutRows, drawRows, Stage, docRT, camDist, FOIL_GLSL, type Grid, type RowsStyle, type V3, type P2 } from './_t4';
+import { grid, drawFit, layoutRows, drawRows, Stage, docRT, camDist, FOIL_GLSL, type Grid, type RowsStyle, type V3, type P2 } from './_t4';
+import { msgMaxFor, lyricV2, sigV2, V2, fitClauses } from './_v2';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'doc', paper: false, energy: [0.25, 0.9], bars: [4, 8] };
 
 // ---------------------------------------------------------------- 尺寸（像素）
 const EW = 600, EH = 980, FH = 230; // 袋身、舌蓋的高
 const AH = FH + EH; // 紅包的展開圖：上面是舌蓋、下面是袋身
-const NW = 820, NH = 580; // 紙條（橫的；在袋子裡是直的）
+const NW = 760, NH = 470; // 紙條（橫的；在袋子裡是直的）。v2：畫面上約 700×430
+const NTOP = 92; // 紙條上面的小標
+const SIG_K = 1.5; // 署名佔的高度 = 署名字級 × SIG_K
 const ZONE = { x: 80, y: FH + 390, w: EW - 160, h: 470 }; // 吉祥話（歌詞）的位置（展開圖座標）
 const FRAME = { x: 54, y: FH + 360, w: EW - 108, h: 530, r: 26 }; // 火花畫出來的燙金框
 const EMBLEM = { x: EW / 2, y: FH + 262, r: 64 };
 const ENV: V3 = [-330, 0, 2]; // 紅包在桌上的位置（中心）
-const LAND: V3 = [400, 30, 9]; // 紙條落下的位置
-const LY_EN: RowsStyle = { family: F.archivo(100, 800), size: 60, minSize: 56, maxW: ZONE.w, maxRows: 4, align: 'center', lineHeight: 1.08 };
+const LAND: V3 = [380, 70, 9]; // 紙條落下的位置
 const TEXT = '囍紅包裡的一句話這個紅包留給你掃描右下角把祝福包進紅包純音樂賀新人';
 
 // ---------------------------------------------------------------- 紅包的紙（袋身與舌蓋）
@@ -129,10 +132,13 @@ function makeRig() {
 /** 直排的一個字。 */
 interface VChar { ch: string; x: number; y: number; word: Word }
 interface VLayout { size: number; chars: VChar[] }
-const vCache = new WeakMap<Line, VLayout>();
-/** 中文歌詞直排：詞組（空白分開的）盡量一欄，太長就折；欄從右到左；放不下就縮字級。 */
-function layoutVertical(line: Line): VLayout {
-  const hit = vCache.get(line);
+const vCache = new WeakMap<Line, Map<string, VLayout>>();
+/** 中文歌詞直排：詞組（空白分開的）盡量一欄，太長就折；欄從右到左；放不下就縮字級（maxS → minS）。 */
+function layoutVertical(line: Line, maxS: number, minS: number): VLayout {
+  const key = `${maxS.toFixed(1)}|${minS.toFixed(1)}`;
+  let m = vCache.get(line);
+  if (!m) { m = new Map(); vCache.set(line, m); }
+  const hit = m.get(key);
   if (hit) return hit;
   const units: { ch: string; word: Word; brk: boolean }[] = [];
   line.words.forEach((w, i) => {
@@ -140,8 +146,8 @@ function layoutVertical(line: Line): VLayout {
     const gap = i > 0 && /\s/.test(line.text.slice(prevEnd, w.o));
     Array.from(w.w).forEach((ch, k) => { if (!/\s/.test(ch)) units.push({ ch, word: w, brk: gap && k === 0 }); });
   });
-  let out: VLayout = { size: 64, chars: [] };
-  for (let size = 72; size >= 44; size -= 4) {
+  let out: VLayout = { size: minS, chars: [] };
+  for (let size = maxS; size >= minS - 0.01; size -= 2) {
     const pitch = size * 1.08, colW = size * 1.3;
     const per = Math.max(1, Math.floor(ZONE.h / pitch));
     const cols: (typeof units)[] = [[]];
@@ -150,7 +156,7 @@ function layoutVertical(line: Line): VLayout {
       if (cur.length && (cur.length >= per || (u.brk && cur.length + 2 > per * 0.5))) cols.push([u]);
       else cur.push(u);
     }
-    if (cols.length * colW > ZONE.w + 1 && size > 44) continue;
+    if (cols.length * colW > ZONE.w + 1 && size > minS + 1.99) continue;
     const longest = Math.max(...cols.map((c) => c.length));
     const x0 = ZONE.x + ZONE.w / 2 + ((cols.length - 1) * colW) / 2;
     const y0 = ZONE.y + ZONE.h / 2 - (longest * pitch) / 2 + size * 0.88;
@@ -158,7 +164,7 @@ function layoutVertical(line: Line): VLayout {
     cols.forEach((c, ci) => c.forEach((u, j) => out.chars.push({ ch: u.ch, word: u.word, x: x0 - ci * colW, y: y0 + j * pitch })));
     break;
   }
-  vCache.set(line, out);
+  m.set(key, out);
   return out;
 }
 const isLatin = (s: string) => (s.match(/[A-Za-z]/g)?.length ?? 0) > s.replace(/\s/g, '').length * 0.4;
@@ -178,6 +184,12 @@ export default class RedEnvelope extends Scene {
   tTrace = 0; traceDur = 1; tOpen = 0; tOut = 0; tLand = 0;
   fit: FitResult | null = null;
   framePts: P2[] = [];
+  /** 紙條、紅包在畫面上是紙面的幾倍（鏡頭停好時量的），v2 的字級要換算。 */
+  sNote = 0.9; sEnv = 0.9;
+  msgScreen: number | null = null;
+  sigSize = 36;
+  /** 囍字外圈的火花（每兩個小節一次的小事件）。 */
+  runs: number[] = [];
   private noteDrawn = false;
 
   override async init() {
@@ -201,9 +213,23 @@ export default class RedEnvelope extends Scene {
     arc(f.x + r, f.y + f.h - r, Math.PI / 2); arc(f.x + r, f.y + r, Math.PI); arc(f.x + f.w - r, f.y + r, -Math.PI / 2); arc(f.x + f.w - r, f.y + f.h - r, 0);
     pts.push({ x: f.x + f.w / 2, y: f.y + f.h });
     this.framePts = pts;
+    this.runs = g.bars.filter((b, i) => i % 2 === 1 && b > this.tLand + g.bar * 0.7 && b < e - 0.6);
+    // 鏡頭停好（紙條落地後）的位置先擺一次，量紙條與紅包在畫面上的縮放
+    this.look(1, 0, 1);
+    const st = this.rig.st;
+    const px = (a: V3, b: V3) => { const p = st.toScreen(a), q = st.toScreen(b); return Math.hypot(q.x - p.x, q.y - p.y) / 100; };
+    this.sNote = px([LAND[0] - 50, LAND[1], LAND[2]], [LAND[0] + 50, LAND[1], LAND[2]]);
+    this.sEnv = px([ENV[0] - 50, ENV[1] - 100, 2], [ENV[0] + 50, ENV[1] - 100, 2]);
+    // v2：留言字級照螢幕標準（依字數 40～60）換成紙條上的字級；可用高度先扣掉署名，照子句斷行
     const text = this.msg ? this.msg.text : '這個紅包留給你';
-    // 字級依「可用高度扣掉署名」算：署名一定在留言下面
-    this.fit = fitMsg(this.noteInk.ctx, text, F.hand(700), NW - 150, NH - 104 - 70 - 60, { min: 54, max: 108, lineHeight: 1.26 });
+    const c = this.noteInk.ctx, fam = F.hand(700), S = this.sNote, maxS = msgMaxFor(text);
+    const boxH = NH - NTOP - 34 - (sigV2(maxS) / S) * SIG_K;
+    const opt = { min: V2.msgMin / S, max: maxS / S, lineHeight: 1.26, maxLines: 6 };
+    const byW = fitText(c, text, fam, NW - 130, boxH, opt);
+    const byC = fitClauses(c, text, fam, NW - 130, boxH, opt);
+    this.fit = byC && byC.size >= byW.size * 0.9 && byC.lines.length <= byW.lines.length + 1 ? byC : byW;
+    this.msgScreen = this.msg ? this.fit.size * S : null;
+    this.sigSize = Math.round(sigV2(this.fit.size * S) / S);
   }
 
   override render(f: Frame, out: THREE.WebGLRenderTarget): PostOverrides {
@@ -228,8 +254,17 @@ export default class RedEnvelope extends Scene {
       const trail = (tb: number) => { const u = clamp((tb - this.tTrace) / this.traceDur); return u > 0 && u < 1 ? this.along(u) : null; };
       sparkParticles(this.spark, t, trail, { rate: 110, life: 0.4, speed: 220, seed: 9 });
       sparkHead(this.spark, head.x, head.y, t, 1.05);
-      this.spark.render(renderer, R.env);
     }
+    // 小事件：落地後每兩個小節，火花繞囍字外圈跑一圈
+    const k = this.runs.findIndex((b) => t >= b && t < b + 1);
+    if (k >= 0) {
+      const b = this.runs[k]!, rd = 0.6;
+      const ring = (tb: number) => (tb >= b && tb <= b + rd ? { x: EMBLEM.x + Math.cos(-Math.PI / 2 + ((tb - b) / rd) * TAU) * EMBLEM.r, y: EMBLEM.y + Math.sin(-Math.PI / 2 + ((tb - b) / rd) * TAU) * EMBLEM.r } : null);
+      sparkParticles(this.spark, t, ring, { rate: 110, life: 0.35, speed: 180, seed: 20 + k, intensity: 0.8 });
+      const h = ring(t);
+      if (h) sparkHead(this.spark, h.x, h.y, t, 0.8, 0.9);
+    }
+    if (this.spark.count) this.spark.render(renderer, R.env);
     // ---- 紙條
     this.noteBg.render(renderer, R.note);
     comp.draw(renderer, this.noteInk.texture, R.note);
@@ -275,24 +310,39 @@ export default class RedEnvelope extends Scene {
     return { x, y, z, rx: -0.35 * Math.sin(fly * Math.PI) + 0.02 * bounce, rz: lerp(Math.PI / 2, -0.04, k), fly };
   }
 
+  /** 鏡頭位置：ko = 拉開的進度（0 貼著紅包、1 兩個都框進來），push = 慢慢推近，intro = 開場的微推。 */
+  private look(ko: number, push: number, intro: number) {
+    const D = camDist(30);
+    // 停好時紅包在左、紙條在右上（畫面右下的 QR 區留空）
+    const T: V3 = [lerp(ENV[0] + 20, 90, ko) + 30 * push, lerp(ENV[1] - 120, -40, ko), 0];
+    const dist = D * lerp(0.86 - 0.04 * intro, 1.36, ko) * (1 - 0.05 * push);
+    const tilt = THREE.MathUtils.degToRad(lerp(34, 24, ko));
+    const yaw = lerp(-0.18, 0.05, ko);
+    this.rig.st.look([T[0] + Math.sin(yaw) * dist, T[1] - Math.sin(tilt) * dist, Math.cos(tilt) * dist], T);
+  }
+
   private shoot(t: number, pose: { x: number; y: number; z: number; fly: number }, head: P2 | null) {
     const st = this.rig.st, s = this.ctx.start, e = this.ctx.end;
-    const D = camDist(30);
     // 開場：貼著紅包的吉祥話；舌蓋掀開時拉開，把紅包和旁邊落紙條的地方一起框進來；落地後慢慢推近
     const ko = ease.inOutCubic(clamp((t - this.tOpen + 0.2) / Math.max(0.6, this.tLand - this.tOpen + 0.3)));
     const push = ease.inOutCubic(clamp((t - this.tLand) / Math.max(1, e - this.tLand)));
     const intro = ease.outCubic(clamp((t - s) / 2));
-    const T: V3 = [lerp(ENV[0] + 20, 60, ko) + 30 * push, lerp(ENV[1] - 120, 20, ko), 0];
-    const dist = D * lerp(0.78 - 0.04 * intro, 1.24, ko) * (1 - 0.05 * push);
-    const tilt = THREE.MathUtils.degToRad(lerp(34, 24, ko));
-    const yaw = lerp(-0.18, 0.05, ko);
-    st.look([T[0] + Math.sin(yaw) * dist, T[1] - Math.sin(tilt) * dist, Math.cos(tilt) * dist], T);
+    this.look(ko, push, intro);
     const fEnv = st.depthOf([ENV[0], ENV[1] - 150, 2]), fNote = st.depthOf([LAND[0], LAND[1], LAND[2]]);
     const kn = ease.inOutCubic(clamp((t - this.tLand + 0.3) / 0.6));
     st.U.focus.value = lerp(fEnv, lerp(fNote, fEnv, 0.3), kn);
     st.U.aperture.value = 26;
     // 一盞暖燈：開場打在紅包上，後來移到兩個中間
-    st.U.pool.value.set(lerp(ENV[0], 60, ko), lerp(ENV[1] - 100, 0, ko), 1150, 0.7);
+    // 燈會呼吸：很慢的明暗＋大鼓時亮一點點（像燭光）
+    // 燈籠：每一拍被推一下似地左右擺（擺動的相位對齊拍子，擺到最遠正好在拍點），光圈與漆面上的倒影一起動；
+    // 燈籠本身在畫面外，看得到的是它的光和倒影
+    const au = this.ctx.audio, bp = au.beatAt(t);
+    const swing = Math.sin(bp * Math.PI) * (0.7 + 0.3 * noise1(t * 0.4, 5));
+    const breathe = 0.74 + 0.04 * noise1(t * 0.9, 3) + 0.05 * au.hit('kick', t, 0.12);
+    const cx = lerp(ENV[0], 60, ko) + 140 * swing, cy = lerp(ENV[1] - 100, 0, ko);
+    st.U.pool.value.set(cx, cy, 1150, breathe);
+    // 倒影落在光圈的後方（鏡頭看過去燈籠在紅包的後上方），沿著視線拉長
+    (st.tableMat.uniforms.hl!.value as THREE.Vector4).set(cx + 60 * swing, cy + 620, 150, 0.55 + 0.15 * au.hit('kick', t, 0.12));
     st.shadows([
       { x: ENV[0] + 12, y: ENV[1] - 16, w: EW, h: EH, blur: 22, k: 0.5, r: 6 },
       { x: pose.x + 14 + pose.z * 0.3, y: pose.y - 18 - pose.z * 0.4, w: pose.fly > 0 ? NW : 1, h: NH, rot: -0.04, blur: 16 + pose.z * 0.2, k: pose.fly > 0 ? 0.5 * (1 - clamp(pose.z / 500)) : 0, r: 6 },
@@ -335,12 +385,13 @@ export default class RedEnvelope extends Scene {
     if (ly) {
       c.save(); c.globalAlpha = ly.k;
       if (isLatin(ly.line.text)) {
+        const LY_EN: RowsStyle = { family: F.archivo(100, 800), size: lyricV2(this.msgScreen) / this.sEnv, minSize: V2.lyrMin / this.sEnv, maxW: ZONE.w, maxRows: 4, align: 'center', lineHeight: 1.08 };
         const lay = layoutRows(c, ly.line, LY_EN);
         const top = ZONE.y + ZONE.h / 2 - lay.height / 2 + lay.size * 0.84;
         c.translate(ZONE.x + ZONE.w / 2, top);
         drawRows(c, lay, LY_EN.family, t, { active: 'rgb(255,0,0)', sung: '#fff', unsung: 'rgba(255,255,255,0.3)' });
       } else {
-        const lay = layoutVertical(ly.line);
+        const lay = layoutVertical(ly.line, lyricV2(this.msgScreen) / this.sEnv, V2.lyrMin / this.sEnv);
         c.font = font(F.ming(900), lay.size); c.textAlign = 'center';
         for (const ch of lay.chars) {
           const p = Lyrics.wordProgress(ch.word, t);
@@ -368,20 +419,28 @@ export default class RedEnvelope extends Scene {
     this.noteInk.clear();
     c.textBaseline = 'alphabetic';
     c.font = font(F.hei(500), 18); c.fillStyle = rgba('sepia', 0.55); c.letterSpacing = '5px';
-    c.fillText(m?.couple ? '紅包裡的一句話　·　新人' : '紅包裡的一句話', 70, 78);
+    c.fillText(m?.couple ? '紅包裡的一句話　·　新人' : '紅包裡的一句話', 62, 66);
     c.letterSpacing = '0px';
-    const top = 104 + fit.size * 0.9 + Math.max(0, (NH - 104 - 70 - 60 - fit.height) * 0.45);
-    drawFit(c, fit, F.hand(700), 70, top, { color: rgba('sepia') });
-    c.font = font(F.hand(700), m ? 48 : 40); c.fillStyle = rgba('sepia', 0.8); c.textAlign = 'right';
-    c.fillText(m ? signature(m.name) : '掃描右下角 QR code，把祝福包進紅包', NW - 70, top + (fit.lines.length - 1) * fit.lineHeight + 70);
+    // 留言＋署名：署名永遠在最後一行下面（字級是扣掉署名的高度算的），讓出下伸部再放
+    const sigH = this.sigSize * SIG_K;
+    const top = NTOP + fit.size * 0.9 + Math.max(0, (NH - NTOP - 34 - sigH - fit.height) * 0.45);
+    drawFit(c, fit, F.hand(700), 62, top, { color: rgba('sepia') });
+    const yS = top + (fit.lines.length - 1) * fit.lineHeight + fit.size * 0.3 + this.sigSize * 1.05;
+    c.font = font(F.hand(700), this.sigSize); c.fillStyle = rgba('sepia', 0.8);
+    if (m) { c.textAlign = 'right'; c.fillText(signature(m.name), NW - 62, yS); }
+    else {
+      // 沒有留言：邀請分兩行、靠左，接在「這個紅包留給你」下面
+      c.fillText('掃描右下角 QR code，', 62, yS);
+      c.fillText('把祝福包進紅包', 62, yS + this.sigSize * 1.4);
+    }
     c.textAlign = 'left';
-    // 左下角一顆小小的印（訊號色的暗部）
+    // 右上角一顆小小的印（訊號色的暗部）
     c.save();
-    c.translate(96, NH - 92); c.rotate(-0.08);
+    c.translate(NW - 70, 56); c.rotate(-0.08); // 右上角（不會碰到留言與署名）
     c.fillStyle = rgba('blood', 0.85);
-    c.beginPath(); c.roundRect(-26, -26, 52, 52, 6); c.fill();
-    c.fillStyle = rgba('paper'); c.font = font(F.ming(900), 34); c.textAlign = 'center';
-    c.fillText('賀', 0, 12);
+    c.beginPath(); c.roundRect(-20, -20, 40, 40, 5); c.fill();
+    c.fillStyle = rgba('paper'); c.font = font(F.ming(900), 26); c.textAlign = 'center';
+    c.fillText("賀", 0, 9);
     c.restore();
   }
 }

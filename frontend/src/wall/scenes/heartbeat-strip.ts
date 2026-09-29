@@ -9,6 +9,7 @@ import { rgba, mixRgba } from '../engine/palette';
 import { fitText, type FitResult } from '../engine/text';
 import type { Msg } from '../engine/scene';
 import { signature, drawHeart } from './_motifs';
+import { sigV2, fitClauses } from './_v2';
 
 export interface Strip {
   /** 紙條畫在這張圖層上（含四周陰影的邊 pad）。 */
@@ -27,7 +28,7 @@ export interface Strip {
 
 const PAD_X = 44;
 // 紙條的直向版面（紙條座標，y 向下）：印的心電圖 → 抬頭列 → 細線 → 主文 → 簽名列。抬頭壓得很矮，高度留給主文
-const Y_TRACE = 26, Y_HEAD = 66, Y_RULE = 80, BODY_GAP = 26, SIG_GAP = 62, BOTTOM = 30;
+const Y_TRACE = 26, Y_HEAD = 66, Y_RULE = 80, BODY_GAP = 26, SIG_GAP = 50, BOTTOM = 30;
 /** 主文以外固定佔掉的高度（從紙頂到簽名列基線，扣掉主文本身）：版面算主文最大高度用。 */
 export const STRIP_FIXED = Y_RULE + BODY_GAP + SIG_GAP;
 const BLEED = 140; // 紙在簽名列下面再延伸這麼長（一定超出畫面下緣，看起來是從機器裡拉出來、離鏡頭很近）
@@ -42,8 +43,11 @@ export function buildStrip(o: {
   maxW: number; maxH: number; min: number; max: number; trace: (x01: number) => number;
 }): Strip {
   const meas = document.createElement('canvas').getContext('2d')!;
-  const fit = fitText(meas, o.body, o.bodyFamily, o.maxW, o.maxH, { min: o.min, max: o.max, lineHeight: 1.24, maxLines: 4 });
-  const sigSize = Math.round(Math.max(34, Math.min(46, fit.size * 0.44)));
+  // v2：照標點斷行（字級只小一點點也值得），署名 26～32
+  const opt = { min: o.min, max: o.max, lineHeight: 1.26, maxLines: 5 };
+  const byW = fitText(meas, o.body, o.bodyFamily, o.maxW, o.maxH, opt), byC = fitClauses(meas, o.body, o.bodyFamily, o.maxW, o.maxH, opt);
+  const fit = byC && byC.size >= byW.size * 0.9 ? byC : byW;
+  const sigSize = sigV2(fit.size);
   meas.font = font(F.mono(500), 15);
   const footW = meas.measureText(o.foot).width;
   meas.font = font(F.hand(400), sigSize);

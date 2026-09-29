@@ -18,18 +18,23 @@ import { clamp, ease, prog, lerp, hash, mulberry32, TAU } from '../engine/util';
 import type { FitResult } from '../engine/text';
 import { lyricAt, beatAfter, signature, fillWithHearts, COUPLE_ZH } from './_motifs';
 import { stagger, pad3, mono, tag, type Rect } from './_t11';
-import { lyricLine, lyricRows, glyphPoints, fitFew, lyricSizeFor, type GlyphPts } from './_t12';
+import { lyricLine, lyricRows, glyphPoints, type GlyphPts } from './_t12';
+import { V2, msgMaxFor, lyricV2, sigV2, fitClauses } from './_v2';
+import { fitText } from '../engine/text';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'science', paper: false, energy: [0, 0.6], bars: [6, 16], weight: 1 };
 
 // ---------------------------------------------------------------- 版面
 /** 沙漏：中心、半高、最寬的半徑、瓶頸、俯視的傾角。 */
-const HG = { x: 318, y: 536, h: 300, rb: 124, neck: 7, tilt: 0.3 };
+// 標準 v2：沙漏是主視覺，放大一點
+const HG = { x: 390, y: 530, h: 330, rb: 142, neck: 8, tilt: 0.3 };
 /** 沙盤（留言）與歌詞。 */
 /** 即時小卡停用之後右邊空出來了：沙盤一路到右邊（QR 在 y ≥ 830，沙盤在它上面）。 */
-const TB = { x: 640, y: 380, w: 1100, h: 420 };
-const LYR = { x: 640, base: 214, w: 1100, size: 60 };
-const FAM_MSG = F.hei(700);
+// 沙盤上寫字的範圍（標準 v2：寬 ≤ 860、高 ≤ 430），在沙漏右邊、QR 上面
+const TB = { x: 780, y: 400, w: 860, h: 400 };
+const LYR = { x: 780, base: 214, w: 960, size: 52 };
+// 沙粒排的字用粗黑體：字級照標準變小之後，細的字用沙粒排出來讀不清楚
+const FAM_MSG = F.hei(900);
 const INVITE = '掃描右下角 QR code，你的祝福也會一粒一粒堆起來。';
 const FOOT = '＊本沙漏可以無限次翻轉。';
 /** 沙粒下落的重力（px/s²）、漏斗口在那一行字頂上多高。 */
@@ -74,7 +79,8 @@ export default class Hourglass extends Scene {
   avoid: Rect[] = [];
   grain: CanvasPattern | null = null;
   /** 歌詞字級：有留言時比沙堆的字小一截（一格只有一個焦點）。 */
-  lyrSize = LYR.size;
+  lyrSize: number = LYR.size;
+  sigSize = 30;
   /** 沙粒的直徑（跟取樣間距成比例：字大沙粒也大一點）。 */
   dot = 2.5;
 
@@ -95,13 +101,16 @@ export default class Hourglass extends Scene {
 
     // ---- 沙盤：字排好、光柵化成沙粒
     const c = this.layer.ctx;
-    const boxH = m ? TB.h - 60 : TB.h - 130;
-    const fit = this.fit = fitFew(c, text, FAM_MSG, TB.w, boxH, { min: 54, max: m ? 140 : 150, lineHeight: 1.3, maxLines: 5 });
-    this.lyrSize = lyricSizeFor(m ? fit.size : null, LYR.size);
+    // 標準 v2：字級依字數的上限往下找；可用高度先扣掉署名那一行
+    const boxH = m ? TB.h - 60 : TB.h - 110;
+    const fo = { min: V2.msgMin, max: msgMaxFor(text), lineHeight: 1.3, maxLines: 5 };
+    const fit = this.fit = fitClauses(c, text, FAM_MSG, TB.w, boxH, fo) ?? fitText(c, text, FAM_MSG, TB.w, boxH, fo);
+    this.lyrSize = lyricV2(m ? fit.size : null);
+    this.sigSize = sigV2(fit.size);
     const top = TB.y + (boxH - fit.height) / 2 + fit.size * 0.86;
-    // 沙粒間距跟字級成比例（字大沙粒也大）；下限 2.5 px：六十字的長留言也不會超過兩萬粒
-    const step = clamp(fit.size / 30, 2.5, 4);
-    this.dot = step * 0.95;
+    // 沙粒間距跟字級成比例（字大沙粒也大）；字照標準變小之後沙粒也要細，筆畫才排得出來
+    const step = clamp(fit.size / 24, 2.1, 3);
+    this.dot = step * 1.05;
     const pts = this.pts = glyphPoints(fit.lines, FAM_MSG, fit.size, TB.x, top, fit.lineHeight, step, 'left', this.seed);
     const n = pts.n, ng = pts.glyphs.length;
     // ---- 時間：第二拍起一個字一個字倒（兩小節或窗格的四成內倒完），每個字倒一小段時間
@@ -128,7 +137,7 @@ export default class Hourglass extends Scene {
     this.sigT = tLast + beat * 0.5;
     c.font = font(FAM_MSG, fit.size);
     const wMax = Math.max(...fit.lines.map((l) => c.measureText(l).width));
-    this.sigY = top + (fit.lines.length - 1) * fit.lineHeight + fit.size * 0.3 + 60;
+    this.sigY = top + (fit.lines.length - 1) * fit.lineHeight + fit.size * 0.3 + this.sigSize + 14;
     // 署名太低的話不能進右下角 QR 的範圍（x ≥ 1360、y ≥ 830）
     this.sigX = this.sigY > 800 ? Math.min(TB.x + wMax, 1340) : TB.x + wMax;
     this.lyricsInWindow = lyrics.linesIn(s, e).length > 0;
@@ -143,7 +152,7 @@ export default class Hourglass extends Scene {
 
     // ---- 即時小卡避開：沙盤（留言）與上方的歌詞
     const msgR: Rect = [TB.x - 20, Math.round(top - fit.size - 20), TB.w + 40, Math.round(this.sigY + (m ? 20 : 70) - (top - fit.size) + 20)];
-    const rows = Math.max(1, lyricRows(c, lyrics.linesIn(s, e), { family: F.archivo(100, 800), size: this.lyrSize, minSize: 48, maxWidth: LYR.w }));
+    const rows = Math.max(1, lyricRows(c, lyrics.linesIn(s, e), { family: F.archivo(100, 800), size: this.lyrSize, minSize: V2.lyrMin, maxWidth: LYR.w }));
     const lyr: Rect = [LYR.x - 12, LYR.base - this.lyrSize - 40, LYR.w + 24, this.lyrSize * (rows > 1 ? 2.35 : 1.25) + 52];
     this.avoid = [msgR, msgR, lyr, lyr];
   }
@@ -267,6 +276,19 @@ export default class Hourglass extends Scene {
       const a = spin * 1 + (k / 3) * TAU, rr = HG.rb * 1.1;
       line(P(rr * Math.cos(a), -HG.h - 8, rr * Math.sin(a)), P(rr * Math.cos(a), HG.h + 8, rr * Math.sin(a)), 2.4, Math.sin(a));
     }
+    // 玻璃的反光：左邊一條固定的淡反光；每個小節線一道亮光沿著玻璃的弧面從左掃到右（像燈光掃過轉動的沙漏）
+    const au = this.ctx.audio, gb = Math.floor(au.barAt(t) + 1e-6), gtb = au.timeOfBar(gb);
+    const gq = prog(t, gtb + 0.1, gtb + 0.9, ease.inOutCubic);
+    const em = LIN.ember;
+    for (const [side, amt, al] of [[-0.62, 1, 0.22], [gq * 1.7 - 0.85, gq > 0 && gq < 1 ? Math.sin(Math.PI * gq) : 0, 0.9]] as const) {
+      if (amt <= 0.01) continue;
+      for (let i = 0; i < 30; i++) {
+        const v0 = -0.9 + (1.8 * i) / 30, v1 = -0.9 + (1.8 * (i + 1)) / 30;
+        if (Math.abs(v0) < 0.1 || Math.abs(v1) < 0.1) continue;
+        const a = P(side * prof(v0), v0 * HG.h, -prof(v0) * 0.8), b = P(side * prof(v1), v1 * HG.h, -prof(v1) * 0.8);
+        gl.seg2(a.x, a.y, b.x, b.y, side === -0.62 ? 1.6 : 2.4, [em[0] * 1.4, em[1] * 1.4, em[2] * 1.4], al * amt * vis);
+      }
+    }
     gl.render(renderer, out);
     comp.draw(renderer, L.upload(), out);
 
@@ -352,6 +374,16 @@ export default class Hourglass extends Scene {
     L.clear();
     c.globalAlpha = vis;
     // 漏斗（細線的倒三角）與沙柱
+    // 沙堆好的字：沙面上淡淡壓出字的形狀（字級照標準變小之後，光靠沙粒讀不清楚）
+    const pts = this.pts!, fit = this.fit!;
+    c.font = font(FAM_MSG, fit.size);
+    for (let gi = 0; gi < pts.glyphs.length; gi++) {
+      const k = ease.outCubic(clamp((t - this.g1[gi]!) / 0.5));
+      if (k <= 0) continue;
+      const gl = pts.glyphs[gi]!;
+      c.fillStyle = gl.ch === '♥' ? rgba('rose', 0.35 * k) : rgba('bone', 0.3 * k);
+      c.fillText(gl.ch, gl.x, gl.y);
+    }
     const fu = this.fun;
     if (fu) {
       c.save(); c.globalAlpha = fu.on;
@@ -368,21 +400,21 @@ export default class Hourglass extends Scene {
     const m = this.msg;
     if (m && t >= this.sigT) {
       c.save(); c.globalAlpha *= prog(t, this.sigT, this.sigT + 0.4);
-      c.font = font(F.ming(400), 38); c.fillStyle = rgba('ash'); c.textAlign = 'right';
+      c.font = font(F.ming(400), this.sigSize); c.fillStyle = rgba('ash'); c.textAlign = 'right';
       fillWithHearts(c, this.sig, this.sigX, this.sigY);
       c.restore();
     }
     if (!m) {
       c.save(); c.globalAlpha *= prog(t, this.sigT, this.sigT + 0.4);
-      c.font = font(F.hand(700), 44); c.fillStyle = rgba('bone', 0.9);
-      c.fillText(INVITE.split('，')[0] + '，', TB.x, this.sigY + 10);
-      c.fillText(INVITE.split('，')[1]!, TB.x, this.sigY + 66);
+      c.font = font(F.hand(700), 32); c.fillStyle = rgba('bone', 0.85);
+      c.fillText(INVITE.split('，')[0] + '，', TB.x, this.sigY - 6);
+      c.fillText(INVITE.split('，')[1]!, TB.x, this.sigY + 38);
       c.restore();
     }
     // 歌詞
     const ly = lyricAt(lyrics, t, 1.6);
     if (ly) {
-      const st = { family: F.archivo(100, 800), size: this.lyrSize, minSize: 48, maxWidth: LYR.w };
+      const st = { family: F.archivo(100, 800), size: this.lyrSize, minSize: V2.lyrMin, maxWidth: LYR.w };
       const inK = ease.outExpo(prog(t, ly.line.start - 0.35, ly.line.start + 0.1));
       c.save(); c.translate(LYR.x, LYR.base + (1 - inK) * 14);
       lyricLine(c, ly.line, t, st, ly.k * c.globalAlpha);

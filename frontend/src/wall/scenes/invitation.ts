@@ -13,20 +13,23 @@
 import * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
 import { FSPass, Layer2D } from '../engine/gl';
+import { LineBatch } from '../engine/lines';
 import { F, font, loadText } from '../engine/type';
 import { rgba } from '../engine/palette';
 import { clamp, ease, lerp, prog, pulse, TAU } from '../engine/util';
-import type { FitResult } from '../engine/text';
-import { lyricAt, signature, COUPLE_EN, COUPLE_ZH, WEDDING_DATE } from './_motifs';
+import { fitText, type FitResult } from '../engine/text';
+import { lyricAt, signature, sparkHead, sparkParticles, COUPLE_EN, COUPLE_ZH, WEDDING_DATE } from './_motifs';
 import { WEDDING_TIME_FROM } from '../../constants.js';
-import { grid, fitMsg, drawFit, layoutRows, drawRows, paperInk, lastIdx, Stage, docRT, camDist, FOIL_GLSL, type Grid, type RowsStyle, type V3 } from './_t4';
+import { grid, drawFit, layoutRows, drawRows, paperInk, lastIdx, Stage, docRT, camDist, FOIL_GLSL, type Grid, type RowsStyle, type V3, type P2 } from './_t4';
+import { msgMaxFor, lyricV2, sigV2, V2, fitClauses } from './_v2';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'doc', paper: true, energy: [0.15, 0.75], bars: [4, 8] };
 
 // ---------------------------------------------------------------- 尺寸（像素）
 const CW = 640, CH = 900; // 一面
-const RW = 700, RH = 520; // 回函
-const LY: RowsStyle = { family: F.archivo(100, 800), size: 68, minSize: 56, maxW: CW - 130, maxRows: 3, align: 'center', lineHeight: 1.06 };
+const RW = 680, RH = 468; // 回函（v2：畫面上約 650×420，只比字多一點邊）
+const RTOP = 104; // 回函上面的小標題列
+const SIG_K = 1.5; // 署名佔的高度 = 署名字級 × SIG_K
 const TEXT = '謹訂於年月日星期中午上午下午時舉行結婚典禮敬備喜筵恭請闔第光臨席設您現在坐的位置本日主題曲賓客回函一定到帶著祝福這一張留給你掃描右下角把祝福寄回給新人純音樂間奏中〇一二三四五六七八九十日';
 
 // 喜帖上的日期時間：用網站設定的婚禮日期（改日期不用改這裡）
@@ -91,8 +94,9 @@ function quad(x0: number, x1: number, h: number, u0: number, u1: number) {
 
 function makeRig() {
   const cover = docRT(CW, CH), inside = docRT(CW * 2, CH), reply = docRT(RW, RH);
-  const st = new Stage(1, 30);
-  st.U.ambient.value = 0.78;
+  // 喜帖擺在一塊緞面布上（不是桌子）：布的皺褶與光澤會慢慢起伏，燈是柔和的頂光
+  const st = new Stage(4, 30);
+  st.U.ambient.value = 0.8;
   const mCover = st.docMaterial(cover.texture, [cover.width, cover.height], [CW, CH], { edge: 0, depthTest: true, side: THREE.FrontSide });
   const mInside = st.docMaterial(inside.texture, [inside.width, inside.height], [CW * 2, CH], { edge: 0, depthTest: true });
   const mInsideB = st.docMaterial(inside.texture, [inside.width, inside.height], [CW * 2, CH], { edge: 0, depthTest: true, side: THREE.BackSide });
@@ -126,6 +130,13 @@ export default class Invitation extends Scene {
   g!: Grid;
   tOpen = 0; openDur = 0.9; tReply = 0;
   fit: FitResult | null = null;
+  /** 回函、左頁歌詞在畫面上是紙面的幾倍（鏡頭停好時量的），v2 的字級要換算。 */
+  sReply = 0.8; sLyric = 0.8;
+  msgScreen: number | null = null;
+  sigSize = 36;
+  /** 小事件：火花沿著燙金線跑（回函落地時描一圈、之後每兩個小節跑一次左頁的細線）。 */
+  sparks = this.track(new LineBatch(1024, { screen2D: true, blend: 'add' }));
+  runs: number[] = [];
   private drawn = false;
 
   override async init() {
@@ -142,9 +153,24 @@ export default class Invitation extends Scene {
     const readBy = e - Math.max(2.5, (this.msg?.text.length ?? 10) / 6 + 1.5);
     if (tr > readBy || tr - after > g.beat * 3) tr = au.timeOfBeat(Math.ceil(au.beatAt(after) - 1e-6));
     this.tReply = tr;
+    this.runs = g.bars.filter((b, i) => i % 2 === 0 && b > tr + g.bar * 0.9 && b < e - 0.6);
+    // 鏡頭停好（回函落地後）的位置先擺一次，量回函與左頁歌詞在畫面上的縮放
+    const endPose = this.replyPose(tr + 5);
+    this.look(1, 1, 0);
+    const st = this.rig.st;
+    const px = (a: V3, b: V3) => { const p = st.toScreen(a), q = st.toScreen(b); return Math.hypot(q.x - p.x, q.y - p.y) / 100; };
+    this.sReply = px([endPose.x - 50, endPose.y, endPose.z], [endPose.x + 50, endPose.y, endPose.z]);
+    this.sLyric = px([-CW * 0.5 - 50, 0, 4], [-CW * 0.5 + 50, 0, 4]);
+    // v2：留言字級照螢幕標準（依字數 40～60）換成回函上的字級；可用高度先扣掉署名，照子句斷行
     const text = this.msg ? this.msg.text : '這一張留給你';
-    // 字級依「可用高度扣掉署名」算：署名一定在留言下面
-    this.fit = fitMsg(this.replyInk.ctx, text, F.hand(700), RW - 90, RH - 112 - 64 - 44, { min: 54, max: 104, lineHeight: 1.26 });
+    const c = this.replyInk.ctx, fam = F.hand(700), S = this.sReply, maxS = msgMaxFor(text);
+    const boxH = RH - RTOP - 36 - (sigV2(maxS) / S) * SIG_K;
+    const opt = { min: V2.msgMin / S, max: maxS / S, lineHeight: 1.26, maxLines: 6 };
+    const byW = fitText(c, text, fam, RW - 90, boxH, opt);
+    const byC = fitClauses(c, text, fam, RW - 90, boxH, opt);
+    this.fit = byC && byC.size >= byW.size * 0.9 && byC.lines.length <= byW.lines.length + 1 ? byC : byW;
+    this.msgScreen = this.msg ? this.fit.size * S : null;
+    this.sigSize = Math.round(sigV2(this.fit.size * S) / S);
   }
 
   override render(f: Frame, out: THREE.WebGLRenderTarget): PostOverrides {
@@ -172,6 +198,7 @@ export default class Invitation extends Scene {
     this.paper.render(renderer, R.reply);
     comp.draw(renderer, this.replyInk.texture, R.reply);
     this.foilPass(renderer, R.reply, [0, 0, 0, 0], [RW, RH], sweep(RW), t, 22);
+    this.runSparks(renderer, t);
     // ---- 舞台
     R.hinge.rotation.y = -theta;
     R.rep.position.set(land.x, land.y, land.z);
@@ -205,19 +232,26 @@ export default class Invitation extends Scene {
     };
   }
 
+  /** 鏡頭位置：ko = 翻開的進度（0 貼近封面、1 看整張），kr = 回函落地後，push = 慢慢推近。 */
+  private look(ko: number, kr: number, push: number, idle = 1) {
+    const D = camDist(30);
+    const T: V3 = [lerp(CW * 0.55, 150, ko) + 60 * kr, lerp(10, -40, ko) - 30 * kr, 0];
+    // 攤開的喜帖佔滿大半個畫面（場景是主角；回函本身仍 ≤ 860×430）
+    const dist = D * lerp(0.9 - 0.05 * idle, 1.14, ko) * (1 - 0.05 * push);
+    const tilt = THREE.MathUtils.degToRad(lerp(48, 30, ko));
+    const yaw = lerp(0.3, 0.06, ko);
+    this.rig.st.look([T[0] + Math.sin(yaw) * dist, T[1] - Math.sin(tilt) * dist, Math.cos(tilt) * dist], T);
+  }
+
   private shoot(t: number, theta: number, land: { x: number; y: number; z: number; u: number; a: number }) {
     const st = this.rig.st, s = this.ctx.start, e = this.ctx.end;
-    const D = camDist(30);
     // 開場：貼近封面（在右邊）、斜；翻開時拉開、移到整張攤開的喜帖；回函落地後焦點拉過去、慢慢推近
     const ko = ease.inOutCubic(clamp((t - this.tOpen + 0.15) / (this.openDur + 0.5)));
     const kr = ease.inOutCubic(clamp((t - this.tReply) / 0.8));
     const push = ease.inOutCubic(clamp((t - this.tReply) / Math.max(1, e - this.tReply)));
     const idle = ease.outCubic(clamp((t - s) / 3));
-    const T: V3 = [lerp(CW * 0.55, 150, ko) + 60 * kr, lerp(10, -40, ko) - 30 * kr, 0];
-    const dist = D * lerp(0.9 - 0.05 * idle, 1.26, ko) * (1 - 0.05 * push);
-    const tilt = THREE.MathUtils.degToRad(lerp(48, 30, ko));
-    const yaw = lerp(0.3, 0.06, ko);
-    st.look([T[0] + Math.sin(yaw) * dist, T[1] - Math.sin(tilt) * dist, Math.cos(tilt) * dist], T);
+    this.look(ko, kr, push, idle);
+    st.U.goboT.value = t;
     const fCover = st.depthOf([CW * 0.5, 0, 4]), fLyric = st.depthOf([-CW * 0.5, 0, 4]), fReply = st.depthOf([land.x, land.y, land.z]);
     st.U.focus.value = lerp(lerp(fCover, fLyric, ko), lerp(fReply, fLyric, 0.35), kr);
     st.U.aperture.value = 22;
@@ -230,6 +264,40 @@ export default class Invitation extends Scene {
       { x: sx / 2 + lift * 0.5 + 10, y: -14 - lift * 0.4, w: Math.max(1, Math.abs(sx)) + 20, h: CH, blur: 16 + lift * 0.2, k: 0.28 * (theta > 0 ? 1 : 0), r: 4 },
       { x: land.x + 12 + land.z * 0.35, y: land.y - 16 - land.z * 0.45, w: RW, h: RH, rot: -0.045, blur: 14 + land.z * 0.25, k: 0.3 * land.a * (1 - clamp(land.z / 600)), r: 8 },
     ]);
+  }
+
+  // ------------------------------------------------------------ 火花（小事件）
+  /** 回函落地時，火花沿著回函的燙金框描一圈；之後每兩個小節，火花沿著左頁歌詞上下的燙金細線跑過去。 */
+  private runSparks(renderer: THREE.WebGLRenderer, t: number) {
+    const R = this.rig, lb = this.sparks;
+    // 回函的框（回函座標，從左上角順時針）
+    const I = 22, fr: P2[] = [{ x: I, y: I }, { x: RW - I, y: I }, { x: RW - I, y: RH - I }, { x: I, y: RH - I }, { x: I, y: I }];
+    const along = (pts: P2[], u: number): P2 => {
+      let total = 0; for (let i = 1; i < pts.length; i++) total += Math.hypot(pts[i]!.x - pts[i - 1]!.x, pts[i]!.y - pts[i - 1]!.y);
+      let left = clamp(u) * total;
+      for (let i = 1; i < pts.length; i++) { const a = pts[i - 1]!, b = pts[i]!, l = Math.hypot(b.x - a.x, b.y - a.y); if (left <= l) return { x: lerp(a.x, b.x, left / l), y: lerp(a.y, b.y, left / l) }; left -= l; }
+      return pts[pts.length - 1]!;
+    };
+    const t0 = this.tReply + 0.05, dur = 0.7;
+    if (t > t0 && t < t0 + dur + 0.4) {
+      lb.clear();
+      const head = (tb: number) => (tb >= t0 && tb <= t0 + dur ? along(fr, (tb - t0) / dur) : null);
+      sparkParticles(lb, t, head, { rate: 100, life: 0.35, speed: 180, seed: 4, intensity: 0.7 });
+      const h = head(t);
+      if (h) sparkHead(lb, h.x, h.y, t, 0.8, 0.8);
+      if (lb.count) lb.render(renderer, R.reply);
+    }
+    // 左頁的兩條燙金細線（內頁座標 y 210 與 690，x 150…CW-150），輪流跑
+    const k = this.runs.findIndex((b) => t >= b && t < b + 0.9);
+    if (k >= 0) {
+      const b = this.runs[k]!, y = k % 2 ? 690 : 210, rd = 0.5;
+      const head = (tb: number) => (tb >= b && tb <= b + rd ? { x: lerp(150, CW - 150, (tb - b) / rd), y } : null);
+      lb.clear();
+      sparkParticles(lb, t, head, { rate: 100, life: 0.35, speed: 160, seed: 8 + k, intensity: 0.7 });
+      const h = head(t);
+      if (h) sparkHead(lb, h.x, h.y, t, 0.7, 0.8);
+      if (lb.count) lb.render(renderer, R.inside);
+    }
   }
 
   // ------------------------------------------------------------ 燙金的遮罩（畫一次）
@@ -286,18 +354,26 @@ export default class Invitation extends Scene {
     const c = this.replyInk.ctx, m = this.msg, fit = this.fit!;
     this.replyInk.clear();
     c.textBaseline = 'alphabetic';
-    c.font = font(F.ming(700), 22); c.fillStyle = rgba('sepia', 0.85);
-    c.fillText('賓客回函', 46, 70);
-    c.font = font(F.serif(600, true), 22); c.fillStyle = rgba('sepia', 0.6);
-    c.fillText('R.S.V.P.', 146, 70);
-    c.font = font(F.hei(500), 18); c.fillStyle = rgba('sepia', 0.7); c.textAlign = 'right';
-    c.fillText(m ? `☑ 一定到　☑ 帶著祝福${m.couple ? '　·　新人' : ''}` : '☐ 一定到　☐ 帶著祝福', RW - 46, 70);
+    c.font = font(F.ming(700), 24); c.fillStyle = rgba('sepia', 0.85);
+    c.fillText('賓客回函', 46, 66);
+    c.font = font(F.serif(600, true), 24); c.fillStyle = rgba('sepia', 0.6);
+    c.fillText('R.S.V.P.', 152, 66);
+    c.font = font(F.hei(500), 20); c.fillStyle = rgba('sepia', 0.7); c.textAlign = 'right';
+    c.fillText(m ? `☑ 一定到${m.couple ? '　·　新人' : ''}` : '☐ 一定到', RW - 46, 66);
     c.textAlign = 'left';
-    c.fillStyle = rgba('sepia', 0.25); c.fillRect(46, 88, RW - 92, 1);
-    const top = 112 + fit.size * 0.9 + Math.max(0, (RH - 112 - 64 - 44 - fit.height) * 0.4);
+    c.fillStyle = rgba('sepia', 0.25); c.fillRect(46, 84, RW - 92, 1);
+    // 留言＋署名：署名永遠在最後一行下面（字級是扣掉署名的高度算的），讓出下伸部再放
+    const sigH = this.sigSize * SIG_K;
+    const top = RTOP + fit.size * 0.9 + Math.max(0, (RH - RTOP - 36 - sigH - fit.height) * 0.4);
     drawFit(c, fit, F.hand(700), 46, top, { color: rgba('sepia') });
-    c.font = font(F.hand(700), m ? 46 : 38); c.fillStyle = rgba('sepia', 0.78); c.textAlign = 'right';
-    c.fillText(m ? signature(m.name) : '掃描右下角 QR code，把祝福寄回給新人', RW - 46, top + (fit.lines.length - 1) * fit.lineHeight + 64);
+    const yS = top + (fit.lines.length - 1) * fit.lineHeight + fit.size * 0.3 + this.sigSize * 1.05;
+    c.font = font(F.hand(700), this.sigSize); c.fillStyle = rgba('sepia', 0.78);
+    if (m) { c.textAlign = 'right'; c.fillText(signature(m.name), RW - 46, yS); }
+    else {
+      // 沒有留言：邀請分兩行、靠左，接在「這一張留給你」下面
+      c.fillText('掃描右下角 QR code，', 46, yS);
+      c.fillText('把祝福寄回給新人', 46, yS + this.sigSize * 1.4);
+    }
     c.textAlign = 'left';
   }
 
@@ -311,6 +387,8 @@ export default class Invitation extends Scene {
     c.fillText('♪ 本日主題曲', CW / 2, 180);
     c.letterSpacing = '0px';
     const ly = lyricAt(lyrics, t);
+    // v2：左頁的歌詞比留言小一級
+    const LY: RowsStyle = { family: F.archivo(100, 800), size: lyricV2(this.msgScreen) / this.sLyric, minSize: V2.lyrMin / this.sLyric, maxW: CW - 130, maxRows: 3, align: 'center', lineHeight: 1.06 };
     if (ly) {
       const lay = layoutRows(c, ly.line, LY);
       const top = 450 - lay.height / 2 + lay.size * 0.84;
@@ -318,7 +396,7 @@ export default class Invitation extends Scene {
       drawRows(c, lay, LY.family, t, paperInk(), ly.k);
       c.restore();
     } else {
-      c.font = font(F.archivo(100, 800), 58); c.fillStyle = rgba('sepia', lyrics.has ? 0.28 : 0.8);
+      c.font = font(F.archivo(100, 800), Math.round(V2.lyrMin / this.sLyric)); c.fillStyle = rgba('sepia', lyrics.has ? 0.28 : 0.8);
       c.fillText(song.title || COUPLE_EN, CW / 2, 470);
       if (!lyrics.has) { c.font = font(F.hei(500), 18); c.fillStyle = rgba('sepia', 0.5); c.fillText('（純音樂）', CW / 2, 520); }
     }

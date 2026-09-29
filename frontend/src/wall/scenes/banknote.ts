@@ -16,6 +16,9 @@
 // 影子落在右下；切進來時鏡頭從遠一點、斜一點的位置一下子推到定位，之後整個窗格很慢地繞、慢慢推近。
 // 配角砍掉一半以上：只留行名（小）、一行冷面小字與序號、簽名欄，徽章外圈只留一行弧形字；總裁簽名、英文副標、微縮字、放大鏡圖解都拿掉，
 // 留言是整張紙上唯一的大字。
+// v2（2026-09-29「留言尺寸與版面比例標準 v2」）：鏡頭往後拉（鈔票約佔畫面的七成，四周看得到桌面）：
+// 留言在畫面上 40～60 px（依字數）、署名 26～32、桌上的歌詞 40～52（不比留言大），字都照鏡頭的縮放換算成平面字級。
+// 鈔票底下斜斜壓著一張舊的鈔票（整疊的感覺）；窗外的樹影與一道窗光很慢地掃過桌面與鈔票。
 import * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides } from '../engine/scene';
 import { Layer2D, makeRT, W, H } from '../engine/gl';
@@ -25,6 +28,7 @@ import { rgba } from '../engine/palette';
 import { clamp, ease, lerp, prog, pulse, TAU } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
 import { sparkHead, sparkParticles, lyricAt, drawLyric, layoutLyric, beatAfter, COUPLE_EN, COUPLE_ZH, DATE_DOTS } from './_motifs';
+import { V2, msgMaxFor, lyricV2, sigV2, fitClauses } from './_v2';
 import { INNER, MED, ARC_R, rosettePoint, makeBakePass, makeMainPass } from './banknote-art';
 
 type P2 = { x: number; y: number };
@@ -38,6 +42,11 @@ const LYR = { x: 190, base: 930, maxW: 1060 };
 const STRIP = { y: 826, h: 150 };
 /** 鏡頭的焦距（px）：跟「距離」一樣時，對準的那一點是 1:1。 */
 const CAM_F = 1800;
+/** v2：鏡頭往後拉多少（距離的倍數）；拉遠之後平面上 1 px 在畫面上約是 NOTE_S px（字級照這個換算）。 */
+const PULL = 1.26;
+const NOTE_S = 0.8;
+/** 畫面上的字級 → 平面上的字級。 */
+const plane = (screenPx: number) => screenPx / NOTE_S;
 
 /** 戒指固定的傾斜：先繞 x 轉 45°（兩只看起來一樣大），再歪一點。 */
 const TILT = new THREE.Matrix4().makeRotationZ(-0.16).multiply(new THREE.Matrix4().makeRotationX(Math.PI / 4));
@@ -95,7 +104,10 @@ export default class Banknote extends Scene {
     const c = this.mask.ctx;
     const heroFam = F.ming(700);
     if (m) {
-      this.fit = fitText(c, m.text, heroFam, HERO.w, HERO.h, { min: 48, max: 136, lineHeight: 1.3, maxLines: 4 });
+      // v2：畫面上 40～60 px（依字數），照標點斷行
+      const o = { min: plane(V2.msgMin), max: plane(msgMaxFor(m.text)), lineHeight: 1.3, maxLines: 5 };
+      const byW = fitText(c, m.text, heroFam, HERO.w, HERO.h, o), byC = fitClauses(c, m.text, heroFam, HERO.w, HERO.h, o);
+      this.fit = byC && byC.size >= byW.size * 0.9 ? byC : byW;
     } else {
       // 邀請的斷行自己決定（「印上」不能拆開）：第一行短，右邊空出來蓋「樣張」印章。
       // 沒有留言時焦點是歌詞，邀請比歌詞小一點
@@ -105,7 +117,7 @@ export default class Banknote extends Scene {
       this.fit = { size, lines: inv, lineHeight: size * 1.3, width: 0, height: size * 2.3 };
     }
     const fit = this.fit;
-    this.lyrSize = m ? clamp(Math.round(fit.size * 0.7), 48, 58) : 68;
+    this.lyrSize = plane(lyricV2(m ? fit.size * NOTE_S : null));
     // 窗格是在前一個窗格播放時預先建的：排版、畫字、上傳之間讓出主執行緒，正在播的畫面才不會掉格
     await yieldFrame();
     // 網線週期跟字級走：字越大線越疏，小字也還讀得到
@@ -190,7 +202,7 @@ export default class Banknote extends Scene {
     });
     // 祝福人簽名（手寫字，由左往右寫——shader 用 uSig 的範圍照 x 算時間）
     if (m) {
-      this.fitLine(c, sigName, F.hand(700), 60, SIG.w - 10, (size) => {
+      this.fitLine(c, sigName, F.hand(700), plane(sigV2(fit.size * NOTE_S)), SIG.w - 10, (size) => {
         c.font = font(F.hand(700), size);
         const w = c.measureText(sigName).width;
         this.sigBox = { x0: SIG.x + 4, x1: SIG.x + 4 + w, y: SIG.base - size * 0.32 };
@@ -345,7 +357,7 @@ export default class Banknote extends Scene {
     const rz = -0.018 + 0.01 * w - 0.02 * k;
     // 鏡頭對準的平面點（留言與徽章之間偏左），與距離（慢推：越來越近）
     const cx = 905 + 70 * k - 30 * w, cy = 540 - 16 * k;
-    const D = CAM_F * (1 + 0.12 * k - 0.035 * w);
+    const D = CAM_F * PULL * (1 + 0.12 * k - 0.035 * w);
     const cX = Math.cos(rx), sX = Math.sin(rx), cY = Math.cos(ry), sY = Math.sin(ry), cZ = Math.cos(rz), sZ = Math.sin(rz);
     // R = Rz·Ry·Rx 作用在平面的兩個軸上：r1 = R·x̂，r2 = R·ŷ（Rx 把 ŷ 轉成 (0, cX, −sX)：上緣往遠處倒）
     const r1 = [cY * cZ, cY * sZ, sY];
@@ -467,7 +479,7 @@ export default class Banknote extends Scene {
     const interlude = !next ? 1 : prog(next.start - t, 1.8, 2.6);
     const fbA = interlude * (ly ? (t > ly.line.end ? 1 - ly.k : 0) : 1);
     if (ly) {
-      const st = { family: F.archivo(100, 800), size: this.lyrSize, minSize: 48, maxWidth: LYR.maxW, active: rgba('blood'), sung: rgba('sepia', 0.92), unsung: rgba('sepia', 0.26) };
+      const st = { family: F.archivo(100, 800), size: this.lyrSize, minSize: plane(V2.lyrMin), maxWidth: LYR.maxW, active: rgba('blood'), sung: rgba('sepia', 0.92), unsung: rgba('sepia', 0.26) };
       const lay = layoutLyric(c, ly.line, st);
       // 折成兩行時第一行往上長，最後一行的基線固定
       c.save();

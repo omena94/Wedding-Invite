@@ -11,14 +11,15 @@
 // 正面貼舊的右頁、背面貼新的左頁）。交給 _t4 的舞台拍（亞麻桌巾、光、景深、書溝的陰影）。
 import * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
-import { FSPass, Layer2D } from '../engine/gl';
+import { FSPass, Layer2D, SCALE } from '../engine/gl';
 import { LineBatch } from '../engine/lines';
 import { F, font, layout, loadText, type TextLayout } from '../engine/type';
-import { rgba, mixRgba } from '../engine/palette';
-import { clamp, ease, hash, lerp, prog } from '../engine/util';
-import { wrap, type FitResult } from '../engine/text';
-import { lyricAt, signature, sparkHead, sparkParticles, fillWithHearts } from './_motifs';
-import { grid, fitMsg, layoutRows, drawRows, paperInk, Stage, docRT, camDist, type Grid, type RowsStyle, type P2, type V3 } from './_t4';
+import { rgba, mixRgba, LIN } from '../engine/palette';
+import { clamp, ease, hash, lerp, prog, noise1 } from '../engine/util';
+import { wrap, fitText, type FitResult } from '../engine/text';
+import { lyricAt, signature, sparkHead, sparkParticles, fillWithHearts, heartPoints } from './_motifs';
+import { grid, layoutRows, drawRows, paperInk, Stage, docRT, camDist, type Grid, type RowsStyle, type P2, type V3 } from './_t4';
+import { msgMaxFor, lyricV2, sigV2, V2, fitClauses } from './_v2';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'doc', paper: true, energy: [0.15, 0.8], bars: [4, 8] };
 
@@ -31,7 +32,7 @@ const Z0 = 8, CURL_A = 24, CURL_K = 80; // 頁面的彎曲：靠書脊低、往�
 const pageZ = (u: number) => Z0 + CURL_A * (1 - Math.exp(-u / CURL_K));
 const COOL = 0.8; // 濕墨水乾掉要幾秒
 
-const LY: RowsStyle = { family: F.archivo(100, 800), size: 66, minSize: 56, maxW: HEAD.w, maxRows: 2, lineHeight: 1.04 };
+const SIG_K = 1.5; // 署名佔的高度 = 署名字級 × SIG_K
 const TEXT = '芳名錄本頁背景音樂這一頁留給你掃描右下角把祝福寫進簽名簿純音樂間奏中第頁一位賓客新人';
 
 // ---------------------------------------------------------------- 紙（shader）：很淡的橫線、纖維
@@ -103,10 +104,24 @@ function setLeaf(g: THREE.BufferGeometry, p: number) {
   g.computeVertexNormals();
 }
 
+/** 簽名桌上的一排小蠟燭（俯視：金屬杯、蠟面、燭芯），火苗另外每格畫。 */
+const CANDLES: [number, number][] = [[-640, -600], [-470, -650], [-300, -615]];
+function drawTealight(c: CanvasRenderingContext2D) {
+  const x = 64, y = 64, r = 60;
+  const gr = c.createRadialGradient(x - 18, y - 18, 6, x, y, r);
+  gr.addColorStop(0, rgba('bone')); gr.addColorStop(1, rgba('ash'));
+  c.fillStyle = gr; c.beginPath(); c.arc(x, y, r, 0, Math.PI * 2); c.fill();
+  c.fillStyle = mixRgba('paper', 'signal', 0.18); c.beginPath(); c.arc(x, y, r * 0.8, 0, Math.PI * 2); c.fill();
+  c.strokeStyle = rgba('sepia', 0.25); c.lineWidth = 2; c.beginPath(); c.arc(x, y, r * 0.8, 0, Math.PI * 2); c.stroke();
+  c.fillStyle = rgba('sepia', 0.85); c.beginPath(); c.arc(x, y, 5, 0, Math.PI * 2); c.fill();
+}
+
 function makeRig() {
   const oldRT = docRT(DW, DH), newRT = docRT(DW, DH);
   const st = new Stage(2, 30);
-  st.U.ambient.value = 0.8;
+  // 環境：喜宴入口的簽名桌，光來自畫面外左下角的一排蠟燭（暖、會搖曳），其他地方比較暗
+  st.U.ambient.value = 0.62;
+  st.U.poolFloor.value = 0.42; st.U.poolWarm.value = 0.35;
   const tp: [number, number] = [newRT.width, newRT.height], dp: [number, number] = [DW, DH];
   const mOld = st.docMaterial(oldRT.texture, tp, dp, { edge: 0, depthTest: true });
   const mNew = st.docMaterial(newRT.texture, tp, dp, { edge: 0, depthTest: true });
@@ -125,6 +140,9 @@ function makeRig() {
   book.add(cover, left, right, leafF, leafB);
   for (const m of [cover, left, right, leafF, leafB]) m.frustumCulled = false;
   st.scene.add(book);
+  const tl = new Layer2D(128, 128, SCALE, { fast: true });
+  drawTealight(tl.ctx);
+  for (const [x, y] of CANDLES) st.prop(tl.texture, [tl.canvas.width, tl.canvas.height], [0, 0, 1, 1], 110, 110, x, y, 2);
   return { oldRT, newRT, st, mOld, mNew, left, right, leafF, leafB, book };
 }
 
@@ -140,12 +158,20 @@ export default class Guestbook extends Scene {
   /** 每格重畫：書眉的歌詞、正在寫的字。 */
   live = this.track(new Layer2D(DW, DH, undefined, { fast: true }));
   spark = this.track(new LineBatch(1024, { screen2D: true, blend: 'add' }));
+  /** 燭火（畫面座標，加亮疊上去才會發光）。 */
+  flames = this.track(new LineBatch(128, { screen2D: true, blend: 'add' }));
   msg: Msg | null = this.ctx.params.message ?? null;
   g!: Grid;
   tTurn = 0; turnDur = 0.7;
   glyphs: Glyph[] = [];
   fit: FitResult | null = null;
   writeEnd = 0;
+  /** 書頁、書眉在畫面上是跨頁的幾倍（鏡頭停好時量的），v2 的字級要換算。 */
+  sEntry = 0.8; sHead = 0.8;
+  msgScreen: number | null = null;
+  /** 簽完名的下一個小節線：火花在署名旁邊畫一顆小愛心。 */
+  tDoodle = Infinity;
+  doodle: P2 = { x: 0, y: 0 };
 
   override async init() {
     const { audio: au, song, lyrics } = this.ctx;
@@ -160,7 +186,20 @@ export default class Guestbook extends Scene {
     const t0 = au.timeOfBeat(Math.ceil(au.beatAt(this.tTurn + this.turnDur) - 1e-6));
     const text = this.msg ? this.msg.text : '這一頁留給你';
     const fam = F.hand(700);
-    const fit = (this.fit = fitMsg(this.live.ctx, text, fam, ENTRY.w, ENTRY.h - (this.msg ? 110 : 190), { min: 54, max: 108, lineHeight: 1.32 }));
+    // 鏡頭停好的位置先擺一次，量新的一頁與書眉在畫面上的縮放
+    this.look(1, 0, null);
+    const stg = this.rig.st;
+    const scaleAt = (u: number, v: number) => { const a = stg.toScreen(this.world(u, v)), b = stg.toScreen(this.world(u + 100, v)); return Math.hypot(b.x - a.x, b.y - a.y) / 100; };
+    this.sEntry = scaleAt(ENTRY.x + ENTRY.w / 2 - 50, ENTRY.y + 220);
+    this.sHead = scaleAt(HEAD.x + HEAD.w / 2 - 50, HEAD.y + HEAD.h / 2);
+    // v2：留言字級照螢幕標準（依字數 40～60）換成書頁字級；可用高度先扣掉署名，照子句斷行
+    const S = this.sEntry, maxS = msgMaxFor(text);
+    const boxH = Math.min(ENTRY.h, 430 / S) - (this.msg ? (sigV2(maxS) / S) * SIG_K : 0);
+    const opt = { min: V2.msgMin / S, max: maxS / S, lineHeight: 1.3, maxLines: 7 };
+    const byW = fitText(this.live.ctx, text, fam, ENTRY.w, boxH, opt);
+    const byC = fitClauses(this.live.ctx, text, fam, ENTRY.w, boxH, opt);
+    const fit = (this.fit = byC && byC.size >= byW.size * 0.9 && byC.lines.length <= byW.lines.length + 1 ? byC : byW);
+    this.msgScreen = this.msg ? fit.size * S : null;
     const lays: TextLayout[] = fit.lines.map((ln) => layout(ln, fam, fit.size));
     const top = ENTRY.y + 40 + fit.size * 0.9;
     const flat: { ch: string; x: number; y: number; w: number }[] = [];
@@ -190,14 +229,19 @@ export default class Guestbook extends Scene {
     // 簽名：寫完空半拍
     const sigText = this.msg ? `${signature(this.msg.name)}${this.msg.couple ? '（新人）' : ''}` : '';
     if (sigText) {
-      const ss = 46, sl = layout(sigText, fam, ss);
+      // 署名永遠在最後一行下面（字級是扣掉署名的高度算的）：讓出下伸部再放署名
+      const ss = Math.round(sigV2(fit.size * S) / S), sl = layout(sigText, fam, ss);
       const lastY = top + (fit.lines.length - 1) * fit.lineHeight;
-      const sx = ENTRY.x + ENTRY.w - sl.width, sy = Math.min(lastY + 78, ENTRY.y + ENTRY.h + 30);
+      const sx = ENTRY.x + ENTRY.w - sl.width, sy = lastY + fit.size * 0.3 + ss * 1.1;
+      this.doodle = { x: sx - ss * 1.1, y: sy - ss * 0.35 };
       const st0 = tEnd + g.beat * 0.5, per = Math.min(0.06, 0.8 / sl.glyphs.length);
       sl.glyphs.forEach((gl, j) => this.glyphs.push({ ch: gl.ch, x: sx + gl.x, y: sy, w: gl.w, t0: st0 + j * per, t1: st0 + (j + 1) * per, size: ss }));
       tEnd = st0 + sl.glyphs.length * per;
     }
     this.writeEnd = tEnd;
+    // 小事件：簽完名的下一個小節線，火花在署名旁邊畫一顆小愛心
+    const tb = g.bars.find((b) => b >= tEnd + 0.2);
+    if (this.msg && tb !== undefined && tb < e - 0.8) this.tDoodle = tb;
   }
 
   override render(f: Frame, out: THREE.WebGLRenderTarget): PostOverrides {
@@ -206,14 +250,17 @@ export default class Guestbook extends Scene {
     const L = this.live; L.clear();
     const c = L.ctx;
     this.drawLyric(c, t);
-    const turnP = ease.inOutCubic(clamp((t - this.tTurn) / this.turnDur));
+    // 寫完之後，每兩個小節線有一陣風：左邊那頁的外緣掀起來一點點再落回去
+    let turnP = ease.inOutCubic(clamp((t - this.tTurn) / this.turnDur));
+    const gusts = this.g.bars.filter((b, i) => i % 2 === 1 && b > this.writeEnd + 0.3 && b <= t);
+    if (gusts.length && turnP >= 1) { const u = clamp((t - gusts[gusts.length - 1]!) / 0.9); turnP = 1 - 0.045 * Math.sin(u * Math.PI) * (1 - u * 0.3); }
     // 舊的跨頁只在翻頁完成前看得到：那之前每格畫（書眉的歌詞要跟唱），之後就不用了
     if (turnP < 1) {
       this.paper.render(renderer, R.oldRT);
       comp.draw(renderer, this.oldL.texture, R.oldRT);
       comp.draw(renderer, L.upload(), R.oldRT);
     }
-    const pen = this.drawWriting(c, t);
+    const pen = this.drawWriting(c, t) ?? this.drawDoodle(c, t);
     this.paper.render(renderer, R.newRT);
     comp.draw(renderer, this.newL.texture, R.newRT);
     comp.draw(renderer, L.upload(), R.newRT);
@@ -228,6 +275,7 @@ export default class Guestbook extends Scene {
     R.leafB.geometry.setAttribute('normal', R.leafF.geometry.getAttribute('normal'));
     this.shoot(t, pen);
     R.st.render(renderer, out);
+    this.drawFlames(renderer, out, t);
     return { paper: 1, bloom: 0.4, vignette: 0.3, grain: 0.04 };
   }
 
@@ -237,27 +285,56 @@ export default class Guestbook extends Scene {
     return [x, PH / 2 - v, pageZ(Math.abs(x))];
   }
 
-  private shoot(t: number, pen: P2 | null) {
-    const st = this.rig.st, g = this.g, s = this.ctx.start, e = this.ctx.end;
+  /** 鏡頭位置：intro = 開場進度（0 貼近、1 停好），after = 寫完後慢慢推近，pen = 筆尖（鏡頭往那邊偏一點）。 */
+  private look(intro: number, after: number, pen: P2 | null) {
     const D = camDist(30);
-    const intro = ease.outExpo(clamp((t - s) / Math.max(0.3, this.tTurn + this.turnDur - s)));
-    const after = ease.inOutCubic(clamp((t - this.writeEnd) / Math.max(1, e - this.writeEnd)));
-    // 看的點：書脊偏右（新的一頁），寫字時往筆尖偏一點；寫完慢慢推近那一頁
+    // 看的點：書脊偏右（新的一頁），寫字時往筆尖偏一點；書本放在畫面偏左上，右下角的 QR 區留乾淨
     const px = pen ? lerp(PW * 1.3, pen.x, 0.12) : PW * 1.3;
     const T0 = this.world(px, PH * 0.5);
-    // 書本放在畫面偏左上，右下角的 QR 區留給 HUD
-    const T: V3 = [T0[0] + 40 + 10 * after, T0[1] - 60 + 30 * after, 20];
-    const dist = D * lerp(0.95, 1.3, intro) * (1 - 0.04 * after);
+    const T: V3 = [T0[0] + 90 + 10 * after, T0[1] - 90 + 30 * after, 20];
+    const dist = D * lerp(0.95, 1.4, intro) * (1 - 0.04 * after);
     const tilt = THREE.MathUtils.degToRad(lerp(40, 29, intro));
     const yaw = lerp(0.14, 0.04, intro);
-    st.look([T[0] + Math.sin(yaw) * dist, T[1] - Math.sin(tilt) * dist, Math.cos(tilt) * dist], T);
+    this.rig.st.look([T[0] + Math.sin(yaw) * dist, T[1] - Math.sin(tilt) * dist, Math.cos(tilt) * dist], T);
+  }
+
+  private shoot(t: number, pen: P2 | null) {
+    const st = this.rig.st, g = this.g, s = this.ctx.start, e = this.ctx.end;
+    const intro = ease.outExpo(clamp((t - s) / Math.max(0.3, this.tTurn + this.turnDur - s)));
+    const after = ease.inOutCubic(clamp((t - this.writeEnd) / Math.max(1, e - this.writeEnd)));
+    this.look(intro, after, pen);
+    st.U.goboT.value = t;
     // 焦點在新的一頁與書眉之間偏新的一頁：歌詞也要清楚，只讓書本外面的桌巾與遠端失焦
     const fm = st.depthOf(this.world(ENTRY.x + ENTRY.w * 0.4, ENTRY.y + ENTRY.h * 0.45)), fl = st.depthOf(this.world(HEAD.x + HEAD.w * 0.5, HEAD.y + HEAD.h * 0.5));
     st.U.focus.value = lerp(fm, fl, 0.4);
     st.U.aperture.value = 16;
-    st.U.pool.value.set(-100, 120, 1700, 0.55);
-    st.shadows([{ x: 12, y: -16, w: DW + 48, h: DH + 40, blur: 30, k: 0.35, r: 8 }]);
+    // 燭光：光圈的位置與亮度一直在輕輕搖曳（兩層雜訊），大鼓時火苗竄一下
+    const flk = noise1(t * 2.3, 11) * 0.6 + noise1(t * 7.1, 12) * 0.4;
+    st.U.pool.value.set(-470 + 30 * flk, -640 + 20 * noise1(t * 1.7, 13), 1700 + 70 * flk, 0.9 + 0.05 * flk + 0.05 * this.ctx.audio.hit('kick', t, 0.1));
+    // 影子：書本（燭光從左下來，影子往右上拉長一點）、三個蠟燭杯
+    st.shadows([{ x: 40, y: 20, w: DW + 48, h: DH + 40, blur: 40, k: 0.4, r: 8 }, ...CANDLES.map(([x, y]) => ({ x: x + 10, y: y + 10, w: 110, h: 110, blur: 10, k: 0.25, r: 55 }))]);
     void g;
+  }
+
+  // ------------------------------------------------------------ 燭火
+  /** 三朵小火苗：底部藍白、往上變成訊號色，高度與左右晃動一直在搖曳，大鼓時竄高一點。 */
+  private drawFlames(renderer: THREE.WebGLRenderer, out: THREE.WebGLRenderTarget, t: number) {
+    const st = this.rig.st, lb = this.flames, e = LIN.ember, sg = LIN.signal;
+    lb.clear();
+    CANDLES.forEach(([x, y], i) => {
+      const b = st.toScreen([x, y, 6]);
+      const up = 30; // 火苗在畫面上的高度（鏡頭斜，世界的 z 投影出來太扁）
+      const k = 1 + 0.25 * noise1(t * 6 + i * 3.1, 20 + i) + 0.2 * this.ctx.audio.hit('kick', t, 0.1);
+      const sway = 4 * noise1(t * 3.3 + i * 1.7, 30 + i);
+      const h = up * 1.6 * k, bx = b.x, by = b.y - 4;
+      // 外焰（訊號色、寬、淡）、內焰（ember、亮）、焰心（白熱）
+      lb.seg2(bx, by, bx + sway, by - h, 14, [sg[0] * 1.6, sg[1] * 1.6, sg[2] * 1.6], 0.55);
+      lb.seg2(bx, by - h * 0.1, bx + sway * 0.8, by - h * 0.8, 8, [e[0] * 3, e[1] * 3, e[2] * 3], 0.9);
+      lb.seg2(bx, by - h * 0.12, bx + sway * 0.5, by - h * 0.45, 4, [6, 5.4, 4.6], 1);
+      // 很淡的一圈光暈
+      lb.seg2(bx, by - h * 0.4, bx + 0.1, by - h * 0.4, 70, [sg[0] * 0.25, sg[1] * 0.2, sg[2] * 0.15], 0.35);
+    });
+    lb.render(renderer, out);
   }
 
   // ------------------------------------------------------------ 別人的祝福（畫一次）
@@ -313,6 +390,8 @@ export default class Guestbook extends Scene {
     c.fillText('♪ 本頁背景音樂', HEAD.x, HEAD.y - 8);
     c.letterSpacing = '0px';
     const ly = lyricAt(lyrics, t);
+    // v2：書眉的歌詞比留言小一級
+    const LY: RowsStyle = { family: F.archivo(100, 800), size: lyricV2(this.msgScreen) / this.sHead, minSize: V2.lyrMin / this.sHead, maxW: HEAD.w, maxRows: 2, lineHeight: 1.06 };
     if (ly) {
       const lay = layoutRows(c, ly.line, LY);
       const top = HEAD.y + (HEAD.h - lay.height) / 2 + lay.size * 0.84;
@@ -321,9 +400,26 @@ export default class Guestbook extends Scene {
       c.restore();
       return;
     }
-    c.font = font(F.archivo(100, 800), 56); c.fillStyle = rgba('sepia', lyrics.has ? 0.26 : 0.8);
+    c.font = font(F.archivo(100, 800), Math.round(V2.lyrMin / this.sHead)); c.fillStyle = rgba('sepia', lyrics.has ? 0.26 : 0.8);
     c.fillText(song.title || '芳名錄', HEAD.x, HEAD.y + 104);
     if (!lyrics.has) { c.font = font(F.hei(500), 18); c.fillStyle = rgba('sepia', 0.5); c.fillText('（純音樂）', HEAD.x, HEAD.y + 150); }
+  }
+
+  // ------------------------------------------------------------ 簽名旁的小愛心（小事件）
+  /** 火花沿著愛心的輪廓畫一圈（點綴色的細線），回傳筆尖。 */
+  private drawDoodle(c: CanvasRenderingContext2D, t: number): P2 | null {
+    if (t < this.tDoodle) return null;
+    const u = ease.inOutQuad(clamp((t - this.tDoodle) / 0.5));
+    const pts = heartPoints(48), R = 16, o = this.doodle;
+    const n = Math.max(1, Math.floor(u * (pts.length - 1)));
+    c.save();
+    c.strokeStyle = rgba('rose', 0.95); c.lineWidth = 3.5; c.lineJoin = 'round'; c.lineCap = 'round';
+    c.beginPath();
+    for (let i = 0; i <= n; i++) { const p = pts[i]!; if (i) c.lineTo(o.x + p.x * R, o.y + p.y * R); else c.moveTo(o.x + p.x * R, o.y + p.y * R); }
+    c.stroke();
+    c.restore();
+    const p = pts[n]!;
+    return u < 1 ? { x: o.x + p.x * R, y: o.y + p.y * R } : null;
   }
 
   // ------------------------------------------------------------ 寫字（主打留言）
@@ -366,9 +462,11 @@ export default class Guestbook extends Scene {
       // 沒有留言：寫完「這一頁留給你」之後，下面浮現一句邀請（小一點的手寫字）
       const u = prog(t, this.writeEnd + 0.2, this.writeEnd + 0.6);
       c.save(); c.globalAlpha = u;
-      c.font = font(F.hand(700), 46); c.fillStyle = rgba('sepia', 0.7);
-      c.fillText('掃描右下角 QR code，', ENTRY.x, ENTRY.y + ENTRY.h - 60);
-      c.fillText('把祝福寫進簽名簿', ENTRY.x, ENTRY.y + ENTRY.h);
+      // 邀請緊接在「這一頁留給你」下面（字小一級，螢幕上約 34 px）
+      const fs = Math.round(34 / this.sEntry), y0 = ENTRY.y + 40 + this.fit!.size * 0.9 + this.fit!.height + fs * 0.9;
+      c.font = font(F.hand(700), fs); c.fillStyle = rgba('sepia', 0.7);
+      c.fillText('掃描右下角 QR code，', ENTRY.x, y0);
+      c.fillText('把祝福寫進簽名簿', ENTRY.x, y0 + fs * 1.35);
       c.restore();
     }
     return pen;
