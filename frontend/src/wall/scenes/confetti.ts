@@ -3,15 +3,19 @@
 //    剛落地的一瞬間亮一下；愛心的花瓣是點綴色（玫瑰），其他是暖白。字落定後，花瓣底下浮出同一個字的暖光（地上的光字），
 //    花瓣排的字才讀得清楚。窗格夠長的話，最後半拍一陣風從左邊把字吹散（退場）。
 //  - 留言照 v2 標準：40～60 px（照字數），排在畫面右側的地板上（留言區 ≤ 800×410），燈的光圈偏向那裡；署名是地上一行清楚的光字。
-//  - 空出來的地板一直有事：每個小節線從鏡頭上方灑下一小把花瓣（近的大而糊，飄一兩秒落地）；
-//    每兩小節一陣小風從左往右掃過地板，地上零星的花瓣被掀起來、翻一下又落回去（字的花瓣不動）。
+//  - 左半邊的主角是地上一支拉炮（紙筒、斜紋、筒口一圈金邊）：每兩小節（偶數小節線）「砰」一聲往後一頓，
+//    從筒口噴出一大把花瓣和幾條會捲的彩帶，往鏡頭飛上來（近的大而糊）再落到左半邊的地板上，彩帶落地後捲成一條條波浪躺著；
+//    砰的那一下筒口前面的地板被火光照亮，一圈風從筒口往外掃過地板，地上的花瓣被掀起來、翻一下又落回去（字的花瓣不動）。
+//    窗格開始前炸過的幾把已經落在地上，所以一切進來左半邊就是熱鬧的。另外每個小節線從鏡頭上方灑下一小把花瓣。
 //  - 歌詞（比留言小 4 px）是燈打在地板左下的一行光字，逐字跟唱。
 //  - 沒有留言：花瓣排的是正在唱的那一句歌詞（52 px，排在留言的位置，每一句提早一點飄下來、唱到的字的花瓣變成訊號色），
 //    唱完一陣風從左邊把它吹散，下一句的花瓣接著落下來；地板左下是新人的名字與一行小小的邀請。純音樂又沒有留言：花瓣排新人的名字。
 //  - 鏡頭：幾乎是正上方往下看、稍微斜一點（有景深）；切進來時高一點、第一拍落定；之後很慢地往下推近。右下角（QR）的地板落在燈外。
 // 手法：three.js。花瓣是一個 InstancedBufferGeometry（每片花瓣只有幾個固定的參數：落點、落地時間、飄多久、被風吹走的時間、
 // 屬於哪個字），位置、翻轉、景深全在 vertex shader 裡用時間算（CPU 每格不用算幾千個矩陣，也是確定性的）；
-// 地板是一個 shader（木紋、光圈、地上的光字取樣一張 Canvas 圖層）；整個場景畫進引擎共用的 MSAA 目標（花瓣用 alpha to coverage，不用排序）。
+// 地板是一個 shader（木紋、光圈、拉炮的影子），地上的光字是貼在地板上方一點點的透明平面（取樣一張 Canvas 圖層）；
+// 彩帶是另一個 InstancedBufferGeometry（一條細長的帶子，沿著拋物線飛、螺旋地捲、扭，全在 vertex shader 裡算）；
+// 整個場景畫進引擎共用的 MSAA 目標（花瓣用 alpha to coverage，不用排序）。
 import * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
 import { Layer2D, W, H, clearRT, sharedMSAA } from '../engine/gl';
@@ -46,6 +50,13 @@ const NAMB = 280;
 /** 每個小節線灑下來的一小把花瓣。 */
 const NFLURRY = 16;
 const FLOOR_PG = { w: 1920, h: 1080 };
+/** 拉炮（頁面 px）：筒尾 B、筒口 M；筒口抬高一點（世界座標的高度）。 */
+const POP = { bx: 170, by: 800, mx: 395, my: 640, mh: 5.5, bh: 0.7, r: 5.5 };
+const POP_DIR = Math.atan2(POP.my - POP.by, POP.mx - POP.bx);
+/** 每一砰：噴出的花瓣、彩帶數。 */
+const NBURST = 70, NRIB = 4;
+/** 彩帶一條的段數。 */
+const RSEG = 40;
 /** 右下角 HUD（QR 與小字）：地上的花瓣不要落在這裡。 */
 const inHud = (x: number, y: number) => x > 1320 && y > 790;
 
@@ -56,8 +67,9 @@ in vec4 aTgt;   // 落點 x、z、平放時的角度、大小
 in vec4 aTime;  // 落地時間、飄多久、被風吹走的時間、種類（0 = 字、1 = 零星、2 = 愛心）
 in vec4 aSeed;  // 亂數
 in vec2 aWord;  // 屬於的那個字的開始、結束（跟唱；不是歌詞是 -1）
+in vec4 aFrom;  // 從拉炮噴出來的：出發點 xyz、飛多高（0 = 從上面飄下來的）
 uniform mat4 viewMatrix; uniform mat4 projectionMatrix;
-uniform float uT; uniform float uFocus; uniform float uRip;
+uniform float uT; uniform float uFocus; uniform float uRip; uniform vec2 uPM;
 out vec2 vUv; out float vLand; out float vCoc; out vec3 vN; out float vKind; out vec2 vWord; out float vHot; out float vSeed; out float vFade;
 mat3 rotX(float a) { float c = cos(a), s = sin(a); return mat3(1.0, 0.0, 0.0, 0.0, c, s, 0.0, -s, c); }
 mat3 rotY(float a) { float c = cos(a), s = sin(a); return mat3(c, 0.0, -s, 0.0, 1.0, 0.0, s, 0.0, c); }
@@ -70,17 +82,25 @@ void main() {
   float air = 1.0 - u;
   // 還沒出現：丟到鏡頭後面
   if (tau < -fall) { gl_Position = vec4(0.0, 0.0, 2.0, 1.0); return; }
-  // 飄落：高度照 (1-u)^1.7 往下（快落地時慢下來）、橫著飄、左右擺；翻轉在落地前收成平的
   vec3 pos = vec3(aTgt.x, 0.0, aTgt.y);
-  float h = 130.0 * pow(air, 1.7) * (0.75 + 0.5 * aSeed.y);
-  pos.y += h + 0.02 + aSeed.w * 0.03;
-  pos.x += (aSeed.z - 0.5) * 60.0 * pow(air, 1.3) + sin(tau * (2.0 + 2.0 * aSeed.y) + aSeed.x * 20.0) * 3.0 * air;
-  pos.z += -(22.0 + 20.0 * aSeed.w) * pow(air, 1.4) + cos(tau * (1.7 + aSeed.z) + aSeed.y * 9.0) * 2.0 * air;
+  if (aFrom.w > 0.0) {
+    // 從拉炮噴出來：水平方向先快後慢（空氣阻力），高度是一條往鏡頭拋上去再落下的拋物線
+    float hu = 1.0 - pow(air, 2.2);
+    pos = vec3(mix(aFrom.x, aTgt.x, hu), 0.0, mix(aFrom.z, aTgt.y, hu));
+    pos.y = mix(aFrom.y, 0.02 + aSeed.w * 0.03, u) + aFrom.w * 4.0 * u * air;
+    pos.x += sin(tau * (3.0 + 2.0 * aSeed.y) + aSeed.x * 20.0) * 1.5 * air;
+  } else {
+    // 飄落：高度照 (1-u)^1.7 往下（快落地時慢下來）、橫著飄、左右擺；翻轉在落地前收成平的
+    float h = 130.0 * pow(air, 1.7) * (0.75 + 0.5 * aSeed.y);
+    pos.y += h + 0.02 + aSeed.w * 0.03;
+    pos.x += (aSeed.z - 0.5) * 60.0 * pow(air, 1.3) + sin(tau * (2.0 + 2.0 * aSeed.y) + aSeed.x * 20.0) * 3.0 * air;
+    pos.z += -(22.0 + 20.0 * aSeed.w) * pow(air, 1.4) + cos(tau * (1.7 + aSeed.z) + aSeed.y * 9.0) * 2.0 * air;
+  }
   mat3 R = rotY(aTgt.z) * rotX((aSeed.x - 0.5) * 12.0 * air + sin(tau * 5.0 + aSeed.w * 10.0) * 1.2 * air) * rotZ((aSeed.y - 0.5) * 9.0 * air);
-  // 每兩小節一陣小風從左往右掃過地板：地上零星的花瓣被掀起來一點、翻一下又落回去（字的花瓣不動，字要讀得清楚）
+  // 拉炮砰的那一下，一圈風從筒口往外掃過地板：地上零星的花瓣被掀起來一點、翻一下又落回去（字的花瓣不動，字要讀得清楚）
   if (aTime.w > 0.5 && aTime.w < 1.5 && tau > 0.0 && uRip >= 0.0 && uRip < 2.0) {
-    float front = -300.0 + 2500.0 * (uRip / 1.5);
-    float d = (aTgt.x / ${S} + 960.0 - front) / 200.0;
+    float front = 2000.0 * (uRip / 1.4);
+    float d = (length(vec2(aTgt.x / ${S} + 960.0, aTgt.y / ${S} + 540.0) - uPM) - front) / 200.0;
     float lift = exp(-d * d);
     pos.y += lift * (1.2 + 2.4 * aSeed.y);
     pos.x += lift * 1.2;
@@ -148,6 +168,7 @@ void main() { vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xyz; gl_Positio
 const FLOOR_F = /* glsl */ `
 in vec3 vW;
 uniform sampler2D uGlow; uniform float uGlowA; uniform float uOn; uniform float uKick;
+uniform vec2 uPB; uniform vec2 uPM; uniform float uPop;
 void main() {
   vec2 pg = vec2(vW.x / ${S} + 960.0, vW.z / ${S} + 540.0);   // 地板 → 頁面座標
   // 深色木地板：一條條的木板（接縫、每條深淺不一、細細的木紋）
@@ -162,6 +183,13 @@ void main() {
   float pool = exp(-pow(length((pg - vec2(1250.0, 480.0)) / vec2(820.0, 520.0)), 2.0));
   col *= 0.2 + 2.3 * pool * uOn;
   col += C_SIGNAL * 0.012 * pool * uOn;
+  // 拉炮的影子（燈在右上方，影子往左下偏一點）：筒尾細、筒口粗的一條軟影子，拉炮才是「放在地上」
+  vec2 ba = uPM - uPB, sp = pg - vec2(-12.0, 14.0);
+  float hh = clamp(dot(sp - uPB, ba) / dot(ba, ba), 0.0, 1.0);
+  float rad = mix(10.0, 60.0, hh);
+  col *= 1.0 - 0.65 * (1.0 - smoothstep(rad * 0.5, rad * 1.4, length(sp - uPB - ba * hh)));
+  // 砰的那一下：筒口前面的地板被火光照亮
+  col += mix(C_SIGNAL, C_EMBER, 0.5) * 0.28 * uPop * exp(-pow(length(pg - uPM - normalize(ba) * 140.0) / 170.0, 2.0)); // 砰的火光收小：香檳、珊瑚這類亮色主題下原本太大太亮
   // 右下角（QR 與小字）落在燈外的暗處，HUD 的字才清楚
   col *= 1.0 - 0.8 * smoothstep(1240.0, 1480.0, pg.x) * smoothstep(700.0, 880.0, pg.y);
   // 字的花瓣底下一層很淡的暖光（花瓣反射的光）：字全部落定後浮出來，花瓣排的字才讀得清楚
@@ -183,12 +211,94 @@ void main() {
   fragColor = vec4(L.rgb, L.a);
 }`;
 
+/** 拉炮：紙筒（圓錐，開口朝右上），外面斜紋、筒口一圈金邊，裡面暗、砰的那一下被火光照亮。 */
+const POP_V = /* glsl */ `
+in vec3 position; in vec3 normal; in vec2 uv;
+uniform mat4 modelMatrix; uniform mat4 viewMatrix; uniform mat4 projectionMatrix;
+out vec3 vN; out vec2 vUv;
+void main() { vN = normalize(mat3(modelMatrix) * normal); vUv = uv; gl_Position = projectionMatrix * viewMatrix * modelMatrix * vec4(position, 1.0); }`;
+const POP_F = /* glsl */ `
+in vec3 vN; in vec2 vUv;
+uniform float uPop;
+void main() {
+  vec3 N = normalize(vN);
+  // 筒子裡面（背面）：暗，砰的那一下從筒口往裡被照亮（uv.y = 0 是筒口）
+  if (!gl_FrontFacing) { fragColor = vec4(C_INK * 0.25 + mix(C_SIGNAL, C_EMBER, 0.5) * uPop * 0.9 * (1.0 - vUv.y), 1.0); return; }
+  float stripe = step(0.5, fract(vUv.x * 8.0 + vUv.y * 2.5));
+  vec3 base = mix(mix(C_BONE, C_PAPER, 0.4) * 0.8, mix(C_SIGNAL, C_BLOOD, 0.4) * 0.85, stripe);
+  base = mix(base, mix(C_EMBER, C_BONE, 0.3) * 0.9, step(vUv.y, 0.07));
+  // 燈從上面來：朝上的面亮、側面暗，邊緣一點點反光
+  float lit = 0.28 + 0.72 * max(N.y, 0.0) + 0.12 * pow(1.0 - abs(N.y), 3.0);
+  fragColor = vec4(base * lit, 1.0);
+}`;
+/**
+ * 彩帶：一條細長的紙帶（position.x = 沿著帶子 0..1、position.y = 左右 -1..1）。帶頭沿著拋物線飛，帶身晚一點跟上（從筒口被拉出來），
+ * 飛的時候螺旋地捲、扭，落地後平躺成一條波浪，帶頭在落點、帶身往筒口的方向鋪開。
+ */
+const RIB_V = /* glsl */ `
+in vec3 position;
+in vec4 aA;   // 出發點 xyz、噴出的時間
+in vec4 aB;   // 帶頭的落點 x、z、長度、寬度
+in vec4 aC;   // 飛多高、飛多久、捲幾圈、捲的幅度
+in vec4 aD;   // 亂數 ×3、顏色
+uniform mat4 viewMatrix; uniform mat4 projectionMatrix;
+uniform float uT;
+out vec3 vN; out float vCol;
+vec3 ribbonAt(float s) {
+  float u = clamp((uT - aA.w - s * 0.3) / aC.y, 0.0, 1.0);
+  vec2 d = normalize(aB.xy - aA.xz + vec2(1e-4, 0.0));
+  // 落地後帶身往哪個方向鋪：大致朝筒口，但每條偏一點（不要全部排成放射狀）
+  float ra = (aD.z - 0.5) * 2.2;
+  vec2 dl = vec2(d.x * cos(ra) - d.y * sin(ra), d.x * sin(ra) + d.y * cos(ra));
+  vec2 tg = aB.xy - dl * s * aB.z;
+  float hu = 1.0 - pow(1.0 - u, 2.2);
+  vec3 p = vec3(mix(aA.x, tg.x, hu), 0.0, mix(aA.z, tg.y, hu));
+  p.y = mix(aA.y, 0.05 + 0.03 * aD.x, u) + aC.x * 4.0 * u * (1.0 - u);
+  // 捲：垂直於前進方向的螺旋，飛的時候大、會轉，落地後剩下地上的波浪
+  float ph = s * aC.z * 6.2831853 + aD.y * 6.0 + uT * 5.0 * (1.0 - u);
+  float amp = aC.w * (0.45 + 0.55 * (1.0 - u));
+  p.xz += vec2(-d.y, d.x) * sin(ph) * amp;
+  p.y += (0.5 + 0.5 * cos(ph)) * amp * 1.6 * (1.0 - u);
+  return p;
+}
+void main() {
+  vCol = aD.w;
+  if (uT < aA.w) { vN = vec3(0.0, 1.0, 0.0); gl_Position = vec4(0.0, 0.0, 2.0, 1.0); return; }
+  float s = position.x;
+  vec3 p = ribbonAt(s);
+  vec3 T = normalize(ribbonAt(min(s + 0.015, 1.0)) - ribbonAt(max(s - 0.015, 0.0)) + vec3(1e-4, 0.0, 0.0));
+  vec3 side = normalize(cross(T, vec3(0.0, 1.0, 0.0)) + vec3(0.0, 1e-4, 0.0));
+  // 飛的時候帶子扭（亮面、暗面交替），落地前收成平躺
+  float u = clamp((uT - aA.w - s * 0.3) / aC.y, 0.0, 1.0);
+  float th = (s * 10.0 + uT * 6.0 + aD.z * 6.0) * (1.0 - u) * (1.0 - u);
+  side = side * cos(th) + cross(T, side) * sin(th);
+  p += side * position.y * aB.w * 0.5;
+  vN = normalize(cross(T, side));
+  gl_Position = projectionMatrix * viewMatrix * vec4(p, 1.0);
+}`;
+const RIB_F = /* glsl */ `
+in vec3 vN; in float vCol;
+void main() {
+  // 顏色跟著這首歌的主題（訊號色一家子與紙色），不用愛心的玫瑰色；壓暗一點，不搶右邊的留言
+  vec3 base = vCol < 0.3 ? mix(C_SIGNAL, C_BLOOD, 0.2) : vCol < 0.55 ? C_EMBER : vCol < 0.8 ? mix(C_BONE, C_PAPER, 0.4) : mix(C_SIGNAL, C_BONE, 0.5);
+  float lit = 0.3 + 0.7 * abs(normalize(vN).y);
+  fragColor = vec4(base * lit * (gl_FrontFacing ? 0.72 : 0.52), 1.0);
+}`;
+
 /** 共用的舞台：地板、花瓣的材質（shader 整晚只編一次）；花瓣的幾何每個窗格自己建。 */
 class Stage {
   scene = new THREE.Scene();
-  U = { uT: { value: 0 }, uFocus: { value: 160 }, uKick: { value: 0 }, uRip: { value: -1 }, uTxt: { value: null as THREE.Texture | null }, uGlow: { value: null as THREE.Texture | null }, uGlowA: { value: 0 }, uOn: { value: 1 } };
+  U = {
+    uT: { value: 0 }, uFocus: { value: 160 }, uKick: { value: 0 }, uRip: { value: -1 }, uTxt: { value: null as THREE.Texture | null }, uGlow: { value: null as THREE.Texture | null }, uGlowA: { value: 0 }, uOn: { value: 1 },
+    uPop: { value: 0 }, uPB: { value: new THREE.Vector2(POP.bx, POP.by) }, uPM: { value: new THREE.Vector2(POP.mx, POP.my) },
+  };
   petalMat: THREE.RawShaderMaterial;
   petals: THREE.Mesh;
+  ribbons: THREE.Mesh;
+  popper: THREE.Mesh;
+  /** 拉炮平常的位置（筒尾與筒口的中點）與軸（筒口 → 筒尾），砰的時候沿著軸往後一頓。 */
+  popAt = new THREE.Vector3();
+  popAxis = new THREE.Vector3();
   constructor() {
     const floor = new THREE.Mesh(new THREE.PlaneGeometry(420, 260), rawMat(FLOOR_V, FLOOR_F, this.U));
     floor.rotation.x = -Math.PI / 2;
@@ -204,13 +314,28 @@ class Stage {
     this.petals = new THREE.Mesh(new THREE.InstancedBufferGeometry(), this.petalMat);
     this.petals.frustumCulled = false;
     this.scene.add(this.petals);
+    this.ribbons = new THREE.Mesh(new THREE.InstancedBufferGeometry(), rawMat(RIB_V, RIB_F, this.U, { side: THREE.DoubleSide }));
+    this.ribbons.frustumCulled = false;
+    this.scene.add(this.ribbons);
+    // 拉炮：圓錐的 +y 是尖端，轉成尖端朝筒尾、開口朝筒口
+    const B = new THREE.Vector3((POP.bx - 960) * S, POP.bh, (POP.by - 540) * S), M = new THREE.Vector3((POP.mx - 960) * S, POP.mh, (POP.my - 540) * S);
+    this.popAxis.copy(B).sub(M);
+    const len = this.popAxis.length();
+    this.popAxis.normalize();
+    this.popAt.copy(B).add(M).multiplyScalar(0.5);
+    this.popper = new THREE.Mesh(new THREE.ConeGeometry(POP.r, len, 48, 1, true), rawMat(POP_V, POP_F, this.U, { side: THREE.DoubleSide }));
+    this.popper.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), this.popAxis);
+    this.popper.position.copy(this.popAt);
+    this.scene.add(this.popper);
   }
 }
 
-/** 窗格結束後共用的花瓣網格換成這個空的（不留著已經釋放的幾何）。 */
+/** 窗格結束後共用的花瓣、彩帶網格換成這個空的（不留著已經釋放的幾何）。 */
 const EMPTY = new THREE.InstancedBufferGeometry();
 
-interface Petal { x: number; z: number; rot: number; size: number; land: number; fall: number; gust: number; kind: number; seed: [number, number, number, number]; word: [number, number] }
+interface Petal { x: number; z: number; rot: number; size: number; land: number; fall: number; gust: number; kind: number; seed: [number, number, number, number]; word: [number, number]; from?: [number, number, number, number] }
+/** 一條彩帶（世界座標）：出發點與時間、帶頭落點、長寬、飛多高多久、捲的圈數與幅度、亂數與顏色。 */
+interface Ribbon { a: [number, number, number, number]; b: [number, number, number, number]; c: [number, number, number, number]; d: [number, number, number, number] }
 /** 沒有留言時，一句歌詞排成花瓣的位置（地上的光字也照這個畫）。 */
 interface SoloLine { line: Line; lay: RowsLayout; x0: number; y0: number; gust: number }
 
@@ -222,6 +347,7 @@ export default class Confetti extends Scene {
   glow = this.track(new Layer2D(FLOOR_PG.w, FLOOR_PG.h, 0.5, { fast: true }));
   sig: { text: string; x: number; y: number; size: number; family: string } | null = null;
   geo = new THREE.InstancedBufferGeometry();
+  rgeo = new THREE.InstancedBufferGeometry();
   msg: Msg | null = this.ctx.params.message ?? null;
   seed = ((this.ctx.params.seed ?? 1) * 157 + (this.msg?.id ?? 0) * 41) >>> 0;
   tOn = 0;
@@ -233,8 +359,8 @@ export default class Confetti extends Scene {
   glyphs: Glyph[] = [];
   gT: number[] = [];
   solo: SoloLine[] = [];
-  /** 每兩小節掃過地板的小風。 */
-  rips: number[] = [];
+  /** 拉炮砰的時間（每兩小節，偶數小節線；含窗格開始前的幾下，那幾把已經落在地上）。 */
+  pops: number[] = [];
   avoid: Rect[] = [];
 
   override async init() {
@@ -344,10 +470,34 @@ export default class Confetti extends Scene {
         P.push({ x: f.x, z: f.z, rot: rnd(i, 27) * TAU, size: 1.0 + 0.8 * rnd(i, 28), land: tb + 0.04 * k / NFLURRY + fall, fall, gust: Infinity, kind: 1, seed: sd(i), word: [-1, -1] });
       }
     }
-    // 每兩小節（偶數小節線）一陣掃過地板的小風
-    this.rips = winBars(au, s - 3, e).filter((tb) => Math.round(au.barAt(tb)) % 2 === 0);
+    // ---- 拉炮：每兩小節（偶數小節線）砰一聲，噴出一大把花瓣與幾條彩帶，落在左半邊的地板上
+    this.pops = winBars(au, s - 9, e).filter((tb) => Math.round(au.barAt(tb)) % 2 === 0);
+    const mouth: [number, number, number] = [(POP.mx - 960) * S, POP.mh, (POP.my - 540) * S];
+    /** 筒口前面一個扇形裡的落點（頁面 px）：避開留言、歌詞那一行與右下角 HUD。 */
+    const fan = (i: number, r0: number, r1: number) => {
+      for (let k = 0; k < 10; k++) {
+        const a = POP_DIR + (rnd(i, 40 + k) - 0.5) * 1.7, r = r0 + (r1 - r0) * Math.sqrt(rnd(i, 60 + k));
+        const x = POP.mx + Math.cos(a) * r, y = POP.my + Math.sin(a) * r;
+        if (x > 50 && x < MSG_BOX.x - 50 && y > 50 && y < 860 && !inHud(x, y)) return { x, y, r };
+      }
+      return { x: POP.mx + Math.cos(POP_DIR) * r0, y: POP.my + Math.sin(POP_DIR) * r0, r: r0 };
+    };
+    const R: Ribbon[] = [];
+    for (const [pi, tp] of this.pops.entries()) {
+      for (let k = 0; k < NBURST && P.length < CAP; k++) {
+        const i = P.length, g = fan(i, 90, 720), f = toFloor(g.x, g.y);
+        const fall = 1.0 + 0.9 * rnd(i, 31);
+        P.push({ x: f.x, z: f.z, rot: rnd(i, 27) * TAU, size: 1.0 + 0.9 * rnd(i, 28), land: tp + 0.05 * rnd(i, 32) + fall, fall, gust: Infinity, kind: 1, seed: sd(i), word: [-1, -1], from: [...mouth, 22 + 60 * rnd(i, 33)] });
+      }
+      for (let k = 0; k < NRIB; k++) {
+        const i = 50000 + pi * 16 + k, g = fan(i, 180, 640), f = toFloor(g.x, g.y);
+        const L = Math.min(g.r * S * 0.7, 14 + 22 * rnd(i, 70));
+        R.push({ a: [...mouth, tp + 0.03 * k], b: [f.x, f.z, L, 1.0 + 0.5 * rnd(i, 71)], c: [28 + 45 * rnd(i, 72), 1.5 + 0.8 * rnd(i, 73), 2 + 2.5 * rnd(i, 74), 1.3 + 1.6 * rnd(i, 75)], d: [rnd(i, 76), rnd(i, 77), rnd(i, 78), rnd(i, 79)] });
+      }
+    }
     this.buildGeo(P);
-    this.avoid = [[MSG_BOX.x, MSG_BOX.y, MSG_BOX.w, MSG_BOX.h], [LYR.x, LYR.y - 60, LYR.w, 80]];
+    this.buildRibbons(R);
+    this.avoid = [[MSG_BOX.x, MSG_BOX.y, MSG_BOX.w, MSG_BOX.h], [LYR.x, LYR.y - 60, LYR.w, 80], [POP.bx - 40, POP.my - 80, POP.mx - POP.bx + 120, POP.by - POP.my + 120]];
   }
 
   private buildGeo(P: Petal[]) {
@@ -357,9 +507,10 @@ export default class Confetti extends Scene {
     g.setAttribute('uv', base.getAttribute('uv'));
     g.setIndex(base.getIndex());
     const n = P.length;
-    const tgt = new Float32Array(n * 4), tim = new Float32Array(n * 4), sd = new Float32Array(n * 4), wd = new Float32Array(n * 2);
+    const tgt = new Float32Array(n * 4), tim = new Float32Array(n * 4), sd = new Float32Array(n * 4), wd = new Float32Array(n * 2), fr = new Float32Array(n * 4);
     P.forEach((p, i) => {
       tgt.set([p.x, p.z, p.rot, p.size], i * 4);
+      if (p.from) fr.set(p.from, i * 4);
       // Infinity 在 GPU 上不好用：吹走的時間沒有就放很大
       tim.set([p.land, p.fall, Number.isFinite(p.gust) ? p.gust : 1e6, p.kind], i * 4);
       sd.set(p.seed, i * 4);
@@ -369,8 +520,28 @@ export default class Confetti extends Scene {
     g.setAttribute('aTime', new THREE.InstancedBufferAttribute(tim, 4));
     g.setAttribute('aSeed', new THREE.InstancedBufferAttribute(sd, 4));
     g.setAttribute('aWord', new THREE.InstancedBufferAttribute(wd, 2));
+    g.setAttribute('aFrom', new THREE.InstancedBufferAttribute(fr, 4));
     g.instanceCount = n;
     base.dispose();
+  }
+
+  /** 彩帶：一條 RSEG 段的帶子（兩排頂點），每條彩帶的參數放在 instance attribute。 */
+  private buildRibbons(R: Ribbon[]) {
+    const g = this.rgeo;
+    const pos = new Float32Array((RSEG + 1) * 2 * 3), idx: number[] = [];
+    for (let j = 0; j <= RSEG; j++) {
+      pos.set([j / RSEG, -1, 0, j / RSEG, 1, 0], j * 6);
+      if (j < RSEG) { const a = j * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
+    }
+    g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    g.setIndex(idx);
+    const A = new Float32Array(R.length * 4), B = new Float32Array(R.length * 4), C = new Float32Array(R.length * 4), D = new Float32Array(R.length * 4);
+    R.forEach((r, i) => { A.set(r.a, i * 4); B.set(r.b, i * 4); C.set(r.c, i * 4); D.set(r.d, i * 4); });
+    g.setAttribute('aA', new THREE.InstancedBufferAttribute(A, 4));
+    g.setAttribute('aB', new THREE.InstancedBufferAttribute(B, 4));
+    g.setAttribute('aC', new THREE.InstancedBufferAttribute(C, 4));
+    g.setAttribute('aD', new THREE.InstancedBufferAttribute(D, 4));
+    g.instanceCount = R.length;
   }
 
   /**
@@ -433,11 +604,17 @@ export default class Confetti extends Scene {
     const t = f.t, s = this.ctx.start, e = this.ctx.end;
     const st = this.stage, U = st.U;
     st.petals.geometry = this.geo;
+    st.ribbons.geometry = this.rgeo;
     U.uT.value = t;
     U.uKick.value = f.a.kick;
     U.uOn.value = 0.6 + 0.4 * ease.outCubic(prog(t, s, this.tOn + 0.1));
-    const rip = lastBefore(this.rips, t);
-    U.uRip.value = Number.isFinite(rip) ? t - rip : -1;
+    // 拉炮：砰的那一下往後一頓（很快、再慢慢回來），筒口與前面的地板亮一下；同時一圈風從筒口往外掃
+    const tp = lastBefore(this.pops, t), tau = t - tp;
+    U.uRip.value = Number.isFinite(tp) ? tau : -1;
+    const pop = tau >= 0 && tau < 0.8 ? Math.exp(-tau / 0.12) : 0;
+    U.uPop.value = pop;
+    const kick = tau >= 0 && tau < 1 ? Math.min(1, tau / 0.025) * Math.exp(-tau / 0.16) : 0;
+    st.popper.position.copy(st.popAt).addScaledVector(st.popAxis, 2.6 * kick);
     this.drawFloorText(t);
     U.uTxt.value = this.txt.texture;
     U.uGlow.value = this.glow.texture;
@@ -463,7 +640,9 @@ export default class Confetti extends Scene {
 
   override dispose() {
     if (this.stage.petals.geometry === this.geo) this.stage.petals.geometry = EMPTY;
+    if (this.stage.ribbons.geometry === this.rgeo) this.stage.ribbons.geometry = EMPTY;
     this.geo.dispose();
+    this.rgeo.dispose();
     super.dispose();
   }
 }
