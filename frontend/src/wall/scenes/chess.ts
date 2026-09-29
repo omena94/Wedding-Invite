@@ -4,6 +4,8 @@
 //  - 主打留言掛在棋盤後方的暗處（宋體、紙白），像房間裡的一行字；亮漆的棋盤倒映著它（還有棋子），留言因此是「在場景裡」的東西。
 //    留言在第一拍後一行一行亮起來。
 //  - 棋譜是歌詞：左下角一行大字逐字跟唱，上面一行小小的 mono 棋譜（1. Kb4 Qg4 · 2. K×c4 Q×f4 · 3. Kd4 Qe4 !!），走一步記一步。
+//  - v2（留言尺寸標準）：留言縮到 40～60 px、放在左上角的暗處（留言區 ≤ 860×430），棋盤與棋子是主視覺。
+//    相遇之後兩顆棋子每個小節線一起走一步（上、右、下、左的方塊舞步），吊燈也跟著小節很慢地擺，窗格長時中段一直有事。
 //  - 鏡頭：切進來時更低、更近、偏一邊，第一拍落定；之後很慢地橫移、推近。景深：近處的棋盤是糊的（棋格的邊用
 //    離焦的寬度去柔化），焦點在棋子那一排。
 //  - 沒有留言：歌詞掛在棋盤後方（主角），左下角只剩棋譜與一行邀請。純音樂：左下角寫歌名。
@@ -17,7 +19,8 @@ import { F, font, loadText } from '../engine/type';
 import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, pulse, hash, frameIdx } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
-import { lyricAt, layoutLyric, drawLyric, lyricSizeFor, beatAfter, drawHeart, fillWithHearts } from './_motifs';
+import { lyricAt, layoutLyric, drawLyric, beatAfter, drawHeart, fillWithHearts } from './_motifs';
+import { msgMaxFor, lyricV2, sigV2, fitClauses } from './_v2';
 import { darkInk } from './_t4';
 import { sigOf, applyOrbit, lerpOrbit, camBasis, T17_INVITE, T17_TEXT, type OrbitCam } from './_t17';
 
@@ -25,9 +28,9 @@ export const spec: PlateSpecDecl = { group: 'type', family: 'game', paper: false
 
 /** 棋格大小、棋盤框寬（世界單位）。第 r 排（1..8）在 y = (r − 4.5)·S，第 f 行（a..h = 0..7）在 x = (f − 3.5)·S。 */
 const S = 150, FR = 64;
-/** 留言的平面：y = YT（棋盤後方），螢幕上落在這個範圍（鏡頭落定時）。 */
-const YT = 1500;
-const TXT = { x: 170, y: 104, w: 1580, h: 330 };
+/** 留言的平面：直立、面向鏡頭（落定時）的水平方向，在鏡頭對準點後方 TD 的地方；螢幕上落在 TXT 的範圍。 */
+const TD = 1300;
+const TXT = { x: 150, y: 110, w: 840, h: 340 };
 const FAM_MSG = F.ming(700);
 const FAM_SIG = F.hand(700);
 const FAM_LYR = F.archivo(100, 800);
@@ -42,10 +45,10 @@ const SHADER = () => new FSPass(/* glsl */ `
   uniform vec3 camC; uniform vec3 camR; uniform vec3 camD; uniform vec3 camF; uniform float focal;
   uniform sampler2D atlas; uniform vec2 atlasPx;
   uniform vec4 pA[${NP}]; uniform vec4 pB[${NP}]; uniform vec4 pUV[${NP}];
-  uniform sampler2D txt; uniform vec4 txtRect; uniform float yT;
-  uniform float focusY; uniform float lampK;
+  uniform sampler2D txt; uniform vec3 txtO; uniform vec3 txtU; uniform vec3 txtN; uniform vec2 txtS;
+  uniform float focusY; uniform float lampK; uniform vec2 lampXY;
   vec4 txtAt(vec3 h) {
-    vec2 uv = vec2((h.x - txtRect.x) / txtRect.z, (h.z - txtRect.y) / txtRect.w);
+    vec2 uv = vec2(dot(h - txtO, txtU) / txtS.x, (h.z - txtO.z) / txtS.y);
     if (uv.x < 0.0 || uv.y < 0.0 || uv.x > 1.0 || uv.y > 1.0) return vec4(0.0);
     vec4 c = textureLod(txt, uv, 0.0);
     c.rgb = c.a > 0.0 ? toLinear(c.rgb / c.a) * c.a : vec3(0.0);
@@ -110,7 +113,7 @@ const SHADER = () => new FSPass(/* glsl */ `
     vec3 room = C_INK * (0.4 + 0.2 * smoothstep(0.3, -0.05, hz)) + C_BLOOD * 0.03 * exp(-abs(hz) * 14.0);
     vec3 col = room;
     float tB = d.z < -1e-4 ? -camC.z / d.z : 1e9;
-    float tT = (yT - camC.y) / d.y;
+    float tT = dot(txtO - camC, txtN) / dot(d, txtN);
     if (tB < 1e8) {
       vec3 Bp = camC + d * tB;
       // 景深：焦點那一排清楚，越往近處越糊（遠處只糊一點）
@@ -118,7 +121,7 @@ const SHADER = () => new FSPass(/* glsl */ `
       float soft = dy < 0.0 ? clamp(-dy / 2600.0, 0.0, 0.08) : clamp(dy / 9000.0, 0.0, 0.03);
       vec3 bc = board(Bp.xy, soft);
       // 燈：正上方的光池
-      float r = length(Bp.xy - vec2(0.0, 80.0)) / 1000.0;
+      float r = length(Bp.xy - lampXY) / 1000.0;
       bc *= 0.35 + 0.95 * exp(-r * r) * lampK;
       // 接觸影子
       for (int i = 0; i < ${NP}; i++) {
@@ -133,15 +136,16 @@ const SHADER = () => new FSPass(/* glsl */ `
       float fres = 0.05 + 0.5 * pow(1.0 - clamp(-d.z, 0.0, 1.0), 4.0);
       float inBoard = step(max(abs(Bp.x), abs(Bp.y)), ${(4 * S + FR).toFixed(1)});
       vec3 refl = vec3(0.0);
-      float tT2 = (yT - Bp.y) / rd.y;
+      float tT2 = dot(txtO - Bp, txtN) / dot(rd, txtN);
       if (tT2 > 0.0) {
         vec3 hh = Bp + rd * tT2;
         // 倒影要糊、要淡（配角）：在字的平面上取幾個點平均
         vec4 a = txtAt(hh + vec3(9.0, 0.0, 5.0)), b = txtAt(hh - vec3(9.0, 0.0, 5.0)), c2 = txtAt(hh + vec3(-6.0, 0.0, 12.0)), d2 = txtAt(hh + vec3(6.0, 0.0, -12.0));
-        refl += (a.rgb + b.rgb + c2.rgb + d2.rgb) * 0.25 * 0.12;
+        refl += (a.rgb + b.rgb + c2.rgb + d2.rgb) * 0.25 * 0.06;
       }
       for (int i = 0; i < ${NP}; i++) {
-        vec4 pc = piece(Bp, rd, i, 1.2);
+        // 離棋盤越高的東西倒影越淡：飄在上面的愛心倒影會落在畫面左下、正好在歌詞後面，淡掉才不會跟歌詞搶
+        vec4 pc = piece(Bp, rd, i, 1.2) * clamp(1.0 - pA[i].z / 200.0, 0.0, 1.0);
         refl = refl * (1.0 - pc.a) + pc.rgb;
       }
       bc += refl * fres * 1.6 * inBoard;
@@ -166,8 +170,8 @@ const SHADER = () => new FSPass(/* glsl */ `
   pA: { value: Array.from({ length: NP }, () => new THREE.Vector4()) },
   pB: { value: Array.from({ length: NP }, () => new THREE.Vector4()) },
   pUV: { value: Array.from({ length: NP }, () => new THREE.Vector4()) },
-  txt: { value: null }, txtRect: { value: new THREE.Vector4() }, yT: { value: YT },
-  focusY: { value: 0 }, lampK: { value: 1 },
+  txt: { value: null }, txtO: { value: new THREE.Vector3() }, txtU: { value: new THREE.Vector3(1, 0, 0) }, txtN: { value: new THREE.Vector3(0, 1, 0) }, txtS: { value: new THREE.Vector2(1, 1) },
+  focusY: { value: 0 }, lampK: { value: 1 }, lampXY: { value: new THREE.Vector2(0, 80) },
 });
 
 // ---------------------------------------------------------------- 棋子的圖（車床輪廓）
@@ -264,10 +268,13 @@ export default class Chess extends Scene {
   lyrSize = 56;
   t1 = 0; B = 0.5;
   moveT: number[] = [];
+  /** 相遇之後的舞步（每個小節線一步）。 */
+  danceT: number[] = [];
+  sigSize = 30;
   lineT: number[] = [];
   txtKey = '';
   camA!: OrbitCam; camB!: OrbitCam;
-  txtRect: [number, number, number, number] = [0, 0, 1, 1];
+  txtO = new THREE.Vector3(); txtU = new THREE.Vector3(1, 0, 0); txtN = new THREE.Vector3(0, 1, 0); txtS = new THREE.Vector2(1, 1);
   cam = new THREE.PerspectiveCamera(30, W / H, 10, 40000);
   notation: string[] = [];
 
@@ -301,32 +308,55 @@ export default class Chess extends Scene {
     tx.needsUpdate = true;
 
     // ---- 鏡頭：低角度、看著棋盤中間偏後；進場更低、更近、偏右一點
-    this.camB = { tx: 0, ty: 260, tz: 150, dist: 2350, az: 0, el: 0.2, fov: 30 };
-    this.camA = { ...this.camB, dist: 1950, el: 0.13, az: -0.2, tz: 110, roll: 0.03 };
-    // 留言的平面：把螢幕上的範圍（鏡頭落定時）投到 y = YT 的平面上
+    // 斜斜地看棋盤（棋盤轉了一個角度）：近角在畫面下方，右下角（QR 那一塊）是空的桌面，不是棋盤
+    this.camB = { tx: 60, ty: 270, tz: 150, dist: 2500, az: 0.62, el: 0.21, fov: 30 };
+    this.camA = { ...this.camB, dist: 2000, el: 0.14, az: 0.35, tz: 110, roll: 0.03 };
+    // 留言的平面：直立、面向鏡頭，把螢幕上的範圍（鏡頭落定時）投到這個平面上
     applyOrbit(this.cam, this.camB);
     const bs = camBasis(this.cam);
+    const n = new THREE.Vector3(bs.F.x, bs.F.y, 0).normalize();
+    const u = new THREE.Vector3(n.y, -n.x, 0);
+    const P0 = new THREE.Vector3(this.camB.tx, this.camB.ty, 0).addScaledVector(n, TD);
     const unproj = (sx: number, sy: number) => {
       const dv = bs.F.clone().multiplyScalar(bs.f).addScaledVector(bs.R, sx - W / 2).addScaledVector(bs.D, sy - H / 2);
-      const tt = (YT - bs.C.y) / dv.y;
+      const tt = P0.clone().sub(bs.C).dot(n) / dv.dot(n);
       return bs.C.clone().addScaledVector(dv, tt);
     };
     const p0 = unproj(TXT.x, TXT.y + TXT.h), p1 = unproj(TXT.x + TXT.w, TXT.y);
-    this.txtRect = [p0.x, p0.z, p1.x - p0.x, p1.z - p0.z];
+    this.txtO.copy(p0); this.txtU.copy(u); this.txtN.copy(n);
+    this.txtS.set(p1.clone().sub(p0).dot(u), p1.z - p0.z);
     this.txt = this.track(new Layer2D(TXT.w, TXT.h, 1.25, { fast: true }));
 
     // ---- 留言（在平面的畫布上，畫布像素 ≈ 螢幕像素）
     const tc = this.txt.ctx;
     if (m) {
-      const sigSize = 44;
-      this.fit = fitText(tc, m.text, FAM_MSG, TXT.w - 40, TXT.h - sigSize * 1.6 - 10, { min: 44, max: 108, lineHeight: 1.26, maxLines: 5 });
-      this.lyrSize = lyricSizeFor(this.fit.size);
-    } else this.lyrSize = 76;
+      // v2：字級上限依字數（40～60），照子句斷行；署名 26～32、永遠在最後一行下面
+      const max = msgMaxFor(m.text);
+      const o = { min: 40, max, lineHeight: 1.3, maxLines: 6 };
+      const boxH = TXT.h - 34 * 1.7;
+      this.fit = fitClauses(tc, m.text, FAM_MSG, TXT.w - 20, boxH, o) ?? fitText(tc, m.text, FAM_MSG, TXT.w - 20, boxH, o);
+      this.sigSize = sigV2(this.fit.size);
+      this.lyrSize = lyricV2(this.fit.size);
+    } else this.lyrSize = lyricV2(null);
     this.t1 = beatAfter(au, s + Math.min(0.3, B * 0.6));
     const nl = this.fit ? this.fit.lines.length : 0;
     this.lineT = Array.from({ length: nl + 1 }, (_, i) => this.t1 + (i * B) / 2);
     // 走棋：一拍一步，三步
     this.moveT = [0, 1, 2].map((i) => au.timeOfBeat(au.beatAt(this.t1) + i));
+    // 相遇之後：每個小節線兩顆棋子一起走一步（窗格結束前半小節不再走）
+    const bar = au.timeOfBar(au.barAt(this.t1) + 1) - au.timeOfBar(au.barAt(this.t1));
+    for (let k = Math.ceil(au.barAt(this.moveT[2]! + B * 1.5) - 1e-6); ; k++) {
+      const tb = au.timeOfBar(k);
+      if (tb > e - bar * 0.5 || this.danceT.length > 16) break;
+      this.danceT.push(tb);
+    }
+    // 舞步也記進棋譜（國王從 d4、皇后從 e4 出發）
+    const BOXN: [number, number][] = [[0, 1], [1, 0], [0, -1], [-1, 0]];
+    let kf = 3, rk = 4;
+    this.danceT.forEach((_, i) => {
+      kf += BOXN[i % 4]![0]; rk += BOXN[i % 4]![1];
+      this.notation.push(`${4 + i}. K${'abcdefgh'[kf]}${rk} Q${'abcdefgh'[kf + 1]}${rk}`);
+    });
   }
 
   override dispose() {
@@ -340,11 +370,19 @@ export default class Chess extends Scene {
     const mv = (k: number) => ease.outExpo(prog(t, this.moveT[k]!, this.moveT[k]! + 0.3));
     const hop = (k: number) => Math.sin(Math.PI * prog(t, this.moveT[k]!, this.moveT[k]! + 0.3));
     const steps = mv(0) + mv(1) + mv(2);
-    const hops = hop(0) + hop(1) + hop(2);
-    const r4 = rankY(4);
+    let hops = hop(0) + hop(1) + hop(2);
+    // 方塊舞步：上、右、下、左（兩顆一起，永遠在棋盤中間那一塊）
+    const BOX: [number, number][] = [[0, 1], [1, 0], [0, -1], [-1, 0]];
+    let dx = 0, dy = 0;
+    this.danceT.forEach((tt, i) => {
+      const k = ease.outExpo(prog(t, tt, tt + 0.36));
+      dx += BOX[i % 4]![0] * k; dy += BOX[i % 4]![1] * k;
+      hops += Math.sin(Math.PI * prog(t, tt, tt + 0.36));
+    });
+    const r4 = rankY(4) + dy * S;
     const out: PieceState[] = [];
-    out.push({ sp: 0, x: fileX(0) + steps * S, y: r4, z: hops * 14, rot: 0, vis: 1, shadow: 1 });
-    out.push({ sp: 1, x: fileX(7) - steps * S, y: r4, z: hops * 14, rot: 0, vis: 1, shadow: 1 });
+    out.push({ sp: 0, x: fileX(0) + steps * S + dx * S, y: r4, z: hops * 14, rot: 0, vis: 1, shadow: 1 });
+    out.push({ sp: 1, x: fileX(7) - steps * S + dx * S, y: r4, z: hops * 14, rot: 0, vis: 1, shadow: 1 });
     // 兵：c4、f4，第二步被吃
     const tc = this.moveT[1]! + 0.12;
     for (const [f, dir] of [[2, -1], [5, 1]] as const) {
@@ -353,7 +391,7 @@ export default class Chess extends Scene {
       const sp = this.sprites[2]!;
       const lieZ = 46 - sp.h / 2 + 14 / ATL;
       const x = fileX(f) + dir * (S * 3.2 + 60) * k;
-      const y = r4 + dir * 60 * k;
+      const y = rankY(4) + dir * 60 * k;
       // 看板繞圖的中心轉：躺平時中心離桌面約一個兵的半徑，所以四邊形的底要往下移（lieZ 是負的）
       const z = u <= 0 ? 0 : 320 * u * (1 - u) * 1.6 + lieZ * ease.inQuad(u);
       out.push({ sp: 2, x, y, z, rot: dir * (Math.PI / 2) * ease.outCubic(u), vis: 1, shadow: 1 });
@@ -361,7 +399,9 @@ export default class Chess extends Scene {
     // 愛心：兩顆棋子相遇之後在中間冒出來、往上飄一點停住
     const tm = this.moveT[2]! + 0.3;
     const hk = ease.outBack(clamp((t - tm) / 0.4), 2.2);
-    out.push({ sp: 3, x: 0, y: r4 - 10, z: 210 + 50 * ease.outCubic(clamp((t - tm) / 0.8)), rot: 0, vis: t >= tm ? hk : 0, shadow: 0 });
+    // 跳舞時愛心跟著兩顆棋子，每一步輕輕跳一下
+    const bob = this.danceT.reduce((a, tt) => a + 18 * Math.sin(Math.PI * prog(t, tt, tt + 0.36)), 0);
+    out.push({ sp: 3, x: dx * S, y: r4 - 10, z: 210 + 50 * ease.outCubic(clamp((t - tm) / 0.8)) + bob, rot: 0, vis: t >= tm ? hk : 0, shadow: 0 });
     return out;
   }
 
@@ -380,16 +420,16 @@ export default class Chess extends Scene {
       const c = L.ctx;
       if (m && this.fit) {
         const fit = this.fit;
-        const sigSize = 44;
-        const y0 = (TXT.h - (fit.height + sigSize * 1.6)) / 2 + fit.size * 0.88;
+        const sigSize = this.sigSize;
+        // 留言靠左上（畫面一側），署名在最後一行下面、靠右對齊留言的右緣
+        const y0 = 10 + fit.size * 0.88;
         c.font = font(FAM_MSG, fit.size);
         fit.lines.forEach((ln, i) => {
           const a = alphas[i]!;
           if (a <= 0) return;
           c.globalAlpha = a;
           c.fillStyle = rgba('bone', 0.95);
-          const w = c.measureText(ln).width;
-          fillWithHearts(c, ln, TXT.w / 2 - w / 2, y0 + i * fit.lineHeight);
+          fillWithHearts(c, ln, 10, y0 + i * fit.lineHeight);
         });
         const a = alphas[alphas.length - 1]!;
         if (a > 0) {
@@ -397,7 +437,7 @@ export default class Chess extends Scene {
           c.fillStyle = rgba('signal', 0.9);
           c.font = font(FAM_SIG, sigSize);
           c.textAlign = 'right';
-          c.fillText(this.sig, TXT.w / 2 + fit.width / 2, y0 + (fit.lines.length - 1) * fit.lineHeight + sigSize * 1.5);
+          c.fillText(this.sig, 10 + Math.max(fit.width, 360), y0 + (fit.lines.length - 1) * fit.lineHeight + sigSize * 1.7);
           c.textAlign = 'left';
         }
         c.globalAlpha = 1;
@@ -440,10 +480,15 @@ export default class Chess extends Scene {
     P.u.focal!.value = bs.f;
     P.u.atlas!.value = this.atlasTex;
     P.u.txt!.value = this.txt.upload();
-    (P.u.txtRect!.value as THREE.Vector4).set(...this.txtRect);
+    (P.u.txtO!.value as THREE.Vector3).copy(this.txtO);
+    (P.u.txtU!.value as THREE.Vector3).copy(this.txtU);
+    (P.u.txtN!.value as THREE.Vector3).copy(this.txtN);
+    (P.u.txtS!.value as THREE.Vector2).copy(this.txtS);
     P.u.focusY!.value = rankY(4);
-    // 燈：第一拍亮起來（切進來時暗一點）
+    // 燈：第一拍亮起來（切進來時暗一點）；吊燈很慢地擺（四小節一個來回），光池跟著在棋盤上移動
     P.u.lampK!.value = 0.75 + 0.25 * land + 0.08 * pulse(t, this.moveT[2]! + 0.3, 0.25);
+    const ph4 = (f.bar / 4) * Math.PI * 2;
+    (P.u.lampXY!.value as THREE.Vector2).set(150 * Math.sin(ph4), 80 + 40 * Math.cos(ph4));
     P.render(renderer, out);
 
     // ---- 左下角：棋譜（小）＋歌詞
@@ -454,6 +499,7 @@ export default class Chess extends Scene {
 
     let amp = 0;
     for (const tt of this.moveT) amp += 2.2 * pulse(t, tt + 0.28, 0.05);
+    for (const tt of this.danceT) amp += 1.4 * pulse(t, tt + 0.3, 0.05);
     const ph = frameIdx(t);
     return { bloom: 0.5, bloomThreshold: 1.1, halation: 0.1, vignette: 0.5, grain: 0.06, shake: [amp * (hash(ph, 1) - 0.5) * 2, amp * (hash(ph, 2) - 0.5) * 2] };
   }
@@ -462,11 +508,12 @@ export default class Chess extends Scene {
   private drawBottom(c: CanvasRenderingContext2D, t: number) {
     const { lyrics, song } = this.ctx;
     const x = 150, base = 968;
-    const moves = this.moveT.filter((tt) => t >= tt + 0.2).length;
+    const moves = this.moveT.filter((tt) => t >= tt + 0.2).length + this.danceT.filter((tt) => t >= tt + 0.2).length;
     c.fillStyle = rgba('ash', 0.75);
     c.font = font(F.mono(500), 20);
     c.letterSpacing = '2px';
-    const notes = this.notation.slice(0, moves).join('   ');
+    // 棋譜只留最後三步（配角，小小一行）
+    const notes = this.notation.slice(0, moves).slice(-3).join('   ');
     const yN = this.msg ? base - this.lyrSize * 1.25 : base;
     if (notes) c.fillText(notes, x, yN);
     c.letterSpacing = '0px';
@@ -489,7 +536,7 @@ export default class Chess extends Scene {
     const ly = lyricAt(lyrics, t);
     if (!ly) return;
     const ink = darkInk();
-    const st = { family: FAM_LYR, size: this.lyrSize, minSize: 48, maxWidth: 1180, active: ink.active, sung: ink.sung, unsung: ink.unsung, lineHeight: 1.1 };
+    const st = { family: FAM_LYR, size: this.lyrSize, minSize: 40, maxWidth: 1150, active: ink.active, sung: ink.sung, unsung: ink.unsung, lineHeight: 1.1 };
     const lay = layoutLyric(c, ly.line, st);
     c.save();
     c.translate(x, base - (lay.rows.length - 1) * lay.size * 1.1);
@@ -502,19 +549,17 @@ export default class Chess extends Scene {
     const { lyrics, song } = this.ctx;
     if (!lyrics.has) {
       c.fillStyle = rgba('bone', 0.85);
-      c.font = font(FAM_LYR, 72);
-      c.textAlign = 'center';
-      c.fillText(song.title, TXT.w / 2, TXT.h / 2 + 24, TXT.w - 40);
-      c.textAlign = 'left';
+      c.font = font(FAM_LYR, this.lyrSize);
+      c.fillText(song.title, 10, 40 + this.lyrSize * 0.86, TXT.w - 20);
       return;
     }
     const ly = lyricAt(lyrics, t);
     if (!ly) return;
     const ink = darkInk();
-    const st = { family: FAM_LYR, size: 96, minSize: 60, maxWidth: TXT.w - 40, align: 'center' as const, active: ink.active, sung: ink.sung, unsung: ink.unsung, lineHeight: 1.12 };
+    const st = { family: FAM_LYR, size: this.lyrSize, minSize: 40, maxWidth: TXT.w - 20, active: ink.active, sung: ink.sung, unsung: ink.unsung, lineHeight: 1.12 };
     const lay = layoutLyric(c, ly.line, st);
     c.save();
-    c.translate(TXT.w / 2, (TXT.h - lay.height) / 2 + lay.size * 0.86);
+    c.translate(10, 40 + lay.size * 0.86);
     drawLyric(c, ly.line, t, st, lay, ly.k);
     c.restore();
   }

@@ -6,6 +6,9 @@
 //  - 鏡頭：像空拍機：切進來時高一點、歪一點，第一拍落定，之後很慢地推近；相遇那一拍輕輕一震。
 //    地圖整張出血（樹籬延伸到畫面外），越往畫面邊緣刻線越淡，字附近的背景是乾淨的紙。
 //  - 沒有留言：空地上是大大的歌詞（主角），底下一行小小的邀請；純音樂：上方立牌寫歌名。
+//  - v2（留言尺寸標準）：空地移到左下角、只比字大一點（≤ 860×430），留言 40～60 px；迷宮是主視覺。
+//    兩個人一拍一步走到大約窗格的七成才相遇（整段都在走），相遇後牽著手（一前一後）繼續往迷宮裡散步；
+//    地圖上有雲的影子慢慢飄過（空拍的感覺）。歌詞立牌移到右上角。
 // 手法：迷宮用種子亂數的深度優先搜尋生成（確定性），牆存在一張 DataTexture；全螢幕 shader 每個像素查 3×3 格的牆、
 // 算到最近樹籬的距離，畫出樹籬、刻線、影子。字與棋子畫在「地圖座標」的 Canvas 層上，shader 用鏡頭的反矩陣去取樣
 // （鏡頭轉動時不用每格重新光柵化斜的字）。
@@ -16,7 +19,8 @@ import { F, font, loadText } from '../engine/type';
 import { rgba } from '../engine/palette';
 import { clamp, ease, prog, pulse, hash, mulberry32, frameIdx, lerp } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
-import { lyricAt, layoutLyric, drawLyric, lyricSizeFor, beatAfter, drawHeart, fillWithHearts } from './_motifs';
+import { lyricAt, layoutLyric, drawLyric, beatAfter, drawHeart, fillWithHearts } from './_motifs';
+import { msgMaxFor, lyricV2, sigV2, fitClauses } from './_v2';
 import { paperInk } from './_t4';
 import { sigInk } from './_t1';
 import { sigOf, T17_INVITE, T17_TEXT } from './_t17';
@@ -36,7 +40,7 @@ const MAP = () => new FSPass(/* glsl */ `
   uniform sampler2D stat; uniform sampler2D dyn;
   uniform mat3 camInv;
   uniform vec4 room; uniform vec4 sign; uniform vec4 door;
-  uniform vec2 focus;
+  uniform vec2 focus; uniform float t;
   vec4 cellAt(ivec2 c) {
     if (c.x < 0 || c.y < 0 || c.x >= int(mzSize.x) || c.y >= int(mzSize.y)) return vec4(0.0);
     return texelFetch(maze, c, 0);
@@ -84,7 +88,7 @@ const MAP = () => new FSPass(/* glsl */ `
     float inHedge = 1.0 - smoothstep(hw - 0.9, hw + 0.9, d);
     float inDoor = 1.0 - smoothstep(doorHw - 0.9, doorHw + 0.9, dd);
     // 越往畫面邊緣刻線越淡（背景要能呼吸），焦點附近最清楚
-    float fall = 1.0 - 0.6 * smoothstep(380.0, 1100.0, length((sp - focus) * vec2(0.8, 1.25)));
+    float fall = 1.0 - 0.45 * smoothstep(520.0, 1250.0, length((sp - focus) * vec2(0.8, 1.25)));
     // 樹籬：沿著形狀的等高刻線（像銅版畫的立體感），受光面淡、背光面濃，葉子的雜訊把線打斷
     vec2 nrm = (q - bp) / max(d, 1e-3);
     float lit = dot(nrm, normalize(vec2(-0.6, -0.8)));
@@ -115,6 +119,9 @@ const MAP = () => new FSPass(/* glsl */ `
     vec3 col = mix(C_PAPER * (0.985 + 0.03 * snoise(q / 260.0)), C_SEPIA, ink * 0.62);
     // 樹籬裡面比地面暗一點點（整體的明暗，像淡淡的水彩底）
     col *= 1.0 - 0.06 * max(inHedge, inDoor) * fall;
+    // 雲的影子：很大、很淡，隨風慢慢飄過地圖（空拍的感覺）；空地上淡一點，字才清楚
+    float cloud = smoothstep(0.08, 0.5, fbm(q / 820.0 + vec2(t * 0.018, t * 0.006), 3));
+    col *= 1.0 - 0.13 * cloud * (1.0 - 0.6 * max(inRoom, inSign));
     vec4 S = layer(stat, q);
     col = col * (1.0 - S.a) + S.rgb;
     vec4 D = layer(dyn, q);
@@ -124,7 +131,7 @@ const MAP = () => new FSPass(/* glsl */ `
   maze: { value: null }, mzSize: { value: new THREE.Vector2(NC, NR) }, cs: { value: CS }, org: { value: new THREE.Vector2(OX, OY) },
   stat: { value: null }, dyn: { value: null }, camInv: { value: new THREE.Matrix3() },
   room: { value: new THREE.Vector4() }, sign: { value: new THREE.Vector4(-9, -9, -9, -9) }, door: { value: new THREE.Vector4() },
-  focus: { value: new THREE.Vector2(W / 2, H / 2) },
+  focus: { value: new THREE.Vector2(W / 2, H / 2) }, t: { value: 0 },
 });
 
 type Cell = [number, number];
@@ -150,6 +157,9 @@ export default class Maze extends Scene {
   lineT: number[] = [];
   statKey = '';
   meet = { x: 0, y: 0 };
+  /** 相遇之後兩個人一起散步的路（從門口的兩格開始），與署名字級。 */
+  stroll: Walker | null = null;
+  sigSize = 30;
 
   override async init() {
     const { audio: au, lyrics, song } = this.ctx;
@@ -165,22 +175,25 @@ export default class Maze extends Scene {
     const signOn = m ? (hasLyr || !lyrics.has) : !lyrics.has;
     let msgSize = 0;
     if (m) {
-      this.fit = fitText(c, m.text, FAM_MSG, 1040, 330, { min: 44, max: 96, lineHeight: 1.3, maxLines: 5 });
+      // v2：字級上限依字數，照子句斷行；留言區（空地）只比字大一點
+      const o = { min: 40, max: msgMaxFor(m.text), lineHeight: 1.3, maxLines: 6 };
+      this.fit = fitClauses(c, m.text, FAM_MSG, 700, 290, o) ?? fitText(c, m.text, FAM_MSG, 700, 290, o);
       msgSize = this.fit.size;
+      this.sigSize = sigV2(msgSize);
     }
-    this.lyrSize = m ? lyricSizeFor(msgSize) : 84;
+    this.lyrSize = lyricV2(m ? msgSize : null);
     c.font = font(FAM_LYR, this.lyrSize);
     const natural = Math.max(lyrics.has ? 0 : c.measureText(song.title).width * 0.7, ...lines.map((l) => c.measureText(l.text).width));
     // 立牌：在上方，寬度跟著最長的一句（最寬 1400），太長的句子由 layoutLyric 縮小或折兩行
     if (signOn) {
-      const sw = clamp(natural + 80, 520, 1400);
+      const sw = clamp(natural + 80, 480, 1000);
       // 長的句子會折成兩行：立牌的高度照這個窗格最多幾行算
-      const st = { family: FAM_LYR, size: this.lyrSize, minSize: 48, maxWidth: sw - 80, lineHeight: 1.14 };
+      const st = { family: FAM_LYR, size: this.lyrSize, minSize: 40, maxWidth: sw - 80, lineHeight: 1.14 };
       const rows = Math.max(1, ...lines.map((l) => layoutLyric(c, l, st).rows.length));
-      const sh = m ? this.lyrSize * (1 + (rows - 1) * 1.14) + 60 : 110;
-      const sx = Math.round((150 - OX) / CS) * CS + OX;
-      this.sign = [sx, Math.round((112 - OY) / CS) * CS + OY, 0, 0];
-      this.sign[2] = this.sign[0] + Math.ceil(sw / CS) * CS;
+      const sh = m ? this.lyrSize * (1 + (rows - 1) * 1.14) + 56 : 110;
+      // 右上角（留言在左下，兩組字一左一右，不擠在一起）
+      const sx1 = Math.floor((1790 - OX) / CS) * CS + OX;
+      this.sign = [sx1 - Math.ceil(sw / CS) * CS, Math.round((112 - OY) / CS) * CS + OY, sx1, 0];
       this.sign[3] = this.sign[1] + Math.ceil(sh / CS) * CS;
       this.lyrW = this.sign[2] - this.sign[0] - 80;
       this.lyrX = this.sign[0] + 40;
@@ -189,34 +202,33 @@ export default class Maze extends Scene {
     // 空地：留言（或沒有留言時的大歌詞）＋署名，吸附到格子上
     let bw: number, bh: number;
     if (m && this.fit) {
-      c.font = font(FAM_SIG, 46);
-      bw = Math.max(this.fit.width, c.measureText(this.sig).width) + 110;
-      bh = this.fit.height + 46 * 1.9 + 90;
+      c.font = font(FAM_SIG, this.sigSize);
+      bw = Math.max(this.fit.width, c.measureText(this.sig).width) + 84;
+      bh = this.fit.height + this.sigSize * 1.9 + 60;
     } else {
       c.font = font(FAM_LYR, this.lyrSize);
-      bw = clamp(natural, 700, 1300) + 120;
-      bh = this.lyrSize * 2.4 + 130;
+      bw = clamp(natural, 520, 700) + 90;
+      bh = this.lyrSize * 2.3 + 90;
     }
-    const top0 = signOn ? this.sign[3] + CS : 250;
-    const cx = W * 0.47, cy = Math.max(top0 + bh / 2, 560);
-    const rx0 = Math.floor((cx - bw / 2 - OX) / CS), rx1 = Math.ceil((cx + bw / 2 - OX) / CS);
-    const ry0 = Math.floor((cy - bh / 2 - OY) / CS), ry1 = Math.ceil((cy + bh / 2 - OY) / CS);
+    // 空地在左下角（畫面一側），迷宮佔其他地方
+    const rx0 = Math.floor((150 - OX) / CS), rx1 = rx0 + Math.ceil(bw / CS);
+    const ry1 = Math.floor((948 - OY) / CS), ry0 = ry1 - Math.ceil(bh / CS);
     this.room = [OX + rx0 * CS, OY + ry0 * CS, OX + rx1 * CS, OY + ry1 * CS];
     if (m && this.fit) {
       const inner = this.room[3] - this.room[1];
-      this.msgX = this.room[0] + 55;
-      this.msgY = this.room[1] + (inner - (this.fit.height + 46 * 1.9)) / 2 + this.fit.size * 0.86;
-      this.sigY = this.msgY + (this.fit.lines.length - 1) * this.fit.lineHeight + 46 * 1.75;
-      this.sigX = this.room[2] - 55;
+      this.msgX = this.room[0] + 42;
+      this.msgY = this.room[1] + (inner - (this.fit.height + this.sigSize * 1.9)) / 2 + this.fit.size * 0.86;
+      this.sigY = this.msgY + (this.fit.lines.length - 1) * this.fit.lineHeight + this.sigSize * 1.8;
+      this.sigX = this.room[2] - 42;
     } else {
-      this.lyrW = this.room[2] - this.room[0] - 120;
-      this.lyrX = this.room[0] + 60;
+      this.lyrW = this.room[2] - this.room[0] - 80;
+      this.lyrX = this.room[0] + 40;
       this.lyrY = this.room[1] + (this.room[3] - this.room[1]) / 2 - 10;
     }
 
-    // ---- 迷宮：左右兩半各自用深度優先搜尋長出來，兩半只在空地下方的門口相通
+    // ---- 迷宮：左右兩半各自用深度優先搜尋長出來，兩半只在空地上方的門口相通
     const dc = Math.round((rx0 + rx1) / 2);
-    const dl: Cell = [dc - 1, ry1], dr: Cell = [dc, ry1];
+    const dl: Cell = [dc - 1, ry0 - 1], dr: Cell = [dc, ry0 - 1];
     const inRect = (i: number, j: number, r: [number, number, number, number]) => {
       const x = OX + (i + 0.5) * CS, y = OY + (j + 0.5) * CS;
       return x > r[0] && x < r[2] && y > r[1] && y < r[3];
@@ -262,10 +274,10 @@ export default class Maze extends Scene {
       if (i + 1 < NC && clearing(i + 1, j) === k) right[i]![j] = false;
       if (j + 1 < NR && clearing(i, j + 1) === k) bottom[i]![j] = false;
     }
-    // 門：空地最下面一排與門口兩格之間的那段樹籬另外畫（會打開）
-    bottom[dc - 1]![ry1 - 1] = false;
-    bottom[dc]![ry1 - 1] = false;
-    this.door = [OX + (dc - 1) * CS, OY + ry1 * CS, OX + (dc + 1) * CS];
+    // 門：空地最上面一排與門口兩格之間的那段樹籬另外畫（會打開）
+    bottom[dc - 1]![ry0 - 1] = false;
+    bottom[dc]![ry0 - 1] = false;
+    this.door = [OX + (dc - 1) * CS, OY + ry0 * CS, OX + (dc + 1) * CS];
     const data = new Uint8Array(NC * NR * 4);
     for (let j = 0; j < NR; j++) for (let i = 0; i < NC; i++) {
       const o = (j * NC + i) * 4;
@@ -280,10 +292,11 @@ export default class Maze extends Scene {
 
     // ---- 兩個人的路：從門口往外做廣度優先搜尋，挑離門口「剛好」那麼遠、又在畫面裡的格子當起點
     this.t1 = beatAfter(au, s + Math.min(0.3, B * 0.6));
-    const nB = clamp(Math.round((0.55 * (e - this.t1)) / B), 3, 8);
+    // 一拍一步，走到窗格的七成左右才相遇（整段都在走）
+    const nB = clamp(Math.round((0.7 * (e - this.t1)) / B), 4, 28);
     this.tMeet = au.timeOfBeat(au.beatAt(this.t1) + nB);
     const passable = (a: Cell, b: Cell) => (a[0] === b[0] ? !bottom[a[0]]![Math.min(a[1], b[1])] : !right[Math.min(a[0], b[0])]![a[1]]);
-    const walk = (door: Cell, side: number): Cell[] => {
+    const walk = (door: Cell, side: number, target: number, far = false): Cell[] => {
       const prev = new Map<number, number>();
       const dist = new Map<number, number>([[key(...door), 0]]);
       const q: Cell[] = [door];
@@ -297,8 +310,7 @@ export default class Maze extends Scene {
           q.push(n);
         }
       }
-      // 起點：在畫面裡（離邊 150 px）、目標長度約一拍兩格
-      const target = Math.max(8, nB * 2.5);
+      // 起點：在畫面裡（離邊 150 px）、離門口「剛好」target 步；散步的終點（far）偏好離空地遠一點
       let best: Cell = door, bestS = Infinity;
       for (const [kk, dv] of dist) {
         const i = kk % NC, j = Math.floor(kk / NC);
@@ -306,7 +318,8 @@ export default class Maze extends Scene {
         if (x < 170 || x > W - 170 || y < 170 || y > H - 150) continue;
         if (x > 1330 && y > 800) continue;
         // 偏好從畫面的上半部、靠兩側出發：沿著空地的旁邊一路走下來，整段路都看得到
-        const sc = Math.abs(dv - target) + (side === 0 ? x : W - x) * 0.004 + y * 0.006 + hash(this.seed, kk) * 0.8;
+        if (x < this.room[2] + 60 && y > this.room[1] - 60) continue;
+        const sc = Math.abs(dv - target) + (far ? -Math.hypot(x - this.room[0], y - this.room[3]) * 0.004 : (side === 0 ? x : W - x) * 0.003 + y * 0.004) + hash(this.seed, kk) * 0.8;
         if (sc < bestS) { bestS = sc; best = [i, j]; }
       }
       const path: Cell[] = [best];
@@ -322,9 +335,22 @@ export default class Maze extends Scene {
       const times = Array.from({ length: moves }, (_, i) => au.timeOfBeat(au.beatAt(this.tMeet) - (moves - i)));
       return { path, times, k };
     };
-    this.A = mk(walk(dl, 0));
-    this.Bw = mk(walk(dr, 1));
-    this.meet = { x: OX + dc * CS, y: OY + (ry1 + 0.5) * CS };
+    const target = Math.max(10, nB * 1.6);
+    this.A = mk(walk(dl, 0, target));
+    this.Bw = mk(walk(dr, 1, target));
+    this.meet = { x: OX + dc * CS, y: OY + (ry0 - 0.5) * CS };
+    // 相遇之後：兩個人一起往右邊的迷宮裡散步（一拍一格，一前一後），路是從門口往外的一條
+    const ts: number[] = [];
+    for (let k = Math.ceil(au.beatAt(this.tMeet + B * 1.5) - 1e-6); ts.length < 40; k++) {
+      const tb = au.timeOfBeat(k);
+      if (tb > e - B * 0.5) break;
+      ts.push(tb);
+    }
+    if (ts.length >= 2) {
+      const out = walk(dr, 1, ts.length, true).reverse();
+      const path: Cell[] = [dl, ...out].slice(0, ts.length + 2);
+      this.stroll = { path, times: ts.slice(0, path.length - 2), k: 1 };
+    }
 
     // ---- 留言一行一行印上去（第一小節內），署名跟著最後一行
     const nl = this.fit ? this.fit.lines.length : 0;
@@ -374,7 +400,7 @@ export default class Maze extends Scene {
         if (a > 0) {
           c.globalAlpha = a;
           c.fillStyle = rgba('sepia', 0.8);
-          c.font = font(FAM_SIG, 46);
+          c.font = font(FAM_SIG, this.sigSize);
           c.textAlign = 'right';
           c.fillText(this.sig, this.sigX, this.sigY);
           c.textAlign = 'left';
@@ -390,8 +416,22 @@ export default class Maze extends Scene {
     this.drawLyricAt(c, t);
     const walkers: [Walker, string, string][] = [[this.A, sigInk(0.95), sigInk(0.7)], [this.Bw, rgba('sepia', 0.92), rgba('sepia', 0.55)]];
     const met = t >= this.tMeet;
-    for (const [w, col, trail] of walkers) {
-      const fi = this.at(w, t);
+    // 散步中：兩個人沿著同一條路走（A 在後面一格），足跡用兩人的顏色交錯
+    const S = this.stroll;
+    const strolling = S && t >= S.times[0]! ? S : null;
+    if (strolling) {
+      const si = this.at(strolling, t);
+      c.fillStyle = sigInk(0.6);
+      let acc = 0, px = this.cellXY(strolling, 1);
+      for (let x = 1.08; x <= si + 1; x += 0.08) {
+        const p = this.cellXY(strolling, x);
+        acc += Math.hypot(p.x - px.x, p.y - px.y);
+        px = p;
+        if (acc >= 12) { acc = 0; c.beginPath(); c.arc(p.x, p.y, 2.4, 0, Math.PI * 2); c.fill(); }
+      }
+    }
+    walkers.forEach(([w, col, trail], wi) => {
+      let fi = this.at(w, t);
       // 足跡：走過的路一點一點（每 12 px 一個點）
       c.fillStyle = trail;
       let acc = 0, px = this.cellXY(w, 0);
@@ -402,15 +442,20 @@ export default class Maze extends Scene {
         if (acc >= 12) { acc = 0; c.beginPath(); c.arc(p.x, p.y, 2.6, 0, Math.PI * 2); c.fill(); }
       }
       // 棋子：俯看的圓形棋子（影子、外圈、中間一個小凹），走的那一下稍微浮起來
-      const p = this.cellXY(w, fi);
-      const lift = w.times.reduce((a, tt) => a + Math.sin(Math.PI * clamp((t - tt) / (this.B * 0.42))), 0);
+      let p = this.cellXY(w, fi);
+      let lift = w.times.reduce((a, tt) => a + Math.sin(Math.PI * clamp((t - tt) / (this.B * 0.42))), 0);
+      if (strolling) {
+        fi = this.at(strolling, t) + (wi === 0 ? 0 : 1);
+        p = this.cellXY(strolling, fi);
+        lift = strolling.times.reduce((a, tt) => a + Math.sin(Math.PI * clamp((t - tt - wi * 0.06) / (this.B * 0.42))), 0);
+      }
       c.fillStyle = rgba('sepia', 0.2);
       c.beginPath(); c.arc(p.x + 5 + lift * 4, p.y + 7 + lift * 5, 17, 0, Math.PI * 2); c.fill();
       c.fillStyle = col;
       c.beginPath(); c.arc(p.x, p.y - lift * 2, 17 + lift * 1.5, 0, Math.PI * 2); c.fill();
       c.strokeStyle = rgba('paper', 0.85); c.lineWidth = 2;
       c.beginPath(); c.arc(p.x, p.y - lift * 2, 11, 0, Math.PI * 2); c.stroke();
-    }
+    });
     // 相遇：兩顆棋子中間冒出一顆愛心（點綴色），往上飄一點停住
     if (met) {
       const k = ease.outBack(clamp((t - this.tMeet) / 0.35), 2.2);
@@ -435,7 +480,8 @@ export default class Maze extends Scene {
     (P.u.room!.value as THREE.Vector4).set(...this.room);
     (P.u.sign!.value as THREE.Vector4).set(...this.sign);
     (P.u.door!.value as THREE.Vector4).set(this.door[0], this.door[1], this.door[2], ease.outCubic(prog(t, this.tMeet, this.tMeet + this.B)));
-    (P.u.focus!.value as THREE.Vector2).set((this.room[0] + this.room[2]) / 2, (this.room[1] + this.room[3]) / 2);
+    (P.u.focus!.value as THREE.Vector2).set(W * 0.55, H * 0.45);
+    P.u.t!.value = t;
     P.render(renderer, out);
 
     const amp = 4 * pulse(t, this.tMeet, 0.08);
@@ -458,7 +504,7 @@ export default class Maze extends Scene {
     }
     const ly = lyrics.has ? lyricAt(lyrics, t) : null;
     if (ly) {
-      const st = { family: FAM_LYR, size: this.lyrSize, minSize: 48, maxWidth: this.lyrW, active: ink.active, sung: ink.sung, unsung: ink.unsung, lineHeight: 1.14 };
+      const st = { family: FAM_LYR, size: this.lyrSize, minSize: 40, maxWidth: this.lyrW, active: ink.active, sung: ink.sung, unsung: ink.unsung, lineHeight: 1.14 };
       const lay = layoutLyric(c, ly.line, st);
       c.save();
       c.translate(this.lyrX, this.lyrY - lay.height / 2 + lay.size * 0.84);

@@ -1,11 +1,13 @@
-// 撲克牌（暗）：一張深色毛氈的牌桌，一盞燈從上面打下來；牌堆在畫面左邊外面（只看得到一角、糊的）。
-//  - 第一拍：紅心 K 從牌堆滑出來、在半空翻面、落在桌上；下一拍紅心 Q 落在另一頭；接著一拍一張（窗格短就半拍）
-//    把留言的牌發到兩張之間，每一張都是翻開的——主打留言手寫在這幾張白牌上（一張一段），署名寫在最後一張的右下角。
-//    牌都是自己設計的（不畫人）：K、Q 是大大的字母、一顆愛心、一頂線畫的皇冠／后冠。
-//  - 發完的下一拍 K、Q 往中間靠一點（輕輕碰到留言的牌），像兩個人把大家的祝福夾在中間。
-//  - 歌詞印在毛氈上：牌的上方一道弧線（像牌桌上印的字），唱到的字亮成訊號色（逐字跟唱），比留言小一級。
-//  - 鏡頭：切進來時貼近牌堆、低一點；發牌的時候一路往右搖、升高，發完停在斜上方，之後很慢地推近。
-//  - 沒有留言：K、Q 中間發一張寫「宣文 ♥ 孟庭」的牌，弧線上的歌詞放大，底下一行邀請。純音樂：弧線上印歌名。
+// 撲克牌（暗）：一張深色毛氈的牌桌，一盞燈從上面打下來。
+//  - 第一拍：一疊牌被手從左往右一抹，展開成畫面上方的一道弧（ribbon spread，一張壓一張、兩端往遠處彎）。
+//  - 接著一拍一張（窗格短就半拍）：紅心 K、紅心 Q 從弧裡滑出來、在半空翻面，落到左下角；最後抽出一張魔術師的大白卡，
+//    橫著落在兩張中間——主打留言手寫在這張大白卡上（v2：留言 40～60 px、卡在畫面上 ≤ 860×430），署名在最後一行下面。
+//    牌都是自己設計的（不畫人）：K、Q 是大大的字母、一顆愛心、一頂線畫的皇冠／后冠；弧裡的牌是紅心 A～4。
+//  - 抽完的下一拍 K、Q 往中間靠一點（輕輕碰到大白卡），像兩個人把大家的祝福夾在中間。
+//  - 之後每個小節線，整道弧像骨牌一樣一張接一張翻過去（翻牌的花式），下一個小節再翻回來——窗格長的時候中段一直有事。
+//  - 歌詞印在毛氈上：大白卡上方一道弧線（像牌桌上印的字），唱到的字亮成訊號色（逐字跟唱），比留言小。
+//  - 鏡頭：切進來時從弧展開的那一端低低地看過來；抽牌的時候升起來、轉正，之後很慢地推近。右下角 QR 那一塊只有毛氈。
+//  - 沒有留言：大白卡寫「宣文 & 孟庭」（配角），弧線上的歌詞是主角，底下一行邀請。純音樂：弧線上印歌名。
 // 手法：牌是 three.js 的四邊形（InstancedMesh，正面、背面各自取圖集，圓角在 shader 裡挖），翻面是真的 3D 轉動；
 // 影子是同一張牌沿光線投到桌面、依高度模糊；弧線上的字先畫成一條直的 Canvas，再在毛氈的 shader 裡用極座標彎成弧。
 import * as THREE from 'three';
@@ -15,18 +17,18 @@ import { GLSL_COMMON, THEME_UNIFORMS } from '../engine/glsl/common';
 import { F, font, loadText } from '../engine/type';
 import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, pulse, hash, frameIdx } from '../engine/util';
-import { fitText, phrases, type FitResult } from '../engine/text';
-import { lyricAt, layoutLyric, drawLyric, lyricSizeFor, beatAfter, drawHeart, fillWithHearts, COUPLE_ZH } from './_motifs';
-import { darkInk, fitMsg } from './_t4';
+import { fitText } from '../engine/text';
+import { lyricAt, layoutLyric, drawLyric, beatAfter, drawHeart, fillWithHearts, COUPLE_ZH } from './_motifs';
+import { msgMaxFor, lyricV2, sigV2, fitClauses } from './_v2';
+import { darkInk } from './_t4';
 import { sigOf, applyOrbit, lerpOrbit, toScreen, T17_INVITE, T17_TEXT, type OrbitCam, type V3 } from './_t17';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'game', paper: false, energy: [0.25, 0.9], bars: [4, 8], weight: 1 };
 
 /** 牌的大小（世界單位）與圖集。 */
 const CW = 300, CH = 420, RES = 1.5;
-const NCELL = 8; // 0 = 背面、1 = K、2 = Q、3.. = 留言的牌
-const DECK_N = 10;
-const MAXI = DECK_N + 8;
+const NCELL = 8; // 0 = 背面、1 = K、2 = Q、3 = 大白卡、4..7 = 紅心 A～4
+const MAXI = 32;
 const FAM_MSG = F.hand(700);
 const FAM_LYR = F.archivo(100, 800);
 const LIGHT: V3 = [-0.35, 0.55, 1];
@@ -174,8 +176,19 @@ class Rig {
   }
 }
 
-/** 一張發出去的牌：正面的格子、落點、落下的時間、飛行時間、終點的轉角。 */
-interface Deal { cell: number; x: number; y: number; rot: number; tl: number; fd: number; nudge: number }
+/** 展開成一道弧（ribbon spread）的牌：位置、轉角、正面的格子。 */
+interface Slot { x: number; y: number; rz: number; face: number }
+/** 從展開的牌裡抽出來的牌：哪一個位置、正面的格子、落點、轉角、大小、落下的時間、飛行時間、往中間靠的方向。 */
+interface Deal { slot: number; cell: number; x: number; y: number; rot: number; sc: number; tl: number; fd: number; nudge: number }
+
+/** 展開的牌數、大白卡的放大倍數（魔術師的大張牌）、左下角那一組（K、大白卡、Q）的中心、歌詞弧線最低點、展開的弧線。 */
+const NS = 28;
+const MSC = 1.4;
+const GROUP = { x: -300, y: -330 };
+const LYR_Y = -40;
+const SP_Y = 330;
+/** 翻牌浪潮裡一張牌翻過去要多久。 */
+const FL = 0.26;
 
 export default class Cards extends Scene {
   rig = shared('cards.rig', () => new Rig());
@@ -184,12 +197,15 @@ export default class Cards extends Scene {
   seed = Number(this.ctx.params.seed ?? 1) * 7 + (this.msg?.id ?? 0);
   atlasCv: HTMLCanvasElement | null = null;
   atlasTex: THREE.CanvasTexture | null = null;
+  slots: Slot[] = [];
   deals: Deal[] = [];
+  /** 翻牌浪潮開始的時間（小節線）、浪潮裡相鄰兩張牌的時間差。 */
+  waves: number[] = [];
+  waveDt = 0.03;
   sig = '';
-  t1 = 0; tDone = 0; tNudge = 0; B = 0.5;
-  deck = { x: -1500, y: 60 };
+  t1 = 0; tDone = 0; tNudge = 0; B = 0.5; sweep = 0.4;
   arc: [number, number, number] = [0, 0, 0];
-  lyrSize = 56;
+  lyrSize = 52;
   camA!: OrbitCam; camB!: OrbitCam;
   m4 = new THREE.Matrix4(); q = new THREE.Quaternion(); e = new THREE.Euler(); v = new THREE.Vector3(); s3 = new THREE.Vector3();
 
@@ -197,16 +213,70 @@ export default class Cards extends Scene {
     const { audio: au, lyrics, song } = this.ctx;
     const s = this.ctx.start, e = this.ctx.end, m = this.msg;
     this.sig = sigOf(m);
-    const text = m ? m.text : `${COUPLE_ZH}`;
-    await loadText(`${text}${this.sig}${T17_TEXT}${T17_INVITE}${song.title}${song.artist}KQ♪${lyrics.linesIn(s - 2, e + 1).map((l) => l.text).join('')}`);
+    const text = m ? m.text : COUPLE_ZH;
+    await loadText(`${text}${this.sig}${T17_TEXT}${T17_INVITE}${song.title}${song.artist}KQA234♪${lyrics.linesIn(s - 2, e + 1).map((l) => l.text).join('')}`);
     const B = (this.B = au.beatPeriod(s + 0.1));
 
-    // ---- 留言分成幾張牌：照詞組切（不拆詞），每張字數差不多
-    // 字數：英文字母比中文字窄，算半個字
-    const nChars = Array.from(text.replace(/\s/g, '')).reduce((a, ch) => a + (/[!-~]/.test(ch) ? 0.55 : 1), 0);
-    const nCards = m ? clamp(Math.ceil(nChars / 14), 1, 4) : 1;
-    const parts = this.split(text, nCards);
-    // ---- 圖集：背面、K、Q、留言的牌
+    // ---- 展開的牌：畫面上方一道弧（兩端往遠處彎），一張壓一張
+    for (let i = 0; i < NS; i++) {
+      const x = -880 + (i * 1760) / (NS - 1);
+      this.slots.push({ x, y: SP_Y + 0.00011 * x * x, rz: Math.atan(0.00022 * x), face: 4 + (i % 4) });
+    }
+    // ---- 時間：第一拍把牌展開（手從左往右一抹，0.7 拍）；接著一拍一張：K、Q 從牌裡抽出來，最後抽出大白卡
+    this.t1 = beatAfter(au, s + Math.min(0.3, B * 0.6));
+    const step = e - this.t1 > 8 * B * 1.3 ? B : B / 2;
+    this.sweep = 0.7 * step;
+    const fd = clamp(step * 0.9, 0.3, 0.5);
+    const iK = Math.round(NS * 0.28), iQ = Math.round(NS * 0.72), iM = Math.floor(NS / 2);
+    const rnd = (k: number) => hash(this.seed, k) - 0.5;
+    const gw = CH * MSC / 2;
+    this.deals.push({ slot: iK, cell: 1, x: GROUP.x - gw - 105, y: GROUP.y + 30, rot: 0.16 + rnd(1) * 0.04, sc: 1, tl: this.t1 + 2 * step, fd, nudge: 1 });
+    this.deals.push({ slot: iQ, cell: 2, x: GROUP.x + gw + 105, y: GROUP.y + 30, rot: -0.16 + rnd(2) * 0.04, sc: 1, tl: this.t1 + 3 * step, fd, nudge: -1 });
+    this.deals.push({ slot: iM, cell: 3, x: GROUP.x, y: GROUP.y, rot: Math.PI / 2 + rnd(3) * 0.03, sc: MSC, tl: this.t1 + 4 * step, fd, nudge: 0 });
+    this.tDone = this.t1 + 4 * step;
+    this.tNudge = au.timeOfBeat(Math.ceil(au.beatAt(this.tDone + 0.1) - 1e-6));
+    // 翻牌浪潮：之後每個小節線一次（整排牌像骨牌一樣翻過去，下一次再翻回來）
+    this.waveDt = Math.min(0.035, (0.55 * B) / NS);
+    for (let k = Math.ceil(au.barAt(this.tNudge + B * 0.5) - 1e-6); this.waves.length < 16; k++) {
+      const tb = au.timeOfBar(k);
+      if (tb + NS * this.waveDt + FL > e - 0.1) break;
+      this.waves.push(tb);
+    }
+
+    // ---- 鏡頭：斜上方；左下角那一組（K、大白卡、Q）要在安全範圍裡、不進右下角 QR 區，
+    // 大白卡在畫面上不超過 860×430（v2 的留言區），展開的牌在上方、看得到
+    const cam = this.rig.cam;
+    const groupPts: V3[] = [];
+    for (const [x, y] of [[GROUP.x - gw - 105 - CW * 0.62, GROUP.y - CH * 0.55], [GROUP.x + gw + 105 + CW * 0.62, GROUP.y - CH * 0.55], [GROUP.x - gw - 105 - CW * 0.62, GROUP.y + CH * 0.62], [GROUP.x + gw + 105 + CW * 0.62, GROUP.y + CH * 0.62]]) groupPts.push([x!, y!, 0]);
+    const pxAt = (x: number, y: number) => { const a = toScreen(cam, [x - 100, y, 0]), b = toScreen(cam, [x + 100, y, 0]); return Math.hypot(b.x - a.x, b.y - a.y) / 200; };
+    const ok = (o: OrbitCam) => {
+      applyOrbit(cam, o);
+      const g = groupPts.map((p) => toScreen(cam, p));
+      if (!g.every((p) => p.x > 110 && p.x < W - 110 && p.y > 96 && p.y < 990)) return false;
+      if (g.some((p) => p.x > 1330 && p.y > 800)) return false;
+      const lyr = [toScreen(cam, [-520, LYR_Y, 0]), toScreen(cam, [520, LYR_Y + 70, 0])];
+      if (!lyr.every((p) => p.x > 100 && p.x < W - 100 && p.y > 96 && p.y < 800)) return false;
+      const sp = toScreen(cam, [0, SP_Y + 210, 0]);
+      return sp.y > 70 && pxAt(GROUP.x, GROUP.y) <= 1.0;
+    };
+    let best: OrbitCam | null = null, bestPx = 0;
+    for (const tx of [-200, -120, -40, 40]) for (const ty of [-160, -100, -40, 20]) {
+      const o0: OrbitCam = { tx, ty, tz: 0, dist: 1800, az: 0, el: 0.9, fov: 30 };
+      let lo = 800, hi = 7000;
+      if (!ok({ ...o0, dist: hi })) continue;
+      for (let i = 0; i < 24; i++) { const mid = (lo + hi) / 2; if (ok({ ...o0, dist: mid })) hi = mid; else lo = mid; }
+      const o = { ...o0, dist: hi };
+      applyOrbit(cam, o);
+      const px = pxAt(GROUP.x, GROUP.y);
+      if (px > bestPx) { bestPx = px; best = o; }
+    }
+    this.camB = best ?? { tx: -80, ty: -60, tz: 0, dist: 2600, az: 0, el: 0.9, fov: 30 };
+    applyOrbit(cam, this.camB);
+    const pxMsg = pxAt(GROUP.x, GROUP.y), pxLyr = pxAt(0, LYR_Y);
+    // 進場：從牌展開的那一端（左上）看過來，低一點；牌抽出來的時候鏡頭升起來、轉正
+    this.camA = { ...this.camB, tx: this.camB.tx - 260, ty: this.camB.ty + 260, dist: this.camB.dist * 0.72, el: 0.62, az: -0.18, roll: -0.02 };
+
+    // ---- 圖集：背面、K、Q、大白卡（橫放，字在圖集裡轉 90° 畫）、紅心 A～4
     const cv = (this.atlasCv = document.createElement('canvas'));
     cv.width = Math.round(NCELL * CW * RES); cv.height = Math.round(CH * RES);
     const c = cv.getContext('2d')!;
@@ -214,110 +284,53 @@ export default class Cards extends Scene {
     this.drawBack(c, 0);
     this.drawCourt(c, CW, 'K');
     this.drawCourt(c, CW * 2, 'Q');
-    // 每張牌的字：大家用同一個字級（取最小的），署名寫在最後一張的右下角。
-    // 只有一張的時候牌橫著放（直的牌太窄，「新婚快樂！！！」會被切成「新婚快／樂！！！」）：字在圖集裡轉 90° 畫，牌轉回來就是正的
-    const land = parts.length === 1;
-    const inner = land ? { w: CH - 70, h: CW - 76 } : { w: CW - 56, h: CH - 110 };
-    const sigSize = 30;
-    const sigH = (i: number) => (i === parts.length - 1 && this.sig ? sigSize * 1.6 : 0);
-    // 一行放得下（字級不小於最大的六成）就一行：「新婚快樂！！！」不要折成兩行
-    const fits: FitResult[] = parts.map((p, i) => fitMsg(c, p, FAM_MSG, inner.w, inner.h - sigH(i), { min: 40, max: m ? 80 : 58, lineHeight: 1.26, maxLines: 6 }));
-    const size = Math.min(...fits.map((f) => f.size));
-    parts.forEach((p, i) => {
-      const x0 = CW * (3 + i);
-      this.drawBlank(c, x0);
-      const fit = land ? fits[0]! : fitText(c, p, FAM_MSG, inner.w, inner.h - sigH(i), { min: size, max: size, lineHeight: 1.26, maxLines: 8 });
-      c.save();
-      // 牌面座標：原點在左上角、寬 inner.w + 邊（橫放時整個轉 90°）
-      if (land) { c.translate(x0 + CW, 0); c.rotate(Math.PI / 2); } else c.translate(x0, 0);
-      const fw = land ? CH : CW, top = land ? 38 : 60;
+    ['A', '2', '3', '4'].forEach((r, i) => this.drawPip(c, CW * (4 + i), r, i + 1));
+    // 大白卡：圖集一格的單位 × MSC × pxMsg = 螢幕 px，字級（v2 的螢幕 px）要除回去
+    const k = MSC * pxMsg;
+    const x0 = CW * 3;
+    this.drawBlank(c, x0);
+    // 字區只比字多一點邊距（上下 20、左右 28，四個角的小愛心在字區外面）：
+    // 44 字左右的長留言照子句排要六行，框再小一點就只能照寬度硬切，會斷出「這麼美／好的一天」
+    const inner = { w: CH - 56, h: CW - 40 };
+    let msgPx = 0;
+    c.save();
+    c.translate(x0 + CW, 0); c.rotate(Math.PI / 2);
+    if (m) {
+      const o = { min: Math.ceil(40 / k), max: Math.floor(msgMaxFor(m.text) / k), lineHeight: 1.22, maxLines: 7 };
+      const sg0 = sigV2(o.max * k) / k;
+      const fit = fitClauses(c, m.text, FAM_MSG, inner.w, inner.h - sg0 * 1.8, o) ?? fitText(c, m.text, FAM_MSG, inner.w, inner.h - sg0 * 1.8, o);
+      msgPx = fit.size * k;
+      const sg = sigV2(msgPx) / k;
+      const total = fit.height + sg * 1.8;
+      const y0 = 20 + (inner.h - total) / 2 + fit.size * 0.86;
       c.font = font(FAM_MSG, fit.size);
       c.fillStyle = rgba('sepia', 0.95);
-      const y0 = top + (inner.h - fit.height - sigH(i)) / 2 + fit.size * 0.86;
-      fit.lines.forEach((ln, k) => { const w = c.measureText(ln).width; fillWithHearts(c, ln, fw / 2 - w / 2, y0 + k * fit.lineHeight); });
-      if (sigH(i)) {
-        c.font = font(FAM_MSG, sigSize);
-        c.fillStyle = mixRgba('blood', 'sepia', 0.3);
-        c.textAlign = 'right';
-        c.fillText(this.sig, fw - 30, y0 + (fit.lines.length - 1) * fit.lineHeight + sigSize * 1.7, fw - 60);
-        c.textAlign = 'left';
-      }
-      c.restore();
-    });
+      fit.lines.forEach((ln, i) => { const w = c.measureText(ln).width; fillWithHearts(c, ln, CH / 2 - w / 2, y0 + i * fit.lineHeight); });
+      c.font = font(FAM_MSG, sg);
+      c.fillStyle = mixRgba('blood', 'sepia', 0.3);
+      c.textAlign = 'right';
+      c.fillText(this.sig, CH / 2 + Math.max(fit.width, 200) / 2, y0 + (fit.lines.length - 1) * fit.lineHeight + sg * 1.75, CH - 60);
+      c.textAlign = 'left';
+    } else {
+      // 沒有留言：大白卡寫新人的名字（配角，不大），歌詞是主角
+      c.font = font(FAM_MSG, 44 / k);
+      c.fillStyle = rgba('sepia', 0.9);
+      c.textAlign = 'center';
+      c.fillText(COUPLE_ZH, CH / 2, CW / 2 + 6);
+      drawHeart(c, CH / 2, CW / 2 + 44, 24, rgba('rose'));
+      c.textAlign = 'left';
+    }
+    c.restore();
     const tx = (this.atlasTex = new THREE.CanvasTexture(cv));
     tx.colorSpace = THREE.SRGBColorSpace;
     tx.generateMipmaps = true;
     tx.minFilter = THREE.LinearMipmapLinearFilter;
     tx.anisotropy = 4;
     tx.needsUpdate = true;
-    // 留言的字在畫面上大約多大（閱讀鏡頭 1 世界單位 ≈ 1.25 px，下面算完鏡頭再修正）
-    this.lyrSize = m ? lyricSizeFor(size * 1.25) : 76;
-
-    // ---- 牌的位置：留言的牌並排、K 在最左（被第一張壓住一點）、Q 在最右
-    const gap = 18;
-    const cw = land ? CH : CW;
-    const rowW = nCards * cw + (nCards - 1) * gap;
-    const xs = parts.map((_, i) => -rowW / 2 + cw / 2 + i * (cw + gap));
-    const kx = xs[0]! - cw / 2 - CW * 0.28, qx = xs[xs.length - 1]! + cw / 2 + CW * 0.28;
-    this.t1 = beatAfter(au, s + Math.min(0.3, B * 0.6));
-    const step = e - this.t1 > (nCards + 3) * B * 1.6 ? B : B / 2;
-    const fd = clamp(step * 0.9, 0.3, 0.5);
-    const rnd = (k: number) => (hash(this.seed, k) - 0.5);
-    this.deals.push({ cell: 1, x: kx, y: 20, rot: 0.1 + rnd(1) * 0.04, tl: this.t1, fd, nudge: 1 });
-    this.deals.push({ cell: 2, x: qx, y: 20, rot: -0.1 + rnd(2) * 0.04, tl: this.t1 + step, fd, nudge: -1 });
-    xs.forEach((x, i) => this.deals.push({ cell: 3 + i, x, y: -4, rot: (land ? Math.PI / 2 : 0) + rnd(3 + i) * 0.05, tl: this.t1 + step * (2 + i), fd, nudge: 0 }));
-    this.tDone = this.t1 + step * (1 + nCards) + 0.05;
-    this.tNudge = au.timeOfBeat(Math.ceil(au.beatAt(this.tDone + 0.1) - 1e-6));
-    this.deck = { x: kx - CW * 3.2, y: 80 };
-
-    // ---- 鏡頭：落定時斜上方看著整排牌，上面留給弧線上的歌詞
-    const cam = this.rig.cam;
-    const rowPts: V3[] = [[kx - CW * 0.6, -CH / 2 - 10, 0], [qx + CW * 0.6, -CH / 2 - 10, 0], [kx - CW * 0.6, CH / 2 + 30, 0], [qx + CW * 0.6, CH / 2 + 30, 0]];
-    const fit = (o: OrbitCam, yTop: number) => {
-      let lo = 600, hi = 8000;
-      const ok = (d: number) => {
-        applyOrbit(cam, { ...o, dist: d });
-        // 牌的下緣不進右下角 QR 區（Q 的角標在那裡）
-        return rowPts.map((p) => toScreen(cam, p)).every((p) => p.x > 110 && p.x < W - 110 && p.y > yTop && p.y < 820);
-      };
-      for (let i = 0; i < 24; i++) { const mid = (lo + hi) / 2; if (ok(mid)) hi = mid; else lo = mid; }
-      return { ...o, dist: hi };
-    };
-    const yTop = 280;
-    let best: OrbitCam | null = null;
-    for (const ty of [60, 100, 140, 180, 220]) {
-      const o = fit({ tx: 0, ty, tz: 0, dist: 2000, az: 0, el: 1.12, fov: 30 }, yTop);
-      if (!best || o.dist < best.dist) best = o;
-    }
-    this.camB = best!;
-    // 弧線：圓心在牌的上方（莊家那一側），弧的最低點在牌的上緣再上面一點；歌詞的字級照鏡頭換算
-    applyOrbit(cam, this.camB);
-    const a = toScreen(cam, [0, CH / 2 + 150, 0]), b = toScreen(cam, [100, CH / 2 + 150, 0]);
-    const pxPer = Math.hypot(b.x - a.x, b.y - a.y) / 100;
-    this.lyrSize = Math.round((m ? lyricSizeFor(size * pxPer) : 76) / pxPer);
+    // 歌詞（印在毛氈的弧線上）：v2 的字級換成毛氈上的單位
+    this.lyrSize = Math.round(lyricV2(m ? msgPx : null) / pxLyr);
     const R = 2600;
-    this.arc = [0, CH / 2 + 110 + R, R];
-    // 進場：貼近牌堆（左邊）、低一點；發牌時一路往右搖、升高
-    this.camA = { ...this.camB, tx: this.deck.x + 900, ty: 0, dist: this.camB.dist * 0.72, el: 0.72, az: -0.12, roll: -0.02 };
-  }
-
-  /** 把一段文字照詞組切成 n 張牌（每張字數差不多、不拆詞）。 */
-  private split(text: string, n: number): string[] {
-    if (n <= 1) return [text];
-    const ph = phrases(text, 4);
-    const len = (s: string) => Array.from(s.replace(/\s/g, '')).length;
-    const total = ph.reduce((a, p) => a + len(p), 0);
-    const out: string[] = [];
-    let cur = '', acc = 0;
-    for (const p of ph) {
-      const target = (total * (out.length + 1)) / n;
-      if (cur && out.length < n - 1 && acc + len(p) / 2 > target) { out.push(cur.trim()); cur = ''; }
-      // 英文的詞組之間要補回空白（phrases 會把空白吃掉）
-      cur += (cur && /[!-~]$/.test(cur) && /^[!-~]/.test(p) ? ' ' : '') + p;
-      acc += len(p);
-    }
-    if (cur.trim()) out.push(cur.trim());
-    return out;
+    this.arc = [0, LYR_Y + R, R];
   }
 
   /** 牌背：深紅（訊號色的暗部）的底、細細的菱格紋、白邊。自己設計的，不像任何牌子。 */
@@ -341,9 +354,28 @@ export default class Cards extends Scene {
   private drawBlank(c: CanvasRenderingContext2D, x0: number) {
     c.save();
     c.fillStyle = mixRgba('bone', 'paper', 0.25); c.fillRect(x0, 0, CW, CH);
-    c.strokeStyle = rgba('signal', 0.5); c.lineWidth = 1.5; c.strokeRect(x0 + 16, 16, CW - 32, CH - 32);
-    c.strokeStyle = rgba('signal', 0.25); c.lineWidth = 1; c.strokeRect(x0 + 22, 22, CW - 44, CH - 44);
-    for (const [hx, hy] of [[34, 38], [CW - 34, 38], [34, CH - 34], [CW - 34, CH - 34]] as const) drawHeart(c, x0 + hx, hy, 14, rgba('rose', 0.85));
+    c.strokeStyle = rgba('signal', 0.5); c.lineWidth = 1.5; c.strokeRect(x0 + 12, 12, CW - 24, CH - 24);
+    c.strokeStyle = rgba('signal', 0.25); c.lineWidth = 1; c.strokeRect(x0 + 17, 17, CW - 34, CH - 34);
+    for (const [hx, hy] of [[26, 28], [CW - 26, 28], [26, CH - 26], [CW - 26, CH - 26]] as const) drawHeart(c, x0 + hx, hy, 11, rgba('rose', 0.85));
+    c.restore();
+  }
+
+  /** 紅心 A～4：角落的點數＋小愛心，中間 n 顆愛心（照撲克牌的排法，但是我們自己的愛心）。 */
+  private drawPip(c: CanvasRenderingContext2D, x0: number, rank: string, n: number) {
+    c.save();
+    c.fillStyle = mixRgba('bone', 'paper', 0.25); c.fillRect(x0, 0, CW, CH);
+    c.strokeStyle = rgba('rose', 0.4); c.lineWidth = 1.2; c.strokeRect(x0 + 14, 14, CW - 28, CH - 28);
+    const red = mixRgba('rose', 'blood', 0.25);
+    for (const flip of [false, true]) {
+      c.save();
+      if (flip) { c.translate(x0 + CW, CH); c.rotate(Math.PI); } else c.translate(x0, 0);
+      c.fillStyle = red; c.font = font(F.serif(600), 50); c.textAlign = 'center';
+      c.fillText(rank, 40, 62);
+      drawHeart(c, 40, 86, 22, red);
+      c.restore();
+    }
+    const pos: [number, number][] = n === 1 ? [[0.5, 0.5]] : n === 2 ? [[0.5, 0.27], [0.5, 0.73]] : n === 3 ? [[0.5, 0.25], [0.5, 0.5], [0.5, 0.75]] : [[0.33, 0.27], [0.67, 0.27], [0.33, 0.73], [0.67, 0.73]];
+    for (const [px, py] of pos) drawHeart(c, x0 + CW * px, CH * py, n === 1 ? 130 : 60, rgba('rose'));
     c.restore();
   }
 
@@ -386,49 +418,66 @@ export default class Cards extends Scene {
     super.dispose();
   }
 
+  /** 展開到哪一張了（小數）：第一拍開始，手從左往右抹過去。 */
+  private sweepAt(t: number) { return (NS - 1) * ease.inOutQuad(prog(t, this.t1, this.t1 + this.sweep)); }
+
   override render(f: Frame, out: THREE.WebGLRenderTarget): PostOverrides {
     const { renderer } = this.ctx;
     const t = f.t, s = this.ctx.start, e = this.ctx.end;
     const rig = this.rig;
     const A = rig.iA.array as Float32Array;
-    type St = { x: number; y: number; z: number; rz: number; ry: number; cell: number; vis: number };
+    type St = { x: number; y: number; z: number; rz: number; ry: number; cell: number; sc: number };
     const st: St[] = [];
-    // ---- 牌堆：一疊背面朝上的牌（發一張少一張）
-    const dealt = this.deals.filter((d) => t >= d.tl - d.fd).length;
-    for (let k = 0; k < DECK_N; k++) {
-      const left = DECK_N - k > dealt ? 1 : 0;
-      st.push({ x: this.deck.x + k * 0.6, y: this.deck.y - k * 0.8, z: k * 1.2, rz: 0.06, ry: Math.PI, cell: 0, vis: left });
+    const fs = this.sweepAt(t);
+    const head = (() => { const i = Math.floor(fs), k = fs - i, a = this.slots[i]!, b = this.slots[Math.min(i + 1, NS - 1)]!; return { x: a.x + (b.x - a.x) * k, y: a.y + (b.y - a.y) * k, rz: a.rz + (b.rz - a.rz) * k }; })();
+    // ---- 展開的牌：抹到的留在位置上，還沒抹到的跟著手（一小疊）；每個小節一道翻牌的浪
+    for (let i = 0; i < NS; i++) {
+      const d = this.deals.find((x) => x.slot === i);
+      if (d && t >= d.tl - d.fd) continue;
+      const sl = this.slots[i]!;
+      const laid = i <= fs;
+      const x = laid ? sl.x : head.x + (i - fs) * 0.6, y = laid ? sl.y : head.y - (i - fs) * 0.5;
+      const zb = 1 + (laid ? i * 0.5 : NS * 0.5 + (i - fs) * 1.2);
+      let n = 0, u = 0;
+      for (const tw of this.waves) {
+        const a = tw + i * this.waveDt;
+        if (t >= a + FL) n++;
+        else if (t > a) u = (t - a) / FL;
+      }
+      const ph = n + ease.inOutCubic(u);
+      st.push({ x, y, z: zb + Math.sin(Math.PI * u) * CW * 0.42, rz: laid ? sl.rz : head.rz, ry: Math.PI * (1 + ph), cell: sl.face, sc: 1 });
     }
-    // ---- 發出去的牌：從牌堆滑出、在半空翻面、落在位置上（落下時壓一下）；發完的下一拍 K、Q 往中間靠一點
+    // ---- 抽出來的牌：從它在弧上的位置滑出來、在半空翻面、落到左下角那一組；發完的下一拍 K、Q 往中間靠一點
     const nudge = ease.outBack(clamp((t - this.tNudge) / 0.3), 2);
     for (const d of this.deals) {
       const u = clamp((t - (d.tl - d.fd)) / d.fd);
       if (u <= 0) continue;
+      const sl = this.slots[d.slot]!;
       const k = ease.outCubic(u);
-      const x = this.deck.x + (d.x + d.nudge * 26 * nudge - this.deck.x) * k;
-      const y = this.deck.y + (d.y - this.deck.y) * k;
-      const z = Math.sin(Math.PI * u) * 140 + 14;
+      const x = sl.x + (d.x + d.nudge * 24 * nudge - sl.x) * k;
+      const y = sl.y + (d.y - sl.y) * k;
+      const z = Math.sin(Math.PI * u) * 180 + 20 + (d.cell === 3 ? 4 : 0);
       const ry = Math.PI * (1 - ease.inOutCubic(clamp(u * 1.15)));
-      const rz = 0.06 + (d.rot - 0.06) * k + Math.sin(Math.PI * u) * 0.25;
-      st.push({ x, y, z, rz, ry, cell: d.cell, vis: 1 });
+      const rz = sl.rz + (d.rot - sl.rz) * k + Math.sin(Math.PI * u) * 0.25;
+      st.push({ x, y, z, rz, ry, cell: d.cell, sc: 1 + (d.sc - 1) * ease.inOutCubic(u) });
     }
-    // 高的畫在後面
+    // 高的畫在後面（蓋在低的上面）
     st.sort((a, b) => a.z - b.z);
     st.forEach((p, i) => {
       this.e.set(0, p.ry, p.rz, 'ZYX');
       this.q.setFromEuler(this.e);
-      this.m4.compose(this.v.set(p.x, p.y, p.z + 0.5), this.q, this.s3.set(CW, CH, 1));
+      this.m4.compose(this.v.set(p.x, p.y, p.z + 0.5), this.q, this.s3.set(CW * p.sc, CH * p.sc, 1));
       rig.cards.setMatrixAt(i, this.m4);
-      A[i * 4] = p.cell; A[i * 4 + 1] = p.z; A[i * 4 + 2] = p.vis; A[i * 4 + 3] = 0;
+      A[i * 4] = p.cell; A[i * 4 + 1] = p.z; A[i * 4 + 2] = 1; A[i * 4 + 3] = 0;
     });
     rig.cards.count = rig.shadows.count = st.length;
     rig.cards.instanceMatrix.needsUpdate = true;
     rig.iA.needsUpdate = true;
 
-    // ---- 鏡頭：貼近牌堆 → 發牌時往右搖、升高 → 斜上方很慢地推近
+    // ---- 鏡頭：從展開的那一端低低地看過來 → 抽牌的時候升起來、轉正 → 斜上方很慢地推近
     const kc = ease.inOutCubic(prog(t, s, Math.max(this.t1 + 2 * this.B, this.tDone)));
     const cam = lerpOrbit(this.camA, this.camB, kc);
-    cam.dist *= 1 - 0.035 * ease.inOutQuad(prog(t, this.tDone, e));
+    cam.dist *= 1 - 0.03 * ease.inOutQuad(prog(t, this.tDone, e));
     applyOrbit(rig.cam, cam);
 
     // ---- 弧線上的歌詞（直的畫布，shader 彎成弧）
@@ -436,7 +485,7 @@ export default class Cards extends Scene {
     const fu = rig.feltMat.uniforms;
     fu.lyr!.value = this.lyrL.upload();
     (fu.arc!.value as THREE.Vector4).set(this.arc[0], this.arc[1], this.arc[2], 0);
-    (fu.lamp!.value as THREE.Vector4).set(0, 60, 1500, 0);
+    (fu.lamp!.value as THREE.Vector4).set(-120, 0, 1700, 0);
     rig.cardMat.uniforms.atlas!.value = this.atlasTex;
     renderer.setRenderTarget(out);
     renderer.render(rig.scene, rig.cam);
@@ -444,6 +493,7 @@ export default class Cards extends Scene {
     let amp = 0;
     for (const d of this.deals) amp += 2 * pulse(t, d.tl, 0.05);
     amp += 3 * pulse(t, this.tNudge + 0.08, 0.06);
+    for (const tw of this.waves) amp += 1.2 * pulse(t, tw + NS * this.waveDt + FL * 0.5, 0.06);
     const ph = frameIdx(t);
     return { bloom: 0.55, bloomThreshold: 1.1, halation: 0.1, vignette: 0.45, grain: 0.06, shake: [amp * (hash(ph, 1) - 0.5) * 2, amp * (hash(ph, 2) - 0.5) * 2] };
   }
@@ -467,7 +517,7 @@ export default class Cards extends Scene {
       const ly = lyricAt(lyrics, t);
       if (ly) {
         const ink = darkInk();
-        const st = { family: FAM_LYR, size: this.lyrSize, minSize: Math.min(this.lyrSize, 48), maxWidth: LW - 200, align: 'center' as const, active: ink.active, sung: ink.sung, unsung: ink.unsung, lineHeight: 1.05 };
+        const st = { family: FAM_LYR, size: this.lyrSize, minSize: Math.min(this.lyrSize, 40), maxWidth: LW - 200, align: 'center' as const, active: ink.active, sung: ink.sung, unsung: ink.unsung, lineHeight: 1.05 };
         const lay = layoutLyric(c, ly.line, st);
         c.save();
         // 折成兩行時往上長（基線固定在弧上）
@@ -481,7 +531,8 @@ export default class Cards extends Scene {
       c.font = font(F.hei(500), 20);
       c.letterSpacing = '3px';
       c.textAlign = 'center';
-      c.fillText(T17_INVITE, LW / 2, base + 34);
+      // 邀請在歌詞上面（下面會被 Q 的牌角蓋到）
+      c.fillText(T17_INVITE, LW / 2, Math.max(22, base - this.lyrSize * 1.15));
       c.textAlign = 'left';
       c.letterSpacing = '0px';
     }

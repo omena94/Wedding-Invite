@@ -4,6 +4,10 @@
 //  - 全部翻完的下一拍「推倒」：整副牌一起喀一聲，右上角一顆木頭的「胡了」牌子落下來（比留言小，是配角的笑點）。
 //  - 歌詞在計分的籌碼上：桌子下方一排籌碼，一個字（英文一個單字）一枚，唱到的那枚跳起來、字變成訊號色，唱完是墨色。
 //  - 沒有留言：牌是「宣文♥孟庭」，籌碼放大（歌詞是主角），底下一行邀請。純音樂：籌碼排歌名。
+// v2（留言尺寸標準）：留言那副牌移到左邊、整副 ≤ 860×430，牌上的字 40～60 px；右邊是牌桌的主視覺——
+// 一圈兩層的牌牆（牌背朝上）、中間兩顆骰子：第一拍擲骰，之後每兩個小節擲一次（翻滾、落在拍點、點數變）；
+// 沒擲骰的那個小節，牌牆被推出一墩（「開門」）；每兩拍有人打出一張牌，滑進牌牆中間排成「河」（筒子、條子的圖案，
+// 不用字，才不會跟留言搶），一局一直在進行。
 // 手法：毛氈與桌框是全螢幕 shader（跟鏡頭一起轉），牌、籌碼、牌子是開場畫好的小圖（Canvas），每格用 drawImage 擺上去
 // （翻牌是垂直方向的縮放，cos 從 −1 到 1，負的時候畫牌背）；轉動只轉畫布座標，不用每格重新光柵化斜的字。
 import * as THREE from 'three';
@@ -13,7 +17,8 @@ import { F, font, loadText } from '../engine/type';
 import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, pulse, hash, frameIdx } from '../engine/util';
 import { Lyrics, type Line, type Word } from '../engine/lyrics';
-import { beatAfter, drawHeart, lyricSizeFor } from './_motifs';
+import { beatAfter, drawHeart } from './_motifs';
+import { msgMaxFor, lyricV2, sigV2 } from './_v2';
 import { sigInk, makeCanvas, freeCanvas, shadowSprite } from './_t1';
 import { bestCellRows, onGrid, sigOf, T17_INVITE, T17_TEXT } from './_t17';
 
@@ -25,9 +30,10 @@ const FAM_SIG = F.hand(700);
 const NO_MSG_TEXT = '宣文♥孟庭';
 /** 刻紅字的吉祥字。 */
 const RED = new Set(Array.from('福喜囍愛心幸永樂福壽合好美甜'));
-/** 牌的區域（鏡頭落定時的螢幕座標）、籌碼那一排。 */
-const AREA = { x0: 190, x1: 1540, y0: 160, y1: 730 };
-const CHIPS = { x: 150, y: 880, w: 1170 };
+/** 留言那副牌的區域（鏡頭落定時的螢幕座標，v2：≤ 860×430）、籌碼那一排、牌牆（中心、半邊長）。 */
+const AREA = { x0: 150, x1: 1010, y0: 200, y1: 760 };
+const CHIPS = { x: 150, y: 890, w: 1150 };
+const WALL = { x: 1450, y: 400, r: 300, n: 16, tw: 36, td: 46 };
 
 const FELT = () => new FSPass(/* glsl */ `
   uniform mat3 camInv;
@@ -73,6 +79,13 @@ export default class Mahjong extends Scene {
   chipSize = 50;
   blockR = { x0: 0, y0: 0, x1: 0, y1: 0 };
   sigPos = { x: 0, y: 0 };
+  /** 牌牆（不會動的部分畫一次）、會被推出來的那幾墩（邊、第幾墩、時間）、骰子（擲的時間、點數）。 */
+  wall: ReturnType<typeof makeCanvas> | null = null;
+  pushes: { side: number; i: number; t: number }[] = [];
+  rolls: { t: number; a: number; b: number }[] = [];
+  /** 打出去的牌（河）：圖案、落點（相對牌牆中心）、從哪一邊滑進來、時間、轉角；圖案的小圖。 */
+  discards: { f: number; x: number; y: number; side: number; t: number; rot: number }[] = [];
+  dFaces: ReturnType<typeof makeCanvas>[] = [];
 
   override async init() {
     const { audio: au, lyrics, song } = this.ctx;
@@ -84,20 +97,20 @@ export default class Mahjong extends Scene {
     const B = (this.B = au.beatPeriod(s + 0.1));
 
     // ---- 排牌：每行幾張，挑牌最大的排法
-    const aw = AREA.x1 - AREA.x0, ah = AREA.y1 - AREA.y0 - 70;
-    const pick = bestCellRows(text, m ? [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14] : [12], (cols, rows) => {
-      const byW = aw / (cols * 1.07);
-      const byH = ah / (rows.length * 1.5);
-      return Math.min(byW, byH, m ? (rows.length === 1 ? 128 : 100) : 80);
-    });
+    // v2：牌上的字（牌寬的 0.74）上限依字數；整副牌 ≤ 860×430（署名另外在下面）
+    const aw = AREA.x1 - AREA.x0, ah = 430;
+    const cap = m ? msgMaxFor(text) : 44;
+    const chOf = (cols: number, nr: number) => Math.min(cap, (aw / (cols * 1.06)) * 0.74, (ah / (nr * 1.72)) * 0.74);
+    const pick = bestCellRows(text, m ? [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16] : [12], (cols, rows) => chOf(cols, rows.length));
     const rows = pick.rows.slice(0, 6);
     const cols = Math.max(...rows.map((r) => r.length));
-    const tw = (this.tw = Math.floor(Math.min(aw / (cols * 1.07), ah / (rows.length * 1.5), m ? (rows.length === 1 ? 128 : 100) : 80)));
+    const tw = (this.tw = Math.floor(chOf(cols, rows.length) / 0.74));
     const th = (this.th = Math.round(tw * 1.33));
     const thick = (this.thick = Math.round(tw * 0.17));
-    const gapX = Math.round(tw * 0.06), rowH = th + thick + Math.round(tw * 0.32);
+    const gapX = Math.round(tw * 0.06), rowH = th + thick + Math.round(tw * 0.22);
     const blockW = cols * (tw + gapX) - gapX, blockH = rows.length * rowH - (rowH - th - thick);
-    const bx = Math.round((AREA.x0 + AREA.x1) / 2 - blockW / 2), by = Math.round(AREA.y0 + (AREA.y1 - AREA.y0 - 60 - blockH) / 2);
+    // 靠左；垂直方向在區域裡置中（留署名的位置）
+    const bx = AREA.x0, by = Math.round(AREA.y0 + (AREA.y1 - AREA.y0 - 50 - blockH) / 2);
     this.blockR = { x0: bx, y0: by, x1: bx + blockW, y1: by + blockH };
 
     // ---- 牌的小圖：牌面（每個字一張）、牌背；都含牌的厚度（下緣看得到兩層：象牙與牌背的顏色）
@@ -157,7 +170,7 @@ export default class Mahjong extends Scene {
     let k = 0;
     rows.forEach((row, j) => {
       const rw = row.length * (tw + gapX) - gapX;
-      const x0 = bx + (blockW - rw) / 2;
+      const x0 = bx + (m ? 0 : (blockW - rw) / 2);
       row.forEach((ch, i) => { this.tiles.push({ ch, x: x0 + i * (tw + gapX), y: by + j * rowH, tf: grid.times[k++]!, sprite: faceIdx.get(ch)! }); });
     });
     this.tDone = grid.times[n - 1]! + 0.25;
@@ -165,7 +178,7 @@ export default class Mahjong extends Scene {
 
     // ---- 署名：最後一行右下，手寫
     if (this.sig) {
-      const sz = Math.max(40, Math.round(tw * 0.5));
+      const sz = sigV2(tw * 0.74);
       const cv = (this.sigCv = makeCanvas(900, sz * 1.6, 1.5));
       cv.c.font = font(FAM_SIG, sz);
       cv.c.fillStyle = rgba('sepia', 0.85);
@@ -174,7 +187,7 @@ export default class Mahjong extends Scene {
       this.sigPos = { x: this.blockR.x1 - 900, y: this.blockR.y1 + 8 };
     }
     // ---- 「胡了」的牌子：木頭圓牌、紅字
-    const md = Math.round(Math.min(150, tw * 1.35));
+    const md = Math.round(clamp(tw * 1.25, 80, 110));
     const mk = (this.marker = makeCanvas(md + 20, md + 26, 1.5));
     {
       const c = mk.c, r = md / 2, cx = r + 10, cy = r + 8;
@@ -192,8 +205,125 @@ export default class Mahjong extends Scene {
     }
 
     // ---- 籌碼：每一行歌詞排好（中文一字一枚、英文一個單字一枚），畫好三種狀態的小圖
-    this.chipSize = m ? lyricSizeFor(tw * 0.74) : 72;
+    this.chipSize = lyricV2(m ? tw * 0.74 : null);
     for (const ln of lines.length ? lines : []) this.layoutChips(ln);
+
+    // ---- 牌牆與骰子：第一拍擲骰；之後每兩個小節擲一次，另外那個小節推出一墩牌
+    const bars: number[] = [];
+    for (let k = Math.ceil(au.barAt(this.t1 + B) - 1e-6); bars.length < 24; k++) { const tb = au.timeOfBar(k); if (tb > e - B) break; bars.push(tb); }
+    const rnd = (a: number, b: number) => hash(this.seed, a, b);
+    this.rolls.push({ t: this.t1, a: 1 + Math.floor(rnd(1, 1) * 6), b: 1 + Math.floor(rnd(1, 2) * 6) });
+    bars.forEach((tb, i) => {
+      if (i % 2 === 1) this.rolls.push({ t: tb, a: 1 + Math.floor(rnd(i, 3) * 6), b: 1 + Math.floor(rnd(i, 4) * 6) });
+      else this.pushes.push({ side: Math.floor(rnd(i, 5) * 4), i: 2 + Math.floor(rnd(i, 6) * (WALL.n - 4)), t: tb });
+    });
+    // 河：每兩拍打出一張（從第三拍開始），排在骰子上下兩排、一排六張
+    const slots: [number, number][] = [];
+    for (const yy of [-170, -100, 120, 190]) for (let i = 0; i < 6; i++) slots.push([-165 + i * 66, yy]);
+    for (let k = 0, tt = au.timeOfBeat(au.beatAt(this.t1) + 2); tt < e - B && k < slots.length; k++, tt = au.timeOfBeat(au.beatAt(this.t1) + 2 + 2 * k)) {
+      const sl = slots[k]!;
+      this.discards.push({ f: Math.floor(rnd(k, 7) * 6), x: sl[0], y: sl[1], side: Math.floor(rnd(k, 8) * 4), t: tt, rot: (rnd(k, 9) - 0.5) * 0.16 });
+    }
+    for (let f = 0; f < 6; f++) this.dFaces.push(this.discardFace(f));
+    this.wall = makeCanvas(WALL.r * 2 + 120, WALL.r * 2 + 120, 1.25);
+    this.drawWall(this.wall.c, WALL.r + 60, WALL.r + 60, (side, i) => !this.pushes.some((p) => p.side === side && p.i === i));
+  }
+
+  /** 牌牆的一墩（兩層牌，牌背朝上）：以 (x, y) 為中心，沿著牆的方向寬 tw、深 td。 */
+  private drawStack(c: CanvasRenderingContext2D, x: number, y: number) {
+    const w = WALL.tw - 3, d = WALL.td;
+    for (const [dy, a] of [[0, 1], [-7, 1]] as const) {
+      c.fillStyle = rgba('sepia', 0.18);
+      c.beginPath(); c.roundRect(x - w / 2 + 3, y - d / 2 + dy + 5, w, d, 4); c.fill();
+      c.fillStyle = mixRgba('bone', 'paper', 0.5);
+      c.beginPath(); c.roundRect(x - w / 2, y - d / 2 + dy + 3, w, d, 4); c.fill();
+      c.fillStyle = mixRgba('signal', 'paper', 0.42);
+      c.globalAlpha = a;
+      c.beginPath(); c.roundRect(x - w / 2, y - d / 2 + dy, w, d - 3, 4); c.fill();
+      c.globalAlpha = 1;
+      c.strokeStyle = rgba('bone', 0.5); c.lineWidth = 1;
+      c.beginPath(); c.roundRect(x - w / 2 + 1, y - d / 2 + dy + 1, w - 2, d - 5, 3); c.stroke();
+    }
+  }
+
+  /** 一圈四邊的牌牆（keep 回傳 false 的那一墩不畫：它會被推出來，每格另外畫）。 */
+  private drawWall(c: CanvasRenderingContext2D, cx: number, cy: number, keep: (side: number, i: number) => boolean) {
+    for (let side = 0; side < 4; side++) {
+      for (let i = 0; i < WALL.n; i++) {
+        if (!keep(side, i)) continue;
+        const p = this.stackPos(side, i, 0);
+        c.save();
+        c.translate(cx + p.x, cy + p.y);
+        c.rotate(p.rot);
+        this.drawStack(c, 0, 0);
+        c.restore();
+      }
+    }
+  }
+
+  /** 第 side 邊第 i 墩的位置（相對牌牆中心）與轉角；push = 往中間推出來多少。 */
+  private stackPos(side: number, i: number, push: number) {
+    // 風車形：每一邊從上一邊的角落之後開始排，四個角不會重疊
+    const along = -WALL.r + WALL.td + (i + 0.5) * ((2 * WALL.r - WALL.td) / WALL.n);
+    const out = WALL.r - WALL.td / 2 - push;
+    const rot = (side * Math.PI) / 2;
+    const cs = Math.cos(rot), sn = Math.sin(rot);
+    // 邊 0 在上面（y = −out），其他邊轉 90° 的倍數
+    const x0 = along, y0 = -out;
+    return { x: x0 * cs - y0 * sn, y: x0 * sn + y0 * cs, rot };
+  }
+
+  /** 河裡的牌（小張、牌面朝上）：f 0～2 是一到三筒（圓圈），3～5 是一到三條（竹子），都是圖案。 */
+  private discardFace(f: number) {
+    const w = 52, h = 68, th = 9;
+    const cv = makeCanvas(w + 8, h + th + 8, 1.5);
+    const c = cv.c;
+    c.fillStyle = rgba('sepia', 0.16); c.beginPath(); c.roundRect(6, 7, w, h + th, 6); c.fill();
+    c.fillStyle = mixRgba('signal', 'blood', 0.35); c.beginPath(); c.roundRect(4, 4 + th, w, h, 6); c.fill();
+    c.fillStyle = mixRgba('bone', 'paper', 0.5); c.beginPath(); c.roundRect(4, 4 + th * 0.45, w, h, 6); c.fill();
+    c.fillStyle = mixRgba('bone', 'paper', 0.12); c.beginPath(); c.roundRect(4, 4, w, h, 6); c.fill();
+    const cx = 4 + w / 2, cy = 4 + h / 2;
+    const n = (f % 3) + 1;
+    if (f < 3) {
+      // 筒：同心圓
+      const pos: [number, number][] = n === 1 ? [[0, 0]] : n === 2 ? [[0, -15], [0, 15]] : [[-12, -18], [0, 0], [12, 18]];
+      for (const [dx, dy] of pos) {
+        const r = n === 1 ? 17 : 10;
+        c.strokeStyle = sigInk(0.95, 3); c.lineWidth = 2.2; c.beginPath(); c.arc(cx + dx, cy + dy, r, 0, Math.PI * 2); c.stroke();
+        c.strokeStyle = rgba('sepia', 0.7); c.lineWidth = 1.2; c.beginPath(); c.arc(cx + dx, cy + dy, r * 0.5, 0, Math.PI * 2); c.stroke();
+        c.fillStyle = sigInk(1, 3); c.beginPath(); c.arc(cx + dx, cy + dy, r * 0.18, 0, Math.PI * 2); c.fill();
+      }
+    } else {
+      // 條：竹節
+      const xs = n === 1 ? [0] : n === 2 ? [-9, 9] : [-14, 0, 14];
+      for (const dx of xs) {
+        c.strokeStyle = mixRgba('sepia', 'signal', 0.35); c.lineWidth = 5; c.lineCap = 'round';
+        c.beginPath(); c.moveTo(cx + dx, cy - 22); c.lineTo(cx + dx, cy + 22); c.stroke();
+        c.strokeStyle = mixRgba('bone', 'paper', 0.1); c.lineWidth = 1.5;
+        for (const yy of [-8, 8]) { c.beginPath(); c.moveTo(cx + dx - 3, cy + yy); c.lineTo(cx + dx + 3, cy + yy); c.stroke(); }
+      }
+    }
+    return cv;
+  }
+
+  /** 一顆骰子：象牙白的圓角方塊、點（一點與四點是紅的，照麻將骰子的習慣）。 */
+  private drawDie(c: CanvasRenderingContext2D, x: number, y: number, size: number, rot: number, n: number, lift: number) {
+    c.save();
+    c.fillStyle = rgba('sepia', 0.22 - lift * 0.1);
+    c.beginPath(); c.roundRect(x - size / 2 + 5 + lift * 30, y - size / 2 + 7 + lift * 40, size, size, size * 0.2); c.fill();
+    c.translate(x, y - lift * 26); c.rotate(rot); c.scale(1 + lift * 0.25, 1 + lift * 0.25);
+    const g = c.createLinearGradient(-size / 2, -size / 2, size / 2, size / 2);
+    g.addColorStop(0, mixRgba('bone', 'paper', 0.05)); g.addColorStop(1, mixRgba('bone', 'paper', 0.6));
+    c.fillStyle = g;
+    c.beginPath(); c.roundRect(-size / 2, -size / 2, size, size, size * 0.2); c.fill();
+    c.strokeStyle = rgba('sepia', 0.2); c.lineWidth = 1; c.stroke();
+    const P: Record<number, [number, number][]> = {
+      1: [[0, 0]], 2: [[-1, -1], [1, 1]], 3: [[-1, -1], [0, 0], [1, 1]], 4: [[-1, -1], [1, -1], [-1, 1], [1, 1]],
+      5: [[-1, -1], [1, -1], [0, 0], [-1, 1], [1, 1]], 6: [[-1, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [1, 1]],
+    };
+    c.fillStyle = n === 1 || n === 4 ? sigInk(1, 3.2) : rgba('sepia', 0.9);
+    for (const [px, py] of P[n] ?? []) { c.beginPath(); c.arc(px * size * 0.26, py * size * 0.26, n === 1 ? size * 0.14 : size * 0.085, 0, Math.PI * 2); c.fill(); }
+    c.restore();
   }
 
   /** 一行歌詞的籌碼：放不下一排就縮小，還放不下折兩排。 */
@@ -206,7 +336,7 @@ export default class Mahjong extends Scene {
     const gap = () => size * 0.14;
     const total = () => ws.reduce((a, b) => a + b, 0) + gap() * (ws.length - 1);
     // 先縮到一排放得下（最小 48 px），還是放不下就平均分成兩排（不要第二排只剩一枚）
-    while (total() > CHIPS.w && size > 48) { size -= 2; ws = widthOf(size); }
+    while (total() > CHIPS.w && size > 40) { size -= 2; ws = widthOf(size); }
     const nRows = Math.ceil(total() / CHIPS.w);
     const target = total() / nRows;
     const rows: number[][] = [[]];
@@ -254,7 +384,7 @@ export default class Mahjong extends Scene {
 
   override dispose() {
     for (const f of this.faces) freeCanvas(f);
-    for (const x of [this.back, this.shadow, this.marker, this.sigCv]) freeCanvas(x);
+    for (const x of [this.back, this.shadow, this.marker, this.sigCv, this.wall, ...this.dFaces]) freeCanvas(x);
     for (const v of this.chipLines.values()) for (const a of [v.ink, v.hot, v.faded]) a.forEach(freeCanvas);
     super.dispose();
   }
@@ -268,7 +398,7 @@ export default class Mahjong extends Scene {
     const drift = ease.inOutQuad(prog(t, this.t1, e));
     const rot = (1 - land) * -0.09 + 0.035 * (drift - 0.5);
     const sc = (0.9 + 0.1 * land) * (1 + 0.02 * drift) * (1 - 0.006 * pulse(t, this.tHu, 0.12));
-    const cx = (this.blockR.x0 + this.blockR.x1) / 2, cy = (this.blockR.y0 + CHIPS.y) / 2;
+    const cx = W * 0.5, cy = H * 0.48;
     const cs = Math.cos(rot) * sc, sn = Math.sin(rot) * sc;
     // 畫布：p' = c + R(rot)·sc·(p − c)；shader 要反過來（螢幕 → 桌面）
     const ics = Math.cos(-rot) / sc, isn = Math.sin(-rot) / sc;
@@ -279,6 +409,48 @@ export default class Mahjong extends Scene {
     L.clear();
     const c = L.ctx;
     c.setTransform(cs, sn, -sn, cs, cx - cs * cx + sn * cy, cy - sn * cx - cs * cy);
+
+    // ---- 牌牆（不會動的部分一次貼上）、被推出來的墩、骰子
+    const wl = this.wall!;
+    c.drawImage(wl.cv, WALL.x - wl.w / 2, WALL.y - wl.h / 2, wl.w, wl.h);
+    for (const p of this.pushes) {
+      const k = ease.outBack(clamp((t - p.t) / (B * 0.5)), 2);
+      const pos = this.stackPos(p.side, p.i, 20 * k);
+      c.save();
+      c.translate(WALL.x + pos.x, WALL.y + pos.y); c.rotate(pos.rot);
+      this.drawStack(c, 0, 0);
+      c.restore();
+    }
+    // 河：打出來的牌從牌牆的一邊滑進來，轉一下停在位置上
+    for (const d of this.discards) {
+      if (t < d.t) continue;
+      const k = ease.outCubic(clamp((t - d.t) / 0.28));
+      const a = (d.side * Math.PI) / 2;
+      const ox = -Math.sin(a) * 260 * (1 - k), oy = Math.cos(a) * 260 * (1 - k);
+      const img = this.dFaces[d.f]!;
+      c.save();
+      c.translate(WALL.x + d.x + ox, WALL.y + d.y + oy);
+      c.rotate(d.rot + (1 - k) * 0.9);
+      c.drawImage(img.cv, -img.w / 2, -img.h / 2, img.w, img.h);
+      c.restore();
+    }
+    {
+      // 最近一次擲骰：翻滾 0.8 拍（點數亂跳），落在拍點上停住
+      let r = this.rolls[0]!;
+      for (const x of this.rolls) if (t >= x.t) r = x;
+      const u = clamp((t - r.t) / (B * 0.8));
+      const tumbling = t >= r.t && u < 1;
+      const lift = tumbling ? Math.abs(Math.sin(u * Math.PI * 2.5)) * (1 - u) : 0;
+      const fi = frameIdx(t);
+      for (const [j, n0] of [[0, r.a], [1, r.b]] as const) {
+        const sp = (1 - ease.outCubic(u)) * (tumbling ? 1 : 0);
+        const x = WALL.x - 44 + j * 88 + sp * (hash(r.t, j, 1) - 0.5) * 160;
+        const y = WALL.y + 10 + (j ? -18 : 18) + sp * (hash(r.t, j, 2) - 0.5) * 120;
+        const rot = (hash(r.t, j, 3) - 0.5) * 0.8 + sp * 9 * (j ? -1 : 1);
+        const n = tumbling && u < 0.85 ? 1 + Math.floor(hash(fi >> 2, j, r.t) * 6) : n0;
+        this.drawDie(c, x, y, 54, rot, n, lift);
+      }
+    }
 
     // ---- 牌
     const tw = this.tw, th = this.th, thick = this.thick;
@@ -317,8 +489,8 @@ export default class Mahjong extends Scene {
       const bounce = t > this.tHu ? Math.abs(Math.sin((t - this.tHu) * 16)) * Math.exp(-(t - this.tHu) * 7) * 0.08 : 0;
       const s2 = 1 + (1 - k) * 0.7 + bounce;
       const mk = this.marker;
-      // 放在第一副牌的右邊（桌上），不要蓋到字
-      const mx = this.blockR.x1 + mk.w * 0.62, my = this.blockR.y0 + this.th * 0.55;
+      // 放在署名的左邊（最後一行下面、桌上），不要蓋到字
+      const mx = this.blockR.x0 + mk.w * 0.5, my = this.blockR.y1 + mk.h * 0.55 + 6;
       c.save();
       c.translate(mx, my); c.rotate(-0.12); c.scale(s2, s2);
       c.globalAlpha = Math.min(1, u * 3);
@@ -333,6 +505,8 @@ export default class Mahjong extends Scene {
     let amp = 0;
     for (const tl of this.tiles) amp += 0.6 * pulse(t, tl.tf + 0.26, 0.04);
     amp = Math.min(amp, 2.5) + 6 * huK;
+    for (const r of this.rolls) amp += 2 * pulse(t, r.t + B * 0.8, 0.05);
+    for (const d of this.discards) amp += 0.8 * pulse(t, d.t + 0.28, 0.04);
     const ph = frameIdx(t);
     return { paper: 1, bloom: 0.2, bloomThreshold: 1.6, halation: 0.04, vignette: 0.3, grain: 0.05, shake: [amp * (hash(ph, 1) - 0.5) * 2, amp * (hash(ph, 2) - 0.5) * 2] };
   }

@@ -8,6 +8,9 @@
 //    一路升起來（crane），在留言倒完時停在斜上方的閱讀角度，之後很慢地推近。景深用每個像素真正的深度（寫在 alpha）。
 //  - 歌詞：骨牌後面桌上的一張記分卡（紙）上，逐字跟唱，比留言小一級；署名是最後一行下面的一張小名牌。
 //  - 沒有留言：骨牌排「宣文 ♥ 孟庭」，記分卡放大、歌詞當主角，卡片底下一行小小的邀請。純音樂：記分卡寫歌名。
+// v2（留言尺寸標準）：排成留言的那一片骨牌縮到畫面左下（≤ 860×430、字 40～60 px），右上是主視覺：
+// 起點那一張同時分岔出一條長長的骨牌路，繞過桌面、排成一顆大愛心，整個窗格一直在倒（排在 1/k 拍上），
+// 愛心在窗格快結束時剛好倒完。
 // 手法：InstancedMesh（一個 draw call 畫全部骨牌，點數、字、斜角都在 shader 裡）；桌面是全螢幕 shader（光線打到桌面），
 // 影子是把骨牌沿光線方向壓扁到桌面畫進一張小圖、桌面取樣時模糊；最後一個景深 pass 輸出。
 import * as THREE from 'three';
@@ -17,7 +20,8 @@ import { GLSL_COMMON, THEME_UNIFORMS } from '../engine/glsl/common';
 import { F, font, loadText } from '../engine/type';
 import { LIN, rgba } from '../engine/palette';
 import { clamp, ease, prog, pulse, hash, frameIdx } from '../engine/util';
-import { lyricAt, layoutLyric, drawLyric, lyricSizeFor, beatAfter, drawHeart, COUPLE_ZH } from './_motifs';
+import { lyricAt, layoutLyric, drawLyric, beatAfter, drawHeart, COUPLE_ZH } from './_motifs';
+import { msgMaxFor, lyricV2, sigV2 } from './_v2';
 import { paperInk } from './_t4';
 import {
   bestCellRows, onGrid, sigOf, applyOrbit, lerpOrbit, fitOrbitBest, toScreen, rectPts, camBasis, T17_INVITE, T17_TEXT,
@@ -40,7 +44,11 @@ const FAM_SIG = F.hand(700);
 const FAM_LYR = F.hei(700);
 /** 光從左後上方來（指向光源），影子往右前方。 */
 const LIGHT: V3 = [-0.5, 0.42, 1.0];
-const MAX_DOM = 180;
+const MAX_DOM = 260;
+/** 愛心那條骨牌路最多幾張、相鄰兩張的間距範圍。 */
+const CHAIN_MAX = 150, CH_MIN = 62, CH_MAX = 100;
+/** 記分卡右緣到愛心最左邊至少要留的距離（世界單位）：骨牌路在這一段裡往上彎。 */
+const CARD_GAP = 240;
 const NO_MSG_TEXT = `宣文♥孟庭`;
 
 // ---------------------------------------------------------------- 共用的 GPU 資源（一晚只建一次）
@@ -333,6 +341,8 @@ export default class Domino extends Scene {
   camA!: OrbitCam;
   camB!: OrbitCam;
   focusPts: V3[] = [];
+  /** 愛心骨牌路的中心與大小（世界座標）：影子圖、燈要把它包進來。 */
+  heartC: [number, number, number] = [0, 0, 1];
   m4 = new THREE.Matrix4();
   m4b = new THREE.Matrix4();
 
@@ -347,11 +357,11 @@ export default class Domino extends Scene {
 
     // ---- 排字：每行最多幾格，挑畫面上字最大的（大約的估計：閱讀鏡頭下 1 世界單位 ≈ 1 px 乘上縮放）
     const colsList = m ? [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16] : [16];
-    const pick = bestCellRows(text, colsList, (cols, rows) => {
-      const wBlock = (cols - 1) * PITCH + DH + DD + 120;
-      const hBlock = rows.length * ROWP + 300;
-      return Math.min(1560 / wBlock, 820 / (hBlock * 0.9), 1.7);
-    });
+    // v2：畫面上一個世界單位幾 px（p）由三件事決定：字不超過上限、整片（含左邊的引線）寬 ≤ 860、高 ≤ 430；挑 p 最大的排法
+    const GL = BOXW * 0.78;
+    const capPx = m ? msgMaxFor(text) : 44;
+    const scaleFor = (cols: number, nr: number) => Math.min(capPx / GL, 860 / ((cols - 1) * PITCH + DH + DD + 130), 430 / (nr * ROWP * 0.9 + 60));
+    const pick = bestCellRows(text, colsList, (cols, rows) => scaleFor(cols, rows.length));
     this.rows = pick.rows.slice(0, 7);
     const R = this.rows.length;
     const maxN = Math.max(...this.rows.map((r) => r.length));
@@ -431,67 +441,126 @@ export default class Domino extends Scene {
     const x0 = xc - DW / 2, x1 = X0 + (maxN - 1) * PITCH + DH;
     const yTop = Y0 + DW / 2, yBot = -Y0 - DW / 2;
     this.msgRect = [X0 - DD, yBot, (maxN - 1) * PITCH + DH + DD, yTop - yBot];
-    // 名牌：最後一行右下，量過的字寬換成世界單位
-    const sigH = 64, sigWw = ((sigW + 40) / sigPx) * sigH * 0.62;
-    const lastN = this.rows[R - 1]!.length;
-    const sx1 = Math.max(X0 + (lastN - 1) * PITCH + DH, X0 + sigWw);
-    this.sigRect = [sx1 - sigWw, yBot - 26 - sigH, sigWw, sigH];
-
-    // ---- 閱讀鏡頭：斜上方，保證留言、名牌、記分卡都在安全範圍（記分卡的大小要看鏡頭，算兩次）
+    let pS = scaleFor(maxN, R);
     const cam = this.rig.cam;
-    const tgt = { tx: (x0 + x1) / 2, ty: 0, tz: 0 };
-    let cardH = 150, cardY = yTop + 70;
-    const colTop = Y0 + ROWP + DD;
-    cardY = Math.max(cardY, colTop + 40);
-    let cardW = Math.max(900, x1 - x0);
-    let camB: OrbitCam = { ...tgt, ty: (cardY + cardH + this.sigRect[1]) / 2, dist: 1500, az: 0, el: 1.08, fov: 28 };
-    const pxPer = (o: OrbitCam, p: V3) => {
-      applyOrbit(cam, o);
-      const a = toScreen(cam, p), b = toScreen(cam, [p[0] + 100, p[1], p[2]]), cc = toScreen(cam, [p[0], p[1] + 100, p[2]]);
-      return Math.min(Math.hypot(b.x - a.x, b.y - a.y), Math.hypot(cc.x - a.x, cc.y - a.y) / 0.92) / 100;
-    };
-    // 這個窗格會出現的歌詞最多要排幾行（長的英文句子會折成兩行，卡片要夠高）
     const lines = lyrics.linesIn(s - 2, e + 1);
     const mc = document.createElement('canvas').getContext('2d')!;
-    for (let it = 0; it < 3; it++) {
-      this.lyrRect = [x0, cardY, cardW, cardH];
-      const groups: [V3[], boolean][] = [[rectPts(...this.msgRect), true], [rectPts(...this.sigRect), true]];
-      if (this.hasLyr) groups.push([rectPts(x0 + 30, cardY + 20, cardW - 60, cardH - 40), true]);
-      const ty = (cardY + (this.hasLyr ? cardH : 0) + this.sigRect[1]) / 2;
-      camB = fitOrbitBest(cam, { ...camB, tx: tgt.tx, ty, dist: 700 }, groups, [x1 - x0, cardY + cardH - this.sigRect[1]], 6000, 30);
-      // 字在畫面上多大 → 歌詞的字級（有留言時小一級）。短句不要推到字大得誇張；沒有留言時骨牌是配角，字比歌詞小
-      let msgPx = (BOXW * 0.78) * pxPer(camB, [0, 0, 0]);
-      const cap = m ? 124 : 58;
-      if (msgPx > cap) { camB = { ...camB, dist: (camB.dist * msgPx) / cap }; msgPx = cap; }
-      const lyrPx = m ? lyricSizeFor(msgPx) + 4 : 72;
-      const lp = pxPer(camB, [x0 + cardW / 2, cardY + cardH / 2, 0]);
-      this.lyrSize = Math.round(lyrPx / lp);
-      // 卡片的寬度跟著這個窗格最長的一句（短句不要一張長長的空白卡），最寬到整片骨牌那麼寬
+    const colTop = Y0 + ROWP + DD;
+    // 記分卡離骨牌遠一點：往愛心去的那條骨牌路從卡片下面經過，站著的骨牌不能擋到卡片上的字
+    const cardY = Math.max(yTop + 60, colTop + 140);
+    let cardW = 600, cardH = 150;
+    let camB: OrbitCam = { tx: (x0 + x1) / 2, ty: 0, tz: 0, dist: 2000, az: 0, el: 1.08, fov: 28 };
+    const pxAt = (o: OrbitCam, pt: V3) => {
+      applyOrbit(cam, o);
+      const q0 = toScreen(cam, pt), q1 = toScreen(cam, [pt[0] + 100, pt[1], pt[2]]);
+      return Math.hypot(q1.x - q0.x, q1.y - q0.y) / 100;
+    };
+    // 愛心的位置：畫面右上固定一塊（中心 1470, 430、半徑 285 px），換回桌面的世界座標；N0 是愛心最左邊、骨牌路接上去的那一點
+    const heartGeom = (o: OrbitCam) => {
+      applyOrbit(cam, o);
+      const bs = camBasis(cam);
+      const dv = bs.F.clone().multiplyScalar(bs.f).addScaledVector(bs.R, 1470 - W / 2).addScaledVector(bs.D, 430 - H / 2);
+      const tt = -bs.C.z / dv.z;
+      const hc: [number, number] = [bs.C.x + dv.x * tt, bs.C.y + dv.y * tt];
+      const hr = 285 / (pxAt(o, [hc[0], hc[1], 0]) || pS);
+      return { hc, hr, N0: [hc[0] - (hr * 16) / 17, hc[1] + (hr * 4) / 17 + hr * 0.2] as [number, number] };
+    };
+    for (let outer = 0; outer < 6; outer++) {
+      const msgPx = GL * pS;
+      // 名牌：署名的字（圖集那一條高 CELL、字 72 px）換成世界單位
+      const sigH = sigV2(msgPx) / (0.56 * pS), sigWw = ((sigW + 40) / CELL) * sigH;
+      const lastN = this.rows[R - 1]!.length;
+      const sx1 = Math.max(X0 + (lastN - 1) * PITCH + DH, X0 + sigWw);
+      this.sigRect = [sx1 - sigWw, yBot - 20 - sigH, sigWw, sigH];
+      // 記分卡：歌詞 40～52 px（比留言小）；寬度跟著這個窗格最長的一句，但不跟右上的愛心搶位置
+      this.lyrSize = Math.round(lyricV2(m ? msgPx : null) / (pS * 0.95));
       mc.font = font(FAM_LYR, this.lyrSize);
-      const natural = Math.max(mc.measureText(lyrics.has ? '' : song.title).width * 0.8, ...lines.map((l) => mc.measureText(l.text).width), m ? 0 : mc.measureText(T17_INVITE).width * 18 / this.lyrSize);
-      // 沒有留言時歌詞是主角：卡片可以比骨牌寬（一句放得下一行）
-      const maxW = m ? x1 - x0 : Math.max(x1 - x0, 1300);
-      cardW = clamp(natural + 76, Math.min(640, maxW), maxW);
+      const natural = Math.max(mc.measureText(lyrics.has ? '' : song.title).width * 0.8, ...lines.map((l) => mc.measureText(l.text).width), m ? 0 : (mc.measureText(T17_INVITE).width * 18) / this.lyrSize);
+      cardW = clamp(natural + 76, Math.min(520 / pS, x1 - x0), Math.max(x1 - x0, 900 / pS));
       const st = this.lyrStyle(cardW);
       const nRows = Math.max(1, ...lines.map((l) => layoutLyric(mc, l, st).rows.length));
       cardH = this.lyrSize * (1 + (nRows - 1) * 1.14) + (m ? 84 : 120);
+      this.lyrRect = [x0, cardY, cardW, cardH];
+      // 鏡頭：距離照 p 找（二分），再把留言那一片移到畫面左下（左緣 150、署名底 950）
+      let lo = 300, hi = 12000;
+      for (let i = 0; i < 26; i++) { const mid = (lo + hi) / 2; if (pxAt({ ...camB, dist: mid }, [(x0 + x1) / 2, 0, 0]) > pS) lo = mid; else hi = mid; }
+      camB = { ...camB, dist: (lo + hi) / 2 };
+      for (let i = 0; i < 8; i++) {
+        applyOrbit(cam, camB);
+        const L = toScreen(cam, [x0, 0, 0]), Bt = toScreen(cam, [x0, this.sigRect[1], 0]);
+        camB = { ...camB, tx: camB.tx + (L.x - 150) / pS, ty: camB.ty + (950 - Bt.y) / (pS * 0.9) };
+      }
+      // 記分卡的右緣要離愛心夠遠：往愛心去的骨牌路先平平地走過卡片右邊，才往上接到愛心；
+      // 卡片太寬（沒有留言時歌詞長）骨牌就會倒在歌詞上。放不下的歌詞交給 layoutLyric 縮小或折兩行
+      const maxW = heartGeom(camB).N0[0] - CARD_GAP - x0;
+      if (cardW > maxW) {
+        cardW = Math.max(Math.min(520 / pS, x1 - x0), maxW);
+        const st2 = this.lyrStyle(cardW);
+        const nRows2 = Math.max(1, ...lines.map((l) => layoutLyric(mc, l, st2).rows.length));
+        cardH = this.lyrSize * (1 + (nRows2 - 1) * 1.14) + (m ? 84 : 120);
+        this.lyrRect = [x0, cardY, cardW, cardH];
+      }
+      applyOrbit(cam, camB);
+      const top = toScreen(cam, [x0, cardY + (this.hasLyr ? cardH : 0), 0]).y;
+      if (top >= 110) break;
+      pS *= 0.94;
     }
-    // 最後一次：用定案的卡片大小再對一次鏡頭
-    this.lyrRect = [x0, cardY, cardW, cardH];
-    {
-      const groups: [V3[], boolean][] = [[rectPts(...this.msgRect), true], [rectPts(...this.sigRect), true]];
-      if (this.hasLyr) groups.push([rectPts(x0 + 30, cardY + 20, cardW - 60, cardH - 40), true]);
-      const ty = (cardY + (this.hasLyr ? cardH : 0) + this.sigRect[1]) / 2;
-      const dMin = camB.dist;
-      camB = fitOrbitBest(cam, { ...camB, tx: tgt.tx, ty, dist: 700 }, groups, [x1 - x0, cardY + cardH - this.sigRect[1]], 6000, 30);
-      if (camB.dist < dMin) camB = { ...camB, dist: dMin };
-    }
-    this.lyrScale = pxPer(camB, [x0 + cardW / 2, cardY + cardH / 2, 0]);
+    const msgPx = GL * pS;
+    void msgPx;
+    this.lyrScale = pxAt(camB, [x0 + cardW / 2, cardY + cardH / 2, 0]);
     this.camB = camB;
+
+    // ---- 愛心那條骨牌路：從起點那一張往右分岔，沿著卡片下面走，從左邊接到愛心最左邊那一點，往上繞一整圈回來
+    const { hc, hr } = heartGeom(camB);
+    const heartAt = (u: number): [number, number] => {
+      const sn = Math.sin(u);
+      return [hc[0] + (hr * 16 * sn * sn * sn) / 17, hc[1] + (hr * (13 * Math.cos(u) - 5 * Math.cos(2 * u) - 2 * Math.cos(3 * u) - Math.cos(4 * u))) / 17 + hr * 0.2];
+    };
+    const Sx = xc + DW / 2 + 70, Sy = Y0 + ROWP;
+    const U0 = Math.PI * 1.5;
+    const N0 = heartAt(U0);
+    const poly: [number, number][] = [];
+    // 連接段：先平平地走過卡片下面（到卡片右緣再過去一點），再用三次貝茲往上接到愛心的左邊。
+    // 往上彎的那一段整段都在卡片右邊，站著、倒下的骨牌都不會壓到卡片上的歌詞
+    const Ax = clamp(Math.max(Sx + (N0[0] - Sx) * 0.55, this.lyrRect[0] + this.lyrRect[2] + CARD_GAP * 0.45), Sx, N0[0] - 60);
+    for (let i = 0; i < 20; i++) poly.push([Sx + ((Ax - Sx) * i) / 20, Sy]);
+    const P1: [number, number] = [Ax + (N0[0] - Ax) * 0.75, Sy], P2: [number, number] = [N0[0], Sy + (N0[1] - Sy) * 0.35];
+    for (let i = 0; i <= 60; i++) {
+      const u = i / 60, v = 1 - u;
+      poly.push([v * v * v * Ax + 3 * v * v * u * P1[0] + 3 * v * u * u * P2[0] + u * u * u * N0[0], v * v * v * Sy + 3 * v * v * u * P1[1] + 3 * v * u * u * P2[1] + u * u * u * N0[1]]);
+    }
+    for (let i = 1; i <= 240; i++) poly.push(heartAt(U0 + (i / 240) * Math.PI * 2 * 0.985));
+    const cum = [0];
+    for (let i = 1; i < poly.length; i++) cum.push(cum[i - 1]! + Math.hypot(poly[i]![0] - poly[i - 1]![0], poly[i]![1] - poly[i - 1]![1]));
+    const Ltot = cum[cum.length - 1]!;
+    let nCh = Math.min(CHAIN_MAX, MAX_DOM - doms.length, Math.round(Ltot / 80));
+    let sp = Ltot / nCh;
+    if (sp < CH_MIN) { nCh = Math.floor(Ltot / CH_MIN); sp = Ltot / nCh; }
+    if (sp > CH_MAX) sp = CH_MAX;
+    const at = (d: number) => {
+      let i = 1;
+      while (i < cum.length - 1 && cum[i]! < d) i++;
+      const k = (d - cum[i - 1]!) / Math.max(1e-6, cum[i]! - cum[i - 1]!);
+      const a0 = poly[i - 1]!, a1 = poly[i]!;
+      return { x: a0[0] + (a1[0] - a0[0]) * k, y: a0[1] + (a1[1] - a0[1]) * k, yaw: Math.atan2(a1[1] - a0[1], a1[0] - a0[0]) };
+    };
+    const chain: number[] = [];
+    for (let k = 0; k * sp <= Ltot - sp * 0.5 && chain.length < nCh; k++) { const q = at(k * sp); chain.push(add({ x: q.x, y: q.y, yaw: q.yaw, ch: '' })); }
+    this.chains.push({ ids: chain, s: sp });
+    this.theta = new Float32Array(doms.length);
+    // 時間：起點那一張倒下的時候分岔；照 1/k 拍一張一張倒，窗格結束前一小節左右剛好倒完
+    const tc0 = doms[col[0]!]!.t0 + colStep * 0.5;
+    const avail = Math.max(B, e - 1.5 * B - tc0);
+    const kk = [1, 2, 4, 8].find((x) => chain.length / x * B <= avail) ?? (chain.length * B) / avail;
+    const b0 = au.beatAt(tc0);
+    chain.forEach((id, i) => { const d = doms[id]!; d.t0 = au.timeOfBeat(b0 + (i + 1) / kk); d.tf = clamp((B / kk) * 1.9, 0.1, 0.24); });
+    if (chain.length) doms[chain[chain.length - 1]!]!.last = true;
+    this.heartC = [hc[0], hc[1], hr];
+
     // 進場：貼著桌面、從右前方看第一行的開頭（淺景深），第一拍之後升起來
-    this.camA = { tx: X0 + PITCH * 1.5, ty: Y0 - ROWP * 0.3, tz: 45, dist: camB.dist * 0.5, az: 0.7, el: 0.28, fov: 30, roll: -0.03 };
+    this.camA = { tx: X0 + PITCH * 1.5, ty: Y0 - ROWP * 0.3, tz: 45, dist: camB.dist * 0.42, az: 0.7, el: 0.28, fov: 30, roll: -0.03 };
     this.tCrane = Math.max(this.tDone + 0.2, this.tStart + Math.min(4 * B, 0.45 * (e - s)));
-    this.focusPts = [[this.msgRect[0], this.msgRect[1], 0], [this.msgRect[0] + this.msgRect[2], this.msgRect[1] + this.msgRect[3], 0], [x0, cardY + cardH / 2, 0]];
+    this.focusPts = [[this.msgRect[0], this.msgRect[1], 0], [this.msgRect[0] + this.msgRect[2], this.msgRect[1] + this.msgRect[3], 0], [x0, cardY + cardH / 2, 0], [hc[0], hc[1], 0]];
 
     // ---- 記分卡的畫布（每格重畫歌詞）
     this.lyrL = this.track(new Layer2D(cardW, cardH, Math.min(2, SCALE * Math.max(1, this.lyrScale * 1.1)), { fast: true }));
@@ -571,7 +640,9 @@ export default class Domino extends Scene {
 
     // ---- 影子：骨牌沿光線壓到桌面，畫進一張小圖
     const [mx, my, mw, mh] = this.msgRect;
-    const shR: Rect = [mx - 500, my - 500, mw + 1000, mh + 1000];
+    const hx0 = this.heartC[0] - this.heartC[2] * 1.3, hx1 = this.heartC[0] + this.heartC[2] * 1.3, hy0 = this.heartC[1] - this.heartC[2] * 1.3, hy1 = this.heartC[1] + this.heartC[2] * 1.3;
+    const sx0 = Math.min(mx - 300, hx0), sy0 = Math.min(my - 300, hy0), sx1 = Math.max(mx + mw + 300, hx1), sy1 = Math.max(my + mh + 600, hy1);
+    const shR: Rect = [sx0, sy0, sx1 - sx0, sy1 - sy0];
     const sc = rig.shCam;
     sc.left = shR[0]; sc.right = shR[0] + shR[2]; sc.bottom = shR[1]; sc.top = shR[1] + shR[3];
     sc.position.set(0, 0, 1000); sc.up.set(0, 1, 0); sc.lookAt(0, 0, 0);
@@ -581,7 +652,7 @@ export default class Domino extends Scene {
     renderer.render(rig.shScene, sc);
 
     // ---- 桌面 → 骨牌（MSAA）→ 景深
-    const lampV = new THREE.Vector4(mx + mw / 2, my + mh / 2 + 60, Math.max(1200, mw * 0.95), 0);
+    const lampV = new THREE.Vector4((mx + mw / 2 + this.heartC[0]) / 2, (my + mh / 2 + this.heartC[1]) / 2, Math.max(1500, (sx1 - sx0) * 0.7), 0);
     const T = rig.table;
     (T.u.camC!.value as THREE.Vector3).copy(bs.C);
     (T.u.camR!.value as THREE.Vector3).copy(bs.R);
