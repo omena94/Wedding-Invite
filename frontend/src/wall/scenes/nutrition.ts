@@ -1,19 +1,22 @@
-// 營養標示（批次 T4・紙本 D，亮）：一盒「婚禮特調」平放在亞麻桌巾上，盒面印著一張營養標示；鏡頭斜斜地拍，看得到盒子的右側與前側。
+// 營養標示（批次 T4・紙本 D，亮）：超市貨架上的一盒「婚禮特調」，正面印著一張營養標示；鏡頭平平地站在貨架前，
+// 稍微偏右（看得到盒子的右側），左邊是別的商品、下面是貨架的價格條與一張會晃的「新品」吊牌，後面是洞洞板。
 //  - 焦點是「成分」欄：主打留言印成成分（思源宋體、大），署名在後面。
 //  - 「每一份量：1 句歌詞」——所以表頭下面那一大格就是現在唱的那一句（中等大小，逐字跟唱）。
 //  - 營養素一拍一列填上去（小字）：數字像拉霸一樣轉、停在拍點上；每日參考值的長條長出來，
 //    「甜度 200%」衝破標示的框、「心動」一路衝過盒子的邊角、繞到側面去（冷面：超出量表）。
 //  - 列都填完的下一個小節線，紅筆圈起「200」；再下一個小節線，盒子側面「啪」地貼上一張甜度貼紙。
-//  - 鏡頭：開場貼近盒角，第一拍 outExpo 轉到正面偏右上的位置，之後慢慢推向成分欄；焦點在留言上（景深），桌巾與盒子遠端微微失焦。
+//  - 鏡頭：開場貼近盒角，第一拍 outExpo 轉到正面偏右的位置，之後像推著購物車經過一樣沿著貨架慢慢滑、慢慢推近；
+//    焦點在留言上（景深），後面的洞洞板與旁邊的商品微微失焦。每一拍「新品」吊牌被大鼓震得晃一下；日光燈偶爾閃一下。
 // 畫法：盒子的三個面（正面、右側、前側）攤開成一張展開圖畫進同一張 render target（所以長條可以從正面直接畫到側面，
 // 在盒角自然折過去）：紙板雲紋與網點印刷一個 shader，框線與標籤一張不會變的 Canvas，會動的東西第二張 Canvas。
-// 盒子是三個面的網格，交給 _t4 的舞台（透視鏡頭、桌巾、影子、景深）去拍。
+// 盒子是三個面的網格，交給 _t4 的舞台拍：舞台的「桌面」在這裡當作直立的洞洞板（世界的 y 向上、z 朝鏡頭），
+// 貨架層板、旁邊的商品是方塊，價格條與吊牌是 Canvas 畫的道具。
 import * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
-import { FSPass, Layer2D } from '../engine/gl';
+import { FSPass, Layer2D, SCALE } from '../engine/gl';
 import { F, font, loadText } from '../engine/type';
-import { rgba } from '../engine/palette';
-import { clamp, ease, hash, lerp, prog, pulse } from '../engine/util';
+import { rgba, mixRgba } from '../engine/palette';
+import { clamp, ease, hash, lerp, prog, pulse, noise1 } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
 import { lyricAt, signature } from './_motifs';
 import { grid, stagger, drawFit, layoutRows, drawRows, paperInk, lastIdx, Stage, docRT, camDist, type Grid, type RowsStyle, type V3 } from './_t4';
@@ -30,12 +33,14 @@ const X0 = LB.x + 32, X1 = LB.x + LB.w - 32;
 const TITLE_Y = 96, RULE1 = 112, SERV_Y = 142;
 const LYR = { y: 154, h: 142 };
 const BAR1 = 306;
-const ROW0 = 330, RH = 40, NROW = 5;
+const ROW0 = 322, RH = 34, NROW = 5; // 營養素的列窄一點：成分欄（留言）要有四行＋署名的高度
 const BAR2 = ROW0 + NROW * RH + 8;
 const ING_Y = BAR2 + 40;
 // v2：成分欄（留言）只佔標示的左邊一塊（畫面上 ≤ 860 寬），右邊是一個會跳的「心動指數」錶
-const MSG = { x: X0, y: ING_Y + 14, w: 850, h: LB.y + LB.h - 24 - (ING_Y + 14) };
-const GAUGE = { x: X1 - 150, y: ING_Y + 150, r: 118 };
+// 成分欄（留言）用標示的整個寬度：盒子斜著拍、畫面上會縮小，留言要夠寬才能少幾行、字不會小於 40 px；下面留 44，署名不壓到外框
+const MSG = { x: X0, y: ING_Y + 14, w: X1 - X0, h: LB.y + LB.h - 44 - (ING_Y + 14) };
+// 心動指數的錶：放在歌詞那一格的右邊（半圓的底貼著粗線）
+const GAUGE = { x: X1 - 110, y: LYR.y + LYR.h - 14, r: 84 };
 const SIG_K = 1.45; // 署名佔的高度 = 署名字級 × SIG_K
 const COL_V = 600, COL_P = 730; // 每份（靠右）、百分比（靠右）
 const BAR_X = 760, BAR_100 = 300; // 長條：100% 的長度
@@ -50,7 +55,8 @@ const ROWS: Row[] = [
   { k: '耐心', v: '1', unit: '輩子', pct: 100, pctText: '100 %' },
   { k: '鈉（吵架）', v: '0', unit: '毫克', pct: 0, pctText: '0 %' },
 ];
-const TEXT = '營養標示婚禮特調每一份量句歌詞本包裝含人份每份每日參考值百分比成分過敏原資訊本產品含有大量的愛保存期限永久開封後請與身邊的人分享淨重一輩子你的祝福尚未添加掃描右下角把加進成分表純音樂無添加間奏中超出量表甜度熱量大卡心動耐心輩子鈉吵架毫克';
+// 符號（♪ ∞ ☑ → 之類）不在打包時掃的中文範圍裡，要跟中文一起預載，不然第一次畫會用備援字型（確定性也會不過）
+const TEXT = '♪∞☑☐→·—♥%＄$營養標示婚禮特調每一份量句歌詞本包裝含人份每份每日參考值百分比成分過敏原資訊本產品含有大量的愛保存期限永久開封後請與身邊的人分享淨重一輩子你的祝福尚未添加掃描右下角把加進成分表純音樂無添加間奏中超出量表甜度熱量大卡心動耐心輩子鈉吵架毫克';
 
 // ---------------------------------------------------------------- 盒面的印刷（shader）
 const PRINT = () => new FSPass(/* glsl */ `
@@ -97,19 +103,63 @@ function boxGeometry() {
   return g;
 }
 
+/** 貨架前緣的價格條（2048×96）與「新品」吊牌（256×256），畫一次、整晚共用。 */
+function drawShelfArt(rail: CanvasRenderingContext2D, tag: CanvasRenderingContext2D) {
+  rail.fillStyle = mixRgba('paper', 'signal', 0.3); rail.fillRect(0, 0, 2048, 96);
+  rail.fillStyle = rgba('sepia', 0.18); rail.fillRect(0, 0, 2048, 6); rail.fillRect(0, 90, 2048, 6);
+  // 價格標籤：白底小卡，品名、價格（冷面：∞）
+  const label = (x: number, name: string, price: string, note: string) => {
+    rail.fillStyle = rgba('paper'); rail.fillRect(x, 14, 300, 68);
+    rail.strokeStyle = rgba('sepia', 0.3); rail.lineWidth = 1.5; rail.strokeRect(x, 14, 300, 68);
+    rail.textBaseline = 'alphabetic';
+    rail.font = font(F.hei(700), 20); rail.fillStyle = rgba('sepia', 0.85); rail.fillText(name, x + 14, 42);
+    rail.font = font(F.hei(500), 14); rail.fillStyle = rgba('sepia', 0.6); rail.fillText(note, x + 14, 68);
+    rail.font = font(F.archivo(100, 900), 34); rail.fillStyle = rgba('blood'); rail.textAlign = 'right'; rail.fillText(price, x + 288, 66); rail.textAlign = 'left';
+  };
+  label(420, '幸福餅乾', '$ 520', '每盒兩人份');
+  label(1010, '婚禮特調', '$ ∞', '每人限購一輩子');
+  // 吊牌：一張圓形的卡（訊號色），上面兩個字
+  tag.fillStyle = rgba('signal'); tag.beginPath(); tag.arc(128, 128, 118, 0, Math.PI * 2); tag.fill();
+  tag.strokeStyle = rgba('paper', 0.9); tag.lineWidth = 4; tag.beginPath(); tag.arc(128, 128, 100, 0, Math.PI * 2); tag.stroke();
+  tag.fillStyle = rgba('paper'); tag.textAlign = 'center'; tag.textBaseline = 'alphabetic';
+  tag.font = font(F.hei(900), 64); tag.fillText('新品', 128, 138);
+  tag.font = font(F.hei(700), 24); tag.fillText('限時 ∞ 天', 128, 182);
+}
+
+/** 貨架：下層板（盒子站在上面）、上層板的邊、左邊兩盒別的商品。世界：y 向上、z 朝鏡頭；盒子的底在 y = -LH/2。 */
+const SHELF = { y: -LH / 2, depth: BT + 170, top: LH / 2 + 150 };
+const NEIGHBORS = [
+  { x: -LW / 2 - 330, w: 460, h: 700, c: 'mix(C_PAPER, C_BLOOD, 0.3)' },
+  { x: -LW / 2 - 830, w: 440, h: 860, c: 'mix(C_PAPER, C_SIGNAL, 0.45)' },
+];
+
 function makeRig() {
   const doc = docRT(AW, AH);
-  // 商品攝影棚：盒子放在無縫背景紙上（沒有桌子、沒有紋理），一盞大柔光箱從左上打光，鏡頭像轉台一樣慢慢繞
+  // 超市貨架：舞台的「桌面」當作直立的洞洞板；日光燈從上方均勻地打（光圈大、很淡）
   const st = new Stage(6, 30);
-  st.U.ambient.value = 0.74;
-  // 光圈外面暗一點點：背景紙往後漸暗，盒子站在光裡
-  st.U.poolFloor.value = 0.66;
+  st.U.ambient.value = 0.78;
+  st.U.poolFloor.value = 0.75;
   const mat = st.docMaterial(doc.texture, [doc.width, doc.height], [AW, AH], { edge: 0, depthTest: true });
   const box = new THREE.Mesh(boxGeometry(), mat);
   box.frustumCulled = false;
-  box.rotation.z = 0.03;
   st.scene.add(box);
-  return { doc, st, mat, box };
+  // 層板（下層：盒子站在上面；上層：畫面頂端看得到它的前緣）
+  const plankMat = st.solidMaterial('mix(C_PAPER, C_ASH, 0.25) * (0.95 + 0.02 * snoise(p / 60.0) * detail)');
+  const plank = (y: number) => { const m = new THREE.Mesh(new THREE.BoxGeometry(6000, 36, SHELF.depth), plankMat); m.position.set(0, y - 18, SHELF.depth / 2); m.frustumCulled = false; st.scene.add(m); };
+  plank(SHELF.y); plank(SHELF.top);
+  // 旁邊的商品：簡單的盒子，正面有幾條色帶（不要搶戲）
+  for (const n of NEIGHBORS) {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(n.w, n.h, BT), st.solidMaterial(`${n.c} * (0.86 + 0.1 * step(0.5, fract(p.y / 140.0)) * detail)`));
+    m.position.set(n.x, SHELF.y + n.h / 2, BT / 2); m.frustumCulled = false; st.scene.add(m);
+  }
+  // 價格條（貼在下層板的前緣）與吊牌
+  const rail = new Layer2D(2048, 96, SCALE, { fast: true }), tagL = new Layer2D(256, 256, SCALE, { fast: true });
+  drawShelfArt(rail.ctx, tagL.ctx);
+  st.prop(rail.texture, [rail.canvas.width, rail.canvas.height], [0, 0, 1, 1], 3200, 150, -500, SHELF.y - 60, SHELF.depth + 2);
+  const tag = st.prop(tagL.texture, [tagL.canvas.width, tagL.canvas.height], [0, 0, 1, 1], 180, 180, -LW / 2 - 170, SHELF.y - 30, SHELF.depth + 90);
+  tag.renderOrder = 5; // 吊牌在價格條前面（透明物件照距離排序會排錯）
+  const repaint = () => { rail.clear(); tagL.clear(); drawShelfArt(rail.ctx, tagL.ctx); rail.upload(); tagL.upload(); };
+  return { doc, st, mat, box, tag, repaint };
 }
 
 export default class Nutrition extends Scene {
@@ -172,7 +222,8 @@ export default class Nutrition extends Scene {
     const t = f.t, R = this.rig;
     // ---- 1. 展開圖
     this.printPass.render(renderer, R.doc);
-    if (!this.baseDrawn) { this.drawBase(); this.baseDrawn = true; }
+  // 道具的畫布整晚共用，但顏色來自色票：每首歌換主題時要重畫（每個窗格第一格重畫一次，很小、很便宜）
+    if (!this.baseDrawn) { this.drawBase(); R.repaint(); this.baseDrawn = true; }
     comp.draw(renderer, this.base.texture, R.doc);
     const L = this.live; L.clear();
     const c = L.ctx;
@@ -190,22 +241,22 @@ export default class Nutrition extends Scene {
     return { paper: 1, bloom: 0.3, vignette: 0.3, grain: 0.04, shake: [hit * 5, -hit * 3] };
   }
 
-  /** 展開圖上正面的一點 → 世界座標（盒子轉了一點點）。 */
+  /** 展開圖上正面的一點 → 世界座標（盒子正面朝鏡頭，y 向上）。 */
   private world(u: number, v: number, z = BT): V3 {
-    const r = this.rig.box.rotation.z, x = u - LW / 2, y = LH / 2 - v;
-    return [x * Math.cos(r) - y * Math.sin(r), x * Math.sin(r) + y * Math.cos(r), z];
+    return [u - LW / 2, LH / 2 - v, z];
   }
 
   /** 鏡頭：k = 開場進度（0 貼近盒角、1 停好），push = 慢慢推近，bump = 小節線頂一下。 */
-  private look(k: number, push: number, bump: number, orbit = 0) {
+  /** 鏡頭：站在貨架前（k = 開場進度，push = 慢慢推近，bump = 小節線頂一下，slide = 沿著貨架滑的量）。 */
+  private look(k: number, push: number, bump: number, slide = 0) {
     const D = camDist(30);
-    // 盒子在畫面偏左上，右下角的 QR 區留乾淨
-    const aim = { x: lerp(LW * 0.84, LW * 0.68, k), y: lerp(LH * 0.5, LH * 0.66 + 20 * push, k) };
-    const T = this.world(aim.x, aim.y);
-    const dist = D * lerp(0.8, 1.4, k) * (1 - 0.06 * push) * (1 - 0.012 * bump);
-    const tilt = THREE.MathUtils.degToRad(lerp(44, 27, k));
-    const yaw = lerp(0.4, 0.13, k) + orbit;
-    this.rig.st.look([T[0] + Math.sin(yaw) * dist, T[1] - Math.sin(tilt) * dist * Math.cos(yaw), Math.cos(tilt) * dist], T);
+    // 盒子在畫面偏左上，右下角的 QR 區留給洞洞板（乾淨）
+    const aim = { x: lerp(LW * 0.84, LW * 0.66, k), y: lerp(LH * 0.5, LH * 0.62 + 20 * push, k) };
+    const T = this.world(aim.x, aim.y, BT * 0.6);
+    const dist = D * lerp(0.8, 1.32, k) * (1 - 0.06 * push) * (1 - 0.012 * bump);
+    const pitch = THREE.MathUtils.degToRad(lerp(14, 6, k));
+    const yaw = lerp(0.75, 0.5, k) + slide;
+    this.rig.st.look([T[0] + Math.sin(yaw) * Math.cos(pitch) * dist, T[1] + Math.sin(pitch) * dist, T[2] + Math.cos(yaw) * Math.cos(pitch) * dist], T);
   }
 
   private shoot(t: number) {
@@ -215,20 +266,30 @@ export default class Nutrition extends Scene {
     const push = ease.inOutCubic(clamp((t - g.b0) / Math.max(1, e - g.b0)));
     const bi = lastIdx(g.bars, t);
     const bump = bi >= 0 && g.bars[bi]! > g.b0 + 0.3 ? pulse(t, g.bars[bi]!, 0.14) : 0;
-    // 轉台：停好之後鏡頭很慢地左右繞（整個窗格來回一次），商品攝影的感覺；幅度小，字不會歪到讀不了
-    const orbit = 0.07 * Math.sin(((t - g.b0) / Math.max(2, e - g.b0)) * Math.PI * 2) * k;
-    this.look(k, push, bump, orbit);
+    // 像推著購物車經過：停好之後鏡頭沿著貨架很慢地往左滑（角度跟著變一點點），字不會歪到讀不了
+    const slide = -0.08 * ease.inOutCubic(clamp((t - g.b0) / Math.max(2, e - g.b0))) * k;
+    this.look(k, push, bump, slide);
     st.U.goboT.value = t;
     // 焦點：開場在歌詞（表頭那一格），留言印上去的時候拉到成分欄；光圈小：桌巾與盒子遠端微微失焦
     const fk = ease.inOutCubic(clamp((t - this.tMsg) / 0.5));
     const fl = st.depthOf(this.world(LW * 0.4, LYR.y + LYR.h / 2)), fm = st.depthOf(this.world(MSG.x + MSG.w * 0.45, MSG.y + MSG.h * 0.4));
     st.U.focus.value = lerp(fl, fm, fk);
-    st.U.aperture.value = 36;
-    // 柔光箱：光圈跟著轉台反方向慢慢滑（亮面在盒子上移動），每個小節線閃一下（像拍照的閃燈）
-    const flashK = bi >= 0 && g.bars[bi]! > g.b0 + 0.3 ? pulse(t, g.bars[bi]!, 0.07) : 0;
-    st.U.pool.value.set(-300 - 900 * orbit, 300, 1600, 0.6 - 0.25 * flashK);
+    st.U.aperture.value = 24;
+    // 日光燈：光很平均（光圈大、很淡）；每隔幾個小節燈管閃一下（很快的兩下暗）
+    const flick = bi >= 0 && bi % 3 === 2 ? Math.max(pulse(t, g.bars[bi]! + 0.05, 0.03), pulse(t, g.bars[bi]! + 0.14, 0.03)) : 0;
+    st.U.pool.value.set(-200, 600, 2600, 0.35 + 0.25 * flick);
+    // 影子（落在洞洞板上，光從左上來）：盒子、旁邊的商品、層板下面一條
     const c0 = this.world(LW / 2, LH / 2, 0);
-    st.shadows([{ x: c0[0] + 60, y: c0[1] - 70, w: LW + 40, h: LH + 40, rot: R.box.rotation.z, blur: 70, k: 0.4, r: 20 }, { x: c0[0] + 8, y: c0[1] - 10, w: LW + 4, h: LH + 4, rot: R.box.rotation.z, blur: 10, k: 0.35, r: 4 }]);
+    st.shadows([
+      { x: c0[0] + 50, y: c0[1] - 40, w: LW + 30, h: LH + 30, blur: 60, k: 0.32, r: 20 },
+      ...NEIGHBORS.map((n) => ({ x: n.x + 50, y: SHELF.y + n.h / 2 - 40, w: n.w + 30, h: n.h + 30, blur: 60, k: 0.3, r: 20 })),
+      { x: 0, y: SHELF.y - 110, w: 7000, h: 120, blur: 70, k: 0.35, r: 10 },
+      { x: 0, y: SHELF.top - 110, w: 7000, h: 120, blur: 70, k: 0.3, r: 10 },
+    ]);
+    // 「新品」吊牌：每一拍被大鼓震一下、像彈簧片一樣左右晃，慢慢停
+    const bt = this.ctx.audio.timeOfBeat(Math.floor(this.ctx.audio.beatAt(t) + 1e-6));
+    const since = t - bt;
+    R.tag.rotation.z = (0.18 * this.ctx.audio.hit('kick', bt + 0.01, 0.2) + 0.06) * Math.exp(-since * 5) * Math.sin(since * 22) + 0.03 * noise1(t * 0.8, 9);
   }
 
   // ------------------------------------------------------------ 不會變的底圖
@@ -257,7 +318,7 @@ export default class Nutrition extends Scene {
     ROWS.forEach((r, i) => {
       const y = ROW0 + i * RH;
       c.fillStyle = rgba('sepia', 0.9);
-      c.fillText(r.k, X0, y + 28);
+      c.fillText(r.k, X0, y + 25);
       c.fillStyle = rgba('sepia', 0.3);
       if (i < ROWS.length - 1) c.fillRect(X0, y + RH - 1, X1 - X0, 1);
     });
@@ -268,18 +329,20 @@ export default class Nutrition extends Scene {
     c.font = font(F.mono(500), 14); c.letterSpacing = '4px'; c.fillStyle = rgba('sepia', 0.6);
     c.fillText('INGREDIENTS', X0 + 52, ING_Y - 1);
     c.letterSpacing = '0px';
-    // 前側（朝鏡頭的那一面）：品名與淨重（小）、條碼
-    c.font = font(F.hei(900), 22); c.fillStyle = rgba('sepia', 0.7);
-    c.fillText('婚禮特調', 60, LH + 80);
-    c.font = font(F.mono(500), 14); c.letterSpacing = '4px'; c.fillStyle = rgba('sepia', 0.5);
-    c.fillText('NET WT. ∞　·　保存期限：永久', 60, LH + 112);
+    // 右側面（鏡頭看得到的那一面）：直排的品名、淨重、條碼
+    // （「心動」的長條會在 y ≈ 450 橫過側面：字排在它上面、條碼在它下面）
+    c.save(); c.translate(LW + BT / 2, 60); c.rotate(Math.PI / 2);
+    c.font = font(F.hei(900), 40); c.fillStyle = rgba('sepia', 0.75);
+    c.fillText('婚禮特調', 0, 12);
+    c.font = font(F.mono(500), 13); c.letterSpacing = '2px'; c.fillStyle = rgba('sepia', 0.5);
+    c.fillText('NET WT. ∞　·　保存期限：永久', 0, 52);
     c.letterSpacing = '0px';
-    // 條碼（裝飾）
+    c.restore();
     for (let i = 0; i < 46; i++) {
       const w = 1 + Math.floor(hash(i, 3) * 3.2);
       if (hash(i, 7) < 0.3) continue;
       c.fillStyle = rgba('sepia', 0.7);
-      c.fillRect(LW - 300 + i * 5.2, LH + 50, w, 110);
+      c.fillRect(LW + 50, 560 + i * 5.2, 120, w);
     }
   }
 
@@ -288,7 +351,7 @@ export default class Nutrition extends Scene {
     const { lyrics, song } = this.ctx;
     const ly = lyricAt(lyrics, t);
     // v2：歌詞比留言小一級（40～52 螢幕 px，換成盒面字級）
-    const LY: RowsStyle = { family: F.archivo(100, 800), size: lyricV2(this.msgScreen) / this.sLyr, minSize: V2.lyrMin / this.sLyr, maxW: X1 - X0 - 200, maxRows: 2, lineHeight: 1.06 };
+    const LY: RowsStyle = { family: F.archivo(100, 800), size: lyricV2(this.msgScreen) / this.sLyr, minSize: V2.lyrMin / this.sLyr, maxW: X1 - X0 - 250, maxRows: 2, lineHeight: 1.06 };
     if (ly) {
       const lay = layoutRows(c, ly.line, LY);
       const top = LYR.y + (LYR.h - lay.height) / 2 + lay.size * 0.84;
@@ -314,7 +377,7 @@ export default class Nutrition extends Scene {
     ROWS.forEach((r, i) => {
       const t0 = this.rowT[i]!;
       if (t < t0 - 0.02) return;
-      const y = ROW0 + i * RH, base = y + 28;
+      const y = ROW0 + i * RH, base = y + 25;
       // 每兩個小節線「重新計算」一次：數字再轉一次（一列晚一點點，像一排拉霸依序停下）
       let rs = t0;
       for (const b of this.reroll) if (b + i * 0.07 <= t) rs = b + i * 0.07;
@@ -336,7 +399,7 @@ export default class Nutrition extends Scene {
       const len = full * prog(t, t0 + 0.06, t0 + (r.pct === Infinity ? 0.8 : 0.45), ease.outExpo) + (pu >= 1 ? kick : 0);
       if (len > 0.5) {
         c.fillStyle = r.pct >= 200 ? rgba('blood', 0.92) : rgba('sepia', 0.78);
-        c.fillRect(BAR_X, y + 11, len, RH - 22);
+        c.fillRect(BAR_X, y + 9, len, RH - 18);
       }
       if (r.pct === Infinity && len > LW - BAR_X) {
         c.font = font(F.hei(700), 18); c.fillStyle = rgba('blood'); c.textAlign = 'right';
@@ -438,10 +501,10 @@ export default class Nutrition extends Scene {
     c.fillStyle = rgba('sepia'); c.beginPath(); c.arc(0, 0, 9, 0, Math.PI * 2); c.fill();
     c.fillStyle = rgba('signal', 0.25 * fl); c.beginPath(); c.arc(0, 0, G.r + 10, Math.PI, 0); c.fill();
     c.textAlign = 'center';
-    c.font = font(F.hei(700), 20); c.fillStyle = rgba('sepia', 0.85);
-    c.fillText('心動指數', 0, 40);
-    c.font = font(F.hei(500), 16); c.fillStyle = rgba('blood', 0.9);
-    c.fillText('超出量表', 0, 66);
+    c.font = font(F.hei(700), 18); c.fillStyle = rgba('sepia', 0.85);
+    c.fillText('心動指數', 0, -G.r - 34);
+    c.font = font(F.hei(500), 15); c.fillStyle = rgba('blood', 0.9);
+    c.fillText('超出量表', 0, -G.r - 14);
     c.restore();
   }
 

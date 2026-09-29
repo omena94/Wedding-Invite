@@ -1,4 +1,5 @@
-// 簽名簿（批次 T4・紙本 D，亮）：喜宴入口桌上攤開的簽名簿，鋪著亞麻桌巾。
+// 簽名簿（批次 T4・紙本 D，亮）：喜宴入口的簽名台，白色緹花桌巾上攤開的簽名簿，右上方擺著一束花（花瓣散在桌巾上），
+// 左下角一排小蠟燭。
 //  - 第一拍：右邊那頁（已經寫滿別人的祝福）翻過去——真的 3D 的紙：從書脊掀起來、外緣稍微落後彎成弧，蓋到左邊；
 //    露出新的一頁。
 //  - 仙女棒的火花是筆：在拍點上一個詞組一個詞組把主打留言寫在新的一頁上（剛寫的字是暖色的濕墨水，一下子乾成墨色），
@@ -8,7 +9,7 @@
 //  - 沒有留言：新的一頁寫「這一頁留給你」＋一句邀請。純音樂：書眉寫歌名。
 // 畫法：兩張「跨頁」render target（舊的：翻頁前的左右頁；新的：翻頁後的左右頁，含書眉歌詞與正在寫的字、火花），
 // 書本是 three.js 的網格：書皮、左右兩頁（靠書脊那邊往下彎）、一張翻動的頁（每格照翻頁進度算出彎曲的形狀，
-// 正面貼舊的右頁、背面貼新的左頁）。交給 _t4 的舞台拍（亞麻桌巾、光、景深、書溝的陰影）。
+// 正面貼舊的右頁、背面貼新的左頁）。花束、花瓣、蠟燭是 Canvas 畫的道具。交給 _t4 的舞台拍（緹花桌巾、燭光、景深、書溝的陰影）。
 import * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
 import { FSPass, Layer2D, SCALE } from '../engine/gl';
@@ -33,7 +34,8 @@ const pageZ = (u: number) => Z0 + CURL_A * (1 - Math.exp(-u / CURL_K));
 const COOL = 0.8; // 濕墨水乾掉要幾秒
 
 const SIG_K = 1.5; // 署名佔的高度 = 署名字級 × SIG_K
-const TEXT = '芳名錄本頁背景音樂這一頁留給你掃描右下角把祝福寫進簽名簿純音樂間奏中第頁一位賓客新人';
+// 符號（♪ ∞ ☑ → 之類）不在打包時掃的中文範圍裡，要跟中文一起預載，不然第一次畫會用備援字型（確定性也會不過）
+const TEXT = '♪∞☑☐→·—♥%＄$芳名錄本頁背景音樂這一頁留給你掃描右下角把祝福寫進簽名簿純音樂間奏中第頁一位賓客新人';
 
 // ---------------------------------------------------------------- 紙（shader）：很淡的橫線、纖維
 const PAPER = () => new FSPass(/* glsl */ `
@@ -116,6 +118,51 @@ function drawTealight(c: CanvasRenderingContext2D) {
   c.fillStyle = rgba('sepia', 0.85); c.beginPath(); c.arc(x, y, 5, 0, Math.PI * 2); c.fill();
 }
 
+/** 一束花（俯視）：三朵重瓣的花（外圈紙色、內圈染一點訊號色）、葉子、滿天星；右下角另外畫三片散落的花瓣。 */
+function drawFlowers(c: CanvasRenderingContext2D) {
+  const rnd = (i: number, k: number) => hash(i, k, 77);
+  // 葉子（墨色帶一點訊號色，像深綠的影子）
+  for (let i = 0; i < 9; i++) {
+    const a = (i / 9) * Math.PI * 2 + rnd(i, 1), r = 150 + 40 * rnd(i, 2);
+    c.save(); c.translate(256 + Math.cos(a) * r * 0.7, 256 + Math.sin(a) * r * 0.7); c.rotate(a);
+    c.fillStyle = mixRgba('sepia', 'signal', 0.25, 0.85);
+    c.beginPath(); c.ellipse(0, 0, 70, 22, 0, 0, Math.PI * 2); c.fill();
+    c.strokeStyle = rgba('paper', 0.25); c.lineWidth = 2; c.beginPath(); c.moveTo(-60, 0); c.lineTo(60, 0); c.stroke();
+    c.restore();
+  }
+  // 滿天星：一顆顆小白點
+  for (let i = 0; i < 70; i++) {
+    const a = rnd(i, 3) * Math.PI * 2, r = 120 + 110 * rnd(i, 4);
+    c.fillStyle = rgba('bone', 0.9);
+    c.beginPath(); c.arc(256 + Math.cos(a) * r, 256 + Math.sin(a) * r, 4 + 3 * rnd(i, 5), 0, Math.PI * 2); c.fill();
+  }
+  // 三朵花：一圈一圈的花瓣，由外往內越小、越染色
+  const bloom = (x: number, y: number, R: number, seed: number) => {
+    for (let ring = 0; ring < 4; ring++) {
+      const rr = R * (1 - ring * 0.22), n = 8 - ring, k = ring / 4;
+      for (let j = 0; j < n; j++) {
+        const a = (j / n) * Math.PI * 2 + ring * 0.4 + seed;
+        c.save(); c.translate(x + Math.cos(a) * rr * 0.45, y + Math.sin(a) * rr * 0.45); c.rotate(a);
+        c.fillStyle = mixRgba('paper', 'signal', 0.1 + 0.35 * k);
+        c.strokeStyle = mixRgba('paper', 'blood', 0.35 + 0.3 * k, 0.8); c.lineWidth = 1.5;
+        c.beginPath(); c.ellipse(0, 0, rr * 0.5, rr * 0.36, 0, 0, Math.PI * 2); c.fill(); c.stroke();
+        c.restore();
+      }
+    }
+    c.fillStyle = rgba('blood', 0.7); c.beginPath(); c.arc(x, y, R * 0.12, 0, Math.PI * 2); c.fill();
+  };
+  bloom(200, 220, 110, 0.3); bloom(320, 250, 95, 1.1); bloom(250, 340, 85, 2.0);
+  // 散落的花瓣（另一塊，右下角 128×128 的格子裡）
+  for (let i = 0; i < 3; i++) {
+    c.save(); c.translate(560 + i * 150, 440); c.rotate(rnd(i, 9) * 3);
+    c.fillStyle = mixRgba('paper', 'signal', 0.2); c.strokeStyle = mixRgba('paper', 'blood', 0.45, 0.8); c.lineWidth = 1.5;
+    c.beginPath(); c.ellipse(0, 0, 50, 34, 0, 0, Math.PI * 2); c.fill(); c.stroke();
+    c.restore();
+  }
+}
+const FLOWERS = { x: 1100, y: 330, s: 520 };
+const PETALS: [number, number, number][] = [[930, -60, 0.4], [1240, 40, 2.1], [860, 520, 1.3]];
+
 function makeRig() {
   const oldRT = docRT(DW, DH), newRT = docRT(DW, DH);
   const st = new Stage(2, 30);
@@ -143,7 +190,13 @@ function makeRig() {
   const tl = new Layer2D(128, 128, SCALE, { fast: true });
   drawTealight(tl.ctx);
   for (const [x, y] of CANDLES) st.prop(tl.texture, [tl.canvas.width, tl.canvas.height], [0, 0, 1, 1], 110, 110, x, y, 2);
-  return { oldRT, newRT, st, mOld, mNew, left, right, leafF, leafB, book };
+  const fl = new Layer2D(1024, 512, SCALE, { fast: true });
+  drawFlowers(fl.ctx);
+  const fp: [number, number] = [fl.canvas.width, fl.canvas.height];
+  const bouquet = st.prop(fl.texture, fp, [0, 0, 0.5, 1], FLOWERS.s, FLOWERS.s, FLOWERS.x, FLOWERS.y, 20);
+  const petals = PETALS.map(([x, y, r], i) => st.prop(fl.texture, fp, [0.47 + i * 0.146, 0.73, 0.14, 0.27], 90, 90, x, y, 1.5, r));
+  const repaint = () => { tl.clear(); drawTealight(tl.ctx); tl.upload(); fl.clear(); drawFlowers(fl.ctx); fl.upload(); };
+  return { oldRT, newRT, st, mOld, mNew, left, right, leafF, leafB, book, bouquet, petals, repaint };
 }
 
 interface Glyph { ch: string; x: number; y: number; w: number; t0: number; t1: number; size: number }
@@ -166,6 +219,7 @@ export default class Guestbook extends Scene {
   glyphs: Glyph[] = [];
   fit: FitResult | null = null;
   writeEnd = 0;
+  private propsDrawn = false;
   /** 書頁、書眉在畫面上是跨頁的幾倍（鏡頭停好時量的），v2 的字級要換算。 */
   sEntry = 0.8; sHead = 0.8;
   msgScreen: number | null = null;
@@ -247,6 +301,8 @@ export default class Guestbook extends Scene {
   override render(f: Frame, out: THREE.WebGLRenderTarget): PostOverrides {
     const { renderer, comp } = this.ctx;
     const t = f.t, R = this.rig;
+    // 道具的畫布整晚共用，但顏色來自色票：每首歌換主題時要重畫（每個窗格第一格重畫一次，很小、很便宜）
+    if (!this.propsDrawn) { R.repaint(); this.propsDrawn = true; }
     const L = this.live; L.clear();
     const c = L.ctx;
     this.drawLyric(c, t);
@@ -292,7 +348,8 @@ export default class Guestbook extends Scene {
     const px = pen ? lerp(PW * 1.3, pen.x, 0.12) : PW * 1.3;
     const T0 = this.world(px, PH * 0.5);
     const T: V3 = [T0[0] + 90 + 10 * after, T0[1] - 90 + 30 * after, 20];
-    const dist = D * lerp(0.95, 1.4, intro) * (1 - 0.04 * after);
+    // 簽名簿佔大半個畫面，右上角留給花
+    const dist = D * lerp(0.95, 1.24, intro) * (1 - 0.04 * after);
     const tilt = THREE.MathUtils.degToRad(lerp(40, 29, intro));
     const yaw = lerp(0.14, 0.04, intro);
     this.rig.st.look([T[0] + Math.sin(yaw) * dist, T[1] - Math.sin(tilt) * dist, Math.cos(tilt) * dist], T);
@@ -312,7 +369,24 @@ export default class Guestbook extends Scene {
     const flk = noise1(t * 2.3, 11) * 0.6 + noise1(t * 7.1, 12) * 0.4;
     st.U.pool.value.set(-470 + 30 * flk, -640 + 20 * noise1(t * 1.7, 13), 1700 + 70 * flk, 0.9 + 0.05 * flk + 0.05 * this.ctx.audio.hit('kick', t, 0.1));
     // 影子：書本（燭光從左下來，影子往右上拉長一點）、三個蠟燭杯
-    st.shadows([{ x: 40, y: 20, w: DW + 48, h: DH + 40, blur: 40, k: 0.4, r: 8 }, ...CANDLES.map(([x, y]) => ({ x: x + 10, y: y + 10, w: 110, h: 110, blur: 10, k: 0.25, r: 55 }))]);
+    st.shadows([{ x: 40, y: 20, w: DW + 48, h: DH + 40, blur: 40, k: 0.4, r: 8 }, ...CANDLES.map(([x, y]) => ({ x: x + 10, y: y + 10, w: 110, h: 110, blur: 10, k: 0.25, r: 55 })),
+      { x: FLOWERS.x + 30, y: FLOWERS.y + 10, w: FLOWERS.s * 0.8, h: FLOWERS.s * 0.8, blur: 60, k: 0.3, r: FLOWERS.s * 0.4 }]);
+    // 花束被風吹得輕輕晃（跟燭火同一陣風）；每兩個小節有一片花瓣從花束飄落到桌巾上（小事件）
+    const R = this.rig;
+    R.bouquet.rotation.z = 0.02 * noise1(t * 0.7, 40) + 0.008 * Math.sin(t * 1.9);
+    const drops = g.bars.filter((b, i) => i % 2 === 0 && b > s + g.bar * 0.5);
+    R.petals.forEach((m, i) => {
+      const [x, y, r] = PETALS[i]!;
+      const b = drops[i];
+      const mat = m.material as THREE.RawShaderMaterial;
+      mat.uniforms.opacity!.value = b === undefined || t >= b ? 1 : 0;
+      if (b === undefined) { m.position.set(x, y, 1.5); return; }
+      // 還沒落：藏在花束裡（看不到）；落下：從花束那邊飄過來、打轉、在拍點落地
+      const u = clamp((t - b) / Math.max(0.6, g.bar * 0.8));
+      const k = ease.inOutCubic(u);
+      m.position.set(lerp(FLOWERS.x, x, k) + 40 * Math.sin(u * 7), lerp(FLOWERS.y, y, k), lerp(260, 1.5, ease.inQuad(u)));
+      m.rotation.z = r + (1 - u) * 5;
+    });
     void g;
   }
 

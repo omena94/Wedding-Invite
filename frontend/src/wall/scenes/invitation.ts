@@ -1,4 +1,5 @@
-// 喜帖（批次 T4・紙本 D，亮）：一張對摺的喜帖躺在木頭桌上，封面是燙金（訊號色）的花押「A & O」與細框。
+// 喜帖（批次 T4・紙本 D，亮）：一張對摺的喜帖躺在禮盒裡（淺色絨布內襯、盒壁、一段打了結的緞帶），
+// 封面是燙金（訊號色）的花押「A & O」與細框。
 //  - 開場：鏡頭貼著封面、斜斜地看，燙金的反光在每個小節線掃過去一次。
 //  - 第一個小節線（短窗格是第一拍）：封面沿著書脊翻開——真的 3D 的紙卡：翻起來、在半空中時封面的影子落在內頁上，
 //    躺平在左邊；鏡頭同時往後拉、移到整張攤開的喜帖上。
@@ -9,10 +10,10 @@
 //  - 沒有留言：回函寫「這一張留給你」＋一句邀請。純音樂：左頁寫歌名。
 // 畫法：封面、內頁（左右一張跨頁）、回函各畫進一張 render target（紙＋墨一個 Canvas＋燙金：燙金的形狀畫在一張遮罩 Canvas，
 // 燙金 shader 讀遮罩的邊算出凸版的明暗、加上掃過去的反光）；喜帖是 three.js 的網格（內頁、會翻的封面正反兩面、回函），
-// 交給 _t4 的舞台拍（木頭桌、光、影子、景深）。
+// 交給 _t4 的舞台拍（禮盒的絨布內襯與盒壁、光、影子、景深）。
 import * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
-import { FSPass, Layer2D } from '../engine/gl';
+import { FSPass, Layer2D, SCALE } from '../engine/gl';
 import { LineBatch } from '../engine/lines';
 import { F, font, loadText } from '../engine/type';
 import { rgba } from '../engine/palette';
@@ -30,7 +31,8 @@ const CW = 640, CH = 900; // 一面
 const RW = 680, RH = 468; // 回函（v2：畫面上約 650×420，只比字多一點邊）
 const RTOP = 104; // 回函上面的小標題列
 const SIG_K = 1.5; // 署名佔的高度 = 署名字級 × SIG_K
-const TEXT = '謹訂於年月日星期中午上午下午時舉行結婚典禮敬備喜筵恭請闔第光臨席設您現在坐的位置本日主題曲賓客回函一定到帶著祝福這一張留給你掃描右下角把祝福寄回給新人純音樂間奏中〇一二三四五六七八九十日';
+// 符號（♪ ∞ ☑ → 之類）不在打包時掃的中文範圍裡，要跟中文一起預載，不然第一次畫會用備援字型（確定性也會不過）
+const TEXT = '♪∞☑☐→·—♥%＄$謹訂於年月日星期中午上午下午時舉行結婚典禮敬備喜筵恭請闔第光臨席設您現在坐的位置本日主題曲賓客回函一定到帶著祝福這一張留給你掃描右下角把祝福寄回給新人純音樂間奏中〇一二三四五六七八九十日';
 
 // 喜帖上的日期時間：用網站設定的婚禮日期（改日期不用改這裡）
 const ZH_D = '〇一二三四五六七八九';
@@ -92,11 +94,45 @@ function quad(x0: number, x1: number, h: number, u0: number, u1: number) {
   return g;
 }
 
+/** 禮盒角落的蝴蝶結（俯視，緞帶的兩個圈、兩條彎彎的尾巴、中間的結），畫一次、整晚共用。 */
+function drawRibbon(c: CanvasRenderingContext2D) {
+  c.save(); c.translate(256, 150);
+  c.fillStyle = rgba('signal', 0.85); c.strokeStyle = rgba('blood', 0.55); c.lineWidth = 3;
+  for (const sx of [-1, 1]) {
+    c.beginPath(); c.moveTo(0, 0); c.bezierCurveTo(sx * 60, -70, sx * 150, -40, sx * 120, 10); c.bezierCurveTo(sx * 100, 40, sx * 40, 30, 0, 0); c.fill(); c.stroke();
+    // 尾巴：彎彎的緞帶，末端剪成 V 字
+    c.beginPath(); c.moveTo(-8 * sx, 6); c.bezierCurveTo(sx * 30, 60, sx * 10, 110, sx * 70, 150); c.lineTo(sx * 58, 128); c.lineTo(sx * 92, 138);
+    c.bezierCurveTo(sx * 40, 100, sx * 50, 50, 8 * sx, 4); c.closePath(); c.fill(); c.stroke();
+    // 圈上的一道亮面
+    c.strokeStyle = rgba('ember', 0.55); c.beginPath(); c.moveTo(sx * 20, -10); c.bezierCurveTo(sx * 60, -45, sx * 110, -30, sx * 112, 0); c.stroke();
+    c.strokeStyle = rgba('blood', 0.55);
+  }
+  c.fillStyle = rgba('blood', 0.8); c.beginPath(); c.ellipse(0, 2, 20, 16, 0, 0, Math.PI * 2); c.fill();
+  c.restore();
+}
+
+/** 禮盒的內部範圍（世界座標）：喜帖攤開是 1280×900，四周留一點絨布。 */
+const BOX = { x0: -CW - 110, x1: CW + 110, y0: -CH / 2 - 90, y1: CH / 2 + 90, h: 150, t: 26 };
+
 function makeRig() {
   const cover = docRT(CW, CH), inside = docRT(CW * 2, CH), reply = docRT(RW, RH);
-  // 喜帖擺在一塊緞面布上（不是桌子）：布的皺褶與光澤會慢慢起伏，燈是柔和的頂光
+  // 喜帖放在禮盒裡：淺色絨布內襯（光澤慢慢滑過）、盒壁、一段打了結的緞帶；燈是柔和的頂光
   const st = new Stage(4, 30);
   st.U.ambient.value = 0.8;
+  // 盒壁：紙盒的厚紙板（訊號色的暗部加紙色），內側受光、外側背光
+  const wallMat = st.solidMaterial('mix(C_PAPER, C_SIGNAL, 0.45) * (0.92 + 0.03 * snoise(p / 30.0) * detail)');
+  st.U.poolFloor.value = 0.62;
+  const wall = (w: number, h: number, x: number, y: number) => {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, BOX.h), wallMat);
+    m.position.set(x, y, BOX.h / 2); m.frustumCulled = false; st.scene.add(m);
+  };
+  const W2 = BOX.x1 - BOX.x0 + BOX.t * 2, H2 = BOX.y1 - BOX.y0;
+  wall(W2, BOX.t, 0, BOX.y1 + BOX.t / 2); wall(W2, BOX.t, 0, BOX.y0 - BOX.t / 2);
+  wall(BOX.t, H2, BOX.x0 - BOX.t / 2, 0); wall(BOX.t, H2, BOX.x1 + BOX.t / 2, 0);
+  // 蝴蝶結：擺在禮盒左下角的絨布上（鏡頭看得到的角落，不擋字）
+  const rl = new Layer2D(512, 320, SCALE, { fast: true });
+  drawRibbon(rl.ctx);
+  st.prop(rl.texture, [rl.canvas.width, rl.canvas.height], [0, 0, 1, 1], 400, 250, BOX.x0 + 60, BOX.y0 + 40, 1.6, 0.25);
   const mCover = st.docMaterial(cover.texture, [cover.width, cover.height], [CW, CH], { edge: 0, depthTest: true, side: THREE.FrontSide });
   const mInside = st.docMaterial(inside.texture, [inside.width, inside.height], [CW * 2, CH], { edge: 0, depthTest: true });
   const mInsideB = st.docMaterial(inside.texture, [inside.width, inside.height], [CW * 2, CH], { edge: 0, depthTest: true, side: THREE.BackSide });
@@ -113,7 +149,8 @@ function makeRig() {
   const rep = new THREE.Mesh(quad(-RW / 2, RW / 2, RH, 0, 1), mReply);
   for (const m of [base, coverF, coverB, rep]) m.frustumCulled = false;
   st.scene.add(base, hinge, rep);
-  return { cover, inside, reply, st, hinge, rep, mReply };
+  const repaint = () => { rl.clear(); drawRibbon(rl.ctx); rl.upload(); };
+  return { cover, inside, reply, st, hinge, rep, mReply, repaint };
 }
 
 export default class Invitation extends Scene {
@@ -176,7 +213,8 @@ export default class Invitation extends Scene {
   override render(f: Frame, out: THREE.WebGLRenderTarget): PostOverrides {
     const { renderer, comp, audio: au } = this.ctx;
     const t = f.t, R = this.rig;
-    if (!this.drawn) { this.drawFoilMask(); this.drawReply(); this.drawn = true; }
+  // 道具的畫布整晚共用，但顏色來自色票：每首歌換主題時要重畫（每個窗格第一格重畫一次，很小、很便宜）
+    if (!this.drawn) { this.drawFoilMask(); this.drawReply(); R.repaint(); this.drawn = true; }
     const theta = Math.PI * ease.inOutCubic(clamp((t - this.tOpen) / this.openDur));
     const land = this.replyPose(t);
     // 燙金的反光：每個小節線掃一次（outCubic）
@@ -255,11 +293,14 @@ export default class Invitation extends Scene {
     const fCover = st.depthOf([CW * 0.5, 0, 4]), fLyric = st.depthOf([-CW * 0.5, 0, 4]), fReply = st.depthOf([land.x, land.y, land.z]);
     st.U.focus.value = lerp(lerp(fCover, fLyric, ko), lerp(fReply, fLyric, 0.35), kr);
     st.U.aperture.value = 22;
-    st.U.pool.value.set(-120, 160, 1500, 0.55);
+    st.U.pool.value.set(-120, 160, 1700, 0.5);
     // 影子：攤開的卡（封面翻起來時，它在桌上的影子跟著往左邊長）、飛來的回函（越高越散越遠）
     const sx = Math.min(0, CW * Math.cos(theta));
     const lift = Math.sin(theta) * CW * 0.4;
     st.shadows([
+      // 盒壁在內襯上的影子（光從左上來：右邊與下面的盒壁內側比較暗）
+      { x: BOX.x1 - 30, y: 0, w: 120, h: BOX.y1 - BOX.y0, blur: 60, k: 0.22, r: 10 },
+      { x: 0, y: BOX.y0 + 30, w: BOX.x1 - BOX.x0, h: 120, blur: 60, k: 0.22, r: 10 },
       { x: CW / 2 + 10, y: -14, w: CW, h: CH, blur: 16, k: 0.3, r: 4 },
       { x: sx / 2 + lift * 0.5 + 10, y: -14 - lift * 0.4, w: Math.max(1, Math.abs(sx)) + 20, h: CH, blur: 16 + lift * 0.2, k: 0.28 * (theta > 0 ? 1 : 0), r: 4 },
       { x: land.x + 12 + land.z * 0.35, y: land.y - 16 - land.z * 0.45, w: RW, h: RH, rot: -0.045, blur: 14 + land.z * 0.25, k: 0.3 * land.a * (1 - clamp(land.z / 600)), r: 8 },

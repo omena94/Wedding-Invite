@@ -426,11 +426,11 @@ void main() {
     vec2 q = (p - hl.xy) / vec2(hl.z, hl.z * 5.0);
     col += (C_EMBER * 0.35 + C_SIGNAL * 0.15) * hl.w * exp(-dot(q, q)) * (0.8 + 0.2 * detail * g);
   } else if (style == 4) {
-    // 淺色絨布（禮盒的內襯）：一塊塊壓皺的絨毛明暗、很細的毛；一道寬寬的光澤隨時間慢慢滑過
-    float crush = fbm(p / 150.0, 3);
-    float fib = snoise(p / 2.0);
-    float sheen = smoothstep(-0.1, 0.5, fbm(p / 520.0 + vec2(goboT * 0.02, 0.0), 2));
-    col = mix(C_PAPER, C_BLOOD, 0.2) * (0.74 + 0.1 * crush + 0.1 * sheen + 0.03 * fib * detail);
+    // 淺色絨布（禮盒的內襯）：很細的毛（高頻、很淡），加一道寬寬的柔光隨時間慢慢滑過；
+    // 不要大塊的明暗斑（看起來會像髒掉的迷彩）
+    float fib = snoise(p / 1.8) * 0.6 + snoise(p / 4.0) * 0.4;
+    float sheen = exp(-pow((p.x * 0.4 + p.y - 300.0 * sin(goboT * 0.25)) / 700.0, 2.0));
+    col = mix(C_PAPER, C_BLOOD, 0.16) * (0.8 + 0.06 * sheen + 0.025 * fib * detail);
   } else if (style == 5) {
     // 木頭地板：一條條木板（寬 190、長度錯開），每條顏色稍微不同，木紋沿著木板，板縫是暗線
     float bw = 190.0, len = 1500.0;
@@ -441,24 +441,26 @@ void main() {
     vec2 lp = vec2(mod(p.x + off, len), mod(p.y, bw));
     float grain = fbm(vec2(lp.x / 600.0 + id * 9.0, lp.y / 12.0 + id * 3.0), 3);
     float seam = max(1.0 - smoothstep(0.0, 2.2, min(lp.y, bw - lp.y)), 1.0 - smoothstep(0.0, 2.2, min(lp.x, len - lp.x)));
-    col = mix(C_PAPER, C_SEPIA, 0.36 + 0.1 * id + 0.07 * grain * detail) * (1.0 - 0.4 * seam * detail);
+    col = mix(C_PAPER, C_SEPIA, 0.44 + 0.1 * id + 0.07 * grain * detail) * (1.0 - 0.4 * seam * detail);
   } else if (style == 6) {
     // 貨架的背板：洞洞板（烤漆的鐵板、一格一格的圓孔），孔裡是暗的
     vec2 g = mod(p, 46.0) - 23.0;
     float hole = 1.0 - smoothstep(4.0, 5.4, length(g));
-    col = mix(C_PAPER, C_ASH, 0.3) * (0.9 + 0.02 * fbm(p / 500.0, 2)) * (1.0 - 0.55 * hole * detail);
+    col = mix(C_PAPER, C_ASH, 0.3) * (0.9 + 0.02 * fbm(p / 500.0, 2)) * (1.0 - 0.28 * hole * detail);
   } else if (style == 8) {
     // 彩券行的玻璃櫃台：玻璃底下一排排別的刮刮卡（暗暗的），玻璃面上一道斜斜的反光（hl：位置、寬、濃度）
     vec2 cs = vec2(230.0, 330.0);
     vec2 cell = floor(p / cs), lp = mod(p, cs);
     float h = hash12(cell);
-    float inT = step(16.0, lp.x) * step(lp.x, cs.x - 16.0) * step(16.0, lp.y) * step(lp.y, cs.y - 16.0);
+    // 邊緣柔一點（隔著玻璃、在焦外），不要一格一格的硬格線
+    float inT = smoothstep(10.0, 30.0, lp.x) * smoothstep(10.0, 30.0, cs.x - lp.x) * smoothstep(10.0, 30.0, lp.y) * smoothstep(10.0, 30.0, cs.y - lp.y);
     vec3 tk = h < 0.33 ? mix(C_SIGNAL, C_PAPER, 0.35) : h < 0.66 ? mix(C_BLOOD, C_PAPER, 0.3) : mix(C_PAPER, C_ASH, 0.35);
     float panel = step(40.0, lp.x) * step(lp.x, cs.x - 40.0) * step(140.0, lp.y) * step(lp.y, cs.y - 50.0);
     float head = step(16.0, lp.y) * step(lp.y, 70.0);
     tk = mix(tk, C_ASH, panel * 0.85);
     tk = mix(tk, tk * 0.6, head * 0.6);
-    col = mix(C_INK2 * 0.7, tk * 0.32 * (0.8 + 0.2 * detail), inT);
+    // 玻璃底下很暗、對比很低（只是「這裡是彩券行」的暗示，不能搶戲），越遠越淡
+    col = C_INK2 * 0.6 + tk * 0.045 * inT * (0.4 + 0.6 * detail);
     // 玻璃的反光：一道寬、一道窄
     float d = (p.x * 0.5 + p.y - hl.x) / hl.z;
     col += C_BONE * hl.w * (0.05 * exp(-d * d) + 0.035 * exp(-pow(d * 4.0 - 6.0, 2.0)));

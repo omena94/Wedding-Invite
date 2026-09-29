@@ -10,7 +10,7 @@
 // 紙面畫進 render target，交給 _t4 的舞台用透視鏡頭拍（桌面、影子、景深）。
 import * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
-import { FSPass, Layer2D } from '../engine/gl';
+import { FSPass, Layer2D, SCALE } from '../engine/gl';
 import { F, font, loadText } from '../engine/type';
 import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, lerp, prog, pulse, TAU } from '../engine/util';
@@ -29,7 +29,8 @@ const COL = 820; // 左右欄的分隔線
 const NOTE = { x: 858, y: 250, w: 592, h: 640 }; // 注意事項（留言）
 const SIG_K = 1.45; // 署名佔的高度 = 署名字級 × SIG_K
 const STEP_NAMES = ['確認零件', '插入木榫', '對齊・鎖緊', '完成'];
-const TEXT = '組合式愛心組裝說明人組裝所需時間一輩子注意事項請勿單獨組裝本產品需兩人同時操作零件左半心右半心木榫六角扳手耐心確認插入對齊鎖緊完成喀頁這一格留給你的叮嚀掃描右下角寫下想對新人說的話純音樂間奏中';
+// 符號（♪ ∞ ☑ → 之類）不在打包時掃的中文範圍裡，要跟中文一起預載，不然第一次畫會用備援字型（確定性也會不過）
+const TEXT = '♪∞☑☐→·—♥%＄$組合式愛心組裝說明人組裝所需時間一輩子注意事項請勿單獨組裝本產品需兩人同時操作零件左半心右半心木榫六角扳手耐心確認插入對齊鎖緊完成喀頁這一格留給你的叮嚀掃描右下角寫下想對新人說的話純音樂間奏中';
 
 // ---------------------------------------------------------------- 紙（shader）：很淡的纖維、左右欄之間的細線
 const PAPER = () => new FSPass(/* glsl */ `
@@ -41,7 +42,39 @@ const PAPER = () => new FSPass(/* glsl */ `
   }`);
 
 /** 工作桌上散落的東西（多出來的螺絲、一根木榫、一支鉛筆）：畫一次，整晚共用。 */
+/**
+ * 攤在木頭地板上的零件（俯視），畫一次、整晚共用。1024×512 的畫布分四格：
+ * 左半：兩塊半邊的心形木塊；右上：兩根木榫＋一支六角扳手；右下左：三顆螺絲；右下右：一支鉛筆。
+ */
 function drawProps(c: CanvasRenderingContext2D) {
+  // 兩塊木頭（半邊的心），淺色木頭＋幾條木紋，側面一圈比較暗（厚度）
+  const piece = (poly: [number, number][], ox: number, oy: number, sc: number) => {
+    const path = () => { c.beginPath(); poly.forEach(([x, y], i) => (i ? c.lineTo(ox + x * sc, oy + y * sc) : c.moveTo(ox + x * sc, oy + y * sc))); c.closePath(); };
+    c.save();
+    c.translate(10, 12); path(); c.fillStyle = mixRgba('paper', 'sepia', 0.45); c.fill(); c.translate(-10, -12);
+    path(); c.fillStyle = mixRgba('paper', 'sepia', 0.22); c.fill();
+    c.clip();
+    c.strokeStyle = mixRgba('paper', 'sepia', 0.38, 0.6); c.lineWidth = 2;
+    for (let k = 0; k < 9; k++) { c.beginPath(); c.moveTo(ox - 200, oy - 120 + k * 30); c.bezierCurveTo(ox - 60, oy - 100 + k * 30, ox + 40, oy - 140 + k * 30, ox + 200, oy - 115 + k * 30); c.stroke(); }
+    c.restore();
+    path(); c.strokeStyle = rgba('sepia', 0.55); c.lineWidth = 2.5; c.stroke();
+  };
+  piece(HALF_L, 250, 230, 1.35);
+  piece(HALF_R, 290, 290, 1.35);
+  // 木榫：兩根短短的圓棒
+  const dowel = (x: number, y: number) => {
+    c.fillStyle = mixRgba('paper', 'sepia', 0.3); c.fillRect(x, y, 170, 30);
+    c.fillStyle = mixRgba('paper', 'sepia', 0.18); c.fillRect(x, y + 5, 170, 8);
+    c.strokeStyle = rgba('sepia', 0.5); c.lineWidth = 2; c.strokeRect(x, y, 170, 30);
+    c.fillStyle = mixRgba('paper', 'sepia', 0.4); c.beginPath(); c.ellipse(x + 170, y + 15, 7, 15, 0, 0, TAU); c.fill();
+  };
+  dowel(560, 40); dowel(600, 100);
+  // 六角扳手：L 形，金屬（灰）
+  c.save(); c.strokeStyle = rgba('sepia', 0.7); c.lineWidth = 20; c.lineCap = 'round'; c.lineJoin = 'round';
+  c.beginPath(); c.moveTo(830, 60); c.lineTo(980, 60); c.lineTo(980, 200); c.stroke();
+  c.strokeStyle = rgba('ash'); c.lineWidth = 13;
+  c.beginPath(); c.moveTo(830, 60); c.lineTo(980, 60); c.lineTo(980, 200); c.stroke();
+  c.restore();
   // 螺絲（俯視：圓頭＋十字）
   const screw = (x: number, y: number, r: number) => {
     const gr = c.createRadialGradient(x - r * 0.3, y - r * 0.3, 1, x, y, r);
@@ -50,9 +83,9 @@ function drawProps(c: CanvasRenderingContext2D) {
     c.strokeStyle = rgba('sepia', 0.6); c.lineWidth = 2; c.stroke();
     c.lineWidth = 3; c.beginPath(); c.moveTo(x - r * 0.55, y); c.lineTo(x + r * 0.55, y); c.moveTo(x, y - r * 0.55); c.lineTo(x, y + r * 0.55); c.stroke();
   };
-  screw(40, 40, 26); screw(110, 60, 22); screw(70, 110, 24);
-  // 鉛筆
-  c.save(); c.translate(180, 150);
+  screw(580, 330, 30); screw(670, 360, 26); screw(620, 430, 28);
+  // 鉛筆（斜的）
+  c.save(); c.translate(790, 470); c.rotate(-0.72);
   c.fillStyle = rgba('signal', 0.85); c.fillRect(0, -10, 260, 20);
   c.fillStyle = rgba('sepia', 0.2); c.fillRect(0, 3, 260, 7);
   c.fillStyle = rgba('bone'); c.beginPath(); c.moveTo(260, -10); c.lineTo(300, 0); c.lineTo(260, 10); c.fill();
@@ -62,18 +95,21 @@ function drawProps(c: CanvasRenderingContext2D) {
 
 function makeRig() {
   const doc = docRT(DW, DH);
-  // 說明書攤在剛拆開的瓦楞紙箱上（楞紋、一條封箱膠帶），頭頂一盞工作燈，光圈清楚、四周暗一點
+  // 說明書攤在木頭地板上，旁邊散著零件（兩塊心形木塊、木榫、扳手、螺絲、鉛筆）；頭頂一盞工作燈，光圈清楚、四周暗一點
   const st = new Stage(5, 30);
   st.U.poolFloor.value = 0.6;
   const mat = st.docMaterial(doc.texture, [doc.width, doc.height], [DW, DH], { radius: 3 });
   const page = st.docMesh(mat, DW, DH, 0, 0, 1);
   page.rotation.z = 0.018;
-  const pl = new Layer2D(512, 192, 2, { fast: true });
+  const pl = new Layer2D(1024, 512, SCALE, { fast: true });
   drawProps(pl.ctx);
   const tp: [number, number] = [pl.canvas.width, pl.canvas.height];
-  st.prop(pl.texture, tp, [0, 0, 0.3, 0.75], 154, 144, -860, 380, 1, 0.2); // 三顆螺絲
-  st.prop(pl.texture, tp, [0.34, 0.68, 0.62, 0.22], 318, 42, -1000, -330, 1, 0.5); // 鉛筆
-  return { doc, st, mat, page };
+  st.prop(pl.texture, tp, [0, 0, 0.5, 1], 460, 460, 1010, 170, 1, 0.35); // 兩塊心形木塊（說明書右邊的地板上）
+  st.prop(pl.texture, tp, [0.5, 0, 0.5, 0.45], 420, 190, 960, 560, 1, -0.3); // 木榫與扳手（右上）
+  st.prop(pl.texture, tp, [0.5, 0.55, 0.25, 0.45], 180, 160, -870, 380, 1, 0.2); // 三顆螺絲（左上）
+  st.prop(pl.texture, tp, [0.74, 0.5, 0.26, 0.5], 250, 250, -950, -330, 1, 0.3); // 鉛筆（左下）
+  const repaint = () => { pl.clear(); drawProps(pl.ctx); pl.upload(); };
+  return { doc, st, mat, page, repaint };
 }
 
 // ---------------------------------------------------------------- 等角線稿
@@ -276,7 +312,8 @@ export default class Manual extends Scene {
     const { renderer, comp } = this.ctx;
     const t = f.t, R = this.rig;
     this.paper.render(renderer, R.doc);
-    if (!this.baseDrawn) { this.drawBase(); this.baseDrawn = true; }
+  // 道具的畫布整晚共用，但顏色來自色票：每首歌換主題時要重畫（每個窗格第一格重畫一次，很小、很便宜）
+    if (!this.baseDrawn) { this.drawBase(); R.repaint(); this.baseDrawn = true; }
     comp.draw(renderer, this.base.texture, R.doc);
     const L = this.live; L.clear();
     const c = L.ctx;

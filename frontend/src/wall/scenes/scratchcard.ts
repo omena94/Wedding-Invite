@@ -1,22 +1,23 @@
-// 刮刮卡（批次 T4・紙本 D，暗）：彩券行櫃台的深色絨布墊上擺著兩張「幸福刮刮卡」，頭頂一盞聚光燈，一枚硬幣自己在拍點上刮銀漆。
+// 刮刮卡（批次 T4・紙本 D，暗）：彩券行的玻璃櫃台上擺著兩張「幸福刮刮卡」（玻璃底下是一排排別的刮刮卡），
+// 旁邊一個放零錢的找零盤，頭頂一盞聚光燈，一枚硬幣自己在拍點上刮銀漆。
 //  - 左邊那張小卡（v2：留言區 ≤ 860×430）：銀漆底下是主打留言。第一拍起硬幣一拍刮一段（Z 字來回），一兩小節內整則刮出來，
 //    刮痕有毛邊、邊上留著刮不乾淨的銀。留言是手寫字 40～60 px（依字數），署名永遠在最後一行下面。
 //  - 右邊那張是「幸運九宮格」（場景的主角，一直在動）：上面印著「本期主題曲」——現在唱的那一句（比留言小一級，逐字跟唱）；
 //    留言刮完，硬幣飛過去一拍刮一格，刮到中間那一排三顆愛心連成一線（紅筆劃過、火星噴一下），下一個小節線刮開最下面那條：
 //    恭喜中獎——一輩子。刮完硬幣躺到桌上，每個小節線自己彈起來翻一圈。
-//  - 環境：聚光燈照著兩張卡，四周的絨布暗下去；燈跟著大鼓微微一亮；每個小節線銀漆上掃過一道反光；
+//  - 環境：聚光燈照著兩張卡，四周暗下去；燈跟著大鼓微微一亮；玻璃上的反光慢慢滑、每個小節線閃過一道；銀漆上也掃過一道反光；
 //    鏡頭斜斜地拍，跟著硬幣輕輕移，焦點在留言上。
 //  - 沒有留言：銀漆底下是一句邀請。純音樂：主題曲那一格寫歌名。
 // 畫法：兩張卡攤在同一張 render target（展開圖）：印刷紋與表頭放射紋一個 shader、印刷的字與銀漆底下的東西一張不會變的 Canvas、
 // 刮痕是一張遮罩（每格把「到現在為止」的刮痕用 LineBatch 重畫一次，往回跳也對），銀漆 shader 讀遮罩加雜訊做毛邊；
 // 歌詞、連線、硬幣在卡上的影子第二張 Canvas。硬幣本身是桌上的 3D 道具（會抬起來、斜拿著刮、翻面）。
-// 交給 _t4 的舞台拍（絨布、聚光燈、影子、景深）。
+// 交給 _t4 的舞台拍（玻璃櫃台、聚光燈、影子、景深）。
 import * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
 import { FSPass, Layer2D, SCALE, makeRT, clearRT } from '../engine/gl';
 import { LineBatch } from '../engine/lines';
 import { F, font, loadText } from '../engine/type';
-import { LIN, rgba } from '../engine/palette';
+import { LIN, rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, hash, lerp, prog, pulse, TAU } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
 import { lyricAt, signature, drawHeart, sparkParticles, WEDDING_DATE } from './_motifs';
@@ -47,7 +48,8 @@ const COIN_R = 58;
 const REST: V3 = [720, -250, 1.5]; // 刮完硬幣躺的地方（桌上，右邊卡片的右下）
 const SIG_K = 1.5; // 署名佔的高度 = 署名字級 × SIG_K（含間距）
 
-const TEXT = '幸福刮刮卡第期幸運九宮格中獎機率本期主題曲恭喜中獎一輩子這一格留給你掃描右下角寫下想對新人說的話純音樂新人';
+// 符號（♪ ∞ ☑ → 之類）不在打包時掃的中文範圍裡，要跟中文一起預載，不然第一次畫會用備援字型（確定性也會不過）
+const TEXT = '♪∞☑☐→·—♥%＄$幸福刮刮卡第期幸運九宮格中獎機率本期主題曲恭喜中獎一輩子這一格留給你掃描右下角寫下想對新人說的話純音樂新人';
 const PERIOD = WEDDING_DATE.slice(5).replace('-', '');
 
 // ---------------------------------------------------------------- 卡面的印刷（shader）
@@ -133,23 +135,20 @@ function drawProps(c: CanvasRenderingContext2D) {
     c.stroke();
     c.restore();
   };
-  // 左半：主角硬幣（有愛心）；右上：兩枚零錢；右下：鉛筆
+  // 左半：主角硬幣（有愛心）；右半：櫃台上的找零盤（橡膠的圓盤，一圈防滑的凸點），盤裡兩枚零錢
   coin(128, 128, 120); drawHeart(c, 128, 132, 110);
-  coin(320, 70, 56); coin(440, 72, 50);
-  c.save(); c.translate(270, 190); c.rotate(-0.05);
-  c.fillStyle = rgba('signal', 0.85); c.fillRect(0, -11, 190, 22);
-  c.fillStyle = rgba('sepia', 0.25); c.fillRect(0, 3, 190, 8);
-  c.fillStyle = rgba('bone'); c.beginPath(); c.moveTo(190, -11); c.lineTo(232, 0); c.lineTo(190, 11); c.fill();
-  c.fillStyle = rgba('sepia', 0.85); c.beginPath(); c.moveTo(222, -3); c.lineTo(232, 0); c.lineTo(222, 3); c.fill();
-  c.fillStyle = rgba('rose', 0.8); c.fillRect(-26, -11, 26, 22);
-  c.restore();
+  c.fillStyle = mixRgba('ink2', 'signal', 0.18); c.beginPath(); c.arc(384, 128, 120, 0, TAU); c.fill();
+  c.strokeStyle = mixRgba('ink2', 'signal', 0.35); c.lineWidth = 8; c.beginPath(); c.arc(384, 128, 112, 0, TAU); c.stroke();
+  c.fillStyle = mixRgba('ink2', 'signal', 0.3);
+  for (let r = 30; r < 100; r += 18) for (let i = 0; i < Math.floor(r / 3); i++) { const a = (i / Math.floor(r / 3)) * TAU; c.beginPath(); c.arc(384 + Math.cos(a) * r, 128 + Math.sin(a) * r, 2.5, 0, TAU); c.fill(); }
+  coin(350, 100, 40); coin(420, 150, 36);
 }
 
 function makeRig() {
   const doc = docRT(AW, AH);
   const mask = makeRT(AW, AH, { pxScale: SCALE * 0.5, depthBuffer: false });
-  const st = new Stage(7, 30);
-  // 聚光燈：光圈裡亮、外面很暗（絨布幾乎看不到），光圈染一點暖色
+  const st = new Stage(8, 30);
+  // 聚光燈：光圈裡亮、外面很暗，光圈染一點暖色（玻璃底下的刮刮卡只在光裡看得到）
   st.U.poolFloor.value = 0.3; st.U.poolWarm.value = 0.18; st.U.ambient.value = 0.8;
   const mat = st.docMaterial(doc.texture, [doc.width, doc.height], [AW, AH], { edge: 0 });
   const mk = (r: typeof CA, w: typeof WA) => { const m = new THREE.Mesh(cardGeo(r), mat); m.position.set(w.x, w.y, 1.5); m.rotation.z = w.rot; m.frustumCulled = false; st.scene.add(m); return m; };
@@ -159,8 +158,9 @@ function makeRig() {
   const tp: [number, number] = [propsL.canvas.width, propsL.canvas.height];
   const coin = st.prop(propsL.texture, tp, [0, 0, 0.5, 1], COIN_R * 2.1, COIN_R * 2.1, 0, 0, 12);
   coin.renderOrder = 5;
-  st.prop(propsL.texture, tp, [0.5, 0, 0.5, 0.52], 250, 130, -120, 330, 1, 0.3); // 兩枚零錢
-  return { doc, mask, st, cardA, cardB, coin };
+  st.prop(propsL.texture, tp, [0.5, 0, 0.5, 1], 280, 280, -120, 360, 1, 0.3); // 找零盤
+  const repaint = () => { propsL.clear(); drawProps(propsL.ctx); propsL.upload(); };
+  return { doc, mask, st, cardA, cardB, coin, repaint };
 }
 
 // ---------------------------------------------------------------- 刮的路徑
@@ -286,7 +286,8 @@ export default class ScratchCard extends Scene {
     const R = this.rig, doc = R.doc;
     // ---- 1. 兩張卡畫進展開圖
     this.bgPass.render(renderer, doc);
-    if (!this.printed) { this.drawPrint(); this.printed = true; }
+  // 道具的畫布整晚共用，但顏色來自色票：每首歌換主題時要重畫（每個窗格第一格重畫一次，很小、很便宜）
+    if (!this.printed) { this.drawPrint(); R.repaint(); this.printed = true; }
     comp.draw(renderer, this.print.texture, doc);
     this.scratch.clear();
     for (const sw of this.swipes) {
@@ -365,9 +366,13 @@ export default class ScratchCard extends Scene {
     st.U.focus.value = st.depthOf(toWorld({ x: MSGP.x + MSGP.w * 0.6, y: MSGP.y + MSGP.h / 2 }));
     st.U.aperture.value = 16;
     st.U.pool.value.set(0, 20, 1250, 0.92 + 0.06 * this.ctx.audio.hit('kick', t, 0.1));
+    // 玻璃上的反光：一道寬寬的光慢慢往右滑；每個小節線另外有一道很快地閃過（像有人經過擋到燈）
+    const lastBar = this.g.bars.filter((b) => b <= t).pop() ?? -1e9;
+    const gx = -1400 + (((t - s) * 90) % 3400);
+    (st.tableMat.uniforms.hl!.value as THREE.Vector4).set(gx, 0, 380, 1 + 1.6 * pulse(t, lastBar, 0.15));
     const sh = (r: typeof CA, w: typeof WA) => ({ x: w.x + 10, y: w.y - 14, w: r.w, h: r.h, rot: w.rot, blur: 22, k: 0.32, r: 10 });
     const coinSh = coin.p[2] > 3 && !this.coinAt(t).onCard ? [{ x: coin.p[0] + 8 + coin.p[2] * 0.3, y: coin.p[1] - 10 - coin.p[2] * 0.4, w: COIN_R * 1.9, h: COIN_R * 1.9, blur: 8 + coin.p[2] * 0.15, k: 0.3, r: COIN_R }] : [];
-    st.shadows([sh(CA, WA), sh(CB, WB), { x: -110, y: 318, w: 180, h: 60, rot: 0.3, blur: 8, k: 0.3, r: 30 }, ...coinSh]);
+    st.shadows([sh(CA, WA), sh(CB, WB), { x: -110, y: 350, w: 250, h: 250, blur: 14, k: 0.35, r: 125 }, ...coinSh]);
   }
 
   // ------------------------------------------------------------ 印刷（畫一次）
