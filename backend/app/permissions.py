@@ -17,10 +17,11 @@ PERMISSION_KEY = "role_permissions"
 
 # (key, 說明)；順序就是設定頁的順序
 PERMISSIONS = [
-    ("guests_view", "賓客名單：看名單、統計、匯出 Excel"),
-    ("guests_edit", "賓客名單：編輯與刪除賓客"),
-    ("guests_create", "賓客名單：手動新增賓客"),
-    ("broadcast", "賓客名單：群發 Email"),
+    ("guests_view", "婚宴：看賓客名單、統計、匯出 Excel"),
+    ("guests_edit", "婚宴：編輯與刪除賓客"),
+    ("guests_create", "婚宴：手動新增賓客"),
+    ("broadcast", "婚宴：群發 Email"),
+    ("menu", "婚宴：菜單（跟飯店討論中的菜色）"),
     ("seating_view", "座位圖：看正式廳的座位、預覽賓客畫面（帶位用）"),
     ("seating_edit", "座位圖：擺桌椅、安排座位、廳設定"),
     ("gifts_view", "喜餅：看送餅名單"),
@@ -90,6 +91,7 @@ def require_perm(*keys: str):
 # /api/planner 底下的路徑對應到哪把鑰匙（沒列到的一律只給新人）
 PLANNER_PATH_KEYS = [
     ("settings", ("settings",)),
+    ("menu", ("menu",)),
     ("expenses", ("budget",)),
     ("payments", ("budget",)),
     ("banquet", ("budget",)),

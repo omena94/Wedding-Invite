@@ -273,7 +273,7 @@ VendorStatus = Literal["candidate", "quoted", "signed", "done", "rejected"]
 PaidBy = Literal["groom", "bride", "shared", "family"]
 Assignee = Literal["groom", "bride", "both"]
 TaskKind = Literal["task", "milestone"]
-FileKind = Literal["doc", "receipt", "photo"]
+FileKind = Literal["doc", "receipt", "photo", "menu"]  # menu：婚宴菜單檔案（2026-09-29）
 
 
 SeatKind = Literal["round", "rect", "chair", "zone", "label", "stage", "entrance", "wall", "column"]
@@ -710,3 +710,35 @@ class PhotoReorderIn(BaseModel):
 class PhotoPublishIn(BaseModel):
     ids: list[int]
     is_public: bool = True
+
+
+# ---------------------------------------------------------------------
+# 婚宴菜單（2026-09-29）
+# ---------------------------------------------------------------------
+MenuStatus = Literal["discussing", "confirmed", "change"]
+
+
+class MenuItemIn(BaseModel):
+    category: str = Field(default="其他", min_length=1, max_length=50)
+    name: str = Field(min_length=1, max_length=120)
+    name_en: str = Field(default="", max_length=160)
+    status: MenuStatus = "discussing"
+    note: str = Field(default="", max_length=500)
+
+
+class MenuItemPatch(BaseModel):
+    category: str | None = Field(default=None, min_length=1, max_length=50)
+    name: str | None = Field(default=None, min_length=1, max_length=120)
+    name_en: str | None = Field(default=None, max_length=160)
+    status: MenuStatus | None = None
+    note: str | None = Field(default=None, max_length=500)
+
+
+class MenuReorder(BaseModel):
+    ids: list[int] = Field(min_length=1, max_length=500)
+
+
+class MenuImport(BaseModel):
+    """一次匯入一整份（例如飯店寄來的版本）；replace=True 會先清掉現有的。"""
+    items: list[MenuItemIn] = Field(min_length=1, max_length=500)
+    replace: bool = False

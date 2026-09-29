@@ -546,3 +546,17 @@ class GuestPhoto(Base):
     uploader: Mapped[str] = mapped_column(String(60), default="")      # 賓客自填的名字，可空
     thumb_name: Mapped[str] = mapped_column(String(80), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class MenuItem(Base):
+    """婚宴菜單（2026-09-29）：跟飯店討論中的菜色，只給新人看。一道一列，可標討論中／確定／要更換並寫備註。"""
+    __tablename__ = "menu_items"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    category: Mapped[str] = mapped_column(String(50), default="其他")   # 精選冷盤、熱食類、甜點類…
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    name: Mapped[str] = mapped_column(String(120))
+    name_en: Mapped[str] = mapped_column(String(160), default="")
+    status: Mapped[str] = mapped_column(String(20), default="discussing")  # discussing / confirmed / change
+    note: Mapped[str] = mapped_column(String(500), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

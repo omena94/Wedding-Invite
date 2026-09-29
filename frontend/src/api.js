@@ -282,6 +282,13 @@ export async function fetchThumbBlobUrl(id) {
   return URL.createObjectURL(await res.blob());
 }
 
+// 婚宴菜單（2026-09-29）
+export const fetchMenu = () => request(`${P}/menu`, { auth: true });
+export const createMenuItem = (data) => request(`${P}/menu`, { method: "POST", body: data, auth: true });
+export const updateMenuItem = (id, data) => request(`${P}/menu/${id}`, { method: "PATCH", body: data, auth: true });
+export const deleteMenuItem = (id) => request(`${P}/menu/${id}`, { method: "DELETE", auth: true });
+export const reorderMenu = (ids) => request(`${P}/menu/reorder`, { method: "POST", body: { ids }, auth: true });
+export const importMenu = (items, replace = false) => request(`${P}/menu/import`, { method: "POST", body: { items, replace }, auth: true });
 export const fetchFiles = (params = {}) => request(`${P}/files${qs(params)}`, { auth: true });
 export function uploadFile(file, fields = {}) {
   const fd = new FormData();

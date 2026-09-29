@@ -24,7 +24,7 @@ export const STATUS_PILL = {
 export const PAID_BY = { groom: "新郎", bride: "新娘", shared: "共同", family: "家長" };
 export const ASSIGNEE = { groom: "新郎", bride: "新娘", both: "兩人" };
 export const PAY_METHODS = ["ATM", "現金", "信用卡", "LINE Pay", "其他"];
-export const FILE_KIND = { doc: "文件", receipt: "收據", photo: "照片" };
+export const FILE_KIND = { doc: "文件", receipt: "收據", photo: "照片", menu: "菜單" }; // menu：婚宴菜單檔案（2026-09-29）
 
 export const toOptions = (obj) => Object.entries(obj).map(([value, label]) => ({ value, label }));
 export const listOptions = (arr) => arr.map((v) => ({ value: v, label: v }));
