@@ -71,11 +71,12 @@
 
 | 畫什麼 | 附哪些圖 |
 |---|---|
-| 一定要附 | `faces.png`（四個角色的大頭：左起宣文、孟庭、芃芃、QQ） |
+| 一定要附（人） | **`faces-v2.png`**（2026-09-29 新人核准的「更像本人」的臉，左宣文、右孟庭；**人的長相以這張為準**） |
+| 一定要附（狗） | `faces.png`（四個角色的大頭，左起宣文、孟庭、芃芃、QQ；人的臉是舊版，只看狗） |
 | 日常服一 | `couple-daily.png` |
 | 婚禮服 | `couple-wedding.png` |
 | 有狗 | `dogs-side.png`、`dogs-front.png` |
-| 新衣服（上班、籃球、演唱會、日常服二…） | 主導者定案的服裝設定圖（`outfit-*.png`，定案後放在 `wall-out/codex-chars/`；還沒有就先問主導者，不要自己編服裝） |
+| 新衣服 | 已定案：`outfit-work.png`（宣文工程師、孟庭護理師）、`outfit-hoops.png`（看籃球賽，A&O 紫白球衣 13／03）、`outfit-concert.png`（演唱會）、`outfit2-sheet.png`（日常服二：白 T＋羽球袋／米白荷葉裙洋裝）。其他服裝先問主導者，不要自己編 |
 | 要跟 base 一樣大、一樣的畫風 | `poses/base/xw_idle_front.png`、`mt_idle_front.png`、`pp_stand.png`、`qq_stand.png`（基準姿勢）＋一兩張動作圖（`xw_bad_ready.png`、`pp_jump.png`） |
 
 附太多張 Codex 會抓不到重點，一次 5～8 張為限。
@@ -86,7 +87,8 @@
 你是插畫師，要替婚禮會場大螢幕的 MV 畫「紙偶動畫」用的角色姿勢圖。程式會把這些圖當成一張張紙偶，在場景裡移動、彈跳、傾斜，並依照節拍切換姿勢。
 
 附上的圖是**已經定案的角色設定**（新人看過，說很像）：
-- faces.png：四個角色的大頭。左起新郎「宣文」、新娘「孟庭」、狗「芃芃」、狗「QQ」。
+- faces-v2.png：新郎「宣文」（左）和新娘「孟庭」（右）的大頭，**人的臉以這張為準**。
+- 〈faces.png：四個角色的大頭，這裡只看狗「芃芃」（左三）、「QQ」（左四）。（有狗才附）〉
 - 〈couple-daily.png：兩人的日常服一全身。／outfit-work.png：兩人的上班服（宣文工程師、孟庭護理師）。……照實際附的圖寫〉
 - 〈dogs-side.png：芃芃（左）和 QQ（右）的側面與背面。dogs-front.png：正面坐姿。（有狗才寫）〉
 - 〈xw_idle_front.png、mt_idle_front.png：已經做好的姿勢圖（透明背景），**畫風、比例、透明背景都照這兩張**，
@@ -138,7 +140,7 @@
 cd <scratchpad>/codex-<組名>
 C=/d/Work/Wedding-Invite/wall-out/codex-chars
 codex exec --skip-git-repo-check -C . -s workspace-write -c 'approval_policy="never"' -o last.md \
-  -i $C/faces.png $C/couple-daily.png $C/poses/base/xw_idle_front.png $C/poses/base/mt_idle_front.png - < PROMPT.md > run.log 2>&1
+  -i $C/faces-v2.png $C/couple-daily.png $C/poses/base/xw_idle_front.png $C/poses/base/mt_idle_front.png - < PROMPT.md > run.log 2>&1
 ```
 
 - 一次畫 10～20 張要跑很久（一張一兩分鐘，還會自己重畫不合格的）：放背景跑，看 `run.log` 的進度、`last.md` 的回報。
@@ -166,7 +168,7 @@ node scripts/wall-sprites.mjs <組名> --check
 產生 `wall-out/sprites-<組名>-check-1.jpg`…（不轉檔、不需要 sprites.json）。**每一張都要打開看**：
 
 - 左邊疊在深色底上、右邊疊在洋紅底上：**背景真的透明**（洋紅底上沒有白框、白邊、米白底；白衣服、白狗、白紗沒有被挖空）。
-- **長相跟 faces.png 一樣**：宣文沒有鬍子、孟庭兩眼張開、芃芃泰迪臉、QQ 沒有項圈。
+- **長相跟 faces-v2.png（人）、faces.png（狗）一樣**：宣文沒有鬍子、孟庭兩眼張開、芃芃泰迪臉、QQ 沒有項圈。
 - **四肢與道具沒有被畫布切掉**，側面朝右，沒有品牌、文字。
 - 同一種角色每張一樣大（頭的大小差不多）；循環的兩張頭的方向一樣。
 - 左邊的格線每 100 px 一條、紅線每 200 px（標原圖的座標），量道具點用。
