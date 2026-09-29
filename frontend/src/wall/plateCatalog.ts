@@ -210,6 +210,14 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "idea": "平溪天燈：兩人在天燈上寫字（留言），點火、放手在小節線，天燈升空，遠處已經有一片寫著其他留言的天燈。"
  },
  {
+  "name": "ferriswheel",
+  "title": "摩天輪",
+  "family": "date",
+  "light": false,
+  "couple": true,
+  "idea": "巨大的摩天輪慢轉（細線結構、燈泡在拍點閃），兩人在其中一個車廂裡，其他車廂裝著留言與歌詞。"
+ },
+ {
   "name": "coffee",
   "title": "咖啡拉花",
   "family": "home",
