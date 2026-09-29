@@ -258,12 +258,28 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "idea": "兩只香檳杯在拍點碰杯，氣泡往上冒，冒到頂端組成留言的字。"
  },
  {
+  "name": "bouquet",
+  "title": "丟捧花",
+  "family": "wedding",
+  "light": true,
+  "couple": true,
+  "idea": "孟庭背對賓客往後丟捧花（預備一小節），捧花飛過畫面，接住的人舉起留言。"
+ },
+ {
   "name": "debug",
   "title": "深夜寫程式",
   "family": "work",
   "light": false,
   "couple": true,
   "idea": "宣文在雙螢幕前敲鍵盤（一拍一下），螢幕上的建置從紅燈在小節線變綠燈；孟庭下班穿著護理服回來，從後面抱住他。留言是螢幕上一則程式碼審查的留言。"
+ },
+ {
+  "name": "concert",
+  "title": "搖滾區",
+  "family": "live",
+  "light": false,
+  "couple": true,
+  "idea": "舞台燈照拍子掃過觀眾，兩人在前排舉手跟唱，舞台大螢幕是歌詞（逐字跟唱）。留言寫在兩人舉的應援手幅上。"
  },
  {
   "name": "boarding",
