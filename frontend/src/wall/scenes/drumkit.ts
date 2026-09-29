@@ -7,6 +7,8 @@
 //  - 歌詞（比留言小一級）是燈打在後面布幕上的字：跟著布幕的皺褶一明一暗，逐字跟唱。
 //    沒有留言：歌詞印在鼓皮上（主角、逐字跟唱），布幕上是新人的名字與一行小小的邀請。純音樂：布幕上是小小的歌名。
 //  - 鏡頭：舞台燈在第一拍「亮」起來，之後整個窗格很慢地推近大鼓；大鼓的每一下讓畫面輕輕一震。
+//    兩道舞台光束在每個小節線擺到另一邊（每小節一個小事件）；右下角（QR）落在燈外的暗處。
+//  - 字級照 v2 標準：留言 40～60（照字數）、署名 26～32、歌詞比留言小 4 px。
 // 手法：整個舞台（布幕、地板、光錐、鼓身的烤漆與鍍鉻、鼓皮的振動、銅鈸的車紋與晃動）都在一個全螢幕 shader 裡用 SDF 畫，
 // 鼓皮上的字與布幕上的字各是一張 Canvas 圖層，由 shader 取樣（字跟著鼓皮的波紋與布幕的皺褶一起動）。
 import * as THREE from 'three';
@@ -17,7 +19,8 @@ import { rgba } from '../engine/palette';
 import { clamp, ease, prog } from '../engine/util';
 import { lyricAt, beatAfter, drawHeart, COUPLE_ZH, DATE_DOTS } from './_motifs';
 import { layoutRows, drawRows, darkInk, type RowsLayout } from './_t4';
-import { T23_INVITE, T23_TEXT, sigOf, layMsg, lastBefore, winBeats, winBars, type MsgLay, type Rect } from './_t23';
+import { T23_INVITE, T23_TEXT, sigOf, layMsgV2, lastBefore, winBeats, winBars, type MsgLay, type Rect } from './_t23';
+import { V2, lyricV2 } from './_v2';
 import type { Line } from '../engine/lyrics';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'instrument', paper: false, energy: [0.4, 1], bars: [4, 8] };
@@ -27,7 +30,7 @@ const BD = { x: 960, y: 614, r: 360, hoop: 26 };
 /** 鼓皮上可以印字的範圍（圓裡面的矩形）。 */
 const HEAD_BOX = { x: 660, y: 402, w: 600, h: 428 };
 const SN = { x: 432, y: 546, rx: 150, ry: 34, h: 118 };
-const FT = { x: 1492, y: 600, rx: 168, ry: 38, h: 300 };
+const FT = { x: 1480, y: 590, rx: 162, ry: 36, h: 250 };
 const HH = { x: 205, y: 432, rx: 142, ry: 13 };
 const CR = { x: 440, y: 262, rx: 226, ry: 30, a: -0.12 };
 const RD = { x: 1530, y: 330, rx: 246, ry: 34, a: 0.1 };
@@ -44,6 +47,7 @@ const STAGE = () => new FSPass(/* glsl */ `
   uniform sampler2D uTxt; uniform sampler2D uCur;
   uniform float uZoom; uniform vec2 uPan; uniform float uOn; uniform float uT; uniform float uRaw;
   uniform float kT, sT, hT, cT, rT, fT;   // 距離上一下的秒數
+  uniform vec2 uBeam;                     // 兩道舞台光束的擺角（每小節擺到另一邊）
   uniform float kA, sA, cA;               // 那一下的力道
   uniform vec4 rows[${NROW}];             // 鼓皮上每一行字：y0, y1, 出現了沒（0..1）, 剛出現的熱度
   uniform float nrow;
@@ -137,7 +141,7 @@ const STAGE = () => new FSPass(/* glsl */ `
     // 兩道斜斜的舞台光束（煙裡看得到），從上面兩個角打向鼓組
     for (int k = 0; k < 2; k++) {
       float sx = float(k) * 2.0 - 1.0;
-      vec2 o = vec2(960.0 + sx * 1100.0, -200.0), dd = normalize(vec2(960.0 - sx * 120.0, 900.0) - o);
+      vec2 o = vec2(960.0 + sx * 1100.0, -200.0), dd = rot2(k == 0 ? uBeam.x : uBeam.y) * normalize(vec2(960.0 - sx * 120.0, 900.0) - o);
       vec2 rel = p - o;
       float along = dot(rel, dd), across = abs(rel.x * dd.y - rel.y * dd.x);
       float beam = exp(-pow(across / (40.0 + along * 0.12), 2.0)) * smoothstep(0.0, 600.0, along);
@@ -249,9 +253,11 @@ const STAGE = () => new FSPass(/* glsl */ `
     }
     // 舞台燈還沒亮的時候整體暗
     col *= 0.25 + 0.75 * uOn;
+    // 右下角（QR 與小字的地方）落在燈外的暗處：落地鼓的腳與架子沒入黑暗，HUD 的字才清楚
+    col *= 1.0 - 0.88 * smoothstep(1080.0, 1440.0, sp.x) * smoothstep(640.0, 860.0, sp.y);
     fragColor = vec4(col, 1.0);
   }`, {
-  uTxt: { value: null }, uCur: { value: null }, uRaw: { value: 0 }, uZoom: { value: 1 }, uPan: { value: new THREE.Vector2() }, uOn: { value: 1 }, uT: { value: 0 },
+  uTxt: { value: null }, uCur: { value: null }, uRaw: { value: 0 }, uZoom: { value: 1 }, uPan: { value: new THREE.Vector2() }, uOn: { value: 1 }, uT: { value: 0 }, uBeam: { value: new THREE.Vector2() },
   kT: { value: 9 }, sT: { value: 9 }, hT: { value: 9 }, cT: { value: 9 }, rT: { value: 9 }, fT: { value: 9 },
   kA: { value: 1 }, sA: { value: 1 }, cA: { value: 1 },
   rows: { value: Array.from({ length: NROW }, () => new THREE.Vector4()) }, nrow: { value: 0 },
@@ -318,8 +324,9 @@ export default class DrumKit extends Scene {
     // ---- 鼓皮上的字
     const c = this.txt.ctx;
     if (m) {
-      this.lay = layMsg(c, m.text, sig, FAM_MSG, HEAD_BOX, { min: 48, max: 150, lineHeight: 1.22, maxLines: 6, sigFamily: F.ming(400), sigSize: [34, 42], align: 'center' });
-      this.lyrSize = Math.max(48, Math.min(56, Math.round(this.lay.fit.size * 0.72)));
+      // v2：留言 40～60（照字數），像樂團漆在大鼓皮上的字，不是整面鼓皮的大字
+      this.lay = layMsgV2(c, m.text, sig, FAM_MSG, HEAD_BOX, { lineHeight: 1.3, maxLines: 6, sigFamily: F.ming(400), align: 'center' });
+      this.lyrSize = lyricV2(this.lay.fit.size);
       this.drawHeadText();
       // 一拍印一行（行多就半拍一行），署名跟在最後一行後面半拍
       const n = this.lay.lines.length;
@@ -352,8 +359,8 @@ export default class DrumKit extends Scene {
 
   private layLine(c: CanvasRenderingContext2D, line: Line, big: boolean): RowsLayout {
     return big
-      ? layoutRows(c, line, { family: F.archivo(100, 800), size: 104, minSize: 64, maxW: HEAD_BOX.w + 40, maxRows: 3, align: 'center', lineHeight: 1.1 })
-      : layoutRows(c, line, { family: FAM_LYR, size: this.lyrSize, minSize: 48, maxW: LYR.w, maxRows: 1, align: 'center' });
+      ? layoutRows(c, line, { family: F.archivo(100, 700), size: lyricV2(null), minSize: V2.lyrMin, maxW: HEAD_BOX.w, maxRows: 3, align: 'center', lineHeight: 1.2 })
+      : layoutRows(c, line, { family: FAM_LYR, size: this.lyrSize, minSize: V2.lyrMin, maxW: LYR.w, maxRows: 1, align: 'center' });
   }
 
   override render(f: Frame, out: THREE.WebGLRenderTarget): PostOverrides {
@@ -373,6 +380,13 @@ export default class DrumKit extends Scene {
     // ---- 燈在第一拍亮起來
     const on = 0.2 + 0.8 * ease.outExpo(prog(t, this.tOn - 0.02, this.tOn + 0.25));
     u.uOn!.value = on;
+    // 舞台光束：每個小節線擺到另一邊（強烈的緩動，一下子擺過去停住）
+    const bi = Math.floor(au.barAt(t) + 1e-4), bt = au.timeOfBar(bi);
+    const sw = ease.inOutCubic(clamp((t - bt) / 0.45));
+    const side = (b: number) => (((b % 2) + 2) % 2 ? 1 : -1);
+    const ang = (b: number) => 0.13 * side(b);
+    const a0 = ang(bi - 1) + (ang(bi) - ang(bi - 1)) * sw;
+    (u.uBeam!.value as THREE.Vector2).set(a0, -a0 * 0.8);
     // ---- 鏡頭：很慢地推近大鼓
     const drift = ease.inOutQuad(clamp((t - s) / Math.max(1, e - s)));
     u.uZoom!.value = 1 + 0.045 * drift;
@@ -403,7 +417,7 @@ export default class DrumKit extends Scene {
       if (ly && this.hasLyr) {
         const lay = this.layLine(c, ly.line, true);
         c.save(); c.translate(BD.x, BD.y - lay.height / 2 + lay.size * 0.72);
-        drawRows(c, lay, F.archivo(100, 800), t, { ...darkInk(), sung: rgba('bone', 0.9) }, ly.k);
+        drawRows(c, lay, F.archivo(100, 700), t, { ...darkInk(), sung: rgba('bone', 0.9) }, ly.k);
         c.restore();
       }
       L.upload();

@@ -5,7 +5,8 @@
 //  - 畫面的焦點＝主打留言：寫在平台正面的圍裙板上（旋轉木馬的名牌：深色漆板、描金的框），第一拍起一個字一個字「亮」起來
 //    （剛亮是訊號色、冷卻成紙白），署名在最後一行下面。
 //  - 歌詞（比留言小一級）寫在頂篷的花邊上，逐字跟唱。沒有留言：歌詞寫在圍裙板上（主角），花邊上是新人的名字；
-//    純音樂：花邊上是小小的歌名。
+//    純音樂：花邊上是小小的歌名。每個小節線有一道光浪從正前方往兩邊跑過所有燈泡（窗格裡每小節一個小事件）。
+//    名牌的框只比字多一點邊距（v2），右下角（QR）讓平台沒入暗處。
 //  - 鏡頭：切進來時稍微從下面往上搖（看得到頂篷），第一拍落定；之後很慢地推近。
 // 手法：Canvas2D 插畫。不會動的（夜空、遠處的燈、鏡子柱子、圍裙板）在 init() 畫成圖；每格只畫會動的
 // （轉動的頂篷條紋與花邊、繞圈的木馬與銅柱、燈泡、字），燈泡的光另外畫在一張半解析度的圖層上加亮疊上去（會發光）。
@@ -17,7 +18,8 @@ import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, hash, TAU } from '../engine/util';
 import { lyricAt, beatAfter, drawHeart, COUPLE_ZH, DATE_DOTS } from './_motifs';
 import { layoutRows, drawRows, darkInk } from './_t4';
-import { T23_INVITE, T23_TEXT, sigOf, layMsg, stagger, type MsgLay, type Rect } from './_t23';
+import { T23_INVITE, T23_TEXT, sigOf, layMsgV2, stagger, type MsgLay, type Rect } from './_t23';
+import { V2, lyricV2 } from './_v2';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'instrument', paper: false, energy: [0.2, 0.9], bars: [4, 8] };
 
@@ -32,7 +34,8 @@ const COL = 190;
 /** 圍裙板：平台正面下面那一圈。 */
 const SKIRT = { top: 676, bot: 1000 };
 /** 留言的範圍（圍裙板上，避開右下角 QR）。 */
-const MSG_BOX = { x: 214, y: 700, w: 1122, h: 272 };
+/** 名牌（v2：寫留言的那塊 ≤ 860×430）：圍裙板正中偏左一點，右邊留給 QR。 */
+const MSG_BOX = { x: 530, y: 712, w: 760, h: 250 };
 /** 名牌的中線（避開右下角 QR，比畫面中線偏左）。 */
 const MX = MSG_BOX.x + MSG_BOX.w / 2;
 const FAM_MSG = F.hand(700);
@@ -133,8 +136,8 @@ export default class Carousel extends Scene {
     for (let i = 0; i < NOUT; i++) this.horses.push({ ring: 0, a0: (i / NOUT) * TAU, ph: i % 2, s: 1 });
     this.horseCv = horseSprite(mixRgba('ember', 'bone', 0.25), mixRgba('ink', 'ink2', 0.7), mixRgba('signal', 'blood', 0.35), mixRgba('blood', 'ink', 0.35));
     if (m) {
-      this.lay = layMsg(this.dyn.ctx, m.text, sig, FAM_MSG, MSG_BOX, { min: 48, max: 150, lineHeight: 1.18, maxLines: 4, sigFamily: F.hand(400), sigSize: [34, 42], align: 'center' });
-      this.lyrSize = Math.max(48, Math.min(56, Math.round(this.lay.fit.size * 0.72)));
+      this.lay = layMsgV2(this.dyn.ctx, m.text, sig, FAM_MSG, MSG_BOX, { lineHeight: 1.28, maxLines: 5, sigFamily: F.hand(400), align: 'center' });
+      this.lyrSize = lyricV2(this.lay.fit.size);
       const n = this.lay.glyphs.filter((g) => g.row >= 0).length;
       this.gT = stagger(au, this.tOn, n, Math.min(1.5 * bar, Math.max(0.6, 0.4 * (e - this.tOn))));
       this.sigT = (this.gT[this.gT.length - 1] ?? this.tOn) + beat * 0.5;
@@ -229,8 +232,15 @@ export default class Carousel extends Scene {
     c.beginPath(); for (let x = CX - PL.rx; x <= CX + PL.rx; x += 10) c.lineTo(x, topY(x) + 4); c.stroke();
     c.lineWidth = 2; c.strokeStyle = mixRgba('signal', 'blood', 0.5);
     c.beginPath(); for (let x = CX - PL.rx; x <= CX + PL.rx; x += 10) c.lineTo(x, botY(x) - 10); c.stroke();
-    // 名牌的框：描金細線、四角一個小圓
-    const bx = MSG_BOX.x - 40, bw = MSG_BOX.w + 80, by = MSG_BOX.y - 14, bh = MSG_BOX.h + 16;
+    // 名牌的框：描金細線、四角一個小圓。有留言時框只比字（含署名）多一點邊距（v2：容器要輕），短留言不會掛著一個空空的大框；
+    // 沒有留言時框住歌詞的整塊範圍
+    let bx = MSG_BOX.x - 40, bw = MSG_BOX.w + 80, by = MSG_BOX.y - 14, bh = MSG_BOX.h + 16;
+    if (this.lay) {
+      const [lx, ly, lw, lh] = this.lay.box;
+      const px = Math.max(48, this.lay.fit.size * 0.9), py = Math.max(26, this.lay.fit.size * 0.5);
+      bw = Math.max(460, lw + 2 * px); bx = lx + lw / 2 - bw / 2;
+      by = ly - py; bh = lh + 2 * py;
+    }
     c.strokeStyle = mixRgba('signal', 'blood', 0.4); c.lineWidth = 1.6;
     c.strokeRect(bx, by, bw, bh);
     c.fillStyle = mixRgba('signal', 'blood', 0.4);
@@ -297,6 +307,9 @@ export default class Carousel extends Scene {
     c.strokeStyle = mixRgba('signal', 'blood', 0.35); c.lineWidth = 3;
     c.beginPath(); for (let x = 0; x <= W; x += 16) c.lineTo(x, rimTop(x) + 6); c.stroke();
     const NSC = 44, step = Math.floor(beat + 1e-4);
+    // 每個小節線：一道光浪從正前方往兩邊跑過所有燈泡（窗格裡每小節一個小事件）
+    const tb = this.ctx.audio.timeOfBar(Math.floor(this.ctx.audio.barAt(t) + 1e-4)), tw = t - tb;
+    const wave = (x: number) => (tw < 1.2 ? Math.exp(-(((Math.abs(x - CX) / RIM.rx - tw * 1.5) / 0.07) ** 2)) : 0);
     for (let j = 0; j < NSC; j++) {
       const a = (j / NSC) * TAU + rot;
       if (Math.cos(a) < 0.08) continue;
@@ -306,8 +319,8 @@ export default class Carousel extends Scene {
       c.beginPath(); c.ellipse(x, y, w, 16, 0, 0, Math.PI); c.fill();
       c.strokeStyle = mixRgba('signal', 'blood', 0.4); c.lineWidth = 1.5;
       c.beginPath(); c.ellipse(x, y, w, 16, 0, 0, Math.PI); c.stroke();
-      // 跑馬燈：一拍走一格，三顆亮一顆暗；大鼓時全亮一下
-      const on = (j + step) % 3 !== 0 || kick > 0.6;
+      // 跑馬燈：一拍走一格，三顆亮一顆暗；大鼓時全亮一下；小節線的那一道光浪經過時也亮
+      const on = (j + step) % 3 !== 0 || kick > 0.6 || wave(x) > 0.5;
       const by = y + 14, br = 5 * Math.cos(a) + 1;
       c.fillStyle = on ? rgba('ember', 0.95) : rgba('graphite', 0.8);
       c.beginPath(); c.arc(x, by, br, 0, TAU); c.fill();
@@ -372,10 +385,11 @@ export default class Carousel extends Scene {
       const a = (j / 50) * TAU + rot;
       if (Math.cos(a) < 0.05) continue;
       const x = CX + PL.rx * Math.sin(a), y = PL.y + PL.ry * Math.cos(a) + 10;
-      const on = (j + step) % 2 === 0;
+      const wv = wave(x);
+      const on = (j + step) % 2 === 0 || wv > 0.5;
       c.fillStyle = on ? rgba('ember', 0.9) : rgba('graphite', 0.7);
-      c.beginPath(); c.arc(x, y, 3.2 * Math.cos(a) + 1, 0, TAU); c.fill();
-      if (on) { hc.fillStyle = rgba('signal', 0.35 * lit); hc.beginPath(); hc.arc(x, y, 8, 0, TAU); hc.fill(); }
+      c.beginPath(); c.arc(x, y, (3.2 * Math.cos(a) + 1) * (1 + 0.6 * wv), 0, TAU); c.fill();
+      if (on) { hc.fillStyle = rgba('signal', (0.35 + 0.5 * wv) * lit); hc.beginPath(); hc.arc(x, y, 8 + 8 * wv, 0, TAU); hc.fill(); }
     }
 
     // ---- 字：名牌上的留言（或沒有留言時的歌詞）、花邊上的歌詞（或名字、歌名）
@@ -406,7 +420,7 @@ export default class Carousel extends Scene {
       }
       const ly = this.hasLyr ? lyricAt(lyrics, t) : null;
       if (ly) {
-        const L2 = layoutRows(c, ly.line, { family: FAM_LYR, size: this.lyrSize, minSize: 48, maxW: 1180, maxRows: 1, align: 'center' });
+        const L2 = layoutRows(c, ly.line, { family: FAM_LYR, size: this.lyrSize, minSize: V2.lyrMin, maxW: 1180, maxRows: 1, align: 'center' });
         c.save(); c.translate(CX, rimY + L2.size * 0.36); drawRows(c, L2, FAM_LYR, t, ink, ly.k); c.restore();
       } else if (!this.hasLyr) {
         c.font = font(F.mono(500), 20); c.fillStyle = rgba('ash', 0.75); c.letterSpacing = '4px'; c.textAlign = 'center';
@@ -422,18 +436,23 @@ export default class Carousel extends Scene {
       let ly = this.hasLyr ? lyricAt(lyrics, t) : null;
       if (!ly && this.hasLyr) { const last = lyrics.lastLine(t); if (last && last.end > s - 4) ly = { line: last, k: 0.55 }; }
       if (ly) {
-        const L2 = layoutRows(c, ly.line, { family: FAM_LYR, size: 112, minSize: 88, maxW: MSG_BOX.w, maxRows: 2, align: 'center', lineHeight: 1.06 });
+        const L2 = layoutRows(c, ly.line, { family: FAM_LYR, size: lyricV2(null), minSize: V2.lyrMin, maxW: MSG_BOX.w, maxRows: 2, align: 'center', lineHeight: 1.2 });
         const y0 = MSG_BOX.y + MSG_BOX.h / 2 - 20 - L2.height / 2 + L2.size * 0.8;
         c.save(); c.translate(MX, y0); drawRows(c, L2, FAM_LYR, t, ink, ly.k); c.restore();
       } else if (!this.hasLyr) {
-        c.font = font(F.hand(700), 110); c.fillStyle = rgba('bone', 0.9);
-        c.fillText(COUPLE_ZH, MX, MSG_BOX.y + 160);
+        c.font = font(F.hand(700), 60); c.fillStyle = rgba('bone', 0.9);
+        c.fillText(COUPLE_ZH, MX, MSG_BOX.y + 130);
       }
       c.font = font(F.hei(500), 22); c.fillStyle = rgba('ash', 0.75); c.letterSpacing = '3px';
       c.fillText(T23_INVITE, MX, MSG_BOX.y + MSG_BOX.h - 8);
       c.letterSpacing = '0px'; c.textAlign = 'left';
     }
     c.setTransform(1, 0, 0, 1, 0, 0); hc.setTransform(1, 0, 0, 1, 0, 0);
+    // 右下角（QR 與小字）：圍裙板與燈沒入暗處，HUD 的字才清楚
+    const hg = c.createRadialGradient(1760, 1000, 60, 1760, 1000, 520);
+    hg.addColorStop(0, rgba('ink', 0.92)); hg.addColorStop(0.55, rgba('ink', 0.75)); hg.addColorStop(1, rgba('ink', 0));
+    c.fillStyle = hg; c.fillRect(1150, 600, W - 1150, H - 600);
+    hc.save(); hc.globalCompositeOperation = 'destination-out'; hc.fillStyle = hg; hc.fillRect(1150, 600, W - 1150, H - 600); hc.restore();
     comp.draw(renderer, D.upload(), out);
     comp.draw(renderer, Hh.upload(), out, { mode: 'add', tint: [1.8, 1.8, 1.8] });
     return { bloom: 0.8, vignette: 0.55, halation: 0.35, popupAvoid: this.avoid };

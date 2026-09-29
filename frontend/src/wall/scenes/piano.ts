@@ -2,24 +2,27 @@
 //  - 沒有人彈，是一台「自動演奏」的鋼琴：琴鍵自己在拍點按下去、亮起來（訊號色的光從鍵面透出來，也映在亮漆的鍵蓋上）。
 //    按哪個鍵用真的節拍與「近似的音高」：左手在每小節的第一拍按低音（I–vi–IV–V 的根音）、第二四拍按和弦，
 //    右手的旋律跟著歌詞——每個字唱出來的那一刻按一個鍵（五聲音階上的隨機漫步，確定性），純音樂時跟著拍子走。
-//  - 畫面的焦點＝主打留言：寫在譜架上那張譜紙的上半，鉛筆手寫（霞鶩文楷）。第一拍起一個字一個字寫上去，
+//  - 畫面的焦點＝主打留言：譜紙左上角的手寫題詞（霞鶩文楷，v2 標準 40～60 px，題詞區約 720×290），第一拍起一個字一個字寫上去，
 //    每寫一個字鋼琴就彈一個音（「鋼琴把你的祝福彈出來」），剛寫的字是訊號色的暗部、半秒後乾成墨色；署名在最後一行下面。
-//  - 歌詞（比留言小一級）寫在譜紙下半的一行五線譜底下：每個字上面有一顆音符，字唱到的那一刻音符塗滿、字亮起（亮紙上用 blood 色）。
-//    沒有留言：譜紙上是大大的歌詞（主角）、下面一行小小的邀請。純音樂：譜上只有音符跟著拍子，留言照樣寫。
-//  - 小字只有一群：譜紙左上角的速度記號「♩ = 歌的 BPM　con amore」（冷面的樂譜術語：帶著愛）。
+//  - 譜紙中間是一份大譜表（高音、低音兩行），鋼琴彈的每一個音都是一顆音符，一直往左捲，經過播放線時亮起來；小節線跟著捲
+//    （每小節一個小事件）；每兩小節譜紙右上角被琴聲震得掀一下。
+//  - 歌詞（比留言小 4 px）在譜紙下緣，逐字跟唱（亮紙上用 blood 色）。沒有留言：歌詞寫在題詞的位置（主角）、下面一行小小的邀請。
+//    純音樂：右手跟著拍子彈，留言照樣寫。
+//  - 小字只有一群：譜紙左上角的速度記號「♩ = 歌的 BPM　con amore」（冷面的樂譜術語：帶著愛）與抬頭的「Op. 留言編號」。
 //  - 鏡頭：切進來時離得遠一點、第一拍推到定位（落定），之後整個窗格很慢地往前推、往右搖一點點。
 // 手法：three.js 真的 3D（琴鍵是 InstancedMesh，按下去是繞後面的支點轉；亮漆、鍵面、譜紙各自一個 shader，燈光從琴燈算），
-// 譜紙是兩張 Canvas 圖層（留言與五線譜一張、只有在寫字的時候重畫；歌詞一張、每格重畫），在 3D 裡貼到有一點彎的紙上。
+// 譜紙是兩張 Canvas 圖層（留言與譜表的線一張、只有在寫字的時候重畫；捲動的音符與歌詞一張、每格重畫），在 3D 裡貼到有一點彎的紙上。
 import * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
 import { FSPass, Layer2D, W, H, sharedMSAA } from '../engine/gl';
 import { F, font, loadText } from '../engine/type';
 import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, hash, lerp, frameIdx } from '../engine/util';
-import { Lyrics, type Line } from '../engine/lyrics';
+import type { Line } from '../engine/lyrics';
 import { lyricAt, beatAfter, drawHeart, COUPLE_ZH } from './_motifs';
 import { layoutRows, drawRows, paperInk, type RowsLayout } from './_t4';
-import { T23_INVITE, T23_TEXT, sigOf, stagger, layMsg, rawMat, type MsgLay, type Rect } from './_t23';
+import { T23_INVITE, T23_TEXT, sigOf, stagger, layMsgV2, rawMat, type MsgLay, type Rect } from './_t23';
+import { V2, lyricV2 } from './_v2';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'instrument', paper: false, energy: [0.1, 0.8], bars: [4, 8] };
 
@@ -42,12 +45,15 @@ const LAMP_AIM = new THREE.Vector3(0, 12, -12);
 const PG = { w: 1150, h: 713 };
 
 // ---------------------------------------------------------------- 頁面排版（頁面 px）
-const MSG_BOX = { x: 84, y: 108, w: 982, h: 378 };
-const STAFF_Y = 512, STAFF_GAP = 11;
-const LYR_Y = 636;
+/** 留言是譜紙左上角的手寫題詞：頁面 740×300 ≈ 螢幕 720×290（v2：寫留言的那塊 ≤ 860×430），譜紙其他地方是真的譜。 */
+const MSG_BOX = { x: 84, y: 118, w: 740, h: 300 };
+/** 頁面 px 對螢幕 px 的倍數：鏡頭從上往下看，譜紙上半約 1:1、下緣比較遠（約 0.88），字級要換算。 */
+const K_TOP = 1 / 0.97, K_BOT = 1 / 0.88;
+/** 大譜表（高音、低音兩行）：一直往左捲，播放線（PH）上的音符亮起來；PXS = 一秒捲多少頁面 px。 */
+const TREB = 446, BASS = 520, STAFF_GAP = 11;
+const PH = 300, PXS = 175;
+const LYR_Y = 656;
 const MARG = 70;
-/** 沒有留言時：五線譜上移、歌詞放大。 */
-const STAFF_Y_SOLO = 236, LYR_Y_SOLO = 396;
 const FAM_MSG = F.hand(400);
 const FAM_LYR = F.archivo(100, 500);
 const PENTA = [0, 2, 4, 7, 9];
@@ -153,12 +159,15 @@ void main() {
 const SHEET_V = /* glsl */ `
 in vec3 position; in vec3 normal; in vec2 uv;
 uniform mat4 modelMatrix; uniform mat4 viewMatrix; uniform mat4 projectionMatrix;
+uniform float uFlutter;
 out vec3 vW; out vec3 vN; out vec2 vUv;
 void main() {
   // 紙沒有完全平：下緣往前捲一點、左右兩邊往後彎一點
   vec3 p = position;
   float u = uv.x * 2.0 - 1.0;
   p.z += 0.9 * pow(1.0 - uv.y, 3.0) - 0.35 * u * u;
+  // 每兩小節，右上角被琴聲震得掀起來一下又落回去
+  p.z += uFlutter * 2.4 * pow(max(0.0, uv.x - 0.62) / 0.38, 2.0) * pow(max(0.0, uv.y - 0.55) / 0.45, 2.0);
   vec4 w = modelMatrix * vec4(p, 1.0);
   vW = w.xyz; vN = normalize(mat3(modelMatrix) * normal); vUv = uv;
   gl_Position = projectionMatrix * viewMatrix * w;
@@ -219,7 +228,7 @@ class PianoRig {
   U = {
     uLamp: { value: LAMP.clone() }, uLampDir: { value: LAMP_AIM.clone().sub(LAMP).normalize() }, uLampI: { value: 1 },
     uRefl: { value: Array.from({ length: 16 }, () => new THREE.Vector4()) },
-    uBase: { value: null as THREE.Texture | null }, uLyr: { value: null as THREE.Texture | null }, uGlow: { value: 0 },
+    uBase: { value: null as THREE.Texture | null }, uLyr: { value: null as THREE.Texture | null }, uGlow: { value: 0 }, uFlutter: { value: 0 },
   };
   whites: THREE.InstancedMesh;
   blacks: THREE.InstancedMesh;
@@ -316,11 +325,7 @@ export default class Piano extends Scene {
   solo = false;
   hasLyr = false;
   lyrSize = 64;
-  staffY = STAFF_Y;
-  lyrY = LYR_Y;
-  /** 每個唱到的字的音高（五線譜上音符的位置）。 */
-  wordPitch = new Map<number, number>();
-  beatNotes: { t: number; m: number }[] = [];
+  bars: number[] = [];
   avoid: Rect[] = [];
 
   override async init() {
@@ -339,15 +344,18 @@ export default class Piano extends Scene {
     // ---- 留言：譜紙的上半，一個字一個字寫上去（每個字一個音）
     const c = this.base.ctx;
     if (m) {
-      this.lay = layMsg(c, m.text, sig, FAM_MSG, MSG_BOX, { min: 60, max: 150, lineHeight: 1.2, maxLines: 5, sigFamily: FAM_MSG, sigSize: [36, 46], align: 'left', fewer: 0.85 });
+      this.lay = layMsgV2(c, m.text, sig, FAM_MSG, MSG_BOX, { k: K_TOP, lineHeight: 1.26, maxLines: 5, sigFamily: FAM_MSG, align: 'left' });
       const n = this.lay.glyphs.filter((g) => g.row >= 0).length;
       this.gt = stagger(au, this.tFirst, n, Math.min(2 * bar, Math.max(0.8, 0.4 * (e - this.tFirst))));
       this.sigT = (this.gt[this.gt.length - 1] ?? this.tFirst) + beat * 0.75;
-      this.lyrSize = Math.max(55, Math.min(66, Math.round(this.lay.fit.size * 0.72)));
+      // 歌詞在譜紙下緣（比較遠）：螢幕字級照 v2，換算成頁面字級
+      this.lyrSize = lyricV2(this.lay.fit.size / K_TOP) * K_BOT;
     } else {
-      this.staffY = STAFF_Y_SOLO; this.lyrY = LYR_Y_SOLO;
-      this.lyrSize = 96;
+      // 沒有留言：歌詞寫在題詞的位置（譜紙上半）
+      this.lyrSize = lyricV2(null) * K_TOP;
     }
+    // 大譜表上的小節線（跟著譜一起捲過播放線：每小節一個小事件）
+    for (let b = Math.floor(au.barAt(s - 3)); ; b++) { const tb = au.timeOfBar(b); if (tb > e + 5 || this.bars.length > 80) break; this.bars.push(tb); }
 
     // ---- 音：左手（低音、和弦）＋右手（留言的字、歌詞的字；純音樂時跟著拍子）
     const rnd = (i: number, k: number) => hash(this.seed, i, k);
@@ -357,7 +365,7 @@ export default class Piano extends Scene {
     const en = au.energyAt(s);
     for (let b = Math.floor(au.barAt(s)) - 1; ; b++) {
       const tb = au.timeOfBar(b);
-      if (tb >= e + 0.5) break;
+      if (tb >= e + 4.5) break;
       const k = ((b % 4) + 4) % 4, bp = (au.timeOfBar(b + 1) - tb) / 4;
       notes.push({ m: ROOT[k]!, a: tb, r: tb + bp * 1.6, v: 1 });
       notes.push({ m: ROOT[k]! + 12, a: tb + bp * 2, r: tb + bp * 3, v: 0.7 });
@@ -376,25 +384,22 @@ export default class Piano extends Scene {
     if (this.hasLyr) {
       for (const ln of lines) ln.words.forEach((w, i) => {
         const pm = step(1000 + w.gi);
-        this.wordPitch.set(w.gi, pm);
         const next = ln.words[i + 1];
         notes.push({ m: pm, a: w.start, r: Math.max(w.start + 0.15, Math.min(w.end, next ? next.start - 0.03 : w.end)), v: 1 });
       });
     } else {
-      // 純音樂：右手一拍一個音（快歌半拍），譜上也畫出來
+      // 純音樂：右手一拍一個音（快歌半拍）
       const per = en > 0.6 ? 0.5 : 1;
-      for (let b = Math.ceil(au.beatAt(s)), i = 0; ; b += per, i++) {
+      for (let b = Math.ceil(au.beatAt(s - 2)), i = 0; ; b += per, i++) {
         const tb = au.timeOfBeat(b);
-        if (tb >= e + 0.5 || i > 300) break;
-        const pm = step(2000 + i);
-        notes.push({ m: pm, a: tb, r: tb + beat * per * 0.8, v: 0.9 });
-        this.beatNotes.push({ t: tb, m: pm });
+        if (tb >= e + 5 || i > 300) break;
+        notes.push({ m: step(2000 + i), a: tb, r: tb + beat * per * 0.8, v: 0.9 });
       }
     }
     this.notes = notes.sort((x, y) => x.a - y.a);
 
-    // ---- 即時小卡避開：整張譜紙
-    this.avoid = [[360, 40, 1200, 640]];
+    // ---- 即時小卡避開：題詞與歌詞
+    this.avoid = [[380, 100, 760, 320], [440, 560, 1000, 90]];
   }
 
   /** 每個鍵在 t 按下多少、亮多少。 */
@@ -411,7 +416,7 @@ export default class Piano extends Scene {
     return { press, glow };
   }
 
-  /** 譜紙的底圖：五線譜、速度記號、留言（寫到第幾個字）。只有在寫字的時候每格重畫。 */
+  /** 譜紙的底圖：速度記號、大譜表的線、題詞（寫到第幾個字）。只有在寫字的時候每格重畫。 */
   private drawBase(t: number) {
     const L = this.base, c = L.ctx, m = this.msg;
     const writing = m && this.lay && t < this.sigT + 0.6;
@@ -423,24 +428,30 @@ export default class Piano extends Scene {
     c.font = font(F.serif(400, true), 24); c.fillStyle = rgba('sepia', 0.5); c.letterSpacing = '1px';
     c.fillText(`♩ = ${Math.round(60 / this.ctx.audio.beatPeriod(this.ctx.start))}    con amore`, MARG + 14, 96);
     c.letterSpacing = '0px';
-    // 五線譜（淡淡的）＋兩端的小節線
-    c.strokeStyle = rgba('sepia', 0.3); c.lineWidth = 1.6;
-    for (let i = 0; i < 5; i++) { c.beginPath(); c.moveTo(MARG, this.staffY + i * STAFF_GAP); c.lineTo(PG.w - MARG, this.staffY + i * STAFF_GAP); c.stroke(); }
+    // 譜的標題（小、置中，像樂譜抬頭；編號用留言的序號，冷面的「作品第 42 號」）
+    c.font = font(F.serif(400, true), 26); c.fillStyle = rgba('sepia', 0.55); c.textAlign = 'center';
+    c.fillText(m ? `Op. ${m.n}` : 'Op. 1', PG.w / 2, 72);
+    c.textAlign = 'left';
+    // 大譜表：高音、低音兩行五線（淡淡的），左邊一個大括號把兩行括起來
+    c.strokeStyle = rgba('sepia', 0.3); c.lineWidth = 1.5;
+    for (const top of [TREB, BASS]) for (let i = 0; i < 5; i++) { c.beginPath(); c.moveTo(MARG, top + i * STAFF_GAP); c.lineTo(PG.w - MARG, top + i * STAFF_GAP); c.stroke(); }
     c.lineWidth = 2;
-    for (const x of [MARG, PG.w - MARG]) { c.beginPath(); c.moveTo(x, this.staffY); c.lineTo(x, this.staffY + 4 * STAFF_GAP); c.stroke(); }
-    c.lineWidth = 5; c.beginPath(); c.moveTo(PG.w - MARG + 5, this.staffY); c.lineTo(PG.w - MARG + 5, this.staffY + 4 * STAFF_GAP); c.stroke();
+    c.beginPath(); c.moveTo(MARG, TREB); c.lineTo(MARG, BASS + 4 * STAFF_GAP); c.stroke();
+    c.lineWidth = 3.2; c.strokeStyle = rgba('sepia', 0.45);
+    const bm = (TREB + BASS + 4 * STAFF_GAP) / 2;
+    c.beginPath(); c.moveTo(MARG - 8, TREB - 2); c.quadraticCurveTo(MARG - 20, TREB + 20, MARG - 14, bm - 12); c.quadraticCurveTo(MARG - 12, bm - 2, MARG - 22, bm);
+    c.quadraticCurveTo(MARG - 12, bm + 2, MARG - 14, bm + 12); c.quadraticCurveTo(MARG - 20, BASS + 24, MARG - 8, BASS + 4 * STAFF_GAP + 2); c.stroke();
     if (!m || !this.lay) {
-      // 沒有留言：譜的標題是「獻給新人」（手寫、中等大小），歌詞是主角
-      c.font = font(FAM_MSG, 50); c.fillStyle = rgba('sepia', 0.75); c.textAlign = 'center';
-      c.fillText(`給 ${COUPLE_ZH}`, PG.w / 2, 176);
-      c.textAlign = 'left';
-      c.font = font(F.hei(500), 24); c.fillStyle = rgba('sepia', 0.45); c.letterSpacing = '3px';
-      c.fillText(T23_INVITE, MARG + 14, this.hasLyr ? 640 : 400);
+      // 沒有留言：譜的題詞是「給 新人」（手寫，小一點），下面是正在唱的歌詞（drawLyrics 畫），再下面一行邀請
+      c.font = font(FAM_MSG, 40); c.fillStyle = rgba('sepia', 0.75);
+      c.fillText(`給 ${COUPLE_ZH}`, MSG_BOX.x, MSG_BOX.y + 40);
+      c.font = font(F.hei(500), 22); c.fillStyle = rgba('sepia', 0.45); c.letterSpacing = '3px';
+      c.fillText(T23_INVITE, MARG + 14, LYR_Y - 10);
       c.letterSpacing = '0px';
       L.upload();
       return;
     }
-    // 留言：寫到的字；剛寫的字是訊號色的暗部，半秒後乾成墨色
+    // 題詞：寫到的字；剛寫的字是訊號色的暗部，半秒後乾成墨色
     const lay = this.lay;
     c.textBaseline = 'alphabetic';
     let i = 0;
@@ -468,66 +479,67 @@ export default class Piano extends Scene {
     L.upload();
   }
 
-  /** 歌詞與五線譜上的音符（每格重畫，只清下半）。 */
+  /** 每格重畫：大譜表上往左捲的音符（鋼琴彈的每一個音，播放線上的亮起來）、小節線、歌詞。 */
   private drawLyrics(t: number) {
     const L = this.lyr, c = L.ctx, { lyrics } = this.ctx;
     L.clear();
     const ink = paperInk();
-    const staffTop = this.staffY;
-    const bottom = staffTop + 4 * STAFF_GAP;
-    // 音高 → 五線譜上的位置（高音譜號：最下面一條線是 E4，一個全音階音級半格）
+    // 音高 → 譜上的位置：高音譜表最下面一條線是 E4、低音譜表是 G2，一個全音階音級半格
     const DIA = [0, 0, 1, 1, 2, 3, 3, 4, 4, 5, 5, 6];
-    const stepOf = (mm: number) => Math.floor(mm / 12) * 7 + DIA[mm % 12]! - (5 * 7 + 2);
-    const head = (x: number, mm: number, filled: number, active: boolean) => {
-      const st = stepOf(mm), y = bottom - st * (STAFF_GAP / 2);
-      // 加線：在五線譜上面或下面的音
-      c.strokeStyle = rgba('sepia', 0.4); c.lineWidth = 1.6;
-      for (let k = 10; k <= st; k += 2) { const ly = bottom - k * (STAFF_GAP / 2); c.beginPath(); c.moveTo(x - 13, ly); c.lineTo(x + 13, ly); c.stroke(); }
-      for (let k = -2; k >= st; k -= 2) { const ly = bottom - k * (STAFF_GAP / 2); c.beginPath(); c.moveTo(x - 13, ly); c.lineTo(x + 13, ly); c.stroke(); }
+    const dia = (mm: number) => Math.floor(mm / 12) * 7 + DIA[mm % 12]!;
+    const x0 = MARG + 24, x1 = PG.w - MARG - 6;
+    const fade = (x: number) => clamp((x - x0) / 60) * clamp((x1 - x) / 60);
+    // 小節線（跟著捲）
+    c.strokeStyle = rgba('sepia', 0.35); c.lineWidth = 1.6;
+    for (const tb of this.bars) {
+      const x = PH + (tb - t) * PXS;
+      if (x < x0 || x > x1) continue;
+      c.globalAlpha = fade(x);
+      c.beginPath(); c.moveTo(x, TREB); c.lineTo(x, BASS + 4 * STAFF_GAP); c.stroke();
+    }
+    c.globalAlpha = 1;
+    // 音符：還沒彈的淡、正在彈的是訊號色的暗部（大一點）、彈過的墨色
+    for (const n of this.notes) {
+      const x = PH + (n.a - t) * PXS;
+      if (x > x1 + 20) break;
+      if (x < x0 - 20) continue;
+      const treb = n.m >= 60;
+      const bottom = (treb ? TREB : BASS) + 4 * STAFF_GAP;
+      const st = dia(n.m) - (treb ? 37 : 25);
+      const y = bottom - st * (STAFF_GAP / 2);
+      const on = t >= n.a && t < n.r + 0.05;
+      const done = t >= n.a;
+      c.globalAlpha = fade(x);
+      // 加線
+      c.strokeStyle = rgba('sepia', 0.4); c.lineWidth = 1.4;
+      for (let k = 10; k <= st; k += 2) { const ly = bottom - k * (STAFF_GAP / 2); c.beginPath(); c.moveTo(x - 11, ly); c.lineTo(x + 11, ly); c.stroke(); }
+      for (let k = -2; k >= st; k -= 2) { const ly = bottom - k * (STAFF_GAP / 2); c.beginPath(); c.moveTo(x - 11, ly); c.lineTo(x + 11, ly); c.stroke(); }
+      const sz = on ? 1.2 : 1;
+      c.fillStyle = on ? rgba('blood') : done ? rgba('sepia', 0.8) : rgba('sepia', 0.3);
       c.save(); c.translate(x, y); c.rotate(-0.35);
-      c.beginPath(); c.ellipse(0, 0, 7.2, 5, 0, 0, Math.PI * 2);
-      c.fillStyle = active ? rgba('blood') : rgba('sepia', 0.85);
-      c.strokeStyle = rgba('sepia', 0.55); c.lineWidth = 1.8;
-      if (filled > 0) c.fill(); else c.stroke();
+      c.beginPath(); c.ellipse(0, 0, 6.6 * sz, 4.6 * sz, 0, 0, Math.PI * 2); c.fill();
       c.restore();
-      // 符桿：高音往下、低音往上
-      const up = st < 4;
-      c.strokeStyle = active ? rgba('blood') : rgba('sepia', filled > 0 ? 0.7 : 0.4); c.lineWidth = 1.8;
+      c.strokeStyle = c.fillStyle; c.lineWidth = 1.6;
       c.beginPath();
-      if (up) { c.moveTo(x + 6.6, y - 1); c.lineTo(x + 6.6, y - 34); } else { c.moveTo(x - 6.6, y + 1); c.lineTo(x - 6.6, y + 34); }
+      if (st < 4) { c.moveTo(x + 6, y - 1); c.lineTo(x + 6, y - 30); } else { c.moveTo(x - 6, y + 1); c.lineTo(x - 6, y + 30); }
       c.stroke();
-    };
+    }
+    c.globalAlpha = 1;
+    // 播放線：一條細細的訊號色暗部
+    c.strokeStyle = rgba('blood', 0.55); c.lineWidth = 2;
+    c.beginPath(); c.moveTo(PH, TREB - 14); c.lineTo(PH, BASS + 4 * STAFF_GAP + 14); c.stroke();
+    // 歌詞：有留言時在譜紙下緣（大譜表下面）；沒有留言時在題詞的位置（主角）
     if (this.hasLyr) {
       const ly = lyricAt(lyrics, t);
       if (ly) {
         const lay = this.layLine(c, ly.line);
-        const x0 = PG.w / 2, y0 = lay.rows.length > 1 && !this.solo ? this.lyrY - 26 : this.lyrY;
-        c.save(); c.translate(x0, y0);
+        c.save();
+        if (this.solo) c.translate(MSG_BOX.x, MSG_BOX.y + 110 + lay.size * 0.8);
+        else c.translate(PG.w / 2, lay.rows.length > 1 ? LYR_Y - lay.lineHeight * 0.6 : LYR_Y);
         drawRows(c, lay, FAM_LYR, t, ink, ly.k);
-        c.restore();
-        // 第一排字上面各一顆音符（字唱到的那一刻塗滿）
-        c.save(); c.globalAlpha = ly.k;
-        const firstRowY = lay.words[0]?.y ?? 0;
-        for (const pw of lay.words) {
-          if (pw.y !== firstRowY) continue;
-          const p = Lyrics.wordProgress(pw.word, t);
-          head(x0 + pw.x + pw.w / 2, this.wordPitch.get(pw.word.gi) ?? 67, p > 0 ? 1 : 0, p > 0 && p < 1);
-        }
         c.restore();
       }
     } else {
-      // 純音樂：五線譜上一拍一顆音符，從左往右寫，寫到尾巴再從頭
-      const bn = this.beatNotes;
-      const span = PG.w - 2 * MARG - 60, per = 16;
-      let cur = -1;
-      for (let i = 0; i < bn.length; i++) if (bn[i]!.t <= t) cur = i;
-      if (cur >= 0) {
-        const page = Math.floor(cur / per);
-        for (let i = page * per; i <= cur; i++) {
-          const x = MARG + 30 + ((i % per) + 0.5) * (span / per);
-          head(x, bn[i]!.m, 1, i === cur && t - bn[i]!.t < 0.25);
-        }
-      }
       c.font = font(F.serif(400, true), 24); c.fillStyle = rgba('sepia', 0.5);
       c.textAlign = 'right'; c.fillText(`♪ ${this.ctx.song.title}`, PG.w - MARG - 14, 96); c.textAlign = 'left';
     }
@@ -535,7 +547,9 @@ export default class Piano extends Scene {
   }
 
   private layLine(c: CanvasRenderingContext2D, line: Line): RowsLayout {
-    return layoutRows(c, line, { family: FAM_LYR, size: this.lyrSize, minSize: this.solo ? 72 : 55, maxW: PG.w - 2 * MARG - 40, maxRows: 2, align: 'center', lineHeight: 1.16 });
+    return this.solo
+      ? layoutRows(c, line, { family: FAM_LYR, size: this.lyrSize, minSize: V2.lyrMin * K_TOP, maxW: MSG_BOX.w + 120, maxRows: 2, align: 'left', lineHeight: 1.2 })
+      : layoutRows(c, line, { family: FAM_LYR, size: this.lyrSize, minSize: Math.min(this.lyrSize, V2.lyrMin * K_BOT), maxW: PG.w - 2 * MARG - 40, maxRows: 2, align: 'center', lineHeight: 1.12 });
   }
 
   override render(f: Frame, out: THREE.WebGLRenderTarget): PostOverrides {
@@ -551,6 +565,11 @@ export default class Piano extends Scene {
     for (let i = 0; i < 16; i++) { const r = refl[i]; if (r) R[i]!.set(keyX(r[0]), r[1], isBlack(r[0]) ? 0.8 : 1.3, 0); else R[i]!.set(0, 0, 1, 0); }
     U.uGlow.value = Math.min(1, refl.reduce((a, r) => a + r[1], 0) / 4);
     U.uLampI.value = 1.15 + 0.04 * f.a.kick;
+    // 譜紙右上角：每兩小節（偶數小節線）掀一下
+    let tb2 = -Infinity;
+    for (const tb of this.bars) { if (tb > t) break; if (Math.round(this.ctx.audio.barAt(tb)) % 2 === 0) tb2 = tb; }
+    const tau = t - tb2;
+    U.uFlutter.value = tau < 1.5 ? Math.sin((Math.min(tau, 0.6) / 0.6) * Math.PI) * Math.exp(-tau / 0.8) : 0;
     // ---- 譜紙
     this.drawBase(t);
     this.drawLyrics(t);

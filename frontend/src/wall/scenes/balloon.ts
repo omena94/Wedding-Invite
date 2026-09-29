@@ -5,6 +5,7 @@
 //  - 歌詞（比留言小一級）寫在右邊那顆小氣球吊著的布條上，布條跟著風微微起伏，逐字跟唱。
 //    沒有留言：歌詞寫在大氣球上（主角），布條上是新人的名字與日期、下面一行小小的邀請。純音樂：布條上是小小的歌名。
 //  - 鏡頭：切進來時大氣球從下面升上來、第一拍落定；之後雲一直往下退，大氣球輕輕晃。
+//    每四小節一群鳥（版畫的細線 V 字）從右往左飛過天空，翅膀在拍點上往下拍。右下角（QR）後面的雲淡掉，紙要乾淨。
 // 手法：整張是一個全螢幕 shader：紙、版畫線（沿著球皮的經線排的排線，暗面密、亮面疏）、雲（橫的排線）、
 // 球皮的配色（一條紙色、一條淡淡的訊號色，像手工上色的版畫）；留言與歌詞各是一張 Canvas 圖層，shader 把它們包到球面、布條上。
 import * as THREE from 'three';
@@ -15,7 +16,8 @@ import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, frameIdx } from '../engine/util';
 import { lyricAt, beatAfter, drawHeart, COUPLE_ZH, DATE_DOTS } from './_motifs';
 import { layoutRows, drawRows, paperInk } from './_t4';
-import { T23_INVITE, T23_TEXT, sigOf, layMsg, stagger, winBars, lastBefore, type MsgLay, type Rect } from './_t23';
+import { T23_INVITE, T23_TEXT, sigOf, layMsgV2, stagger, winBars, lastBefore, type MsgLay, type Rect } from './_t23';
+import { V2, lyricV2 } from './_v2';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'instrument', paper: true, energy: [0.1, 0.75], bars: [4, 8] };
 
@@ -35,6 +37,7 @@ const SKY = () => new FSPass(/* glsl */ `
   uniform sampler2D uMsg; uniform sampler2D uLyr;
   uniform vec2 uOff;   // 主角氣球的位移（升上來、晃、被火一提）
   uniform float uScroll; uniform float uFire; uniform float uT; uniform float uBan;
+  uniform vec3 uBirds;  // 一群鳥：x 位置、翅膀的拍動（0..1，拍點上往下拍）、透明度
 
   vec4 lay(sampler2D s, vec2 uv) { return fastLayer(texture(s, vec2(uv.x, 1.0 - uv.y))); }
   // 版畫的排線：沿著 u 排的線，暗的地方線粗
@@ -128,7 +131,21 @@ const SKY = () => new FSPass(/* glsl */ `
         float hl = ink(p.y / 5.0, (0.08 + 0.4 * below) * fade);
         vec3 cl = mix(C_PAPER * 1.01, C_SEPIA, hl * 0.4);
         cl = mix(cl, C_SEPIA, (1.0 - smoothstep(0.0, 1.5, abs(d))) * 0.55 * fade);
-        col = mix(col, cl, 1.0 - smoothstep(-1.0, 1.0, d));
+        // 右下角（QR 與小字）後面的雲淡掉：那一角的紙要乾淨
+        float hud = smoothstep(1250.0, 1500.0, p.x) * smoothstep(720.0, 880.0, p.y);
+        col = mix(col, cl, (1.0 - smoothstep(-1.0, 1.0, d)) * (1.0 - 0.85 * hud));
+      }
+    }
+    // ---- 一群鳥（版畫的細線 V 字）：每四小節從右往左飛過天空，翅膀在拍點上拍一下
+    if (uBirds.z > 0.0) {
+      for (int i = 0; i < 7; i++) {
+        float fi = float(i);
+        float row = float(i / 2) + 0.5 * mod(fi, 2.0);
+        vec2 bc = vec2(uBirds.x + row * 46.0 + 8.0 * sin(fi * 2.7), 150.0 + (mod(fi, 2.0) * 2.0 - 1.0) * row * 22.0 + 6.0 * sin(uT * 3.0 + fi));
+        float fl = uBirds.y * (0.7 + 0.3 * sin(fi * 1.3));
+        vec2 wl = vec2(-13.0, -9.0 + 16.0 * fl), wr = vec2(13.0, -9.0 + 16.0 * fl);
+        float bd = min(sdSegment(p, bc, bc + wl), sdSegment(p, bc, bc + wr));
+        col = mix(col, C_SEPIA, pxLine(bd, 0.5, 1.6) * 0.8 * uBirds.z);
       }
     }
     vec2 ll; float ins;
@@ -199,7 +216,7 @@ const SKY = () => new FSPass(/* glsl */ `
     fragColor = vec4(col, 1.0);
   }`, {
   uMsg: { value: null }, uLyr: { value: null }, uOff: { value: new THREE.Vector2() },
-  uScroll: { value: 0 }, uFire: { value: 0 }, uT: { value: 0 }, uBan: { value: 0 },
+  uScroll: { value: 0 }, uFire: { value: 0 }, uT: { value: 0 }, uBan: { value: 0 }, uBirds: { value: new THREE.Vector3() },
 });
 
 export default class Balloon extends Scene {
@@ -232,10 +249,11 @@ export default class Balloon extends Scene {
     // 燃燒器：每個小節線噴一下（切進來的第一拍也噴）
     this.fires = [...winBars(au, s - 3, e), this.tOn].sort((a, b) => a - b);
     if (m) {
-      this.lay = layMsg(this.mtx.ctx, m.text, sig, FAM_MSG, { x: 90, y: 40, w: MW - 180, h: MH - 80 }, { min: 50, max: 150, lineHeight: 1.2, maxLines: 5, sigFamily: F.hand(700), sigSize: [40, 48], align: 'center' });
+      // v2：留言 40～60，寫在球皮正面中間那一塊（≤ 640×420；再寬的話行頭行尾會被球面壓扁）
+      this.lay = layMsgV2(this.mtx.ctx, m.text, sig, FAM_MSG, { x: (MW - 640) / 2, y: 70, w: 640, h: 420 }, { lineHeight: 1.3, maxLines: 5, sigFamily: F.hand(700), align: 'center' });
       // 署名放在中間（球面兩邊會被壓扁，靠右的署名讀不清楚）
       this.lay.sig.x = MW / 2 - this.lay.sig.w / 2;
-      this.lyrSize = Math.max(48, Math.min(56, Math.round(this.lay.fit.size * 0.72)));
+      this.lyrSize = lyricV2(this.lay.fit.size);
       const n = this.lay.glyphs.filter((g) => g.row >= 0).length;
       this.gT = stagger(au, this.tOn, n, Math.min(1.5 * bar, Math.max(0.6, 0.4 * (e - this.tOn))));
       this.sigT = (this.gT[this.gT.length - 1] ?? this.tOn) + beat * 0.5;
@@ -279,12 +297,12 @@ export default class Balloon extends Scene {
     const { lyrics } = this.ctx;
     const ly = this.hasLyr ? lyricAt(lyrics, t) : null;
     if (ly) {
-      const lay = layoutRows(c, ly.line, { family: F.archivo(100, 800), size: 120, minSize: 84, maxW: MW - 160, maxRows: 3, align: 'center', lineHeight: 1.08 });
+      const lay = layoutRows(c, ly.line, { family: F.archivo(100, 700), size: lyricV2(null), minSize: V2.lyrMin, maxW: 640, maxRows: 3, align: 'center', lineHeight: 1.2 });
       c.save(); c.translate(MW / 2, MH / 2 - lay.height / 2 + lay.size * 0.8);
-      drawRows(c, lay, F.archivo(100, 800), t, paperInk(), ly.k);
+      drawRows(c, lay, F.archivo(100, 700), t, paperInk(), ly.k);
       c.restore();
     } else {
-      c.font = font(F.hand(700), 110); c.fillStyle = rgba('sepia', 0.9); c.textAlign = 'center';
+      c.font = font(F.hand(700), 60); c.fillStyle = rgba('sepia', 0.9); c.textAlign = 'center';
       c.fillText(COUPLE_ZH, MW / 2, MH / 2 + 30); c.textAlign = 'left';
     }
     L.upload();
@@ -297,7 +315,7 @@ export default class Balloon extends Scene {
     if (this.msg) {
       const ly = this.hasLyr ? lyricAt(lyrics, t) : null;
       if (ly) {
-        const lay = layoutRows(c, ly.line, { family: FAM_LYR, size: this.lyrSize, minSize: 48, maxW: BAN.w - 60, maxRows: 2, align: 'center', lineHeight: 1.1 });
+        const lay = layoutRows(c, ly.line, { family: FAM_LYR, size: this.lyrSize, minSize: V2.lyrMin, maxW: BAN.w - 60, maxRows: 2, align: 'center', lineHeight: 1.1 });
         c.save(); c.translate(BAN.w / 2, BAN.h / 2 - lay.height / 2 + lay.size * 0.8);
         drawRows(c, lay, FAM_LYR, t, paperInk(), ly.k);
         c.restore();
@@ -332,6 +350,11 @@ export default class Balloon extends Scene {
     u.uFire!.value = Math.min(1, fire * (0.8 + 0.3 * f.a.kick));
     u.uT!.value = t;
     u.uBan!.value = t * 1.6;
+    // 鳥：每四小節一群，兩小節內從右飛到左；翅膀在每一拍往下拍（強烈的緩動），拍與拍之間滑翔
+    const au = this.ctx.audio, bb = au.barAt(t), b4 = Math.floor(bb / 4) * 4, bt0 = au.timeOfBar(b4), bt1 = au.timeOfBar(b4 + 2);
+    const fly = clamp((t - bt0) / Math.max(0.5, bt1 - bt0));
+    const flap = 1 - ease.outCubic(clamp(f.beatPhase / 0.35));
+    (u.uBirds!.value as THREE.Vector3).set(2050 - 2400 * fly, flap, fly > 0 && fly < 1 ? 1 : 0);
     this.drawMsg(t);
     this.drawBanner(t);
     u.uMsg!.value = this.mtx.texture;

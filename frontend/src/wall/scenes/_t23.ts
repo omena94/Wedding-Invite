@@ -13,6 +13,7 @@ import { fitText, type FitResult } from '../engine/text';
 import { clamp } from '../engine/util';
 import { GLSL_COMMON, THEME_UNIFORMS } from '../engine/glsl/common';
 import { signature, COUPLE_ZH } from './_motifs';
+import { V2, msgMaxFor, sigV2, fitClauses } from './_v2';
 
 export type Rect = [number, number, number, number];
 export type P2 = { x: number; y: number };
@@ -109,6 +110,31 @@ export function layMsg(c: CanvasRenderingContext2D, text: string, sigText: strin
   let sig = sMax, fit = fitAt(sig);
   sig = clamp(Math.round(fit.size * 0.42), sMin, sMax);
   fit = fitAt(sig);
+  return placeMsg(c, fit, sigText, family, box, sig, sigFamily, o.align ?? 'center', o.valign ?? 'middle');
+}
+
+/**
+ * 「留言尺寸與版面比例標準 v2」（TREATMENT.md、_v2.ts）的留言排版：字級上限照字數（msgMaxFor）、下限 40，
+ * 先照子句斷行（fitClauses，不會斷出「…這一天，要／一直…」），放不下才交給 fitText；署名 26～32。
+ * k：畫布 px 對螢幕 px 的倍數（留言畫在會被鏡頭縮放的貼圖上時，字級要換算成畫布上的大小）。
+ */
+export function layMsgV2(c: CanvasRenderingContext2D, text: string, sigText: string, family: string, box: { x: number; y: number; w: number; h: number },
+  o: { k?: number; lineHeight?: number; maxLines?: number; sigFamily?: string; align?: 'left' | 'center'; valign?: 'top' | 'middle' } = {}): MsgLay {
+  const k = o.k ?? 1, lh = o.lineHeight ?? 1.3, maxLines = o.maxLines ?? 5;
+  const max = msgMaxFor(text) * k, min = V2.msgMin * k;
+  const fitAt = (sig: number) => {
+    const room = box.h - (sigText ? sig * 1.75 : 0);
+    const opt = { min, max: Math.max(min, max), lineHeight: lh, maxLines };
+    return fitClauses(c, text, family, box.w, room, opt) ?? fitText(c, text, family, box.w, room, opt);
+  };
+  let sig = sigV2(max / k) * k, fit = fitAt(sig);
+  sig = sigV2(fit.size / k) * k;
+  fit = fitAt(sig);
+  return placeMsg(c, fit, sigText, family, box, sig, o.sigFamily ?? family, o.align ?? 'center', o.valign ?? 'middle');
+}
+
+/** 把排好的留言（fit）放進框裡：整塊垂直置中（或靠上），署名在最後一行下面、靠右對齊最長那一行。 */
+function placeMsg(c: CanvasRenderingContext2D, fit: FitResult, sigText: string, family: string, box: { x: number; y: number; w: number; h: number }, sig: number, sigFamily: string, align: 'left' | 'center', valign: 'top' | 'middle'): MsgLay {
   c.font = font(family, fit.size);
   const widths = fit.lines.map((l) => c.measureText(l).width);
   const maxW = Math.max(...widths);
@@ -116,10 +142,9 @@ export function layMsg(c: CanvasRenderingContext2D, text: string, sigText: strin
   const sigW = sigText ? c.measureText(sigText).width : 0;
   const gap = sigText ? Math.max(fit.lineHeight * 0.72, sig * 1.6) : 0;
   const blockH = fit.size + (fit.lines.length - 1) * fit.lineHeight + gap + (sigText ? sig * 0.25 : 0);
-  const top = box.y + (o.valign === 'top' ? 0 : Math.max(0, (box.h - blockH) / 2));
+  const top = box.y + (valign === 'top' ? 0 : Math.max(0, (box.h - blockH) / 2));
   const base0 = top + fit.size * 0.88;
   const cx = box.x + box.w / 2;
-  const align = o.align ?? 'center';
   const lines = fit.lines.map((ln, i) => ({ text: ln, x: align === 'center' ? cx - widths[i]! / 2 : box.x, y: base0 + i * fit.lineHeight, w: widths[i]! }));
   const right = align === 'center' ? cx + maxW / 2 : box.x + maxW;
   const sigY = lines[lines.length - 1]!.y + gap;
