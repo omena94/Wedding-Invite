@@ -8,6 +8,8 @@
 //  - 最後一個小節線：訊號色的圓章「永久續借」砸下去（畫面輕震），「借閱次數」翻成 ∞。
 // 焦點：有留言時是留言（最大），歌詞在書名欄（中等、逐字跟唱）；沒有留言時歌詞寫在心得欄當主角（大），書名欄是歌名；
 // 純音樂又沒留言：心得欄寫邀請。其他字（表頭、表格、借書袋）都是 ≤ 22 px 的淡字，分成三小群。
+// v2（留言尺寸標準）：鏡頭拉遠、卡片移到畫面左邊（螢幕上約 740 寬），留言 40～60 px；右邊空出來的蝴蝶頁上躺著一條書籤緞帶，
+// 每個小節線被扯一下（彈簧擺動）、蝴蝶頁同時被梳一下（紋路流動）。
 // 畫法：卡片、借書袋、日期章、圓章在 init() 畫成離屏畫布；每格在一張 fast 的 Canvas2D（頁面座標）上 drawImage 卡片、
 // 畫會變的字、疊上借書袋；最後一個全螢幕 shader 用鏡頭的逆單應矩陣把「頁面」投到畫面上：大理石紋與卡片都用 mipmap 做景深、
 // 加上桌燈的光與前景的書頁（見 librarycard-art.ts）。
@@ -21,6 +23,7 @@ import { fitText, type FitResult } from '../engine/text';
 import type { Line } from '../engine/lyrics';
 import { lyricAt, drawLyric, layoutLyric, signature, COUPLE_EN, COUPLE_ZH, WEDDING_DATE, type LyricStyle } from './_motifs';
 import { grid, stagger, settle, paperLyric, pad3, type Grid } from './_t2';
+import { V2, msgMaxFor, lyricV2, sigV2, fitClauses } from './_v2';
 import {
   Book, CARD, CPAD, PULL, POCKET, PPAD, LAY, L, DATE_CELL, slotXY, canvas2d, camera, project, type Cam,
   drawCard, drawPocket, drawDateSheet, drawRoundStamp,
@@ -33,10 +36,10 @@ const MON = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT
 /** 格子數（左右兩半各四列）。 */
 const SLOTS = 8;
 const SEAL = 200;
-/** 書名欄的歌詞（有留言時：中等）。顏色每格才取（換歌會換主題，色票是當下的值）。 */
-const titleStyle = (): LyricStyle => ({ family: F.ming(700), size: 56, minSize: 52, maxWidth: L.x1 - L.x0, lineHeight: 1.12, ...paperLyric() });
-/** 沒有留言時歌詞寫在心得欄當主角（大）。 */
-const bigStyle = (): LyricStyle => ({ family: F.ming(700), size: 92, minSize: 60, maxWidth: L.x1 - L.x0, lineHeight: 1.16, ...paperLyric() });
+/** 書名欄的歌詞（有留言時：比留言小一級）。字級是卡片座標（螢幕 px ÷ k）。顏色每格才取（換歌會換主題，色票是當下的值）。 */
+const titleStyle = (size: number, min: number): LyricStyle => ({ family: F.ming(700), size, minSize: min, maxWidth: L.x1 - L.x0, lineHeight: 1.12, ...paperLyric() });
+/** 沒有留言時歌詞寫在心得欄當主角（v2：一樣不超過 52 px）。 */
+const bigStyle = (size: number, min: number): LyricStyle => ({ family: F.ming(700), size, minSize: min, maxWidth: L.x1 - L.x0, lineHeight: 1.16, ...paperLyric() });
 /** 沒有留言時的邀請（自己斷好行：「QR code」不能拆開）。 */
 const INVITE_LINES = ['你也想借閱嗎？', '掃描右下角 QR code，', '留下你的讀後心得。'];
 
@@ -68,6 +71,10 @@ export default class LibraryCard extends Scene {
   circT: number[] = [];
   /** 鏡頭推近的小節線（每個小節線前緩緩推一格、在小節線停住）。 */
   pushBars: number[] = [];
+  /** 卡片座標 → 螢幕 px 的縮放（心得欄、書名欄一帶，鏡頭在窗格中間的位置量）：v2 的字級是螢幕 px。 */
+  k = 0.74; kT = 0.74;
+  lyrT = { size: 60, min: 54 };
+  lyrBig = { size: 70, min: 54 };
 
   constructor(ctx: ConstructorParameters<typeof Scene>[0]) {
     super(ctx);
@@ -115,14 +122,31 @@ export default class LibraryCard extends Scene {
 
     // ---- 心得欄：留言（或邀請）找字級、斷行，排好每個字的位置。留言是整張卡最大的字
     const c = this.layer.ctx;
+    // 先量縮放：鏡頭在窗格中間的位置時，心得欄、書名欄一帶的卡片座標 1 px 在螢幕上是幾 px
+    this.tPull = g.b0;
+    this.pushBars = g.bars.filter((x) => x > g.b0 + g.beat * 1.5);
+    {
+      const Hm = camera(this.camAt((this.tPull + e) / 2 + g.beat));
+      const kAt = (x: number, y: number) => { const a = project(Hm, CARD.x + x - 50, CARD.y + y), b = project(Hm, CARD.x + x + 50, CARD.y + y); return Math.hypot(b.x - a.x, b.y - a.y) / 100; };
+      this.k = kAt((L.x0 + L.x1) / 2, (L.rev.text0 + L.rev.sigMax) / 2);
+      this.kT = kAt((L.x0 + L.x1) / 2, (L.titleLabel + L.fieldBot) / 2);
+    }
+    const k = this.k;
     // 署名先量好、先把它的那一條（字高＋間距）從可用高度扣掉，留言再用剩下的高度找字級：
-    // 留言再長，最後一行下面也一定放得下署名，不會疊在一起
-    this.sigSize = Math.max(24, Math.min(34, (34 * 520) / Math.max(1, measure(this.sig || ' ', HAND, 34))));
-    const sigBand = this.sig ? this.sigSize * 1.5 : 0;
+    // 留言再長，最後一行下面也一定放得下署名，不會疊在一起。v2：署名 26～32、留言 40～60（螢幕 px）
+    const sig0 = sigV2(m ? msgMaxFor(text) : 44) / k;
+    this.sigSize = Math.max(V2.sigMin / k, Math.min(sig0, (sig0 * 560) / Math.max(1, measure(this.sig || ' ', HAND, sig0))));
+    const sigBand = this.sig ? this.sigSize * 1.6 : 0;
     const areaW = L.x1 - L.x0, areaH = (this.sig ? L.rev.sigMax - sigBand : L.rev.text1) - L.rev.text0;
     let fit: FitResult;
-    if (m) fit = fitText(c, text, HAND, areaW, areaH, { min: 44, max: Array.from(text).length <= 4 ? 150 : 120, lineHeight: 1.22, maxLines: 5 });
-    else fit = fixedFit(INVITE_LINES, HAND, areaW, this.mode === 'invite' ? 76 : 46);
+    if (m) {
+      const opt = { min: V2.msgMin / k, max: msgMaxFor(text) / k, lineHeight: 1.26, maxLines: 6 };
+      fit = fitClauses(c, text, HAND, areaW, areaH, opt) ?? fitText(c, text, HAND, areaW, areaH, opt);
+    } else fit = fixedFit(INVITE_LINES, HAND, areaW, (this.mode === 'invite' ? 52 : 34) / k);
+    // 歌詞（v2）：有留言時比留言小一級，沒有留言時 52；都換成卡片座標（書名欄那一帶的縮放）
+    const lyrScr = m ? lyricV2(fit.size * k) : V2.lyrMax;
+    this.lyrT = { size: lyrScr / this.kT, min: V2.lyrMin / this.kT };
+    this.lyrBig = { size: V2.lyrMax / k, min: V2.lyrMin / k };
     this.fit = fit;
     const top = L.rev.text0 + (this.mode === 'lyric' ? 0 : Math.max(0, (areaH - fit.height) / 2)) + fit.size * 0.86;
     const pos: { ch: string; x: number; y: number }[] = [];
@@ -132,11 +156,10 @@ export default class LibraryCard extends Scene {
     });
     // 署名：緊接在最後一行字的下緣（含下伸部、愛心）再往下一點；留言小的時候也不會離太遠
     const lastBottom = top + (fit.lines.length - 1) * fit.lineHeight + fit.size * 0.16;
-    this.sigY = Math.min(L.rev.sigMax, lastBottom + 12 + this.sigSize * 0.9);
+    this.sigY = Math.min(L.rev.sigMax, lastBottom + this.sigSize * 0.4 + this.sigSize * 0.9);
 
     // ---- 時間表：第一拍抽卡；下一拍起蓋章（一拍一格）、同時寫留言
     const beat = g.beat, bar = g.bar;
-    this.tPull = g.b0;
     const tS0 = g.b0 + beat;
     const stampEnd = Math.max(tS0 + beat, Math.min(e - 0.6, tS0 + 2 * bar - beat));
     const avail = Math.floor((stampEnd - tS0) / beat + 1e-3) + 1;
@@ -167,7 +190,6 @@ export default class LibraryCard extends Scene {
     this.tFinal = lastBar ?? g.beats.filter((x) => x >= after && x <= e - 0.25).pop() ?? -1;
     this.circBase = 100 + Math.floor(rnd() * 820);
     this.circT = [...lt, ...g.bars.filter((x) => x > slotsDone && (this.tFinal < 0 || x < this.tFinal))].sort((a, b) => a - b);
-    this.pushBars = g.bars.filter((x) => x > g.b0 + beat * 1.5);
 
     // ---- 不會變的圖：卡片、借書袋、日期章、圓章
     drawCard(this.card.c, {
@@ -191,12 +213,13 @@ export default class LibraryCard extends Scene {
       const dur = Math.min(0.8, g.bar * 0.45);
       push = this.pushBars.reduce((a, x) => a + prog(t, x - dur, x, ease.inOutCubic), 0) / this.pushBars.length;
     } else push = prog(t, this.tPull + g.beat, this.ctx.end, ease.inOutCubic);
+    // v2：鏡頭拉遠、看的點往右移（卡片落在畫面左邊，右邊是蝴蝶頁、緞帶與窗光）
     return {
-      tx: lerp(900, 930, follow) + 16 * push,
-      ty: lerp(730, 500, follow) + 46 * push,
-      zoom: lerp(1.0, 0.98, follow) + 0.065 * push,
+      tx: lerp(1250, 1280, follow) + 14 * push,
+      ty: lerp(800, 590, follow) + 30 * push,
+      zoom: lerp(0.74, 0.72, follow) + 0.05 * push,
       pitch: lerp(0.3, 0.23, follow) - 0.03 * push,
-      yaw: lerp(-0.05, -0.03, follow) + 0.034 * push,
+      yaw: lerp(-0.05, -0.03, follow) + 0.03 * push,
       roll: 0.016 - 0.012 * push,
     };
   }
@@ -257,8 +280,11 @@ export default class LibraryCard extends Scene {
     for (const b of g.bars) comb += prog(t, b, b + 0.6, ease.outExpo);
     const Hm = camera(this.camAt(t));
     const focus = project(Hm, CARD.x + CARD.w / 2, CARD.y + off + (L.rev.text0 + L.rev.text1) / 2);
+    // 書籤緞帶：每個小節線被扯一下（阻尼彈簧，擺幅越來越小），平常很慢地晃
+    let sway = 0.25 * Math.sin(t * 0.8);
+    for (const b of g.bars) if (t >= b) sway += Math.exp(-(t - b) * 3.2) * Math.sin((t - b) * 9) * 0.9;
     this.book.render(renderer, out, {
-      H: Hm, zf: focus.w, card: Ly.texture, comb, t,
+      H: Hm, zf: focus.w, card: Ly.texture, comb, t, sway,
       cardR: [CARD.x - 10, CARD.y + off - 10, CARD.x + CARD.w + 10, POCKET.y + POCKET.h],
     });
 
@@ -296,7 +322,7 @@ export default class LibraryCard extends Scene {
     const { lyrics } = this.ctx;
     if (this.mode !== 'msg') { this.drawSongTitle(c, 1); return; }
     const ly = lyrics.has ? lyricAt(lyrics, t) : null;
-    if (ly && ly.k > 0) this.drawLyricIn(c, ly.line, t, ly.k, titleStyle(), L.titleLabel + 4, L.fieldBot - 8);
+    if (ly && ly.k > 0) this.drawLyricIn(c, ly.line, t, ly.k, titleStyle(this.lyrT.size, this.lyrT.min), L.titleLabel + 4, L.fieldBot - 8);
     const k = this.gapAlpha(t);
     if (k > 0) this.drawSongTitle(c, k);
   }
@@ -385,7 +411,7 @@ export default class LibraryCard extends Scene {
     if (!fit) return;
     if (this.mode === 'lyric') {
       const ly = lyricAt(this.ctx.lyrics, t);
-      if (ly && ly.k > 0) this.drawLyricIn(c, ly.line, t, ly.k, bigStyle(), L.rev.text0, L.rev.text1);
+      if (ly && ly.k > 0) this.drawLyricIn(c, ly.line, t, ly.k, bigStyle(this.lyrBig.size, this.lyrBig.min), L.rev.text0, L.rev.text1);
       const k = this.gapAlpha(t);
       if (k > 0) {
         c.save();

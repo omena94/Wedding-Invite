@@ -92,7 +92,8 @@ export function project(m: number[], x: number, y: number) {
 
 // ---------------------------------------------------------------- 大理石紋
 /** 烤的範圍（頁面座標）：鏡頭斜看、推遠時看得到的都在裡面。 */
-const BK = { x: -420, y: -420, w: 2760, h: 1920 };
+// v2：鏡頭拉遠、卡片移到畫面左邊之後，右邊看得到的蝴蝶頁多很多：烤的範圍往右、往上加大
+const BK = { x: -600, y: -700, w: 3700, h: 2500 };
 /**
  * 烤紋路：r = 淡訊號色的條、g = 淡墨的條、b = 訊號色暗部的條、a = 條紋邊的墨線（都是 0..1 的份量，糊了也還是對的顏色）。
  * 樣子是「梳過的墨流」：一條條色帶跟著大的 S 形流動，梳齒在每條上拉出細細的羽毛紋。
@@ -127,6 +128,10 @@ const COMPOSE = /* glsl */ `
 uniform sampler2D bake; uniform sampler2D card;
 uniform mat3 Hinv; uniform vec3 Hz; uniform float zf;
 uniform vec4 lay; uniform vec4 cardR; uniform float comb; uniform float t; uniform vec3 lamp;
+uniform float sway; // v2：書籤緞帶被小節線扯一下的擺動（彈簧，主檔算）
+// 書籤緞帶（頁面座標）：從頁面上方垂下來、躺在卡片右邊的蝴蝶頁上，尾端剪成燕尾，下面一顆流蘇
+const float RIB_Y0 = -700.0, RIB_Y1 = 700.0, RIB_W = 50.0;
+float ribX(float y) { return 1640.0 + 70.0 * sin(y / 420.0 + 0.9) + sway * (y - RIB_Y0) / (RIB_Y1 - RIB_Y0) * 60.0; }
 void main() {
   vec2 s = vec2(FRAG_PX.x, ${H}.0 - FRAG_PX.y);
   vec3 q = Hinv * vec3(s, 1.0);
@@ -140,12 +145,43 @@ void main() {
   vec2 bu = (p + dsp - vec2(${BK.x}.0, ${BK.y}.0)) / vec2(${BK.w}.0, ${BK.h}.0);
   vec4 m = textureLod(bake, vec2(bu.x, 1.0 - bu.y), 1.0 + dof);
   vec2 dd = max(max(cardR.xy - p, p - cardR.zw), 0.0);
-  float A = 0.2 + 0.3 * smoothstep(20.0, 340.0, length(dd));
+  // v2：卡片移到左邊、右邊露出一大片之後，紋路要更淡（背景要能呼吸）；右下角 HUD 底下再淡一點，字才讀得清楚
+  float A = 0.13 + 0.15 * smoothstep(20.0, 340.0, length(dd));
+  A *= 1.0 - 0.75 * smoothstep(1250.0, 1420.0, s.x) * smoothstep(740.0, 860.0, s.y);
   vec3 col = C_PAPER * 0.97;
   col = mix(col, mix(C_PAPER, C_SIGNAL, 0.55), m.r * A);
   col = mix(col, mix(C_PAPER, C_SEPIA, 0.35), m.g * A);
   col = mix(col, mix(C_PAPER, C_BLOOD, 0.5), m.b * A);
   col = mix(col, C_SEPIA, m.a * A * 0.6);
+  // ---- 書籤緞帶（v2 的主視覺之一）：訊號色的絲緞，斜紋的光澤跟著彎曲變化，下面有一點影子
+  {
+    float xc = ribX(p.y), sl = (ribX(p.y + 1.0) - xc);
+    float cs = inversesqrt(1.0 + sl * sl);
+    float dx = (p.x - xc) * cs;
+    // 燕尾：尾端中間剪一個 V
+    float vcut = RIB_Y1 - 46.0 + abs(dx) * 1.5;
+    float inY = step(RIB_Y0, p.y) * (1.0 - smoothstep(vcut - 1.5, vcut + 1.5, p.y));
+    float dsh = abs((p.x - xc - 10.0) * cs) - RIB_W * 0.5;
+    col *= 1.0 - 0.16 * (1.0 - smoothstep(-6.0, 16.0 + 30.0 * dof, dsh)) * step(RIB_Y0, p.y) * step(p.y, RIB_Y1 + 12.0);
+    float aa = 1.0 + 1.6 * dof;
+    float rib = (1.0 - smoothstep(RIB_W * 0.5 - aa, RIB_W * 0.5 + aa, abs(dx))) * inY;
+    // 絲緞：顏色是訊號色混一點紙色（不要太飽和），光澤隨彎曲流動，兩邊的織邊稍微深一點
+    float gloss = 0.5 + 0.5 * sin(sl * 7.0 + p.y / 260.0 + dx / RIB_W * 2.2);
+    vec3 rc = mix(mix(C_BLOOD, C_SIGNAL, 0.45), C_PAPER, 0.18) * (0.8 + 0.26 * gloss);
+    rc = mix(rc, C_BONE, 0.14 * pow(gloss, 5.0));
+    rc *= 1.0 - 0.14 * smoothstep(RIB_W * 0.36, RIB_W * 0.5, abs(dx));
+    col = mix(col, rc, rib);
+    // 流蘇：燕尾下面一顆結、再一小把散開的線（跟著緞帶晃）
+    vec2 kn = vec2(ribX(RIB_Y1) + 6.0 * sway, RIB_Y1 + 22.0);
+    vec2 tq = p - kn;
+    float knot = 1.0 - smoothstep(9.0, 11.0 + 6.0 * dof, length(tq));
+    vec2 tr = vec2(tq.x - tq.y * 0.1 * sway, tq.y);
+    float fan = (1.0 - smoothstep(0.0, 2.0 + 6.0 * dof, abs(tr.x) - 5.0 - tr.y * 0.2)) * step(8.0, tr.y) * (1.0 - smoothstep(68.0, 74.0, tr.y));
+    float threads = 0.7 + 0.3 * sin(tr.x * 1.1 / (1.0 + tr.y * 0.02));
+    vec3 tc = mix(mix(C_BLOOD, C_SIGNAL, 0.45), C_SEPIA, 0.15);
+    col = mix(col, tc * threads, fan * 0.92);
+    col = mix(col, tc * 0.85, knot);
+  }
   // ---- 卡片與借書袋（fast 圖層：預乘、sRGB 編碼）
   vec2 cu = (p - lay.xy) / lay.zw;
   if (cu.x > 0.0 && cu.x < 1.0 && cu.y > 0.0 && cu.y < 1.0) {
@@ -155,7 +191,7 @@ void main() {
   }
   // ---- 桌燈：左上方一圈暖光，其他地方暗一點（紙不會比紙白刺眼）
   float lit = 1.0 - smoothstep(0.0, lamp.z, distance(p, lamp.xy));
-  col *= 0.74 + 0.27 * lit;
+  col *= 0.8 + 0.22 * lit;
   // ---- 前景：左邊是攤開的另一頁（離鏡頭很近、失焦），頁緣在蝴蝶頁上投一點影子
   float fx = 168.0 + 24.0 * sin(s.y / 520.0 + 0.6) - 0.05 * (s.y - 540.0);
   col *= 1.0 - 0.3 * (1.0 - smoothstep(fx, fx + 190.0, s.x));
@@ -173,11 +209,11 @@ export class Book {
   pass = new FSPass(COMPOSE, {
     bake: { value: null }, card: { value: null }, Hinv: { value: new THREE.Matrix3() }, Hz: { value: new THREE.Vector3() }, zf: { value: 1 },
     lay: { value: new THREE.Vector4(LAY.x, LAY.y, LAY.w, LAY.h) }, cardR: { value: new THREE.Vector4() },
-    comb: { value: 0 }, t: { value: 0 }, lamp: { value: new THREE.Vector3(560, 200, 1450) },
+    comb: { value: 0 }, t: { value: 0 }, lamp: { value: new THREE.Vector3(560, 200, 1450) }, sway: { value: 0 },
   });
   private baked = false;
   private inv = new THREE.Matrix3();
-  render(renderer: THREE.WebGLRenderer, out: THREE.WebGLRenderTarget, o: { H: number[]; zf: number; card: THREE.Texture; cardR: [number, number, number, number]; comb: number; t: number }) {
+  render(renderer: THREE.WebGLRenderer, out: THREE.WebGLRenderTarget, o: { H: number[]; zf: number; card: THREE.Texture; cardR: [number, number, number, number]; comb: number; t: number; sway: number }) {
     if (!this.baked) { this.bakePass.render(renderer, this.rt); this.baked = true; }
     const u = this.pass.u, h = o.H;
     this.inv.set(h[0]!, h[1]!, h[2]!, h[3]!, h[4]!, h[5]!, h[6]!, h[7]!, h[8]!).invert();
@@ -189,6 +225,7 @@ export class Book {
     (u.cardR!.value as THREE.Vector4).set(...o.cardR);
     u.comb!.value = o.comb;
     u.t!.value = o.t;
+    u.sway!.value = o.sway;
     this.pass.render(renderer, out);
   }
 }

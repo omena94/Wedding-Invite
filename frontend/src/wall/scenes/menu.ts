@@ -10,7 +10,9 @@
 //  - 留言寫完以後每個小節線「上一道菜」：菜名下面蓋一個小小的「已上」章；最後一個小節線標題下面蓋「囍」章落款、畫面輕震。
 //  - 歌詞印在卡片下緣（中等大小，照跟唱規則：正在唱是訊號色的暗部、唱完墨色、還沒唱三成）。純音樂：寫歌名（純音樂）。
 //  - 沒有留言：主廚推薦是「本道需現點」＋邀請掃 QR；新人的留言：章是「新人推薦」、署名是新人。
-// 畫法：桌巾（景深、瓷盤、茶杯、卡片的影子）與卡紙各是一個 three.js 的材質（模組層共用）；卡片上的字是一張 fast Canvas2D 貼上去
+// v2（留言尺寸標準）：菜單卡縮到畫面左邊（螢幕上約 870×500），留言 40～60 px；右邊是辦桌的圓桌轉盤（玻璃轉盤上五盤菜冒著熱氣），
+// 每個小節線轉盤轉一格（outBack），是這個版面的主視覺。
+// 畫法：桌巾（景深、瓷盤、茶杯、轉盤、卡片的影子）與卡紙各是一個 three.js 的材質（模組層共用）；卡片上的字是一張 fast Canvas2D 貼上去
 // （有 mipmap，斜著看才不會閃）：不會變的菜名、標題 init 時先畫在另一張畫布，每格只剪下「刷到哪裡」；
 // 燙金的邊框、回紋、火花是 LineBatch，用跟卡片一樣的矩陣畫在 3D 裡（所以跟著透視）。
 import * as THREE from 'three';
@@ -25,6 +27,7 @@ import { fitText, type FitResult } from '../engine/text';
 import type { Lyrics } from '../engine/lyrics';
 import { lyricAt, drawLyric, layoutLyric, sparkHead, sparkParticles, COUPLE_ZH, WEDDING_DATE, type LyricStyle } from './_motifs';
 import { grid, stagger, paperLyric, mono, FAST_TEX_GLSL, type Grid } from './_t2';
+import { V2, msgMaxFor, lyricV2, sigV2, fitClauses } from './_v2';
 import { vFit, vColumn, vPlace, vDrawUnit, BR, type VLayout, type VPlaced } from './menu-vert';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'doc', paper: true, energy: [0.1, 0.85], bars: [4, 8] };
@@ -41,14 +44,14 @@ const OUT_IN = 20, INN_IN = 30;
 /** 右邊的標題欄（小）。 */
 const TITLE = { cx: 1150, rule: 1096 };
 /** 主打留言（主廚推薦）的範圍：卡片中間偏右的一大塊。 */
-const MSG = { x0: 430, x1: 1066, top: 128, bot: 620 };
-/** 署名欄寬。 */
-const SIGW = 52;
+const MSG = { x0: 400, x1: 1076, top: 112, bot: 582 };
 /** 左上角的菜名小字群。 */
 const DISH = { x1: 392, pitch: 40, top: 118, size: 26, served: 262 };
 /** 歌詞：小標籤、一行／兩行的基線。 */
-const LYR = { x: 96, w: 1010, label: 668, one: 734, two: [714, 774] as [number, number] };
+const LYR = { x: 96, w: 1010, rule: 596, label: 620, top: 628, bot: 790 };
 const HAND = F.hand(700);
+/** 轉盤（桌面座標）：卡片右邊。 */
+const SUSAN = { x: 1500, y: 330, r: 560 };
 const DISH_F = F.ming(700);
 
 // ---------------------------------------------------------------- 菜色（辦桌的吉祥菜名；種子換組合）
@@ -95,6 +98,8 @@ uniform float cardR; // 卡片在桌上的旋轉
 uniform float focus; // 對焦距離
 uniform vec4 plate;  // 瓷盤中心 xy、半徑
 uniform vec4 cup;    // 茶杯中心 xy、半徑
+uniform vec4 susan;  // 轉盤中心 xy、半徑、轉角（v2：辦桌的玻璃轉盤是主視覺）
+uniform float tt;    // 時間（熱氣）
 ${GLSL_COMMON}
 float damask(vec2 p, float b) {
   vec2 q = p / vec2(230.0, 200.0);
@@ -145,6 +150,54 @@ void main() {
   float tea = 1.0 - smoothstep(cup.z * 0.62 - 2.0 - 50.0 * b, cup.z * 0.62 + 2.0 + 50.0 * b, length(p - cup.xy));
   cu.rgb = mix(cu.rgb, mix(C_BLOOD, C_SEPIA, 0.4), tea * 0.45);
   col = mix(col, cu.rgb, cu.a);
+  // ---- 轉盤：一大片玻璃（淡淡的反光、邊緣一圈亮線），上面五盤菜跟著轉，菜冒著熱氣。
+  // 轉盤是主視覺：景深只糊一點點（b 打三折），菜才看得清楚
+  {
+    float bs = b * 0.3;
+    vec2 sd = p - susan.xy;
+    float sr = length(sd), SR = susan.z, bw = 2.0 + 60.0 * bs;
+    float glass = 1.0 - smoothstep(SR - bw, SR + bw, sr);
+    // 轉盤下面的影子（往右下）與玻璃本身（比桌巾亮一點點、帶一道斜斜的反光）
+    col *= 1.0 - 0.1 * (1.0 - smoothstep(SR - 60.0, SR + 90.0, length(sd - vec2(24.0, -30.0))));
+    float refl = exp(-pow(dot(sd, normalize(vec2(1.0, -0.8))) / (SR * 0.18), 2.0)) * 0.05;
+    col = mix(col, col * 0.96 + C_BONE * (0.05 + refl), glass);
+    col += C_BONE * 0.22 * exp(-pow((sr - SR) / (2.5 + 40.0 * bs), 2.0));
+    for (int i = 0; i < 5; i++) {
+      float a = susan.w + float(i) * TAU / 5.0;
+      vec2 pc = susan.xy + vec2(cos(a), sin(a)) * SR * 0.6;
+      float pr = SR * 0.27;
+      col *= 1.0 - 0.1 * (1.0 - smoothstep(pr - 20.0, pr + 50.0, length(p - pc - vec2(14.0, -18.0))));
+      vec4 dish = porcelain(p, vec4(pc, pr, 0.0), bs, 1.0);
+      col = mix(col, dish.rgb, dish.a);
+      // 菜：盤心一圈醬汁、上面一團菜（邊緣是雜訊的起伏）、幾點亮的配料；顏色從色票混出來，偏暖的醬色、不要太飽和
+      vec2 fp = (p - pc) / (pr * 0.6);
+      float n = snoise(fp * 1.6 + float(i) * 7.3);
+      float fr = length(fp);
+      float sauce = 1.0 - smoothstep(0.92 + 0.05 * n, 0.98 + 0.05 * n, fr);
+      col = mix(col, mix(mix(C_BLOOD, C_SEPIA, 0.55), C_PAPER, 0.35), sauce * 0.55);
+      float food = 1.0 - smoothstep(0.66 + 0.14 * n - 0.05, 0.66 + 0.14 * n + 0.05, fr);
+      vec3 fc = mix(mix(C_SEPIA, C_PAPER, 0.28), mix(C_BLOOD, C_PAPER, 0.25), 0.35 + 0.3 * fract(float(i) * 0.43));
+      // 菜的起伏：大尺度的雜訊＋一個圓頂的打光（左上亮、右下暗），再一小塊油亮的反光
+      float tex = snoise((p - pc) / 26.0 + float(i) * 3.0);
+      vec2 dome = fp / 0.7;
+      float lit = 0.8 + 0.28 * (1.0 - dot(dome, dome)) + 0.12 * dot(normalize(dome + 1e-4), normalize(vec2(-0.7, 0.7))) * length(dome);
+      fc *= lit * (0.93 + 0.1 * tex);
+      float gloss = exp(-dot(fp - vec2(-0.25, 0.28), fp - vec2(-0.25, 0.28)) * 18.0);
+      fc = mix(fc, C_BONE, 0.35 * gloss);
+      col = mix(col, fc, food * 0.95);
+      // 配料：幾個亮點（訊號色的亮部，像蔥花／枸杞）
+      float dots = smoothstep(0.8, 0.92, snoise((p - pc) / 16.0 + float(i) * 11.0)) * food;
+      col = mix(col, mix(C_EMBER, C_PAPER, 0.3), dots * 0.7);
+      // 熱氣：往遠處（+y）飄的一縷白煙，隨時間往上捲（很柔，大尺度）
+      vec2 q2 = (p - pc) / vec2(pr * 0.8, pr * 2.4) - vec2(0.0, 0.55);
+      float plume = exp(-dot(q2, q2) * 1.8);
+      float wisp = smoothstep(-0.1, 0.55, fbm((p - pc) / vec2(120.0, 260.0) - vec2(0.0, tt * 0.35) + float(i) * 3.1, 2));
+      col += C_BONE * 0.2 * plume * wisp;
+    }
+    // 轉盤中間：一只不動的小糖碟
+    vec4 hub = porcelain(p, vec4(susan.xy, SR * 0.16, 0.0), bs, 0.0);
+    col = mix(col, hub.rgb, hub.a);
+  }
   // 光：左上方一盞暖光，卡片附近最亮，四周暗下去
   vec2 lc = card.xy + vec2(-300.0, 380.0);
   col *= 0.86 + 0.16 * exp(-dot(p - lc, p - lc) / (2.0 * 1500.0 * 1500.0));
@@ -178,7 +231,7 @@ const make3D = () => {
     glslVersion: THREE.GLSL3, vertexShader: VERT, fragmentShader: TABLE_FRAG, depthTest: false, depthWrite: false, side: THREE.DoubleSide,
     uniforms: {
       ...THEME_UNIFORMS, card: { value: new THREE.Vector4() }, cardR: { value: 0 }, focus: { value: 2500 },
-      plate: { value: new THREE.Vector4() }, cup: { value: new THREE.Vector4() },
+      plate: { value: new THREE.Vector4() }, cup: { value: new THREE.Vector4() }, susan: { value: new THREE.Vector4() }, tt: { value: 0 },
     },
   });
   const table = new THREE.Mesh(new THREE.PlaneGeometry(16000, 16000), tableMat);
@@ -331,6 +384,10 @@ export default class Menu extends Scene {
   /** 卡片 → 世界的矩陣（卡片座標 y 向下 → 桌面 y 向上）。 */
   M = new THREE.Matrix4();
   cardRot = -0.05;
+  /** 卡片座標 → 螢幕 px 的縮放（留言那一帶、歌詞那一帶；init 用鏡頭推到一半時量）：v2 的字級是螢幕 px。 */
+  k = 0.7; kLy = 0.7;
+  /** 署名那一欄的寬度（卡片座標）。 */
+  sigW = 60;
 
   constructor(ctx: ConstructorParameters<typeof Scene>[0]) {
     super(ctx);
@@ -350,6 +407,15 @@ export default class Menu extends Scene {
     const g = this.g = grid(au, s, e);
     const m = this.msg;
     const seed = this.ctx.params.seed ?? 1;
+    // 量縮放：用一台暫時的相機擺到窗格中間的位置（共用的相機可能正在畫上一個窗格）
+    {
+      const tmp = new THREE.PerspectiveCamera(26, W / H, 50, 30000);
+      this.camSet(tmp, (s + e) / 2);
+      const PMt = new THREE.Matrix4().multiplyMatrices(tmp.projectionMatrix, tmp.matrixWorldInverse).multiply(this.M);
+      const kAt = (x: number, y: number) => { const a = this.projWith(PMt, x - 50, y), b = this.projWith(PMt, x + 50, y); return Math.hypot(b.x - a.x, b.y - a.y) / 100; };
+      this.k = kAt((MSG.x0 + MSG.x1) / 2, (MSG.top + MSG.bot) / 2);
+      this.kLy = kAt(560, (LYR.top + LYR.bot) / 2);
+    }
     const rnd = mulberry32(seed);
     this.instr = !lyrics.has;
     const txt = m ? m.text : INVITE_V;
@@ -367,8 +433,11 @@ export default class Menu extends Scene {
     // 橫排時是最後一行下面的一行，要放得進留言的寬度。名字太長縮到最小還放不下，就從尾巴截掉加「…」
     const SIG_F = F.hand(400);
     const sigFits = (text: string, size: number) => (horiz ? measure(text, SIG_F, size) <= areaW - 20 : vColumn(text, SIG_F, size).height <= colH);
-    let sigSize = 38;
-    while (sigSize > 26 && !sigFits(this.sigText, sigSize)) sigSize -= 2;
+    // v2：留言 40～60（依字數的上限）、署名 26～32，都是螢幕 px，除以縮放換成卡片座標
+    const k = this.k;
+    const mMax = (m ? msgMaxFor(txt) : 50) / k, mMin = V2.msgMin / k;
+    let sigSize = sigV2(m ? msgMaxFor(txt) : 44) / k;
+    while (sigSize > V2.sigMin / k && !sigFits(this.sigText, sigSize)) sigSize -= 2;
     if (m && !sigFits(this.sigText, sigSize)) {
       let name = Array.from(m.name || '一位賓客');
       const mk = () => (m.couple ? `—— ${name.join('')}…` : `—— ${name.join('')}… 特製`);
@@ -376,10 +445,14 @@ export default class Menu extends Scene {
       this.sigText = mk();
     }
     this.sigSize = sigSize;
+    this.sigW = Math.ceil(sigSize * 1.25);
+    const SIGW = this.sigW;
     if (horiz) {
-      this.hfit = fitText(pre, txt, HAND, areaW - 20, colH - 70, { min: 48, max: 100, lineHeight: 1.2, maxLines: 7 });
+      const hOpt = { min: mMin, max: mMax, lineHeight: 1.2, maxLines: 7 };
+      const hH = colH - sigSize * 1.9;
+      this.hfit = fitClauses(pre, txt, HAND, areaW - 20, hH, hOpt) ?? fitText(pre, txt, HAND, areaW - 20, hH, hOpt);
       const fit = this.hfit;
-      const top = MSG.top + (colH - 70 - fit.height) / 2 + fit.size * 0.9;
+      const top = MSG.top + (hH - fit.height) / 2 + fit.size * 0.9;
       const x0 = MSG.x0 + (areaW - fit.width) / 2;
       let i = 0;
       fit.lines.forEach((ln, r) => {
@@ -387,10 +460,10 @@ export default class Menu extends Scene {
       });
       // 署名在最後一行下面、靠右（太長就往右挪，不超出留言範圍的左緣）
       const sw = measure(this.sigText, SIG_F, sigSize);
-      this.hsig = { x: clamp(x0 + fit.width, MSG.x0 + sw, MSG.x1), y: top + (fit.lines.length - 1) * fit.lineHeight + 64 };
+      this.hsig = { x: clamp(x0 + fit.width, MSG.x0 + sw, MSG.x1), y: top + (fit.lines.length - 1) * fit.lineHeight + fit.size * 0.3 + sigSize * 1.2 };
       this.seal = { x: x0 + fit.width + 36, y: top - fit.size * 0.9 - 18 };
     } else {
-      this.vl = vFit(txt, HAND, areaW - SIGW - 12, colH, { min: 52, max: 124 });
+      this.vl = vFit(txt, HAND, areaW - SIGW - 12, colH, { min: mMin, max: mMax });
       const l = this.vl;
       const groupW = l.width + SIGW + 12;
       const xr = MSG.x0 + (areaW + groupW) / 2;
@@ -474,31 +547,7 @@ export default class Menu extends Scene {
     const t = f.t, s = this.ctx.start, e = this.ctx.end;
     const G3 = this.g3, cam = G3.cam;
 
-    // ---- 鏡頭：每個小節推近一點、在小節線上緩停；切進來時從高一點、遠一點的地方滑進來
-    const bars = this.g.bars.filter((b) => b > s + 0.05);
-    const nb = Math.max(1, bars.length);
-    let k = 0;
-    for (let i = 0; i < bars.length; i++) {
-      const b0 = i === 0 ? s : bars[i - 1]!, b1 = bars[i]!;
-      k += prog(t, b0, b1, ease.inOutCubic);
-    }
-    k += prog(t, bars[bars.length - 1] ?? s, e, ease.inOutCubic) * 0.5;
-    const u = k / (nb + 0.5);
-    const enter = 1 - prog(t, s, s + Math.max(0.35, this.g.beat * 1.5), ease.outExpo);
-    const dist = lerp(2720, 2380, u) + 420 * enter;
-    const tilt = (lerp(31, 26, u) + 7 * enter) * (Math.PI / 180);
-    const az = (lerp(4, -3, u) + 4 * enter) * (Math.PI / 180);
-    // 看的點：留言的中心附近（卡片座標 → 桌面）
-    const focusPt = new THREE.Vector3(760, 380, 0).applyMatrix4(this.M);
-    focusPt.z = 0;
-    const off = new THREE.Vector3(0, -dist * Math.sin(tilt), dist * Math.cos(tilt)).applyAxisAngle(new THREE.Vector3(0, 0, 1), az);
-    cam.position.copy(focusPt).add(off);
-    cam.up.set(-Math.sin(az), Math.cos(az), 0);
-    cam.lookAt(focusPt);
-    // 焦點放在畫面中間偏左上一點：右邊與下面留給桌面（呼吸的空間）與右下角的 QR
-    cam.setViewOffset(W, H, W / 2 - 900, H / 2 - 500, W, H);
-    cam.updateProjectionMatrix();
-    cam.updateMatrixWorld();
+    const focusPt = this.camSet(cam, t);
     this.PM.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse).multiply(this.M);
 
     const tu = G3.tableMat.uniforms;
@@ -507,7 +556,12 @@ export default class Menu extends Scene {
     tu.cardR!.value = this.cardRot;
     tu.focus!.value = cam.position.distanceTo(focusPt);
     (tu.plate!.value as THREE.Vector4).set(-700, -740, 340, 0);
-    (tu.cup!.value as THREE.Vector4).set(1000, 470, 150, 0);
+    (tu.cup!.value as THREE.Vector4).set(-1150, 760, 150, 0);
+    // 轉盤：卡片的右邊（桌面座標），每個小節線轉一格（五分之一圈，outBack 停住）
+    let turn = 0;
+    for (const b of this.g.bars) turn += prog(t, b, b + Math.min(0.6, this.g.bar * 0.4), (x) => ease.outBack(x, 1.4));
+    (tu.susan!.value as THREE.Vector4).set(SUSAN.x, SUSAN.y, SUSAN.r, -turn * ((Math.PI * 2) / 5) + 0.3);
+    tu.tt!.value = t;
     G3.card.matrix.copy(this.M);
     G3.card.matrixWorldNeedsUpdate = true;
 
@@ -521,7 +575,7 @@ export default class Menu extends Scene {
     const ruleK = prog(t, s, s + 0.25);
     c.fillStyle = rgba('sepia', 0.2 * ruleK);
     c.fillRect(TITLE.rule, 96, 1, 520);
-    c.fillRect(LYR.x, 640, CW - LYR.x * 2, 1);
+    c.fillRect(LYR.x, LYR.rule, CW - LYR.x * 2, 1);
 
     // 標題的「囍」：小小的燙金，第一拍壓上去
     if (t >= this.tTitle - 0.02) {
@@ -666,19 +720,22 @@ export default class Menu extends Scene {
       // 純音樂：寫歌名（純音樂）
       const txt = `${title}（純音樂）`;
       // 沒有歌詞時留言才是焦點：歌名小一號、淡一點
-      c.font = font(F.ming(700), 50);
+      const s0 = V2.lyrMin / this.kLy;
+      c.font = font(F.ming(700), s0);
       const w = c.measureText(txt).width;
-      const size = w > LYR.w ? Math.max(40, (50 * LYR.w) / w) : 50;
+      const size = w > LYR.w ? (s0 * LYR.w) / w : s0;
       c.font = font(F.ming(700), size); c.fillStyle = rgba('sepia', 0.6);
-      c.fillText(txt, LYR.x, LYR.one);
+      c.fillText(txt, LYR.x, (LYR.top + LYR.bot) / 2 + size * 0.35);
     } else {
       const ly = lyricAt(lyrics, t);
       if (ly) {
         // 歌詞是第二主角：中等大小、中等字重（斜著看時卡片下緣離鏡頭近，畫面上約 55 px，比留言小一截）
-        const st: LyricStyle = { family: F.archivo(100, 500), size: 54, minSize: 50, maxWidth: LYR.w, lineHeight: 1.12, ...paperLyric() };
+        // v2：歌詞比留言小一級（lyricV2），螢幕 px 換成卡片座標
+        const msgScr = this.vl ? this.vl.size * this.k : this.hfit ? this.hfit.size * this.k : null;
+        const st: LyricStyle = { family: F.archivo(100, 500), size: lyricV2(this.msg ? msgScr : null) / this.kLy, minSize: V2.lyrMin / this.kLy, maxWidth: LYR.w, lineHeight: 1.12, ...paperLyric() };
         const lay = layoutLyric(c, ly.line, st);
         c.save();
-        c.translate(LYR.x, lay.rows.length > 1 ? LYR.two[0] : LYR.one);
+        c.translate(LYR.x, lay.rows.length > 1 ? LYR.top + lay.size * 0.9 : (LYR.top + LYR.bot) / 2 + lay.size * 0.35);
         drawLyric(c, ly.line, t, st, lay, ly.k * k);
         c.restore();
       }
@@ -784,6 +841,46 @@ export default class Menu extends Scene {
       if (h) sparkHead(gl, h.x, h.y, t, 1.25, 1);
       else if (t > tEnd) { const q = this.edgePoint(4), p = pr(q.x, q.y); sparkHead(gl, p.x, p.y, t, 1 + 1.5 * pulse(t, tEnd, 0.08), clamp(1 - (t - tEnd) / 0.25)); }
     }
+  }
+
+  /**
+   * 鏡頭：每個小節推近一點、在小節線上緩停；切進來時從高一點、遠一點的地方滑進來。
+   * v2：拉遠一點（卡片在螢幕上約 870 寬），卡片放在畫面左邊，右邊是轉盤。回傳看的點（桌面座標）。
+   */
+  private camSet(cam: THREE.PerspectiveCamera, t: number): THREE.Vector3 {
+    const s = this.ctx.start, e = this.ctx.end;
+    const bars = this.g.bars.filter((b) => b > s + 0.05);
+    const nb = Math.max(1, bars.length);
+    let k = 0;
+    for (let i = 0; i < bars.length; i++) {
+      const b0 = i === 0 ? s : bars[i - 1]!, b1 = bars[i]!;
+      k += prog(t, b0, b1, ease.inOutCubic);
+    }
+    k += prog(t, bars[bars.length - 1] ?? s, e, ease.inOutCubic) * 0.5;
+    const u = k / (nb + 0.5);
+    const enter = 1 - prog(t, s, s + Math.max(0.35, this.g.beat * 1.5), ease.outExpo);
+    const dist = lerp(3750, 3450, u) + 450 * enter;
+    const tilt = (lerp(31, 26, u) + 7 * enter) * (Math.PI / 180);
+    const az = (lerp(4, -3, u) + 4 * enter) * (Math.PI / 180);
+    // 看的點：留言的中心附近（卡片座標 → 桌面）
+    const focusPt = new THREE.Vector3(760, 380, 0).applyMatrix4(this.M);
+    focusPt.z = 0;
+    const off = new THREE.Vector3(0, -dist * Math.sin(tilt), dist * Math.cos(tilt)).applyAxisAngle(new THREE.Vector3(0, 0, 1), az);
+    cam.position.copy(focusPt).add(off);
+    cam.up.set(-Math.sin(az), Math.cos(az), 0);
+    cam.lookAt(focusPt);
+    // 焦點（留言）放在畫面左邊：右邊是轉盤，右下角留給 QR
+    cam.setViewOffset(W, H, W / 2 - 640, H / 2 - 560, W, H);
+    cam.updateProjectionMatrix();
+    cam.updateMatrixWorld();
+    return focusPt;
+  }
+
+  /** 卡片座標 → 畫面座標（任意鏡頭矩陣）。 */
+  private projWith(PM: THREE.Matrix4, x: number, y: number): P2 {
+    const e = PM.elements;
+    const X = e[0]! * x + e[4]! * y + e[12]!, Y = e[1]! * x + e[5]! * y + e[13]!, Wc = e[3]! * x + e[7]! * y + e[15]!;
+    return { x: (X / Wc * 0.5 + 0.5) * W, y: (0.5 - Y / Wc * 0.5) * H };
   }
 
   /** 卡片座標 → 畫面座標（這一格的鏡頭）。 */

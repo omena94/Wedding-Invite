@@ -13,6 +13,8 @@
 // 畫法：卡片上的墨是兩張卡片大小的 Canvas2D（不會變的印一次、會變的每格畫），磁磚、紙、橫線、影子、窗光、污漬、景深
 // 全部在一個全螢幕 shader 裡算：用單應矩陣把螢幕像素換回「卡片座標」取樣，所以透視、卡片落下、鏡頭推近都不用 3D。
 // 污漬是解析函數（橢圓＋角度雜訊的邊、咖啡環、濺點），跟時間的關係只有「第幾秒落下」，換主題顏色跟著色票走。
+// v2（留言尺寸標準）：卡片放在畫面左邊（螢幕上約 840×550），留言 40～60 px；右邊的檯面上是照著這張食譜在做的一碗麵糊（俯視）：
+// 打蛋器一拍攪一下（outBack 停住）、麵糊的紋路跟著轉，每個小節線中間冒一圈漣漪；旁邊撒了一點麵粉。
 import * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
 import { FSPass, Layer2D, SCALE, H } from '../engine/gl';
@@ -23,6 +25,7 @@ import { fitText, type FitResult } from '../engine/text';
 import type { Line } from '../engine/lyrics';
 import { layoutLyric, drawLyric, fillWithHearts, signature, type LyricStyle } from './_motifs';
 import { grid, windowLines, stagger, paperLyric, FAST_TEX_GLSL, type Grid } from './_t2';
+import { V2, msgMaxFor, lyricV2, sigV2, fitClauses } from './_v2';
 import { homography, applyH } from './_t11';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'doc', paper: true, energy: [0.1, 0.8], bars: [4, 8] };
@@ -31,14 +34,19 @@ export const spec: PlateSpecDecl = { group: 'type', family: 'doc', paper: true, 
 const CW = 1180, CH = 780;
 type P2 = { x: number; y: number };
 /** 卡片靜止時四個角在螢幕上的位置（左上、右上、右下、左下）：遠端（上緣）窄一點、整張順時針歪一點。 */
-const QUAD: P2[] = [{ x: 205, y: 128 }, { x: 1318, y: 150 }, { x: 1340, y: 918 }, { x: 148, y: 900 }];
+// v2：原本的形狀縮成 0.71 倍、中心移到畫面左邊 (560, 520)
+const QS = 0.71, QC = { x: 753, y: 524 }, QT = { x: 560, y: 520 };
+const QUAD: P2[] = [{ x: 205, y: 128 }, { x: 1318, y: 150 }, { x: 1340, y: 918 }, { x: 148, y: 900 }]
+  .map((p) => ({ x: QT.x + (p.x - QC.x) * QS, y: QT.y + (p.y - QC.y) * QS }));
+/** 攪拌碗（畫面座標，鏡頭推近之前）：卡片右邊的檯面上。 */
+const MUG = { x: 1450, y: 440, r: 205 };
 const CARD_CORNERS: P2[] = [{ x: 0, y: 0 }, { x: CW, y: 0 }, { x: CW, y: CH }, { x: 0, y: CH }];
 /** 紅線與淡橫線（索引卡）。 */
 const RULE_Y = 84, ROW0 = 130, ROW_DY = 48;
 /** 左上的小字（標題、份量、編號）。 */
 const HEAD = { x: 48, base: 62 };
 /** 左欄：材料（小字、淡）；純音樂時下面接四個作法步驟。 */
-const ING = { x: 48, label: 124, base0: 172, dy: 48, size: 20 };
+const ING = { x: 48, label: 124, base0: 172, dy: 48, size: 24 };
 const STEPS = { label: 364, base0: 412 };
 /** 大字的地方：有留言是秘方，沒留言是歌詞（或邀請）。 */
 const BIG = { x: 340, y: 150, w: 790, h: 390, label: 124 };
@@ -84,6 +92,9 @@ uniform float lift; uniform float t;
 uniform vec4 stA[${MAX_STAINS}]; uniform vec4 stB[${MAX_STAINS}];
 uniform vec4 cup;
 uniform vec2 focus;
+uniform vec3 mug;   // 攪拌碗（檯面座標）：中心 xy、半徑
+uniform float stir; // 打蛋器的角度（一拍攪一下）
+uniform float ripA; uniform float ripT; // 麵糊中間的漣漪：強度、經過的時間（小節線的大鼓）
 ${FAST_TEX_GLSL}
 const vec2 CS = vec2(${CW}.0, ${CH}.0);
 
@@ -226,6 +237,59 @@ void main() {
   }
   for (int i = 0; i < ${MAX_STAINS}; i++) if (stB[i].w > 0.5) drop(pp, stA[i], stB[i], col);
 
+  // ---- 攪拌碗（俯視，檯面座標，跟著鏡頭推近）：影子、陶碗、碗緣、麵糊、打蛋器。打蛋器一拍攪一下，
+  // 麵糊表面的紋路跟著轉；每個小節線那一下大鼓，麵糊中間冒一圈漣漪。旁邊撒了一點麵粉。
+  {
+    vec2 q = pb - mug.xy;
+    float R = mug.z, r = length(q);
+    // 檯面上撒的麵粉（碗的左下方，一小片不規則的白）
+    vec2 fq = q - vec2(-R * 1.05, R * 0.95);
+    float flour = smoothstep(0.35, 0.75, fbm(fq / 60.0, 3) + 0.55 - length(fq) / (R * 0.75));
+    col = mix(col, mix(C_PAPER, C_BONE, 0.7), flour * 0.55);
+    // 影子（光從左上：影子往右下）
+    col *= 1.0 - 0.24 * (1.0 - smoothstep(R * 0.92, R * 1.3, length(q - vec2(R * 0.13, R * 0.17))));
+    // 陶碗：外緣一圈釉（訊號色的暗部混紙色，跟主題走）、碗緣亮邊、內壁往下暗
+    float body = 1.0 - smoothstep(R - 1.5, R + 1.5, r);
+    vec3 glaze = mix(mix(C_BLOOD, C_SIGNAL, 0.35), C_PAPER, 0.45);
+    vec3 mc = glaze * (0.95 + 0.07 * dot(normalize(q + 1e-4), vec2(-0.7, -0.7)));
+    float lip = exp(-pow((r - R * 0.92) / (R * 0.03), 2.0));
+    mc = mix(mc, mix(C_PAPER, C_BONE, 0.7), lip * 0.8);
+    float inner = R * 0.86;
+    mc = mix(mc, mc * 0.8, smoothstep(inner + 1.5, inner - 1.5, r) * smoothstep(inner * 0.55, inner, r));
+    // 麵糊：奶油色，表面是打蛋器拉出來的弧形紋（跟著攪的角度轉），中間一圈漣漪（小節線的大鼓）
+    float bat = smoothstep(inner * 0.9 + 1.2, inner * 0.9 - 1.2, r);
+    float ang = atan(q.y, q.x);
+    float fold = sin(ang * 3.0 + r / (R * 0.09) * 0.8 - stir * 1.3);
+    float ripple = ripA * sin(r / (R * 0.05) - ripT * 22.0) * exp(-pow(r / (R * (0.2 + ripT * 1.4)) - 1.0, 2.0) * 3.0);
+    // 麵糊的顏色：紙色帶一點墨色與訊號色（像加了蛋黃的奶油色），紋路要看得出來在轉
+    vec3 bc = (mix(C_PAPER, C_SEPIA, 0.16) + C_SIGNAL * 0.06) * (0.9 + 0.1 * fold + 0.07 * ripple);
+    bc = mix(bc, bc * 0.86, smoothstep(inner * 0.55, inner * 0.9, r));
+    bc += C_BONE * 0.12 * exp(-dot(q - vec2(-R * 0.3, -R * 0.3), q - vec2(-R * 0.3, -R * 0.3)) / (R * R * 0.02));
+    mc = mix(mc, bc, bat);
+    col = mix(col, mc, body);
+    // 打蛋器：握柄從碗中間斜斜伸出碗緣，頭是幾圈鋼絲（俯視是幾個細長的橢圓，繞著握柄轉）
+    vec2 sd = vec2(cos(stir), sin(stir)), sn = vec2(-sd.y, sd.x);
+    vec2 hc = mug.xy + sd * R * 0.05;
+    vec2 a = mug.xy + sd * R * 0.42, b = mug.xy + sd * R * 1.5;
+    float hsh = sdSegment(pb - vec2(10.0, 14.0), a, b) - 11.0;
+    col *= 1.0 - 0.2 * (1.0 - smoothstep(-2.0, 12.0, hsh));
+    float wires = 1e5;
+    for (int k = 0; k < 4; k++) {
+      float wa = stir * 2.0 + float(k) * 0.785;
+      vec2 lq = pb - hc;
+      vec2 lp = vec2(dot(lq, sd), dot(lq, sn));
+      float squash = 0.18 + 0.3 * abs(sin(wa));
+      float e = length(vec2((lp.x - R * 0.12) / (R * 0.42), lp.y / (R * 0.42 * squash))) - 1.0;
+      wires = min(wires, abs(e) * R * 0.3 - 2.6);
+    }
+    vec3 steel = mix(C_GRAPHITE, C_BONE, 0.45);
+    col *= 1.0 - 0.18 * (1.0 - smoothstep(0.0, 6.0, wires - 3.0)) * bat;
+    col = mix(col, steel, (1.0 - smoothstep(-1.0, 1.0, wires)) * bat);
+    float handle = sdSegment(pb, a, b) - 10.0;
+    vec3 hcol = mix(C_ASH, C_BONE, 0.5 + 0.5 * sin(dot(pb - mug.xy, sn) * 0.25));
+    col = mix(col, hcol, 1.0 - smoothstep(-1.2, 1.2, handle));
+  }
+
   // ---- 窗光：左上方一扇四格窗透進來的一塊光（很柔，窗框的影子糊糊的），雲飄過時光慢慢呼吸；光外面暗一點
   {
     vec2 wq = rot2(-0.42) * (s - vec2(700.0 + 40.0 * sin(t * 0.07), 430.0 + 25.0 * cos(t * 0.05)));
@@ -243,6 +307,7 @@ void main() {
   stB: { value: Array.from({ length: MAX_STAINS }, () => new THREE.Vector4()) },
   cup: { value: new THREE.Vector4(CW - 96, 64, 92, 1) },
   focus: { value: new THREE.Vector2(740, 500) },
+  mug: { value: new THREE.Vector3() }, stir: { value: 0 }, ripA: { value: 0 }, ripT: { value: 0 },
 });
 
 /**
@@ -306,6 +371,11 @@ export default class Recipe extends Scene {
   /** 鏡頭推近的分段（窗格開頭、每個小節線、窗格結尾）與推近的中心（螢幕座標）。 */
   camCuts: number[] = [];
   focus: P2 = { x: 740, y: 480 };
+  /** 卡片座標 → 螢幕 px 的縮放（鏡頭推到一半時）：v2 的字級是螢幕 px。 */
+  k = QS;
+  sigSize = 44;
+  mugB: P2 = { x: 0, y: 0 };
+  mugR = 200;
 
   override async init() {
     const { audio: au, lyrics, start: s, end: e } = this.ctx;
@@ -334,11 +404,15 @@ export default class Recipe extends Scene {
       fc.fillText(it, ING.x + 28, y);
     });
     // 大字（F.hand 700，另一個人的筆跡），愛心用點綴色；整塊（含署名）在大字區裡垂直置中
+    // v2：留言 40～60、署名 26～32（螢幕 px），除以縮放換成卡片座標
+    const kz = this.k = QS * (1 + PUSH * 0.5);
+    this.sigSize = sigV2(m ? msgMaxFor(m.text) : 44) / kz;
     if (bigText) {
-      const sigH = this.sig ? 70 : 0;
+      const sigH = this.sig ? this.sigSize * 1.9 : 0;
       // 沒有歌詞的窗格下緣是空的：大字區往下延伸，整塊置中在卡片上
       const bh = this.lines.length ? BIG.h : BAND.base - BIG.y;
-      const fit = this.big = m ? fitFew(fc, bigText, HAND_B, BIG.w, bh - sigH, { min: 56, max: 118, lineHeight: 1.2, maxLines: 5 }) : this.inviteFit(fc);
+      const opt = { min: V2.msgMin / kz, max: (m ? msgMaxFor(bigText) : 52) / kz, lineHeight: 1.2, maxLines: 6 };
+      const fit = this.big = m ? (fitClauses(fc, bigText, HAND_B, BIG.w, bh - sigH, opt) ?? fitFew(fc, bigText, HAND_B, BIG.w, bh - sigH, opt)) : this.inviteFit(fc);
       const top = BIG.y + (bh - fit.height - sigH) / 2 + fit.size * 0.88;
       const n = fit.lines.reduce((a, l) => a + Array.from(l).length, 0);
       const t0 = au.timeOfBeat(Math.round(au.beatAt(this.tLand)) + 2);
@@ -354,9 +428,9 @@ export default class Recipe extends Scene {
       this.bigEnd = (times[times.length - 1] ?? t0) + Math.min(0.12, g.beat * 0.4);
       if (this.sig) {
         // 署名靠右、貼著留言的右緣（短留言時不會離得很遠）
-        fc.font = font(HAND, 34);
+        fc.font = font(HAND, this.sigSize);
         const sw = fc.measureText(this.sig).width;
-        this.sigPos = { x: BIG.x + Math.max(fit.width, sw), base: top + (fit.lines.length - 1) * fit.lineHeight + fit.size * 0.3 + 44 };
+        this.sigPos = { x: BIG.x + Math.max(fit.width, sw), base: top + (fit.lines.length - 1) * fit.lineHeight + fit.size * 0.3 + this.sigSize * 1.3 };
         fc.fillStyle = rgba('sepia', 0.8); fc.textAlign = 'right';
         fc.fillText(this.sig, this.sigPos.x, this.sigPos.base);
         fc.textAlign = 'left';
@@ -365,11 +439,15 @@ export default class Recipe extends Scene {
     // 歌詞放哪裡：有大字 → 下緣的作法（中等）；沒有大字 → 大字的位置（主角）
     if (this.lines.length) {
       const numW = (size: number) => { fc.font = font(HAND_B, size); return fc.measureText('8. ').width; };
+      // v2：有留言時比留言小一級（lyricV2），沒有留言時 52；螢幕 px 換成卡片座標
+      const lmin = V2.lyrMin / kz;
       if (this.big) {
-        // 配角的歌詞用比留言細的筆（400），中等大小：一眼看過去留言是焦點
-        this.slot = { x: BAND.x, base: BAND.base, lh: 1.1, st: { family: HAND, size: 54, minSize: 50, maxWidth: BAND.maxX - BAND.x - numW(54), align: 'left', lineHeight: 1.1, ...paperLyric() } };
+        // 配角的歌詞用比留言細的筆（400）：一眼看過去留言是焦點
+        const ls = lyricV2(m ? this.big.size * kz : null) / kz;
+        this.slot = { x: BAND.x, base: BAND.base, lh: 1.1, st: { family: HAND, size: ls, minSize: lmin, maxWidth: BAND.maxX - BAND.x - numW(ls), align: 'left', lineHeight: 1.1, ...paperLyric() } };
       } else {
-        this.slot = { x: BIG.x, base: 0, lh: 1.12, st: { family: HAND_B, size: 104, minSize: 88, maxWidth: BIG.w - numW(104), align: 'left', lineHeight: 1.12, ...paperLyric() } };
+        const ls = V2.lyrMax / kz;
+        this.slot = { x: BIG.x, base: 0, lh: 1.12, st: { family: HAND_B, size: ls, minSize: lmin, maxWidth: BIG.w - numW(ls), align: 'left', lineHeight: 1.12, ...paperLyric() } };
       }
     }
 
@@ -397,6 +475,10 @@ export default class Recipe extends Scene {
     // ---- 鏡頭：推近的中心是焦點（大字區的中心），每個小節一段
     const fwd = homography(CARD_CORNERS, QUAD);
     this.focus = applyH(fwd, BIG.x + BIG.w / 2 - 40, BIG.y + BIG.h / 2 + 40);
+    // 攪拌碗：畫面座標換成檯面座標（跟卡片同一套：卡片座標往外延伸）
+    const inv = homography(QUAD, CARD_CORNERS);
+    this.mugB = applyH(inv, MUG.x, MUG.y);
+    this.mugR = MUG.r / QS;
     this.camCuts = [s, ...g.bars.filter((b) => b > s + 0.3 && b < e - 0.3), e];
 
     this.drawStatic();
@@ -408,7 +490,7 @@ export default class Recipe extends Scene {
   private inviteFit(c: CanvasRenderingContext2D): FitResult {
     c.font = font(HAND_B, 100);
     const w100 = Math.max(...INVITE_LINES.map((l) => c.measureText(l).width));
-    const size = Math.floor(Math.min(104, (100 * BIG.w) / w100));
+    const size = Math.floor(Math.min(V2.lyrMax / this.k, (100 * BIG.w) / w100));
     c.font = font(HAND_B, size);
     const width = Math.max(...INVITE_LINES.map((l) => c.measureText(l).width));
     return { size, lines: INVITE_LINES, lineHeight: size * 1.2, width, height: size * (1 + 1.2 * (INVITE_LINES.length - 1)) };
@@ -503,6 +585,17 @@ export default class Recipe extends Scene {
       if (st) { A[i]!.set(st.x, st.y, st.r, st.t0); B[i]!.set(st.seed, st.kind, 1, 1); } else B[i]!.set(0, 0, 0, 0);
     }
     (u.cup!.value as THREE.Vector4).set(CW - 96, 64, 92, 0.9 + 0.2 * hash(this.seed, 9));
+    (u.mug!.value as THREE.Vector3).set(this.mugB.x, this.mugB.y, this.mugR);
+    // 打蛋器：一拍攪四分之一圈（outBack 停住）；卡片落下之前不動
+    const au = this.ctx.audio;
+    const bi = Math.floor(au.beatAt(t) + 1e-6), b0 = Math.round(au.beatAt(this.tLand));
+    const ph = clamp((t - au.timeOfBeat(bi)) / Math.min(0.32, this.g.beat * 0.6));
+    const turns = t < this.tLand ? 0 : bi - b0 + ease.outBack(ph, 1.6);
+    u.stir!.value = -0.6 + turns * (Math.PI / 2);
+    // 漣漪：最近的一個小節線起算（2 秒內淡掉）
+    const lb = [...this.g.bars].reverse().find((b) => b <= t && b >= this.tLand);
+    u.ripA!.value = lb === undefined ? 0 : Math.max(0, 1 - (t - lb) / 1.6);
+    u.ripT!.value = lb === undefined ? 0 : t - lb;
 
     // ---- 會動的墨
     L.dyn.clear();
@@ -592,9 +685,9 @@ export default class Recipe extends Scene {
     }
     if (this.sig && t >= this.bigEnd) {
       const v = prog(t, this.bigEnd, this.bigEnd + 0.45, ease.outCubic);
-      c.font = font(HAND, 34);
+      c.font = font(HAND, this.sigSize);
       const w = c.measureText(this.sig).width;
-      this.reveal(c, this.sigPos.x - w - 6, this.sigPos.base - 38, (w + 12) * v, 50);
+      this.reveal(c, this.sigPos.x - w - 6, this.sigPos.base - this.sigSize * 1.12, (w + 12) * v, this.sigSize * 1.5);
     }
   }
 

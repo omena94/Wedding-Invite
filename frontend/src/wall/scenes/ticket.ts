@@ -16,9 +16,13 @@
 // 畫法：一個全螢幕 shader（桌布、影子、票、壓痕打光、墨、洞、紙屑、前景）讀三張資料圖層：
 // 不變的票面（init 畫一次）、主打留言（init 畫一次，每個字的出現時間編在 B/G 裡）、歌詞條（每格重畫的小條）。
 // 透視：用針孔相機把票的四個角投影到螢幕，算出「螢幕 → 票面」的單應矩陣交給 shader。
+// v2（留言尺寸標準）：票還是主角（螢幕上約 950 寬、留言那一塊約 640×300），只是往左邊靠，留言 40～60 px；右邊的桌面是舞台：
+// 三團有色的舞台燈每個小節線掃到新位置，每個小節線從上面撒一把彩紙，彩紙翻著落到桌上（有影子）、一小節一小節越積越多。
 import * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
 import { FSPass, Layer2D, makeRT, SCALE } from '../engine/gl';
+import { LineBatch } from '../engine/lines';
+import { LIN } from '../engine/palette';
 import { F, font, layout, loadText, fitSize, measure } from '../engine/type';
 import { fitText, type FitResult } from '../engine/text';
 import { clamp, ease, prog, pulse, hash, lerp } from '../engine/util';
@@ -26,6 +30,7 @@ import { lyricAt, layoutLyric, drawLyric, signature, heartPoints, COUPLE_EN, COU
 import { grid, stagger, pad3, type Grid } from './_t2';
 import { homography, applyH, type P2 } from './_t11';
 import { TW, TH, PERF, MSG, STRIP, SLOT_W, slotAt, BAKE_FRAG, MAIN_FRAG } from './ticket-glsl';
+import { V2, msgMaxFor, lyricV2, sigV2, fitClauses } from './_v2';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'doc', paper: true, energy: [0.3, 1], bars: [4, 8] };
 
@@ -34,7 +39,7 @@ export const spec: PlateSpecDecl = { group: 'type', family: 'doc', paper: true, 
  * 留言比票根大）。D 是鏡頭到票的距離（票面 px），越小透視越強；zoom 從 Z0 慢慢推到 Z1。
  * 這組數字量過：推到最近時票根的字還在 HUD 區（x ≥ 1360 且 y ≥ 830）外面、留言在螢幕上還有 44 px 以上。
  */
-const CAM = { rz: -0.06, tilt: 0.4, yaw: 0.1, D: 2300, Z0: 0.95, Z1: 1.03, cx: 905, cy: 505 };
+const CAM = { rz: -0.06, tilt: 0.4, yaw: 0.1, D: 2300, Z0: 0.74, Z1: 0.78, cx: 700, cy: 560 };
 /** 票根的中心（票面座標）：撕下來以後繞這裡轉。 */
 const STUB_C = { x: (PERF + TW) / 2, y: TH / 2 };
 const RECT: P2[] = [{ x: 0, y: 0 }, { x: TW, y: 0 }, { x: TW, y: TH }, { x: 0, y: TH }];
@@ -56,6 +61,7 @@ const mainPass = () => new FSPass(MAIN_FRAG, {
   msgT: { value: 0 }, msgRamp: { value: 0.02 }, punchN: { value: 0 },
   chadP: { value: Array.from({ length: 8 }, () => new THREE.Vector4()) }, chadR: { value: new Array(8).fill(0) },
   shM: { value: new THREE.Vector4() }, shS: { value: new THREE.Vector4() }, jagSeed: { value: 0 },
+  spot: { value: Array.from({ length: 3 }, () => new THREE.Vector4()) }, spotC: { value: Array.from({ length: 3 }, () => new THREE.Vector3()) },
 });
 
 type Aff = [number, number, number, number, number, number]; // x' = a x + b y + c；y' = d x + e y + f
@@ -93,6 +99,10 @@ export default class Ticket extends Scene {
   msgL = this.track(new Layer2D(MSG.w, MSG.h, SCALE, { fast: true }));
   /** 歌詞條（資料圖層，每格重畫）。 */
   strip = this.track(new Layer2D(STRIP.w, STRIP.h, SCALE, { fast: true }));
+  /** 彩紙（落在桌上的紙片與它們的影子）。 */
+  conf = this.track(new LineBatch(1024, { screen2D: true, blend: 'normal' }));
+  /** 票面 px → 螢幕 px 的縮放（留言、歌詞條那一帶）：v2 的字級是螢幕 px，畫在票面上要除以它。 */
+  kMsg = 0.63; kLy = 0.63;
   msg: Msg | null = this.ctx.params.message ?? null;
   seed = (this.ctx.params.seed ?? 1) as number;
   g!: Grid;
@@ -108,7 +118,7 @@ export default class Ticket extends Scene {
   instrText = '♪ INSTRUMENTAL · 本曲無歌詞';
   instrT: number[] = [];
   /** 歌詞條的字級跟著留言走：有留言時比留言小一號（中等，≥ 52），沒留言時歌詞是主角。 */
-  ly: LyricStyle = { family: F.archivo(100, 700), size: 66, minSize: 52, maxWidth: STRIP.w - 16, align: 'left', lineHeight: 1.1 };
+  ly: LyricStyle = { family: F.archivo(100, 500), size: 66, minSize: 52, maxWidth: STRIP.w - 16, align: 'left', lineHeight: 1.1 };
   lyData: LyricStyle = { ...this.ly };
 
   override async init() {
@@ -139,10 +149,15 @@ export default class Ticket extends Scene {
     }
     this.punches = cands.slice(0, 8);
 
+    // 票面上留言、歌詞條那一帶在螢幕上的縮放（鏡頭推到一半的時候量）
+    const zm = (CAM.Z0 + CAM.Z1) / 2;
+    const kAt = (x: number, y: number) => { const a = project(x - 50, y, zm, CAM.cx, CAM.cy), b = project(x + 50, y, zm, CAM.cx, CAM.cy); return Math.hypot(b.x - a.x, b.y - a.y) / 100; };
+    this.kMsg = kAt(MSG.x + MSG.w / 2, MSG.y + MSG.h / 2);
+    this.kLy = kAt(STRIP.x + STRIP.w / 2, STRIP.y + STRIP.h / 2);
     this.drawBase();
     const msgSize = this.drawMessage(beat);
-    // 歌詞條：有留言時中等（比留言小，但至少 54：斜放之後螢幕上還有 48 以上）
-    if (m) this.ly = { ...this.ly, size: clamp(Math.round(msgSize * 0.8), 54, 62) };
+    // 歌詞條（v2）：有留言時比留言小一級（lyricV2），沒留言時 52；都是螢幕 px，換成票面 px
+    this.ly = { ...this.ly, size: (m ? lyricV2(msgSize * this.kMsg) : V2.lyrMax) / this.kLy, minSize: V2.lyrMin / this.kLy };
     this.lyData = { ...this.ly, unsung: BLIND(), active: SIGI(), sung: INK() };
     // 純音樂：歌詞條一個字一個字上墨（兩小節內上完）
     if (this.instr) this.instrT = stagger(au, beat(1), Array.from(this.instrText).length, Math.min(g.bar * 2, Math.max(0.6, e - beat(1) - 1)));
@@ -226,11 +241,14 @@ export default class Ticket extends Scene {
     // 留言的框：票面最大的一塊（圖層 y 6..390 = 票面 162..546），留言＋署名一起放進去。最小 52：斜放以後螢幕上還有 44 以上
     const BOX = { x: 4, y: 6, w: MSG.w - 8, h: 384 };
     // 署名那一行（間距＋字高）先從可用高度扣掉，留言的字級只用剩下的高度找——署名才不會被最後一行蓋住
-    const SIG_SIZE = 38, SIG_GAP = 26, SIG_H = SIG_GAP + SIG_SIZE;
+    // v2：留言 40～60（依字數的上限 msgMaxFor）、署名 26～32，都是螢幕 px，除以縮放換成票面 px
+    const k = this.kMsg;
+    const SIG_SIZE = sigV2((m ? msgMaxFor(m.text) : 44)) / k, SIG_GAP = SIG_SIZE * 0.6, SIG_H = SIG_GAP + SIG_SIZE;
     let size = 0;
     if (m) {
       const fam = F.ming(700);
-      const fit: FitResult = fitText(c, m.text, fam, BOX.w, BOX.h - SIG_H, { min: 52, max: 112, lineHeight: 1.22, maxLines: 5 });
+      const opt = { min: V2.msgMin / k, max: msgMaxFor(m.text) / k, lineHeight: 1.22, maxLines: 6 };
+      const fit: FitResult = fitClauses(c, m.text, fam, BOX.w, BOX.h - SIG_H, opt) ?? fitText(c, m.text, fam, BOX.w, BOX.h - SIG_H, opt);
       size = fit.size;
       // 留言＋署名整塊垂直置中；署名永遠接在最後一行的下面
       const top = BOX.y + Math.max(0, (BOX.h - fit.height - SIG_H) / 2);
@@ -238,10 +256,13 @@ export default class Ticket extends Scene {
       const sig = m.couple ? `—— ${m.name || COUPLE_ZH}` : signature(m.name);
       rows.push({ s: sig, fam: F.hand(700), size: SIG_SIZE, x: MSG.w - 6, y: top + fit.height + SIG_GAP + SIG_SIZE * 0.86, right: true });
     } else {
-      size = 84;
-      rows.push({ s: '本票可兌換一句祝福', fam: F.ming(700), size: 84, x: BOX.x, y: 150 });
-      rows.push({ s: '掃描右下角 QR code，寫下你的祝福，', fam: F.hei(500), size: 46, x: BOX.x, y: 246 });
-      rows.push({ s: '它會印在下一張票上。', fam: F.hei(500), size: 46, x: BOX.x, y: 310 });
+      // 邀請：標題照留言的字級（螢幕 52），說明小一點（螢幕 30）
+      size = 52 / k;
+      const sub = 28 / k;
+      rows.push({ s: '本票可兌換一句祝福', fam: F.ming(700), size, x: BOX.x, y: 40 + size * 0.86 });
+      // 說明分三行（票面窄，一行放不下「掃描…祝福，」會壓到齒孔）
+      ['掃描右下角 QR code，', '寫下你的祝福，', '它會印在下一張票上。'].forEach((ln, i) =>
+        rows.push({ s: ln, fam: F.hei(500), size: sub, x: BOX.x, y: 40 + size * 1.25 + sub * (1.3 + 1.45 * i) }));
     }
     // 一拍一行（簽名跟最後一行隔半拍）；窗格短就半拍一行，保證壓完之後還有兩秒讀
     let per = P;
@@ -264,7 +285,7 @@ export default class Ticket extends Scene {
       }
     });
     c.globalCompositeOperation = 'source-over';
-    return size;
+    return m ? size : 44 / k;
   }
 
   /** 歌詞條（每格）：盲壓 → 上訊號色的墨 → 墨色。 */
@@ -294,7 +315,8 @@ export default class Ticket extends Scene {
     if (ly) {
       const lay = layoutLyric(c, ly.line, this.ly);
       c.save();
-      c.translate(8, lay.rows.length > 1 ? 50 : 92);
+      // 基線照字級算：兩行時第一行貼上緣，一行時垂直置中
+      c.translate(8, lay.rows.length > 1 ? lay.size * 0.92 + 2 : STRIP.h * 0.5 + lay.size * 0.36);
       drawLyric(c, ly.line, t, this.lyData, lay, ly.k);
       c.restore();
     }
@@ -361,12 +383,15 @@ export default class Ticket extends Scene {
     this.chads(t, Hs, zoom);
     u.jagSeed!.value = (this.seed % 97) * 0.37;
 
+    this.spots(t, f.a.kick);
     this.drawStrip(t);
     u.baseTex!.value = this.base.texture;
     u.msgTex!.value = this.msgL.texture;
     u.stripTex!.value = this.strip.texture;
     u.bakeTex!.value = this.bake.rt.texture;
     this.pass.render(renderer, out);
+    this.confetti(t);
+    if (this.conf.count) this.conf.render(renderer, out);
 
     // ---- 震動：落定最大、剪票與撕票小一點
     let shk = 1.0 * pulse(t, this.tLand, 0.07);
@@ -378,6 +403,59 @@ export default class Ticket extends Scene {
       paper: 1, bloom: 0.2, bloomThreshold: 1.1, halation: 0.05, vignette: 0.3, grain: 0.045, ca: 0.8,
       shake, zoom: 1 + 0.008 * pulse(t, this.tLand, 0.1),
     };
+  }
+
+  /** 舞台燈：三團有色的光，每個小節線掃到新的位置（outExpo，三團錯開一點點），平常很慢地晃；大鼓時亮一下。 */
+  private spots(t: number, kick: number) {
+    const U = this.pass.u;
+    const PV = U.spot!.value as THREE.Vector4[], CV = U.spotC!.value as THREE.Vector3[];
+    const cols = [LIN.signal, LIN.ember, LIN.bone], amp = [0.34, 0.26, 0.16];
+    const on = prog(t, this.ctx.start, this.tLand, ease.outCubic);
+    for (let i = 0; i < 3; i++) {
+      // 光落的位置都在票的右邊、上面（桌面上），偶爾擦過票根
+      const at = (k: number) => ({ x: 1000 + 800 * hash(this.seed, i, k, 1), y: 140 + 640 * hash(this.seed, i, k, 2) });
+      let p = at(0);
+      this.g.bars.forEach((b, k) => {
+        const q = at(k + 1), u = prog(t, b + i * 0.06, b + i * 0.06 + 0.55, ease.outExpo);
+        p = { x: lerp(p.x, q.x, u), y: lerp(p.y, q.y, u) };
+      });
+      PV[i]!.set(p.x + 40 * Math.sin(t * 0.37 + i * 2.1), p.y + 26 * Math.cos(t * 0.29 + i * 1.3), 380 + 70 * i, amp[i]! * on * (1 + 0.25 * kick));
+      CV[i]!.set(cols[i]![0], cols[i]![1], cols[i]![2]);
+    }
+  }
+
+  /**
+   * 彩紙：落定那一拍和之後每個小節線，從畫面上方撒下一把（九片），翻著、晃著落到票右邊的桌面上，
+   * 落地以後就留在那裡（有影子）——窗格越長桌上越熱鬧。落點避開票和右下角的 QR 區。全部是種子決定的，確定性。
+   */
+  private confetti(t: number) {
+    const lb = this.conf;
+    lb.clear();
+    const bursts = [this.tLand, ...this.g.bars.filter((b) => b > this.tLand + 0.3)];
+    const cols = [LIN.signal, LIN.ember, LIN.blood, LIN.sepia];
+    const pieces: { sx: number; sy: number; x: number; y: number; dx: number; dy: number; w: number; u: number; c: [number, number, number] }[] = [];
+    bursts.forEach((tb, bi) => {
+      for (let j = 0; j < 9; j++) {
+        const h = (k: number) => hash(this.seed, bi, j, k);
+        const ts = tb + 0.04 * j;
+        if (t < ts) continue;
+        const fall = 0.8 + 0.6 * h(1);
+        const u = clamp((t - ts) / fall), air = 1 - u;
+        // 落點：票的右邊與上緣的桌面（不落在票上、不落在右下角的 QR 底下）
+        let lx = 1210 + 620 * h(2), ly = 130 + 680 * h(3);
+        if (lx > 1330 && ly > 760) ly -= 330;
+        const fl = Math.sin(7 * (t - ts) + h(4) * 6) * 46 * air;
+        const spin = (h(5) - 0.5) * 14;
+        const ang = h(6) * Math.PI + spin * Math.min(t - ts, fall);
+        const flip = u < 1 ? 0.2 + 0.8 * Math.abs(Math.cos(9 * (t - ts) + h(7) * 3)) : 0.35 + 0.65 * h(8);
+        const len = (12 + 10 * h(9)) * (1 + 0.6 * air) * flip, w = (7 + 3 * h(10)) * (1 + 0.6 * air);
+        pieces.push({ sx: lx, sy: ly, x: lx + fl, y: ly - 760 * air, dx: (Math.cos(ang) * len) / 2, dy: (Math.sin(ang) * len) / 2, w, u, c: cols[Math.floor(h(11) * cols.length)]! });
+      }
+    });
+    // 先畫全部的影子（落點；越接近桌面越濃），再畫紙片
+    const sh = LIN.sepia;
+    for (const q of pieces) lb.seg2(q.sx - q.dx + 3, q.sy - q.dy + 4, q.sx + q.dx + 3, q.sy + q.dy + 4, q.w, [sh[0], sh[1], sh[2]], 0.06 + 0.14 * q.u);
+    for (const q of pieces) lb.seg2(q.x - q.dx, q.y - q.dy, q.x + q.dx, q.y + q.dy, q.w, [q.c[0] * 0.95, q.c[1] * 0.95, q.c[2] * 0.95], 0.95);
   }
 
   /**

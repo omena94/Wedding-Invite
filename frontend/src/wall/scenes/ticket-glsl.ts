@@ -58,6 +58,7 @@ uniform float punchN;                 // 剪了幾個洞
 uniform vec4 chadP[8]; uniform float chadR[8]; // 愛心紙屑：螢幕 xy、翻面的橫向縮放、大小；旋轉
 uniform vec4 shM; uniform vec4 shS;   // 影子：位移 xy、模糊、濃度（主票、票根）
 uniform float jagSeed;
+uniform vec4 spot[3]; uniform vec3 spotC[3]; // v2：舞台燈打在桌上的三團光（螢幕 xy、半徑、強度；顏色）
 
 const vec2 TSZ = vec2(${TW}.0, ${TH}.0);
 const float PX = ${PERF}.0;
@@ -142,7 +143,17 @@ vec3 desk(vec2 sp) {
   vec3 c = mix(C_PAPER, C_SEPIA, 0.27 + 0.03 * n);
   // 側光：從左上斜斜照進來，右下慢慢暗下去
   float lit = smoothstep(1700.0, -100.0, dot(sp, vec2(0.87, 0.49)));
-  return c * (0.86 + 0.17 * lit);
+  // v2：桌面暗一點（舞台的燈光才看得出來），票本身不變暗，還是最亮的紙
+  return c * (0.74 + 0.15 * lit);
+}
+// 舞台燈（v2 的「燈光」環境動態）：三團柔柔的有色光在桌面上，每個小節線掃到新的位置（主檔算位置）
+vec3 stage(vec2 sp) {
+  vec3 a = vec3(0.0);
+  for (int i = 0; i < 3; i++) {
+    vec2 d = (sp - spot[i].xy) / spot[i].z;
+    a += spotC[i] * spot[i].w * exp(-dot(d, d) * 2.2);
+  }
+  return a;
 }
 
 /** 一點票面的顏色（打光、墨、纖維）。hd：到最近的洞的距離（洞的邊緣被剪壓，暗一點）。 */
@@ -234,14 +245,16 @@ void main() {
     vec3 rc = C_ROSE * (c.z < 0.0 ? 0.8 : 1.0) * (0.92 + 0.08 * sx);
     col = mix(col, rc, sat(0.5 - dh));
   }
-  // ---- 鏡頭前失焦的另一張票（左下角，很大、很糊，只是一點前景）
+  // ---- 鏡頭前失焦的另一張票（右上角，很大、很糊，只是一點前景；v2：票移到左下，前景改放右上，不擋票也不擋 QR）
   {
-    vec2 fp = rot2(0.44) * (sp - vec2(-30.0, 1075.0));
+    vec2 fp = rot2(-0.38) * (sp - vec2(1930.0, 10.0));
     float fd = sdBox(fp, vec2(300.0, 118.0)) - 12.0;
-    float fsh = 1.0 - smoothstep(-40.0, 120.0, sdBox(rot2(0.44) * (sp - vec2(-5.0, 1110.0)), vec2(300.0, 118.0)));
+    float fsh = 1.0 - smoothstep(-40.0, 120.0, sdBox(rot2(-0.38) * (sp - vec2(1905.0, 45.0)), vec2(300.0, 118.0)));
     col *= 1.0 - 0.16 * fsh;
     col = mix(col, mix(C_PAPER, C_BONE, 0.3) * 0.93, (1.0 - smoothstep(-38.0, 38.0, fd)) * 0.96);
   }
+  // 舞台燈照在整個畫面（桌子、票都一起）：乘上去，是光不是顏料
+  col *= 1.0 + stage(sp);
   fragColor = vec4(col, 1.0);
 }`;
 

@@ -28,6 +28,7 @@ import { fitText, type FitResult } from '../engine/text';
 import { lyricAt, drawLyric, layoutLyric, sparkHead, sparkParticles, drawHeart, heartPoints, fillWithHearts, COUPLE_ZH, DATE_DOTS, type LyricStyle } from './_motifs';
 import { Paper, homography } from './_t11';
 import { paperLyric, stagger, pad3, grid, windowLines, type Grid, type Rect } from './_t2';
+import { V2, msgMaxFor, lyricV2, sigV2, fitClauses } from './_v2';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'doc', paper: true, energy: [0.15, 0.85], bars: [4, 8] };
 
@@ -38,39 +39,47 @@ type P = { x: number; y: number };
 // 圖說的右端不超過 1280（再右邊落進右下角 QR 區）。
 const X0 = 190, X1 = 1740;
 const HEAD_Y = 172, RULE_Y = 194;
-const CLAIM_Y = 300;
-// 留言排版的高度已經扣掉署名：署名一定在最後一行下面（最低到 y ≈ 790，再下面是圖說）
-const MSG = { x: 216, y: 330, w: 650, h: 380 };
+const CLAIM_Y = 372;
+// 留言區（v2 標準）：放在畫面左側、寬 540 高 330（連署名約 540×420，面積約畫面 11%），字級 40～60。
+// 排版的高度已經扣掉署名：署名一定在最後一行下面（最低到 y ≈ 790，再下面是圖說）
+const MSG = { x: 216, y: 402, w: 540, h: 330 };
+/** 紙面 → 畫面的平均縮放（鏡頭 0.96～1.06 加上透視）：v2 的字級是畫面上的 px，畫在紙上要除以它。 */
+const ZS = 1.03;
 const CAP = { x: X0, x1: 1280, one: 900, two: 862 };
 const SEAL = { x: 1646, y: 196, r: 62 };
 /** 紙的 RT 比畫面大多少（鏡頭推近時字還是銳利）。 */
 const RES = 1.25;
 
 // ---------------------------------------------------------------- 線稿的機構（紙面座標）
-const GA: P = { x: 1232, y: 452 };
-const R = 108, N = 16, STEP = TAU / N, R_TIP = R + 11, R_ROOT = R - 12;
+// v2：留言縮小之後，線稿（會動的機構）是畫面的主視覺，整組放大、往中間靠
+const GA: P = { x: 1150, y: 430 };
+const R = 119, N = 16, STEP = TAU / N, R_TIP = R + 12, R_ROOT = R - 13;
 const GB: P = { x: GA.x + 2 * R, y: GA.y };
+/** 小齒輪 16（加速器）：跟齒輪 B 咬合，齒數少、轉得快，讓畫面一直有東西在轉。 */
+const NC = 10, STEP_C = TAU / NC, RC = (R * NC) / N, PHI_C = 0.35;
+const GC: P = { x: GB.x + Math.cos(PHI_C) * (R + RC), y: GB.y + Math.sin(PHI_C) * (R + RC) };
 /** 止回爪卡在齒輪 A 的哪個角度（左上方）、支點、彈簧的固定點。 */
 const PAWL_A = -2.6;
-const PIVOT: P = { x: GA.x - 137, y: GA.y + 42 };
-const SPRING_Z: P = { x: GA.x - 168, y: GA.y - 82 };
+const PIVOT: P = { x: GA.x - 151, y: GA.y + 46 };
+const SPRING_Z: P = { x: GA.x - 185, y: GA.y - 90 };
 /** 曲柄（齒輪 B 上的銷）半徑、連桿長、滑軌半寬與起點。 */
-const CRANK = 58, ROD = 200, RAIL = 46, RAIL_Y = GA.y + 150;
-const BASE = { x0: GA.x - 170, x1: GB.x + 176, y0: GA.y + 328, y1: GA.y + 346 };
-const HEART_W = 70;
+const CRANK = 64, ROD = 220, RAIL = 50, RAIL_Y = GA.y + 165;
+const BASE = { x0: GA.x - 187, x1: GB.x + 194, y0: GA.y + 361, y1: GA.y + 381 };
+const HEART_W = 77;
 
 const INVITE = '本項請求尚待補充：掃描右下角 QR code，寫下你的祝福，即可列為共同發明人。';
-const FIXED = '愛情專利局發明專利說明書發明名稱一種使兩人永遠在一起的裝置請求項其特徵在於本裝置之發明人謹此聲明的話提案人徵求中一位賓客圖純音樂照常運轉核准永久有效宣文孟庭止回爪只進不退';
+const FIXED = '中心距剛剛好愛情專利局發明專利說明書發明名稱一種使兩人永遠在一起的裝置請求項其特徵在於本裝置之發明人謹此聲明的話提案人徵求中一位賓客圖純音樂照常運轉核准永久有效宣文孟庭止回爪只進不退';
 
 // ---------------------------------------------------------------- 幾何小工具
 const circle = (c: P, r: number, n = 40, a0 = 0): P[] => Array.from({ length: n + 1 }, (_, i) => ({ x: c.x + Math.cos(a0 + (i / n) * TAU) * r, y: c.y + Math.sin(a0 + (i / n) * TAU) * r }));
 const polar = (c: P, a: number, r: number): P => ({ x: c.x + Math.cos(a) * r, y: c.y + Math.sin(a) * r });
 
-/** 梯形齒的正齒輪外形（齒根 → 齒腹 → 齒頂 → 齒腹），th = 轉角。 */
-function gear(c: P, th: number): P[] {
+/** 梯形齒的正齒輪外形（齒根 → 齒腹 → 齒頂 → 齒腹），th = 轉角；n 齒、節圓半徑 r（齒高兩個齒輪一樣，才咬得起來）。 */
+function gear(c: P, th: number, n = N, r = R): P[] {
   const o: P[] = [];
-  const seq: [number, number][] = [[-0.5, R_ROOT], [-0.27, R_ROOT], [-0.13, R_TIP], [0.13, R_TIP], [0.27, R_ROOT]];
-  for (let i = 0; i < N; i++) for (const [f, r] of seq) o.push(polar(c, th + (i + f) * STEP, r));
+  const st = TAU / n, rt = r + (R_TIP - R), rr = r - (R - R_ROOT);
+  const seq: [number, number][] = [[-0.5, rr], [-0.27, rr], [-0.13, rt], [0.13, rt], [0.27, rr]];
+  for (let i = 0; i < n; i++) for (const [f, rad] of seq) o.push(polar(c, th + (i + f) * st, rad));
   o.push(o[0]!);
   return o;
 }
@@ -145,7 +154,7 @@ interface Cam { z: number; tilt: number; rot: number; px: number; py: number }
 // ---------------------------------------------------------------- 鏡頭 shader（紙 → 畫面）
 const FOCAL = 2200;
 const LENS = () => new FSPass(/* glsl */ `
-  uniform sampler2D sheet; uniform mat3 toSheet; uniform float k; uniform vec2 lamp;
+  uniform sampler2D sheet; uniform mat3 toSheet; uniform float k; uniform vec2 lamp; uniform float t;
   const vec2 SZ = vec2(${W}.0, ${H}.0);
   vec3 tap(vec2 p) { return texture(sheet, vec2(p.x / SZ.x, 1.0 - p.y / SZ.y)).rgb; }
   void main() {
@@ -169,11 +178,11 @@ const LENS = () => new FSPass(/* glsl */ `
     vec3 desk = mix(C_SEPIA, C_INK, 0.25) * (0.8 + 0.25 * fbm(vec2(p.x / 700.0, p.y / 45.0), 3));
     desk *= 1.0 - 0.45 * smoothstep(50.0, 0.0, d);
     col = mix(col, desk, smoothstep(-w, w, d));
-    // 桌燈：左上方一團暖光，越遠越暗
+    // 桌燈：左上方一團暖光，越遠越暗，很慢地呼吸
     vec2 dl = (sp - lamp) / vec2(1300.0, 1000.0);
-    col *= 0.9 + 0.13 * exp(-dot(dl, dl) * 1.6);
+    col *= 0.9 + (0.12 + 0.015 * sin(t * 0.9)) * exp(-dot(dl, dl) * 1.6);
     fragColor = vec4(col * k, 1.0);
-  }`, { sheet: { value: null }, toSheet: { value: new THREE.Matrix3() }, k: { value: 1 }, lamp: { value: new THREE.Vector2(520, 180) } });
+  }`, { sheet: { value: null }, toSheet: { value: new THREE.Matrix3() }, k: { value: 1 }, lamp: { value: new THREE.Vector2(520, 180) }, t: { value: 0 } });
 
 export default class Patent extends Scene {
   paper = shared('t11.paper', () => new Paper());
@@ -191,7 +200,8 @@ export default class Patent extends Scene {
   fit!: FitResult;
   msgFam = F.ming(700);
   glyphs: Glyph[] = [];
-  lyricSize = 56;
+  lyricSize = 50;
+  sigSize = 30;
   sig = { text: '', x: MSG.x, y: 0, t0: 0, t1: 0 };
   /** 六個零件開始畫的時間與長度。 */
   partT: number[] = [];
@@ -217,6 +227,7 @@ export default class Patent extends Scene {
     this.partT = stagger(au, g.b0, 6, figDur);
     this.partD = this.partT.map((t0, i) => Math.min(g.beat * 0.9, (this.partT[i + 1] ?? t0 + g.beat) - t0) * (i === 5 ? 1.4 : 1));
     this.tRun = this.partT[5]! + this.partD[5]!;
+
     this.tickBeat0 = Math.ceil(au.beatAt(this.tRun) - 1e-6);
     this.tick = Math.min(0.2, g.beat * 0.42);
 
@@ -224,16 +235,20 @@ export default class Patent extends Scene {
     const c = this.dyn.ctx;
     const text = m ? m.text : INVITE;
     const onlyHearts = !!m && /^[♥\s]+$/.test(m.text);
-    this.fit = fitText(c, text, this.msgFam, MSG.w, MSG.h, { min: 48, max: m ? (onlyHearts ? 150 : 112) : 60, lineHeight: 1.3, maxLines: 6 });
+    // v2：字級上限依字數（msgMaxFor），照子句斷行；都是畫面上的 px，畫在紙上要除以鏡頭的平均縮放
+    const opt = { min: V2.msgMin / ZS, max: (m ? msgMaxFor(text) : 44) / ZS, lineHeight: 1.34, maxLines: 6 };
+    this.fit = fitClauses(c, text, this.msgFam, MSG.w, MSG.h, opt) ?? fitText(c, text, this.msgFam, MSG.w, MSG.h, opt);
     const fit = this.fit;
-    // 歌詞比留言小一號（MV 原則：留言是焦點），但不小於 48
-    this.lyricSize = m ? clamp(Math.round(fit.size * 0.8), 50, 60) : 60;
+    void onlyHearts;
+    // 歌詞比留言小一級（lyricV2）；沒有留言時歌詞是焦點，用上限 52
+    this.lyricSize = (m ? lyricV2(fit.size * ZS) : V2.lyrMax) / ZS;
+    this.sigSize = sigV2(fit.size * ZS) / ZS;
     const n = fit.lines.reduce((a, l) => a + Array.from(l).length, 0);
     const t0 = g.b0 + g.beat * (e - g.b0 > g.beat * 6 ? 1 : 0.5);
     const times = stagger(au, t0, n, clamp(0.055 * n + 0.9, 1.1, 3.2));
     let k = 0;
     // 字少時往下放一點，跟線稿的重心對齊（不要全擠在上緣）
-    const top = MSG.y + Math.max(0, (MSG.h - fit.height) * 0.3) + fit.size * 0.9;
+    const top = MSG.y + Math.max(0, (MSG.h - fit.height) * 0.5) + fit.size * 0.9;
     fit.lines.forEach((ln, i) => {
       const lay = layout(ln, this.msgFam, fit.size);
       for (const gl of lay.glyphs) this.glyphs.push({ ch: gl.ch, x: MSG.x + gl.x, y: top + i * fit.lineHeight, t: times[k++]! });
@@ -242,7 +257,7 @@ export default class Patent extends Scene {
     const msgEnd = times[times.length - 1] ?? t0;
     this.sig.text = m ? (m.couple ? `—— 發明人　${m.name || COUPLE_ZH}` : `—— 提案人　${m.name || '一位賓客'}`) : '—— 提案人　徵求中';
     // 署名在最後一行的字底（約 0.22 字級）再往下一行：大字時跟著拉開，永遠不會跟最後一行重疊
-    this.sig.y = lastY + Math.max(58, fit.size * 0.28 + 44);
+    this.sig.y = lastY + fit.size * 0.26 + this.sigSize * 1.3;
     this.sig.t0 = au.timeOfBeat(Math.ceil(au.beatAt(msgEnd + 0.12) * 2 - 1e-6) / 2);
     this.sig.t1 = this.sig.t0 + clamp(0.06 * Array.from(this.sig.text).length + 0.25, 0.5, 1.1);
 
@@ -254,6 +269,11 @@ export default class Patent extends Scene {
       const b = au.timeOfBeat(Math.ceil(au.beatAt(ready) - 1e-6));
       this.tSeal = b <= e - g.beat * 0.6 ? b : -1;
     }
+
+    // 第 7 部分「尺寸線」：線稿畫完兩拍以後的第一個小節線，而且要比封緘早一小節以上（不要跟封緘擠在同一拍）；
+    // 窗格太短就不畫（prog 遇到 Infinity 回 0）
+    const dimAt = g.bars.find((b) => b >= this.tRun + g.beat * 2 && b <= e - g.bar * 0.75 && (this.tSeal < 0 || b <= this.tSeal - g.bar * 0.9));
+    this.partT.push(dimAt ?? Infinity); this.partD.push(g.beat * 0.9);
 
     // 止回爪往哪個方向轉是「抬起來」（離齒輪中心遠一點）：試一下兩個方向
     const tip0 = polar(GA, PAWL_A, R_ROOT + 3);
@@ -306,11 +326,14 @@ export default class Patent extends Scene {
     const u = push / nb;
     const hit = this.tSeal > 0 ? pulse(t, this.tSeal + 0.1, 0.09) : 0;
     const out = prog(t, e - 0.3, e, ease.inCubic);
+    // 焦點轉移（v2）：開場先看右邊的線稿，留言開始排的前半拍起，鏡頭往左帶到留言
+    const g0 = this.glyphs[0]?.t ?? s;
+    const focus = prog(t, g0 - g.beat * 0.5, g0 + g.beat * 1.5, ease.inOutCubic);
     return {
       z: lerp(0.955, 1.0, land) + 0.045 * u + 0.012 * hit + 0.01 * out,
       tilt: lerp(0.22, 0.12, land) - 0.02 * u,
       rot: lerp(-0.024, -0.008, land) + 0.01 * u,
-      px: lerp(28, 10, land) - 26 * u,
+      px: lerp(-46, 20, focus) - 6 * u,
       py: lerp(-24, 0, land) + 8 * u,
     };
   }
@@ -354,7 +377,10 @@ export default class Patent extends Scene {
     };
     const gA = gearParts(GA, thA, false);
     const pin = polar(GB, thB - Math.PI / 4, CRANK);
-    const gB = [...gearParts(GB, thB, true), ink(circle(pin, 9, 20), 2), ink(circle(pin, 3, 10), 1.4)];
+    // 小齒輪 16 跟齒輪 B 在 PHI_C 方向咬合：B 的齒對到那裡時，小齒輪剛好是齒縫（轉得比 B 快 1.6 倍、方向相反）
+    const thC = PHI_C + Math.PI - 0.5 * STEP_C - (N / NC) * (thB - PHI_C);
+    const gC: Stroke[] = [ink(gear(GC, thC, NC, RC), 2.2), ink(circle(GC, 20, 28, thC), 1.7), ink(heart({ x: GC.x, y: GC.y + 1 }, 18, thC), 1.5), thin(circle(GC, RC - 21, 40, thC), 0.9)];
+    const gB = [...gearParts(GB, thB, true), ink(circle(pin, 9, 20), 2), ink(circle(pin, 3, 10), 1.4), ...gC];
 
     // 3. 止回爪與彈簧：齒轉過去時爪被頂起來（鋸齒形的抬起），這一齒到位時「喀」地落下
     const lift = t < this.tRun ? 0 : u < 0.75 ? u / 0.75 : (1 - u) / 0.25;
@@ -406,17 +432,26 @@ export default class Patent extends Scene {
     // 6. 引線（連到會動的零件的，跟著零件走）。只有三個有名字：兩個齒輪是誰、止回爪（這個裝置的笑點）
     const mid = (a: P, b: P, k = 0.5) => ({ x: lerp(a.x, b.x, k), y: lerp(a.y, b.y, k) });
     const leads: Lead[] = [
-      { num: '10', s: polar(GA, -1.3, R - 8), e: { x: GA.x + 48, y: GA.y - 160 }, label: '宣文', left: true },
-      { num: '12', s: polar(GB, -1.85, R - 8), e: { x: GB.x - 64, y: GA.y - 160 }, label: '孟庭' },
-      { num: '14', s: { x: GA.x + 9, y: GA.y + 12 }, e: { x: GA.x + 44, y: GA.y + 205 } },
-      { num: '18', s: mid(PIVOT, tip, 0.35), e: { x: PIVOT.x - 52, y: PIVOT.y + 108 }, label: '止回爪（只進不退）', below: true },
-      { num: '20', s: mid(SPRING_Z, att, 0.5), e: { x: SPRING_Z.x - 58, y: SPRING_Z.y + 24 } },
-      { num: '22', s: mid(pin, { x: GB.x, y: hy }, 0.55), e: { x: GB.x + 118, y: GA.y + 152 } },
-      { num: '24', s: { x: heartC.x + heartS * 0.42, y: heartC.y - heartS * 0.05 }, e: { x: GB.x + 118, y: GA.y + 262 } },
-      { num: '26', s: { x: BASE.x0 + 36, y: BASE.y0 + 2 }, e: { x: BASE.x0 - 44, y: BASE.y0 - 14 } },
+      { num: '10', s: polar(GA, -1.75, R - 8), e: { x: GA.x - 40, y: GA.y - 172 }, label: '宣文', left: true },
+      { num: '12', s: polar(GB, -1.4, R - 8), e: { x: GB.x + 96, y: GA.y - 172 }, label: '孟庭' },
+      { num: '14', s: { x: GA.x + 9, y: GA.y + 12 }, e: { x: GA.x + 52, y: GA.y + 232 } },
+      { num: '16', s: polar(GC, -0.9, RC - 6), e: { x: GC.x + 80, y: GC.y - 124 } },
+      { num: '18', s: mid(PIVOT, tip, 0.35), e: { x: PIVOT.x - 57, y: PIVOT.y + 119 }, label: '止回爪（只進不退）', below: true },
+      { num: '20', s: mid(SPRING_Z, att, 0.5), e: { x: SPRING_Z.x - 64, y: SPRING_Z.y + 26 } },
+      { num: '22', s: mid(pin, { x: GB.x, y: hy }, 0.55), e: { x: GB.x + 146, y: GA.y + 250 } },
+      { num: '24', s: { x: heartC.x + heartS * 0.42, y: heartC.y - heartS * 0.05 }, e: { x: GB.x + 146, y: GA.y + 322 } },
+      { num: '26', s: { x: BASE.x0 + 36, y: BASE.y0 + 2 }, e: { x: BASE.x0 - 48, y: BASE.y0 - 15 } },
     ];
     const ld = leads.map((l) => thin(leader(l.s, { x: l.e.x + (l.e.x < l.s.x ? 26 : -5), y: l.e.y - 7 }), 1.1));
-    return { parts: [gA, gB, pw, pis, bs, ld], leads, heartC, heartS };
+    // 7. 尺寸線（v2「窗格中段的小事件」）：線稿畫完之後的某個小節線，筆回來補一條兩齒輪的中心距，標「剛剛好」
+    const dmy = GA.y - R_TIP - 36, ey0 = GA.y - R_TIP - 8, ey1 = dmy - 10;
+    const dim: Stroke[] = [
+      thin([{ x: GA.x, y: ey0 }, { x: GA.x, y: ey1 }], 1), thin([{ x: GB.x, y: ey0 }, { x: GB.x, y: ey1 }], 1),
+      thin([{ x: GA.x, y: dmy }, { x: GB.x, y: dmy }], 1.1),
+      thin([{ x: GA.x + 13, y: dmy - 4 }, { x: GA.x, y: dmy }, { x: GA.x + 13, y: dmy + 4 }], 1.1),
+      thin([{ x: GB.x - 13, y: dmy - 4 }, { x: GB.x, y: dmy }, { x: GB.x - 13, y: dmy + 4 }], 1.1),
+    ];
+    return { parts: [gA, gB, pw, pis, bs, ld, dim], leads, heartC, heartS };
   }
 
   /** 畫一個零件的前 u（0..1，依總長）；回傳筆尖（畫到一半時）。 */
@@ -485,6 +520,15 @@ export default class Patent extends Scene {
     const heartOn = prog(t, hEnd, hEnd + 0.25);
     if (heartOn > 0) drawHeart(c, heartC.x, heartC.y, heartS * 0.86, rgba('rose', 0.85 * heartOn));
     this.drawLeads(c, t, leads);
+    // 尺寸線畫完：標上「中心距　剛剛好」（冷面）
+    const dEnd = this.partT[6]! + this.partD[6]!;
+    const da = prog(t, dEnd - 0.1, dEnd + 0.12);
+    if (da > 0) {
+      c.font = font(F.hei(500), 17); c.letterSpacing = '3px'; c.textAlign = 'center';
+      c.fillStyle = rgba('sepia', 0.58 * da);
+      c.fillText('中心距　剛剛好', (GA.x + GB.x) / 2, GA.y - R_TIP - 46);
+      c.letterSpacing = '0px'; c.textAlign = 'left';
+    }
     this.drawClaim(c, t);
     this.drawCaption(c, t, lyrics, song);
     if (this.tSeal > 0) this.drawSeal(c, t);
@@ -508,6 +552,7 @@ export default class Patent extends Scene {
     L.sheet!.value = SH.texture;
     (L.toSheet!.value as THREE.Matrix3).copy(this.toSheet);
     L.k!.value = prog(t, s, s + 0.12);
+    L.t!.value = t;
     this.lens.render(renderer, out);
 
     const hit = this.tSeal > 0 ? pulse(t, this.tSeal + 0.1, 0.09) : 0;
@@ -564,7 +609,7 @@ export default class Patent extends Scene {
     c.globalAlpha = 1;
     const sg = this.sig;
     if (t >= sg.t0) {
-      c.font = font(F.ming(400), 30);
+      c.font = font(F.ming(400), this.sigSize);
       const w = c.measureText(sg.text).width;
       const u = prog(t, sg.t0, sg.t1, ease.outCubic);
       c.save();
@@ -602,7 +647,7 @@ export default class Patent extends Scene {
       c.fillText(`♪ ${song.title}`, lx + lw, CAP.one);
       return;
     }
-    const st: LyricStyle = { family: F.ming(700), size: this.lyricSize, minSize: 48, maxWidth: CAP.x1 - (lx + lw), align: 'left', lineHeight: 1.12, ...paperLyric() };
+    const st: LyricStyle = { family: F.ming(700), size: this.lyricSize, minSize: V2.lyrMin / ZS, maxWidth: CAP.x1 - (lx + lw), align: 'left', lineHeight: 1.12, ...paperLyric() };
     const lay = layoutLyric(c, ly.line, st);
     const y0 = lay.rows.length > 1 ? CAP.two : CAP.one;
     label(y0, ly.k);
