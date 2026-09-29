@@ -54,6 +54,19 @@ export class Lit {
     c.globalAlpha = a0 * a;
     c.drawImage(this.cv, 0, 0, w, h, bx, by, w, h);
     c.globalAlpha = a0;
+    this.last = [bx, by, w, h];
+  }
+
+  private last: [number, number, number, number] | null = null;
+
+  /**
+   * 把上一次 draw() 染好的紙偶再貼一次（同一個位置，照 c 目前的變換與 alpha）：倒影、影子剪影不用重畫一次紙偶。
+   * 同一格裡要先 draw() 才能 again()。
+   */
+  again(c: Ctx): void {
+    const L = this.last;
+    if (!L) return;
+    c.drawImage(this.cv, 0, 0, L[2], L[3], L[0], L[1], L[2], L[3]);
   }
 }
 
