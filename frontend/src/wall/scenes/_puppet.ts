@@ -159,7 +159,9 @@ function xform(info: SpriteInfo, name: string, x: number, y: number, o: PuppetOp
   const q = clamp(o.squash ?? 0, -0.5, 0.5);
   const py = (o.pivot ?? 0) * ph;
   const sp = Math.cos((o.spin ?? 0) * Math.PI * 2);
-  const sx = (o.flip ? -1 : 1) * (1 + q * 0.5) * (Math.abs(sp) < 0.04 ? 0.04 * Math.sign(sp || 1) : sp);
+  // 清單標了 mirror 的圖（Codex 把側面畫成朝左）先翻回朝右，再照 o.flip 翻：版面一律當成「側面朝右」來用
+  const flip = !!o.flip !== !!info.mirror;
+  const sx = (flip ? -1 : 1) * (1 + q * 0.5) * (Math.abs(sp) < 0.04 ? 0.04 * Math.sign(sp || 1) : sp);
   const sy = 1 - q;
   const r = o.rot ?? 0, cr = Math.cos(r), sr = Math.sin(r);
   return {
@@ -287,24 +289,34 @@ export function drawCycle(c: Ctx, au: AudioData, t: number, frames: readonly str
   return cur;
 }
 
-/** 時間軸：[[開始時間, 圖名], ...]（照時間排好），挑 t 當下那一張。 */
-export function pick(keys: readonly (readonly [number, string])[], t: number): string {
+/**
+ * 時間軸的一格：[開始時間, 圖名] 或 [開始時間, 圖名, { flip }]。
+ * flip：這一格的圖跟整條時間軸的朝向相反（例如轉身回頭看的那一張），跟 drawPick 的 o.flip 疊加（兩個都 true 等於不翻）。
+ * Codex 把某張圖畫成朝左的話，不要在這裡補：在那一組的 sprites.json 列 "mirror"，每個用到它的版面都會自動翻正。
+ */
+export type PickKey = readonly [number, string] | readonly [number, string, { readonly flip?: boolean }];
+
+/** 時間軸：[[開始時間, 圖名(, {flip})], ...]（照時間排好），挑 t 當下那一張。 */
+export function pick(keys: readonly PickKey[], t: number): string {
   let cur = keys[0]![1];
   for (const [t0, n] of keys) if (t >= t0) cur = n; else break;
   return cur;
 }
 
-/** 照時間軸換姿勢並畫出來：換的時候舊的一張淡出 fade 秒（1～2 格）。回傳這一格的圖名。 */
-export function drawPick(c: Ctx, keys: readonly (readonly [number, string])[], t: number, x: number, y: number, o: PuppetOpts, fade = FADE): string {
+/** 照時間軸換姿勢並畫出來：換的時候舊的一張淡出 fade 秒（1～2 格）；每一格可以各自指定翻面。回傳這一格的圖名。 */
+export function drawPick(c: Ctx, keys: readonly PickKey[], t: number, x: number, y: number, o: PuppetOpts, fade = FADE): string {
   let k = 0;
   for (let i = 0; i < keys.length; i++) if (t >= keys[i]![0]) k = i;
-  const cur = keys[k]![1];
-  drawPuppet(c, cur, x, y, o);
+  const optsOf = (key: PickKey, alpha = o.alpha ?? 1): PuppetOpts => ({ ...o, alpha, flip: !!o.flip !== !!key[2]?.flip });
+  const cur = keys[k]!;
+  drawPuppet(c, cur[1], x, y, optsOf(cur));
   if (k > 0 && fade > 0) {
-    const since = t - keys[k]![0], prev = keys[k - 1]![1];
-    if (since < fade && prev !== cur) drawPuppet(c, prev, x, y, { ...o, alpha: (o.alpha ?? 1) * (1 - since / fade) });
+    const since = t - cur[0], prev = keys[k - 1]!;
+    // 同一張圖但翻面不同（轉身）也要淡化，不然會一格就跳過去
+    const same = prev[1] === cur[1] && !!prev[2]?.flip === !!cur[2]?.flip;
+    if (since < fade && !same) drawPuppet(c, prev[1], x, y, optsOf(prev, (o.alpha ?? 1) * (1 - since / fade)));
   }
-  return cur;
+  return cur[1];
 }
 
 // ---------------------------------------------------------------- 活起來

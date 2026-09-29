@@ -5,9 +5,10 @@
 //
 // 每張圖：kind：person（單人）、couple（兩人一起）、dog；w × h：圖的大小（px）；ax, ay：腳底錨點（圖上的 px，ay 可以超出圖外——騰空的姿勢）；
 // ref：參考身高（圖上的 px；人是站直的身高、狗是站著到耳尖）；height：身高是宣文的幾倍（沒寫就照檔名前兩個字，見 _puppet.ts 的 PUPPET_H）；
-// pts：道具點 [x, y, 半徑?]（圖上的 px，側面朝右）；group：在哪一組（圖的網址 /wall-sprites/<group>/<圖名>.webp）。
+// pts：道具點 [x, y, 半徑?]（圖上的 px，照原圖的方向）；mirror：這張圖畫成朝左，播放時自動翻成朝右（sprites.json 的 "mirror"）；
+// group：在哪一組（圖的網址 /wall-sprites/<group>/<圖名>.webp）。
 export type SpriteKind = 'person' | 'couple' | 'dog';
-export interface SpriteInfo { kind: SpriteKind; w: number; h: number; ax: number; ay: number; ref: number; height?: number; pts?: Record<string, number[]>; group: string }
+export interface SpriteInfo { kind: SpriteKind; w: number; h: number; ax: number; ay: number; ref: number; height?: number; pts?: Record<string, number[]>; mirror?: boolean; group: string }
 
 interface GroupList { group: string; series: Record<string, unknown>; sprites: Record<string, Omit<SpriteInfo, 'group'>> }
 

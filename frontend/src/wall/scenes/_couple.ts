@@ -3559,16 +3559,37 @@ export interface PathLyricStyle {
 }
 
 const widthCache = new Map<string, number[]>();
+
+/**
+ * 曲線沿法線平移 d（+ = 左手邊／上方，跟 PathLyricStyle.offset 同號）之後的折線，與它自己的累積弧長。
+ * 每個點沿前後兩點的切線的法線移動（端點用那一段的切線）。
+ */
+function offsetPath(path: readonly Pt[], d: number): { pts: Pt[]; acc: number[]; total: number } {
+  const n = path.length, pts: Pt[] = [];
+  for (let i = 0; i < n; i++) {
+    const a = path[Math.max(0, i - 1)]!, b = path[Math.min(n - 1, i + 1)]!;
+    const ang = Math.atan2(b.y - a.y, b.x - a.x);
+    pts.push({ x: path[i]!.x + Math.sin(ang) * d, y: path[i]!.y - Math.cos(ang) * d });
+  }
+  const acc = [0];
+  for (let i = 1; i < n; i++) acc.push(acc[i - 1]! + dist(pts[i - 1]!, pts[i]!));
+  return { pts, acc, total: acc[n - 1]! };
+}
+
 /**
  * 一行歌詞沿著曲線排（每個字轉到切線方向），照跟唱規則上色：還沒唱 30%、正在唱的字訊號色（唱到哪亮到哪）、唱完紙白／墨色。
  * 太長會先縮字（不小於 minSize），再不行就在最接近中間的字之間折成兩排（第二排沿著同一條曲線往下平移）。
+ * 每一排排在**自己那一條平移過的曲線**上、用那條曲線的弧長算字距：以前第二排沿用原曲線的弧長，
+ * 在 ∩ 形的弧線內側會把字擠在一起（空白被吃掉，"and never" 黏成 "andnever"，2026-09-29 C4 回報），∪ 形則會拉開。
  * 回傳正在唱的字的筆尖位置（給火花／球用）與這行佔的範圍（popupAvoid 用）。
  */
 export function lyricOnPath(c: Ctx, line: Line, t: number, path: readonly Pt[], st: PathLyricStyle): { head: Pt | null; box: [number, number, number, number] } {
   const n = path.length;
-  const acc: number[] = [0];
-  for (let i = 1; i < n; i++) acc.push(acc[i - 1]! + dist(path[i - 1]!, path[i]!));
-  const total = acc[n - 1]!;
+  const off = st.offset ?? 0;
+  const gap = st.rowGap ?? 1.2;
+  // 第 ri 排的曲線（隨字級變，所以用函式）
+  const rowPath = (ri: number, sz: number) => offsetPath(path, off - ri * sz * gap);
+  const total = rowPath(0, st.size).total;
   const chars = Array.from(line.text);
   const tr = st.tracking ?? 0;
   const widths = (size: number) => {
@@ -3581,6 +3602,14 @@ export function lyricOnPath(c: Ctx, line: Line, t: number, path: readonly Pt[], 
       widthCache.set(key, w);
     }
     return w;
+  };
+  // 一排的寬（頭尾的空白不算：折行的地方在空白後面，不扣掉的話那一排會偏一邊）
+  const rowWidth = (w: number[], a: number, b: number) => {
+    while (a < b && chars[a] === ' ') a++;
+    while (b > a && chars[b - 1] === ' ') b--;
+    let sum = 0;
+    for (let i = a; i < b; i++) sum += w[i]!;
+    return sum;
   };
   const avail = total * 0.94;
   let size = st.size;
@@ -3598,8 +3627,11 @@ export function lyricOnPath(c: Ctx, line: Line, t: number, path: readonly Pt[], 
       if (d < bestD) { bestD = d; best = ci; }
     }
     rows = [[0, best], [best, chars.length]];
-    const worst = Math.max(...rows.map(([a, b]) => ws.slice(a, b).reduce((x, y) => x + y, 0)));
-    if (worst > avail) { size = Math.max(28, (size * avail) / worst); ws = widths(size); }
+    // 每一排跟自己那條曲線比（∩ 形的第二排在內側，比較短）；行尾的空白不算
+    const need = (sz: number) => Math.max(...rows.map(([a, b], ri) => rowWidth(widths(sz), a, b) / (rowPath(ri, sz).total * 0.94)));
+    const r = need(size);
+    // 縮字：第二排的曲線跟著字級移動，所以縮完再量一次；字級取到 0.5 px（往下取，寬度快取也比較不會亂長）
+    if (r > 1) { size = Math.max(28, size / r); size = Math.max(28, Math.floor((size / Math.max(1, need(size))) * 2) / 2); ws = widths(size); }
   }
   // 每個字屬於哪個 Word（算跟唱進度）
   const cw: number[] = [];
@@ -3613,12 +3645,12 @@ export function lyricOnPath(c: Ctx, line: Line, t: number, path: readonly Pt[], 
     }
   }
   const wordOffset = (wi: number) => Array.from(line.text.slice(0, line.words[wi]!.o)).length;
-  const sampleAt = (s: number) => {
-    s = clamp(s, 0, total);
+  const sampleAt = (P: { pts: Pt[]; acc: number[]; total: number }, s: number) => {
+    s = clamp(s, 0, P.total);
     let lo = 0, hi = n - 1;
-    while (hi - lo > 1) { const m = (lo + hi) >> 1; if (acc[m]! < s) lo = m; else hi = m; }
-    const a = path[lo]!, b = path[hi]!, seg = acc[hi]! - acc[lo]!;
-    const u = seg > 0 ? (s - acc[lo]!) / seg : 0;
+    while (hi - lo > 1) { const m = (lo + hi) >> 1; if (P.acc[m]! < s) lo = m; else hi = m; }
+    const a = P.pts[lo]!, b = P.pts[hi]!, seg = P.acc[hi]! - P.acc[lo]!;
+    const u = seg > 0 ? (s - P.acc[lo]!) / seg : 0;
     return { x: lerp(a.x, b.x, u), y: lerp(a.y, b.y, u), ang: Math.atan2(b.y - a.y, b.x - a.x) };
   };
   c.save();
@@ -3628,20 +3660,18 @@ export function lyricOnPath(c: Ctx, line: Line, t: number, path: readonly Pt[], 
   const alpha = st.alpha ?? 1;
   let head: Pt | null = null;
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-  const off = st.offset ?? 0;
   rows.forEach(([a, b], ri) => {
-    const rowW = ws.slice(a, b).reduce((x, y) => x + y, 0);
-    const start = st.align === 'start' ? (st.at ?? 0) * total : (st.at ?? 0.5) * total - rowW / 2;
+    const P = rowPath(ri, size);
+    const rowW = rowWidth(ws, a, b);
+    const start = st.align === 'start' ? (st.at ?? 0) * P.total : (st.at ?? 0.5) * P.total - rowW / 2;
     let s = start;
-    const shift = ri * size * (st.rowGap ?? 1.2);
     for (let i = a; i < b; i++) {
       const w = ws[i]!;
-      const q = sampleAt(s + w / 2);
+      const q = sampleAt(P, s + w / 2);
       s += w;
       const ch = chars[i]!;
       if (ch === ' ') continue;
-      const nx = Math.sin(q.ang), ny = -Math.cos(q.ang);
-      const px = q.x + nx * off - nx * shift, py = q.y + ny * off - ny * shift;
+      const px = q.x, py = q.y;
       const word = line.words[cw[i]!]!;
       const pw = Lyrics.wordProgress(word, t);
       // 這個字在 Word 裡的位置 → 唱到哪亮到哪

@@ -211,6 +211,9 @@ node scripts/wall-sprites.mjs <組名> --check
   常用的點名：`racket`（拍面中心）、`ball`、`mouth`（狗叼東西的位置）、`hand`、`wok`、`plate`。
 - `anchor`：錨點 x 自動取身體中心（不透明像素的中位數）；總覽圖的疊圖裡身體亂跳時，手動給原圖的 x：`{ "xw_work_type_1": 480 }`。
 - `airborne`／`grounded`：騰空與否的名字規則對不上時，在這裡列圖名強制指定。
+- `mirror`：Codex 把側面畫成**朝左**的圖名清單，例如 `"mirror": ["mt_work_type_2"]`。清單上會記 `mirror: true`，播放時自動翻成朝右，
+  總覽圖也畫成朝右，版面照樣當「側面朝右」用、不用改。道具點照原圖量（會跟著翻）。
+  這只是左右鏡像：胸口的字、單邊的東西（手錶、包包、左胸的蝴蝶結）會跑到另一邊，看得出來的話還是請 Codex 重畫。
 - JSON 不能有註解；要寫說明用 `"說明"` 欄位。
 
 ### 5.4 轉檔
@@ -276,6 +279,9 @@ export default class Hoops extends Scene {
 
 - **尺度**：`h`（`SZ`）= 宣文站直的身高。孟庭、狗的比例自動換算；狗是主角時可以 `scale: 1.2`（`fetch`、`cooking`），不然遠處認不出來。
 - **換姿勢**：照時間軸用 `drawPick`（`badminton` 的擊球、`fetch` 的丟球、`waltz` 的轉身）；照節拍循環用 `drawCycle`（跑步一拍兩張、走路一拍一張）。
+  時間軸的每一格可以各自翻面：`[t, '圖名', { flip: true }]`（例如跑過去之後轉身回頭看的那一張），跟 `drawPick` 的 `flip` 疊加；
+  同一張圖只換朝向也會交叉淡化。（Codex 畫反的圖不要在這裡補，用 sprites.json 的 `mirror`。）
+- **拍點**：`beatAfter(au, t, k)` 在 t 剛好是拍點時算「這一拍」；要下一拍用 `k = 1`，不要寫 `t + 0.01`（會多算一拍）。
   換圖時自動交叉淡化 2 格。**「那一下」的時間點就是換圖的時間點，而且要在拍點上**（`au.timeOfBeat`、`barAfter`）。
 - **預備與跟隨**：換圖前用 `rot`（配 `pivot`）往後帶、換圖後往前送再慢慢收回（`badminton` 的揮拍、`fetch` 的丟球）；
   拍點上 `squash` 壓一下（`beatKick`）。
