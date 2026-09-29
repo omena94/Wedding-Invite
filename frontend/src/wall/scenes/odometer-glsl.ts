@@ -26,6 +26,7 @@ uniform float uFocus;       // 對焦距離
 uniform float uSheen;       // 掃過板子的反光（x）
 uniform float uIn;
 uniform float uKick;
+uniform vec4 uGauge;        // 心動指數的指針表：中心 x, y, 半徑, 指針角度（弧度，0 = 正上、順時針為正）
 ${GLYPH_GLSL}
 ${CODE_GLSL}
 
@@ -86,7 +87,7 @@ void main() {
     if (m2 > 0.0) {
       float brushed = 0.9 + 0.1 * snoise(vec2(q.x * 0.004, q.y * 0.6));
       // 主題色的金屬，但往灰色收一點（珊瑚、薰衣草的主題不要變成一塊鮮豔的塑膠板）
-      vec3 metal = mix(mix(C_BLOOD, C_SIGNAL, 0.34), vec3(luma(mix(C_BLOOD, C_SIGNAL, 0.34))), 0.35);
+      vec3 metal = mix(mix(C_BLOOD, C_SIGNAL, 0.34), vec3(luma(mix(C_BLOOD, C_SIGNAL, 0.34))), 0.6);
       vec3 brass = metal * 0.5 * brushed * (1.08 - 0.3 * clamp(pu.y, 0.0, 1.0));
       brass += mix(C_BLOOD, C_SIGNAL, 0.5) * 0.12 * exp(-pow((q.x + q.y * 0.35 - uSheen) / 110.0, 2.0));
       brass += C_BONE * 0.07 * (1.0 - smoothstep(0.0, 2.0 * aa, abs(d2 + 2.0))) * step(q.y, c2.y);
@@ -105,6 +106,43 @@ void main() {
       col = mix(col, brass, m2);
       // 銘牌的陰影（板子上）
     } else col *= 1.0 - 0.4 * (1.0 - smoothstep(0.0, 22.0, d2 - 6.0)) * step(c2.y - uPlateR.w * 0.3, q.y);
+  }
+
+  // 心動指數的指針表（v2 多補的動畫：指針跟著音量擺，小節線一到就衝過紅區「超出量表」）
+  {
+    vec2 gq = q - uGauge.xy;
+    float gr = length(gq), R = uGauge.z;
+    if (R > 0.0 && gr < R + 16.0) {
+      float dm = gr - R;
+      // 外圈：金屬邊，上亮下暗
+      float ring = 1.0 - smoothstep(-aa, aa, dm - 12.0);
+      col = mix(col, (C_GRAPHITE * 0.45 + C_BONE * 0.06 * (gq.y < 0.0 ? 1.0 : 0.2)) * mp, ring);
+      if (dm < 0.0) {
+        vec3 face = mix(C_INK2 * 1.8, C_INK * 0.8, gr / R);
+        float ang = atan(gq.x, -gq.y);
+        // 刻度：-2.1～2.1 弧度之間 20 格，每 5 格一個長刻度
+        if (abs(ang) < 2.12) {
+          float u = (ang + 2.1) / 4.2 * 20.0;
+          float k = floor(u + 0.5);
+          float dd = abs(u - k) * 4.2 / 20.0 * gr;
+          bool big = mod(k, 5.0) < 0.5;
+          float r0 = big ? R * 0.68 : R * 0.76;
+          float tick = (1.0 - smoothstep(0.6 * aa, 1.6 * aa, dd)) * step(r0, gr) * step(gr, R * 0.88);
+          face += C_BONE * 0.45 * tick;
+          // 最後兩成是紅區（訊號色）
+          if (ang > 1.26) face = mix(face, C_SIGNAL * 0.9, 0.85 * step(R * 0.6, gr) * step(gr, R * 0.66));
+        }
+        // 指針（訊號色，會發光）與軸心
+        vec2 nd = vec2(sin(uGauge.w), -cos(uGauge.w));
+        float along = dot(gq, nd), perp = abs(gq.x * nd.y - gq.y * nd.x);
+        float nm = step(-R * 0.14, along) * step(along, R * 0.84) * (1.0 - smoothstep(1.1 * aa, 2.3 * aa, perp));
+        face = mix(face, C_SIGNAL * 1.8, nm);
+        face = mix(face, C_GRAPHITE * 0.7, 1.0 - smoothstep(-aa, aa, gr - 9.0));
+        // 玻璃的反光
+        face += C_BONE * 0.05 * exp(-pow((gq.x + gq.y + R * 0.4) / (R * 0.25), 2.0));
+        col = mix(col, face, mp);
+      }
+    }
   }
 
   // 滾輪組

@@ -7,7 +7,7 @@
 import { H } from '../engine/gl';
 import { CODE_GLSL } from './_t7';
 
-export const NG = 4;
+export const NG = 5;
 
 export const FRAG_BOARD = /* glsl */ `
 uniform sampler2D uState;

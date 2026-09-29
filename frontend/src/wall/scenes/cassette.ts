@@ -1,5 +1,7 @@
-// 錄音帶（機器 A）：一卷錄音帶的大特寫（稍微歪著放在深色的桌上，下緣出畫面），上面一條錄音座的螢光顯示幕（VFD）。
-// MV 融合原則：一個焦點。
+// 錄音帶（機器 A）：一卷錄音帶稍微歪著放在深色的桌上（一盞檯燈照著），上面一條錄音座的螢光顯示幕（VFD）。
+// 照「留言尺寸與版面比例標準 v2」：錄音帶與桌上的東西是主視覺，留言寫在標籤上（螢幕上 40～60 px）。
+// 多補的動畫：錄音帶在第一拍滑進來落定；桌上一段被拉出來的磁帶捲成一圈圈，跟著音樂輕輕擺、扭；
+// 一支鉛筆（捲錄音帶的老方法）每個小節線滾一下；檯燈的光裡飄著灰塵。
 //  - 焦點是錄音帶標籤上用簽字筆寫的主打留言（霞鶩文楷，畫面最大的字）：第一拍之後一個詞組一拍寫上去（筆尖是一顆小亮點），
 //    寫完在右下署名。標籤上只留一行小小的「A · LOVE MIX」與一行冷面註腳「錄音保護片已拆除：這段祝福不能被覆蓋」。
 //  - 窗裡的兩個捲軸：左邊放帶、右邊收帶，磁帶一圈圈捲著（細線畫的年輪），轉速跟著這首歌的速度
@@ -16,7 +18,8 @@ import { LIN, rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, lerp, prog, hash, TAU } from '../engine/util';
 import { fitText, phrases, type FitResult } from '../engine/text';
 import { Lyrics } from '../engine/lyrics';
-import { beatAfter, signature, lyricAt, sparkHead, COUPLE_ZH, DATE_DOTS } from './_motifs';
+import { beatAfter, barAfter, signature, lyricAt, sparkHead, COUPLE_ZH, DATE_DOTS } from './_motifs';
+import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 } from './_v2';
 import { fillWithHearts } from '../engine/motifs';
 import { layoutWordRows } from './_t7';
 
@@ -27,11 +30,11 @@ export const spec: PlateSpecDecl = { group: 'type', family: 'machine', paper: fa
 const CW = 1060, CH = 672;
 /** 標籤、窗、捲軸（本地座標）。 */
 const LABEL = { x: 56, y: 36, w: CW - 112, h: 474 };
-const WIN = { x: CW / 2 - 270, y: 304, w: 540, h: 128 };
-const HUB_Y = 368, HUB_DX = 172, HUB_R = 40, PACK_MAX = 118;
-/** 留言寫的地方（標籤上半部，窗的上面；最下面一列留給署名）。 */
-const WR = { x: 92, y: 58, w: CW - 184, h: 178 };
-const SIG_Y = 278;
+const WIN = { x: CW / 2 - 270, y: 330, w: 540, h: 124 };
+const HUB_Y = 392, HUB_DX = 172, HUB_R = 40, PACK_MAX = 116;
+/** 留言寫的地方（標籤上半部，窗的上面；署名跟在最後一行下面，也在這個範圍裡）。 */
+const WR = { x: 92, y: 46, w: CW - 184, h: 262 };
+const SIG_GAP = 10;
 /** 標籤圖層（本地座標的範圍）。 */
 const LL = { x: LABEL.x - 20, y: LABEL.y - 20, w: LABEL.w + 40, h: LABEL.h + 40 };
 
@@ -71,13 +74,20 @@ export default class Cassette extends Scene {
   chunks: { line: number; from: number; to: number; t: number }[] = [];
   sigT = Infinity;
   speed = 60;
-  /** 錄音帶在螢幕上的位置（有留言時高一點，讓標籤在畫面正中）。 */
-  CC = { x: 960, y: 650, rot: -0.03 };
-  /** 錄音帶放大幾倍（有留言時放大，標籤上的字才夠大）。 */
-  sc = 1.25;
+  /** 錄音帶在螢幕上的位置與角度（偏左下，右邊停在右下角 QR 區的左邊）。 */
+  CC = { x: 900, y: 540, rot: -0.04 };
+  /** 錄音帶在畫面上的縮放（字級照 v2 換算：畫在標籤上的字級 = 螢幕字級 ÷ sc）。 */
+  sc = 0.9;
+  /** 進場：錄音帶從右邊滑進來，第一拍落定（toScreen 加上這個位移）。 */
+  dx = 0;
+  /** 標籤上署名的字級（本地座標）與留言在螢幕上的字級。 */
+  sigL = 34;
+  msgPx = 48;
+  props = this.track(new LineBatch(1400, { screen2D: true, blend: 'normal' }));
+  bars: number[] = [];
   /** 顯示幕與裡面放歌詞的範圍。 */
-  VFD = { x: 300, y: 96, w: 1020, h: 124 };
-  VT = { x: 330, y: 104, w: 800, h: 108 };
+  VFD = { x: 300, y: 84, w: 1220, h: 120 };
+  VT = { x: 330, y: 92, w: 1000, h: 104 };
   LB = { x: 0, y: 0, w: 1, h: 1 };
   private vfdKey = '';
   private labelKey = '';
@@ -92,14 +102,7 @@ export default class Cassette extends Scene {
     while (bpm < 70) bpm *= 2;
     this.speed = bpm * 0.55;
     const m = this.msg;
-    if (!m) {
-      // 沒有留言：歌詞是焦點，顯示幕放大，錄音帶往下挪
-      // （錄音帶也縮回原來大小：奶油色的標籤不要搶焦點，也不要壓到右下角的 QR 說明）
-      this.CC = { x: 900, y: 704, rot: -0.03 };
-      this.sc = 1;
-      this.VFD = { x: 180, y: 96, w: 1320, h: 212 };
-      this.VT = { x: 214, y: 106, w: 1250, h: 190 };
-    }
+    for (let k = 0; ; k++) { const tb = barAfter(au, s + 0.05, k); if (tb > e) break; this.bars.push(tb); }
     this.label = this.track(new Layer2D(1, 1, undefined, { fast: true }));
     const pts = [[LL.x, LL.y], [LL.x + LL.w, LL.y], [LL.x, LL.y + LL.h], [LL.x + LL.w, LL.y + LL.h]].map(([u, v]) => this.toScreen(u!, v!));
     const lx = Math.floor(Math.min(...pts.map((p) => p.x))), ly = Math.floor(Math.min(...pts.map((p) => p.y)));
@@ -118,7 +121,7 @@ export default class Cassette extends Scene {
   /** 錄音帶本地座標 → 螢幕。 */
   private toScreen(u: number, v: number) {
     const cs = Math.cos(this.CC.rot) * this.sc, sn = Math.sin(this.CC.rot) * this.sc;
-    return { x: this.CC.x + (u - CW / 2) * cs - (v - CH / 2) * sn, y: this.CC.y + (u - CW / 2) * sn + (v - CH / 2) * cs };
+    return { x: this.CC.x + this.dx + (u - CW / 2) * cs - (v - CH / 2) * sn, y: this.CC.y + (u - CW / 2) * sn + (v - CH / 2) * cs };
   }
   /** 在 Canvas 上套用錄音帶的座標（圖層左上角在螢幕的 ox, oy）。 */
   private applyLocal(c: CanvasRenderingContext2D, ox: number, oy: number) {
@@ -129,10 +132,17 @@ export default class Cassette extends Scene {
   private layoutLabel(body: string) {
     const { audio: au } = this.ctx;
     const e = this.ctx.end;
-    // 本地座標的字級（畫面上再放大 sc 倍）：留言最小約 45 px、最大約 110 px；邀請小一點
-    this.fit = this.msg
-      ? fitText(this.label.ctx, body, F_MSG, WR.w, WR.h, { min: 36, max: 88, lineHeight: 1.2, maxLines: 4 })
-      : fitText(this.label.ctx, body, F_MSG, WR.w, WR.h * 0.7, { min: 30, max: 40, lineHeight: 1.3, maxLines: 3 });
+    // v2 的字級是螢幕 px：畫在標籤上（本地座標）要除以 sc。署名跟在最後一行下面，排版時先扣掉它的高度
+    const c = this.label.ctx, sc = this.sc;
+    if (this.msg) {
+      const max = msgMaxFor(body);
+      this.sigL = sigV2(max) / sc;
+      const o = { min: V2.msgMin / sc, max: max / sc, lineHeight: 1.2, maxLines: 5 };
+      const h = WR.h - this.sigL - SIG_GAP;
+      this.fit = fitClauses(c, body, F_MSG, WR.w, h, o) ?? fitText(c, body, F_MSG, WR.w, h, o);
+      this.msgPx = this.fit.size * sc;
+      this.sigL = sigV2(this.msgPx) / sc;
+    } else this.fit = fitText(c, body, F_MSG, WR.w, WR.h * 0.5, { min: 30 / sc, max: 36 / sc, lineHeight: 1.3, maxLines: 3 });
     const ph = phrases(body.replace(/\s+/g, ' '), 6);
     const t0 = beatAfter(au, this.tBoot + 0.2);
     const n = ph.length + (this.msg ? 1 : 0);
@@ -167,7 +177,7 @@ export default class Cassette extends Scene {
     const lines = fit.lines.map((l) => Array.from(l));
     const c = this.label.ctx;
     c.font = font(F_MSG, fit.size);
-    const x0 = WR.x, y0 = WR.y + (m ? (WR.h - fit.height) / 2 : 10) + fit.size * 0.92;
+    const x0 = WR.x, y0 = this.labelY0();
     for (const k of this.chunks) {
       const r = wp(k.t);
       if (r > 0 && r < 1) {
@@ -196,12 +206,12 @@ export default class Cassette extends Scene {
       fillWithHearts(c, part, x, y, rgba('rose'));
       c.restore();
     }
-    // 署名：寫字區的右下（窗的上面）
+    // 署名：最後一行下面、靠右（排版時已經扣掉這一列，不會跟留言重疊）
     if (m && t >= this.sigT) {
       const r = wp(this.sigT);
-      c.font = font(F.hand(700), 36);
+      c.font = font(F.hand(700), this.sigL);
       const sg = signature(m.couple ? COUPLE_ZH : m.name), w = c.measureText(sg).width;
-      const sx = WR.x + WR.w - w, sy = SIG_Y;
+      const sx = WR.x + WR.w - w, sy = y0 + (fit.lines.length - 1) * fit.lineHeight + fit.size * 0.28 + SIG_GAP + this.sigL;
       c.save(); c.beginPath(); c.rect(sx - 4, sy - 44, (w + 8) * r, 60); c.clip();
       c.fillText(sg, sx, sy);
       c.restore();
@@ -243,8 +253,9 @@ export default class Cassette extends Scene {
     // 寫字的格線
     c.fillStyle = rgba('sepia', 0.1);
     const fit = this.fit!;
-    const y0 = WR.y + (m ? (WR.h - fit.height) / 2 : 10) + fit.size * 0.92;
+    const y0 = this.labelY0();
     for (let i = 0; i < fit.lines.length; i++) c.fillRect(WR.x - 16, y0 + i * fit.lineHeight + fit.size * 0.16, WR.w + 32, 1);
+    void m;
     // 標籤最下面一行小字：冷面註腳（左）與 A 面（右）
     c.textBaseline = 'alphabetic';
     c.font = font(F.hei(500), 14); c.letterSpacing = '2px'; c.fillStyle = rgba('sepia', 0.5);
@@ -265,16 +276,11 @@ export default class Cassette extends Scene {
     c.restore();
     rr(WIN.x, WIN.y, WIN.w, WIN.h, 22); c.strokeStyle = rgba('sepia', 0.8); c.lineWidth = 2; c.stroke();
     c.restore();
-    // ---- 顯示幕：深色玻璃、細框、上緣一道反光（錄音座的一角，放在錄音帶後面的空間裡）
-    c.save();
-    c.shadowColor = 'rgba(0,0,0,0.5)'; c.shadowBlur = 30; c.shadowOffsetY = 12;
-    rr(V.x, V.y, V.w, V.h, 14); c.fillStyle = mixRgba('ink', 'ink2', 0.4); c.fill();
-    c.restore();
-    rr(V.x, V.y, V.w, V.h, 14); c.strokeStyle = rgba('graphite', 0.7); c.lineWidth = 1.2; c.stroke();
-    const gv = c.createLinearGradient(0, V.y, 0, V.y + V.h * 0.5);
-    gv.addColorStop(0, 'rgba(255,255,255,0.05)'); gv.addColorStop(1, 'rgba(255,255,255,0)');
-    rr(V.x + 4, V.y + 4, V.w - 8, V.h * 0.5, 10); c.fillStyle = gv; c.fill();
+    void V;
   }
+
+  /** 留言第一行的基線（本地座標）：靠上排，署名緊跟在最後一行下面。 */
+  private labelY0() { const fit = this.fit!; return WR.y + (this.msg ? 0 : 10) + fit.size * 0.92; }
 
   // ---------------------------------------------------------------- 顯示幕
   private drawVfd(t: number) {
@@ -289,12 +295,18 @@ export default class Cassette extends Scene {
     if (key === this.vfdKey) return;
     this.vfdKey = key;
     L.clear();
+    // 顯示幕的玻璃與細框（跟字畫在同一張圖層：錄音帶的圖層要能單獨滑進來）
+    c.beginPath(); c.roundRect(1, 1, V.w - 2, V.h - 2, 14); c.fillStyle = mixRgba('ink', 'ink2', 0.4); c.fill();
+    c.strokeStyle = rgba('graphite', 0.7); c.lineWidth = 1.2; c.stroke();
+    const gv = c.createLinearGradient(0, 0, 0, V.h * 0.5);
+    gv.addColorStop(0, 'rgba(255,255,255,0.05)'); gv.addColorStop(1, 'rgba(255,255,255,0)');
+    c.beginPath(); c.roundRect(5, 5, V.w - 10, V.h * 0.5, 10); c.fillStyle = gv; c.fill();
     c.textBaseline = 'alphabetic';
     const ox = -V.x, oy = -V.y;
-    const big = !this.msg;
     if (ly) {
-      // 有留言時歌詞是第二順位（比留言小一級）；沒有留言時歌詞是焦點
-      const lay = layoutWordRows(c, ly.line, F_LYR, VT.w, VT.h, big ? { min: 56, max: 96, maxRows: 2, lh: 1.08 } : { min: 48, max: 52, maxRows: 2, lh: 1.04 });
+      // 歌詞 40～52（有留言時比留言小）
+      const top = lyricV2(this.msg ? this.msgPx : null);
+      const lay = layoutWordRows(c, ly.line, F_LYR, VT.w, VT.h, { min: V2.lyrMin, max: top, maxRows: 2, lh: 1.06 });
       c.save();
       c.translate(VT.x + ox, VT.y + oy);
       c.font = font(F_LYR, lay.size);
@@ -373,6 +385,66 @@ export default class Cassette extends Scene {
     }
   }
 
+  // ---------------------------------------------------------------- 桌上的東西（v2 多補的動畫）
+  /**
+   * 被拉出來的一段磁帶：從錄音帶下緣的磁頭口出來，往左在桌上捲成幾圈；跟著音樂輕輕擺，
+   * 寬度忽寬忽窄（磁帶在扭：一下看到正面、一下看到側邊）。
+   * 鉛筆：捲錄音帶的老方法，放在左上方的桌上，每個小節線滾一下（彈簧）。灰塵：檯燈光裡慢慢往上飄。
+   */
+  private drawProps(t: number) {
+    const P = this.props, au = this.ctx.audio;
+    P.clear();
+    const tape: [number, number, number] = [LIN.sepia[0] * 0.55 + LIN.blood[0] * 0.25, LIN.sepia[1] * 0.55 + LIN.blood[1] * 0.25, LIN.sepia[2] * 0.55 + LIN.blood[2] * 0.25];
+    // 從錄音帶左下角的磁頭口拉出來，往左下在空的桌面上捲幾圈
+    const a = this.toScreen(12, CH - 70);
+    const end = { x: 150, y: 930 };
+    const sway = 0.5 + 0.5 * au.env('rms', t) + 0.6 * au.hit('kick', t, 0.12);
+    let prev: { x: number; y: number } | null = null;
+    const N = 120;
+    for (let i = 0; i <= N; i++) {
+      const u = i / N;
+      const bx = lerp(a.x, end.x, u), by = lerp(a.y, end.y, u) - 40 * Math.sin(Math.PI * u);
+      const env = Math.sin(Math.PI * Math.min(1, u * 1.25));
+      const ph = TAU * 2.4 * u + t * 0.7;
+      const x = bx + (54 + 10 * sway) * Math.sin(ph) * env;
+      const y = by + 34 * Math.cos(ph) * env + 6 * sway * Math.sin(t * 3 + u * 9) * env;
+      if (prev) {
+        const w = 2.5 + 6.5 * Math.abs(Math.cos(TAU * 3.2 * u - t * 1.3));
+        P.seg2(prev.x, prev.y, x, y, w, [tape[0] * 1.7, tape[1] * 1.7, tape[2] * 1.7], 1);
+      }
+      prev = { x, y };
+    }
+    // 鉛筆（錄音帶右邊的桌上）：每個小節線往下滾一點點再彈回來
+    const lastBar = this.bars.filter((tb) => tb <= t).pop();
+    const roll = lastBar !== undefined ? 16 * Math.sin(Math.PI * Math.min(1, (t - lastBar) / 0.45)) * Math.exp(-(t - lastBar) * 2) : 0;
+    const ang = 2.9, cx = 1610, cy = 600 + roll, L = 320;
+    const dxp = Math.cos(ang) * L / 2, dyp = Math.sin(ang) * L / 2;
+    const nx = -Math.sin(ang), ny = Math.cos(ang);
+    const body = [LIN.graphite[0] * 0.55, LIN.graphite[1] * 0.55, LIN.graphite[2] * 0.55] as [number, number, number];
+    P.seg2(cx - dxp, cy - dyp, cx + dxp * 0.78, cy + dyp * 0.78, 18, body, 1);
+    P.seg2(cx - dxp, cy - dyp + ny * -4, cx + dxp * 0.78, cy + dyp * 0.78 + ny * -4, 3, [LIN.ash[0] * 0.35, LIN.ash[1] * 0.35, LIN.ash[2] * 0.35], 1);
+    // 削過的木頭（越往尖越細）與筆芯
+    for (let k = 0; k < 6; k++) {
+      const u0 = 0.78 + k * 0.03, u1 = u0 + 0.03;
+      P.seg2(cx + dxp * u0, cy + dyp * u0, cx + dxp * u1, cy + dyp * u1, 18 * (1 - (k + 0.5) / 7), [LIN.paper[0] * 0.5, LIN.paper[1] * 0.45, LIN.paper[2] * 0.4], 1);
+    }
+    P.seg2(cx + dxp * 0.96, cy + dyp * 0.96, cx + dxp, cy + dyp, 3.5, LIN.ink, 1);
+    // 金屬圈與橡皮擦
+    P.seg2(cx - dxp, cy - dyp, cx - dxp * 1.08, cy - dyp * 1.08, 19, [LIN.ash[0] * 0.5, LIN.ash[1] * 0.5, LIN.ash[2] * 0.5], 1);
+    P.seg2(cx - dxp * 1.08, cy - dyp * 1.08, cx - dxp * 1.16, cy - dyp * 1.16, 18, [LIN.blood[0] * 0.5, LIN.blood[1] * 0.45, LIN.blood[2] * 0.45], 1);
+    void nx;
+    // 灰塵：檯燈光裡慢慢往上飄（位置是 t 的純函數）
+    for (let i = 0; i < 40; i++) {
+      const hx = hash(i, 11), hy = hash(i, 23);
+      const x = 180 + hx * 1300 + 16 * Math.sin(t * 0.45 + i);
+      const y = 950 - ((hy * 820 + t * (10 + 12 * hash(i, 5))) % 820);
+      const d = Math.hypot((x - this.CC.x) / 900, (y - this.CC.y) / 520);
+      const k = Math.exp(-d * d * 2) * (0.55 + 0.45 * Math.sin(t * 1.7 + i * 2.1));
+      if (k < 0.05) continue;
+      this.glow.seg2(x, y, x + 0.01, y, 2.4, [LIN.bone[0] * 0.3 * k, LIN.bone[1] * 0.3 * k, LIN.bone[2] * 0.28 * k], 1);
+    }
+  }
+
   private blit(tex: THREE.Texture, x: number, y: number, w: number, h: number, out: THREE.WebGLRenderTarget) {
     this.ctx.comp.draw(this.ctx.renderer, tex, out, { scale: [W / w, H / h], offset: [0.5 * W / w - 0.5 - x / w, 0.5 + y / h - 0.5 * H / h] });
   }
@@ -382,14 +454,19 @@ export default class Cassette extends Scene {
     const { renderer, comp } = this.ctx;
     const t = f.t, s = this.ctx.start;
     const kIn = prog(t, s, s + 0.4, ease.outCubic);
-    this.bg.u.uIn!.value = kIn;
+    this.bg.u.uIn!.value = kIn * (1 + 0.06 * f.a.kick);
     this.bg.render(renderer, out);
+    // 進場：錄音帶從右邊滑進來，第一拍落定（最後一點點彈一下）
+    const kc = prog(t, s, Math.max(s + 0.35, this.tBoot), ease.outExpo);
+    this.dx = 1100 * (1 - kc);
     this.glow.clear();
+    this.drawProps(t);
+    this.props.render(renderer, out);
     this.drawReels(t);
     this.reels.render(renderer, out);
-    comp.draw(renderer, this.shell.texture, out);
+    this.blit(this.shell.texture, this.dx, 0, W, H, out);
     const penL = this.drawLabel(t);
-    this.blit(this.label.texture, this.LB.x, this.LB.y, this.LB.w, this.LB.h, out);
+    this.blit(this.label.texture, this.LB.x + this.dx, this.LB.y, this.LB.w, this.LB.h, out);
     const pen = penL ? this.toScreen(penL.x, penL.y) : null;
     this.drawVfd(t);
     this.blit(this.vfd.texture, this.VFD.x, this.VFD.y, this.VFD.w, this.VFD.h, out);

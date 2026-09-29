@@ -364,3 +364,59 @@ export function layoutWordRows(c: CanvasRenderingContext2D, line: Line, family: 
   m.set(key, out);
   return out;
 }
+
+// ---------------------------------------------------------------- 翻牌的留言：照子句排、挑最好的牌的大小
+/**
+ * 照子句把字排成格子列：一個子句放得下就整句一列（放不下換下一列），太長的子句才在句子裡平均地斷開。
+ * ♥ 前面的空白拿掉（一格一個字，空白很浪費，也讓 ♥ 跟前面的字在同一列）。回傳列與「斷開的子句數」。
+ */
+export function clauseCells(chars: string[], cols: number): { rows: number[][]; breaks: number } {
+  const P = '，。！？、,.!?~～…；;：:♥';
+  const keep = chars.map((ch, i) => !(ch === ' ' && chars[i + 1] === '♥'));
+  const clauses: number[][] = [];
+  let cur: number[] = [];
+  chars.forEach((ch, i) => {
+    if (!keep[i]) return;
+    cur.push(i);
+    const nx = chars[i + 1];
+    if (P.includes(ch) && !(nx && P.includes(nx))) { clauses.push(cur); cur = []; }
+  });
+  if (cur.length) clauses.push(cur);
+  const rows: number[][] = [];
+  let row: number[] = [], breaks = 0;
+  const trimEnd = (r: number[]) => { while (r.length && chars[r[r.length - 1]!] === ' ') r.pop(); return r; };
+  const trim = (r: number[]) => { while (r.length && chars[r[0]!] === ' ') r.shift(); return trimEnd(r); };
+  for (const cl of clauses) {
+    const c = trim([...cl]);
+    if (!c.length) continue;
+    // 接在同一列後面時保留前面的空白（英文字之間要空一格）
+    const withLead = trimEnd([...cl]);
+    if (row.length && row.length + withLead.length <= cols) { row.push(...withLead); continue; }
+    if (row.length) rows.push(row);
+    row = [];
+    if (c.length <= cols) { row = c; continue; }
+    breaks++;
+    const sub = wrapCells(c.map((i) => chars[i]!), cols, true);
+    sub.forEach((r, j) => { const mapped = r.map((k) => c[k]!); if (j < sub.length - 1) rows.push(mapped); else row = mapped; });
+  }
+  if (row.length) rows.push(row);
+  return { rows, breaks };
+}
+
+/**
+ * 在 hMin～hMax 之間挑牌的高度：每種高度都照子句排一次，分數 = 斷開的子句（最不想要）＋列數＋字小一點的代價，
+ * 放得下（fits）的裡面挑分數最好的。都放不下就用最小的牌、只照寬度斷。
+ */
+export function bestCellWrap(chars: string[], hMin: number, hMax: number, colsOf: (h: number) => number, fits: (rows: number, h: number) => boolean): { h: number; rows: number[][] } {
+  let best: { h: number; rows: number[][]; score: number } | null = null;
+  for (let h = Math.round(hMax); h >= Math.round(hMin); h -= 1) {
+    const cols = colsOf(h);
+    const { rows, breaks } = clauseCells(chars, cols);
+    if (!rows.length || !fits(rows.length, h)) continue;
+    const score = breaks * 10 + rows.length * 1.5 + (hMax - h) * 0.12;
+    if (!best || score < best.score) best = { h, rows, score };
+  }
+  if (best) return { h: best.h, rows: best.rows };
+  const h = Math.round(hMin);
+  return { h, rows: wrapCells(chars, colsOf(h), true) };
+}
