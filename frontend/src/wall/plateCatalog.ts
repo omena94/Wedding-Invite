@@ -138,6 +138,14 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "idea": "快歌用：40 年代搖擺舞，甩出去、拉回來、拋起來，全在拍點；地板的舞步腳印排成字。"
  },
  {
+  "name": "ringbearer",
+  "title": "狗狗戒童",
+  "family": "dog",
+  "light": false,
+  "couple": true,
+  "idea": "婚禮服的兩人在走道盡頭等，QQ 叼著戒枕走紅毯，一拍一步；兩側座位的賓客舉著留言。"
+ },
+ {
   "name": "scooter",
   "title": "騎機車",
   "family": "date",
@@ -160,6 +168,14 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": true,
   "idea": "俯視兩杯咖啡，拉花在拍點畫出愛心與葉子，旁邊的咖啡店黑板菜單寫著歌詞與留言。"
+ },
+ {
+  "name": "movie",
+  "title": "電影院",
+  "family": "home",
+  "light": false,
+  "couple": true,
+  "idea": "從後排看兩人的背影和狗狗的頭，大銀幕上放的是歌詞（跟唱），爆米花在小鼓跳；片頭字卡是留言。"
  },
  {
   "name": "toast",
