@@ -289,15 +289,17 @@ export function drawWalker(c: Ctx, x: number, y: number, h: number, ph: number, 
     c.lineCap = 'round'; c.lineJoin = 'round';
     const line = (pts: Pt[], w: number) => { c.lineWidth = w; c.beginPath(); c.moveTo(pts[0]!.x, pts[0]!.y); for (const p of pts.slice(1)) c.lineTo(p.x, p.y); c.stroke(); };
     // 兩隻腳（膝蓋微彎）、兩隻手（跟腳反方向擺）
+    // （站著不動時 s = 0：兩腳還是稍微分開、手稍微離開身體，不然會疊成一根柱子）
     for (const k of [1, -1]) {
-      const a = 0.38 * k * s;
+      const a = 0.38 * k * s + 0.07 * k;
       const knee = at(hip, a, leg * 0.5);
-      line([hip, knee, at(knee, a - 0.18 * Math.max(0, -k * s), leg * 0.5)], h * 0.085);
+      line([hip, knee, at(knee, a - 0.18 * Math.max(0, -k * s), leg * 0.5)], h * 0.075);
       const sh = { x: neck.x, y: neck.y + h * 0.03 };
-      const el = at(sh, -0.4 * k * s, h * 0.17);
-      line([sh, el, at(el, -0.4 * k * s + 0.25, h * 0.15)], h * 0.055);
+      const aa = -0.4 * k * s - 0.12 * k;
+      const el = at(sh, aa, h * 0.17);
+      line([sh, el, at(el, aa + 0.25, h * 0.15)], h * 0.05);
     }
-    line([hip, neck], h * 0.17);
+    line([hip, neck], h * 0.15);
     c.beginPath(); c.arc(neck.x + dir * h * 0.01, neck.y - h * 0.075, h * 0.062, 0, Math.PI * 2); c.fill();
     if (o.bag) c.fillRect(hip.x - dir * h * 0.13, hip.y - h * 0.2, h * 0.08, h * 0.13);
     c.restore();

@@ -498,12 +498,36 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "idea": "舞台燈照拍子掃過觀眾，兩人在前排舉手跟唱，舞台大螢幕是歌詞（逐字跟唱）。留言寫在兩人舉的應援手幅上。"
  },
  {
+  "name": "lightsticks",
+  "title": "手燈海",
+  "family": "live",
+  "light": false,
+  "couple": true,
+  "idea": "看台一整片手燈照拍子變色，排成波浪；兩人在中間一起揮手燈。留言寫在孟庭舉的應援板上。"
+ },
+ {
+  "name": "phonelights",
+  "title": "手機燈海",
+  "family": "live",
+  "light": false,
+  "couple": true,
+  "idea": "慢歌時全場亮起手機燈，左右搖擺像星海，兩人靠在一起。留言在宣文的手機螢幕上。"
+ },
+ {
   "name": "encore",
   "title": "散場",
   "family": "live",
   "light": false,
   "couple": true,
   "idea": "散場後的場館外面，人潮和路燈；兩人的發光手環一閃一閃，牽手走向捷運站。留言寫在兩人手上的票根。"
+ },
+ {
+  "name": "merch",
+  "title": "排隊買周邊",
+  "family": "live",
+  "light": true,
+  "couple": true,
+  "idea": "長長的排隊隊伍一格一格往前，終於輪到兩人，買到一樣的應援毛巾，一起展開，毛巾上寫著留言。"
  },
  {
   "name": "boarding",

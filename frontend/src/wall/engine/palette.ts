@@ -64,8 +64,18 @@ export function rgba(key: PaletteKey | string, a = 1): string {
   return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
 }
 
-/** 兩個色票之間的混色（Canvas2D 用）。 */
+/**
+ * 色票名、#hex 或 rgb()/rgba() 字串 → [r, g, b]。
+ * mixRgba 的結果再拿去混色（例如 mixRgba(mixRgba('ink2', 'bone', 0.1), 'signal', 0.05)）很常見；
+ * 以前只認色票名與 #hex，傳 rgba(...) 字串會變成純黑（2026-09-29 firstdance、concert 踩到）。
+ */
+function toRgb(c: PaletteKey | string): number[] {
+  if (/^rgba?\(/i.test(c)) return (c.match(/[\d.]+/g) ?? ['0', '0', '0']).slice(0, 3).map(Number);
+  return rgba(c).match(/\d+/g)!.slice(0, 3).map(Number);
+}
+
+/** 兩個色票之間的混色（Canvas2D 用）。a、b 可以是色票名、#hex，或另一個 mixRgba／rgba 的結果。 */
 export function mixRgba(a: PaletteKey | string, b: PaletteKey | string, k: number, alpha = 1): string {
-  const pa = rgba(a).match(/\d+/g)!.map(Number), pb = rgba(b).match(/\d+/g)!.map(Number);
+  const pa = toRgb(a), pb = toRgb(b);
   return `rgba(${[0, 1, 2].map((i) => Math.round(pa[i]! + (pb[i]! - pa[i]!) * k)).join(',')},${alpha})`;
 }
