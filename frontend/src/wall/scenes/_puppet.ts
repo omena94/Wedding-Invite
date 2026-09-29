@@ -2,10 +2,12 @@
 // 新人看過 Codex 的插畫說「像很多」，所以人物版面（badminton、fetch、waltz、cooking…）的角色一律用這一套，
 // 不再用 _couple.ts 的程式畫角色（那邊的道具、留言、歌詞沿曲線照樣可以用）。**照片永遠不能進影片**：只能用畫的。
 //
-// 素材：`node scripts/wall-sprites.mjs <Codex 的資料夾>...` 裁掉透明邊、縮小、轉 webp 到 public/wall-sprites/<名字>.webp，
-// 並更新 src/wall/spriteManifest.ts（每張的尺寸、腳底錨點、參考身高、道具點）。同一個角色每張都是同一個比例，換圖時大小不會跳。
+// 素材：原圖一組一個資料夾（wall-out/codex-chars/poses/<組名>/，自帶 sprites.json），`node scripts/wall-sprites.mjs <組名>`
+// 裁掉透明邊、縮小、轉 webp 到 public/wall-sprites/<組名>/<圖名>.webp，清單寫到 src/wall/sprites/<組名>.json
+// （spriteManifest.ts 合起來：每張的尺寸、腳底錨點、參考身高、道具點）。同一個角色每張都是同一個比例，換圖時大小不會跳。
+// 完整的做法（請 Codex 畫圖、檢查、跑管線、寫版面）見 docs/wall/PUPPETS.md。
 // 檔名：宣文 xw_*、孟庭 mt_*、兩人一起 cp_*（婚禮服華爾滋 cp_waltz_*）、芃芃 pp_*、QQ qq_*；側面一律朝右（要朝左就 flip）。
-// 有哪些姿勢看 wall-out/sprites-contact.png（跑管線時產生）或 spriteManifest.ts。
+// 有哪些姿勢看 wall-out/sprites-<組名>.png（跑管線時產生的總覽圖）或 src/wall/sprites/<組名>.json。
 //
 // 用法（版面裡）：
 //   layer = this.track(new Layer2D(W, H, undefined, { fast: true }));
@@ -47,9 +49,9 @@ import type { Note } from './_couple';
 type Ctx = CanvasRenderingContext2D;
 type Pt = { x: number; y: number };
 
-/** 角色的身高（場景尺度 = 宣文的身高 = 1）：用檔名前綴查。兩人一起的圖以宣文為準。 */
+/** 角色的身高（場景尺度 = 宣文的身高 = 1）：清單裡有 height 用清單的，沒有就用檔名前兩個字查。兩人一起的圖以宣文為準。 */
 export const PUPPET_H: Record<string, number> = { xw: 1, cp: 1, mt: 0.95, pp: 0.26, qq: 0.29 };
-const heightOf = (name: string) => PUPPET_H[name.slice(0, 2)] ?? 1;
+const heightOf = (name: string) => SPRITES[name]?.height ?? PUPPET_H[name.slice(0, 2)] ?? 1;
 
 // ---------------------------------------------------------------- 載入（共用快取＋引用計數）
 interface Entry { bmp: ImageBitmap | null; ready: Promise<ImageBitmap>; refs: number; bytes: number; idle: number }
@@ -65,8 +67,9 @@ function acquire(name: string): Promise<ImageBitmap> {
     if (!info) return Promise.reject(new Error(`紙偶沒有這張圖：${name}（先跑 node scripts/wall-sprites.mjs）`));
     const ent: Entry = { bmp: null, refs: 0, bytes: info.w * info.h * 4, idle: 0, ready: null! };
     ent.ready = (async () => {
-      const res = await fetch(`/wall-sprites/${name}.webp`);
-      if (!res.ok) throw new Error(`紙偶載不到：/wall-sprites/${name}.webp（${res.status}）`);
+      const url = `/wall-sprites/${info.group}/${name}.webp`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`紙偶載不到：${url}（${res.status}）`);
       const bmp = await createImageBitmap(await res.blob());
       ent.bmp = bmp;
       return bmp;
@@ -227,7 +230,8 @@ export function puppetBox(name: string, x: number, y: number, o: PuppetOpts): [n
 /** 腳底一塊柔和的橢圓影子：lift = 離地多高（px），越高越小越淡。who 可以給圖名或角色前綴（xw、pp…）。 */
 export function puppetShadow(c: Ctx, who: string, x: number, y: number, o: { h: number; lift?: number; wide?: number; alpha?: number; color?: string }): void {
   const ph = o.h * heightOf(who);
-  const dog = /^(pp|qq)/.test(who), couple = /^cp/.test(who);
+  const kind = SPRITES[who]?.kind ?? (/^(pp|qq)/.test(who) ? 'dog' : /^cp/.test(who) ? 'couple' : 'person');
+  const dog = kind === 'dog', couple = kind === 'couple';
   const up = clamp((o.lift ?? 0) / Math.max(1, o.h * 0.5), 0, 1);
   const rx = ph * (dog ? 0.95 : couple ? 0.42 : 0.22) * (o.wide ?? 1) * (1 - up * 0.45), ry = rx * 0.17;
   const a = (o.alpha ?? 0.3) * (1 - up * 0.75);

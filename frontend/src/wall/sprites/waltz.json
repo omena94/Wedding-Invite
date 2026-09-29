@@ -1,0 +1,12 @@
+{
+  "group": "waltz",
+  "series": {
+    "cp_waltz_": {"ref":"cp_waltz_1","refFrac":0.96484375,"groundFrac":0.9830729166666666,"target":600}
+  },
+  "sprites": {
+    "cp_waltz_1": {"kind":"couple","w":572,"h":607,"ax":288.9,"ay":603,"ref":600},
+    "cp_waltz_2": {"kind":"couple","w":602,"h":604,"ax":297,"ay":599.8,"ref":600},
+    "cp_waltz_3": {"kind":"couple","w":587,"h":607,"ax":301.8,"ay":603,"ref":600},
+    "cp_waltz_4": {"kind":"couple","w":609,"h":592,"ax":275.5,"ay":588.1,"ref":600}
+  }
+}

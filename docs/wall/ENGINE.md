@@ -184,21 +184,31 @@ Codex 畫每個動作的關鍵姿勢（透明背景 PNG），程式負責在場�
 
 **規則：照片永遠不能進影片**（新人的要求）。角色只能是畫的：Codex 照 `wall-out/codex-chars/` 的定案設定圖（新人看過）畫，
 設定圖本身也是畫的；不要把新人給的生活照、或照片描出來的圖放進 `public/`、專案或畫面。
+其他規則（詳見 PUPPETS.md）：孟庭一律兩眼張開（不眨眼、不閉眼）；QQ 不畫項圈與胸背帶；不畫真實的品牌、醫院、公司、球隊、歌手的名稱或標誌。
 
-### 加新姿勢
+### 素材：一組一個資料夾（好幾個人可以同時做）
 
-1. 跑 Codex（本機的圖片生成）。提示詞照前幾批的 `PROMPT.md`（附上設定圖 faces／couple-daily／couple-wedding／dogs-side／dogs-front），一定要寫到：
-   **真正透明的背景**（白衣服、白狗沒辦法去背）、不畫地板與影子、同一個角色同一個比例（人 1024×1536 腳底 y≈1490、狗 1024×1024 腳底 y≈960、
-   兩人一起 1536×1536）、**側面一律朝右**、四肢與道具不要被畫布切到。檔名：宣文 `xw_*`、孟庭 `mt_*`、兩人一起 `cp_*`、芃芃 `pp_*`、QQ `qq_*`。
-2. 打開每一張檢查（疊在深色與洋紅底上看最清楚）：背景真的透明、長相跟設定圖一樣、沒有被切掉。不合格的請 Codex 重畫，**不要用程式修圖**。
-3. `cd frontend && node scripts/wall-sprites.mjs <資料夾>... --clean`：裁掉透明邊、縮到大螢幕用的大小（人站直 600 px、狗 260～280 px）、轉 webp 到
-   `public/wall-sprites/`，更新 `src/wall/spriteManifest.ts`。四個角不透明的圖會被擋下來並列出。
-   - 每個角色用自己的**基準姿勢**校正比例（`SERIES`：`xw_idle_front`、`mt_idle_front`、`pp_stand`、`qq_stand`、`cp_hug`、`cp_waltz_1`）；
-     新的一組（例如別套衣服）要在 `SERIES` 加一行。校正值存在 manifest，之後只補幾張不用再跑基準姿勢。
-   - 道具點（球拍面、手上的球、嘴、鍋心、盤子）在 `POINTS` 手動量（原圖的 px、半徑），版面用來接球的軌跡、蓋掉圖上的道具。
-     錨點 x 自動取身體中心，不好的在 `ANCHOR` 手動給。
-   - 打開 `wall-out/sprites-contact.png` 看：紅十字 = 腳底錨點、綠圈 = 道具點；下半部是同一個動作的疊圖，換圖時身體與腳不該亂跳。
-   - 全部的圖加起來控制在 3～4 MB 以內（現在 49 張約 1.9 MB）。
+完整的工作手冊（請 Codex 畫圖的提示詞範本、要附的設定圖、檢查、跑管線、寫版面）在 **`docs/wall/PUPPETS.md`**。重點：
+
+- **一組 = 一套衣服／一批姿勢**，例如 `base`（日常服一的宣文、孟庭、兩人一起、芃芃、QQ）、`waltz`（婚禮服華爾滋）；
+  之後的 `work`（工程師 × 護理師）、`hoops`（籃球）、`live`（演唱會）各是一組。圖名跨組不能重複，新的組在前綴後面加組名：`xw_work_*`、`mt_hoops_*`。
+- 原圖放 `wall-out/codex-chars/poses/<組名>/`（wall-out 不進 git，但會留在這台電腦上，之後要重跑找得到），同一個資料夾放
+  **`sprites.json`**：這一組有哪幾種角色（`series`：檔名前綴、種類、**基準姿勢**、目標身高）、道具點（`points`）、手動錨點（`anchor`）。
+  腳本本身不用改。
+- `cd frontend && node scripts/wall-sprites.mjs <組名>`：裁透明邊、縮圖、轉 webp，**只寫這一組自己的檔**：
+  圖 `public/wall-sprites/<組名>/*.webp`、清單 `src/wall/sprites/<組名>.json`、總覽圖 `wall-out/sprites-<組名>.png`。
+  `src/wall/spriteManifest.ts` 用 `import.meta.glob` 把每一組的清單合起來，版面照樣用 `SPRITES`／`loadPuppets`。
+  同一組同時只能一個人跑（資料夾裡的 `.lock`）；寫檔前會檢查圖名有沒有跟別組撞到。兩組同時跑互不影響（2026-09-29 實測 base、waltz 與一個測試組同時跑，
+  別組的檔一個 byte 都沒變）。
+- 每一種角色用自己的**基準姿勢**（站直的那張）校正比例，縮到 `target`（人 600、芃芃 260、QQ 280）：
+  同一種角色的每一張都用同一個比例，換姿勢時大小不跳；換衣服的新組也有自己的基準姿勢、給一樣的 target，換衣服之後在畫面上一樣大。
+- 轉檔前先 `node scripts/wall-sprites.mjs <組名> --check`：每張原圖疊在深色底（有原圖 px 的格線，量道具點用）與洋紅底上，
+  存成 `wall-out/sprites-<組名>-check-*.jpg`，看背景是不是真的透明、長相、有沒有被切掉。
+- 背景不透明的圖會被擋下來列出（請 Codex 重畫，**不要用程式修圖**）；以前轉過的會先沿用舊的，版面不會壞。
+- 圖只在版面 `init()` 的 `loadPuppets()` 才下載（清單只有尺寸與錨點，跟著程式載入）：總共會有幾百張、十幾 MB，但一個窗格只下載自己用的幾張，
+  用過的留在快取裡。一張人約 30～60 KB、狗約 20～30 KB。
+- 打開 `wall-out/sprites-<組名>.png` 看：紅十字 = 腳底錨點、藍線 = 參考身高、綠圈 = 道具點；下半部是同一個動作的疊圖，換圖時身體與腳不該亂跳。
+- 刪掉一整組：刪 `wall-out/codex-chars/poses/<組名>/`、`public/wall-sprites/<組名>/`、`src/wall/sprites/<組名>.json`（先確定沒有版面在用）。
 
 ### 用法
 
