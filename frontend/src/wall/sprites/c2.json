@@ -3,6 +3,7 @@
   "series": {
     "cp_fdance_": {"ref":"cp_fdance_sway","refFrac":0.9593301435406698,"groundFrac":0.9792663476874003,"target":600},
     "cp_swing_": {"ref":"cp_swing_close","refFrac":0.9529505582137161,"groundFrac":0.9720893141945773,"target":600},
+    "mt_archery_": {"ref":"mt_archery_ready","refFrac":0.8971354166666666,"groundFrac":0.9798177083333334,"target":600},
     "xw_": {"ref":"xw_idle_front","refFrac":0.9518229166666666,"groundFrac":0.9739583333333334,"target":600,"from":"base:xw_"},
     "mt_": {"ref":"mt_idle_front","refFrac":0.9641927083333334,"groundFrac":0.9837239583333334,"target":600,"from":"base:mt_"},
     "pp_": {"ref":"pp_stand","refFrac":0.8310546875,"groundFrac":0.927734375,"target":260,"from":"base:pp_"},
@@ -17,6 +18,15 @@
     "cp_swing_open": {"kind":"couple","w":628,"h":502,"ax":287.4,"ay":497.8,"ref":600},
     "cp_swing_spin": {"kind":"couple","w":574,"h":605,"ax":306.5,"ay":600.8,"ref":600},
     "cp_swing_toss": {"kind":"couple","w":523,"h":616,"ax":254.8,"ay":612.3,"ref":600},
-    "xw_archery_quiver": {"kind":"person","w":359,"h":609,"ax":96.2,"ay":605.1,"ref":600}
+    "mt_archery_draw": {"kind":"person","w":391,"h":647,"ax":137.8,"ay":642.5,"ref":600,"pts":{"tip":[387.5,155.4],"nock":[142.8,156.3]}},
+    "mt_archery_ready": {"kind":"person","w":399,"h":606,"ax":142.2,"ay":602.8,"ref":600},
+    "mt_archery_release": {"kind":"person","w":418,"h":666,"ax":172.6,"ay":662.5,"ref":600},
+    "mt_dogwalk_1": {"kind":"person","w":301,"h":595,"ax":131.5,"ay":591.3,"ref":600,"pts":{"hand":[269.4,340.3]}},
+    "mt_dogwalk_2": {"kind":"person","w":329,"h":596,"ax":158.2,"ay":592.9,"ref":600,"pts":{"hand":[290.9,339.9]}},
+    "mt_dogwalk_point": {"kind":"person","w":253,"h":606,"ax":76.4,"ay":602.2,"ref":600,"pts":{"hand":[164.1,362.2]}},
+    "xw_archery_quiver": {"kind":"person","w":359,"h":609,"ax":96.2,"ay":605.1,"ref":600},
+    "xw_dogwalk_1": {"kind":"person","w":340,"h":601,"ax":150.4,"ay":596.9,"ref":600,"pts":{"hand":[296.7,341.5]}},
+    "xw_dogwalk_2": {"kind":"person","w":369,"h":595,"ax":166.8,"ay":590.8,"ref":600,"pts":{"hand":[314,338.6]}},
+    "xw_dogwalk_stop": {"kind":"person","w":194,"h":609,"ax":72.8,"ay":605.5,"ref":600,"pts":{"hand":[183,369.8]}}
   }
 }

@@ -122,6 +122,14 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "idea": "廚房側面，孟庭甩鍋（在大鼓上翻），宣文遞盤子，QQ 在腳邊等掉下來的；留言寫在冰箱上的便條，歌詞像食譜步驟。"
  },
  {
+  "name": "archery",
+  "title": "射箭",
+  "family": "sport",
+  "light": false,
+  "couple": true,
+  "idea": "孟庭拉弓（預備一小節）、放箭在小節線，箭飛過畫面正中靶心變成一顆愛心，靶上的環寫著留言。"
+ },
+ {
   "name": "firstdance",
   "title": "第一支舞",
   "family": "dance",
@@ -152,6 +160,14 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": true,
   "idea": "婚禮服的兩人在走道盡頭等，QQ 叼著戒枕走紅毯，一拍一步；兩側座位的賓客舉著留言。"
+ },
+ {
+  "name": "picnic",
+  "title": "野餐",
+  "family": "date",
+  "light": true,
+  "couple": true,
+  "idea": "格紋野餐墊、籃子、三明治，狗狗偷吃；風吹起的餐巾紙上寫著留言。"
  },
  {
   "name": "stargaze",
@@ -194,12 +210,28 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "idea": "從後排看兩人的背影和狗狗的頭，大銀幕上放的是歌詞（跟唱），爆米花在小鼓跳；片頭字卡是留言。"
  },
  {
+  "name": "cake",
+  "title": "切蛋糕",
+  "family": "wedding",
+  "light": true,
+  "couple": true,
+  "idea": "三層蛋糕，兩人握同一把刀切下去（小節線），每一層蛋糕的側面寫著留言／歌詞。"
+ },
+ {
   "name": "toast",
   "title": "乾杯",
   "family": "wedding",
   "light": false,
   "couple": true,
   "idea": "兩只香檳杯在拍點碰杯，氣泡往上冒，冒到頂端組成留言的字。"
+ },
+ {
+  "name": "debug",
+  "title": "深夜寫程式",
+  "family": "work",
+  "light": false,
+  "couple": true,
+  "idea": "宣文在雙螢幕前敲鍵盤（一拍一下），螢幕上的建置從紅燈在小節線變綠燈；孟庭下班穿著護理服回來，從後面抱住他。留言是螢幕上一則程式碼審查的留言。"
  },
  {
   "name": "boarding",
