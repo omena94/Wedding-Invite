@@ -1,0 +1,28 @@
+{
+  "group": "c1-sports",
+  "series": {
+    "xw_": {"ref":"xw_idle_front","refFrac":0.9518229166666666,"groundFrac":0.9739583333333334,"target":600,"from":"base:xw_"},
+    "mt_": {"ref":"mt_idle_front","refFrac":0.9641927083333334,"groundFrac":0.9837239583333334,"target":600,"from":"base:mt_"},
+    "pp_": {"ref":"pp_stand","refFrac":0.8310546875,"groundFrac":0.927734375,"target":260,"from":"base:pp_"},
+    "qq_": {"ref":"qq_stand","refFrac":0.9326171875,"groundFrac":0.958984375,"target":280,"from":"base:qq_"}
+  },
+  "sprites": {
+    "mt_frisbee_throw_1": {"kind":"person","w":348,"h":574,"ax":170.4,"ay":571,"ref":600,"pts":{"disc":[62,229.3,38.5]}},
+    "mt_frisbee_throw_2": {"kind":"person","w":402,"h":560,"ax":168.7,"ay":556.9,"ref":600,"pts":{"hand":[376,104.9]}},
+    "mt_pingpong_hit": {"kind":"person","w":367,"h":517,"ax":184.1,"ay":513.1,"ref":600,"pts":{"paddle":[334.2,91.2,27.5]}},
+    "mt_pingpong_ready": {"kind":"person","w":345,"h":529,"ax":153.7,"ay":525.7,"ref":600},
+    "mt_tennis_back": {"kind":"person","w":414,"h":549,"ax":214.9,"ay":544.7,"ref":600},
+    "mt_tennis_follow": {"kind":"person","w":289,"h":579,"ax":161,"ay":575.5,"ref":600},
+    "mt_tennis_hit": {"kind":"person","w":411,"h":556,"ax":148.9,"ay":552,"ref":600,"pts":{"racket":[362.6,150.7,40.5]}},
+    "mt_tennis_ready": {"kind":"person","w":363,"h":532,"ax":149.7,"ay":527.7,"ref":600},
+    "pp_frisbee_leap": {"kind":"dog","w":229,"h":185,"ax":121.8,"ay":226.4,"ref":260,"pts":{"mouth":[194.9,41.6]}},
+    "qq_frisbee_leap": {"kind":"dog","w":220,"h":176,"ax":97.8,"ay":226.1,"ref":280,"pts":{"mouth":[187.4,49]}},
+    "xw_pingpong_hit": {"kind":"person","w":415,"h":563,"ax":211.1,"ay":559.6,"ref":600,"pts":{"paddle":[381.7,114.9,28.7]}},
+    "xw_pingpong_ready": {"kind":"person","w":337,"h":534,"ax":159,"ay":529.6,"ref":600},
+    "xw_tennis_back": {"kind":"person","w":418,"h":551,"ax":208.3,"ay":547.3,"ref":600},
+    "xw_tennis_follow": {"kind":"person","w":295,"h":611,"ax":164,"ay":607.2,"ref":600},
+    "xw_tennis_hit": {"kind":"person","w":412,"h":576,"ax":156.6,"ay":571.9,"ref":600,"pts":{"racket":[365.7,188.8,41]}},
+    "xw_tennis_ready": {"kind":"person","w":365,"h":526,"ax":163.5,"ay":522.2,"ref":600},
+    "xw_tennis_serve": {"kind":"person","w":271,"h":627,"ax":168.1,"ay":622.8,"ref":600}
+  }
+}

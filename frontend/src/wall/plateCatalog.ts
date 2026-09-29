@@ -122,6 +122,14 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "idea": "廚房側面，孟庭甩鍋（在大鼓上翻），宣文遞盤子，QQ 在腳邊等掉下來的；留言寫在冰箱上的便條，歌詞像食譜步驟。"
  },
  {
+  "name": "tennis",
+  "title": "網球",
+  "family": "sport",
+  "light": true,
+  "couple": true,
+  "idea": "俯視或斜俯視的球場，兩人對打，出界球被芃芃撿走；球是 `ball` 色，擊球在鼓點。留言在計分牌。"
+ },
+ {
   "name": "archery",
   "title": "射箭",
   "family": "sport",
