@@ -25,6 +25,8 @@
 //     - height：這種角色的身高是宣文的幾倍（不寫就照檔名前兩個字：xw 1、mt 0.95、cp 1、pp 0.26、qq 0.29）。
 //   points：道具點，原圖的 px：{ "圖名": { "racket": [x, y, 半徑], "mouth": [x, y] } }，版面用 puppetPoint() 拿到畫面座標。
 //   anchor：自動找的身體中心不好時，手動給錨點 x（原圖 px）：{ "圖名": 512 }。
+//   mirror：Codex 把側面畫成朝左的圖名清單：清單上記 mirror，播放時自動翻成朝右（道具點照原圖量，會跟著翻），總覽圖也畫成朝右。
+//     請 Codex 重畫當然最好；來不及時才用這個（翻面不改圖，只是左右鏡像，所以胸口的字、單邊的東西會跟著反過來）。
 //   airborne／grounded：名字有 jump／smash／leap／air／dunk／fly 的算騰空姿勢（腳底用基準姿勢的腳底線，圖本來就畫在半空中），
 //     其他的用最低的不透明像素當腳底；對不上時在這兩個清單裡列圖名強制指定。
 // **背景一定要是透明的**：四個角不透明的圖直接跳過並列出來，請 Codex 重畫（不要用程式去白底：白衣服、白狗會被吃掉）；
@@ -80,7 +82,7 @@ function loadConfig(dir, group) {
     if (!(s.target > 0)) throw new Error(`${f}：${s.prefix} 的 target 要是正數（人 600、芃芃 260、QQ 280）`);
     if (!s.ref && !s.refFrom) throw new Error(`${f}：${s.prefix} 要有 ref（基準姿勢的圖名）`);
   }
-  return { series: cfg.series, points: cfg.points ?? {}, anchor: cfg.anchor ?? {}, airborne: new Set(cfg.airborne ?? []), grounded: new Set(cfg.grounded ?? []) };
+  return { series: cfg.series, points: cfg.points ?? {}, anchor: cfg.anchor ?? {}, airborne: new Set(cfg.airborne ?? []), grounded: new Set(cfg.grounded ?? []), mirror: new Set(cfg.mirror ?? []) };
 }
 
 const browser = await chromium.launch({ channel: 'chrome', headless: true });
@@ -199,19 +201,28 @@ const contactSheet = (sprites, datas) => {
     for (let i = 0; i < names.length; i++) {
       const n = names[i], m = man[n], s = scaleOf(m);
       const gx = (i % cols) * cw + cw / 2, gy = Math.floor(i / cols) * ch + ch - 34;
+      // mirror 的圖跟播放時一樣，以錨點為中心左右翻成朝右
+      const fx = m.mirror ? -1 : 1;
+      c.save(); c.translate(gx, 0); c.scale(fx, 1); c.translate(-gx, 0);
       c.drawImage(bmps[n], gx - m.ax * s, gy - m.ay * s, m.w * s, m.h * s);
+      c.restore();
       c.strokeStyle = '#e33'; c.lineWidth = 1.5;
       c.beginPath(); c.moveTo(gx - 10, gy); c.lineTo(gx + 10, gy); c.moveTo(gx, gy - 10); c.lineTo(gx, gy + 10); c.stroke();
       c.strokeStyle = '#36c'; c.beginPath(); c.moveTo(gx - cw / 2 + 8, gy - m.ref * s); c.lineTo(gx - cw / 2 + 30, gy - m.ref * s); c.stroke();
       c.strokeStyle = '#0a0';
-      for (const [x, y, r] of Object.values(m.pts ?? {})) { c.beginPath(); c.arc(gx + (x - m.ax) * s, gy + (y - m.ay) * s, Math.max(3, (r ?? 4) * s), 0, Math.PI * 2); c.stroke(); }
+      for (const [x, y, r] of Object.values(m.pts ?? {})) { c.beginPath(); c.arc(gx + fx * (x - m.ax) * s, gy + (y - m.ay) * s, Math.max(3, (r ?? 4) * s), 0, Math.PI * 2); c.stroke(); }
       c.fillStyle = '#222'; c.font = '13px monospace'; c.textAlign = 'center'; c.fillText(n, gx, gy + 24);
     }
     const oy0 = rows * ch + 20;
     onions.forEach(([g, list], i) => {
       const gx = (i % 5) * ow + ow / 2, gy = oy0 + Math.floor(i / 5) * ch + ch - 34;
       c.save();
-      for (const n of list) { const m = man[n], s = scaleOf(m); c.globalAlpha = 0.5; c.drawImage(bmps[n], gx - m.ax * s, gy - m.ay * s, m.w * s, m.h * s); }
+      for (const n of list) {
+        const m = man[n], s = scaleOf(m);
+        c.save(); c.globalAlpha = 0.5; c.translate(gx, 0); c.scale(m.mirror ? -1 : 1, 1); c.translate(-gx, 0);
+        c.drawImage(bmps[n], gx - m.ax * s, gy - m.ay * s, m.w * s, m.h * s);
+        c.restore();
+      }
       c.restore();
       c.strokeStyle = '#e33'; c.lineWidth = 1.5;
       c.beginPath(); c.moveTo(gx - 60, gy); c.lineTo(gx + 60, gy); c.moveTo(gx, gy - 240); c.lineTo(gx, gy + 6); c.stroke();
@@ -301,13 +312,14 @@ async function runGroup(arg) {
       }
       const [ax, ay] = toSprite(axSrc, ground);
       const edge = [a.box[0] <= 2 && '左', a.box[2] >= a.W - 3 && '右', a.box[1] <= 2 && '上', a.box[3] >= a.H - 3 && '下'].filter(Boolean);
-      const entry = { kind: S.kind, w: r.w, h: r.h, ax, ay, ref: S.target, ...(S.height ? { height: S.height } : {}), ...(Object.keys(pts).length ? { pts } : {}) };
+      const entry = { kind: S.kind, w: r.w, h: r.h, ax, ay, ref: S.target, ...(S.height ? { height: S.height } : {}), ...(Object.keys(pts).length ? { pts } : {}), ...(cfg.mirror.has(name) ? { mirror: true } : {}) };
       results.push({ name, entry, webp: r.webp });
       const kb = Math.round((r.webp.length * 0.75) / 1024);
-      const note = [airborne ? '騰空：用基準姿勢的腳底線' : '', edge.length ? `⚠ 碰到畫布${edge.join('、')}緣（四肢或道具可能被切掉）` : '', Object.keys(pts).length ? `道具點 ${Object.keys(pts).join('、')}` : ''].filter(Boolean).join('；');
+      const note = [cfg.mirror.has(name) ? '朝左的圖：播放時翻成朝右' : '', airborne ? '騰空：用基準姿勢的腳底線' : '', edge.length ? `⚠ 碰到畫布${edge.join('、')}緣（四肢或道具可能被切掉）` : '', Object.keys(pts).length ? `道具點 ${Object.keys(pts).join('、')}` : ''].filter(Boolean).join('；');
       console.log(`${name.padEnd(18)} ${S.kind.padEnd(6)} ${String(a.W).padStart(4)}×${String(a.H).padEnd(4)} → ${r.w}×${r.h}  錨點 (${ax}, ${ay})  ${kb} KB  ${note}`);
     }
     for (const p of Object.keys(cfg.points)) if (!present.has(p)) console.warn(`⚠ sprites.json 的 points 有 ${p}，但資料夾裡沒有這張圖`);
+    for (const p of cfg.mirror) if (!present.has(p)) console.warn(`⚠ sprites.json 的 mirror 有 ${p}，但資料夾裡沒有這張圖`);
     if (rejected.length) console.log(`\n不收的圖（請 Codex 重畫或改名）：\n  ${rejected.join('\n  ')}`);
     if (flags.has('--dry')) return;
 

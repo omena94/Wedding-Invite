@@ -21,7 +21,11 @@ export { COUPLE_EN, COUPLE_ZH, WEDDING_DATE };
 export const DATE_DOTS = String(WEDDING_DATE).split('-').join(' · ');
 
 // ---------------------------------------------------------------- 節拍
-/** t 之後（含）的第 k 拍（k=0 就是下一個拍點）。 */
+/**
+ * t 之後（含）的第 k 拍（k=0 就是下一個拍點）。**t 剛好在拍點上時算「這一拍」**：beatAfter(au, 拍點, 2) 是兩拍之後。
+ * 要「這一拍的下一拍」用 k=1，不要寫 t + 0.01（那會先跳到下一拍再加 k，多算一拍）。
+ * 前奏、結尾在節拍網格外的地方也一樣準（audio.ts 的 beatAt／timeOfBeat 用同一個週期外插）。
+ */
 export const beatAfter = (au: AudioData, t: number, k = 0) => au.timeOfBeat(Math.ceil(au.beatAt(t) - 1e-6) + k);
 /** t 之後（含）的第 k 個小節線。 */
 export const barAfter = (au: AudioData, t: number, k = 0) => au.timeOfBar(Math.ceil(au.barAt(t) - 1e-6) + k);

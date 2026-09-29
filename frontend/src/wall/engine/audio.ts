@@ -145,28 +145,37 @@ export class AudioData {
     };
   }
 
+  /**
+   * 網格外（第一拍之前、最後一拍之後）外插用的一拍長度：靠近那一端的 8 個間隔的平均（跟著當地的速度，又不會被單一個抖動的間隔帶歪）。
+   * beatAt 與 timeOfBeat **一定要用同一個值**：以前一邊用平均週期、一邊用頭尾的單一間隔，網格外 beatAt(timeOfBeat(b)) ≠ b，
+   * beatAfter 在拍點上會多算（或少算）一拍（2026-09-29，歌的前奏與結尾的窗格）。
+   */
+  private edgePeriod(end: 'head' | 'tail'): number {
+    const b = this.beats, n = b.length;
+    if (n < 2) return 60 / this.bpm;
+    const k = Math.min(8, n - 1);
+    return end === 'head' ? (b[k]! - b[0]!) / k : (b[n - 1]! - b[n - 1 - k]!) / k;
+  }
+
   /** Continuous beat index: 0 at first beat, fractional in between (extrapolated outside). */
   beatAt(t: number): number {
     const b = this.beats;
-    if (b.length < 2) return t * (this.bpm / 60);
-    if (t <= b[0]!) return (t - b[0]!) / (b[1]! - b[0]!);
-    if (t >= b[b.length - 1]!) {
-      const p = b[b.length - 1]! - b[b.length - 2]!;
-      return b.length - 1 + (t - b[b.length - 1]!) / p;
-    }
+    if (b.length === 0) return t * (this.bpm / 60);
+    if (b.length === 1) return (t - b[0]!) / this.edgePeriod('head');
+    if (t <= b[0]!) return (t - b[0]!) / this.edgePeriod('head');
+    if (t >= b[b.length - 1]!) return b.length - 1 + (t - b[b.length - 1]!) / this.edgePeriod('tail');
     let lo = 0, hi = b.length - 1;
     while (hi - lo > 1) { const m = (lo + hi) >> 1; if (b[m]! <= t) lo = m; else hi = m; }
     return lo + (t - b[lo]!) / (b[hi]! - b[lo]!);
   }
 
-  /** Time of (fractional) beat index. */
+  /** Time of (fractional) beat index（beatAt 的反函數：網格外用同一個 edgePeriod 外插）。 */
   timeOfBeat(i: number): number {
     const b = this.beats;
     const n = b.length;
-    const period = n > 1 ? (b[n - 1]! - b[0]!) / (n - 1) : 60 / this.bpm;
-    if (n === 0) return i * period;
-    if (i <= 0) return b[0]! + i * period;
-    if (i >= n - 1) return b[n - 1]! + (i - (n - 1)) * period;
+    if (n === 0) return i * (60 / this.bpm);
+    if (i <= 0) return b[0]! + i * this.edgePeriod('head');
+    if (i >= n - 1) return b[n - 1]! + (i - (n - 1)) * this.edgePeriod('tail');
     const k = Math.floor(i);
     return b[k]! + (b[k + 1]! - b[k]!) * (i - k);
   }

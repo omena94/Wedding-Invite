@@ -307,7 +307,7 @@ export default class Concert extends Scene {
     c.fillRect(0, EYE + 40, W, H - EYE - 40);
     const jAll = this.jumpAt(t - 0.03, 30);
     const fl = drawCrowd(c, this.fans, {
-      unit: SZ * 0.062, fill: (k) => mixRgba('ink', mixRgba('ink2', lit, 0.08), 0.5 * (1 - k)), rim: rgba(lit, 0.12 + 0.22 * on),
+      unit: SZ * 0.062, fill: () => rgba('ink'), rim: rgba(lit, 0.12 + 0.22 * on),
       bounce: kick, t, jump: jAll ? -jAll.y : 0, wave: Math.sin(au.beatAt(t) * Math.PI) * 0.22, lit: mixRgba(lit, 'bone', 0.35, 0.3 + 0.6 * on),
     });
     c.restore();

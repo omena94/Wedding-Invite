@@ -271,6 +271,49 @@ export function drawCrowd(c: Ctx, fans: readonly Fan[], o: { unit: number; fill:
   return lights;
 }
 
+// ---------------------------------------------------------------- 路人剪影
+/**
+ * 走路的路人剪影（散場的人潮、排隊的隊伍）：頭、軀幹、兩隻手兩隻腳（圓頭粗線），ph = 走路的相位（一步 = π），(x, y) 是腳底。
+ * dir = 1 朝右、-1 朝左；bag：背一個包（側面的小方塊）。跟 _c8 的球員剪影一樣故意畫得簡單，不跟紙偶搶焦點。
+ * under：畫在已經畫好的東西後面（destination-over）時傳 true，輪廓光要在身體之後畫，才只露出上緣一條。
+ */
+export function drawWalker(c: Ctx, x: number, y: number, h: number, ph: number, o: { fill: string; rim?: string; dir?: 1 | -1; bag?: boolean; stick?: boolean; under?: boolean }): Pt | null {
+  const dir = o.dir ?? 1, s = Math.sin(ph);
+  const leg = h * 0.47, hip = { x, y: y - leg - Math.abs(Math.cos(ph)) * h * 0.012 };
+  const neck = { x: hip.x + dir * h * 0.02, y: hip.y - h * 0.3 };
+  const at = (p: Pt, a: number, len: number): Pt => ({ x: p.x + Math.sin(a) * len * dir, y: p.y + Math.cos(a) * len });
+  const body = (ox: number, oy: number, col: string) => {
+    c.save();
+    c.translate(ox, oy);
+    c.strokeStyle = col; c.fillStyle = col;
+    c.lineCap = 'round'; c.lineJoin = 'round';
+    const line = (pts: Pt[], w: number) => { c.lineWidth = w; c.beginPath(); c.moveTo(pts[0]!.x, pts[0]!.y); for (const p of pts.slice(1)) c.lineTo(p.x, p.y); c.stroke(); };
+    // 兩隻腳（膝蓋微彎）、兩隻手（跟腳反方向擺）
+    for (const k of [1, -1]) {
+      const a = 0.38 * k * s;
+      const knee = at(hip, a, leg * 0.5);
+      line([hip, knee, at(knee, a - 0.18 * Math.max(0, -k * s), leg * 0.5)], h * 0.085);
+      const sh = { x: neck.x, y: neck.y + h * 0.03 };
+      const el = at(sh, -0.4 * k * s, h * 0.17);
+      line([sh, el, at(el, -0.4 * k * s + 0.25, h * 0.15)], h * 0.055);
+    }
+    line([hip, neck], h * 0.17);
+    c.beginPath(); c.arc(neck.x + dir * h * 0.01, neck.y - h * 0.075, h * 0.062, 0, Math.PI * 2); c.fill();
+    if (o.bag) c.fillRect(hip.x - dir * h * 0.13, hip.y - h * 0.2, h * 0.08, h * 0.13);
+    c.restore();
+  };
+  if (o.under) { body(0, 0, o.fill); if (o.rim) body(0, -Math.max(1, h * 0.008), o.rim); }
+  else { if (o.rim) body(0, -Math.max(1, h * 0.008), o.rim); body(0, 0, o.fill); }
+  // 還沒關的手燈：舉在前面那隻手上（回傳球的位置，給加亮層）
+  if (!o.stick) return null;
+  const sh = { x: neck.x, y: neck.y + h * 0.03 };
+  const hand = at(at(sh, 0.6, h * 0.17), 1.1, h * 0.15);
+  c.strokeStyle = o.fill; c.lineWidth = Math.max(1, h * 0.02);
+  const tip = { x: hand.x + dir * h * 0.02, y: hand.y - h * 0.09 };
+  c.beginPath(); c.moveTo(hand.x, hand.y); c.lineTo(tip.x, tip.y); c.stroke();
+  return tip;
+}
+
 // ---------------------------------------------------------------- 布（布條、毛巾）
 /**
  * 一塊掛著字的布（應援布條、毛巾）：上緣被拉直（手抓著、或掛在護欄上），下緣隨風微微起伏；

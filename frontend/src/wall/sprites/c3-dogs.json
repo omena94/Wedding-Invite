@@ -9,10 +9,10 @@
     "cp_ringbearer_": {"ref":"cp_waltz_1","refFrac":0.96875,"groundFrac":0.9830729166666666,"target":600,"from":"waltz:cp_waltz_"}
   },
   "sprites": {
-    "cp_ringbearer_kneel": {"kind":"couple","w":552,"h":600,"ax":238.5,"ay":595.8,"ref":600},
-    "cp_ringbearer_wait": {"kind":"couple","w":408,"h":588,"ax":188.9,"ay":584.5,"ref":600},
-    "cp_zoomies_sofa_1": {"kind":"couple","w":602,"h":563,"ax":300.9,"ay":559.3,"ref":600,"pts":{"legs":[300.9,482.6]}},
-    "cp_zoomies_sofa_2": {"kind":"couple","w":602,"h":562,"ax":301.3,"ay":558.1,"ref":600,"pts":{"legs":[301.3,478.6]}},
+    "cp_ringbearer_kneel": {"kind":"couple","w":568,"h":602,"ax":251,"ay":597.4,"ref":600},
+    "cp_ringbearer_wait": {"kind":"couple","w":410,"h":589,"ax":189.7,"ay":584.9,"ref":600},
+    "cp_zoomies_sofa_1": {"kind":"couple","w":604,"h":564,"ax":301.8,"ay":560.1,"ref":600,"pts":{"legs":[301.8,483]}},
+    "cp_zoomies_sofa_2": {"kind":"couple","w":602,"h":564,"ax":301.8,"ay":560.9,"ref":600,"pts":{"legs":[301.8,479.8]}},
     "pp_dogportrait_back": {"kind":"dog","w":168,"h":239,"ax":88.1,"ay":235.4,"ref":260},
     "pp_dogportrait_oil": {"kind":"dog","w":512,"h":646,"ax":255.8,"ay":642.9,"ref":640,"height":1},
     "pp_dogportrait_tilt": {"kind":"dog","w":208,"h":287,"ax":108.6,"ay":284,"ref":260},

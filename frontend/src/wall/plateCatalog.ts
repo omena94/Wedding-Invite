@@ -250,6 +250,14 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "idea": "兩人放一只風箏，風箏尾巴的飄帶就是歌詞（逐字亮），線在拍點抖動；留言寫在風箏上。"
  },
  {
+  "name": "umbrella",
+  "title": "共撐一把傘",
+  "family": "date",
+  "light": false,
+  "couple": true,
+  "idea": "雨線（斜的細線，在 hi-hat 上閃），兩人擠在一把傘下走，傘下是乾的、寫著留言；水坑倒影是歌詞。"
+ },
+ {
   "name": "stargaze",
   "title": "看星星",
   "family": "date",
@@ -312,6 +320,14 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": true,
   "idea": "從後排看兩人的背影和狗狗的頭，大銀幕上放的是歌詞（跟唱），爆米花在小鼓跳；片頭字卡是留言。"
+ },
+ {
+  "name": "laundry",
+  "title": "曬衣服",
+  "family": "home",
+  "light": true,
+  "couple": true,
+  "idea": "陽台晾衣繩，兩人一件一件夾上去，衣服與床單上寫著留言與歌詞（一拍一件），風吹起來。"
  },
  {
   "name": "paperplane",
@@ -480,6 +496,14 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": true,
   "idea": "舞台燈照拍子掃過觀眾，兩人在前排舉手跟唱，舞台大螢幕是歌詞（逐字跟唱）。留言寫在兩人舉的應援手幅上。"
+ },
+ {
+  "name": "encore",
+  "title": "散場",
+  "family": "live",
+  "light": false,
+  "couple": true,
+  "idea": "散場後的場館外面，人潮和路燈；兩人的發光手環一閃一閃，牽手走向捷運站。留言寫在兩人手上的票根。"
  },
  {
   "name": "boarding",
