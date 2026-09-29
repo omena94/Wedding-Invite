@@ -18,6 +18,7 @@ from ..schemas import (
     DatePref,
     LoginIn,
     LoginOut,
+    SwitchRoleIn,
     RsvpAdminCreate,
     RsvpAdminUpdate,
     RsvpOut,
@@ -62,6 +63,13 @@ def login(payload: LoginIn):
     if not role:
         raise HTTPException(401, "密碼錯誤")
     return LoginOut(token=create_token(role), role=role)
+
+
+@router.post("/switch-role", response_model=LoginOut, dependencies=[CoupleRequired])
+def switch_role(payload: SwitchRoleIn):
+    """2026-09-29 新人想看幫手會看到什麼：直接換一把幫手 token，不用知道幫手密碼。
+    幫手不能反過來換成新人（要新人密碼），所以只收 helper。"""
+    return LoginOut(token=create_token(payload.role), role=payload.role)
 
 
 # ===== 群發通知（Email，multipart 以支援附件）=====

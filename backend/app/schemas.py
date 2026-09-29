@@ -214,6 +214,11 @@ class LoginOut(BaseModel):
     role: str = "couple"  # couple 新人 / helper 幫手
 
 
+class SwitchRoleIn(BaseModel):
+    """2026-09-29 新人一鍵切成幫手視角用；只能往下換（couple → helper）。"""
+    role: Literal["helper"]
+
+
 # ===== 統計 =====
 class SideBreakdown(BaseModel):
     groom: int = 0

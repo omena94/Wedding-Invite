@@ -22,7 +22,7 @@ const SIDE_LABEL = { groom: "男方", bride: "女方" };
 /* ---------- 賓客名單（原 /admin）---------- */
 export default function Guests() {
   const { logout: onLogout, can } = usePlanner();
-  const [params, setParams] = useSearchParams();
+  const [params] = useSearchParams();
   const tab = params.get("tab") === "menu" && can("menu") ? "menu" : "guests"; // 2026-09-29 婚宴頁分「賓客名單」「菜單」
   const [adding, setAdding] = useState(false); // 手動新增賓客視窗
   const [stats, setStats] = useState(null);
@@ -83,9 +83,9 @@ export default function Guests() {
 
   return (
     <div>
-      <PageHead title="婚宴" sub={tab === "menu" ? "跟飯店討論中的菜單：每一道標狀態、寫備註，檔案掛在一起" : "出席統計、第二階段進度、群發通知、匯出 Excel"}
+      {/* 2026-09-29 名單／菜單改由左側子選單切換（?tab=menu），頁面上不再放分頁鈕 */}
+      <PageHead title={tab === "menu" ? "菜單" : "名單"} sub={tab === "menu" ? "跟飯店討論中的菜單：每一道標狀態、寫備註，檔案掛在一起" : "出席統計、第二階段進度、群發通知、匯出 Excel"}
         actions={tab === "guests" && can("guests_create") ? <button className="btn btn-primary" onClick={() => setAdding(true)}><Plus size={15} /> 手動新增賓客</button> : null} />
-      {can("menu") && <div className="gift-tabs" role="group" aria-label="婚宴分頁"><button className={`btn ${tab === "guests" ? "btn-primary" : "btn-ghost"}`} aria-pressed={tab === "guests"} onClick={() => setParams({})}>賓客名單</button><button className={`btn ${tab === "menu" ? "btn-primary" : "btn-ghost"}`} aria-pressed={tab === "menu"} onClick={() => setParams({ tab: "menu" })}>菜單</button></div>}
       {adding && <AddGuestModal onClose={() => setAdding(false)} onSaved={() => { setAdding(false); toastOk("已新增賓客"); load(); }} />}
 
       {tab === "menu" ? <MenuTab /> : loading ? (

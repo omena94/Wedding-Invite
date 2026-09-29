@@ -16,6 +16,25 @@ export function clearToken() {
 export function getRole() {
   return localStorage.getItem(ROLE_KEY) || "couple";
 }
+// 2026-09-29 一鍵切換視角：新人切到幫手或賓客時，把新人的 token 先收在旁邊，切回來就不用重打密碼
+const STASH_KEY = "wedding_admin_token_couple";
+export function getStashedCouple() {
+  try { return localStorage.getItem(STASH_KEY) || ""; } catch { return ""; }
+}
+export function stashCouple() {
+  if (getRole() === "couple" && getToken()) localStorage.setItem(STASH_KEY, getToken());
+}
+export function restoreCouple() {
+  const t = getStashedCouple();
+  if (!t) return false;
+  localStorage.setItem(TOKEN_KEY, t);
+  localStorage.setItem(ROLE_KEY, "couple");
+  localStorage.removeItem(STASH_KEY);
+  return true;
+}
+export function clearStash() {
+  try { localStorage.removeItem(STASH_KEY); } catch { /* 沒有就算了 */ }
+}
 export function setRole(r) {
   localStorage.setItem(ROLE_KEY, r || "couple");
 }
@@ -92,6 +111,7 @@ export async function fetchAuthBlobUrl(url) {
 // ===== 登入（新人 / 幫手共用）=====
 export const adminLogin = (password) =>
   request("/api/admin/login", { method: "POST", body: { password } });
+export const switchRole = (role) => request("/api/admin/switch-role", { method: "POST", body: { role }, auth: true });
 
 // ===== 賓客後台 =====
 export const fetchStats = () => request("/api/admin/stats", { auth: true });
