@@ -4,6 +4,8 @@
 // 之後每個小節線再來一陣風：蒲公英再掉幾顆空的種子飄走、字跟著風輕輕起伏（一道波從左傳到右）。
 // 沒有留言：每一句歌詞由種子送來（句子要開始前飛到），唱到的字亮起；下一句來的時候上一句被吹走。
 // 有留言時歌詞是畫面下緣、草地上的一行字幕。
+// 2026-09-29 照「留言尺寸與版面比例標準 v2」：天上的字縮到 40～60 px、排在右上方 ≤ 840×420 的範圍，
+// 草地遠處多了幾朵小蒲公英，每個小節線輪到一朵被風吹散一小撮種子（空出來的天空有東西在飄）。
 // 手法：天空與月暈是 shader；蒲公英、飛行的冠毛、草是 LineBatch（冠毛用加亮，逆光的絨毛會發一點光）；字是每格重畫的 Canvas。
 import * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
@@ -14,10 +16,11 @@ import { LIN, rgba } from '../engine/palette';
 import { clamp, ease, prog, hash, lerp, TAU } from '../engine/util';
 import { Lyrics, type Word } from '../engine/lyrics';
 import { fillWithHearts } from '../engine/motifs';
-import { lyricAt, lyricSizeFor, beatAfter, COUPLE_ZH } from './_motifs';
+import { lyricAt, beatAfter, COUPLE_ZH } from './_motifs';
+import { lyricV2, V2 } from './_v2';
 import { layoutRows, drawRows, darkInk } from './_t4';
 import { winBars } from './_t8';
-import { msgBlock, loadAll, type Rect } from './_t15';
+import { msgBlockV2, loadAll, type Rect } from './_t15';
 import { tokens } from '../engine/text';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'nature', paper: false, energy: [0.1, 0.8], bars: [4, 8], weight: 1 };
@@ -26,7 +29,9 @@ export const spec: PlateSpecDecl = { group: 'type', family: 'nature', paper: fal
 const HEAD = { x: 330, y: 540, r: 118 };
 const STEM0 = { x: 250, y: 1090 };
 /** 留言落在天空右邊這一塊；歌詞字幕在下緣。 */
-const MSG = { x: 700, y: 150, w: 1080, h: 590 };
+const MSG = { x: 900, y: 170, w: 840, h: 420 };
+/** 遠處草地上的小蒲公英（x、高度）：都在 HUD 左邊。 */
+const FAR = [[640, 70], [820, 96], [1010, 60], [1180, 84], [1300, 52]] as const;
 const SUB = { x: 560, base: 978, maxW: 760 };
 const HORIZON = 850;
 const NSEED = 170;
@@ -94,8 +99,8 @@ export default class Dandelion extends Scene {
     this.mode = this.msg ? 'msg' : lines.length ? 'lyric' : 'title';
     const c = this.layer.ctx;
     if (this.mode === 'msg') {
-      const b = msgBlock(c, this.msg!, F.ming(700), MSG.w, MSG.h, { min: 48, max: 118, lineHeight: 1.34, sigK: 0.42 });
-      this.lyrSize = lyricSizeFor(b.fit.size);
+      const b = msgBlockV2(c, this.msg!, F.ming(700), MSG.w, MSG.h, { lineHeight: 1.36 });
+      this.lyrSize = lyricV2(b.fit.size);
       const n0 = this.units.length;
       b.fit.lines.forEach((ln, li) => this.placeRow(c, ln, b.fit.size, b.family, MSG.x, MSG.y + b.top + li * b.fit.lineHeight, [], 'left'));
       this.schedule(n0, this.tG, Math.min(2.6, Math.max(1.6, (e - this.tG) * 0.4)));
@@ -104,11 +109,11 @@ export default class Dandelion extends Scene {
     } else if (this.mode === 'lyric') {
       lines.forEach((l, li) => {
         const next = lines[li + 1];
-        const lay = layoutRows(c, l, { family: F.archivo(100, 800), size: 96, minSize: 64, maxW: 1100, maxRows: 2, align: 'left', lineHeight: 1.18 });
+        const lay = layoutRows(c, l, { family: F.archivo(100, 800), size: lyricV2(null), minSize: V2.lyrMin, maxW: 860, maxRows: 2, align: 'left', lineHeight: 1.2 });
         const n0 = this.units.length;
         // 一句在上、一句在下輪流：新的一句飛來的時候，上一句還在被吹走，不要疊在同一個地方
-        const top = (li % 2 ? 600 : 300) - (lay.rows.length - 1) * lay.lineHeight * 0.5;
-        const x0 = Math.min(1780 - lay.width, 1220 - lay.width / 2 + (li % 2 ? 60 : -40));
+        const top = (li % 2 ? 560 : 320) - (lay.rows.length - 1) * lay.lineHeight * 0.5;
+        const x0 = Math.min(1760 - lay.width, 1300 - lay.width / 2 + (li % 2 ? 60 : -40));
         lay.words.forEach((pw) => {
           const txt = pw.word.w.trim();
           if (!txt) return;
@@ -118,7 +123,7 @@ export default class Dandelion extends Scene {
         this.schedule(n0, launch, 1.3);
       });
     } else {
-      this.placeRow(c, COUPLE_ZH.replace(/\s*&\s*/, ' ♥ '), 120, F.ming(900), MSG.x + 120, 420, [], 'left');
+      this.placeRow(c, COUPLE_ZH.replace(/\s*&\s*/, ' ♥ '), 64, F.ming(900), MSG.x + 160, 400, [], 'left');
       this.schedule(0, this.tG, 1.8);
     }
     // 小節線：每陣風吹走幾顆空的種子
@@ -197,8 +202,42 @@ export default class Dandelion extends Scene {
         px = nx; py = ny;
       }
     }
+    // 遠處草地上的小蒲公英：細莖（暗）＋一小團絨毛（很淡的加亮）；每個小節線輪到一朵，被風吹散一小撮種子往右上飄
+    const lbF = this.fluff; lbF.clear();
+    const dim: [number, number, number] = [LIN.bone[0] * 0.2, LIN.bone[1] * 0.2, LIN.bone[2] * 0.18];
+    FAR.forEach(([fx, fh], i) => {
+      const k = clamp((t - s - 0.15 - i * 0.05) / 0.4);
+      if (k <= 0) return;
+      const base = HORIZON + 26, sw = gust * 4 * (fh / 80);
+      const tx = fx + sw, ty = base - fh * ease.outCubic(k);
+      gl.seg2(fx, base, tx, ty, 2.2, [LIN.ink2[0] * 1.4, LIN.ink2[1] * 1.4, LIN.ink2[2] * 1.4], 1);
+      // 被吹散過的，絨毛少一點
+      const blown = this.bars.filter((b, j) => j % FAR.length === i && t >= b).length;
+      const n = Math.max(6, 22 - blown * 6);
+      for (let j = 0; j < n; j++) {
+        const a = (j / 22) * TAU + i, r = 13 * k;
+        lbF.seg2(tx, ty, tx + Math.cos(a) * r, ty + Math.sin(a) * r, 0.8, dim, 0.9);
+      }
+    });
+    this.bars.forEach((b, j) => {
+      const a = t - b;
+      if (a < 0 || a > 4.5) return;
+      const [fx, fh] = FAR[j % FAR.length]!;
+      for (let q = 0; q < 6; q++) {
+        const hs = hash(this.seed, j, q + 30), u = a / (3.2 + hs);
+        if (u >= 1) continue;
+        const x = fx + gust * 4 + u * (380 + 260 * hs) + 18 * Math.sin(a * 2.4 + q);
+        const y = HORIZON + 26 - fh - u * (260 + 200 * hs) + 10 * Math.sin(a * 1.7 + q * 2);
+        if (x > 1340 && y > 800) continue; // 不要飄進右下角 HUD
+        const kk = 0.55 * (1 - u * u);
+        for (let r = 0; r < 7; r++) {
+          const aa = -Math.PI / 2 + (r / 6 - 0.5) * 2.2;
+          lbF.seg2(x, y, x + Math.cos(aa) * 7, y + Math.sin(aa) * 7, 0.7, [LIN.bone[0] * kk, LIN.bone[1] * kk, LIN.bone[2] * kk], 0.9);
+        }
+      }
+    });
     // 蒲公英的莖（細、微彎，頭跟著風晃）
-    const lb = this.fluff; lb.clear();
+    const lb = this.fluff;
     const hx = HEAD.x + sway;
     let sx = STEM0.x, sy = STEM0.y;
     for (let k = 1; k <= 16; k++) {
@@ -304,7 +343,7 @@ export default class Dandelion extends Scene {
     if (this.mode === 'msg') {
       const ly = lyricAt(lyrics, t);
       if (ly) {
-        const lay = layoutRows(c, ly.line, { family: F.archivo(100, 800), size: this.lyrSize, minSize: 48, maxW: SUB.maxW, maxRows: 2, lineHeight: 1.12 });
+        const lay = layoutRows(c, ly.line, { family: F.archivo(100, 800), size: this.lyrSize, minSize: Math.min(V2.lyrMin, this.lyrSize), maxW: SUB.maxW, maxRows: 2, lineHeight: 1.12 });
         c.save();
         c.translate(SUB.x, SUB.base - (lay.rows.length - 1) * lay.lineHeight);
         drawRows(c, lay, F.archivo(100, 800), t, darkInk(), ly.k);

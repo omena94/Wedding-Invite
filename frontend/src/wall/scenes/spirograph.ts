@@ -8,7 +8,7 @@
 //    歌詞在左邊逐字跟唱，比留言小一級。小字只有兩小群：左上的器材與圈數、左下的冷面註腳。
 //  - 沒有留言：歌詞寫在花心；純音樂又沒留言：花心放邀請。
 //  - 標準 v2：花心的字是寫在紙上的（場景物件），字級 40～60、署名 26～32、歌詞 40～52；空出來的左下角放兩個備用齒輪，
-//    每一拍咬合轉一齒（outBack）；
+//    每一拍咬合轉一齒（outBack）。
 import * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
 import { FSPass, Layer2D, H } from '../engine/gl';

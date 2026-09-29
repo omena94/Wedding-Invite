@@ -8,6 +8,9 @@
 //  - 沒有留言：每一格是一小段歌詞，唱到那一段的時候拉到那一格（跟著歌聲拉片），唱過的在左邊、還沒唱的在右邊。
 //  - 純音樂又沒有留言：倒數之後是新人的名字、日期、邀請，一小節一格。
 // 格子的內容畫在各自的 Canvas（一次最多六格，照格號輪流用）：不變的格子只畫一次，正在唱、正在倒數的那一格每格重畫。
+// 2026-09-29 照「留言尺寸與版面比例標準 v2」：不再推成滿版特寫——鏡頭停在中景，膠卷斜斜地橫過畫面、往右後方退進暗處，
+// 主打格停在畫面左三分之一（燈在它後面），字在螢幕上 40～60 px；右上方多了一個失焦的收片捲盤，拉片時跟著轉、
+// 每個小節線被片子扯一下；右下角 HUD 那一段膠卷燈照不到。
 import * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
 import { FSPass, Layer2D, W, H, SCALE } from '../engine/gl';
@@ -17,10 +20,11 @@ import { rgba } from '../engine/palette';
 import { clamp, ease, prog, hash, lerp, frameIdx, TAU } from '../engine/util';
 import type { Line, Word } from '../engine/lyrics';
 import { fillWithHearts } from '../engine/motifs';
-import { lyricAt, lyricSizeFor, beatAfter, barAfter, COUPLE_ZH, DATE_DOTS } from './_motifs';
+import { lyricAt, beatAfter, barAfter, COUPLE_ZH, DATE_DOTS } from './_motifs';
+import { lyricV2, V2 } from './_v2';
 import { layoutRows, drawRows, darkInk, type RowsLayout } from './_t4';
 import { winBeats, winBars, no3 } from './_t8';
-import { msgBlock, loadAll, INVITE, type MsgBlock, type Rect } from './_t15';
+import { msgBlockV2, loadAll, INVITE, type MsgBlock, type Rect } from './_t15';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'craft', paper: false, energy: [0.3, 1], bars: [4, 8], weight: 1 };
 
@@ -40,7 +44,7 @@ const FAM_MSG = F.ming(700);
 const FAM_LYR = F.archivo(100, 800);
 
 type Kind = 'blank' | 'leader' | 'msg' | 'lyric' | 'title' | 'tail';
-interface FrameDef { kind: Kind; n?: number; line?: Line; text?: string; sub?: string; t0?: number; t1?: number }
+interface FrameDef { kind: Kind; n?: number; line?: Line; text?: string; sub?: string; sub2?: string; t0?: number; t1?: number }
 interface Move { t: number; to: number; dur: number }
 
 const VERT = /* glsl */ `
@@ -89,7 +93,7 @@ void main() {
   float dh = sdRR(vec2(hu, av), vec2(0.0, ${HOLE.v}.0), vec2(${HOLE.w / 2}.0, ${HOLE.h / 2}.0), 11.0);
   float coc = aperture * abs(vDepth - focus) / max(vDepth, 1.0);
   float hole = 1.0 - smoothstep(-1.0 - coc * 0.6, 1.0 + coc * 0.6, dh);
-  T = mix(T, vec3(1.05), hole);
+  T = mix(T, vec3(0.62), hole); // 透光的齒孔：亮但不要亮到整片起霧（bloom 會把畫面洗灰）
   // 格子的內容（字、倒數的圈）：亮的，景深用四點平均
   vec2 st = vec2(clamp(u, 0.0, PITCH) / PITCH, vUv.y);
   vec2 o = vec2(max(coc, 0.0) * 0.45) / texPx * ${CELL_SCALE.toFixed(3)};
@@ -113,12 +117,31 @@ void main() {
 
 /** 背景：暗房間，燈在膠卷後面暈開（膠卷上下看得到一點光）、幾顆失焦的灰塵。 */
 const BG = () => new FSPass(/* glsl */ `
-  uniform vec3 lamp; uniform float lampK; uniform float t;
+  uniform vec3 lamp; uniform float lampK; uniform float t; uniform float reel;
   void main() {
     vec2 p = FRAG_PX;
     vec2 d = p - lamp.xy;
     float r = length(d);
-    vec3 col = C_INK * 0.8 + mix(C_SIGNAL, C_BLOOD, 0.45) * lampK * (0.075 * exp(-r / (lamp.z * 0.8)) + 0.012 * exp(-r / 1400.0));
+    vec3 col = C_INK * 0.5 + mix(C_SIGNAL, C_BLOOD, 0.45) * lampK * (0.06 * exp(-r / (lamp.z * 0.8)) + 0.01 * exp(-r / 1400.0));
+    // 收片的捲盤（右上方、在膠卷後面、失焦）：放映機漏出來的一片光裡的剪影——暗色的盤面、五個鏤空透光、
+    // 盤緣朝燈的那一邊一道細光；角度跟著拉片轉（捲盤在收片）
+    vec2 rc = vec2(${W}.0 - 300.0, ${H}.0 - 150.0), q = p - rc;
+    float rr = length(q), R = 360.0, bl = 14.0;
+    vec3 spill = mix(C_SIGNAL, C_BLOOD, 0.5) * 0.055 * lampK * exp(-length(q - vec2(-40.0, 60.0)) / 520.0);
+    col += spill;
+    float disk = 1.0 - smoothstep(R - bl, R + bl, rr);
+    float hole = 0.0;
+    for (int i = 0; i < 5; i++) {
+      float ha = float(i) * 1.2566;
+      vec2 hc = vec2(cos(ha - reel), sin(ha - reel)) * R * 0.55;
+      hole = max(hole, 1.0 - smoothstep(R * 0.22 - bl, R * 0.22 + bl, length(q - hc)));
+    }
+    float hub = 1.0 - smoothstep(R * 0.09 - bl, R * 0.09 + bl, rr);
+    // 盤面上一圈一圈的片子（纏好的膠卷）：比盤面亮一點點的同心細紋
+    float wound = (1.0 - smoothstep(R * 0.3, R * 0.32, rr)) * smoothstep(R * 0.1, R * 0.12, rr);
+    vec3 reelC = C_INK * 0.28 + mix(C_SIGNAL, C_BLOOD, 0.5) * 0.02 * wound * (0.6 + 0.4 * sin(rr * 0.9));
+    reelC += mix(C_SIGNAL, C_BLOOD, 0.3) * 0.09 * lampK * exp(-abs(rr - R + 8.0) / 9.0) * max(0.0, dot(normalize(q), normalize(lamp.xy - rc)));
+    col = mix(col, reelC, disk * (1.0 - hole * (1.0 - wound)) * (1.0 - hub * 0.5));
     // 光裡的灰塵（大大的、失焦、慢慢飄）
     for (int i = 0; i < 7; i++) {
       float fi = float(i);
@@ -127,7 +150,7 @@ const BG = () => new FSPass(/* glsl */ `
       col += C_SIGNAL * 0.035 * lampK * (1.0 - smoothstep(rr * 0.8, rr, length(p - c))) * exp(-length(c - lamp.xy) / 900.0);
     }
     fragColor = vec4(col, 1.0);
-  }`, { lamp: { value: new THREE.Vector3(W / 2, H / 2, 700) }, lampK: { value: 1 }, t: { value: 0 } });
+  }`, { lamp: { value: new THREE.Vector3(W / 2, H / 2, 700) }, lampK: { value: 1 }, t: { value: 0 }, reel: { value: 0 } });
 
 /** 片頭倒數的一格：圓、十字線、大數字；sweep 0..1 是掃過的扇形。 */
 function drawLeader(c: CanvasRenderingContext2D, n: number, sweep: number) {
@@ -177,6 +200,9 @@ export default class Filmstrip extends Scene {
   beat = 0.5;
   mode: 'msg' | 'lyric' | 'title' = 'msg';
   lyrSize = 54;
+  /** 膠卷上 1 單位在螢幕上是幾 px（落定的機位、主打格那裡）：v2 的字級是螢幕 px，畫到格子上要除以它。 */
+  k = 0.55;
+  bars: number[] = [];
 
   override async init() {
     const { audio: au, lyrics, start: s, end: e } = this.ctx;
@@ -184,6 +210,11 @@ export default class Filmstrip extends Scene {
     const lines = lyrics.linesIn(s - 0.5, e);
     await loadAll(this.msg, lines.map((l) => l.text).join(''), `${COUPLE_ZH}${DATE_DOTS}${INVITE}A&O▸新人留言`);
     this.mode = this.msg ? 'msg' : lines.length ? 'lyric' : 'title';
+    this.bars = winBars(au, s, e).filter((b) => b > s + 0.05);
+    // 落定的機位下，主打格（原點）附近 100 單位在螢幕上多長
+    this.pose(Infinity);
+    const pa = new THREE.Vector3(-50, 0, 0).project(this.cam), pb = new THREE.Vector3(50, 0, 0).project(this.cam);
+    this.k = Math.hypot((pb.x - pa.x) * W / 2, (pb.y - pa.y) * H / 2) / 100;
     const beats = winBeats(au, s, e).filter((b) => b > s + 0.05);
     const pull = Math.min(0.2, this.beat * 0.45);
 
@@ -228,7 +259,7 @@ export default class Filmstrip extends Scene {
       const t1 = beats[0] ?? s + 0.3, t2 = beats[1] ?? s + 0.8;
       this.moves.push({ t: t1, to: 1, dur: pull }, { t: t2, to: 2, dur: pull });
       this.hero = 3;
-      this.frames.push({ kind: 'title', text: COUPLE_ZH, sub: DATE_DOTS }, { kind: 'title', text: INVITE }, { kind: 'tail' }, { kind: 'blank' });
+      this.frames.push({ kind: 'title', text: COUPLE_ZH, sub: DATE_DOTS }, { kind: 'title', text: INVITE.split('，')[0] + '，', sub2: INVITE.split('，')[1] }, { kind: 'tail' }, { kind: 'blank' });
       const tb = bars.find((b) => b > t2 + this.beat * 0.9) ?? t2 + this.beat;
       this.moves.push({ t: tb, to: 3, dur: pull });
       const tb2 = bars.find((b) => b > tb + 0.1 && b < e - 1.5);
@@ -259,7 +290,7 @@ export default class Filmstrip extends Scene {
   /** 一行歌詞切成幾格：一格最多兩行、字不小於 112（空白、標點處優先斷），每格是一個小的 Line（字的時間照原本的）。 */
   private chunk(line: Line): FrameDef[] {
     const c = this.cells[0]?.L.ctx ?? document.createElement('canvas').getContext('2d')!;
-    c.font = font(FAM_LYR, 130);
+    c.font = font(FAM_LYR, lyricV2(null) / this.k);
     const ws = line.words, out: FrameDef[] = [];
     const cap = 1000 * 2 * 0.86;
     let a = 0;
@@ -289,7 +320,7 @@ export default class Filmstrip extends Scene {
     cv.width = Math.round(PITCH * CELL_SCALE); cv.height = Math.round(FW * CELL_SCALE);
     const c = cv.getContext('2d')!;
     c.scale(CELL_SCALE, CELL_SCALE);
-    const b = msgBlock(c, m, FAM_MSG, MSG_BOX.w, MSG_BOX.h, { min: 50, max: 130, lineHeight: 1.36, sigK: 0.42 });
+    const b = msgBlockV2(c, m, FAM_MSG, MSG_BOX.w, MSG_BOX.h, { k: this.k, lineHeight: 1.36 });
     this.block = b;
     c.translate(IX, IY);
     // 雙線框與四個角的小菱形
@@ -300,8 +331,8 @@ export default class Filmstrip extends Scene {
       c.beginPath(); c.moveTo(x, y - 9); c.lineTo(x + 9, y); c.lineTo(x, y + 9); c.lineTo(x - 9, y); c.closePath(); c.fill();
     }
     if (m.couple) {
-      c.font = font(F.hei(500), 24); c.letterSpacing = '8px'; c.fillStyle = rgba('signal', 0.8); c.textAlign = 'center';
-      c.fillText('新人留言', IW / 2, 88); c.letterSpacing = '0px';
+      c.font = font(F.hei(500), 20 / this.k); c.letterSpacing = '8px'; c.fillStyle = rgba('signal', 0.8); c.textAlign = 'center';
+      c.fillText('新人留言', IW / 2, 60 + 20 / this.k); c.letterSpacing = '0px';
     }
     c.font = font(FAM_MSG, b.fit.size); c.fillStyle = rgba('bone', 0.97); c.textAlign = 'left'; c.textBaseline = 'alphabetic';
     b.fit.lines.forEach((ln, i) => {
@@ -311,8 +342,29 @@ export default class Filmstrip extends Scene {
     c.font = font(FAM_MSG, b.sigSize); c.fillStyle = rgba('bone', 0.62); c.textAlign = 'center';
     c.fillText(b.sig, IW / 2, MSG_BOX.y + b.sigY);
     this.msgCanvas = cv;
-    // 字幕比留言（在特寫裡的大小）小一級
-    this.lyrSize = lyricSizeFor(b.fit.size * 0.96) / 0.96;
+    // 字幕比留言小一點（v2：螢幕上 40～52）
+    this.lyrSize = lyricV2(b.fit.size * this.k) / this.k;
+  }
+
+  /**
+   * 鏡頭：從右邊比較遠的地方搖進來、落定（有留言時落在主打格到位的那一刻）；落定後在膠卷前方偏左，
+   * 看向主打格右邊一點——主打格在畫面左三分之一，膠卷往右後方退進暗處。整段慢慢推近。t = Infinity 是落定的機位（算字級用）。
+   */
+  private pose(t: number, jitterY = 0) {
+    const s = this.ctx.start, e = this.ctx.end, beat = this.beat;
+    const land = t === Infinity ? 1 : this.mode === 'msg'
+      ? ease.outExpo(prog(t, s, s + 0.35)) * 0.35 + 0.65 * ease.outExpo(prog(t, this.tHero - 0.02, this.tHero + Math.max(0.6, beat * 1.4)))
+      : ease.outExpo(prog(t, s, s + Math.max(0.5, beat * 1.5)));
+    const push = t === Infinity ? 0 : ease.inOutCubic(prog(t, s, e));
+    const sway = t === Infinity ? 0 : 40 * Math.sin((t - s) * 0.5);
+    const dist = lerp(4300, 3150, land) * (1 - 0.04 * push);
+    const cx = lerp(-1300, -760, land) + sway;
+    this.cam.position.set(cx, -80 + jitterY, dist);
+    this.cam.up.set(Math.sin(0.075), Math.cos(0.075), 0);
+    this.cam.lookAt(lerp(900, 470, land), jitterY + 20, 0);
+    this.cam.updateMatrixWorld();
+    this.cam.updateProjectionMatrix();
+    return dist;
   }
 
   /** 片子現在的位置（格號，小數 = 正在拉）。 */
@@ -354,7 +406,7 @@ export default class Filmstrip extends Scene {
         c.drawImage(this.msgCanvas, 0, 0, PITCH, FW);
         const ly = lyricAt(this.ctx.lyrics, t);
         if (ly) {
-          const lay = layoutRows(c, ly.line, { family: FAM_LYR, size: this.lyrSize, minSize: 50, maxW: SUB.maxW, maxRows: 2, align: 'center', lineHeight: 1.1 });
+          const lay = layoutRows(c, ly.line, { family: FAM_LYR, size: this.lyrSize, minSize: Math.min(this.lyrSize, V2.lyrMin / this.k), maxW: SUB.maxW, maxRows: 2, align: 'center', lineHeight: 1.1 });
           c.translate(IX + IW / 2, IY + SUB.y - (lay.rows.length - 1) * lay.lineHeight);
           drawRows(c, lay, FAM_LYR, t, darkInk(), ly.k);
         }
@@ -365,11 +417,13 @@ export default class Filmstrip extends Scene {
       } else if (fd.kind === 'title' && fd.text) {
         const big = !!fd.sub;
         c.textAlign = 'center'; c.fillStyle = rgba('bone', 0.95);
-        c.font = font(big ? F.ming(900) : F.hei(500), big ? 150 : 50);
-        c.fillText(fd.text, IX + IW / 2, IY + IH / 2 + (big ? 20 : 16));
+        const kk = this.k;
+        c.font = font(big ? F.ming(900) : F.hei(500), (big ? 60 : 40) / kk);
+        c.fillText(fd.text, IX + IW / 2, IY + IH / 2 + (big ? 20 : -10 / kk));
+        if (fd.sub2) c.fillText(fd.sub2, IX + IW / 2, IY + IH / 2 + 46 / kk);
         if (fd.sub) {
-          c.font = font(F.mono(500), 40); c.letterSpacing = '10px'; c.fillStyle = rgba('signal', 0.8);
-          c.fillText(fd.sub, IX + IW / 2, IY + IH / 2 + 130);
+          c.font = font(F.mono(500), 24 / kk); c.letterSpacing = '10px'; c.fillStyle = rgba('signal', 0.8);
+          c.fillText(fd.sub, IX + IW / 2, IY + IH / 2 + 20 + 56 / kk);
         }
       } else if (fd.kind === 'tail') {
         // 片尾：一顆小小的愛心，像手刮在片子上的記號
@@ -387,7 +441,7 @@ export default class Filmstrip extends Scene {
   private lyrLays = new Map<Line, RowsLayout>();
   private lyrLay(c: CanvasRenderingContext2D, line: Line) {
     let l = this.lyrLays.get(line);
-    if (!l) { l = layoutRows(c, line, { family: FAM_LYR, size: 150, minSize: 104, maxW: 1000, maxRows: 2, align: 'center', lineHeight: 1.12 }); this.lyrLays.set(line, l); }
+    if (!l) { l = layoutRows(c, line, { family: FAM_LYR, size: lyricV2(null) / this.k, minSize: V2.lyrMin / this.k, maxW: 1060, maxRows: 2, align: 'center', lineHeight: 1.12 }); this.lyrLays.set(line, l); }
     return l;
   }
 
@@ -400,30 +454,19 @@ export default class Filmstrip extends Scene {
     const weave = moving ? 0 : (hash(fi, 3) - 0.5) * 0.0016;
     const pos = this.posAt(t) + weave;
 
-    // ---- 鏡頭：有留言時倒數用遠景，主打格到位時推成特寫；沒有留言是中景。整段慢慢推近、輕輕搖
-    const beat = this.beat;
-    let dist: number, side: number;
-    if (this.mode === 'msg') {
-      const k = ease.outExpo(prog(t, this.tHero - 0.02, this.tHero + Math.max(0.6, beat * 1.4)));
-      dist = lerp(4100, 2120, k) * (1 - 0.05 * ease.inOutCubic(prog(t, this.tHero, e)));
-      side = lerp(-420, 120, k);
-    } else {
-      const land = ease.outExpo(prog(t, s, s + Math.max(0.5, beat * 1.5)));
-      dist = lerp(3500, 2950, land) * (1 - 0.05 * ease.inOutCubic(prog(t, s, e)));
-      side = lerp(-500, -160, land) + 60 * Math.sin((t - s) * 0.4);
-    }
+    // ---- 鏡頭（pose）：遠景落定成中景，主打格在左三分之一；停住時有一點片門晃動
     const jitterY = moving ? 0 : (hash(fi, 7) - 0.5) * 1.6;
-    this.cam.position.set(side, -40 + jitterY, dist);
-    this.cam.up.set(Math.sin(0.018), Math.cos(0.018), 0);
-    this.cam.lookAt(side * 0.25, jitterY, 0);
-    this.cam.updateMatrixWorld();
-    this.cam.updateProjectionMatrix();
+    const dist = this.pose(t, jitterY);
     // 燈在正中那一格後面：用那一格的中心投到畫面
     const cp = new THREE.Vector3(0, 0, 0).project(this.cam);
     const lampX = (cp.x * 0.5 + 0.5) * W, lampY = (cp.y * 0.5 + 0.5) * H;
     const flick = moving ? 1 : 1 + 0.035 * (hash(fi, 11) - 0.5);
     const lampK = clamp(prog(t, s, s + 0.12)) * flick * (1 + 0.08 * f.a.kick) * (1 - 0.6 * ease.inCubic(prog(t, e - 0.12, e)));
-    const lampR = this.mode === 'msg' ? lerp(640, 900, ease.outExpo(prog(t, this.tHero, this.tHero + 0.6))) : 820;
+    const lampR = this.mode === 'msg' ? lerp(520, 720, ease.outExpo(prog(t, this.tHero, this.tHero + 0.6))) : 640;
+    // 捲盤：片子拉多少就轉多少，每個小節線被片子扯一下（往前一小段、outExpo）
+    let reel = pos * 0.55;
+    for (const b of this.bars) if (t >= b) reel += 0.22 * ease.outExpo(clamp((t - b) / 0.35));
+    this.bg.u.reel!.value = reel;
 
     this.bg.u.t!.value = t;
     (this.bg.u.lamp!.value as THREE.Vector3).set(lampX, lampY, lampR);
@@ -457,7 +500,7 @@ export default class Filmstrip extends Scene {
       const y0 = (0.5 - Math.max(a.y, b.y) * 0.5) * H, y1 = (0.5 - Math.min(a.y, b.y) * 0.5) * H;
       avoid.push([Math.round(x0), Math.round(y0), Math.round(x1 - x0), Math.round(y1 - y0)]);
     }
-    return { bloom: 0.8, vignette: 0.7, popupAvoid: avoid };
+    return { bloom: 0.35, halation: 0.12, vignette: 0.75, popupAvoid: avoid };
   }
 
   override dispose() {

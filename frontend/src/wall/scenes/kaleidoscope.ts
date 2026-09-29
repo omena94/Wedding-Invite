@@ -94,8 +94,8 @@ void chips(vec2 p, float cs, float seed, float kind, float dens, inout vec3 col,
 }
 // 筒口外的彩色光斑：光穿過色玻璃灑在筒壁上。在極座標裡一格一塊（角度跟著轉筒轉），越遠越淡、越糊。
 vec3 flecks(float r, float a, float phi) {
-  float rr = (r - uRV) / 90.0;
-  if (rr < 0.0 || rr > 5.0) return vec3(0.0);
+  float rr = (r - uRV) / 70.0;
+  if (rr < 0.0 || rr > 3.5) return vec3(0.0);
   float ring = floor(rr);
   float n = 18.0 + ring * 6.0;
   float aa = (a + phi * (ring < 2.0 ? 1.0 : -0.6)) / TAU * n;
@@ -103,11 +103,12 @@ vec3 flecks(float r, float a, float phi) {
   float h = hash12(cell + 3.7);
   if (h < 0.55) return vec3(0.0);
   vec2 q = vec2(fract(aa) - 0.5, fract(rr) - 0.5);
-  float blur = 0.12 + 0.08 * ring;
-  float d = length(q * vec2(1.0, 1.4)) - (0.18 + 0.12 * hash12(cell + 9.1));
+  float blur = 0.06 + 0.06 * ring;
+  float d = length(q * vec2(1.0, 1.5)) - (0.1 + 0.08 * hash12(cell + 9.1));
   float k = 1.0 - smoothstep(-blur, blur, d);
   vec3 cc = chipCol(hash12(cell + 5.3));
-  return cc * k * (1.0 - rr / 5.0);
+  float fade = 1.0 - rr / 3.5;
+  return cc * k * fade * fade;
 }
 
 void main() {
@@ -143,7 +144,8 @@ void main() {
   // 筒壁上的同心細紋（像車床車出來的），離筒口越遠越淡
   wall += C_ASH * 0.02 * pxLine(abs(fract((r - uRV) / 23.0 + 0.5) - 0.5) * 23.0, 0.3, 1.0) * step(uRV + 20.0, r) * (1.0 - smoothstep(uRV + 100.0, uRV + 520.0, r));
   // 彩色光斑（跟著轉筒轉，大鼓時亮一下）
-  wall += flecks(r, a, uPhi) * (0.22 + 0.3 * uKick);
+  // 留言那一側（右邊）淡很多：字後面要乾淨
+  wall += flecks(r, a, uPhi) * (0.3 + 0.4 * uKick) * (1.0 - 0.8 * smoothstep(1180.0, 1300.0, p.x));
   // 右下角 HUD（x ≥ 1360、y ≥ 830）底下的筒壁要乾淨：細紋與浮塵在這一區淡掉
   float hud = 1.0 - smoothstep(0.0, 80.0, length(max(vec2(1360.0, 830.0) - p, 0.0)));
   wall = mix(wall, C_INK * (0.55 + 0.25 * fbm(p / 420.0 + 7.0, 3)), hud);

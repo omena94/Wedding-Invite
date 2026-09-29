@@ -4,6 +4,8 @@
 // 之後每個小節線被風推一下。樹冠裡還掛著幾張很小的空白許願牌（別人的祝福，不搶戲）。
 // 歌詞刻在橫枝上：唱到的字被刀刻出來（訊號色的暗部），刻好變成深墨色，字跟著樹枝的弧度上下起伏。
 // 樹幹上刻著一顆小小的「A ♥ O」。
+// 2026-09-29 照「留言尺寸與版面比例標準 v2」：許願牌縮成只比字多一點邊、掛到畫面右半邊（樹是主角），
+// 留言 40～60 px、歌詞 40～52 px。
 // 手法：樹、葉、牌子的繩子都是 LineBatch（GPU 細線，版畫的外框＋樹皮線＋暗面的交叉排線）；
 // 地面與遠山是一張只畫一次的 Canvas；許願牌是 init 畫好的圖，每格只是旋轉貼上。
 import * as THREE from 'three';
@@ -15,10 +17,11 @@ import { LIN, rgba } from '../engine/palette';
 import { clamp, ease, prog, hash, lerp, mulberry32, TAU } from '../engine/util';
 import { Lyrics, type Line } from '../engine/lyrics';
 import { fillWithHearts } from '../engine/motifs';
-import { lyricAt, lyricSizeFor, beatAfter, COUPLE_ZH, DATE_DOTS, drawHeart } from './_motifs';
+import { lyricAt, beatAfter, COUPLE_ZH, DATE_DOTS, drawHeart } from './_motifs';
+import { lyricV2, V2 } from './_v2';
 import { winBeats, winBars } from './_t8';
 import { Paper } from './_t11';
-import { msgBlock, loadAll, INVITE, type MsgBlock, type P2, type Rect } from './_t15';
+import { msgBlockV2, loadAll, INVITE, type MsgBlock, type P2, type Rect } from './_t15';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'nature', paper: true, energy: [0.15, 0.85], bars: [4, 8], weight: 1 };
 
@@ -29,8 +32,9 @@ const LIMB: [number, number, number][] = [[560, 432, 92], [680, 382, 80], [820, 
 /** 歌詞刻在橫枝上的範圍（x）。 */
 const CARVE = { x0: 640, x1: 1640 };
 /** 許願牌掛的位置（橫枝下緣）與牌子的寬。 */
-const ANCHOR = { x: 960, y: 378 };
-const TAG_W = 800;
+const ANCHOR = { x: 1180, y: 378 };
+/** 許願牌上寫字的範圍（v2：牌子連字 ≤ 860×430；牌子掛在畫面右半邊，下緣不碰右下角 HUD）。 */
+const TAG_W = 740, TAG_TXT = { w: 630, h: 262 };
 const INK_W = 2.1;
 
 type Br = { pts: P2[]; w: number[]; cum: number[]; len: number; t0: number; t1: number; depth: number; bark: boolean };
@@ -99,7 +103,7 @@ export default class Tree extends Scene {
   small: { x: number; y: number; s: number; t: number; ph: number }[] = [];
   block: MsgBlock | null = null;
   lyrSize = 54;
-  falls: { t: number; x: number; y: number; seed: number }[] = [];
+  falls: { t: number; x: number; y: number; seed: number; land: number }[] = [];
 
   override async init() {
     const { audio: au, lyrics, start: s, end: e } = this.ctx;
@@ -181,10 +185,20 @@ export default class Tree extends Scene {
     this.pushes.push({ t: this.tDrop, a: 0.1 });
     this.bars.forEach((b, i) => { if (b > this.tDrop + 0.5) this.pushes.push({ t: b, a: (i % 2 ? 1 : -1) * 0.035 }); });
     this.buildTag();
-    // ---- 小節線上一片葉子飄下來
+    // ---- 小節線上一陣風吹下兩三片葉子（小節線上、再半拍），飄下來、落在地上積起來（樹下空出來的地方有事發生）
+    const fallX = (fl: { x: number; seed: number }, a: number) => fl.x + 60 * Math.sin(a * 1.8 + fl.seed) + a * 30;
+    const fallY = (fl: { y: number }, a: number) => fl.y + a * 120 + 10 * Math.sin(a * 3);
+    const under = this.leaves.filter((lf) => lf.x > 180 && lf.x < 1250);
     this.bars.forEach((b, i) => {
-      const lf = this.leaves[Math.floor(hash(this.seed, i, 7) * this.leaves.length)];
-      if (lf && b > B[4]!) this.falls.push({ t: b, x: lf.x, y: lf.y, seed: i });
+      if (b <= B[4]!) return;
+      for (let j = 0; j < 3; j++) {
+        const lf = under[Math.floor(hash(this.seed, i, 7 + j) * under.length)];
+        if (!lf) continue;
+        const fl = { t: b + j * this.beat * 0.5, x: lf.x, y: lf.y, seed: i * 3 + j, land: 99 };
+        for (let a = 0; a < 12; a += 0.02) if (fallY(fl, a) >= GROUND - 6) { fl.land = a; break; }
+        if (fallX(fl, fl.land) > 1300) continue; // 不要落進右下角 HUD 那一帶
+        this.falls.push(fl);
+      }
     });
     this.drawGround();
   }
@@ -197,14 +211,17 @@ export default class Tree extends Scene {
     const c0 = this.layer.ctx;
     let b: MsgBlock | null = null;
     if (m) {
-      b = msgBlock(c0, m, F.hand(700), TAG_W - 110, 330, { min: 46, max: 104, lineHeight: 1.3, sigK: 0.46 });
+      b = msgBlockV2(c0, m, F.hand(700), TAG_TXT.w, TAG_TXT.h, { lineHeight: 1.3 });
       this.block = b;
-      this.tagW = TAG_W;
-      this.tagH = Math.round(b.height + 150);
-      this.lyrSize = lyricSizeFor(b.fit.size);
+      // 牌子只比字多一點邊（v2：容器要輕）
+      c0.font = font(b.family, b.sigSize);
+      const sw = c0.measureText(b.sig).width;
+      this.tagW = Math.round(Math.min(TAG_W, Math.max(b.fit.width, sw + 60, 300) + 110));
+      this.tagH = Math.round(b.height + 118);
+      this.lyrSize = lyricV2(b.fit.size);
     } else {
       this.tagW = 420; this.tagH = 200;
-      this.lyrSize = 66;
+      this.lyrSize = lyricV2(null);
     }
     const w = this.tagW, h = this.tagH;
     cv.width = Math.round((w + pad * 2) * 1.5); cv.height = Math.round((h + pad * 2) * 1.5);
@@ -238,13 +255,13 @@ export default class Tree extends Scene {
     c.textBaseline = 'alphabetic';
     if (m && b) {
       c.font = font(b.family, b.fit.size); c.fillStyle = rgba('sepia', 0.96);
-      const top = 78;
+      const top = 64 - (TAG_TXT.h - b.height) / 2;
       b.fit.lines.forEach((ln, i) => {
         const lw = c.measureText(ln).width;
         fillWithHearts(c, ln, (w - lw) / 2, top + b!.top + i * b!.fit.lineHeight);
       });
       c.font = font(b.family, b.sigSize); c.fillStyle = rgba('sepia', 0.72); c.textAlign = 'right';
-      c.fillText(b.sig, w - 56, top + b.sigY);
+      c.fillText(b.sig, w - 50, top + b.sigY);
       if (m.couple) {
         c.font = font(F.hei(500), 20); c.letterSpacing = '6px'; c.fillStyle = rgba('blood', 0.8); c.textAlign = 'left';
         c.fillText('新人', 40, h - 26); c.letterSpacing = '0px';
@@ -396,13 +413,15 @@ export default class Tree extends Scene {
       const sw = br.depth >= 2 ? wind * (lf.at / br.len) * 9 * (br.depth - 1) : 0;
       this.drawLeaf(lf.x + sw, lf.y, lf.a + wind * 0.25 * Math.sin(lf.x), lf.s, k, lf.accent, fresh);
     }
-    // 飄落的葉子：小節線上一片，左右擺著往下飄，落到地面淡掉
+    // 飄落的葉子：左右擺著往下飄，落到地面就平躺著留在那裡（一片一片積起來）
     for (const fl of this.falls) {
       const a = t - fl.t;
-      if (a < 0 || a > 4) continue;
-      const y = fl.y + a * 120 + 10 * Math.sin(a * 3), x = fl.x + 60 * Math.sin(a * 1.8 + fl.seed) + a * 30;
-      if (y > GROUND - 5) continue;
-      this.drawLeaf(x, y, a * 2.2 + fl.seed, 26, 1, false, 0);
+      if (a < 0) continue;
+      const aa = Math.min(a, fl.land);
+      const x = fl.x + 60 * Math.sin(aa * 1.8 + fl.seed) + aa * 30;
+      const y = a >= fl.land ? GROUND - 6 : fl.y + a * 120 + 10 * Math.sin(a * 3);
+      const ang = a >= fl.land ? (hash(fl.seed, 5) < 0.5 ? 0.15 : Math.PI - 0.15) : a * 2.2 + fl.seed;
+      this.drawLeaf(x, y, ang, 24, 1, hash(fl.seed, 9) < 0.3, 0);
     }
 
     // ---- 許願牌：第二拍掉下來、晃幾下，之後每個小節線被風推一下
@@ -411,7 +430,7 @@ export default class Tree extends Scene {
     let theta = 0;
     for (const p of this.pushes) if (t >= p.t) { const a = t - p.t; theta += p.a * Math.sin(a * 4.2) * Math.exp(-a * 1.6); }
     const drop = ease.outBack(clamp((t - this.tDrop) / 0.4), 1.4);
-    const strLen = 64;
+    const strLen = 40;
     let tagRect: Rect | null = null;
     if (t >= this.tDrop && this.tag) {
       const ax = ANCHOR.x, ay = limbY(this.limb, ANCHOR.x) + 30;
@@ -469,16 +488,16 @@ export default class Tree extends Scene {
   }
 
   private carveCache = new Map<Line, { family: string; size: number; xs: number[]; ws: number[]; width: number }>();
-  /** 一行歌詞在橫枝上的排法：字級 60→48，放不下就換窄體；每個字的 x。 */
+  /** 一行歌詞在橫枝上的排法：字級 52→40（v2），放不下就換窄體；每個字的 x。 */
   private carveLay(c: CanvasRenderingContext2D, line: Line) {
     let r = this.carveCache.get(line);
     if (r) return r;
     const maxW = CARVE.x1 - CARVE.x0;
     let family = F.archivo(100, 700), size = this.lyrSize;
     const meas = (fam: string, sz: number) => { c.font = font(fam, sz); return c.measureText(line.text).width; };
-    while (size > 48 && meas(family, size) > maxW) size -= 2;
-    if (meas(family, size) > maxW) { family = F.archivo(62, 700); size = this.lyrSize; while (size > 48 && meas(family, size) > maxW) size -= 2; }
-    if (meas(family, size) > maxW) size = Math.max(40, Math.floor(size * maxW / meas(family, size)));
+    while (size > V2.lyrMin && meas(family, size) > maxW) size -= 2;
+    if (meas(family, size) > maxW) { family = F.archivo(62, 700); size = this.lyrSize; while (size > V2.lyrMin && meas(family, size) > maxW) size -= 2; }
+    if (meas(family, size) > maxW) size = Math.max(36, Math.floor(size * maxW / meas(family, size)));
     c.font = font(family, size);
     const xs = line.words.map((w) => c.measureText(line.text.slice(0, w.o)).width);
     const ws = line.words.map((w) => c.measureText(w.w).width);

@@ -9,6 +9,9 @@
 // 液面的法線讓相紙的字稍微折射晃動、浪峰反射安全燈的光。
 // 鏡頭：開燈時從比較斜、比較遠的地方落定（第一拍），之後慢慢推近；右上角是失焦的安全燈（前景虛化）。
 // 歌詞：放大機投在檯面上的一小塊光，字是亮的（逐字跟唱）。沒有留言時，歌詞改成顯影在相紙上（唱到哪顯到哪）。
+// 2026-09-29 照「留言尺寸與版面比例標準 v2」：相紙（場景）照樣大，但線稿佔左邊大半、留言只是相紙右側的一段手寫說明
+// （螢幕上 40～60 px、寫字的範圍 ≤ 860×430）；每個小節線竹夾伸進盤子撥一下相紙（相紙被推一下再彈回），
+// 對焦從線稿慢慢移到留言；右下角 HUD 那一塊壓暗、不放道具。
 import * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
 import { FSPass, Layer2D, W, H, SCALE, scaleContext2D } from '../engine/gl';
@@ -17,10 +20,11 @@ import { rgba } from '../engine/palette';
 import { clamp, ease, prog, hash, lerp } from '../engine/util';
 import type { Line } from '../engine/lyrics';
 import { fillWithHearts } from '../engine/motifs';
-import { lyricAt, lyricSizeFor, beatAfter, COUPLE_ZH, DATE_DOTS } from './_motifs';
+import { lyricAt, beatAfter, COUPLE_ZH, DATE_DOTS } from './_motifs';
+import { lyricV2 } from './_v2';
 import { layoutRows, drawRows, darkInk, type RowsLayout, type KaraokeInk } from './_t4';
 import { winBeats, winBars, blit, no3 } from './_t8';
-import { msgBlock, drawSig, loadAll, planeInverse, planeProject, PLANE_GLSL, INVITE, FAM, type MsgBlock, type PlaneCam, type Rect } from './_t15';
+import { msgBlockV2, drawSig, loadAll, planeInverse, planeProject, PLANE_GLSL, INVITE, FAM, type MsgBlock, type PlaneCam, type Rect } from './_t15';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'craft', paper: false, energy: [0.1, 0.75], bars: [4, 8], weight: 1 };
 
@@ -28,8 +32,8 @@ export const spec: PlateSpecDecl = { group: 'type', family: 'craft', paper: fals
 const PW = 1500, PH = 1000;
 /** 影像區（白邊裡面）、留言的框、線稿的位置。 */
 const IMG = { x: 56, y: 56, w: PW - 112, h: PH - 112 };
-const TXT = { x: 592, y: 118, w: 806, h: 752 };
-const ILL = { x: 318, y: 850, s: 1.28 };
+const TXT = { x: 800, y: 230, w: 610, h: 560 };
+const ILL = { x: 390, y: 905, s: 1.55 };
 /** 盤子內緣（平面座標）與盤緣寬度。 */
 const TRAY = [-150, -110, PW + 170, PH + 64] as const;
 const RIM = 46;
@@ -42,7 +46,7 @@ const p2w = (x: number, y: number) => {
   return { x: PC.x + c * dx + s * dy, y: PC.y - s * dx + c * dy };
 };
 /** 基本機位：相紙中心對到畫面中間偏上（下面留給投在檯面上的歌詞）。 */
-const CAM: PlaneCam = { pitch: 0.4, yaw: -0.07, roll: 0.026, scale: 0.8, cx: PW / 2, cy: PH / 2, oy: -96 };
+const CAM: PlaneCam = { pitch: 0.4, yaw: -0.07, roll: 0.026, scale: 0.76, cx: PW / 2, cy: PH / 2, oy: -122, ox: -24 };
 /** 歌詞（投影的光）：左緣、最後一行的基線、最寬（右端停在 HUD 左邊）。 */
 const LYR = { x: 164, base: 978, maxW: 1150 };
 const LYR_LAYER = { y: 800, h: 280 };
@@ -51,6 +55,7 @@ const BG = () => new FSPass(/* glsl */ `
   ${PLANE_GLSL}
   uniform sampler2D prt; uniform float zf; uniform float dof; uniform float dev; uniform float t;
   uniform vec4 rip[6]; uniform vec4 slo; uniform float light; uniform vec4 pool; uniform float poolK;
+  uniform vec2 tong; uniform vec3 pj;   // 竹夾伸進來的位移；相紙被撥動的位移與轉角
   const vec2 PS = vec2(${PW}.0, ${PH}.0);
   const vec4 TRAY = vec4(${TRAY.join('.0, ')}.0);
   const float RIM = ${RIM}.0;
@@ -121,7 +126,8 @@ const BG = () => new FSPass(/* glsl */ `
       float wall = step(-26.0, sdR(w - vec2(0.0, 30.0), TRAY, 34.0)) * step(w.y, TRAY.y + 60.0);
       col = mix(col, C_INK2 * 0.8 + lit * 0.02, wall);
       // 相紙（在盤裡稍微歪一點）與它的影子
-      vec2 pp = PROT * (wr - PC) + PS * 0.5;
+      mat2 J = mat2(cos(pj.z), sin(pj.z), -sin(pj.z), cos(pj.z));
+      vec2 pp = J * (PROT * (wr - PC - pj.xy)) + PS * 0.5;
       float ds = sdR(pp - vec2(12.0, 18.0), vec4(0.0, 0.0, PS), 4.0);
       col *= 1.0 - 0.55 * (1.0 - smoothstep(-12.0, 30.0, ds));
       float dp = sdR(pp, vec4(0.0, 0.0, PS), 3.0);
@@ -159,7 +165,7 @@ const BG = () => new FSPass(/* glsl */ `
     }
     // 夾子：一雙竹夾斜靠在盤子右上角（半截泡在液體裡）
     for (int i = 0; i < 2; i++) {
-      vec2 a = TONG_A + vec2(float(i) * 34.0, float(i) * -8.0), b = TONG_B + vec2(float(i) * 26.0, 0.0);
+      vec2 a = TONG_A + tong + vec2(float(i) * 34.0, float(i) * -8.0), b = TONG_B + tong + vec2(float(i) * 26.0, 0.0);
       float d = sdSegment(w, a, b) - 13.0;
       float sh = 1.0 - smoothstep(-6.0, 30.0, sdSegment(w - vec2(16.0, 22.0), a, b) - 13.0);
       col *= 1.0 - 0.4 * sh * step(0.0, d);
@@ -179,12 +185,15 @@ const BG = () => new FSPass(/* glsl */ `
     vec2 lp = vec2(${W}.0 - 70.0, -10.0);
     float r = length(p - lp);
     col += mix(C_SIGNAL, C_BLOOD, 0.3) * light * (0.2 * (1.0 - smoothstep(150.0, 164.0, r)) + 0.1 * exp(-r / 300.0));
+    // 右下角 HUD（時間、留言數、QR）那一塊：安全燈照不到，背景暗而乾淨
+    col *= 1.0 - 0.6 * smoothstep(-70.0, 90.0, min(p.x - 1330.0, p.y - 800.0));
     fragColor = vec4(col, 1.0);
   }`, {
   prt: { value: null }, Hinv: { value: new THREE.Matrix3() }, prect: { value: new THREE.Vector4(0, 0, PW, PH) }, zc: { value: new THREE.Vector3() },
   zf: { value: 0 }, dof: { value: 0 }, dev: { value: 0 }, t: { value: 0 },
   rip: { value: Array.from({ length: 6 }, () => new THREE.Vector4()) }, slo: { value: new THREE.Vector4() },
   light: { value: 1 }, pool: { value: new THREE.Vector4() }, poolK: { value: 0 },
+  tong: { value: new THREE.Vector2() }, pj: { value: new THREE.Vector3() },
 });
 
 /** 兩只碰杯的香檳杯（手繪線稿）：線是最濃的墨、酒是排線（中間調）、桌上的影子最淡。平面座標，腳在 (x, y)。 */
@@ -271,6 +280,8 @@ export default class Darkroom extends Scene {
   hot: Rect = [TXT.x, TXT.y, TXT.w, TXT.h];
   lastKey = '';
   instrumental = false;
+  /** 相紙上 1 px 在螢幕上是幾 px（留言區附近，基本機位）：v2 的字級都是螢幕 px，要換算成相紙上的字級。 */
+  k = 0.8;
 
   override async init() {
     const { audio: au, lyrics, start: s, end: e } = this.ctx;
@@ -301,8 +312,13 @@ export default class Darkroom extends Scene {
     this.drawStatic(icx);
     this.ill = ic;
     c.drawImage(ic, 0, 0, PW, PH);
+    {
+      const a = p2w(TXT.x + TXT.w / 2 - 60, TXT.y + TXT.h / 2), b = p2w(TXT.x + TXT.w / 2 + 60, TXT.y + TXT.h / 2);
+      const pa = planeProject(CAM, a.x, a.y), pb = planeProject(CAM, b.x, b.y);
+      this.k = Math.hypot(pb.x - pa.x, pb.y - pa.y) / 120;
+    }
     if (this.msg) {
-      const b = msgBlock(c, this.msg, FAM.hand, TXT.w, TXT.h, { min: 66, max: 150, lineHeight: 1.3, sigK: 0.44 });
+      const b = msgBlockV2(c, this.msg, FAM.hand, TXT.w, TXT.h, { k: this.k, lineHeight: 1.3 });
       this.block = b;
       c.save();
       c.font = font(b.family, b.fit.size);
@@ -312,16 +328,16 @@ export default class Darkroom extends Scene {
       const right = TXT.x + Math.max(b.fit.width, 260);
       drawSig(c, b, Math.min(TXT.x + TXT.w, right), TXT.y + b.sigY, rgba('ink', 0.78));
       this.hot = [TXT.x - 10, TXT.y + b.top - b.fit.size, Math.max(b.fit.width, 300) + 20, b.sigY - b.top + b.fit.size + 20];
-      // 投在檯面上的歌詞比留言（在畫面上的大小）小一級
-      this.lyrSize = lyricSizeFor(b.fit.size * CAM.scale);
+      // 投在檯面上的歌詞比留言（在畫面上的大小）小一點（v2：40～52）
+      this.lyrSize = lyricV2(b.fit.size * this.k);
     } else if (this.instrumental) {
       // 純音樂、沒有留言：相紙上是新人的名字與日期
       c.save();
-      c.font = font(F.ming(900), 118); c.fillStyle = rgba('ink', 1);
+      c.font = font(F.ming(900), 60 / this.k); c.fillStyle = rgba('ink', 1);
       const nm = COUPLE_ZH;
-      c.fillText(nm, TXT.x, TXT.y + 380);
-      c.font = font(F.mono(500), 38); c.letterSpacing = '8px'; c.fillStyle = rgba('ink', 0.8);
-      c.fillText(DATE_DOTS, TXT.x + 6, TXT.y + 470);
+      c.fillText(nm, TXT.x, TXT.y + TXT.h * 0.5);
+      c.font = font(F.mono(500), 26 / this.k); c.letterSpacing = '8px'; c.fillStyle = rgba('ink', 0.8);
+      c.fillText(DATE_DOTS, TXT.x + 6, TXT.y + TXT.h * 0.5 + 60 / this.k);
       c.restore();
     }
     this.print.upload();
@@ -369,7 +385,7 @@ export default class Darkroom extends Scene {
   private layouts = new Map<Line, RowsLayout>();
   private lyricLayout(line: Line): RowsLayout {
     let l = this.layouts.get(line);
-    if (!l) { l = layoutRows(this.print.ctx, line, { family: FAM.lyric, size: 132, minSize: 104, maxW: TXT.w, maxRows: 3, lineHeight: 1.12 }); this.layouts.set(line, l); }
+    if (!l) { l = layoutRows(this.print.ctx, line, { family: FAM.lyric, size: lyricV2(null) / this.k, minSize: 40 / this.k, maxW: TXT.w, maxRows: 3, lineHeight: 1.16 }); this.layouts.set(line, l); }
     return l;
   }
 
@@ -397,10 +413,6 @@ export default class Darkroom extends Scene {
     const cam = this.camAt(t);
     const u = this.bg.u;
     planeInverse(cam, [0, 0, PW, PH], u.Hinv!.value as THREE.Matrix3, u.zc!.value as THREE.Vector3);
-    // 對焦在留言（或歌詞）中間
-    const fc = p2w(TXT.x + TXT.w * 0.45, TXT.y + TXT.h * 0.5);
-    u.zf!.value = planeProject(cam, fc.x, fc.y).z;
-    u.dof!.value = 1.3;
     u.t!.value = t;
     // 開燈：前 0.2 秒閃兩下（安全燈的燈管），之後穩定
     const lt = t - s;
@@ -416,6 +428,21 @@ export default class Darkroom extends Scene {
     const lb = this.bars.filter((x) => x <= t).pop();
     const bi = lb === undefined ? 0 : this.bars.indexOf(lb);
     (u.slo!.value as THREE.Vector4).set(bi % 2 ? -1 : 1, 0.12, lb ?? 0, lb === undefined ? 0 : 1.1);
+    // 小節線：竹夾伸進盤子（outExpo）撥一下相紙右上角，停一下再收回去；相紙被推一下再慢慢停住
+    let tk = 0, push = 0;
+    if (lb !== undefined) {
+      const a = t - lb;
+      tk = a < 0.16 ? ease.outExpo(a / 0.16) : a < 0.3 ? 1 : 1 - ease.inOutCubic(clamp((a - 0.3) / 0.5));
+      const d = Math.max(0, a - 0.14);
+      push = d * 6 * Math.exp(-d * 6);
+    }
+    (u.tong!.value as THREE.Vector2).set(-150 * tk, 115 * tk);
+    (u.pj!.value as THREE.Vector3).set(-26 * push, 20 * push, 0.012 * push * (bi % 2 ? 1 : -1));
+    // 對焦：開場先看線稿，顯影出來之後慢慢移到留言（或歌詞）上
+    const fk = ease.inOutCubic(clamp((u.dev!.value as number) * 1.6 - 0.2));
+    const f0 = p2w(ILL.x, ILL.y - 300), f1 = p2w(TXT.x + TXT.w * 0.45, TXT.y + TXT.h * 0.5);
+    u.zf!.value = lerp(planeProject(cam, f0.x, f0.y).z, planeProject(cam, f1.x, f1.y).z, fk);
+    u.dof!.value = 1.7;
 
     if (!this.msg && !this.instrumental && this.drawLyricPrint(t)) this.print.upload();
     u.prt!.value = this.print.texture;
@@ -428,7 +455,7 @@ export default class Darkroom extends Scene {
       L.clear();
       const ly = lyricAt(lyrics, t);
       if (ly) {
-        const lay = layoutRows(c, ly.line, { family: FAM.lyric, size: this.lyrSize, minSize: 48, maxW: LYR.maxW, maxRows: 2, lineHeight: 1.12 });
+        const lay = layoutRows(c, ly.line, { family: FAM.lyric, size: this.lyrSize, minSize: Math.min(40, this.lyrSize), maxW: LYR.maxW, maxRows: 2, lineHeight: 1.12 });
         const y0 = LYR.base - (lay.rows.length - 1) * lay.lineHeight;
         c.save();
         c.translate(LYR.x, y0 - LYR_LAYER.y);

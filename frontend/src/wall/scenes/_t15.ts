@@ -10,8 +10,9 @@ import { W, H } from '../engine/gl';
 import { F, font, loadText } from '../engine/type';
 import type { Msg } from '../engine/scene';
 import { clamp } from '../engine/util';
-import type { FitResult } from '../engine/text';
+import { fitText, type FitResult } from '../engine/text';
 import { fitMsg } from './_t4';
+import { V2, msgMaxFor, sigV2, fitClauses } from './_v2';
 import { signature, COUPLE_ZH, DATE_DOTS } from './_motifs';
 
 export type P2 = { x: number; y: number };
@@ -57,6 +58,25 @@ export function msgBlock(c: CanvasRenderingContext2D, msg: Msg, family: string, 
   const fit = fitMsg(c, msg.text, family, w, Math.max(60, h - sigGuess), { min: o.min ?? 44, max, lineHeight: o.lineHeight ?? 1.32, maxLines: o.maxLines ?? 6 });
   const sigSize = clamp(fit.size * sigK, 30, 56);
   const gap = Math.max(sigSize * 1.5, fit.size * 0.62);
+  const height = fit.height + gap;
+  const top = (h - height) * (o.valign ?? 0.5) + fit.size * 0.92;
+  const last = top + (fit.lines.length - 1) * fit.lineHeight;
+  return { fit, family, top, sigY: last + gap, sigSize, sig: signature(msg.name), height };
+}
+
+/**
+ * 照「留言尺寸與版面比例標準 v2」排留言（_v2.ts 的數字）：字級上限依字數（msgMaxFor）、下限 40，
+ * 署名 26～32、永遠在最後一行下面；先照子句斷行（fitClauses），放不下才交給 fitText。
+ * k：畫布上的 1 px 在螢幕上是幾 px（有透視、3D、鏡頭縮放的版面，字是畫在貼圖上的，字級要除以 k 才是螢幕上的大小）。
+ */
+export function msgBlockV2(c: CanvasRenderingContext2D, msg: Msg, family: string, w: number, h: number, o: { k?: number; lineHeight?: number; maxLines?: number; valign?: number } = {}): MsgBlock {
+  const k = o.k ?? 1, lh = o.lineHeight ?? 1.32;
+  const opts = { min: V2.msgMin / k, max: msgMaxFor(msg.text) / k, lineHeight: lh, maxLines: o.maxLines ?? 6 };
+  // 署名最大 32（螢幕 px），行距約 1.9 倍：先扣掉再找留言的字級
+  const hh = Math.max(60, h - (V2.sigMax / k) * 1.9);
+  const fit = fitClauses(c, msg.text, family, w, hh, opts) ?? fitText(c, msg.text, family, w, hh, opts);
+  const sigSize = sigV2(fit.size * k) / k;
+  const gap = Math.max(sigSize * 1.6, fit.size * 0.62);
   const height = fit.height + gap;
   const top = (h - height) * (o.valign ?? 0.5) + fit.size * 0.92;
   const last = top + (fit.lines.length - 1) * fit.lineHeight;
