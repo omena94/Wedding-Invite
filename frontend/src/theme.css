@@ -1457,6 +1457,12 @@ tbody tr:last-child td { border-bottom: none; }
 .ws-karaoke { font: 700 22px/1.5 "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans TC", "PingFang TC", sans-serif; }
 .ws-word { background: linear-gradient(90deg, var(--milk-tea-900) var(--p), var(--milk-tea-300) var(--p)); -webkit-background-clip: text; background-clip: text; color: transparent; }
 .ws-preview-next { margin-top: 4px; font-size: 14px; color: var(--text-muted); }
+/* 還沒有時間軸：下一步說清楚、按鈕放顯眼 */
+.ws-empty { display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; padding: 18px 12px; margin-top: 10px; border-radius: 10px; background: #fbf1dc; }
+.ws-empty .helper-text { margin: 0; max-width: 520px; }
+.ws-empty-title { font-weight: 700; color: var(--milk-tea-900); }
+.ws-empty-inline { flex-direction: row; flex-wrap: wrap; justify-content: space-between; text-align: left; padding: 10px 12px; font-size: 14px; color: var(--milk-tea-900); }
+.ws-rate { display: inline-flex; gap: 4px; margin-left: auto; }
 .ws-tap-list { max-height: 220px; overflow-y: auto; margin-top: 10px; border-radius: 10px; background: var(--bg-card); border: 1px solid var(--border-soft); padding: 6px 0; }
 .ws-tap-line { padding: 5px 12px; font-size: 14px; color: var(--text-muted); }
 .ws-tap-line.done { color: var(--text-dark); }

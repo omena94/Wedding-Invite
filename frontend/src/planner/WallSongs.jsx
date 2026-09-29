@@ -244,8 +244,9 @@ function SongEditor({ song, onClose, onSaved, onPatched }) {
   const [analysis, setAnalysis] = useState(null);
   const [blobUrl, setBlobUrl] = useState("");
   const lrcFile = useRef(null);
-  // LRC 原文：已經對好時間的歌預設收起來，播放器與歌詞清單才不會被擠到視窗最下面
-  const [showLrc, setShowLrc] = useState(() => !song.lyrics_lrc || !isSynced(parseLrc(song.lyrics_lrc)));
+  // LRC 原文：只有還沒有歌詞（要貼）時預設打開。已經有歌詞的都收起來：對好時間的，播放器與歌詞清單才不會被擠到視窗最下面；
+  // 還沒時間的，「開始逐句對時」的提示才會在打開視窗時就看得到（新人 2026-09-29 找不到下一步）
+  const [showLrc, setShowLrc] = useState(() => !song.lyrics_lrc?.trim());
   const [saveNote, setSaveNote] = useState("");
   // 對字、逐句對時、自動、復原改的歌詞直接存（新人不想每改一句就滑到最下面按儲存，按了視窗還會關掉）
   const commitLrc = async (lrc) => {
@@ -374,6 +375,7 @@ function SongEditor({ song, onClose, onSaved, onPatched }) {
             onChange={(e) => setForm((f) => ({ ...f, lyrics_lrc: e.target.value, lyrics_source: "manual" }))} />}
           <LyricSync lrc={form.lyrics_lrc} offset={Number(form.lyrics_offset) || 0} blobUrl={blobUrl} analysis={analysis?.data}
             onLrc={(lrc) => setForm((f) => ({ ...f, lyrics_lrc: lrc, lyrics_source: "manual" }))} onCommit={commitLrc} saveNote={saveNote}
+            onTapStart={() => setShowLrc(false)}
             onOffset={(o) => set("lyrics_offset", Math.round(o * 100) / 100)}
             onShift={(dt) => setForm((f) => ({ ...f, lyrics_lrc: shiftLrc(f.lyrics_lrc, dt), lyrics_source: "manual" }))} />
         </>}
@@ -393,7 +395,7 @@ function SongEditor({ song, onClose, onSaved, onPatched }) {
  * - 逐句對時：整首還沒有時間時用，每句開始唱的那一刻按空白鍵。
  * 人按鍵通常慢一點點，所以記的時間自動往前 0.12 秒（放慢播放時換算成音檔時間）。
  */
-function LyricSync({ lrc, offset, blobUrl, analysis, onLrc, onCommit, saveNote, onOffset, onShift }) {
+function LyricSync({ lrc, offset, blobUrl, analysis, onLrc, onCommit, saveNote, onOffset, onShift, onTapStart }) {
   const audio = useRef(null);
   const listRef = useRef(null);
   const syncRef = useRef(null);
@@ -485,22 +487,39 @@ function LyricSync({ lrc, offset, blobUrl, analysis, onLrc, onCommit, saveNote, 
   }, [wt, focus]);
 
   // ------------------------------------------------ 逐句對時
-  const startTap = () => {
+  // LRC 原文裡還沒有時間的句子。parseLrc 在有任何一句有時間時會略過沒時間的句子，
+  // 逐句對時按到一半按「完成」就會變成這樣，所以另外從原文撈出來，才能「接著對剩下的」。
+  const timed = isSynced(doc);
+  const untimed = useMemo(() => lrc.split(/\r?\n/).map((s) => s.trim())
+    .filter((s) => s && !/^\[\d+:\d/.test(s) && !/^\[[a-z]+:[^\]]*\]$/i.test(s)), [lrc]);
+  const startTap = (resume = false) => {
     // 已經逐字對好的句子，重新逐句對時是整句平移、字跟字之間的間隔保留（old = 原本的開始時間）
-    const lines = doc.lines.filter((l) => l.text).map((l) => ({ t: NaN, text: l.text, words: l.words, old: l.t }));
+    const had = timed ? doc.lines.filter((l) => l.text) : [];
+    const rest = (timed ? untimed : doc.lines.filter((l) => l.text).map((l) => l.text)).map((text) => ({ t: NaN, text }));
+    const lines = [
+      ...had.map((l) => ({ t: resume ? l.t : NaN, text: l.text, words: l.words, old: l.t })),
+      ...rest,
+    ];
     if (!lines.length) return;
+    const cursor = resume ? had.length : 0;
     setWt(null);
-    setTap({ lines, cursor: 0 });
+    setTap({ lines, cursor });
     setRate(1);
+    onTapStart?.(); // 收起 LRC 原文，對時的清單才不會被擠到視窗外面
+    requestAnimationFrame(() => syncRef.current?.scrollIntoView({ block: "start", behavior: "smooth" }));
     stopAt.current = null; // 逐句對時是整首一路播
-    seek(0);
+    // 接著對：從最後一句對好的前 2 秒開始播，不用從頭再聽一次
+    seek(resume && had.length ? Math.max(0, had[had.length - 1].t + offset - 2) : 0);
     audio.current?.play();
   };
-  // 歌詞時間 = 音檔時間 − 整首偏移（畫面是「歌詞時間 + 偏移」顯示的，按下去的時間要換回來）
+  // 歌詞時間 = 音檔時間 − 整首偏移（畫面是「歌詞時間 + 偏移」顯示的，按下去的時間要換回來）；
+  // 放慢播放時，按鍵的反應時間換算成音檔時間要乘上速度
   const hit = () => setTap((s) => {
     if (!s || s.cursor >= s.lines.length) return s;
     const lines = s.lines.slice();
-    lines[s.cursor] = { ...lines[s.cursor], t: Math.max(0, (audio.current?.currentTime ?? 0) - REACT - offset) };
+    const prev = lines[s.cursor - 1]?.t;
+    const tt = Math.max(0, (audio.current?.currentTime ?? 0) - REACT * rate - offset);
+    lines[s.cursor] = { ...lines[s.cursor], t: Number.isFinite(prev) ? Math.max(prev + 0.05, tt) : tt };
     return { lines, cursor: s.cursor + 1 };
   });
   const back = () => setTap((s) => {
@@ -519,10 +538,13 @@ function LyricSync({ lrc, offset, blobUrl, analysis, onLrc, onCommit, saveNote, 
       ...(l.words?.length && Number.isFinite(l.old) ? { words: l.words.map((w) => ({ ...w, t: w.t + l.t - l.old })) } : {}),
     }));
     const rest = tap.lines.filter((l) => !Number.isFinite(l.t)).map((l) => ({ t: NaN, text: l.text }));
-    if (done.length) commit(toLrc([...done, ...rest]));
+    if (done.length) commit(toLrc([...done, ...rest], doc.meta));
     setTap(null);
+    setRate(1);
     audio.current?.pause();
   };
+  // 按完最後一句就自動完成、儲存（不用再找「完成」鍵）
+  useEffect(() => { if (tap && tap.cursor >= tap.lines.length) finish(); }, [tap]);
 
   // ------------------------------------------------ 逐字對時（只修一句）
   const openWord = (idx) => {
@@ -684,11 +706,21 @@ function LyricSync({ lrc, offset, blobUrl, analysis, onLrc, onCommit, saveNote, 
               </div>
             ))}
           </div>
+          {/* 按鈕不拿焦點：滑鼠點過之後再按空白鍵，才不會同時觸發按鈕、一次記兩句 */}
           <div className="toolbar" style={{ marginTop: 8 }}>
-            <button type="button" className="btn btn-primary" onClick={hit} disabled={tap.cursor >= tap.lines.length}>這句開始（空白鍵）</button>
-            <button type="button" className="btn btn-ghost btn-sm" onClick={back} disabled={tap.cursor === 0}>退一句（⌫）</button>
-            <button type="button" className="btn btn-ghost btn-sm" onClick={finish}>完成</button>
+            <button type="button" className="btn btn-primary" onMouseDown={(e) => e.preventDefault()} onClick={hit} disabled={tap.cursor >= tap.lines.length}>這句開始（空白鍵）</button>
+            <button type="button" className="btn btn-ghost btn-sm" onMouseDown={(e) => e.preventDefault()} onClick={back} disabled={tap.cursor === 0}>退一句（⌫）</button>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={finish}>先存到這裡</button>
             <span className="helper-text" style={{ margin: 0 }}>第 {Math.min(tap.cursor + 1, tap.lines.length)} / {tap.lines.length} 句</span>
+            <span className="ws-rate">
+              {[[1, "正常"], [0.75, "慢一點"]].map(([r, label]) => (
+                <button key={r} type="button" className={`btn btn-sm ${rate === r ? "btn-primary" : "btn-ghost"}`} onMouseDown={(e) => e.preventDefault()} onClick={() => setRate(r)}>{label}</button>
+              ))}
+            </span>
+          </div>
+          <div className="helper-text" style={{ marginBottom: 0 }}>
+            聽到框起來那句<b>開始唱</b>的那一刻按空白鍵，按錯按 ⌫ 退一句。前奏太長可以點上面的進度條跳過。
+            按完最後一句會自動儲存；中途要停可以按「先存到這裡」，之後再「接著對」。按得不夠準沒關係，之後可以用那句的「對字」或整首提早／延後微調。
           </div>
         </div>
       ) : wt ? (
@@ -698,10 +730,31 @@ function LyricSync({ lrc, offset, blobUrl, analysis, onLrc, onCommit, saveNote, 
           onStart={wordStart} onHit={wordHit} onBack={wordBack} onCancel={wordCancel} onApply={wordApply} />
       ) : (
         <>
-          <div className="ws-preview">
-            {cur ? <KaraokeLine line={cur} t={t} /> : <span className="muted-cell">{lyrics.has ? "（間奏）" : "沒有對好時間的歌詞"}</span>}
-            {next && <div className="ws-preview-next">{next.text}</div>}
-          </div>
+          {!timed ? (
+            // 還沒有時間軸（新人 2026-09-29：「這種我還沒有時間軸的怎麼辦」）：直接告訴他下一步，按鈕放最顯眼的地方
+            <div className="ws-empty">
+              {untimed.length ? (
+                <>
+                  <div className="ws-empty-title">這首的歌詞還沒有時間（共 {untimed.length} 句）</div>
+                  <div className="helper-text">按下面的按鈕，歌會從頭播；每一句<b>開始唱</b>的那一刻按一下空白鍵，大約跟著唱一遍就對好了，按完自動儲存。</div>
+                  <button type="button" className="btn btn-primary" disabled={!blobUrl} onClick={() => startTap(false)}><Wand2 size={14} /> 開始逐句對時</button>
+                </>
+              ) : (
+                <div className="helper-text">還沒有歌詞：按上面的「自動找歌詞」、「上傳 .lrc 檔」，或按「編輯 LRC 原文」把歌詞貼進去（一行一句，不用時間）。</div>
+              )}
+            </div>
+          ) : (
+            <div className="ws-preview">
+              {cur ? <KaraokeLine line={cur} t={t} /> : <span className="muted-cell">{lyrics.has ? "（間奏）" : "沒有對好時間的歌詞"}</span>}
+              {next && <div className="ws-preview-next">{next.text}</div>}
+            </div>
+          )}
+          {timed && untimed.length > 0 && (
+            <div className="ws-empty ws-empty-inline">
+              <span>還有 {untimed.length} 句沒有時間（從「{untimed[0].length > 16 ? `${untimed[0].slice(0, 16)}…` : untimed[0]}」開始），大螢幕不會顯示。</span>
+              <button type="button" className="btn btn-primary btn-sm" disabled={!blobUrl} onClick={() => startTap(true)}><Wand2 size={13} /> 接著對剩下的</button>
+            </div>
+          )}
           {rows.length > 0 && (
             <>
               <div className="helper-text" style={{ margin: "2px 0 6px" }}>
@@ -723,14 +776,19 @@ function LyricSync({ lrc, offset, blobUrl, analysis, onLrc, onCommit, saveNote, 
               </div>
             </>
           )}
-          <div className="toolbar" style={{ marginTop: 8 }}>
-            <button type="button" className="btn btn-ghost btn-sm" disabled={!blobUrl || !lrc.trim()} onClick={startTap}><Wand2 size={13} /> 逐句對時</button>
-            <span className="helper-text" style={{ margin: 0 }}>整首歌詞時間：</span>
-            <button type="button" className="btn btn-ghost btn-sm" onClick={() => onShift(-0.1)}>提早 0.1 秒</button>
-            <button type="button" className="btn btn-ghost btn-sm" onClick={() => onShift(0.1)}>延後 0.1 秒</button>
-            {offset !== 0 && <button type="button" className="btn btn-ghost btn-sm" onClick={() => onOffset(0)}>清除偏移 {offset > 0 ? "+" : ""}{offset}s</button>}
-            {undo !== null && <button type="button" className="btn btn-ghost btn-sm" onClick={() => { commit(undo); setUndo(null); }}>復原剛剛的修改</button>}
-          </div>
+          {/* 還沒有時間時，整首提早／延後沒有意義，先不顯示 */}
+          {(timed || undo !== null) && (
+            <div className="toolbar" style={{ marginTop: 8 }}>
+              {timed && <>
+                <button type="button" className="btn btn-ghost btn-sm" disabled={!blobUrl || !lrc.trim()} onClick={() => startTap(false)}><Wand2 size={13} /> 整首重新逐句對時</button>
+                <span className="helper-text" style={{ margin: 0 }}>整首歌詞時間：</span>
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => onShift(-0.1)}>提早 0.1 秒</button>
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => onShift(0.1)}>延後 0.1 秒</button>
+                {offset !== 0 && <button type="button" className="btn btn-ghost btn-sm" onClick={() => onOffset(0)}>清除偏移 {offset > 0 ? "+" : ""}{offset}s</button>}
+              </>}
+              {undo !== null && <button type="button" className="btn btn-ghost btn-sm" onClick={() => { commit(undo); setUndo(null); }}>復原剛剛的修改</button>}
+            </div>
+          )}
         </>
       )}
     </div>
