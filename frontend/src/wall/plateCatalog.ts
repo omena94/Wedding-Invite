@@ -466,6 +466,14 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "idea": "中場休息，宣文上場參加投籃挑戰，一拍投一球，最後一球空心進；孟庭在場邊揮加油棒。留言寫在大支票（獎品看板）上。"
  },
  {
+  "name": "basketball",
+  "title": "街頭鬥牛",
+  "family": "hoops",
+  "light": true,
+  "couple": true,
+  "idea": "公園籃球場，兩人一對一：宣文運球（每拍一下）、孟庭蓋火鍋；芃芃和 QQ 在場邊當裁判。留言塗鴉在球場後面的牆上。"
+ },
+ {
   "name": "concert",
   "title": "搖滾區",
   "family": "live",
