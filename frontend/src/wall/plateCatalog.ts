@@ -122,6 +122,150 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "idea": "廚房側面，孟庭甩鍋（在大鼓上翻），宣文遞盤子，QQ 在腳邊等掉下來的；留言寫在冰箱上的便條，歌詞像食譜步驟。"
  },
  {
+  "name": "tennis",
+  "title": "網球",
+  "family": "sport",
+  "light": true,
+  "couple": true,
+  "idea": "俯視或斜俯視的球場，兩人對打，出界球被芃芃撿走；球是 `ball` 色，擊球在鼓點。留言在計分牌。"
+ },
+ {
+  "name": "pingpong",
+  "title": "桌球",
+  "family": "sport",
+  "light": false,
+  "couple": true,
+  "idea": "桌球桌側面特寫，乒乓在每一拍彈一下（快歌很快、慢歌很慢），歌詞一拍一個詞組跟著球跳。"
+ },
+ {
+  "name": "archery",
+  "title": "射箭",
+  "family": "sport",
+  "light": false,
+  "couple": true,
+  "idea": "孟庭拉弓（預備一小節）、放箭在小節線，箭飛過畫面正中靶心變成一顆愛心，靶上的環寫著留言。"
+ },
+ {
+  "name": "firstdance",
+  "title": "第一支舞",
+  "family": "dance",
+  "light": false,
+  "couple": true,
+  "idea": "婚禮服，空蕩的舞池、一盞聚光燈、慢慢轉；賓客的留言像周圍桌上的小燭光一則一則亮起。慢歌專用。"
+ },
+ {
+  "name": "swing",
+  "title": "搖擺舞",
+  "family": "dance",
+  "light": false,
+  "couple": true,
+  "idea": "快歌用：40 年代搖擺舞，甩出去、拉回來、拋起來，全在拍點；地板的舞步腳印排成字。"
+ },
+ {
+  "name": "dogportrait",
+  "title": "狗狗肖像",
+  "family": "dog",
+  "light": true,
+  "couple": true,
+  "idea": "美術館的畫框裡是芃芃（或 QQ）的正式肖像（版畫線條），畫框下的銘牌寫著留言與「No.042 館藏」。"
+ },
+ {
+  "name": "ringbearer",
+  "title": "狗狗戒童",
+  "family": "dog",
+  "light": false,
+  "couple": true,
+  "idea": "婚禮服的兩人在走道盡頭等，QQ 叼著戒枕走紅毯，一拍一步；兩側座位的賓客舉著留言。"
+ },
+ {
+  "name": "picnic",
+  "title": "野餐",
+  "family": "date",
+  "light": true,
+  "couple": true,
+  "idea": "格紋野餐墊、籃子、三明治，狗狗偷吃；風吹起的餐巾紙上寫著留言。"
+ },
+ {
+  "name": "stargaze",
+  "title": "看星星",
+  "family": "date",
+  "light": false,
+  "couple": true,
+  "idea": "兩人躺在草地上指著天空，指到的星星連成留言的字（呼應 `stars`，但這裡是人的視角）。慢歌。"
+ },
+ {
+  "name": "scooter",
+  "title": "騎機車",
+  "family": "date",
+  "light": false,
+  "couple": true,
+  "idea": "台灣街景（騎樓、招牌、紅綠燈），宣文騎機車載孟庭、踏板站著狗；招牌字是歌詞，路口的看板是留言。"
+ },
+ {
+  "name": "lantern",
+  "title": "放天燈",
+  "family": "date",
+  "light": false,
+  "couple": true,
+  "idea": "平溪天燈：兩人在天燈上寫字（留言），點火、放手在小節線，天燈升空，遠處已經有一片寫著其他留言的天燈。"
+ },
+ {
+  "name": "ferriswheel",
+  "title": "摩天輪",
+  "family": "date",
+  "light": false,
+  "couple": true,
+  "idea": "巨大的摩天輪慢轉（細線結構、燈泡在拍點閃），兩人在其中一個車廂裡，其他車廂裝著留言與歌詞。"
+ },
+ {
+  "name": "coffee",
+  "title": "咖啡拉花",
+  "family": "home",
+  "light": true,
+  "couple": true,
+  "idea": "俯視兩杯咖啡，拉花在拍點畫出愛心與葉子，旁邊的咖啡店黑板菜單寫著歌詞與留言。"
+ },
+ {
+  "name": "movie",
+  "title": "電影院",
+  "family": "home",
+  "light": false,
+  "couple": true,
+  "idea": "從後排看兩人的背影和狗狗的頭，大銀幕上放的是歌詞（跟唱），爆米花在小鼓跳；片頭字卡是留言。"
+ },
+ {
+  "name": "proposal",
+  "title": "求婚",
+  "family": "wedding",
+  "light": false,
+  "couple": true,
+  "idea": "日常服：宣文單膝跪下（預備）、在小節線打開戒指盒（訊號色的光），背後的城市夜景窗戶亮成留言的字。"
+ },
+ {
+  "name": "cake",
+  "title": "切蛋糕",
+  "family": "wedding",
+  "light": true,
+  "couple": true,
+  "idea": "三層蛋糕，兩人握同一把刀切下去（小節線），每一層蛋糕的側面寫著留言／歌詞。"
+ },
+ {
+  "name": "toast",
+  "title": "乾杯",
+  "family": "wedding",
+  "light": false,
+  "couple": true,
+  "idea": "兩只香檳杯在拍點碰杯，氣泡往上冒，冒到頂端組成留言的字。"
+ },
+ {
+  "name": "debug",
+  "title": "深夜寫程式",
+  "family": "work",
+  "light": false,
+  "couple": true,
+  "idea": "宣文在雙螢幕前敲鍵盤（一拍一下），螢幕上的建置從紅燈在小節線變綠燈；孟庭下班穿著護理服回來，從後面抱住他。留言是螢幕上一則程式碼審查的留言。"
+ },
+ {
   "name": "boarding",
   "title": "登機證",
   "family": "doc",

@@ -1,0 +1,32 @@
+{
+  "group": "c3-dogs",
+  "series": {
+    "pp_dogportrait_oil": {"ref":"pp_dogportrait_oil","refFrac":0.9546875,"groundFrac":0.97578125,"target":640},
+    "qq_dogportrait_oil": {"ref":"qq_dogportrait_oil","refFrac":0.9546875,"groundFrac":0.97578125,"target":640},
+    "pp_": {"ref":"pp_stand","refFrac":0.8310546875,"groundFrac":0.927734375,"target":260,"from":"base:pp_"},
+    "qq_": {"ref":"qq_stand","refFrac":0.9326171875,"groundFrac":0.958984375,"target":280,"from":"base:qq_"},
+    "cp_zoomies_": {"ref":"cp_hug","refFrac":0.9736842105263158,"groundFrac":0.9864433811802232,"target":600,"from":"base:cp_"},
+    "cp_ringbearer_": {"ref":"cp_waltz_1","refFrac":0.96484375,"groundFrac":0.9830729166666666,"target":600,"from":"waltz:cp_waltz_"}
+  },
+  "sprites": {
+    "cp_ringbearer_kneel": {"kind":"couple","w":554,"h":602,"ax":239.5,"ay":598.2,"ref":600},
+    "cp_ringbearer_wait": {"kind":"couple","w":410,"h":591,"ax":189.7,"ay":586.8,"ref":600},
+    "cp_zoomies_sofa_1": {"kind":"couple","w":596,"h":570,"ax":297.7,"ay":565.9,"ref":600,"pts":{"legs":[297.7,499.1]}},
+    "cp_zoomies_sofa_2": {"kind":"couple","w":603,"h":563,"ax":302.1,"ay":559.4,"ref":600,"pts":{"legs":[302.1,479.8]}},
+    "pp_dogportrait_back": {"kind":"dog","w":168,"h":239,"ax":88.1,"ay":235.4,"ref":260},
+    "pp_dogportrait_oil": {"kind":"dog","w":512,"h":646,"ax":255.8,"ay":642.9,"ref":640,"height":1},
+    "pp_dogportrait_tilt": {"kind":"dog","w":208,"h":287,"ax":108.6,"ay":284,"ref":260},
+    "pp_zoomies_1": {"kind":"dog","w":307,"h":157,"ax":177.7,"ay":153.8,"ref":260},
+    "pp_zoomies_2": {"kind":"dog","w":294,"h":195,"ax":153.2,"ay":191.1,"ref":260},
+    "pp_zoomies_bow": {"kind":"dog","w":292,"h":204,"ax":129.4,"ay":200.6,"ref":260},
+    "qq_dogportrait_back": {"kind":"dog","w":185,"h":284,"ax":105.4,"ay":280.1,"ref":280},
+    "qq_dogportrait_oil": {"kind":"dog","w":513,"h":647,"ax":256.4,"ay":642.9,"ref":640,"height":1},
+    "qq_dogportrait_tilt": {"kind":"dog","w":225,"h":285,"ax":95.4,"ay":281,"ref":280},
+    "qq_ringbearer_sit": {"kind":"dog","w":297,"h":284,"ax":150.3,"ay":280.7,"ref":280,"pts":{"ring":[264.5,96.5,7.6]}},
+    "qq_ringbearer_walk_1": {"kind":"dog","w":300,"h":273,"ax":132.7,"ay":269.3,"ref":280},
+    "qq_ringbearer_walk_2": {"kind":"dog","w":300,"h":262,"ax":132.4,"ay":258.5,"ref":280},
+    "qq_zoomies_1": {"kind":"dog","w":296,"h":200,"ax":139.4,"ay":196,"ref":280},
+    "qq_zoomies_2": {"kind":"dog","w":296,"h":245,"ax":135,"ay":241.2,"ref":280},
+    "qq_zoomies_bow": {"kind":"dog","w":289,"h":267,"ax":128.6,"ay":263.7,"ref":280}
+  }
+}

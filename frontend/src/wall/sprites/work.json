@@ -1,0 +1,25 @@
+{
+  "group": "work",
+  "series": {
+    "xw_work_": {"ref":"xw_work_idle_front","refFrac":0.9505208333333334,"groundFrac":0.9739583333333334,"target":600},
+    "mt_work_": {"ref":"mt_work_idle_front","refFrac":0.9596354166666666,"groundFrac":0.978515625,"target":600},
+    "cp_work_": {"ref":"xw_work_idle_front","refFrac":0.9505208333333334,"groundFrac":0.9739583333333334,"target":600},
+    "pp_work_": {"ref":"pp_stand","refFrac":0.8310546875,"groundFrac":0.927734375,"target":260,"from":"base:pp_"},
+    "qq_work_": {"ref":"qq_stand","refFrac":0.9326171875,"groundFrac":0.958984375,"target":280,"from":"base:qq_"}
+  },
+  "sprites": {
+    "cp_work_backhug_1": {"kind":"couple","w":288,"h":457,"ax":127.6,"ay":453.5,"ref":600,"pts":{"feet":[21,439.7],"c1":[159.2,424.4],"c2":[239.4,344.3]}},
+    "cp_work_backhug_2": {"kind":"couple","w":289,"h":461,"ax":125.1,"ay":457.2,"ref":600,"pts":{"feet":[21.4,443.4],"c1":[159.7,428.5],"c2":[239.8,348.4]}},
+    "mt_work_idle_front": {"kind":"person","w":191,"h":607,"ax":96.7,"ay":603.1,"ref":600},
+    "mt_work_listen": {"kind":"person","w":256,"h":597,"ax":79.2,"ay":593.3,"ref":600,"pts":{"bell":[250.3,133.5]}},
+    "mt_work_listen_smile": {"kind":"person","w":254,"h":599,"ax":77.5,"ay":595.3,"ref":600,"pts":{"bell":[252.4,134.7]}},
+    "mt_work_thumb": {"kind":"person","w":193,"h":608,"ax":102.4,"ay":603.9,"ref":600},
+    "mt_work_walk_1": {"kind":"person","w":320,"h":606,"ax":156.5,"ay":601.8,"ref":600},
+    "mt_work_walk_2": {"kind":"person","w":363,"h":606,"ax":170.4,"ay":601.8,"ref":600},
+    "xw_work_idle_front": {"kind":"person","w":213,"h":607,"ax":103.4,"ay":603.1,"ref":600},
+    "xw_work_thumb": {"kind":"person","w":225,"h":612,"ax":118.6,"ay":608.8,"ref":600},
+    "xw_work_type_1": {"kind":"person","w":264,"h":434,"ax":133.4,"ay":430.5,"ref":600,"pts":{"keys":[226,214.1],"c1":[131.5,401.1],"c2":[213.7,318.9]}},
+    "xw_work_type_2": {"kind":"person","w":264,"h":434,"ax":133.4,"ay":430.5,"ref":600,"pts":{"keys":[226,213.7],"c1":[131.5,400.7],"c2":[213.7,318.5]}},
+    "xw_work_yes": {"kind":"person","w":275,"h":496,"ax":123.5,"ay":492.5,"ref":600,"pts":{"c1":[136.8,461.5],"c2":[222.2,376]}}
+  }
+}
