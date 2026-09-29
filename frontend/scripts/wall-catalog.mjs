@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 // 產生大螢幕的版面清單（src/wall/plateCatalog.ts），給後台「大螢幕版面」頁用：中文名稱、系列、亮暗、有沒有人物、一句話點子。
 // 來源是 docs/wall/CATALOG.md 的表格＋最早的 11 個版面；只列 scenes/ 裡真的有的檔（沒做或被拿掉的不列）。
-// 新增或刪除版面後跑一次：node scripts/wall-catalog.mjs
+// 新增或刪除版面後跑一次：node scripts/wall-catalog.mjs（主導者 commit 時加 --tracked，只列已經進 git 的版面）
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { execSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -36,7 +37,12 @@ for (const line of md.split(/\r?\n/)) {
   rows.push({ name, title: title.trim(), family, light: tone === '亮', couple: section.includes('新人互動'), idea: idea.trim() });
 }
 const scenes = path.join(ROOT, 'src', 'wall', 'scenes');
-const built = rows.filter((r) => existsSync(path.join(scenes, `${r.name}.ts`)));
+// --tracked：只算已經加進 git 的版面（主導者 commit 時用）。很多同事同時在 scenes/ 寫版面，
+// 還沒驗收的檔不能出現在正式站的後台清單裡（會沒有縮圖、預覽也會壞）。
+const tracked = process.argv.includes('--tracked')
+  ? new Set(execSync('git ls-files src/wall/scenes', { cwd: ROOT, encoding: 'utf8' }).split(/\r?\n/).map((f) => path.basename(f, '.ts')))
+  : null;
+const built = rows.filter((r) => existsSync(path.join(scenes, `${r.name}.ts`)) && (!tracked || tracked.has(r.name)));
 const out = `// 自動產生（node scripts/wall-catalog.mjs），不要手改：大螢幕版面清單，後台「大螢幕版面」頁用。
 export interface PlateInfo { name: string; title: string; family: string; light: boolean; couple: boolean; idea: string }
 export const PLATE_CATALOG: PlateInfo[] = ${JSON.stringify(built, null, 1)};

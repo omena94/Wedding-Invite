@@ -1,0 +1,22 @@
+{
+  "group": "c2",
+  "series": {
+    "cp_fdance_": {"ref":"cp_fdance_sway","refFrac":0.9593301435406698,"groundFrac":0.9792663476874003,"target":600},
+    "cp_swing_": {"ref":"cp_swing_close","refFrac":0.9529505582137161,"groundFrac":0.9720893141945773,"target":600},
+    "xw_": {"ref":"xw_idle_front","refFrac":0.9518229166666666,"groundFrac":0.9739583333333334,"target":600,"from":"base:xw_"},
+    "mt_": {"ref":"mt_idle_front","refFrac":0.9641927083333334,"groundFrac":0.9837239583333334,"target":600,"from":"base:mt_"},
+    "pp_": {"ref":"pp_stand","refFrac":0.8310546875,"groundFrac":0.927734375,"target":260,"from":"base:pp_"},
+    "qq_": {"ref":"qq_stand","refFrac":0.9326171875,"groundFrac":0.958984375,"target":280,"from":"base:qq_"}
+  },
+  "sprites": {
+    "cp_fdance_lean": {"kind":"couple","w":433,"h":611,"ax":150.4,"ay":606.7,"ref":600},
+    "cp_fdance_lift": {"kind":"couple","w":495,"h":604,"ax":230.7,"ay":599.8,"ref":600},
+    "cp_fdance_sway": {"kind":"couple","w":391,"h":608,"ax":157.9,"ay":603.2,"ref":600},
+    "cp_swing_close": {"kind":"couple","w":414,"h":606,"ax":174,"ay":602.8,"ref":600},
+    "cp_swing_kick": {"kind":"couple","w":615,"h":571,"ax":323.1,"ay":566.6,"ref":600},
+    "cp_swing_open": {"kind":"couple","w":628,"h":502,"ax":287.4,"ay":497.8,"ref":600},
+    "cp_swing_spin": {"kind":"couple","w":574,"h":605,"ax":306.5,"ay":600.8,"ref":600},
+    "cp_swing_toss": {"kind":"couple","w":523,"h":616,"ax":254.8,"ay":612.3,"ref":600},
+    "xw_archery_quiver": {"kind":"person","w":359,"h":609,"ax":96.2,"ay":605.1,"ref":600}
+  }
+}

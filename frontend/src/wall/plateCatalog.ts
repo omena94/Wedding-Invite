@@ -122,6 +122,14 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "idea": "廚房側面，孟庭甩鍋（在大鼓上翻），宣文遞盤子，QQ 在腳邊等掉下來的；留言寫在冰箱上的便條，歌詞像食譜步驟。"
  },
  {
+  "name": "firstdance",
+  "title": "第一支舞",
+  "family": "dance",
+  "light": false,
+  "couple": true,
+  "idea": "婚禮服，空蕩的舞池、一盞聚光燈、慢慢轉；賓客的留言像周圍桌上的小燭光一則一則亮起。慢歌專用。"
+ },
+ {
   "name": "boarding",
   "title": "登機證",
   "family": "doc",
