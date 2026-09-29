@@ -43,6 +43,8 @@ const XW = ['xw_live_rail_1', 'xw_live_rail_2'];
 const MT = ['mt_live_rail_1', 'mt_live_rail_2'];
 /** 全場的手燈每小節換一次顏色（中控手燈）。 */
 const LITS = ['signal', 'ember'] as const;
+/** 觀眾光暈貼圖比觀眾貼圖多往上留的空間（舉最高的手燈的光暈）。 */
+const GLOW_TOP = 60;
 
 /** 燈：燈架塔上四盞往左下打、舞台地板上三盞往左上打（原點、平常的角度、甩的幅度）。角度 0 = 正下方、正 = 往右。 */
 const RIG = [
@@ -115,6 +117,8 @@ export default class Concert extends Scene {
   banner = { x: 0, y: 0, w: 0, h: 0 };
   who: Who[] = [];
   crowd: CrowdBake = { groups: [] };
+  /** 觀眾手上的燈的光暈（加亮層用）：[群][手勢][燈色]，一樣在 init 畫好（半解析度），每格只貼。 */
+  crowdGlow: HTMLCanvasElement[][][] = [];
   jumps: number[] = [];
   tLit = 0;
   tUnfurl = 0;
@@ -162,6 +166,18 @@ export default class Concert extends Scene {
     // 觀眾在這裡一次畫好成貼圖（遠近兩群 × 手往左／往右兩種），每格只貼上去（一格省 5 ms，會場的筆電比較弱）。
     // 身體畫到 EYE + 200 就好：再下面被地上的暗蓋住了。
     this.crowd = bakeCrowd(fans, { unit: SZ * 0.062, fill: () => rgba('ink'), rim: mixRgba('signal', 'ember', 0.5, 0.3), y0: EYE - 190, y1: EYE + 200, split: 0.46 });
+    // 手燈與手機的光暈也先畫好：每一群 × 兩種手勢 × 兩種燈色（每小節換色），半解析度（光暈本來就是糊的）
+    this.crowdGlow = this.crowd.groups.map((G2) => G2.lights.map((ls) => LITS.map((lk) => {
+      const cv = document.createElement('canvas');
+      cv.width = Math.ceil((W + 120) * 0.5); cv.height = Math.ceil((EYE + 200 - (G2.y0 - GLOW_TOP)) * 0.5);
+      const gc = cv.getContext('2d')!;
+      gc.setTransform(0.5, 0, 0, 0.5, 60 * 0.5, -(G2.y0 - GLOW_TOP) * 0.5);
+      for (const l of ls) {
+        if (l.prop === 'stick') glow(gc, rgba(lk), l.x, l.y, l.r * 1.3, 0.4 + 0.35 * hash(l.s * 97));
+        else glow(gc, rgba('bone'), l.x, l.y, l.r * 1.1, 0.3);
+      }
+      return cv;
+    })));
     // LED 的細格線（每格蓋在螢幕上一次）
     const pc = document.createElement('canvas');
     pc.width = pc.height = 4;
@@ -175,6 +191,7 @@ export default class Concert extends Scene {
   /** 預先畫好的觀眾貼圖在窗格結束時還掉（一張幾 MB）。 */
   override dispose() {
     for (const G2 of this.crowd.groups) for (const cv of G2.poses) { cv.width = 0; cv.height = 0; }
+    for (const cv of this.crowdGlow.flat(2)) { cv.width = 0; cv.height = 0; }
     super.dispose();
   }
 
@@ -320,14 +337,16 @@ export default class Concert extends Scene {
     const pose = ((bi % 2) + 2) % 2, fadeOld = 1 - clamp(since / 0.035);
     const balls: { x: number; y: number; r: number }[] = [];
     // destination-over：先畫近的（在上面）、再畫遠的
-    for (const G2 of [...this.crowd.groups].reverse()) {
+    const litIdx = ((bar % 2) + 2) % 2;
+    for (let gi = this.crowd.groups.length - 1; gi >= 0; gi--) {
+      const G2 = this.crowd.groups[gi]!;
       const dy = kick * SZ * 0.062 * G2.k * 0.32 + (jAll ? -jAll.y : 0) * G2.k;
       drawBakedCrowd(c, G2.poses[pose]!, G2.y0, dy);
       if (fadeOld > 0) drawBakedCrowd(c, G2.poses[1 - pose]!, G2.y0, dy, fadeOld);
-      for (const l of G2.lights[pose]!) {
-        if (l.prop === 'stick') { balls.push({ x: l.x, y: l.y - dy, r: l.r }); glow(g, litCol, l.x, l.y - dy, l.r * (1.15 + 0.3 * kick), (0.4 + 0.35 * hash(l.s * 97)) * on); }
-        else glow(g, rgba('bone'), l.x, l.y - dy, l.r * 1.1, 0.3 * on);
-      }
+      for (const l of G2.lights[pose]!) if (l.prop === 'stick') balls.push({ x: l.x, y: l.y - dy, r: l.r });
+      // 光暈：拍點上亮一下（以前是光暈放大，現在是整片變亮，看起來一樣在跟拍子）
+      const gcv = this.crowdGlow[gi]?.[pose]?.[litIdx];
+      if (gcv) { g.globalAlpha = on * (0.85 + 0.3 * kick); g.drawImage(gcv, -60, G2.y0 - GLOW_TOP - dy, gcv.width * 2, gcv.height * 2); g.globalAlpha = 1; }
     }
     // 手燈的球（顏色每小節跟著全場換，所以不畫進貼圖）：一個 path 畫完
     c.fillStyle = mixRgba(lit, 'bone', 0.35, 0.3 + 0.6 * on);
