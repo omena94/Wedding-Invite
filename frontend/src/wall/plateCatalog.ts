@@ -154,6 +154,14 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "idea": "婚禮服的兩人在走道盡頭等，QQ 叼著戒枕走紅毯，一拍一步；兩側座位的賓客舉著留言。"
  },
  {
+  "name": "stargaze",
+  "title": "看星星",
+  "family": "date",
+  "light": false,
+  "couple": true,
+  "idea": "兩人躺在草地上指著天空，指到的星星連成留言的字（呼應 `stars`，但這裡是人的視角）。慢歌。"
+ },
+ {
   "name": "scooter",
   "title": "騎機車",
   "family": "date",
