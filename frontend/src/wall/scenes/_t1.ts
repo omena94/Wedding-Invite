@@ -8,13 +8,14 @@
 //  - 預先畫好的畫布（不變的底圖畫一次）、陰影貼圖、條碼、手寫遮罩、節拍工具。
 import * as THREE from 'three';
 import { FSPass, makeRT, W, H, scaleContext2D } from '../engine/gl';
-import { HEX, LIN, rgba } from '../engine/palette';
+import { HEX, LIN, rgba, type PaletteKey } from '../engine/palette';
 import { clamp, hash, mulberry32 } from '../engine/util';
 import { font } from '../engine/type';
 import { drawHeart } from '../engine/motifs';
 import type { AudioData } from '../engine/audio';
 import type { LyricStyle } from './_motifs';
 import { fitText, type FitResult } from '../engine/text';
+import { fitClauses } from './_v2';
 
 type Ctx2 = CanvasRenderingContext2D;
 export type Rect = [number, number, number, number];
@@ -438,12 +439,29 @@ export function fitCam(c: TableCam, rects: Rect[], maxDist = TABLE_F * 1.6): Tab
  * 層是 fast 的 Layer2D，範圍是桌面座標 0..W × 0..H（可以是比較高的解析度）。
  * extra：版面自己的桌面圖樣 `vec3 deskArt(vec2 p, vec3 desk)`（p 是桌面座標）。
  */
-export function tablePass(extra = 'vec3 deskArt(vec2 p, vec3 desk) { return desk; }', extraUniforms: Record<string, THREE.IUniform> = {}) {
+/** 預設的桌面：木紋（v2：桌面是暗一點的木頭，紙擺在上面才是被燈照亮的物件）。 */
+export const WOOD_GLSL = /* glsl */ `
+vec3 deskArt(vec2 p, vec3 desk) {
+  float n = snoise(vec2(p.x * 0.0016, p.y * 0.02));
+  float grain = sin(p.y * 0.09 + n * 5.0 + sin(p.x * 0.004) * 2.0);
+  float plank = step(0.5, fract(p.y / 260.0 + 0.13 * snoise(vec2(p.x * 0.0007, 3.0))));
+  return desk * (0.95 + 0.05 * grain) * (0.97 + 0.04 * plank);
+}`;
+
+export function tablePass(extra = WOOD_GLSL, extraUniforms: Record<string, THREE.IUniform> = {}) {
   return new FSPass(/* glsl */ `
     uniform sampler2D layer; uniform sampler2D bake; uniform float tone; uniform float fib; uniform float t;
     uniform vec3 camC; uniform vec3 camR; uniform vec3 camD; uniform vec3 camF;
     uniform float focusZ; uniform float aperture; uniform float sharp;
     uniform vec3 lamp; // 燈照在桌面的哪裡（u, v）與光池半徑
+    // 窗外的光（v2「環境動態」）：x = 百葉窗光條的強度、y = 樹葉影子的強度、z = 時間（光條很慢地滑、葉影被風吹動）
+    uniform vec3 sun;
+    // 各版面自己的光（每個版面的場景、時間、光的顏色都不一樣）：tint = 光的顏色（乘在整個畫面上）、amb = 光池外的亮度
+    uniform vec3 tint; uniform float amb;
+    // 桌子的遠端之外（桌面 v < edgeV，或是看向地平線以上）換成背景層：窗外的景（機場、夜裡的城市），螢幕座標、低解析度（本來就是失焦的遠景）
+    uniform sampler2D backTex; uniform float backOn; uniform float edgeV;
+    // 暗版面：右下角 HUD（時間、已收到幾則、QR）那一塊再壓暗一點，淺色的字才讀得清楚
+    uniform float hudDark;
     ${extra}
     vec4 L(vec2 p) {
       vec2 uv = vec2(p.x / ${W}.0, 1.0 - p.y / ${H}.0);
@@ -453,11 +471,18 @@ export function tablePass(extra = 'vec3 deskArt(vec2 p, vec3 desk) { return desk
       c.rgb = c.a > 0.0 ? toLinear(c.rgb / c.a) * c.a : vec3(0.0);
       return c;
     }
+    float hudMask(vec2 sp) { return smoothstep(1180.0, 1520.0, sp.x) * smoothstep(700.0, 900.0, sp.y); }
     void main() {
       vec2 sp = vec2(vUv.x * ${W}.0, (1.0 - vUv.y) * ${H}.0);
       vec3 d = camF * ${TABLE_F.toFixed(3)} + camR * (sp.x - ${W / 2}.0) + camD * (sp.y - ${H / 2}.0);
       float tt = camC.z / max(-d.z, 1e-4);
       vec2 p = camC.xy + tt * d.xy;
+      if (backOn > 0.5 && (d.z > -1e-4 || p.y < edgeV)) {
+        vec4 b = textureLod(backTex, vUv, 0.0);
+        b.rgb = b.a > 0.0 ? toLinear(b.rgb / b.a) * b.a : vec3(0.0);
+        fragColor = vec4(b.rgb * (1.0 - hudDark * hudMask(sp)), 1.0);
+        return;
+      }
       float z = tt * ${TABLE_F.toFixed(3)};
       // 景深：離焦平面越遠圓盤越大（sharp 以內都是清楚的）；半徑換成桌面座標
       float coc = aperture * max(0.0, abs(z - focusZ) / z - sharp);
@@ -481,12 +506,32 @@ export function tablePass(extra = 'vec3 deskArt(vec2 p, vec3 desk) { return desk
       col *= mix(1.0, 0.8 + 0.4 * bk.r, fib);
       // 燈：焦點附近亮、四周暗下去（紙最亮也不超過紙色本身太多，不刺眼）
       float ld = length(p - lamp.xy) / lamp.z;
-      col *= 0.74 + 0.3 * exp(-ld * ld);
+      col *= tint * (amb + (1.04 - amb) * exp(-ld * ld));
+      // 桌子的遠端邊緣：一條暗的邊（桌緣的厚度），跟背景分開
+      if (backOn > 0.5) col *= 1.0 - 0.45 * (1.0 - smoothstep(0.0, 14.0, p.y - edgeV));
+      // 窗外的光：斜斜的百葉窗光條（只落在桌面左上那一大片，邊緣很軟）＋右下角樹葉的影子，都在桌面座標，
+      // 所以紙、道具、桌面一起被照到，跟著透視走
+      if (sun.x > 0.0) {
+        float u = dot(p, vec2(0.52, 0.85));
+        float band = smoothstep(-0.35, 0.35, sin(u / 64.0 * 6.2832 - sun.z * 0.35));
+        float region = smoothstep(1500.0, 700.0, dot(p, vec2(0.8, 0.6)) + 120.0 * sin(sun.z * 0.2));
+        col *= 1.0 + sun.x * region * (0.16 * band - 0.05);
+      }
+      if (sun.y > 0.0) {
+        vec2 q = p * 0.0032 + vec2(0.25 * sin(sun.z * 0.45), 0.12 * sin(sun.z * 0.31));
+        float leaf = smoothstep(0.02, 0.3, fbm(q, 3));
+        float corner = smoothstep(900.0, 1900.0, p.x + 0.4 * p.y);
+        col *= 1.0 - sun.y * 0.3 * leaf * corner;
+      }
+      col *= 1.0 - hudDark * hudMask(sp);
       fragColor = vec4(col, 1.0);
     }`, {
     layer: { value: null }, bake: { value: null }, tone: { value: 0.12 }, fib: { value: 1 }, t: { value: 0 },
     camC: { value: new THREE.Vector3() }, camR: { value: new THREE.Vector3() }, camD: { value: new THREE.Vector3() }, camF: { value: new THREE.Vector3() },
     focusZ: { value: 1 }, aperture: { value: 40 }, sharp: { value: 0.03 }, lamp: { value: new THREE.Vector3(960, 540, 900) },
+    sun: { value: new THREE.Vector3(0, 0, 0) },
+    tint: { value: new THREE.Vector3(1, 1, 1) }, amb: { value: 0.74 },
+    backTex: { value: null }, backOn: { value: 0 }, edgeV: { value: -1e9 }, hudDark: { value: 0 },
     ...extraUniforms,
   });
 }
@@ -513,4 +558,65 @@ export function setTableCam(p: FSPass, c: TableCam, o: { aperture?: number; shar
   p.u.aperture!.value = o.aperture ?? 40;
   p.u.sharp!.value = sharp;
   (p.u.lamp!.value as THREE.Vector3).set(...(o.lamp ?? [c.tu, c.tv, 900]));
+}
+
+/** 鏡頭在桌面上一點的縮放（螢幕 px ÷ 桌面 px）：v2 的字級是螢幕 px，畫在桌面上要除以它。 */
+export const deskScale = (c: TableCam, u: number, v: number) => TABLE_F / project(c, u, v).z;
+
+/** 設定窗外的光（百葉窗光條、樹葉影子的強度，時間）。 */
+export function setSun(p: FSPass, blinds: number, leaf: number, t: number) {
+  (p.u.sun!.value as THREE.Vector3).set(blinds, leaf, t);
+}
+
+/**
+ * 桌面上的灰塵：燈光裡慢慢飄的小亮點（v2「環境動態」）。桌面座標、畫在層上；每顆的軌跡是種子與 t 的純函數。
+ * 只在光池（cx, cy, r）裡看得到，越靠邊越淡。
+ */
+export function drawDust(c: Ctx2, t: number, cx: number, cy: number, r: number, seed: number, n = 26) {
+  c.save();
+  for (let i = 0; i < n; i++) {
+    const a0 = hash(seed, i, 1) * Math.PI * 2, rr = r * Math.sqrt(hash(seed, i, 2));
+    const sp = 0.15 + 0.25 * hash(seed, i, 3);
+    const x = cx + Math.cos(a0) * rr + 40 * Math.sin(t * sp + i), y = cy + Math.sin(a0) * rr - ((t * 14 * sp + hash(seed, i, 4) * 200) % 200) + 100;
+    const k = 1 - Math.min(1, Math.hypot(x - cx, y - cy) / r);
+    const tw = 0.5 + 0.5 * Math.sin(t * (1.3 + hash(seed, i, 5)) + i);
+    if (k <= 0) continue;
+    c.fillStyle = rgba('bone', 0.35 * k * tw);
+    c.beginPath(); c.arc(x, y, 1.6 + 1.6 * hash(seed, i, 6), 0, Math.PI * 2); c.fill();
+  }
+  c.restore();
+}
+
+/**
+ * v2 的留言排版：照子句斷行（_v2 的 fitClauses），而且短句寧可一行排小一點，也不要大大地折成兩行
+ * （「新婚／快樂！！！」）：從一行開始試，字級還有上限的八成就用；都不行才用最多 maxLines 行，最後才交給 fitMsg。
+ */
+export function fitV2(c: Ctx2, text: string, family: string, w: number, h: number, o: { min: number; max: number; lineHeight: number; maxLines: number }): FitResult {
+  for (let n = 1; n < o.maxLines; n++) {
+    const r = fitClauses(c, text, family, w, h, { ...o, maxLines: n });
+    if (r && r.size >= o.max * 0.8) return r;
+  }
+  return fitClauses(c, text, family, w, h, o) ?? fitMsg(c, text, family, w, h, o);
+}
+
+/** 設定這個版面的光：光的顏色（linear RGB，大約 1 上下）、光池外的亮度、右下角 HUD 要不要壓暗。 */
+export function setLight(p: FSPass, tint: [number, number, number], amb: number, hudDark = 0) {
+  (p.u.tint!.value as THREE.Vector3).set(...tint);
+  p.u.amb!.value = amb;
+  p.u.hudDark!.value = hudDark;
+}
+/** 設定桌子遠端之外的背景層（tex = null 關掉）。 */
+export function setBackdrop(p: FSPass, tex: THREE.Texture | null, edgeV: number) {
+  p.u.backTex!.value = tex;
+  p.u.backOn!.value = tex ? 1 : 0;
+  p.u.edgeV!.value = edgeV;
+}
+/**
+ * 光的顏色：兩個色票混出來、再把亮度拉回 1 附近（只要色調，不要改整體亮度）。
+ * 例如午後的暖光 lightTint('bone', 'signal', 0.18)、日光燈的冷光 lightTint('bone', 'ash', 0.3)。
+ */
+export function lightTint(a: PaletteKey, b: PaletteKey, k: number, gain = 1): [number, number, number] {
+  const c = [0, 1, 2].map((i) => LIN[a][i]! + (LIN[b][i]! - LIN[a][i]!) * k);
+  const l = 0.2126 * c[0]! + 0.7152 * c[1]! + 0.0722 * c[2]!;
+  return c.map((x) => (gain * x) / Math.max(l, 1e-3)) as [number, number, number];
 }

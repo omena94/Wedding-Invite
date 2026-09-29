@@ -10,6 +10,10 @@
 // 沒有留言：大章是「候補簽證」，章裡寫邀請；新人的留言：章是「新人簽發」。
 // 畫法：整個跨頁（紙、底紋、浮水印、頁碼、打孔的護照號碼、原本就有的章）開場畫在一張離屏畫布上；
 // 落下的章直接 multiply 疊進另一張「現在的跨頁」畫布（倒轉時間就從底圖重畫），每格只 drawImage 一次再畫會動的東西。
+// v2（2026-09-29 留言尺寸與版面比例標準 v2＋場景多元化）：夜裡一盞暖黃的燈，護照攤在打開的皮革行李箱上，底下墊著一張舊旅行地圖、
+// 旁邊散著幾張舊票根。護照很大（它就是場景），簽證章裡寫留言的那一塊照 v2：留言 40～60 px、持有人（署名）26～32 px 在留言下面、
+// 歌詞比留言小。地圖上每兩小節在小節線上多插一根大頭針、紅線從上一站畫過去（這些年一起去過的地方，一站一站連起來）；
+// 右頁每兩拍（慢歌四拍）蓋一個新章、最後一個小節線蓋愛心章。
 // 不是任何國家的護照：沒有國徽、沒有真的欄位格式，只有自己設計的「愛的護照」。
 import * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
@@ -18,28 +22,37 @@ import type { AudioData } from '../engine/audio';
 import { LineBatch } from '../engine/lines';
 import { F, font, layout, loadText, measure, type TextLayout } from '../engine/type';
 import { mixRgba, rgba } from '../engine/palette';
-import { clamp, ease, hash, mulberry32, prog, pulse, frameIdx, TAU } from '../engine/util';
+import { clamp, ease, hash, lerp, mulberry32, prog, pulse, frameIdx, fbm2, TAU } from '../engine/util';
 import type { FitResult } from '../engine/text';
 import { lyricAt, drawLyric, layoutLyric, beatAfter, sparkHead, sparkParticles, heartPoints, COUPLE_ZH, DATE_DOTS } from './_motifs';
+import { msgMaxFor, lyricV2, sigV2, V2 } from './_v2';
 import {
   sigInk, ink, paper, paperLyric, makeCanvas, freeCanvas, inkStamp, arcText, writeGlyph, beatsIn, barsIn, ensureBake, themeKey, fitMsg, yieldFrame, heartGlyph,
-  tablePass, setTableCam, fitCam, lerpCam, project, TABLE_F, type TableCam, type Rect,
+  tablePass, setTableCam, fitCam, lerpCam, project, TABLE_F, deskScale, fitV2, setLight, lightTint, type TableCam, type Rect,
 } from './_t1';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'doc', paper: true, energy: [0.35, 1], bars: [4, 8], weight: 1 };
+// 夜裡的皮革行李箱、一盞燈：四周是暗的，右下角 HUD 用淺色字 → 暗版面
+export const spec: PlateSpecDecl = { group: 'type', family: 'doc', paper: false, energy: [0.35, 1], bars: [4, 8], weight: 1 };
 
 type Ctx2 = CanvasRenderingContext2D;
 
-/** 跨頁（螢幕座標，放好的樣子）：左頁 0..GUT、右頁 GUT..SPREAD.w。右下角落在 QR 區，那裡只有章，沒有要讀的字。 */
-const SPREAD = { x: 70, y: 58, w: 1660, h: 964 };
+/** 跨頁（跨頁座標 w × h；在桌上左上角 (x, y)、縮放 K、轉 ROT）：左頁 0..GUT、右頁 GUT..SPREAD.w。 */
+const SPREAD = { x: 40, y: 200, w: 1660, h: 964 };
+const K = 0.82;
 const GUT = 830;
-const ROT = -0.012;
-/** 左頁的大簽證章（跨頁座標）。 */
-const VISA = { x: 78, y: 118, w: 690, h: 560 };
-/** 章裡寫留言的地方（跨頁座標）。 */
-const VMSG = { x: VISA.x + 44, y: VISA.y + 100, w: VISA.w - 88, h: 350 };
+const ROT = -0.05;
+/** 左頁的大簽證章（跨頁座標）。v2：高度收到螢幕上 ≤ 430。 */
+const VISA = { x: 78, y: 130, w: 690, h: 520 };
+/** 章裡寫留言的地方（跨頁座標）；持有人（署名）在章的下緣、留言下面。 */
+const VMSG = { x: VISA.x + 44, y: VISA.y + 100, w: VISA.w - 88, h: 300 };
 /** 官員註記（歌詞）：左頁下方。 */
-const NOTE = { x: 96, label: 742, base: 812, maxW: 690 };
+const NOTE = { x: 96, label: 712, base: 790, maxW: 690 };
+/** 舊旅行地圖（桌面座標）：墊在護照底下、比護照大，四周露出來。 */
+const MAP = { x: -120, y: -10, w: 1860, h: 1080, rot: 0.04 };
+/** 地圖上的站（桌面座標）：護照外面露出來的地方；每兩小節多一站。 */
+const STOPS: [number, number][] = [[380, 90], [820, 70], [1250, 60], [1560, 160], [1620, 420], [1600, 640], [40, 560]];
+/** 跨頁座標 → 桌面座標。 */
+const toDesk = (u: number, v: number): [number, number] => [SPREAD.x + K * (Math.cos(ROT) * u - Math.sin(ROT) * v), SPREAD.y + K * (Math.sin(ROT) * u + Math.cos(ROT) * v)];
 
 const TEXT = '簽證入境紀錄祝福簽證候補簽證新人簽發持有人有效期限永久入境次數無限官員註記入境時播放的歌曲間奏中本曲為純音樂請自行哼唱掃描右下角把祝福寫上大螢幕全體賓客一位賓客愛的護照永遠核准入境出境';
 
@@ -65,7 +78,7 @@ interface Stamp {
 export default class Passport extends Scene {
   layer = this.track(new Layer2D(W, H, SCALE * 1.25, { fast: true }));
   glow = this.track(new LineBatch(2048, { screen2D: true, blend: 'add' }));
-  pass = shared('passport.table', () => tablePass());
+  pass = shared('passport.table', () => tablePass(LEATHER_GLSL));
   msg: Msg | null = this.ctx.params.message ?? null;
   seed = Number(this.ctx.params.seed ?? 1);
   /** 底圖（紙、底紋、原本的章）與「現在的跨頁」（底圖＋已經落下的章）。 */
@@ -91,6 +104,12 @@ export default class Passport extends Scene {
   /** 一定要清楚的點（留言與歌詞的中心，桌面座標）。 */
   focusPts: [number, number][] = [];
   handle: ReturnType<typeof makeCanvas> | null = null;
+  /** 地圖（含票根）的畫布；每兩小節插一根針的時間。 */
+  map: ReturnType<typeof makeCanvas> | null = null;
+  pins: number[] = [];
+  /** 跨頁 px → 螢幕 px（K × 鏡頭在簽證章那裡的縮放）：v2 的字級是螢幕 px。 */
+  S = 1;
+  lyrPx = 56;
 
   override async init() {
     const { audio: au, lyrics, start: s, end: e } = this.ctx;
@@ -101,11 +120,29 @@ export default class Passport extends Scene {
     await loadText(TEXT + PLACES.map((p) => p[0]).join('') + this.holder + body + COUPLE_ZH + lyrics.linesIn(s - 2, e + 1).map((l) => l.text).join(''));
     const B = (this.B = au.beatPeriod(s + 0.1));
 
+    // ---- 鏡頭先定好（字級要換成螢幕 px）：從左下斜斜地看攤開的護照，簽證章在畫面左半、右頁往遠處失焦
+    const box = (r: Rect): Rect => {
+      const pts = [toDesk(r[0], r[1]), toDesk(r[0] + r[2], r[1]), toDesk(r[0], r[1] + r[3]), toDesk(r[0] + r[2], r[1] + r[3])];
+      const xs = pts.map((q) => q[0]), ys = pts.map((q) => q[1]);
+      return [Math.min(...xs), Math.min(...ys), Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)];
+    };
+    const keep = [box([VISA.x, VISA.y, VISA.w, VISA.h]), box([NOTE.x - 10, NOTE.base - 62, NOTE.maxW + 20, 130])];
+    this.focusPts = [toDesk(VMSG.x + VMSG.w / 2, VMSG.y), toDesk(NOTE.x + 200, NOTE.base)];
+    const [cu, cv] = toDesk(GUT - 60, SPREAD.h * 0.52);
+    this.camB = fitCam({ tu: cu, tv: cv, dist: TABLE_F * 1.05, tilt: 0.42, yaw: 0.16, roll: -0.14 }, keep);
+    this.camA = { ...this.camB, dist: this.camB.dist * 1.08, tu: this.camB.tu + 90, yaw: 0.22, roll: -0.19 };
+    this.pins = barsIn(au, s + 0.3, e - 0.3).filter((_, i) => i % 2 === 0);
+    const [vu, vv] = toDesk(VMSG.x + VMSG.w / 2, VMSG.y + VMSG.h / 2);
+    this.S = K * deskScale(this.camB, vu, vv);
+    const S = this.S;
+
     // ---- 時間：大章在第一個拍點，接著寫留言（最多兩小節、最多窗格的四成），再簽持有人
     this.tVisa = beatAfter(au, s + 0.08);
     const c = this.layer.ctx;
-    this.fit = fitMsg(c, body, this.msgFam, VMSG.w, VMSG.h, { min: 44, max: 112, lineHeight: 1.26, maxLines: 5 });
+    const o = { min: V2.msgMin / S, max: msgMaxFor(body) / S, lineHeight: 1.26, maxLines: 5 };
+    this.fit = fitV2(c, body, this.msgFam, VMSG.w, VMSG.h, o);
     const fit = this.fit;
+    this.lyrPx = lyricV2(m ? fit.size * S : null) / S;
     const n = fit.lines.reduce((a, l) => a + Array.from(l).length, 0);
     const w0 = this.tVisa + B / 2;
     const budget = clamp(Math.min(8 * B, 0.4 * (e - s)), 0.8, 4.2);
@@ -118,8 +155,9 @@ export default class Passport extends Scene {
       for (const g of lay.glyphs) { this.glyphs.push({ ch: g.ch, x: VMSG.x + g.x, y: top + row * fit.lineHeight, w: g.w, t0: w0 + k * per, t1: w0 + (k + 1) * per }); k++; }
     });
     const wEnd = w0 + n * per;
-    let hs = 42;
-    while (hs > 26 && measure(this.holder, F.hand(700), hs) > 300) hs -= 2;
+    // 持有人（署名）：26～32 螢幕 px，太長就再縮一點（寫在章的下緣那一格）
+    let hs = sigV2(fit.size * S) / S;
+    while (hs > V2.sigMin / S && measure(this.holder, F.hand(700), hs) > 420) hs -= 1;
     this.holderLay = layout(this.holder, F.hand(700), hs);
     const h0 = wEnd + B * 0.25;
     this.holderT = [h0, h0 + clamp(0.09 * this.holderLay.glyphs.length + 0.2, 0.35, 1.1)];
@@ -130,18 +168,9 @@ export default class Passport extends Scene {
     await yieldFrame();
     this.drawBase();
 
-    // 鏡頭：對著大簽證章與官員註記（左頁），從斜上方看；推到最近時留言與歌詞都還在安全範圍內
-    const toDesk = (u: number, v: number) => [SPREAD.x + Math.cos(ROT) * u - Math.sin(ROT) * v, SPREAD.y + Math.sin(ROT) * u + Math.cos(ROT) * v] as const;
-    const box = (r: Rect): Rect => { const [x0, y0] = toDesk(r[0], r[1]); return [x0, y0 - 8, r[2], r[3] + 16]; };
-    const [fu, fv] = toDesk(VISA.x + VISA.w * 0.5, VISA.y + VISA.h * 0.66);
-    const keep = [box([VMSG.x, VMSG.y, VMSG.w, VMSG.h]), box([NOTE.x - 10, NOTE.base - 62, NOTE.maxW + 20, 130])];
-    this.focusPts = [toDesk(VMSG.x + VMSG.w / 2, VMSG.y), toDesk(NOTE.x + 200, NOTE.base)] as [number, number][];
-    // 鏡頭從左下斜斜地看過去（yaw 讓景深的方向變成斜的：右頁比較遠、失焦；roll 把字轉回水平）
-    this.camB = fitCam({ tu: fu, tv: fv, dist: TABLE_F * 0.8, tilt: 0.42, yaw: 0.38, roll: -0.34 }, keep);
-    this.camA = { ...this.camB, dist: this.camB.dist * 1.1, tu: this.camB.tu + 60, yaw: 0.44, roll: -0.38 };
   }
 
-  override dispose() { freeCanvas(this.base); freeCanvas(this.page); freeCanvas(this.handle); for (const s of [...this.stamps, ...this.drops]) freeCanvas(s.cv); super.dispose(); }
+  override dispose() { freeCanvas(this.base); freeCanvas(this.page); freeCanvas(this.handle); freeCanvas(this.map); for (const s of [...this.stamps, ...this.drops]) freeCanvas(s.cv); super.dispose(); }
 
   /** 一個小章（地點、出入境、日期），形狀與墨色看種子。 */
   private smallStamp(i: number, rnd: () => number): Stamp['cv'] {
@@ -198,6 +227,8 @@ export default class Passport extends Scene {
   /** 底圖：跨頁的紙、頁緣、中縫的陰影、底紋、浮水印、頁首頁碼、打孔的護照號碼、原本就有的章。 */
   private drawBase() {
     this.artKey = themeKey();
+    freeCanvas(this.map);
+    this.map = this.drawMap();
     freeCanvas(this.base); freeCanvas(this.page);
     const b = (this.base = makeCanvas(SPREAD.w + 40, SPREAD.h + 40, 1.25));
     this.page = makeCanvas(SPREAD.w + 40, SPREAD.h + 40, 1.25);
@@ -308,8 +339,10 @@ export default class Passport extends Scene {
     L.clear();
     const c = L.ctx;
     this.glow.clear();
+    // 墊在底下的舊地圖（含票根）、地圖上的大頭針與紅線
+    this.drawMapLayer(c, t);
     c.save();
-    c.translate(SPREAD.x, SPREAD.y); c.rotate(ROT);
+    c.translate(SPREAD.x, SPREAD.y); c.rotate(ROT); c.scale(K, K);
     // 桌上的陰影（護照有厚度）
     c.fillStyle = ink(0.16);
     c.beginPath(); c.roundRect(8, 16, SPREAD.w, SPREAD.h, 14); c.fill();
@@ -350,17 +383,20 @@ export default class Passport extends Scene {
     const P = this.pass;
     P.u.layer!.value = L.upload();
     P.u.bake!.value = ensureBake(renderer);
-    P.u.tone!.value = 0.22;
-    setTableCam(P, cam, { aperture: 70, sharp: 0.02, focus: this.focusPts, lamp: [cam.tu, cam.tv - 60, 1000] });
+    P.u.tone!.value = 0.84;
+    // 暖黃的燈：光池在簽證章那一帶、外面很暗（夜裡）；右下角 HUD 那一塊再壓暗一點
+    const fl = 1 + 0.02 * Math.sin(t * 9.1) * Math.sin(t * 5.3);
+    setTableCam(P, cam, { aperture: 70, sharp: 0.02, focus: this.focusPts, lamp: [this.focusPts[0]![0] + 80, this.focusPts[0]![1] + 190, 330 * fl] });
+    setLight(P, lightTint('bone', 'ember', 0.4), 0.13, 0.6);
     P.render(renderer, out);
     // 筆尖的火花（桌面座標 → 螢幕座標，跟著透視縮放）
     if (pen) {
       const p = pen as { x: number; y: number };
-      const cs = Math.cos(ROT), sn = Math.sin(ROT);
-      const q = project(cam, SPREAD.x + cs * p.x - sn * p.y, SPREAD.y + sn * p.x + cs * p.y);
+      const [du, dv] = toDesk(p.x, p.y);
+      const q = project(cam, du, dv);
       const k = TABLE_F / q.z;
       sparkParticles(this.glow, t, () => ({ x: q.x, y: q.y }), { rate: 70, life: 0.3, speed: 160 * k, seed: this.seed });
-      sparkHead(this.glow, q.x, q.y, t, 0.8 * k, 0.9);
+      sparkHead(this.glow, q.x, q.y, t, 0.8 * k * K, 0.9);
     }
     if (this.glow.count) this.glow.render(renderer, out);
 
@@ -374,9 +410,89 @@ export default class Passport extends Scene {
     }
     const ph = frameIdx(t);
     return {
-      paper: 1, bloom: 0.35, bloomThreshold: 1.4, halation: 0.05, vignette: 0.3, grain: 0.05, ca: 0.5,
+      paper: 0, bloom: 0.35, bloomThreshold: 1.4, halation: 0.05, vignette: 0.3, grain: 0.05, ca: 0.5,
       shake: [amp * (hash(ph, 5) - 0.5) * 2, amp * (hash(ph, 6) - 0.5) * 2], zoom: 1 + punch,
     };
+  }
+
+  /**
+   * 舊旅行地圖（開場畫一次）：泛黃的紙、經緯線、海岸線（值雜訊的等高線當陸地）、幾個地名，
+   * 地圖上壓著三張舊票根（火車、電影、渡輪）。陸地的形狀整晚共用（只算一次），顏色跟著主題。
+   */
+  private drawMap() {
+    const res = 0.5;
+    const mp = makeCanvas(MAP.w, MAP.h, res);
+    const c = mp.c;
+    c.fillStyle = mixRgba('paper', 'sepia', 0.32); c.fillRect(0, 0, MAP.w, MAP.h);
+    // 陸地
+    const land = landMask();
+    c.save();
+    c.globalAlpha = 0.9;
+    const tmp = makeCanvas(land.width, land.height, 1);
+    tmp.c.drawImage(land, 0, 0);
+    tmp.c.globalCompositeOperation = 'source-in';
+    tmp.c.fillStyle = mixRgba('paper', 'sepia', 0.46); tmp.c.fillRect(0, 0, land.width, land.height);
+    c.imageSmoothingEnabled = true;
+    c.drawImage(tmp.cv, 0, 0, MAP.w, MAP.h);
+    c.restore();
+    freeCanvas(tmp);
+    // 經緯線
+    c.strokeStyle = ink(0.12); c.lineWidth = 2;
+    for (let x = 0; x < MAP.w; x += 220) { c.beginPath(); c.moveTo(x, 0); c.lineTo(x, MAP.h); c.stroke(); }
+    for (let y = 0; y < MAP.h; y += 220) { c.beginPath(); c.moveTo(0, y); c.lineTo(MAP.w, y); c.stroke(); }
+    // 摺痕
+    c.fillStyle = ink(0.1);
+    c.fillRect(MAP.w / 2 - 2, 0, 4, MAP.h); c.fillRect(0, MAP.h / 2 - 2, MAP.w, 4);
+    // 地名（小、淡）
+    c.fillStyle = ink(0.4); c.font = font(F.ming(700), 30); c.letterSpacing = '8px';
+    PLACES.slice(0, 7).forEach(([zh], i) => { const [x, y] = mapPt(STOPS[i]!); c.fillText(zh, x + 26, y - 18); });
+    c.letterSpacing = '0px';
+    // 舊票根
+    const stub = (x: number, y: number, r: number, a: string, b: string) => {
+      c.save(); c.translate(x, y); c.rotate(r);
+      c.fillStyle = ink(0.25); c.fillRect(8, 10, 360, 150);
+      c.fillStyle = mixRgba('paper', 'bone', 0.3); c.fillRect(0, 0, 360, 150);
+      c.fillStyle = sigInk(0.5); c.fillRect(0, 0, 360, 30);
+      c.fillStyle = ink(0.75); c.font = font(F.hei(700), 30); c.fillText(a, 22, 82);
+      c.fillStyle = ink(0.5); c.font = font(F.mono(500), 20); c.fillText(b, 22, 124);
+      c.fillStyle = ink(0.3); for (let yy = 8; yy < 150; yy += 14) { c.beginPath(); c.arc(290, yy, 3, 0, TAU); c.fill(); }
+      c.restore();
+    };
+    const [yy = '2027'] = DATE_DOTS.split(' · ');
+    stub(...mapPt([1480, 700]), 0.22, '台北 → 花蓮', `TRAIN · ${Number(yy) - 5}.08.12`);
+    stub(...mapPt([20, 40]), -0.12, '電影院 7 廳', `ADMIT TWO · ${Number(yy) - 7}`);
+    stub(...mapPt([-60, 760]), 0.16, '渡輪 · 蜜月島', 'ONE WAY → 永遠');
+    return mp;
+  }
+
+  /** 地圖畫到桌上，再畫大頭針與紅線：每兩小節多一站（針在小節線上「插」下去，紅線從上一站很快地畫過去）。 */
+  private drawMapLayer(c: Ctx2, t: number) {
+    if (!this.map) return;
+    c.save();
+    c.translate(MAP.x, MAP.y); c.rotate(MAP.rot);
+    c.fillStyle = rgba('ink', 0.35); c.fillRect(14, 20, MAP.w, MAP.h);
+    c.drawImage(this.map.cv, 0, 0, MAP.w, MAP.h);
+    c.restore();
+    // 已經有的站：窗格開始前就插好的前兩站
+    const shown = 2 + this.pins.filter((p) => p <= t).length;
+    const lastT = [...this.pins].reverse().find((p) => p <= t) ?? -Infinity;
+    const grow = ease.outCubic(clamp((t - lastT) / 0.35));
+    c.save();
+    c.strokeStyle = sigInk(0.85); c.lineWidth = 5; c.setLineDash([16, 10]); c.lineCap = 'round';
+    for (let i = 1; i < Math.min(shown, STOPS.length); i++) {
+      const [ax, ay] = STOPS[i - 1]!, [bx, by] = STOPS[i]!;
+      const k = i === shown - 1 && shown > 2 ? grow : 1;
+      c.beginPath(); c.moveTo(ax, ay); c.lineTo(lerp(ax, bx, k), lerp(ay, by, k)); c.stroke();
+    }
+    c.setLineDash([]);
+    for (let i = 0; i < Math.min(shown, STOPS.length); i++) {
+      const [x, y] = STOPS[i]!;
+      const pop = i === shown - 1 && shown > 2 ? 1 + 0.6 * pulse(t, lastT, 0.08) : 1;
+      c.fillStyle = rgba('ink', 0.35); c.beginPath(); c.ellipse(x + 10, y + 12, 12, 6, 0.4, 0, TAU); c.fill();
+      c.fillStyle = sigInk(0.95); c.beginPath(); c.arc(x, y, 12 * pop, 0, TAU); c.fill();
+      c.fillStyle = rgba('bone', 0.6); c.beginPath(); c.arc(x - 4, y - 4, 4 * pop, 0, TAU); c.fill();
+    }
+    c.restore();
   }
 
   /** 鏡頭：切進來遠一點、偏右，整個窗格慢慢推近左頁；大章砸下去那一下往前衝一點點。 */
@@ -422,7 +538,7 @@ export default class Passport extends Scene {
     c.fillStyle = ink(0.22); c.fillRect(NOTE.x, NOTE.label + 12, NOTE.maxW, 1.1);
     const ly = lyricAt(lyrics, t);
     if (ly) {
-      const st = paperLyric(F.archivo(100, 800), 56, NOTE.maxW);
+      const st = paperLyric(F.archivo(100, 800), this.lyrPx, NOTE.maxW, { minSize: V2.lyrMin / this.S });
       const lay = layoutLyric(c, ly.line, st);
       const inK = ease.outExpo(prog(t, ly.line.start - 0.35, ly.line.start + 0.15));
       c.save();
@@ -561,3 +677,43 @@ const DOTS: Record<string, string[]> = {
   '8': ['01110', '10001', '10001', '01110', '10001', '10001', '01110'],
   '9': ['01110', '10001', '10001', '01111', '00001', '00010', '01100'],
 };
+
+/** 桌面座標 → 地圖畫布座標。 */
+function mapPt([x, y]: [number, number]): [number, number] {
+  const dx = x - MAP.x, dy = y - MAP.y, cs = Math.cos(-MAP.rot), sn = Math.sin(-MAP.rot);
+  return [cs * dx - sn * dy, sn * dx + cs * dy];
+}
+
+let landCv: HTMLCanvasElement | null = null;
+/** 陸地的形狀（alpha）：值雜訊的等高線，低解析度算一次、整晚共用（放大時會自動平滑，像手繪的海岸線）。 */
+function landMask(): HTMLCanvasElement {
+  if (landCv) return landCv;
+  const w = 224, h = 124;
+  const cv = document.createElement('canvas');
+  cv.width = w; cv.height = h;
+  const c = cv.getContext('2d')!;
+  const img = c.createImageData(w, h);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const v = fbm2(x / 38, y / 38, 4, 7) + 0.25 * Math.sin(x / 30) * Math.cos(y / 24);
+    const a = clamp((v - 0.02) / 0.05);
+    const i = (y * w + x) * 4;
+    img.data[i] = img.data[i + 1] = img.data[i + 2] = 255;
+    img.data[i + 3] = Math.round(255 * a);
+  }
+  c.putImageData(img, 0, 0);
+  landCv = cv;
+  return cv;
+}
+
+/** 皮革行李箱的內蓋：深咖啡的皮、細細的皮紋，靠邊一圈縫線。 */
+const LEATHER_GLSL = /* glsl */ `
+vec3 deskArt(vec2 p, vec3 desk) {
+  float grain = snoise(p * 0.05) * 0.5 + snoise(p * 0.13) * 0.3;
+  vec3 col = desk * (0.95 + 0.06 * grain);
+  // 縫線：一圈虛線，離箱邊 60
+  vec2 q = abs(p - vec2(960.0, 700.0)) - vec2(1180.0, 760.0);
+  float dd = abs(max(q.x, q.y));
+  float dash = step(0.5, fract((p.x + p.y) / 26.0));
+  col = mix(col, C_PAPER * 0.55, (1.0 - smoothstep(1.5, 3.0, dd)) * dash * 0.6);
+  return col;
+}`;
