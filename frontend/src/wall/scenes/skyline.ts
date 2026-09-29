@@ -48,6 +48,8 @@ const BG = () => new FSPass(/* glsl */ `
   uniform vec4 chase; // 一棟樓一層層亮燈：樓的種子、亮到的高度（畫面 y）、亮度、-
   uniform vec2 train; // 高架電車：車頭的 x、亮度
   const float P = ${P}.0, WATER = ${WATER}.0;
+  // 正在畫河面倒影時設成 1：倒影只映出樓的窗光，不映拼字的窗（上下顛倒、糊掉的字看起來像亂碼）
+  float gRefl = 0.0;
 
   // 近排大樓：這個 x 在哪一棟（回傳頂端的 y 與這棟的種子；沒有樓回傳 -1）
   vec3 building(float x) {
@@ -99,7 +101,7 @@ const BG = () => new FSPass(/* glsl */ `
       float ton = t0 + floor(max(0.0, cell.x - c0) / cpb) * bp + hash12(cell + 7.0) * bp * 0.85;
       float on = step(ton, t);
       float heat = exp(-max(0.0, t - ton) / 0.35) * on;
-      m *= on;
+      m *= on * (1.0 - gRefl);
       vec3 warm = mix(C_BONE, C_EMBER, 0.25 + 0.2 * hash12(cell + 2.0));
       vec3 lit = mix(warm, C_ROSE * 1.1, hrt) * (0.95 + 0.25 * bar) + C_SIGNAL * 2.2 * heat * heatK;
       glass = mix(glass, lit, clamp(m * 1.25, 0.0, 1.0));
@@ -180,6 +182,7 @@ const BG = () => new FSPass(/* glsl */ `
       float band = floor(d / (6.0 + d * 0.05));
       float wob = (hash12(vec2(band, floor(t * 3.0))) - 0.5) * (4.0 + d * 0.08) + sin(band * 1.7 + t * 2.0) * (3.0 + d * 0.04);
       vec2 q = vec2(p.x + wob, WATER - d * 1.15 - 2.0);
+      gRefl = 1.0;
       // 倒影被拉長、糊掉：上下幾個點平均
       vec3 r = vec3(0.0);
       for (int k = 0; k < 5; k++) r += scene(q + vec2(float(k - 2) * 1.7, float(k - 2) * (2.5 + d * 0.03))) * 0.2;
