@@ -12,7 +12,7 @@ import { PLATE_CATALOG } from "../wall/plateCatalog";
 const FAMILY = {
   title: "片頭", type: "文字", light: "燈光", doc: "紙本", machine: "機器", screen: "螢幕", science: "科學", craft: "手作", nature: "自然",
   city: "城市", game: "遊戲", water: "水與天空", print: "印刷", keepsake: "信物", instrument: "樂器與遊樂", local: "台灣味", journey: "旅途",
-  sport: "運動", dance: "跳舞", dog: "狗狗", date: "約會", home: "居家", music: "音樂", wedding: "婚禮", cartoon: "漫畫",
+  sport: "運動", dance: "跳舞", dog: "狗狗", date: "約會", home: "居家", music: "音樂", wedding: "婚禮", cartoon: "漫畫", work: "工程師×護理師", hoops: "籃球賽", live: "演唱會",
 };
 const PACE = [
   ["fast", "快", "約 4～7 秒換一個版面（每 1～2 句歌詞）"],
