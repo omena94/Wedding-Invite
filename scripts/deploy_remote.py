@@ -49,9 +49,12 @@ def main():
             raise ValueError('Incomplete release: '+expected)
     run(str(python), '-m', 'compileall', '-q', str(staged/'backend/app'))
     run(str(python), '-m', 'pip', 'install', '-q', '-r', str(staged/'backend/requirements.txt'))
+    # 大螢幕歌單的音檔（uploads/wall/，整份歌單約 300 MB）不放進每次部署的備份：主機硬碟只有 7 GB，
+    # 每部署一次就多一份很快會滿。歌名、歌詞、節拍分析都在資料庫裡（下面的 pg_dump 會備份），音檔可以重新上傳。
+    skip_wall = lambda info: None if info.name == 'backend/uploads/wall' or info.name.startswith('backend/uploads/wall/') else info
     with tarfile.open(release/'code-and-uploads.tar.gz', 'w:gz') as backup:
         for relative in ['backend/app', 'backend/requirements.txt', 'frontend/dist', 'backend/uploads']:
-            backup.add(root/relative, arcname=relative)
+            backup.add(root/relative, arcname=relative, filter=skip_wall)
     with (release/'database.dump').open('wb') as output:
         run('sudo', '-u', 'postgres', 'pg_dump', '-Fc', 'wedding', stdout=output)
     old_requirements = requirements.read_bytes()

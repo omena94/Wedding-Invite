@@ -75,3 +75,7 @@ export function isoToLocal(iso) {
   const p = (n) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
 }
+
+// 新人的名字（2026-09-28 大螢幕用；賓客頁的標題另外寫在 GuestUI.jsx）
+export const COUPLE_EN = "Alan & Omena";
+export const COUPLE_ZH = "宣文 & 孟庭";

@@ -24,3 +24,6 @@ desktop.ini
 # 本機測試截圖
 form-mobile.png
 preview-form.png
+
+# 大螢幕截圖工具的輸出（frontend/scripts/wall-render.mjs）
+wall-out/

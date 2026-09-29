@@ -18,15 +18,16 @@ export function PageHead({ title, sub, actions }) {
   );
 }
 
-export function Modal({ title, onClose, children, wide, footer }) {
+export function Modal({ title, onClose, children, wide, footer, className = "" }) {
   useEffect(() => {
-    const onKey = (e) => e.key === "Escape" && onClose?.();
+    // 視窗裡跳出的確認框（sweetalert2）按 Esc 只關確認框，不要連編輯視窗一起關掉
+    const onKey = (e) => e.key === "Escape" && !Swal.isVisible() && onClose?.();
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className={`modal-card modal-form${wide ? " wide" : ""}`} role="dialog" aria-modal="true" aria-label={typeof title === "string" ? title : undefined} onClick={(e) => e.stopPropagation()}>
+      <div className={`modal-card modal-form${wide ? " wide" : ""}${className ? ` ${className}` : ""}`} role="dialog" aria-modal="true" aria-label={typeof title === "string" ? title : undefined} onClick={(e) => e.stopPropagation()}>
         <div className="edit-modal-title" style={{ justifyContent: "space-between" }}>
           <span>{title}</span>
           <button type="button" className="btn btn-ghost btn-sm" onClick={onClose} aria-label="關閉">
@@ -72,6 +73,20 @@ export async function confirmDelete(what) {
     confirmButtonText: "刪除",
     cancelButtonText: "取消",
     confirmButtonColor: "#9E5A54",
+  });
+  return r.isConfirmed;
+}
+
+/** 一般的「確定要這樣做嗎？」確認框（不是刪除）：回傳有沒有按確定。 */
+export async function confirmAsk({ title, text, confirmText = "確定" }) {
+  const r = await Swal.fire({
+    icon: "question",
+    title,
+    text,
+    showCancelButton: true,
+    confirmButtonText: confirmText,
+    cancelButtonText: "取消",
+    confirmButtonColor: SWAL_COLOR,
   });
   return r.isConfirmed;
 }

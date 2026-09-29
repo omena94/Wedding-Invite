@@ -3,6 +3,7 @@
 賓客：rsvps（兩階段設計。Phase 1 意願調查先建立紀錄；Phase 2 詳細調查用 Email/電話找到同一筆再補上細節）
 設定：settings（key-value：第二階段開放時間、婚禮資訊文案、桌次查詢開關…）
 籌備：vendors 廠商、quotes 報價、expenses 花費、payments 付款期程、files 檔案、tasks 待辦
+婚禮當天：guest_photos 賓客上傳的照片、wall_messages 現場留言、wall_songs 大螢幕歌單
 """
 import json
 import uuid
@@ -548,6 +549,49 @@ class GuestPhoto(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class WallMessage(Base):
+    """婚禮當天現場留言：賓客在 /wish 寫、新人也能自己加，status=show 的會出現在會場大螢幕（/wall）。"""
+    __tablename__ = "wall_messages"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(40), default="")          # 賓客自填，可空（螢幕顯示匿名）
+    text: Mapped[str] = mapped_column(String(300))
+    status: Mapped[str] = mapped_column(String(10), default="show")   # show 上螢幕 / hide 隱藏 / pending 等審核
+    source: Mapped[str] = mapped_column(String(10), default="guest")  # guest 賓客 / couple 新人自己加
+    # 限流用：同一支手機（/wish 自己產生的隨機代號）與同一個 IP 一分鐘內寫幾則。都只存雜湊
+    device_hash: Mapped[str] = mapped_column(String(64), default="", index=True)
+    ip_hash: Mapped[str] = mapped_column(String(64), default="", index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class WallSong(Base):
+    """大螢幕的背景歌單：音檔存 upload_dir/wall/；節拍分析在瀏覽器算好後整包存回來（analysis_json）。"""
+    __tablename__ = "wall_songs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    title: Mapped[str] = mapped_column(String(200), default="")
+    artist: Mapped[str] = mapped_column(String(200), default="")
+    stored_name: Mapped[str] = mapped_column(String(80), unique=True)   # 磁碟上的檔名（uuid + 副檔名）
+    original_name: Mapped[str] = mapped_column(String(255))
+    size: Mapped[int] = mapped_column(Integer, default=0)
+    content_type: Mapped[str] = mapped_column(String(80), default="")
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    duration: Mapped[float] = mapped_column(Float, default=0)
+    bpm: Mapped[float] = mapped_column(Float, default=0)
+    analysis_json: Mapped[str] = mapped_column(Text, default="")        # 可能到 200 KB，列表不回傳
+    analysis_version: Mapped[int] = mapped_column(Integer, default=0)    # 分析演算法改版時用來判斷要不要重算
+    lyrics_lrc: Mapped[str] = mapped_column(Text, default="")           # LRC 歌詞，可能含逐字 <mm:ss.xx> 標記
+    lyrics_source: Mapped[str] = mapped_column(String(20), default="")  # lrclib / manual / none
+    lyrics_offset: Mapped[float] = mapped_column(Float, default=0)      # 整首歌詞往前後挪幾秒
+    instrumental: Mapped[bool] = mapped_column(Boolean, default=False)
+    theme: Mapped[str] = mapped_column(String(20), default="")          # 大螢幕配色；空 = 自動挑（gold / rose / champagne / coral / lilac / sage）
+    # 只播中間一段（秒）：前奏、尾奏太長時剪掉；0 = 從頭／播到完
+    start_at: Mapped[float] = mapped_column(Float, default=0)
+    end_at: Mapped[float] = mapped_column(Float, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 class MenuItem(Base):
     """婚宴菜單（2026-09-29）：跟飯店討論中的菜色，只給新人看。一道一列，可標討論中／確定／要更換並寫備註。"""
     __tablename__ = "menu_items"

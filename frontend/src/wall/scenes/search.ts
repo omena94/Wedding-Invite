@@ -1,0 +1,272 @@
+// 搜尋框（亮）：白天、窗邊的木桌上一台打開的筆電，鏡頭在鍵盤前面一點、稍微偏右，螢幕上是一個很乾淨的搜尋頁
+// （自己的小字標「Wishes」，不像任何搜尋引擎）。前景的鍵盤是糊的，焦點在螢幕上。
+//  - 歌詞是打進搜尋框的字：唱到哪打到哪，還沒唱的部分是淡淡的「自動完成」灰字（三成），正在唱的字是訊號色的暗部；
+//    游標跟著拍子閃。換下一句前整句先被「全選」反白一下，再被新的一句取代。
+//  - 搜尋框下面的第一個建議就是主打留言：手寫字、整個畫面最大，署名在右下；每個小節線這一列的底色輕輕亮一下（被選中）。
+//    下面兩列很小很淡的冷面建議（「芃芃 QQ 可以當花童嗎」），每唱一個新字就重洗一次，像真的自動完成。
+//  - 純音樂：搜尋框一拍打一個字「今晚最想對新人說的話」。沒有留言：第一個建議是邀請（小一點），焦點讓給歌詞。
+//  - 鏡頭：慢慢推近，每個小節線緩一下；主打出現時多推一點。
+// 畫法：筆電、桌子、牆是 three.js（_t5 的舞台：多重取樣＋景深）；螢幕內容是一張 16:10 的 Canvas2D（fast），每格重畫。
+import * as THREE from 'three';
+import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
+import { Layer2D } from '../engine/gl';
+import { GLSL_COMMON } from '../engine/glsl/common';
+import { F, font, loadText } from '../engine/type';
+import { LIN, rgba, mixRgba } from '../engine/palette';
+import { clamp, ease, prog, pulse } from '../engine/util';
+import { fitText, type FitResult } from '../engine/text';
+import { Lyrics, type Line } from '../engine/lyrics';
+import { layoutLyric, drawLyric, lyricAt, drawHeart, fillWithHearts, signature, COUPLE_ZH, type LyricStyle, type LyricLayout } from './_motifs';
+import { grid, windowLines, rrect, lastOf, renderStage, bodyMaterial, screenMaterial, tableMaterial, backdropMaterial, slab, setV3, mixV, type Grid } from './_t5';
+
+export const spec: PlateSpecDecl = { group: 'type', family: 'screen', paper: true, energy: [0.1, 0.75], bars: [4, 8] };
+
+// ---------------------------------------------------------------- 筆電（公分）與螢幕畫布（像素）
+const BASE = { w: 32, d: 22, h: 1.4 };
+const LID = { w: 32, h: 21, d: 0.6 };
+const OPEN = 0.24; // 螢幕往後仰的角度
+const CW = 1600, CH = 1000;
+const SCR = { w: 29, h: 29 * (CH / CW) };
+const FX = 150, FW = CW - 2 * FX; // 搜尋框
+const FY = 150;
+const QUERY: LyricStyle = { family: F.archivo(75, 700), size: 80, minSize: 70, maxWidth: FW - 170, align: 'left', lineHeight: 1.05 };
+/** 沒有留言時歌詞是焦點：打大一點。 */
+const QUERY_BIG: LyricStyle = { ...QUERY, size: 104, minSize: 76 };
+const INSTR_QUERY = '今晚最想對新人說的話';
+const [GROOM, BRIDE] = COUPLE_ZH.split(/\s*&\s*/) as [string, string];
+/** 冷面的自動完成建議（{kw} 會換成正在打的那句的開頭）。 */
+const SUGGEST = [
+  '{kw} 歌詞', '新婚快樂 怎麼說比較有誠意', '喜餅 什麼時候發', `${GROOM} ${BRIDE} 怎麼認識的`, '婚禮 感動到哭 正常嗎',
+  '芃芃 QQ 可以當花童嗎', '一輩子 有多長', '永遠 的 近義詞', '捧花 怎麼接比較準',
+];
+
+// 鍵盤：鋁的底上一格一格的深色鍵、一塊觸控板（會被景深糊掉，所以簡單就好）
+const KEYS_FS = /* glsl */ `
+  uniform vec3 alu; uniform vec3 key;
+  varying vec3 vW; varying vec3 vN; varying vec2 vUv;
+  ${GLSL_COMMON}
+  void main() {
+    vec2 p = vUv * vec2(${BASE.w}.0, ${BASE.d}.0);
+    vec3 col = alu;
+    // 鍵盤區：上面 11 公分、左右留 2 公分
+    vec2 kp = p - vec2(2.2, ${BASE.d}.0 - 12.4);
+    if (kp.x > 0.0 && kp.x < ${BASE.w - 4.4} && kp.y > 0.0 && kp.y < 10.6) {
+      vec2 cell = vec2(${((BASE.w - 4.4) / 14).toFixed(4)}, 1.77);
+      vec2 q = mod(kp, cell) - cell * 0.5;
+      float k = sdBox(q, cell * 0.5 - vec2(0.18, 0.18)) - 0.12;
+      col = mix(col, key, 1.0 - smoothstep(-0.03, 0.03, k));
+    }
+    // 觸控板
+    float tp = sdBox(p - vec2(${BASE.w / 2}.0, 4.6), vec2(6.0, 3.6)) - 0.4;
+    col = mix(col, alu * 0.93, 1.0 - smoothstep(-0.03, 0.03, tp));
+    gl_FragColor = vec4(col, 1.0);
+  }`;
+
+function makeRig() {
+  const scene = new THREE.Scene();
+  const cam = new THREE.PerspectiveCamera(30, 16 / 9, 2, 2000);
+  const table = new THREE.Mesh(new THREE.PlaneGeometry(1400, 1400).rotateX(-Math.PI / 2), tableMaterial());
+  const wall = new THREE.Mesh(new THREE.PlaneGeometry(1400, 500), backdropMaterial());
+  wall.position.set(0, 200, -230);
+  const lap = new THREE.Group();
+  const bodyMat = bodyMaterial();
+  const base = new THREE.Mesh(slab(BASE.w, BASE.d, BASE.h, 1.0, 0.25), bodyMat);
+  base.rotation.x = -Math.PI / 2;
+  base.position.y = BASE.h;
+  const keys = new THREE.Mesh(new THREE.PlaneGeometry(BASE.w - 1.2, BASE.d - 1.2).rotateX(-Math.PI / 2), new THREE.ShaderMaterial({
+    vertexShader: `varying vec3 vW; varying vec3 vN; varying vec2 vUv; void main() { vec4 wp = modelMatrix * vec4(position, 1.0); vW = wp.xyz; vN = normal; vUv = uv; gl_Position = projectionMatrix * viewMatrix * wp; }`,
+    fragmentShader: KEYS_FS, uniforms: { alu: { value: new THREE.Vector3() }, key: { value: new THREE.Vector3() } },
+  }));
+  keys.position.y = BASE.h + 0.01;
+  // 螢幕蓋：轉軸在底座後緣，往後仰
+  const lid = new THREE.Group();
+  lid.position.set(0, BASE.h, -BASE.d / 2 + 0.4);
+  lid.rotation.x = -OPEN;
+  const lidBody = new THREE.Mesh(slab(LID.w, LID.h, LID.d, 1.0, 0.2), bodyMat);
+  lidBody.position.y = LID.h / 2;
+  const screen = new THREE.Mesh(new THREE.PlaneGeometry(SCR.w, SCR.h), screenMaterial());
+  screen.position.set(0, LID.h / 2 + 0.3, 0.012);
+  lid.add(lidBody, screen);
+  lap.add(base, keys, lid);
+  lap.rotation.y = 0.12;
+  scene.add(table, wall, lap);
+  const center = new THREE.Vector3();
+  return { scene, cam, table, wall, bodyMat, keys, screen, lap, center };
+}
+
+export default class Search extends Scene {
+  rig = shared('search.rig', makeRig);
+  ui = this.track(new Layer2D(CW, CH, 1, { fast: true }));
+  msg: Msg | null = this.ctx.params.message ?? null;
+  g!: Grid;
+  lines: Line[] = [];
+  lays = new Map<Line, LyricLayout>();
+  heroFit: FitResult | null = null;
+  heroFamily = F.hand(400);
+  tHero = 0;
+  instr = false;
+
+  override async init() {
+    const { audio: au, lyrics, song } = this.ctx;
+    const s = this.ctx.start, e = this.ctx.end;
+    const g = this.g = grid(au, s, e);
+    const c = this.ui.ctx;
+    this.lines = windowLines(lyrics, s, e);
+    this.instr = this.lines.length === 0;
+    const m = this.msg;
+    await loadText(`${SUGGEST.join('')}祝福搜尋掃描右下角你的祝福會出現在這裡一位賓客${INSTR_QUERY}${COUPLE_ZH}${song.title}${m ? m.text + m.name : ''}${this.lines.map((l) => l.text).join('')}`);
+    for (const l of this.lines) this.lays.set(l, layoutLyric(c, l, this.q()));
+    this.tHero = g.b0;
+    this.heroFamily = m ? F.hand(400) : F.hei(500);
+    this.heroFit = m
+      ? fitText(c, m.text, F.hand(400), FW - 170, 470, { min: 104, max: 150, lineHeight: 1.2, maxLines: 4 })
+      : fitText(c, '掃描右下角 QR code，你的祝福會出現在這裡', F.hei(500), FW - 170, 160, { min: 54, max: 60, lineHeight: 1.3, maxLines: 2 });
+  }
+
+  override render(f: Frame, out: THREE.WebGLRenderTarget): PostOverrides {
+    const { renderer } = this.ctx;
+    const t = f.t, s = this.ctx.start, g = this.g;
+    const R = this.rig;
+    this.drawUi(t);
+
+    // ---- 材質（亮的白天：紙色的牆、淺色木桌、銀色的機身）
+    const tb = R.table.material as THREE.ShaderMaterial, wl = R.wall.material as THREE.ShaderMaterial, sc = R.screen.material as THREE.ShaderMaterial;
+    setV3(tb.uniforms.base!, mixV(LIN.paper, LIN.sepia, 0.1), 0.95);
+    setV3(tb.uniforms.base2!, mixV(LIN.paper, LIN.sepia, 0.2), 0.95);
+    tb.uniforms.grainK!.value = 0.5;
+    setV3(tb.uniforms.glowCol!, LIN.bone, 0.0);
+    (tb.uniforms.shadow!.value as THREE.Vector4).set(0, 0, BASE.w / 2 - 0.5, BASE.d / 2 - 0.5);
+    tb.uniforms.shadowRot!.value = -0.12;
+    tb.uniforms.shadowK!.value = 0.35;
+    setV3(tb.uniforms.fade!, mixV(LIN.paper, LIN.sepia, 0.12), 0.9);
+    tb.uniforms.fadeZ!.value = 80;
+    setV3(tb.uniforms.lampCol!, LIN.bone, 0.06);
+    (tb.uniforms.lampPos!.value as THREE.Vector3).set(-60, 0, -30);
+    tb.uniforms.lampR!.value = 70;
+    setV3(wl.uniforms.top!, LIN.paper, 0.86);
+    setV3(wl.uniforms.bottom!, mixV(LIN.paper, LIN.sepia, 0.1), 0.8);
+    setV3(wl.uniforms.lightCol!, LIN.bone, 0.08);
+    (wl.uniforms.lightPos!.value as THREE.Vector2).set(-160, 90);
+    wl.uniforms.lightR!.value = 120;
+    wl.uniforms.y0!.value = 0; wl.uniforms.y1!.value = 250;
+    const bm = R.bodyMat;
+    setV3(bm.uniforms.base!, mixV(LIN.bone, LIN.ash, 0.4), 0.9);
+    setV3(bm.uniforms.keyCol!, LIN.bone, 0.55);
+    (bm.uniforms.keyDir!.value as THREE.Vector3).set(-0.7, 0.8, 0.5);
+    setV3(bm.uniforms.fill!, LIN.paper, 0.4);
+    bm.uniforms.shine!.value = 0.25; bm.uniforms.rough!.value = 30;
+    const km = R.keys.material as THREE.ShaderMaterial;
+    setV3(km.uniforms.alu!, mixV(LIN.bone, LIN.ash, 0.4), 0.85);
+    setV3(km.uniforms.key!, mixV(LIN.ash, LIN.graphite, 0.3), 0.72);
+    sc.uniforms.ui!.value = this.ui.upload();
+    sc.uniforms.on!.value = prog(t, s, s + 0.15) * 0.93;
+    setV3(sc.uniforms.sheen!, LIN.bone, 0.03);
+    (sc.uniforms.refl!.value as THREE.Vector3).set(-0.6, 0.5, 0.6);
+
+    // ---- 鏡頭：鍵盤前面一點、稍微偏右、比螢幕低一點點；慢慢推近，每個小節線緩一下
+    let step = 0;
+    for (const b of g.bars) step += prog(t, b - 0.1, b + 0.7, ease.inOutCubic);
+    const push = Math.min(step, 6) * 0.7 + 2.2 * prog(t, this.tHero, this.tHero + 1.2, ease.outCubic);
+    const dist = 55 - push;
+    // 螢幕中心（世界座標）
+    R.lap.updateMatrixWorld();
+    R.screen.getWorldPosition(R.center);
+    // 看螢幕中心的右下一點：筆電在畫面裡偏左上，右下角（QR 的位置）是桌面，不會被螢幕的亮面蓋到
+    const look = R.center.clone().add(new THREE.Vector3(5.2, -2.2, 0));
+    const az = 0.3 + 0.01 * Math.min(step, 6), el = 0.1;
+    R.cam.position.set(look.x + Math.sin(az) * Math.cos(el) * dist, look.y + Math.sin(el) * dist, look.z + Math.cos(az) * Math.cos(el) * dist);
+    R.cam.lookAt(look);
+    R.cam.updateMatrixWorld();
+    renderStage(renderer, R.scene, R.cam, out, LIN.paper, { focus: dist, range: 4, maxR: 20, falloff: 0.4 });
+    return { paper: 1, bloom: 0.2, vignette: 0.28, grain: 0.04 };
+  }
+
+  private q(): LyricStyle { return this.msg ? QUERY : QUERY_BIG; }
+
+  // ---------------------------------------------------------------- 螢幕內容
+  private drawUi(t: number) {
+    const c = this.ui.ctx;
+    const { lyrics } = this.ctx;
+    const g = this.g, m = this.msg;
+    c.fillStyle = mixRgba('paper', 'bone', 0.7); c.fillRect(0, 0, CW, CH);
+    c.textBaseline = 'alphabetic';
+    // 小字標（淡）
+    c.font = font(F.serif(600, true), 40); c.fillStyle = rgba('sepia', 0.5);
+    c.fillText('Wishes', FX + 10, FY - 44);
+    const ww = c.measureText('Wishes').width;
+    drawHeart(c, FX + 10 + ww + 16, FY - 56, 14);
+
+    // 搜尋框：打進去的歌詞
+    const ly = this.instr ? null : lyricAt(lyrics, t);
+    const lay = ly ? this.lays.get(ly.line) ?? layoutLyric(c, ly.line, this.q()) : null;
+    const two = !!lay && lay.rows.length > 1;
+    const fh = two ? (this.msg ? 200 : 250) : this.msg ? 130 : 160;
+    c.fillStyle = rgba('bone', 1); rrect(c, FX, FY, FW, fh, 65); c.fill();
+    c.strokeStyle = rgba('sepia', 0.14); c.lineWidth = 2; rrect(c, FX, FY, FW, fh, 65); c.stroke();
+    // 放大鏡
+    c.strokeStyle = rgba('sepia', 0.45); c.lineWidth = 5; c.lineCap = 'round';
+    c.beginPath(); c.arc(FX + 70, FY + 60, 20, 0, Math.PI * 2); c.stroke();
+    c.beginPath(); c.moveTo(FX + 85, FY + 75); c.lineTo(FX + 100, FY + 90); c.stroke();
+    const tx = FX + 140, base = FY + (two ? (this.msg ? 84 : 108) : this.msg ? 92 : 116);
+    const blink = t < g.b0 || ((t - g.b0) / g.beat) % 1 < 0.55;
+    let caretX = tx, caretY = base, kw = '祝福';
+    if (ly && lay) {
+      const line = ly.line;
+      const next = this.lines[this.lines.indexOf(line) + 1];
+      const sel = next && t < next.start - 0.35 ? prog(t, next.start - 0.35 - 0.16, next.start - 0.35 - 0.1) : 0;
+      if (sel > 0) for (const r of lay.rows) { c.fillStyle = rgba('signal', 0.3 * sel); c.fillRect(tx + r.x - 4, base + r.y - lay.size * 0.88, r.width + 8, lay.size * 1.14); }
+      c.save(); c.translate(tx, base);
+      drawLyric(c, line, t, { ...this.q(), active: rgba('blood'), sung: rgba('sepia', 0.9), unsung: rgba('sepia', 0.28) }, lay, 1);
+      c.restore();
+      for (const pw of lay.words) {
+        const p = Lyrics.wordProgress(pw.word, t);
+        if (p <= 0) break;
+        caretX = tx + pw.x + pw.w * p + 3; caretY = base + pw.y;
+      }
+      const mm = /^\S+/.exec(line.text);
+      kw = mm ? Array.from(mm[0]).slice(0, 6).join('') : line.text.slice(0, 4);
+    } else if (this.instr) {
+      const n = clamp(Math.floor((t - g.b0) / g.beat) + 1, 0, Array.from(INSTR_QUERY).length);
+      const typed = Array.from(INSTR_QUERY).slice(0, t < g.b0 ? 0 : n).join('');
+      c.font = font(F.hei(500), 76); c.fillStyle = rgba('sepia', 0.9);
+      c.fillText(typed, tx, base);
+      caretX = tx + c.measureText(typed).width + 4;
+      kw = typed || '今晚';
+    }
+    if (blink) { c.fillStyle = rgba('blood', 0.9); c.fillRect(caretX, caretY - 66, 5, 80); }
+
+    // 第一個建議＝主打留言（或邀請）
+    const fit = this.heroFit!;
+    const y0 = FY + fh + 30;
+    const hk = prog(t, this.tHero, this.tHero + 0.4, ease.outCubic);
+    const heroH = 40 + fit.height + fit.size * 0.3 + (m ? 70 : 20);
+    if (hk > 0) {
+      c.save();
+      c.globalAlpha = hk;
+      c.translate(0, (1 - hk) * 24);
+      // 被選中的底色：每個小節線輕輕亮一下
+      const sel = 0.12 + 0.1 * pulse(t, lastOf(g.bars, t), 0.25);
+      c.fillStyle = mixRgba('bone', 'signal', sel, 1); rrect(c, FX, y0, FW, heroH, 40); c.fill();
+      c.font = font(this.heroFamily, fit.size); c.fillStyle = rgba('sepia', m ? 0.96 : 0.75);
+      fit.lines.forEach((ln, i) => fillWithHearts(c, ln, tx, y0 + 30 + fit.size * 0.92 + i * fit.lineHeight));
+      if (m) {
+        c.font = font(F.hand(400), 46); c.fillStyle = rgba('sepia', 0.6); c.textAlign = 'right';
+        c.fillText(signature(m.name), FX + FW - 60, y0 + heroH - 30);
+        c.textAlign = 'left';
+      }
+      c.restore();
+    }
+    // 兩列很小很淡的冷面建議：每唱一個新字就重洗
+    const w = lyrics.lastWord(t);
+    const seed = this.instr ? Math.floor((t - g.b0) / g.beat) : w ? w.gi : 0;
+    const tw = this.instr ? g.b0 + seed * g.beat : w ? w.start : -9;
+    for (let i = 0; i < 2; i++) {
+      const txt = SUGGEST[(Math.abs(seed) * 3 + i * 4) % SUGGEST.length]!.replace('{kw}', kw);
+      const a = prog(t, tw + i * 0.03, tw + i * 0.03 + 0.18, ease.outCubic);
+      const ry = y0 + heroH + 62 + i * 58;
+      if (ry > CH - 30) break;
+      c.font = font(F.hei(400), 36); c.fillStyle = rgba('sepia', 0.4 * (0.4 + 0.6 * a) * hk);
+      c.fillText(txt, tx, ry + (1 - a) * 10);
+    }
+  }
+}

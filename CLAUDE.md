@@ -17,6 +17,9 @@ Alan & Omena 的婚禮網站：賓客填表（兩階段）、婚禮資訊、桌�
 - 前端改完 `npm run build`；部署照 `部署說明.md` 的三步（先刪舊 `backend/app` 與 `dist` 再解壓）。
 - 使用者已要求修改完成後自動部署正式環境並 `git push`：先完成相關測試與打包，備份後部署，再檢查正式站；不需要再次詢問部署許可。正式資料不可用作測試資料。
 - 文案、日期、地點集中在 `frontend/src/constants.js` 與 `components/EventDetails.jsx`。
+- **會場大螢幕（`/wall`、`frontend/src/wall/`）** 照 pdoom-video 的引擎用 TypeScript + three.js 寫，規則與截圖檢查方法在 `docs/wall/ENGINE.md`，風格在 `docs/wall/TREATMENT.md`。改完跑 `npx tsc --noEmit -p src/wall`，並用 `node scripts/wall-render.mjs` 截圖**打開圖片看過**再交件。
+- 大螢幕／現場留言 2026-09-28 已依新人要求上線（賓客留言開關預設關著）；本機完整預覽用 `scripts/wall_preview.py`（用法在檔頭）。
+- 在 bash 裡用 `node -e "..."` 改 Markdown 時，字串裡不能有反引號（bash 會當成指令執行）；改文件用編輯工具。
 
 ## 風格
 

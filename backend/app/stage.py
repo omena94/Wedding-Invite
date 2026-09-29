@@ -4,7 +4,10 @@
   phase2_open_at   第二階段開放時間（ISO 8601，例如 2026-10-01T09:00:00+08:00）。空 = 尚未開放
   seat_open        婚禮當天桌次查詢是否開放（"1" / ""）
   photos_open      婚紗照分享頁是否開放（"1" / ""）
-  info_*           婚禮資訊頁的文案（見 INFO_KEYS）
+  guest_upload_open 婚禮當天賓客上傳照片（/upload）是否開放
+  wall_open        婚禮當天現場留言（/wish）是否開放；大螢幕（/wall）要登入，不看這個開關
+  wall_moderation  現場留言先審核：開著時新留言是 pending，新人按「通過」才會上大螢幕
+  info_*         婚禮資訊頁的文案（見 INFO_KEYS）
 """
 from datetime import datetime, timedelta, timezone
 
@@ -54,9 +57,15 @@ SEATING_KEYS = ("seating_canvas_w", "seating_canvas_h", "seating_clearance")
 # 群發 Email 的草稿（2026-09-11 新人要求改過的內容要留著）：主旨、內文 HTML、寄送對象、測試信箱
 BROADCAST_KEYS = ("broadcast_subject", "broadcast_body", "broadcast_target", "broadcast_test_to")
 GUEST_UPLOAD_KEY = "guest_upload_open"  # 2026-09-27 婚禮當天賓客上傳照片（/upload）
+WALL_OPEN_KEY = "wall_open"  # 婚禮當天現場留言（/wish），留言會上會場大螢幕
+WALL_MODERATION_KEY = "wall_moderation"  # 現場留言要不要先審核
+# 2026-09-28 新人可以在後台把不喜歡的大螢幕版面關掉（逗號分隔的版面名稱，例如 "aurora,disco"）
+WALL_PLATES_OFF_KEY = "wall_plates_off"
+# 2026-09-28 大螢幕換版面的節奏：fast／normal（預設，空字串也是）／slow
+WALL_PACE_KEY = "wall_pace"
 MENU_KEYS = ("menu_version", "menu_note")  # 2026-09-29 婚宴菜單：目前版本、討論備忘
 PERMISSION_KEY = "role_permissions"  # 2026-09-27 各角色能用的功能（JSON），見 permissions.py
-ALL_KEYS = (PHASE2_KEY, SEAT_KEY, PHOTOS_KEY, GUEST_UPLOAD_KEY, *INFO_KEYS, *BANQUET_KEYS, *SEATING_KEYS, *BROADCAST_KEYS, *MENU_KEYS, PERMISSION_KEY)
+ALL_KEYS = (PHASE2_KEY, SEAT_KEY, PHOTOS_KEY, GUEST_UPLOAD_KEY, WALL_OPEN_KEY, WALL_MODERATION_KEY, WALL_PLATES_OFF_KEY, WALL_PACE_KEY, *INFO_KEYS, *BANQUET_KEYS, *SEATING_KEYS, *BROADCAST_KEYS, *MENU_KEYS, PERMISSION_KEY)
 
 
 def get_setting(db: Session, key: str) -> str:
@@ -232,6 +241,7 @@ def public_stage(db: Session, preview: bool = False) -> dict:
         "seat_open": is_on(db, SEAT_KEY),
         "photos_open": is_on(db, PHOTOS_KEY),
         "guest_upload_open": is_on(db, GUEST_UPLOAD_KEY),
+        "wall_open": is_on(db, WALL_OPEN_KEY),
         # 第二階段表單提示用：飯店依身高計費的門檻
         "child_free_below": bp["child_free_below"],
         "child_half_below": bp["child_half_below"],

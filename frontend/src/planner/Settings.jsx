@@ -30,6 +30,7 @@ const PERM_ROWS = [
   ["files", "文件庫"],
   ["photos", "婚紗照"],
   ["guest_photos", "當天照片（賓客上傳的原檔：看、下載、刪除、開關）"],
+  ["wall", "現場留言：大螢幕播放、留言管理、歌單"],
   ["settings", "設定（含這張權限表）"],
 ];
 const DEFAULT_PERMS = { couple: PERM_ROWS.map(([k]) => k), helper: ["guests_view", "guests_edit", "seating_view", "gifts_view", "gifts_pickup"] };
@@ -90,6 +91,8 @@ export default function SettingsPage() {
             onChange={(v) => save({ seat_open: v ? "1" : "0" }, "seat")} />
           <StageCard on={values.guest_upload_open === "1"} busy={!!busy} label="婚禮當天照片上傳" value={values.guest_upload_open === "1" ? "開放中（/upload）" : "關閉"}
             onChange={(v) => save({ guest_upload_open: v ? "1" : "0" }, "upload")} />
+          <StageCard on={values.wall_open === "1"} busy={!!busy} label="婚禮當天現場留言" value={values.wall_open === "1" ? "開放中（/wish）" : "關閉"}
+            onChange={(v) => save({ wall_open: v ? "1" : "0" }, "wall")} />
           <StageCard on={values.photos_open === "1"} busy={!!busy} label="婚紗照分享頁" value={values.photos_open === "1" ? "開放中（/photos）" : "關閉"}
             onChange={(v) => save({ photos_open: v ? "1" : "0" }, "photos")} />
         </div>
@@ -122,6 +125,7 @@ export default function SettingsPage() {
             <tr><td>第二階段餐點確認<div className="muted-cell" style={{ fontSize: 11.5 }}>由上方「第二階段開放時間」決定</div></td><td className="perm-cell"><span className="perm-yes">可以</span></td><td className="perm-cell"><span className="perm-yes">可以</span></td><td className="perm-cell"><span className={`pill ${stage.phase2_open ? "pill-yes" : "pill-no"}`}>{stage.phase2_open ? "開放中" : "未開放"}</span></td></tr>
             <tr><td>桌次查詢與座位地圖<div className="muted-cell" style={{ fontSize: 11.5 }}>用電話或 Email 查才看得到當天的話</div></td><td className="perm-cell"><span className="perm-yes">可以</span></td><td className="perm-cell"><span className="perm-yes">可以</span></td><td className="perm-cell"><Checkbox checked={values.seat_open === "1"} disabled={!!busy} onChange={(v) => save({ seat_open: v ? "1" : "0" }, "seat")}>{values.seat_open === "1" ? "開放中" : "關閉"}</Checkbox></td></tr>
             <tr><td>當天照片上傳（/upload）<div className="muted-cell" style={{ fontSize: 11.5 }}>賓客傳原檔給你們，看不到彼此的照片</div></td><td className="perm-cell"><span className="perm-yes">可以</span></td><td className="perm-cell"><span className="perm-yes">可以</span></td><td className="perm-cell"><Checkbox checked={values.guest_upload_open === "1"} disabled={!!busy} onChange={(v) => save({ guest_upload_open: v ? "1" : "0" }, "upload")}>{values.guest_upload_open === "1" ? "開放中" : "關閉"}</Checkbox></td></tr>
+            <tr><td>現場留言（/wish）<div className="muted-cell" style={{ fontSize: 11.5 }}>賓客寫一句祝福，出現在會場大螢幕；大螢幕要登入才能開</div></td><td className="perm-cell"><span className="perm-yes">可以</span></td><td className="perm-cell"><span className="perm-yes">可以</span></td><td className="perm-cell"><Checkbox checked={values.wall_open === "1"} disabled={!!busy} onChange={(v) => save({ wall_open: v ? "1" : "0" }, "wall")}>{values.wall_open === "1" ? "開放中" : "關閉"}</Checkbox></td></tr>
             <tr><td>婚紗照分享頁</td><td className="perm-cell"><span className="perm-yes">可以</span></td><td className="perm-cell"><span className="perm-yes">可以</span></td><td className="perm-cell"><Checkbox checked={values.photos_open === "1"} disabled={!!busy} onChange={(v) => save({ photos_open: v ? "1" : "0" }, "photos")}>{values.photos_open === "1" ? "開放中" : "關閉"}</Checkbox></td></tr>
             <tr className="perm-section"><td colSpan={4}>後台</td></tr>
             {PERM_ROWS.map(([key, label]) => (

@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { BrowserRouter, NavLink, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import {
   Users, Wallet, CalendarDays, FolderOpen,
-  Settings as SettingsIcon, LogOut, Lock, LogIn, Home as HomeIcon, Armchair, Images, Gift, NotebookPen, PartyPopper, Camera,
+  Settings as SettingsIcon, LogOut, Lock, LogIn, Home as HomeIcon, Armchair, Images, Gift, NotebookPen, PartyPopper, Camera, Monitor, ExternalLink, MessageSquareHeart, LayoutGrid,
 } from "lucide-react";
 import { adminLogin, clearToken, getRole, getToken, setRole, setToken, fetchMe } from "../api.js";
 import Guests from "./Guests.jsx";
@@ -14,6 +14,8 @@ import SettingsPage from "./Settings.jsx";
 import Seating from "./Seating.jsx";
 import Photos from "./Photos.jsx";
 import GuestPhotos from "./GuestPhotos.jsx";
+import Wall from "./Wall.jsx";
+import WallPlates from "./WallPlates.jsx";
 import Gifts from "./Gifts.jsx";
 import Memos from "./Memos.jsx";
 import Program from "./Program.jsx";
@@ -35,6 +37,8 @@ const NAV = [
   { to: "/files", label: "文件庫", icon: FolderOpen, perm: ["files"] },
   { to: "/photos", label: "婚紗照", icon: Images, perm: ["photos"] }, // 2026-09-28 新人要求改名
   { to: "/day-photos", label: "當天照片", icon: Camera, perm: ["guest_photos"] }, // 2026-09-27 賓客上傳的原檔
+  { to: "/wall", label: "現場留言", icon: MessageSquareHeart, perm: ["wall"] }, // 2026-09-28 賓客在 /wish 留言、會場大螢幕、歌單
+  { to: "/wall-plates", label: "大螢幕版面", icon: LayoutGrid, perm: ["wall"] }, // 2026-09-28 所有版面的縮圖、預覽、開關、換版面節奏
   { to: "/settings", label: "設定", icon: SettingsIcon, perm: ["settings"] },
 ];
 
@@ -89,6 +93,8 @@ export default function PlannerApp() {
             <Route path="/files" element={<Allowed ok={can("files")} home={home}><Files /></Allowed>} />
             <Route path="/photos" element={<Allowed ok={can("photos")} home={home}><Photos /></Allowed>} />
             <Route path="/day-photos" element={<Allowed ok={can("guest_photos")} home={home}><GuestPhotos /></Allowed>} />
+            <Route path="/wall" element={<Allowed ok={can("wall")} home={home}><Wall /></Allowed>} />
+            <Route path="/wall-plates" element={<Allowed ok={can("wall")} home={home}><WallPlates /></Allowed>} />
             <Route path="/settings" element={<Allowed ok={can("settings")} home={home}><SettingsPage /></Allowed>} />
             <Route path="*" element={<Navigate to={home} replace />} />
           </Routes>
@@ -116,11 +122,17 @@ function Shell({ role, can, onLogout, children }) {
           <div className="pl-brand-role">{role === "helper" ? "幫手模式" : "新人模式"}</div>
         </div>
         <nav className="pl-nav" key={location.pathname}>
-          {items.map(({ to, label, icon: Icon, end }) => (
+          {items.map(({ to, label, icon: Icon, end }) => [
             <NavLink key={to} to={to} end={end} className={({ isActive }) => (isActive ? "active" : undefined)}>
               <Icon size={16} /> {label}
-            </NavLink>
-          ))}
+            </NavLink>,
+            // 2026-09-28 新人要求：任何一頁都能直接開大螢幕（/wall 是獨立頁面，用新分頁開，後台照樣留著）；放在「現場留言」正下方
+            to === "/wall" && (
+              <a key="wall-screen" href="/wall" target="_blank" rel="noopener" className="pl-nav-ext">
+                <Monitor size={16} /> 大螢幕 <ExternalLink size={12} />
+              </a>
+            ),
+          ])}
         </nav>
         <div className="pl-side-foot">
           <a className="top-link" href="/"><HomeIcon size={14} /> 回賓客首頁</a>

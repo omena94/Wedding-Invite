@@ -1390,6 +1390,144 @@ tbody tr:last-child td { border-bottom: none; }
 .pl-stage-card.on { border-color: var(--milk-tea-300); background: #fbf6ee; }
 .pl-stage-card .status-dot { margin-top: 0; }
 
+/* 現場留言（2026-09-28）：賓客頁 /wish 與後台「現場留言」 */
+.wish-count { text-align: right; font-size: 12.5px; color: var(--text-muted); margin-top: 6px; font-variant-numeric: tabular-nums; }
+.wish-count.full { color: var(--rose-accent); font-weight: 600; }
+.wish-error { margin: 2px 0 10px; }
+.wish-send { margin-top: 4px; }
+.wish-quote { margin: 18px auto 22px; max-width: 420px; padding: 16px 18px; border-radius: 14px; background: var(--bg-card-subtle); border: 1px solid var(--border-soft); text-align: left; }
+.wish-quote p { margin: 0 !important; font: 600 17px/1.7 "Noto Serif TC", serif; color: var(--milk-tea-900); word-break: break-word; }
+.wish-quote footer { margin-top: 8px; font-size: 13.5px; color: var(--text-muted); text-align: right; }
+.wall-top { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); column-gap: 20px; }
+.wall-qr { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; }
+.wall-qr-code { width: 168px; height: 168px; flex-shrink: 0; border-radius: 10px; border: 1px solid var(--border-soft); }
+.wall-qr-side { flex: 1; min-width: 160px; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+.wall-qr-url { font-size: 15px; font-weight: 600; color: var(--milk-tea-900); word-break: break-all; }
+.wall-add { display: grid; grid-template-columns: minmax(0, 150px) minmax(0, 1fr) auto; gap: 8px; align-items: center; }
+.wall-msg-list { list-style: none; margin: 0; padding: 0; }
+.wall-msg { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--milk-tea-100); }
+.wall-msg:last-child { border-bottom: none; }
+.wall-msg.hide .wall-msg-text { color: var(--text-muted); }
+.wall-msg.pending { padding-left: 12px; box-shadow: inset 3px 0 0 var(--gold-accent); }
+.wall-msg-main { flex: 1; min-width: 0; }
+.wall-msg-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 12.5px; color: var(--text-muted); }
+.wall-msg-name { font-weight: 600; color: var(--milk-tea-900); }
+.wall-msg-text { margin-top: 4px; font-size: 14.5px; line-height: 1.6; color: var(--text-dark); word-break: break-word; }
+.wall-msg-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.wall-msg-toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text-muted); white-space: nowrap; }
+@media (max-width: 900px) { .wall-top { grid-template-columns: 1fr; } }
+@media (max-width: 640px) {
+  .wall-add { grid-template-columns: 1fr; }
+  .wall-msg { flex-direction: column; align-items: stretch; gap: 8px; }
+  .wall-msg-actions { justify-content: flex-end; }
+}
+
+/* 大螢幕歌單（2026-09-28）：後台「現場留言」下方的歌單、編輯歌曲的歌詞對時 */
+.ws-list { list-style: none; margin: 0; padding: 0; }
+.ws-row { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--milk-tea-100); }
+.ws-row:last-child { border-bottom: none; }
+.ws-row.off .ws-title, .ws-row.off .ws-no { color: var(--text-muted); text-decoration: line-through; }
+.ws-order { display: flex; flex-direction: column; gap: 4px; }
+.ws-order .btn { padding: 3px 6px; }
+.ws-no { font: 600 13px/1 "IBM Plex Mono", ui-monospace, monospace; color: var(--milk-tea-500); width: 24px; text-align: right; }
+.ws-main { flex: 1; min-width: 0; }
+.ws-title { font-size: 14.5px; font-weight: 600; color: var(--milk-tea-900); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ws-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-top: 3px; font-size: 12.5px; color: var(--text-muted); }
+.ws-jobtag { color: var(--milk-tea-700); font-weight: 600; }
+.ws-job { font-size: 13px; color: var(--milk-tea-700); padding: 6px 0; }
+.ws-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.ws-range { display: flex; align-items: center; gap: 8px; }
+.ws-range input { width: 100px; }
+.ws-tempo { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ws-bpm { font: 600 15px/1 "IBM Plex Mono", ui-monospace, monospace; color: var(--milk-tea-900); margin-right: 6px; }
+.ws-lyrics-head { display: flex !important; justify-content: space-between; align-items: center; gap: 12px; }
+.ws-lyrics-tools { font-weight: 400; }
+.ws-cands { border: 1px solid var(--border-soft); border-radius: 12px; padding: 4px 12px; margin-bottom: 10px; max-height: 260px; overflow-y: auto; background: var(--bg-card-subtle); }
+.ws-cand { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--milk-tea-100); }
+.ws-cand:last-child { border-bottom: none; }
+.ws-cand-title { font-size: 13.5px; font-weight: 600; color: var(--milk-tea-900); }
+.ws-lrc { font: 13px/1.6 "IBM Plex Mono", ui-monospace, monospace; }
+.ws-sync { margin-top: 10px; border: 1px solid var(--border-soft); border-radius: 14px; padding: 12px; background: var(--bg-card-subtle); }
+.ws-player { display: flex; align-items: center; gap: 8px; }
+.ws-bar { flex: 1; height: 8px; border-radius: 4px; background: var(--milk-tea-100); cursor: pointer; overflow: hidden; }
+.ws-bar > div { height: 100%; background: var(--milk-tea-500); }
+.ws-time { font: 12px/1 "IBM Plex Mono", ui-monospace, monospace; color: var(--text-muted); white-space: nowrap; }
+.ws-preview { min-height: 86px; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; padding: 12px 6px; }
+/* 拉丁字先用西文字型：Noto Sans TC 的彎引號是全形，it’s 會被撐開 */
+.ws-karaoke { font: 700 22px/1.5 "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans TC", "PingFang TC", sans-serif; }
+.ws-word { background: linear-gradient(90deg, var(--milk-tea-900) var(--p), var(--milk-tea-300) var(--p)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.ws-preview-next { margin-top: 4px; font-size: 14px; color: var(--text-muted); }
+/* 還沒有時間軸：下一步說清楚、按鈕放顯眼 */
+.ws-empty { display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; padding: 18px 12px; margin-top: 10px; border-radius: 10px; background: #fbf1dc; }
+.ws-empty .helper-text { margin: 0; max-width: 520px; }
+.ws-empty-title { font-weight: 700; color: var(--milk-tea-900); }
+.ws-empty-inline { flex-direction: row; flex-wrap: wrap; justify-content: space-between; text-align: left; padding: 10px 12px; font-size: 14px; color: var(--milk-tea-900); }
+.ws-rate { display: inline-flex; gap: 4px; margin-left: auto; }
+.ws-tap-list { max-height: 220px; overflow-y: auto; margin-top: 10px; border-radius: 10px; background: var(--bg-card); border: 1px solid var(--border-soft); padding: 6px 0; }
+.ws-tap-line { padding: 5px 12px; font-size: 14px; color: var(--text-muted); }
+.ws-tap-line.done { color: var(--text-dark); }
+.ws-tap-line.now { background: #fbf1dc; color: var(--milk-tea-900); font-weight: 700; }
+.ws-tap-t { display: inline-block; width: 86px; font: 12px/1 "IBM Plex Mono", ui-monospace, monospace; color: var(--milk-tea-500); }
+/* 整首歌詞清單：每一句照大螢幕的時間逐字亮，按「對字」修一句 */
+.ws-lines { position: relative; max-height: 300px; overflow-y: auto; border-radius: 10px; background: var(--bg-card); border: 1px solid var(--border-soft); padding: 4px 0; }
+.ws-line { display: flex; align-items: center; gap: 8px; padding: 4px 10px; cursor: pointer; }
+.ws-line:hover { background: var(--bg-card-subtle); }
+.ws-line.now { background: #fbf1dc; }
+.ws-line .ws-tap-t { flex-shrink: 0; }
+.ws-line-text { flex: 1; min-width: 0; }
+.ws-line-pill { flex-shrink: 0; }
+.ws-line-btns { display: flex; gap: 4px; flex-shrink: 0; }
+.ws-line-btns .btn { padding: 3px 8px; }
+/* 剛剛點的／改的那一句：框起來（對字完清單會捲回這裡） */
+.ws-line.sel { box-shadow: inset 3px 0 0 var(--milk-tea-700); background: var(--bg-card-subtle); }
+.ws-line.now.sel { background: #fbf1dc; }
+.ws-save-note { margin-left: 6px; color: var(--milk-tea-700); font-weight: 600; }
+/* 歌曲編輯視窗：比一般編輯視窗寬；「儲存」固定在視窗底部，不用捲到最下面 */
+.modal-card.ws-editor { max-width: 860px; }
+.modal-card.ws-editor .edit-modal-actions {
+  position: sticky; bottom: -24px; z-index: 2;
+  margin: 18px -26px -24px; padding: 12px 26px 16px;
+  background: #fff; border-top: 1px solid var(--border-soft);
+}
+.ws-karaoke.sm { font: 600 15px/1.45 "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans TC", "PingFang TC", sans-serif; }
+/* 逐字對時：一個字一格，段落開頭前面有分隔，按過的字變深、下一個要按的字框起來 */
+.ws-word-tap { margin-top: 10px; }
+.ws-chips { display: flex; flex-wrap: wrap; gap: 4px; padding: 12px; border-radius: 10px; background: var(--bg-card); border: 1px solid var(--border-soft); }
+.ws-chip { display: inline-flex; flex-direction: column; align-items: center; min-width: 30px; padding: 4px 4px 2px; border-radius: 8px; font: 700 22px/1.2 "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans TC", "PingFang TC", sans-serif; color: var(--milk-tea-300); border: 2px solid transparent; }
+.ws-chip small { font: 10px/1.2 "IBM Plex Mono", ui-monospace, monospace; color: var(--milk-tea-500); min-height: 12px; }
+.ws-chip.cut { margin-left: 10px; border-left: 2px dashed var(--milk-tea-300); border-top-left-radius: 0; border-bottom-left-radius: 0; }
+.ws-chip.clickable { cursor: pointer; }
+.ws-chip.clickable:hover { background: var(--bg-card-subtle); }
+.ws-chip.done { color: var(--milk-tea-900); }
+.ws-chip.now { color: var(--milk-tea-900); border-color: var(--milk-tea-500); background: #fbf1dc; }
+@media (max-width: 640px) {
+  .ws-row { flex-wrap: wrap; }
+  .ws-actions { width: 100%; justify-content: flex-end; }
+}
+/* 後台左側「大螢幕 ↗」：新分頁開 /wall，跟一般選單同樣式，右邊的小箭頭表示會開新分頁 */
+.pl-nav a.pl-nav-ext { color: var(--milk-tea-700); }
+.pl-nav a.pl-nav-ext svg:last-child { margin-left: auto; opacity: .55; }
+/* 歌單上方的歌詞統計與篩選 */
+.ws-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: -4px 0 12px; }
+
+/* 大螢幕版面一覽（planner/WallPlates.jsx） */
+.wp-pace { display: flex; flex-wrap: wrap; gap: 10px; }
+.wp-pace .btn { flex-direction: column; align-items: flex-start; gap: 2px; padding: 10px 14px; min-width: 200px; }
+.wp-pace .btn small { font-weight: 400; font-size: 12px; opacity: 0.8; }
+.wp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; }
+.wp-card { background: var(--bg-card); border: 1px solid var(--border-soft); border-radius: 14px; overflow: hidden; display: flex; flex-direction: column; }
+.wp-card.off { opacity: 0.55; }
+.wp-card.off .wp-thumb img { filter: grayscale(1); }
+.wp-thumb { position: relative; display: block; padding: 0; border: 0; background: #111; cursor: pointer; aspect-ratio: 16 / 9; }
+.wp-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.wp-play { position: absolute; right: 10px; bottom: 10px; width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  background: rgba(0, 0, 0, 0.55); color: #fff; opacity: 0; transition: opacity 0.15s; }
+.wp-thumb:hover .wp-play, .wp-thumb:focus-visible .wp-play { opacity: 1; }
+.wp-body { padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 4px; flex: 1; }
+.wp-title { font-weight: 700; color: var(--milk-tea-900); font-size: 14.5px; }
+.wp-idea { font-size: 12.5px; color: var(--text-muted); line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.wp-meta { display: flex; align-items: center; gap: 6px; margin-top: auto; padding-top: 6px; }
+.wp-toggle { margin-left: auto; }
 /* 婚宴 → 菜單（2026-09-29） */
 .menu-summary { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; align-self: end; padding-bottom: 18px; }
 .menu-files { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }

@@ -77,6 +77,9 @@ export const fetchStage = () => request("/api/stage", { authOptional: true });
 export const fetchInfo = () => request("/api/info", { authOptional: true });
 export const seatLookup = (query, phone = '') => request("/api/seat/lookup", { method: "POST", body: { query, phone }, authOptional: true });
 export const fetchPhotos = () => request("/api/photos", { authOptional: true });
+// 婚禮當天現場留言（/wish，2026-09-28）：登入過後台就帶 token，開關關著也能試寫、不受限流。
+// device 是這支手機的隨機代號，後端用它限流（會場大家共用一個對外 IP，不能只看 IP）
+export const postWallMessage = (name, text, device = "") => request("/api/wall/messages", { method: "POST", body: { name, text, device }, authOptional: true });
 export const photoUrl = (id) => `/api/photos/${id}`;
 export const photoThumbUrl = (id) => `/api/photos/${id}/thumb`;
 // 預覽模式下照片頁還沒開放，<img src> 帶不了 token，改用 fetch 取回 blob
@@ -233,6 +236,44 @@ export async function downloadGuestPhotosZip() {
   const url = URL.createObjectURL(await res.blob());
   const a = document.createElement("a"); a.href = url; a.download = "wedding-day-photos.zip"; document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+// 現場留言與大螢幕（2026-09-28）：留言管理、大螢幕輪詢、背景歌單；都要 wall 鑰匙
+const WALL = `${P}/wall`;
+export const fetchWallMessages = () => request(`${WALL}/messages`, { auth: true });
+export const createWallMessage = (data) => request(`${WALL}/messages`, { method: "POST", body: data, auth: true });
+export const updateWallMessage = (id, data) => request(`${WALL}/messages/${id}`, { method: "PATCH", body: data, auth: true });
+export const deleteWallMessage = (id) => request(`${WALL}/messages/${id}`, { method: "DELETE", auth: true });
+// 大螢幕每兩秒問一次：{messages, count, open, moderation, songs_rev}
+export const fetchWallFeed = () => request(`${WALL}/feed`, { auth: true });
+export const fetchWallSongs = () => request(`${WALL}/songs`, { auth: true });
+// fields = {title, artist}，留空就從檔名「歌手 - 歌名」自動拆
+export function uploadWallSong(file, fields = {}) {
+  const fd = new FormData();
+  fd.append("file", file, file.name);
+  Object.entries(fields).forEach(([k, v]) => {
+    if (v !== "" && v !== null && v !== undefined) fd.append(k, v);
+  });
+  return multipart(`${WALL}/songs`, fd);
+}
+export const updateWallSong = (id, data) => request(`${WALL}/songs/${id}`, { method: "PATCH", body: data, auth: true });
+export const reorderWallSongs = (ids) => request(`${WALL}/songs/reorder`, { method: "POST", body: { ids }, auth: true });
+export const deleteWallSong = (id) => request(`${WALL}/songs/${id}`, { method: "DELETE", auth: true });
+// 節拍分析：{version, duration, bpm, data}；還沒分析過會丟 404
+export const fetchWallSongAnalysis = (id) => request(`${WALL}/songs/${id}/analysis`, { auth: true });
+export const saveWallSongAnalysis = (id, payload) => request(`${WALL}/songs/${id}/analysis`, { method: "PUT", body: payload, auth: true });
+// 音檔要登入才拿得到，<audio src> 帶不了 token，所以先抓成 Blob
+export async function fetchWallSongAudio(id) {
+  const res = await fetch(`${WALL}/songs/${id}/audio`, { headers: { Authorization: `Bearer ${getToken()}` } });
+  if (res.status === 401) {
+    clearToken();
+    throw new Error("登入已失效，請重新登入");
+  }
+  if (!res.ok) {
+    const err = new Error(res.status === 404 ? "音檔不在了，請重新上傳" : "音檔讀取失敗");
+    err.status = res.status;
+    throw err;
+  }
+  return res.blob();
 }
 // 登入後拿自己的角色與能用的功能鑰匙（2026-09-27 權限改由設定頁調）
 export const fetchMe = () => request("/api/admin/me", { auth: true });
