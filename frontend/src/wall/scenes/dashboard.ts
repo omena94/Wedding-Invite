@@ -8,6 +8,8 @@
 //  - 左邊轉速表跟著音樂的能量（大鼓一踩指針就往上甩），右邊的速度表單位是 BPM；中間的雙黃燈按鈕跟著拍子閃（在慶祝）。
 // 2026-09-29 依「MV 融合原則」：留言改成擋風玻璃上的投影（場景裡的東西，不再是導航螢幕裡的卡片），
 // 導航地圖、里程、紅區標籤、限速這些介面元素拿掉；路會轉彎，鏡頭跟著小節線輕輕顛一下。
+// 同日「留言尺寸與版面比例標準 v2」：投影縮到 40～60 px、放在擋風玻璃左上（≤ 840 × 290），讓路當主視覺；
+// 補上每兩小節一輛對向來車（車燈由遠而近、擦身而過時整個車廂亮一下）。
 import * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
 import { FSPass, Layer2D, W, H } from '../engine/gl';
@@ -15,7 +17,8 @@ import { F, font, loadText } from '../engine/type';
 import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, pulse, TAU } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
-import { lyricAt, drawLyric, layoutLyric, lyricSizeFor, beatAfter, signature, fillWithHearts } from './_motifs';
+import { lyricAt, drawLyric, layoutLyric, beatAfter, signature, fillWithHearts } from './_motifs';
+import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 } from './_v2';
 import { stagger, mono } from './_t11';
 import { fillGlyph, type Rect } from './_t9';
 
@@ -31,7 +34,7 @@ const TACH = { x: 330, y: 800, r: 172 };
 const SPEEDO = { x: 1572, y: 700, r: 128 };
 const NAV = { x: 570, y: 612, w: 790, h: 372 };
 /** 擋風玻璃上的投影區（留言，或沒有留言時的歌詞）。 */
-const HUD_BOX = { x: 250, y: 124, w: 1420, h: 250 };
+const HUD_BOX = { x: 220, y: 100, w: 840, h: 290 };
 const HAZ = { x: 960, y: 588 };
 const FAM_MSG = F.hand(700);
 const INVITE = '掃描右下角 QR code，輸入你的祝福';
@@ -40,7 +43,7 @@ const INVITE = '掃描右下角 QR code，輸入你的祝福';
 const gAng = (v: number, max: number) => ((135 + (270 * v) / max) * Math.PI) / 180;
 
 const BG = () => new FSPass(/* glsl */ `
-  uniform float beat; uniform float bar; uniform float kick; uniform float k; uniform float cv; uniform vec4 hud;
+  uniform float beat; uniform float bar; uniform float kick; uniform float k; uniform float cv; uniform vec4 hud; uniform float carZ;
   const vec2 VP = vec2(${VP.x}.0, ${VP.y}.0);
   float dashTop(float x) {
     float base = 566.0 + 24.0 * pow((x - 960.0) / 960.0, 2.0);
@@ -77,6 +80,10 @@ const BG = () => new FSPass(/* glsl */ `
         // 城市的天際線：一棟一棟的方塊，窗戶零星亮著
         float bi = floor(p.x / 34.0);
         float bh = 6.0 + 46.0 * pow(hash12(vec2(bi, 3.0)), 2.2) * (0.4 + 0.6 * smoothstep(900.0, 0.0, abs(p.x - 960.0)));
+        // 投影的字後面：遠處城市的窗戶暗一點，字才清楚
+        vec2 hq0 = max(hud.xy - p, p - hud.zw);
+        float calm = 1.0 - 0.75 * (1.0 - smoothstep(0.0, 60.0, max(hq0.x, hq0.y)));
+        bh *= calm;
         if (VP.y - p.y < bh) {
           col = C_INK * 1.1;
           vec2 wc = floor(p / vec2(5.0, 6.0));
@@ -127,6 +134,19 @@ const BG = () => new FSPass(/* glsl */ `
         float dp = sdSegment(p, lp + vec2(r * 0.6, 0.0), gp);
         col = mix(col, C_INK * 0.9, (1.0 - smoothstep(0.0, 1.0 + 30.0 / zl, dp - 18.0 / zl)) * 0.9);
       }
+      // 對向來車：左邊車道，兩顆車燈由遠而近（越近越大、越亮），路面上一道反光
+      if (carZ > 1.0) {
+        for (int j = 0; j < 2; j++) {
+          float X = -3.8 + (j == 0 ? -0.75 : 0.75) + cv * carZ * carZ;
+          vec2 lp = VP + vec2(X, ${HC.toFixed(1)} - 0.7) * ${FOC}.0 / carZ;
+          float r = 1.2 + 26.0 / carZ;
+          float dl = length(p - lp);
+          col += mix(C_BONE, C_EMBER, 0.3) * (3.0 * exp(-dl * dl / (r * r)) + 0.35 * exp(-dl / (r * 4.0))) * smoothstep(120.0, 60.0, carZ);
+          // 濕濕的路面上一道直直的反光
+          float refl = exp(-pow((p.x - lp.x) / (r * 1.4), 2.0)) * step(lp.y, p.y) * exp(-(p.y - lp.y) / (40.0 + 900.0 / carZ));
+          col += C_EMBER * 0.12 * refl * smoothstep(120.0, 60.0, carZ);
+        }
+      }
       // A 柱、車頂、後照鏡
       float lpil = (p.x - mix(170.0, 30.0, p.y / 580.0));
       float rpil = (mix(1750.0, 1890.0, p.y / 580.0) - p.x);
@@ -163,7 +183,7 @@ const BG = () => new FSPass(/* glsl */ `
       col += C_BONE * 0.06 * pxLine(abs(dn - 11.0), 0.4, 1.2) * step(p.y, nc.y);
     }
     fragColor = vec4(col * k, 1.0);
-  }`, { beat: { value: 0 }, bar: { value: 0 }, kick: { value: 0 }, k: { value: 1 }, cv: { value: 0 }, hud: { value: new THREE.Vector4(0, 0, 0, 0) } });
+  }`, { beat: { value: 0 }, bar: { value: 0 }, kick: { value: 0 }, k: { value: 1 }, cv: { value: 0 }, hud: { value: new THREE.Vector4(0, 0, 0, 0) }, carZ: { value: 0 } });
 
 interface Glyph { ch: string; x: number; y: number; t: number }
 
@@ -198,8 +218,10 @@ export default class Dashboard extends Scene {
     const bar = au.timeOfBar(au.barAt(this.tFirst) + 1) - this.tFirst;
     if (m) {
       // ---- 抬頭顯示：留言（扣掉署名那一排的高度再找字級），每行置中，一個字一個字投影出來
-      const sigH = 60;
-      const fit = this.fit = fitText(c, m.text, FAM_MSG, HUD_BOX.w, HUD_BOX.h - sigH, { min: 56, max: 112, lineHeight: 1.18, maxLines: 3 });
+      const max = msgMaxFor(m.text);
+      const sigH = Math.round(sigV2(max) * 1.9);
+      const o = { min: V2.msgMin, max, lineHeight: 1.2, maxLines: 5 };
+      const fit = this.fit = fitClauses(c, m.text, FAM_MSG, HUD_BOX.w, HUD_BOX.h - sigH, o) ?? fitText(c, m.text, FAM_MSG, HUD_BOX.w, HUD_BOX.h - sigH, o);
       c.font = font(FAM_MSG, fit.size);
       const blockH = fit.height + sigH;
       const top = HUD_BOX.y + Math.max(0, (HUD_BOX.h - blockH) / 2) + fit.size * 0.88;
@@ -215,13 +237,13 @@ export default class Dashboard extends Scene {
       const times = stagger(au, this.tFirst + beat * 0.5, pos.length, Math.min(2 * bar, 0.4 * (e - s)));
       this.glyphs = pos.map((p, i) => ({ ...p, t: times[i]! }));
       this.sigT = (times[times.length - 1] ?? this.tFirst) + beat * 0.5;
-      this.sigSize = Math.round(Math.max(40, Math.min(52, fit.size * 0.48)));
+      this.sigSize = sigV2(fit.size);
       this.sigX = right;
-      this.sigY = top + (fit.lines.length - 1) * fit.lineHeight + sigH - 6;
-      this.lyrSize = lyricSizeFor(fit.size, 64);
-      this.hudRect = [HUD_BOX.x, top - fit.size, right, this.sigY + 10];
+      this.sigY = top + (fit.lines.length - 1) * fit.lineHeight + this.sigSize * 1.8;
+      this.lyrSize = lyricV2(fit.size);
+      this.hudRect = [HUD_BOX.x, top - fit.size, Math.max(right, HUD_BOX.x + HUD_BOX.w / 2 + 180), this.sigY + 50];
     } else {
-      this.lyrSize = 80;
+      this.lyrSize = lyricV2(null);
       this.hudRect = [HUD_BOX.x, HUD_BOX.y, HUD_BOX.x + HUD_BOX.w, HUD_BOX.y + HUD_BOX.h];
     }
     this.drawStill();
@@ -230,8 +252,8 @@ export default class Dashboard extends Scene {
 
   private lyrStyle() {
     return this.msg
-      ? { family: F.archivo(100, 700), size: this.lyrSize, minSize: 48, maxWidth: NAV.w - 90, align: 'center' as const, lineHeight: 1.12 }
-      : { family: F.archivo(100, 700), size: this.lyrSize, minSize: 56, maxWidth: HUD_BOX.w - 60, align: 'center' as const, lineHeight: 1.12 };
+      ? { family: F.archivo(100, 700), size: this.lyrSize, minSize: V2.lyrMin, maxWidth: NAV.w - 90, align: 'center' as const, lineHeight: 1.12 }
+      : { family: F.archivo(100, 700), size: this.lyrSize, minSize: V2.lyrMin, maxWidth: HUD_BOX.w, align: 'center' as const, lineHeight: 1.14 };
   }
 
   /** 儀表的刻度與數字（畫一次；標籤只留很小的兩個）。 */
@@ -276,6 +298,10 @@ export default class Dashboard extends Scene {
     // 路的曲率：跟著小節慢慢左彎右彎（每首歌、每個窗格不一樣的相位）
     B.cv!.value = 0.0011 * Math.sin(au.barAt(t) * 0.35 + (this.seed % 97) * 0.1);
     (B.hud!.value as THREE.Vector4).set(...this.hudRect);
+    const bar2 = au.barAt(t) / 2, c0 = Math.floor(bar2 + 1e-4);
+    const cz = 140 * (1 - ease.inQuad(bar2 - c0));
+    B.carZ!.value = cz;
+    const passing = cz < 12 ? (1 - cz / 12) : 0;
     this.bg.render(renderer, out);
     comp.draw(renderer, this.still.texture, out, { opacity: prog(t, s, s + 0.25) });
     const L = this.layer, Hh = this.hot;
@@ -292,7 +318,7 @@ export default class Dashboard extends Scene {
     // 路燈經過頭頂：鏡頭輕輕顛一下（路面的接縫）；整個窗格慢慢推近
     const barHit = pulse(t, au.timeOfBar(Math.floor(au.barAt(t) + 1e-4)), 0.15);
     const push = ease.inOutCubic(clamp((t - s) / Math.max(1, e - s)));
-    return { bloom: 0.85, bloomRadius: 0.65, vignette: 0.55, halation: 0.35, shake: [0, 1.5 * barHit], zoom: 1 + 0.03 * push + 0.003 * f.a.kick, popupAvoid: this.avoid };
+    return { bloom: 0.85, bloomRadius: 0.65, vignette: 0.55, halation: 0.35, shake: [0, 1.5 * barHit], flash: 0.04 * passing, zoom: 1 + 0.03 * push + 0.003 * f.a.kick, popupAvoid: this.avoid };
   }
 
   /** 轉速表（能量＋大鼓）與速度表（BPM，拍點上抖一下）的指針。 */
@@ -352,7 +378,7 @@ export default class Dashboard extends Scene {
       // 導航的一行小字（冷面）：剩餘距離一路倒數
       const e = this.ctx.end;
       const dist = Math.max(0, Math.round(520 * (1 - clamp((t - this.sigT) / Math.max(1, e - this.sigT - 0.5)))));
-      mono(c, dist > 0 ? `目的地：幸福　·　剩餘 ${dist} 公尺` : '已抵達：幸福', HUD_BOX.x + HUD_BOX.w / 2, this.sigY + 58, { size: 17, tracking: 4, color: rgba('signal', 0.65 * prog(t, this.sigT, this.sigT + 0.3)), align: 'center' });
+      mono(c, dist > 0 ? `目的地：幸福　·　剩餘 ${dist} 公尺` : '已抵達：幸福', HUD_BOX.x + HUD_BOX.w / 2, this.sigY + 44, { size: 17, tracking: 4, color: rgba('signal', 0.65 * prog(t, this.sigT, this.sigT + 0.3)), align: 'center' });
     }
     void m;
   }
@@ -360,7 +386,7 @@ export default class Dashboard extends Scene {
   /** 沒有留言：歌詞投影在擋風玻璃上當主角（逐字跟唱，疊影）；純音樂顯示歌名。 */
   private hudLyric(c: CanvasRenderingContext2D, hc: CanvasRenderingContext2D, t: number) {
     const { lyrics, song } = this.ctx;
-    const cx = HUD_BOX.x + HUD_BOX.w / 2, base = HUD_BOX.y + HUD_BOX.h * 0.6;
+    const cx = HUD_BOX.x + HUD_BOX.w / 2, base = HUD_BOX.y + HUD_BOX.h * 0.5;
     const ly = lyricAt(lyrics, t);
     if (ly) {
       const st = this.lyrStyle();
@@ -370,7 +396,7 @@ export default class Dashboard extends Scene {
       c.save(); c.translate(cx, oy); drawLyric(c, ly.line, t, st, lay, ly.k * 0.95); c.restore();
       hc.save(); hc.translate(cx, oy); drawLyric(hc, ly.line, t, { ...st, sung: 'rgba(0,0,0,0)', unsung: 'rgba(0,0,0,0)', active: rgba('signal', 0.8) }, lay, ly.k); hc.restore();
     } else if (!lyrics.linesIn(this.ctx.start - 1, this.ctx.end + 1).length) {
-      c.font = font(F.archivo(100, 700), 72); c.textAlign = 'center'; c.fillStyle = rgba('bone', 0.9);
+      c.font = font(F.archivo(100, 700), 52); c.textAlign = 'center'; c.fillStyle = rgba('bone', 0.9);
       fillWithHearts(c, song.title, cx, base);
       c.textAlign = 'left';
     }
@@ -408,9 +434,9 @@ export default class Dashboard extends Scene {
     const cx = NAV.x + NAV.w / 2;
     const k = prog(t, this.tFirst, this.tFirst + 0.4);
     c.save(); c.globalAlpha = k;
-    c.font = font(F.hei(500), 28); c.fillStyle = rgba('ash', 0.85); c.textAlign = 'center';
+    c.font = font(F.hei(500), 22); c.fillStyle = rgba('ash', 0.75); c.textAlign = 'center';
     c.fillText('目的地：尚未設定', cx, NAV.y + NAV.h / 2 - 18);
-    c.font = font(F.hand(700), 44); c.fillStyle = rgba('bone', 0.9);
+    c.font = font(F.hand(700), 40); c.fillStyle = rgba('bone', 0.9);
     c.fillText(INVITE, cx, NAV.y + NAV.h / 2 + 50);
     c.restore();
   }

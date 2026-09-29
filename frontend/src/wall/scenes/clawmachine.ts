@@ -8,6 +8,8 @@
 // 手法：3D 只畫玻璃窗那一塊（小張的 MSAA 目標，省顯示記憶體），機台外殼、控制台、紙條用 Canvas2D 疊上去。
 // 2026-09-29 依「MV 融合原則」：紙條飛到鏡頭前面、放大成畫面的焦點（真的紙：影子、撕邊、微微歪），
 // 紙條落下時後面的機台暗下來（對焦到紙條上）；歌詞小一級；拿掉「今日獎品」框、READY、CREDIT、取物口標籤與編號。
+// 同日「留言尺寸與版面比例標準 v2」：機台是主視覺，紙條縮到 ≤ 628 × 430、飛到機台右邊，留言 40～60 px；
+// 夾完之後爪子進入「待機展示」：每個小節線甩到一個新的位置停住（強烈緩動、有慣性的晃）。
 import * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
 import { FSPass, Layer2D, W, H, makeRT, clearRT } from '../engine/gl';
@@ -16,7 +18,8 @@ import { F, font, loadText } from '../engine/type';
 import { LIN, rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, hash, lerp, pulse, TAU } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
-import { lyricAt, drawLyric, layoutLyric, lyricSizeFor, beatAfter, signature, fillWithHearts } from './_motifs';
+import { lyricAt, drawLyric, layoutLyric, beatAfter, signature, fillWithHearts } from './_motifs';
+import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 } from './_v2';
 import { stagger, pad3, mono, tag } from './_t11';
 import { ClawRig, HOME, HOLD, CAP_R, CHUTE, BOX } from './clawmachine-rig';
 import { fillGlyph, type Rect } from './_t9';
@@ -28,9 +31,9 @@ const CAB = { x0: 128, x1: 1192 };
 const HEAD = { x: 170, y: 96, w: 980, h: 156 };
 const WIN = { x: 180, y: 264, w: 960, h: 536 };
 const DOOR = { x: 214, y: 924, w: 226, h: 104 };
-/** 紙條落定的位置（鏡頭前，蓋住機台的右半）；高度看內容，最低到 y ≈ 820（右下角 QR 區上面）。 */
-const SLIP = { x: 690, y: 252, w: 1010 };
-const LYR = { min: 48, w: 880 };
+/** 紙條落定的位置（機台右邊）；高度看內容，最多 430，底部在 y ≈ 700（右下角 QR 區上面）。 */
+const SLIP = { x: 1210, y: 250, w: 612, maxH: 430 };
+const LYR = { w: 880 };
 const FAM_MSG = F.hand(400);
 const LOSE = '銘謝惠顧';
 const INVITE = '這次夾到的是空氣。掃描右下角 QR code，放一份祝福進來。';
@@ -75,7 +78,8 @@ export default class ClawMachine extends Scene {
   slipH = 300;
   sig = ''; sigT = Infinity; footT = Infinity;
   avoid: Rect[] = [];
-  lyrSize = 60;
+  lyrSize = 52;
+  sigSize = 30;
 
   override async init() {
     const { audio: au, song, lyrics } = this.ctx;
@@ -103,14 +107,14 @@ export default class ClawMachine extends Scene {
     // ---- 紙條：留言（或銘謝惠顧）
     const c = this.layer.ctx;
     const text = m ? m.text : INVITE;
-    // 紙條的高度最多 570：扣掉標頭、署名、註腳後才是留言的高度（署名永遠在最後一行下面）
-    const head = 74, bigLose = m ? 0 : 118, tail = m ? 128 : 60;
-    const room = 570 - head - bigLose - tail;
-    // 短留言放得下一行（字還夠大）就一行，不要硬拆成「新婚／快樂！！！」
-    const one = m ? fitText(c, text, FAM_MSG, SLIP.w - 100, 150, { min: 56, max: 130, lineHeight: 1.24, maxLines: 1 }) : null;
-    const fit = this.fit = one && one.lines.length === 1 && one.size >= 72 ? one
-      : fitText(c, text, m ? FAM_MSG : F.hand(400), SLIP.w - 100, m ? room : 110, { min: m ? 56 : 44, max: m ? 130 : 48, lineHeight: 1.24, maxLines: m ? 5 : 3 });
-    this.lyrSize = m ? lyricSizeFor(fit.size) : 60;
+    // 紙條最高 SLIP.maxH：扣掉標頭、署名、註腳後才是留言的高度（署名永遠在最後一行下面）；字級照標準 v2
+    const head = 70, bigLose = m ? 0 : 84, tail = m ? 104 : 44;
+    const room = SLIP.maxH - head - bigLose - tail;
+    const o = { min: V2.msgMin, max: m ? msgMaxFor(text) : 40, lineHeight: 1.24, maxLines: 6 };
+    const fam = m ? FAM_MSG : F.hand(400);
+    const fit = this.fit = fitClauses(c, text, fam, SLIP.w - 100, room, o) ?? fitText(c, text, fam, SLIP.w - 100, room, o);
+    this.lyrSize = lyricV2(m ? fit.size : null);
+    this.sigSize = sigV2(fit.size);
     const top = SLIP.y + head + bigLose + fit.size * 0.9;
     c.font = font(m ? FAM_MSG : F.hand(400), fit.size);
     const pos: { ch: string; x: number; y: number }[] = [];
@@ -131,7 +135,7 @@ export default class ClawMachine extends Scene {
   }
 
   private layLyric(line: Parameters<typeof layoutLyric>[1]) {
-    return layoutLyric(this.layer.ctx, line, { family: F.archivo(100, 800), size: this.lyrSize, minSize: LYR.min, maxWidth: LYR.w, align: 'center', lineHeight: 1.08 });
+    return layoutLyric(this.layer.ctx, line, { family: F.archivo(100, 800), size: this.lyrSize, minSize: V2.lyrMin, maxWidth: LYR.w, align: 'center', lineHeight: 1.08 });
   }
 
   /** 機台外殼（玻璃窗挖空）、燈箱底、控制台、取物口、右邊「今日獎品」的小牌子：畫一次。 */
@@ -189,6 +193,17 @@ export default class ClawMachine extends Scene {
     const rel = prog(t, this.tRel, this.tRel + 0.12, ease.outCubic);
     let x = lerp(HOME.x, tg.x, mx), z = lerp(HOME.z, tg.z, mz);
     x = lerp(x, HOME.x, back); z = lerp(z, HOME.z, back);
+    // 待機展示：放開後的下一個小節線起，每個小節線甩到一個新位置（outExpo 停住、再晃一下）
+    const idle0 = au.timeOfBar(Math.ceil(au.barAt(this.tRel + 0.6) - 1e-6));
+    let idleSway = 0;
+    if (t >= idle0) {
+      const bi = Math.floor(au.barAt(t) + 1e-4), tb = au.timeOfBar(bi), b0i = Math.round(au.barAt(idle0));
+      const spot = (k: number) => k < b0i ? { x: HOME.x, z: HOME.z } : { x: -1.8 + 3.8 * hash(k, this.seed, 7), z: -1.2 + 2.2 * hash(k, this.seed, 8) };
+      const a = spot(bi - 1), bpos = spot(bi);
+      const k = prog(t, tb, tb + 0.55 * au.beatPeriod(t) * 2, ease.outExpo);
+      x = lerp(a.x, bpos.x, k); z = lerp(a.z, bpos.z, k);
+      idleSway = 0.06 * Math.sin((t - tb) * 14) * pulse(t, tb + 0.25, 0.25);
+    }
     const y = lerp(lerp(HOME.y, grabY, dn), HOME.y, up);
     // 爪子：平常半開，下降時張開，夾住時收到扭蛋上，放開再張開，之後慢慢收回半開
     let open = lerp(0.62, 0.98, prog(t, T(2), T(2) + 0.5 * u));
@@ -198,7 +213,7 @@ export default class ClawMachine extends Scene {
     // 移動的時候爪子會晃一下（慣性）
     const sway = 0.05 * (Math.sin((t - T(0)) * 18) * pulse(t, T(0) + 0.3 * u, 0.2) + Math.sin((t - T(4.5)) * 16) * pulse(t, T(4.5) + 0.7 * u, 0.25));
     rig.pose(x, y, z, open);
-    rig.claw.rotation.z = sway;
+    rig.claw.rotation.z = sway + idleSway;
     // 被選中的扭蛋：夾住之前在堆裡、夾住後跟著爪子、放開後掉進洞裡（重力）
     rig.hide(this.pick);
     const held = t >= T(3) && t < this.tRel;
@@ -297,7 +312,7 @@ export default class ClawMachine extends Scene {
     mono(c, 'LOVE CATCHER　·　祝福夾夾樂', cx, HEAD.y + 34, { size: 14, tracking: 5, color: rgba('signal', 0.6), align: 'center', weight: 600 });
     const ly = lyricAt(lyrics, t);
     if (ly) {
-      const st = { family: F.archivo(100, 800), size: this.lyrSize, minSize: LYR.min, maxWidth: LYR.w, align: 'center' as const, lineHeight: 1.08 };
+      const st = { family: F.archivo(100, 800), size: this.lyrSize, minSize: V2.lyrMin, maxWidth: LYR.w, align: 'center' as const, lineHeight: 1.08 };
       const lay = this.layLyric(ly.line);
       const base = lay.rows.length > 1 ? HEAD.y + 88 : HEAD.y + 112;
       const dy = (1 - ease.outExpo(ly.k)) * 10;
@@ -371,7 +386,7 @@ export default class ClawMachine extends Scene {
     const px = lerp(fromX, cxS, fly), py = lerp(fromY, cyS, fly) - Math.sin(fly * Math.PI) * 120;
     const sc = lerp(0.12, 1, fly), rot = lerp(0.6, -0.018, fly);
     // 對焦到紙條上：紙條飛出來時，後面的機台慢慢暗下來
-    c.fillStyle = rgba('ink', 0.5 * fly); c.fillRect(0, HEAD.y + HEAD.h + 6, W, H);
+    c.fillStyle = rgba('ink', 0.22 * fly); c.fillRect(CAB.x0 - 20, HEAD.y + HEAD.h + 6, CAB.x1 - CAB.x0 + 40, H);
     c.save();
     c.translate(px, py); c.rotate(rot); c.scale(sc, sc); c.translate(-cxS, -cyS);
     const x0 = SLIP.x, y0 = SLIP.y, w = SLIP.w, h = this.slipH;
@@ -390,7 +405,7 @@ export default class ClawMachine extends Scene {
     tag(c, headTxt, x0 + 50, y0 + 52, { size: 20, tracking: 6, color: rgba('blood', 0.85), weight: 700 });
     c.fillStyle = rgba('sepia', 0.25); c.fillRect(x0 + 50, y0 + 66, w - 100, 1.2);
     if (!m) {
-      c.font = font(F.hand(700), 92); c.fillStyle = rgba('sepia'); c.fillText(LOSE, x0 + 50, y0 + 74 + 98);
+      c.font = font(F.hand(700), 60); c.fillStyle = rgba('sepia'); c.fillText(LOSE, x0 + 50, y0 + 70 + 64);
     }
     // 留言：一個字一個字印出來
     c.font = font(m ? FAM_MSG : F.hand(400), fit.size);
@@ -402,8 +417,8 @@ export default class ClawMachine extends Scene {
     }
     if (m && t >= this.sigT) {
       c.globalAlpha = prog(t, this.sigT, this.sigT + 0.25);
-      c.font = font(FAM_MSG, 46); c.fillStyle = rgba('sepia', 0.85); c.textAlign = 'right';
-      c.fillText(this.sig, x0 + w - 50, y0 + h - 64);
+      c.font = font(FAM_MSG, this.sigSize); c.fillStyle = rgba('sepia', 0.85); c.textAlign = 'right';
+      c.fillText(this.sig, x0 + w - 50, y0 + h - 54);
       c.textAlign = 'left';
       c.globalAlpha = 1;
     }

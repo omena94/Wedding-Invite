@@ -9,6 +9,8 @@
 //  - 沒有留言：大卡片寫「空白選曲卡」與邀請。純音樂：玻璃上寫歌名。
 // 2026-09-29 依「MV 融合原則」：留言那張選曲卡放大成畫面的焦點（真的紙：有陰影、微微歪），歌詞小一級；
 // 旁邊幾張選曲卡變成失焦的前景（讀不到字，只是景深），拿掉卡片編號與「NOW PLAYING」小卡。
+// 同日「留言尺寸與版面比例標準 v2」：機構的玻璃窗放大成主視覺，選曲卡縮到 ≤ 800 × 310 放在左下，留言 40～60 px；
+// 補上點唱機招牌的兩支泡泡管（泡泡一直往上冒、燈色跟著拍子換）與右下的喇叭（大鼓一打就鼓一下）。
 import * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
 import { FSPass, Layer2D, W, H } from '../engine/gl';
@@ -16,39 +18,34 @@ import { F, font, loadText } from '../engine/type';
 import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, hash, lerp, TAU } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
-import { lyricAt, drawLyric, layoutLyric, lyricSizeFor, beatAfter, signature, fillWithHearts } from './_motifs';
+import { lyricAt, drawLyric, layoutLyric, beatAfter, signature, fillWithHearts } from './_motifs';
+import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 } from './_v2';
 import { stagger, pad3, mono, tag } from './_t11';
 import { fillGlyph, type Rect } from './_t9';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'machine', paper: false, energy: [0.3, 0.9], bars: [4, 8], weight: 1 };
 
 // ---------------------------------------------------------------- 版面
-const LYR = { x: 460, y: 190, w: 1000, min: 48 };
+const LYR = { x: 460, y: 142, w: 1000 };
 /** 玻璃窗（機構）的範圍。 */
-const WIN = { x: 150, y: 236, w: 1620, h: 340 };
-/** 選曲卡：中間的大卡（留言）、左邊三張、右上一張（現在這首）。 */
-/**
- * 留言那張選曲卡。卡片在 y ≥ 830 的地方很高，右緣連同影子（往右偏 10、模糊 14 px，約 3σ ≈ 42 px 才看不見）
- * 都要留在右下角 QR 區（x ≥ 1360）左邊：右緣 1300 + 10 + 42 = 1352。
- */
-const BIG = { x: 260, y: 596, w: 1040, h: 390 };
-/** 留言在卡片上的範圍（上面 A 面；下面是色帶〔署名〕與 B 面）。 */
-const MSG_BOX = { x: 310, y: 626, w: 940, h: 232 };
-const SMALL = { w: 334, h: 92 };
+const WIN = { x: 150, y: 180, w: 1620, h: 470 };
+/** 留言那張選曲卡：左下，寬 800，高依留言（最多 310）；右邊是喇叭，右下角 QR 區（x ≥ 1360、y ≥ 830）空著。 */
+const CARD = { x: 190, y: 670, w: 800, maxH: 318 };
+/** 卡片裡：留言左右各留 40；下面是色帶（署名）與 B 面。 */
+const CARD_PAD = { x: 40, top: 30, band: 40, bside: 30 };
+/** 喇叭（圓形的布面＋鉻條），大鼓一打就鼓一下。 */
+const SPK = { x: 1172, y: 818, r: 118 };
+/** 兩支泡泡管：玻璃窗左右兩側。 */
+const TUBES = [{ x: 118, y0: 210, y1: 640 }, { x: 1802, y0: 210, y1: 640 }];
 const FAM_MSG = F.ming(700);
-const FAKE: [string, string, string][] = [
-  ['遛狗進行曲', '芃芃 & QQ', '撿球（加長版）'],
-  ['週末早午餐', '宣文 & 孟庭', '再睡五分鐘'],
-  ['冰箱最後一塊蛋糕', '孟庭', '誰吃掉的'],
-];
 const INVITE = '掃描右下角 QR code，寫下你的點歌留言';
 const EMPTY = '（空白選曲卡）';
 
 // ---------------------------------------------------------------- 3D（x 右、y 上、z 朝鏡頭）
 const CAM0 = { x: -380, y: 430, z: 1500 };
 const LOOK: [number, number, number] = [-40, -30, 0];
-const FOCAL = 1200;
-const SC = { x: 960, y: 436 };
+const FOCAL = 1640;
+const SC = { x: 960, y: 440 };
 /** 唱片架：N 張立著的唱片（碟面朝 x），半徑、間距、中心的 z。 */
 const N = 25, RR = 124, GAP = 40, RACK_Z = -70, RACK_X = -300;
 /** 轉盤：盤面中心、半徑。 */
@@ -140,13 +137,15 @@ export default class Jukebox extends Scene {
   sig = ''; sigT = Infinity;
   tFirst = 0;
   avoid: Rect[] = [];
-  lyrSize = 64;
+  lyrSize = 52;
+  card = { x: CARD.x, y: CARD.y, w: CARD.w, h: 300 };
+  sigSize = 30;
 
   override async init() {
     const { audio: au, song, lyrics } = this.ctx;
     const s = this.ctx.start, e = this.ctx.end, m = this.msg;
     this.sig = m ? (m.couple ? '新郎新娘' : (m.name || '一位賓客')) : '';
-    await loadText(`${m?.text ?? ''}${this.sig}${INVITE}${EMPTY}${song.title}${song.artist}${FAKE.flat().join('')}永遠的面今晚第首選曲卡現正播放點歌留言新人`);
+    await loadText(`${m?.text ?? ''}${this.sig}${INVITE}${EMPTY}${song.title}${song.artist}永遠的面今晚第首選曲卡現正播放點歌留言新人`);
     const c = this.layer.ctx;
     // 這首歌在架上的位置（用歌的順序，同一首每次一樣），標籤顏色
     this.pick = 5 + ((song.index * 7 + 3) % (N - 10));
@@ -161,13 +160,21 @@ export default class Jukebox extends Scene {
     this.tk = [0, 1, 2, 3, 4, 5].map((i) => au.timeOfBeat(b0 + i * step));
     // ---- 大卡片：A 面（留言）一個字一個字印上去
     const text = m ? m.text : INVITE;
-    const fit = this.fit = fitText(c, text, m ? FAM_MSG : F.hand(400), MSG_BOX.w, MSG_BOX.h, { min: m ? 50 : 44, max: m ? 118 : 50, lineHeight: 1.16, maxLines: 4 });
-    this.lyrSize = m ? lyricSizeFor(fit.size) : 64;
-    c.font = font(m ? FAM_MSG : F.hand(400), fit.size);
-    const top = MSG_BOX.y + fit.size * 0.88 + Math.max(0, (MSG_BOX.h - fit.height) / 2);
+    // 留言字級照標準 v2（上限看字數），卡片的高度依內容（標頭＋留言＋色帶＋B 面），最多 CARD.maxH
+    const fam = m ? FAM_MSG : F.hand(400);
+    const tw = CARD.w - 2 * CARD_PAD.x;
+    const room = CARD.maxH - CARD_PAD.top - CARD_PAD.band - CARD_PAD.bside - 30;
+    const o = { min: V2.msgMin, max: m ? msgMaxFor(text) : 44, lineHeight: 1.18, maxLines: 5 };
+    const fit = this.fit = fitClauses(c, text, fam, tw, room, o) ?? fitText(c, text, fam, tw, room, o);
+    this.lyrSize = lyricV2(m ? fit.size : null);
+    this.sigSize = sigV2(fit.size);
+    const ch = Math.round(CARD_PAD.top + fit.height + fit.size * 0.35 + 18 + CARD_PAD.band + CARD_PAD.bside);
+    this.card = { x: CARD.x, y: CARD.y, w: CARD.w, h: ch };
+    c.font = font(fam, fit.size);
+    const top = CARD.y + CARD_PAD.top + fit.size * 0.88 + (m ? 0 : 18);
     const pos: { ch: string; x: number; y: number }[] = [];
     fit.lines.forEach((ln, li) => {
-      let x = MSG_BOX.x + MSG_BOX.w / 2 - c.measureText(ln).width / 2;
+      let x = CARD.x + CARD.w / 2 - c.measureText(ln).width / 2;
       for (const ch of Array.from(ln)) { pos.push({ ch, x, y: top + li * fit.lineHeight }); x += c.measureText(ch).width; }
     });
     const bar = au.timeOfBar(au.barAt(this.tFirst) + 1) - this.tFirst;
@@ -177,35 +184,19 @@ export default class Jukebox extends Scene {
     this.drawStill();
     let rows = 1;
     for (const ln of lyrics.linesIn(s - 1, e + 1)) rows = Math.max(rows, this.layLyric(ln).rows.length);
-    this.avoid = [[LYR.x, LYR.y - this.lyrSize - 8, LYR.w, rows > 1 ? 150 : 96], [BIG.x, BIG.y, BIG.w, BIG.h]];
+    this.avoid = [[LYR.x, LYR.y - this.lyrSize - 8, LYR.w, rows > 1 ? 150 : 96], [this.card.x, this.card.y, this.card.w, this.card.h]];
   }
 
   private layLyric(line: Parameters<typeof layoutLyric>[1]) {
-    return layoutLyric(this.layer.ctx, line, { family: F.archivo(100, 800), size: this.lyrSize, minSize: LYR.min, maxWidth: LYR.w, align: 'center', lineHeight: 1.1 });
+    return layoutLyric(this.layer.ctx, line, { family: F.archivo(100, 800), size: this.lyrSize, minSize: V2.lyrMin, maxWidth: LYR.w, align: 'center', lineHeight: 1.1 });
   }
 
-  /** 選曲卡：旁邊幾張失焦的（景深）、大卡的紙、框、色帶、B 面（畫一次）。 */
+  /** 選曲卡的紙、框、色帶、B 面，喇叭的鉻框（畫一次）。 */
   private drawStill() {
     const L = this.still, c = L.ctx;
     const { song } = this.ctx;
     L.clear();
-    // 一張選曲卡：白卡、細框、中間一條色帶（印歌手），上下是 A 面與 B 面
-    const strip = (x: number, y: number, w: number, hh: number, a: string, band: string, b: string, bandCol: string, size = 24) => {
-      c.fillStyle = rgba('paper', 0.95); c.fillRect(x, y, w, hh);
-      c.strokeStyle = rgba(bandCol, 0.9); c.lineWidth = 2; c.strokeRect(x + 5, y + 5, w - 10, hh - 10);
-      const by = y + hh / 2 - 12;
-      c.fillStyle = rgba(bandCol, 0.92); c.fillRect(x + 5, by, w - 10, 24);
-      c.textAlign = 'center';
-      c.font = font(F.hei(700), size); c.fillStyle = rgba('sepia'); c.fillText(a, x + w / 2, by - 8);
-      c.font = font(F.hei(500), 15); c.fillStyle = rgba('paper'); c.fillText(band, x + w / 2, by + 17);
-      c.font = font(F.hei(500), size * 0.8); c.fillStyle = rgba('sepia', 0.85); c.fillText(b, x + w / 2, by + 24 + size * 0.95);
-      c.textAlign = 'left';
-    };
-    // 旁邊的選曲卡：在鏡頭前面、失焦（讀不到字，只是景深），很暗
-    c.save();
-    c.filter = 'blur(7px)'; c.globalAlpha = 0.32;
-    FAKE.forEach(([a, band, b], i) => strip(-150 + i * 18, 640 + i * 108, SMALL.w, SMALL.h, a, band, b, i === 1 ? 'blood' : 'sepia', 22));
-    c.restore();
+    const BIG = this.card;
     // 大卡：真的紙擺在鉻板上——下面一片柔和的影子、微微歪一點
     c.save();
     c.translate(BIG.x + BIG.w / 2, BIG.y + BIG.h / 2); c.rotate(-0.006); c.translate(-(BIG.x + BIG.w / 2), -(BIG.y + BIG.h / 2));
@@ -218,13 +209,22 @@ export default class Jukebox extends Scene {
     c.lineWidth = 1; c.strokeRect(BIG.x + 16, BIG.y + 16, BIG.w - 32, BIG.h - 32);
     const m = this.msg;
     if (m?.couple) mono(c, 'FROM THE COUPLE', BIG.x + BIG.w / 2, BIG.y + 44, { size: 13, tracking: 4, color: rgba('blood', 0.8), align: 'center', weight: 600 });
-    const by = BIG.y + BIG.h - 100;
-    c.fillStyle = rgba('blood', 0.9); c.fillRect(BIG.x + 16, by, BIG.w - 32, 46);
+    const by = BIG.y + BIG.h - CARD_PAD.bside - CARD_PAD.band - 8;
+    c.fillStyle = rgba('blood', 0.9); c.fillRect(BIG.x + 16, by, BIG.w - 32, CARD_PAD.band);
     c.textAlign = 'center';
-    c.font = font(F.hei(500), 20); c.fillStyle = rgba('sepia', 0.7);
-    c.fillText(`B 面　永遠的 ${song.title}`, BIG.x + BIG.w / 2, BIG.y + BIG.h - 30);
+    c.font = font(F.hei(500), 17); c.fillStyle = rgba('sepia', 0.65);
+    c.fillText(`B 面　永遠的 ${song.title}`, BIG.x + BIG.w / 2, BIG.y + BIG.h - 20);
     c.textAlign = 'left';
     c.restore();
+    // 喇叭的鉻框與十字的鉻條
+    c.strokeStyle = rgba('ash', 0.45); c.lineWidth = 6; c.beginPath(); c.arc(SPK.x, SPK.y, SPK.r + 8, 0, TAU); c.stroke();
+    c.strokeStyle = rgba('bone', 0.12); c.lineWidth = 1.5; c.beginPath(); c.arc(SPK.x, SPK.y, SPK.r + 11, Math.PI * 1.1, Math.PI * 1.7); c.stroke();
+    // 泡泡管的玻璃與上下的鉻蓋
+    for (const tb of TUBES) {
+      c.fillStyle = rgba('ink2', 0.9); c.fillRect(tb.x - 13, tb.y0, 26, tb.y1 - tb.y0);
+      c.strokeStyle = rgba('ash', 0.35); c.lineWidth = 1.5; c.strokeRect(tb.x - 13, tb.y0, 26, tb.y1 - tb.y0);
+      c.fillStyle = rgba('graphite', 0.9); c.fillRect(tb.x - 18, tb.y0 - 14, 36, 14); c.fillRect(tb.x - 18, tb.y1, 36, 14);
+    }
     L.upload();
   }
 
@@ -252,6 +252,7 @@ export default class Jukebox extends Scene {
     this.mechanism(c, hc, t, f);
     c.restore(); hc.restore();
     this.glass(c, hc, t);
+    this.fixtures(c, hc, t, f);
     this.cards(c, hc, t, f);
     c.restore(); hc.restore();
     comp.draw(renderer, L.upload(), out);
@@ -385,28 +386,61 @@ export default class Jukebox extends Scene {
   // ------------------------------------------------------------ 玻璃上的歌詞
   private glass(c: CanvasRenderingContext2D, hc: CanvasRenderingContext2D, t: number) {
     const { lyrics, song } = this.ctx;
-    mono(c, '♪ NOW PLAYING', 960, LYR.y - this.lyrSize - 22, { size: 13, tracking: 5, color: rgba('signal', 0.6), align: 'center', weight: 600 });
     const ly = lyricAt(lyrics, t);
     if (ly) {
-      const st = { family: F.archivo(100, 800), size: this.lyrSize, minSize: LYR.min, maxWidth: LYR.w, align: 'center' as const, lineHeight: 1.1 };
+      const st = { family: F.archivo(100, 800), size: this.lyrSize, minSize: V2.lyrMin, maxWidth: LYR.w, align: 'center' as const, lineHeight: 1.1 };
       const lay = this.layLyric(ly.line);
       const oy = LYR.y - (lay.rows.length > 1 ? lay.size * 0.5 : 0) + (1 - ease.outExpo(ly.k)) * 12;
       c.save(); c.translate(960, oy); drawLyric(c, ly.line, t, st, lay, ly.k); c.restore();
       hc.save(); hc.translate(960, oy); drawLyric(hc, ly.line, t, { ...st, sung: 'rgba(0,0,0,0)', unsung: 'rgba(0,0,0,0)', active: rgba('signal', 0.7) }, lay, ly.k); hc.restore();
     } else if (!lyrics.linesIn(this.ctx.start - 1, this.ctx.end + 1).length) {
-      c.font = font(F.archivo(100, 800), 56); c.fillStyle = rgba('bone', 0.9); c.textAlign = 'center';
+      c.font = font(F.archivo(100, 800), this.lyrSize); c.fillStyle = rgba('bone', 0.9); c.textAlign = 'center';
       fillWithHearts(c, song.title, 960, LYR.y);
       c.textAlign = 'left';
     }
   }
 
+  // ------------------------------------------------------------ 泡泡管、喇叭
+  /** 兩支泡泡管：泡泡一直往上冒（一拍冒兩顆），管子的燈一拍換一個色（訊號色 ↔ 暗部）；喇叭的布面大鼓一打就鼓一下。 */
+  private fixtures(c: CanvasRenderingContext2D, hc: CanvasRenderingContext2D, t: number, f: Frame) {
+    const au = this.ctx.audio;
+    const bt = au.beatAt(t);
+    TUBES.forEach((tb, k) => {
+      const len = tb.y1 - tb.y0;
+      const hot = (Math.floor(bt + 1e-4) + k) % 2 === 0;
+      const g = c.createLinearGradient(0, tb.y0, 0, tb.y1);
+      g.addColorStop(0, rgba(hot ? 'signal' : 'blood', 0.55)); g.addColorStop(1, rgba(hot ? 'ember' : 'signal', 0.4));
+      c.fillStyle = g; c.fillRect(tb.x - 10, tb.y0, 20, len);
+      hc.fillStyle = rgba('signal', hot ? 0.35 : 0.18); hc.fillRect(tb.x - 12, tb.y0, 24, len);
+      // 泡泡：每顆從底部冒出來、越往上越快，左右微微晃
+      for (let i = 0; i < 12; i++) {
+        const ph = (bt * 0.5 + i / 12 + k * 0.37) % 1;
+        const y = tb.y1 - 8 - ph * ph * (len - 16);
+        const x = tb.x + Math.sin(ph * 9 + i) * 3;
+        c.strokeStyle = rgba('bone', 0.75 * (1 - ph * 0.5)); c.lineWidth = 1.4;
+        c.beginPath(); c.arc(x, y, 3 + 2 * hash(i, k), 0, TAU); c.stroke();
+      }
+    });
+    // 喇叭：布面（同心的細紋），大鼓一打整片鼓起來一點
+    const bump = 1 + 0.035 * f.a.kick + 0.02 * f.a.low;
+    const r = SPK.r * bump;
+    const g = c.createRadialGradient(SPK.x - 30, SPK.y - 30, 10, SPK.x, SPK.y, r);
+    g.addColorStop(0, rgba('graphite', 0.55)); g.addColorStop(1, rgba('ink2', 0.95));
+    c.fillStyle = g; c.beginPath(); c.arc(SPK.x, SPK.y, r, 0, TAU); c.fill();
+    c.strokeStyle = rgba('ash', 0.12); c.lineWidth = 1;
+    for (let rr = 12; rr < r; rr += 9) { c.beginPath(); c.arc(SPK.x, SPK.y, rr, 0, TAU); c.stroke(); }
+    c.strokeStyle = rgba('ash', 0.4); c.lineWidth = 4;
+    c.beginPath(); c.moveTo(SPK.x - r, SPK.y); c.lineTo(SPK.x + r, SPK.y); c.moveTo(SPK.x, SPK.y - r); c.lineTo(SPK.x, SPK.y + r); c.stroke();
+    c.fillStyle = rgba('graphite', 0.9); c.beginPath(); c.arc(SPK.x, SPK.y, 16, 0, TAU); c.fill();
+  }
+
   // ------------------------------------------------------------ 選曲卡
   private cards(c: CanvasRenderingContext2D, hc: CanvasRenderingContext2D, t: number, f: Frame) {
-    const m = this.msg, fit = this.fit!;
+    const m = this.msg, fit = this.fit!, BIG = this.card;
     c.save();
     c.translate(BIG.x + BIG.w / 2, BIG.y + BIG.h / 2); c.rotate(-0.006); c.translate(-(BIG.x + BIG.w / 2), -(BIG.y + BIG.h / 2));
     // A 面：留言一個字一個字印上去（剛印的是訊號色的暗部，很快變墨色）
-    c.font = font(m ? FAM_MSG : F.hei(500), fit.size);
+    c.font = font(m ? FAM_MSG : F.hand(400), fit.size);
     for (const g of this.glyphs) {
       if (t < g.t) break;
       const heat = 1 - clamp((t - g.t) / 0.4);
@@ -414,15 +448,15 @@ export default class Jukebox extends Scene {
       fillGlyph(c, g.ch, g.x, g.y, heat > 0 ? mixRgba(base, 'blood', heat) : rgba(base, m ? 1 : 0.8));
     }
     if (!m) {
-      c.font = font(F.hei(700), 22); c.fillStyle = rgba('sepia', 0.5); c.textAlign = 'center';
-      c.fillText(EMPTY, BIG.x + BIG.w / 2, BIG.y + 56);
+      c.font = font(F.hei(700), 18); c.fillStyle = rgba('sepia', 0.5); c.textAlign = 'center';
+      c.fillText(EMPTY, BIG.x + BIG.w / 2, BIG.y + 40);
       c.textAlign = 'left';
     }
     // 色帶上的署名
     if (m && t >= this.sigT) {
       c.save(); c.globalAlpha = prog(t, this.sigT, this.sigT + 0.25);
-      c.font = font(F.hei(700), 30); c.fillStyle = rgba('paper'); c.textAlign = 'center';
-      c.fillText(this.sig, BIG.x + BIG.w / 2, BIG.y + BIG.h - 66);
+      c.font = font(F.hei(700), this.sigSize); c.fillStyle = rgba('paper'); c.textAlign = 'center';
+      c.fillText(this.sig, BIG.x + BIG.w / 2, BIG.y + BIG.h - CARD_PAD.bside - 8 - CARD_PAD.band / 2 + this.sigSize * 0.36);
       c.restore();
     }
     c.restore();
