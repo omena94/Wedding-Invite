@@ -8,19 +8,37 @@
 //    逐字跟唱（正在唱的字是燙金發亮），鏡頭橫移到那本書；上一本推回去。純音樂又沒有留言：抽出來的書背是新人的名字，
 //    書架標籤是邀請。
 //  - 很短的窗格（不到三個半小節）有留言時直接從書桌開始，第一拍就翻頁。
+// v2（留言尺寸標準 v2）：書桌的鏡頭拉遠、壓低一點，看得到桌子後面的書架（在焦外、暗暗的，書照樣在拍點上被抽出來、推回去，
+// 燙金一閃一閃；主打那本書的位置空了一格）。攤開的書在畫面中間偏左（書是道具，可以大），右頁的留言 40～60 px（留言區約 400 × 330），
+// 左頁的歌詞比留言小一點；一條緞帶書籤從書溝垂到桌上，跟著拍子晃、翻頁時被甩一下。右下角（HUD）是暗的桌面。
+// 書架鏡頭的標籤、書背上的歌詞也照 v2 的字級（40～52 px）。
 // 手法：three.js（自己寫的 shader：皮面、燙金的反光、紙頁、木頭，都吃同一盞檯燈的聚光）。書背的圖案在 init() 畫成一張圖集
 //（遮罩：燙金線、書名、皮標），顏色由色票決定；會變的字（書背的歌詞、標籤、左頁）是小的 Canvas 圖層。翻頁的那一張紙每格算一次頂點。
+// 書桌後面的書架：同一個書架場景用另一個鏡頭畫進四分之一解析度的 render target，再模糊貼滿畫面，書桌畫在上面。
 import * as THREE from 'three';
-import { Scene, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
-import { Layer2D, clearRT, makeRT, W, H } from '../engine/gl';
+import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
+import { FSPass, Layer2D, clearRT, makeRT, W, H } from '../engine/gl';
 import { GLSL_COMMON, THEME_UNIFORMS } from '../engine/glsl/common';
 import { F, font } from '../engine/type';
 import { LIN, rgba } from '../engine/palette';
 import { clamp, ease, prog, hash, mulberry32, lerp, pulse } from '../engine/util';
 import { Lyrics, type Line } from '../engine/lyrics';
-import { lyricAt, lyricSizeFor, COUPLE_ZH } from './_motifs';
+import { lyricAt, COUPLE_ZH } from './_motifs';
 import { grid, layoutRows, drawRows, paperInk, type Grid, type RowsLayout } from './_t4';
 import { loadAll, block, glyphPath, T21_INVITE, type Block, type Rect } from './_t21';
+import { V2, lyricV2 } from './_v2';
+
+/** 桌子後面的書架（低解析度畫好的）：圓盤取樣模糊（焦外），整體壓暗一點（燈只照得到桌上）。 */
+const BG_BLUR = () => new FSPass(/* glsl */ `
+  uniform sampler2D tex; uniform vec2 px; uniform float dim;
+  void main() {
+    vec3 s = vec3(0.0);
+    for (int i = 0; i < 16; i++) {
+      float a = float(i) * 2.39996, r = sqrt((float(i) + 0.5) / 16.0);
+      s += texture(tex, vUv + vec2(cos(a), sin(a)) * r * px * 3.2).rgb;
+    }
+    fragColor = vec4(s / 16.0 * dim, 1.0);
+  }`, { tex: { value: null }, px: { value: new THREE.Vector2(4 / W, 4 / H) }, dim: { value: 0.8 } });
 
 /** 幾個世界座標點（兩個對角）在畫面上的外框（給 popupAvoid）。 */
 function projRect(cam: THREE.Camera, [a, b]: [number, number, number][]): Rect {
@@ -148,6 +166,12 @@ const PGW = 600, PGH = 820, PRES = 1.4;
 const FAM_MSG = F.ming(700);
 const FAM_LYR = F.hand(700);
 const DYN_W = 150, DYN_H = 760;
+/** 書架鏡頭：書架 1 單位在螢幕上約幾 px（鏡頭離書背約 1500；v2 的字級換算）。 */
+const SHELF_K = 1.15;
+/** 書桌的後緣（世界 y）：再過去就是焦外的書架。 */
+const DESK_BACK = PGH / 2 + 15 + 260;
+/** 書不是對齊桌邊放的：桌子轉一個角度，桌子後緣在畫面上斜斜的，右上方露出比較多焦外的書架。 */
+const DESK_ROT = -0.3;
 
 interface Book { x: number; w: number; h: number; d: number; cover: THREE.Vector3; cell: [number, number, number, number]; mesh: THREE.Mesh; mat: THREE.RawShaderMaterial; role: 'plain' | 'main' | 'lyric' | 'names'; line: Line | null; tOut: number; tIn: number }
 
@@ -175,11 +199,22 @@ export default class Bookshelf extends Scene {
   flipGeo: THREE.PlaneGeometry | null = null;
   flipBase: Float32Array | null = null;
   block: Block | null = null;
+  /** 書桌後面焦外的書架：低解析度的 render target 與模糊。 */
+  bgRT = this.track(makeRT(W / 4, H / 4));
+  blur = shared('bookshelf.bgblur', BG_BLUR);
+  /** 緞帶書籤（從書溝垂到桌上，每格算頂點）。 */
+  ribbonGeo: THREE.PlaneGeometry | null = null;
+  /** 右頁在螢幕上的倍數（頁面 px × K = 螢幕 px）。 */
+  K = 0.8;
   // ---- 時間
   bookShot = false;
   tPull = Infinity; tCut = Infinity; tFlip = Infinity; flipDur = 0.55;
   hasLyrics = false;
   lyrSize = 52;
+  /** 書架標籤上歌詞的字級（世界單位）。 */
+  labelSize = 40;
+  /** 翻過去的那一頁彈一下的時間（小節線）。 */
+  springs: number[] = [];
   private owned3: { dispose(): void }[] = [];
   private U = {
     lampPos: { value: new THREE.Vector3() }, lampAim: { value: new THREE.Vector3() }, lampCol: { value: new THREE.Vector3() },
@@ -207,7 +242,6 @@ export default class Bookshelf extends Scene {
     this.hasLyrics = lyrics.linesIn(s, e).length > 0;
     this.buildShelf();
     if (m) {
-      this.buildDesk();
       this.flipDur = clamp(g.beat * 1.1, 0.4, 0.7);
       if (g.nBars < 3.5) {
         // 短窗格：直接從書桌開始，一開始就翻頁（落在第一個來得及的拍點）
@@ -219,8 +253,17 @@ export default class Bookshelf extends Scene {
         this.tCut = au.timeOfBeat(Math.ceil(au.beatAt(this.tPull + 0.45) - 1e-6));
         this.tFlip = au.timeOfBeat(au.beatAt(this.tCut) + 1);
       }
-      this.lyrSize = lyricSizeFor(this.block?.fit.size ?? null, 58);
+      // 右頁在螢幕上的倍數：量翻頁之後、窗格中段的鏡頭下，右頁的字框在畫面上多寬
+      this.deskPose(lerp(Math.min(this.tFlip, e), e, 0.5));
+      const yM = PGH / 2 - PGH * 0.45;
+      const a = new THREE.Vector3(50, yM, this.pageZ(50)).project(this.cam2), b = new THREE.Vector3(PGW - 50, yM, this.pageZ(PGW - 50)).project(this.cam2);
+      this.K = clamp(((b.x - a.x) * W) / 2 / (PGW - 100), 0.4, 1.5);
+      this.buildDesk();
+      for (const b of g.bars) if (b > this.tFlip + g.bar * 0.9 && b < e - g.beat && Math.round((b - this.tFlip) / g.bar) % 2 === 1) this.springs.push(b);
+      this.lyrSize = lyricV2(this.block ? this.block.fit.size * this.K : null) / this.K;
     }
+    // 書架標籤上的歌詞：有留言時比留言小一點（留言在書桌那一段才出現，先照一般長度估）
+    this.labelSize = lyricV2(m ? Math.min(52, this.block ? this.block.fit.size * this.K : 50) : null) / SHELF_K;
   }
 
   // ------------------------------------------------------------ 書架
@@ -340,7 +383,8 @@ export default class Bookshelf extends Scene {
     const R = mk();
     // 頁碼放在書眉（頁腳的位置在畫面右下角，會跟 QR 區重疊）
     head(R.c, `祝 福 · 賓 客 留 言 集 · ${no}`);
-    const b = (this.block = block(R.c, m, FAM_MSG, { x: 64, y: 130, w: PGW - 128, h: PGH - 250 }, { align: 'left', sigFamily: FAM_MSG, sigMin: 34, sigMax: 44, min: 44, max: 96, lineHeight: 1.36, maxLines: 7, valign: 0.4, prefer1: 70 }));
+    // 留言照 v2 的字級（頁面 px × K = 螢幕 px）
+    const b = (this.block = block(R.c, m, FAM_MSG, { x: 50, y: 130, w: PGW - 100, h: PGH - 250 }, { align: 'left', sigFamily: FAM_MSG, lineHeight: 1.36, maxLines: 8, valign: 0.4, v2: this.K }));
     R.c.fillStyle = rgba('sepia');
     for (const ln of b.lines) {
       R.c.font = font(FAM_MSG, b.fit.size);
@@ -373,8 +417,17 @@ export default class Bookshelf extends Scene {
     this.leftBase = tL;
     // ---- 桌面、書殼、書頁
     const deskM = this.mat(WOOD_FRAG, { k: { value: 0.75 }, lbl: { value: null }, lblRect: { value: new THREE.Vector4() }, lblOn: { value: 0 } });
-    const deskMesh = this.mesh(new THREE.PlaneGeometry(9000, 6000), deskM, this.desk);
-    deskMesh.position.z = -2;
+    // 桌面到 DESK_BACK 為止（再過去是焦外的書架）；後緣一條厚度（燈照到的木頭邊）
+    const onDesk = (m: THREE.Mesh, y: number, z: number) => {
+      m.position.set(-y * Math.sin(DESK_ROT), y * Math.cos(DESK_ROT), z);
+      m.rotation.z = DESK_ROT;
+    };
+    onDesk(this.mesh(new THREE.PlaneGeometry(9000, 4000), deskM, this.desk), DESK_BACK - 2000, -2);
+    onDesk(this.mesh(new THREE.BoxGeometry(9000, 16, 40), deskM, this.desk), DESK_BACK - 8, -22);
+    // 緞帶書籤：一條細長的布，從書溝上緣夾進去、從下緣垂出來落在桌上（頂點每格算）
+    const rg = (this.ribbonGeo = new THREE.PlaneGeometry(1, 1, 1, 24));
+    const ribbonM = this.mat(SOLID_FRAG, { col: { value: new THREE.Vector3(...LIN.blood.map((v, i) => v * 0.7 + LIN.signal[i]! * 0.25) as [number, number, number]) }, lines: { value: 0 } }, { side: THREE.DoubleSide });
+    this.mesh(rg, ribbonM, this.desk).renderOrder = 3;
     // 書殼（布面的封面板）與兩疊書頁（看得到厚度與頁緣的細紋）
     const shell = this.mesh(new THREE.BoxGeometry(2 * PGW + 36, PGH + 30, 10), this.mat(SOLID_FRAG, { col: { value: new THREE.Vector3(...LIN.blood.map((v, i) => v * 0.45 + LIN.ink2[i]! * 0.8) as [number, number, number]) }, lines: { value: 0 } }), this.desk);
     shell.position.set(0, 0, 3);
@@ -434,11 +487,51 @@ export default class Bookshelf extends Scene {
   }
 
   // ------------------------------------------------------------ 每格
+  /** 書架上書的位置：拍點上隨機一本抽出來一點點（小節線上兩本）；主打的在小節線整本抽出來；歌詞的書抽出來一半。 */
+  private moveBooks(t: number, amp = 1) {
+    const au = this.ctx.audio;
+    const beatNow = Math.floor(au.beatAt(t));
+    for (const [i, b] of this.books.entries()) {
+      let z = 0, tilt = 0;
+      if (b.role === 'plain') {
+        for (let k = 0; k < 3; k++) {
+          const bi = beatNow - k;
+          const pick = Math.floor(hash(this.seed, bi) * this.books.length);
+          const pick2 = au.timeOfBeat(bi) - au.timeOfBar(Math.floor(au.barAt(au.timeOfBeat(bi)) + 1e-6)) < 0.02 ? Math.floor(hash(this.seed, bi, 5) * this.books.length) : -1;
+          if (pick === i || pick2 === i) {
+            const dt = t - au.timeOfBeat(bi);
+            if (dt >= 0) z = Math.max(z, 46 * amp * (dt < 0.12 ? ease.outExpo(dt / 0.12) : 1 - ease.inOutCubic(clamp((dt - 0.12) / 0.8))));
+          }
+        }
+      } else if (b.role === 'main') {
+        const k = ease.outExpo(clamp((t - (this.tPull - 0.05)) / 0.5));
+        z = 280 * k; tilt = -0.14 * k;
+      } else {
+        const ko = ease.outExpo(clamp((t - b.tOut) / 0.45)), ki = ease.inOutCubic(clamp((t - b.tIn) / 0.6));
+        z = 230 * ko * (1 - ki);
+      }
+      b.mesh.position.z = -b.d / 2 + z;
+      b.mesh.rotation.x = tilt;
+      if (tilt) b.mesh.position.y = SHELF_Y + b.h / 2 + Math.sin(-tilt) * b.d * 0.1;
+    }
+  }
+
+  /** 書架鏡頭的檯燈。k = 亮度（書桌後面焦外的書架暗一點）。 */
+  private shelfLamp(tx: number, k = 1) {
+    this.U.lampPos.value.set(tx - 700, 1250, 900);
+    this.U.lampAim.value.set(tx, 330, 0);
+    this.U.lampCol.value.set(...LIN.bone.map((v, i) => (v * 0.55 + LIN.signal[i]! * 0.45) * k) as [number, number, number]);
+    this.U.cone.value.set(0.86, 0.975);
+    this.U.amb.value = 0.07;
+  }
+
   override render(f: Frame, out: THREE.WebGLRenderTarget): PostOverrides {
-    const { renderer, lyrics, audio: au } = this.ctx;
+    const { renderer, lyrics } = this.ctx;
     const t = f.t, s = this.ctx.start, e = this.ctx.end;
     const inDesk = !!this.msg && t >= this.tCut;
     clearRT(renderer, out, [0, 0, 0]);
+    // 書桌那一段：書架在焦外，書抽出來多一點才看得出來
+    this.moveBooks(t, inDesk ? 2.4 : 1);
     if (inDesk) return this.renderDesk(t, out);
 
     // ---- 書背的歌詞／名字（現在的在 A、上一本在 B）
@@ -463,32 +556,6 @@ export default class Bookshelf extends Scene {
     const nb = this.books.find((b) => b.role === 'names');
     if (nb) { paint(this.dynA, null, true); nb.mat.uniforms.useDyn!.value = 1; nb.mat.uniforms.dyn!.value = this.dynA.texture; }
 
-    // ---- 書的位置：拍點上隨機一本抽出來一點點；主打的在小節線整本抽出來；歌詞的書抽出來一半
-    const beatNow = Math.floor(au.beatAt(t));
-    for (const [i, b] of this.books.entries()) {
-      let z = 0, tilt = 0;
-      if (b.role === 'plain') {
-        for (let k = 0; k < 3; k++) {
-          const bi = beatNow - k;
-          const pick = Math.floor(hash(this.seed, bi) * this.books.length);
-          const pick2 = au.timeOfBeat(bi) - au.timeOfBar(Math.floor(au.barAt(au.timeOfBeat(bi)) + 1e-6)) < 0.02 ? Math.floor(hash(this.seed, bi, 5) * this.books.length) : -1;
-          if (pick === i || pick2 === i) {
-            const dt = t - au.timeOfBeat(bi);
-            if (dt >= 0) z = Math.max(z, 46 * (dt < 0.12 ? ease.outExpo(dt / 0.12) : 1 - ease.inOutCubic(clamp((dt - 0.12) / 0.8))));
-          }
-        }
-      } else if (b.role === 'main') {
-        const k = ease.outExpo(clamp((t - (this.tPull - 0.05)) / 0.5));
-        z = 280 * k; tilt = -0.14 * k;
-      } else {
-        const ko = ease.outExpo(clamp((t - b.tOut) / 0.45)), ki = ease.inOutCubic(clamp((t - b.tIn) / 0.6));
-        z = 230 * ko * (1 - ki);
-      }
-      b.mesh.position.z = -b.d / 2 + z;
-      b.mesh.rotation.x = tilt;
-      if (tilt) b.mesh.position.y = SHELF_Y + b.h / 2 + Math.sin(-tilt) * b.d * 0.1;
-    }
-
     // ---- 鏡頭：沿著書架橫移到那本書；有一點仰角、手持的微晃
     const target = lb.length ? lb[Math.max(0, curI)]! : this.books.find((b) => b.role !== 'plain')!;
     let tx = target.x;
@@ -502,34 +569,31 @@ export default class Bookshelf extends Scene {
     const camX = tx + side * (120 * (1 - drift) + 40 * (1 - intro));
     const pullK = this.msg ? ease.inOutCubic(clamp((t - this.tPull) / 0.6)) : 0;
     const dist = 1500 - 90 * drift - 110 * pullK;
-    // 有留言：看低一點（書架前緣的歌詞標籤要在畫面裡）；沒有留言：整本書背（歌詞）都要在畫面裡
+    // 有留言：看低一點（書架前緣的歌詞標籤要在畫面裡，離下緣留 96 px 以上）；沒有留言：整本書背（歌詞）都要在畫面裡
     const low = lb.length ? 1 : 0;
-    const hy = 275 + 110 * low + 6 * Math.sin(t * 0.9) + 15 * pullK;
-    this.cam.position.set(camX, 190 + 110 * low + 40 * (1 - intro) + 3 * Math.sin(t * 1.3), dist + 120 * low);
+    const hy = 235 + 150 * low + 6 * Math.sin(t * 0.9) + 15 * pullK;
+    this.cam.position.set(camX, 150 + 150 * low + 40 * (1 - intro) + 3 * Math.sin(t * 1.3), dist + 120 * low);
     this.cam.lookAt(tx + side * 40 * (1 - drift), hy, 0);
     this.cam.updateMatrixWorld();
-    this.U.lampPos.value.set(tx - 700, 1250, 900);
-    this.U.lampAim.value.set(tx, 330, 0);
-    this.U.lampCol.value.set(...LIN.bone.map((v, i) => v * 0.55 + LIN.signal[i]! * 0.45) as [number, number, number]);
-    this.U.cone.value.set(0.86, 0.975);
-    this.U.amb.value = 0.07;
+    this.shelfLamp(tx);
 
     // ---- 書架標籤：歌詞（有留言時）、邀請（純音樂沒有留言）
     const L = this.label; L.clear();
     const c = L.ctx;
     // 標籤釘在書架上（主打那本書的左邊一段），字靠左：鏡頭橫移時不會跑進右下角
-    this.labelRect.set(target.x - 600, SHELF_Y - BOARD_H + 12, 820, 72);
+    this.labelRect.set(target.x - 600, SHELF_Y - BOARD_H + 18, 820, 60);
     if (this.msg) {
       const ly = lyricAt(lyrics, t);
       if (ly) {
-        const lay = layoutRows(c, ly.line, { family: F.hei(700), size: 50, minSize: 42, maxW: 790, maxRows: 1, align: 'left' });
-        c.save(); c.translate(16, 54);
+        // v2：歌詞 40～52 px（比留言小），標籤只有一行，放不下就縮到 40
+        const lay = layoutRows(c, ly.line, { family: F.hei(700), size: this.labelSize, minSize: V2.lyrMin / SHELF_K, maxW: 790, maxRows: 1, align: 'left' });
+        c.save(); c.translate(16, 36 + lay.size * 0.36);
         drawRows(c, lay, F.hei(700), t, paperInk(), ly.k);
         c.restore();
       }
     } else if (!lb.length) {
-      c.font = font(F.hei(500), 26); c.letterSpacing = '2px'; c.textAlign = 'center'; c.fillStyle = rgba('sepia', 0.9);
-      c.fillText(T21_INVITE, 410, 48); c.letterSpacing = '0px'; c.textAlign = 'left';
+      c.font = font(F.hei(500), 24); c.letterSpacing = '2px'; c.textAlign = 'center'; c.fillStyle = rgba('sepia', 0.9);
+      c.fillText(T21_INVITE, 410, 44); c.letterSpacing = '0px'; c.textAlign = 'left';
     }
     this.boardMat.uniforms.lbl!.value = L.upload();
     // 歌詞寫在書背上的時候不用標籤（鏡頭看得比較高，標籤在畫面外）
@@ -559,7 +623,10 @@ export default class Bookshelf extends Scene {
     c.textBaseline = 'alphabetic';
     if (cjk) {
       const vis = chars.filter((ch) => ch.trim());
-      const size = clamp(Math.floor((DYN_H - 50 - top) / Math.max(1, vis.length) / 1.08), 48, 84);
+      // v2：書背上的歌詞 40～52 px（書架 1 單位 ≈ SHELF_K 螢幕 px）；新人的名字（純音樂沒有留言）是焦點，可以到 60
+      // （名字那一本的鏡頭近一點，約 1.25 倍）
+      const hi = line ? V2.lyrMax / SHELF_K : V2.msgMax / 1.25, lo = V2.lyrMin / SHELF_K;
+      const size = clamp(Math.floor((DYN_H - 50 - top) / Math.max(1, vis.length) / 1.08), lo, hi);
       const perCol = Math.floor((DYN_H - 40 - top) / (size * 1.08));
       const cols = Math.ceil(vis.length / perCol);
       const cw = Math.min(size * 1.05, (DYN_W - 16) / cols);
@@ -580,11 +647,12 @@ export default class Bookshelf extends Scene {
     } else {
       // 橫躺：整行轉 90°，字頂朝書背右側
       c.save(); c.translate(DYN_W / 2, 60); c.rotate(Math.PI / 2);
-      const fam = F.archivo(75, 700);
-      let size = 60;
+      // 窄一點的字寬：長的英文句子也躺得進書背（字級一樣照 v2）
+      const fam = F.archivo(66, 700);
+      let size = V2.lyrMax / SHELF_K;
       c.font = font(fam, size);
       const full = c.measureText(text).width;
-      if (full > DYN_H - 120) size = Math.max(40, (size * (DYN_H - 120)) / full);
+      if (full > DYN_H - 120) size = Math.max(V2.lyrMin / SHELF_K, (size * (DYN_H - 120)) / full);
       c.font = font(fam, size);
       let x = 0, off = 0;
       for (const w of text.split(/(\s+)/)) {
@@ -599,15 +667,74 @@ export default class Bookshelf extends Scene {
   }
 
   // ------------------------------------------------------------ 書桌
+  /**
+   * 書桌的鏡頭：斜俯看攤開的書（畫面中間偏左，書的上方看得到桌子後緣與焦外的書架），翻頁之後慢慢推近、稍微往右頁移。
+   */
+  private deskPose(t: number) {
+    const e = this.ctx.end;
+    const push = ease.inOutQuad(prog(t, this.tFlip, e));
+    const land = ease.outExpo(prog(t, this.tCut, this.tCut + 0.8));
+    const D = (H / 2) / Math.tan(THREE.MathUtils.degToRad(15));
+    const tx = lerp(250, 290, push) + 60 * (1 - land), ty = lerp(40, 20, push);
+    const dist = D * (1.2 - 0.05 * push + 0.1 * (1 - land));
+    const tilt = THREE.MathUtils.degToRad(36 + 4 * (1 - land));
+    this.cam2.position.set(tx - 140 * (1 - push) - 60, ty - Math.sin(tilt) * dist, Math.cos(tilt) * dist);
+    this.cam2.lookAt(tx, ty, 20);
+    this.cam2.updateMatrixWorld();
+  }
+
+  /** 緞帶書籤：從書溝下緣垂出來、落到桌上，跟著拍子輕輕擺；翻頁的那一下被甩開、再慢慢晃回來。 */
+  private ribbon(t: number) {
+    const geo = this.ribbonGeo;
+    if (!geo) return;
+    const au = this.ctx.audio;
+    const pos = geo.attributes.position as THREE.BufferAttribute;
+    const bt = au.beatAt(t);
+    const flick = Math.exp(-Math.max(0, t - this.tFlip) * 2.2) * Math.sin(Math.max(0, t - this.tFlip) * 7) * (t > this.tFlip - 0.1 ? 1 : 0);
+    const sway = 14 * Math.sin(bt * Math.PI) * (0.6 + 0.4 * Math.sin(t * 0.7)) + 70 * flick;
+    const y0 = -PGH / 2 + 70, edge = -PGH / 2 - 16;
+    const n = pos.count / 2;
+    for (let j = 0; j < n; j++) {
+      const u = j / (n - 1);
+      const y = y0 - u * 330;
+      // 書頁上貼著書溝的高度，過了書的下緣落到桌上
+      const z = lerp(this.pageZ(0) + 3, 1.5, clamp((edge - y) / 50)) + 6 * Math.max(0, 1 - Math.abs(y - edge) / 30);
+      const x = sway * Math.pow(Math.max(0, (y0 - 60 - y) / 270), 1.4) + 6 * u;
+      for (const sd of [0, 1]) pos.setXYZ(j * 2 + sd, x + (sd ? 8 : -8), y, z);
+    }
+    pos.needsUpdate = true;
+    geo.computeVertexNormals();
+  }
+
   private renderDesk(t: number, out: THREE.WebGLRenderTarget): PostOverrides {
     const { renderer, comp, lyrics } = this.ctx;
     const e = this.ctx.end;
-    // 左頁（翻頁的背面）：底圖＋歌詞
+    // ---- 桌子後面焦外的書架：同一個書架場景（書照樣在拍點上被抽出來），主打那本書的位置空了一格
+    const main = this.books.find((b) => b.role === 'main');
+    const bx = main?.x ?? 0;
+    const side = hash(this.seed, 3) < 0.5 ? -1 : 1;
+    const drift = prog(t, this.tCut, e);
+    // 書架在畫面上半部（桌子後緣斜斜地切過去，右上露得最多）；空出來的那一格在右上，鏡頭慢慢橫移
+    const cx = bx - 640 + side * (140 - 100 * drift);
+    this.cam.position.set(cx + 60, 60, 2650);
+    this.cam.lookAt(cx, 100, 0);
+    this.cam.updateMatrixWorld();
+    this.shelfLamp(bx - 200, 1.15);
+    for (const b of this.books) b.mat.uniforms.useDyn!.value = 0;
+    this.boardMat.uniforms.lblOn!.value = 0;
+    if (main) main.mesh.visible = false;
+    clearRT(renderer, this.bgRT, [0, 0, 0]);
+    renderer.setRenderTarget(this.bgRT);
+    renderer.render(this.shelf, this.cam);
+    if (main) main.mesh.visible = true;
+    this.blur.u.tex!.value = this.bgRT.texture;
+    this.blur.render(renderer, out);
+    // ---- 左頁（翻頁的背面）：底圖＋歌詞（比留言小一點）
     const L = this.leftDyn; L.clear();
     const c = L.ctx;
     const ly = lyricAt(lyrics, t);
     if (ly) {
-      const lay: RowsLayout = layoutRows(c, ly.line, { family: FAM_LYR, size: this.lyrSize + 4, minSize: 48, maxW: PGW - 120, maxRows: 4, align: 'center', lineHeight: 1.3 });
+      const lay: RowsLayout = layoutRows(c, ly.line, { family: FAM_LYR, size: this.lyrSize, minSize: V2.lyrMin / this.K, maxW: PGW - 120, maxRows: 4, align: 'center', lineHeight: 1.3 });
       c.save(); c.translate(PGW / 2, PGH * 0.5 - lay.height / 2 + lay.size * 0.8);
       drawRows(c, lay, FAM_LYR, t, paperInk(), ly.k);
       c.restore();
@@ -620,30 +747,24 @@ export default class Bookshelf extends Scene {
     comp.draw(renderer, L.texture, this.leftRT);
     // 翻頁：tFlip - flipDur 開始、落在 tFlip（拍點）
     const k = clamp((t - (this.tFlip - this.flipDur)) / this.flipDur);
-    const phi = Math.PI * ease.inOutCubic(k);
+    // 翻過去之後，每兩個小節線那一頁的紙彈起來一點再落回去（紙有彈性；窗格長時中段也有小事件）
+    let spring = 0;
+    for (const tb of this.springs) { const x = t - (tb - 0.25); if (x > 0 && x < 1.2) spring = Math.max(spring, Math.sin(Math.PI * Math.min(1, x / 0.5)) * Math.exp(-x * 1.5) * (x < 0.5 ? 1 : Math.cos((x - 0.5) * 9) * 0.35 + 0.65)); }
+    const phi = Math.PI * ease.inOutCubic(k) - 0.2 * spring;
     this.flipPage(phi);
-    // 鏡頭：斜俯看攤開的書，翻頁之後慢慢推近右頁
-    const push = ease.inOutQuad(prog(t, this.tFlip, e));
-    const land = ease.outExpo(prog(t, this.tCut, this.tCut + 0.8));
-    const D = (H / 2) / Math.tan(THREE.MathUtils.degToRad(15));
-    // 兩頁都要在畫面裡（左頁是歌詞、右頁是留言）：攤開的書大大地放在畫面中間偏右，慢慢推近
-    const tx = lerp(40, 90, push) + 40 * (1 - land), ty = lerp(-30, -45, push);
-    const dist = D * (0.82 - 0.06 * push + 0.08 * (1 - land));
-    const tilt = THREE.MathUtils.degToRad(22 + 4 * (1 - land));
-    this.cam2.position.set(tx - 90 * (1 - push), ty - Math.sin(tilt) * dist, Math.cos(tilt) * dist);
-    this.cam2.lookAt(tx, ty, 20);
-    this.cam2.updateMatrixWorld();
-    this.U.lampPos.value.set(-900, 700, 1500);
-    this.U.lampAim.value.set(200, -40, 0);
+    this.ribbon(t);
+    this.deskPose(t);
+    this.U.lampPos.value.set(-1100, 900, 1500);
+    this.U.lampAim.value.set(150, -60, 0);
     this.U.lampCol.value.set(...LIN.bone.map((v, i) => v * 0.7 + LIN.signal[i]! * 0.3) as [number, number, number]);
-    this.U.cone.value.set(0.55, 0.92);
-    this.U.amb.value = 0.16;
+    this.U.cone.value.set(0.62, 0.93);
+    this.U.amb.value = 0.12;
     renderer.setRenderTarget(out);
+    renderer.clearDepth();
     renderer.render(this.desk, this.cam2);
     const hit = pulse(t, this.tFlip, 0.08);
-    // 書頁蓋住右下角：角落的字改成深色（paper）
     const avoid: Rect[] = [projRect(this.cam2, [[-PGW + 40, -PGH / 2 + 60, 40], [PGW - 40, PGH / 2 - 60, 40]])];
-    return { paper: 1, bloom: 0.45, vignette: 0.55, grain: 0.05, shake: [0, hit * 3], popupAvoid: avoid };
+    return { bloom: 0.45, vignette: 0.55, grain: 0.05, shake: [0, hit * 3], popupAvoid: avoid };
   }
 
   override dispose() {

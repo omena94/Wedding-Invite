@@ -1,13 +1,17 @@
 // 雜誌封面（亮）：木頭桌上一疊婚禮特刊，每到小節線就有新的一期「啪」地疊上去（從上方斜斜落下、落在小節線上、整疊震一下）。
 //  - 有留言：開場桌上是上一期（封面故事是別的賓客的一句話），第一個小節線新的一期落下——封面故事就是主打留言
-//    （思源宋體特粗、最深的墨，一眼就看到），署名是撰稿人；左上的「現場連線」欄是歌詞（逐字跟唱）。
+//    （思源宋體特粗、最深的墨），署名是撰稿人；左上的「現場連線」欄是歌詞（逐字跟唱）。
 //  - 沒有留言：每一句歌詞各是一期，在那一句開始前的小節線落下，封面故事就是那一句（逐字跟唱）；純音樂又沒有留言：
 //    這一期的封面故事是新人的名字與「今天，我們結婚了」，左上一行邀請。
-//  - 封面：刊名是細的斜體（淡、不搶焦點）、一張手繪線條插畫（花束／蛋糕／網球拍，每一期不一樣）墊一個訊號色的圓、
-//    上緣一行小字（期號、日期）、右下條碼與「NT$ ∞」。只有三小群配角字。
-//  - 鏡頭：斜俯看整疊，慢慢推近封面故事；新的一期落地時鏡頭跟著頓一下。景深對在封面故事上，桌面與下面幾期是糊的。
+//  - 封面：刊名是細的斜體（淡、不搶封面故事）、一張手繪線條插畫（花束／蛋糕／網球拍，每一期不一樣）墊一個訊號色的圓、
+//    上緣一行小字（期號、日期）、右下條碼與「NT$ ∞」。
+// v2（留言尺寸標準 v2）：這一疊放在畫面左邊（封面在螢幕上約 0.8 倍），封面故事在封面下半部、畫面左下
+//（40～60 px，留言區約 590 × 330）；右上是散開的過期特刊（一期一期斜斜地疊著、出血到畫面外、在焦外），
+// 留言那一期落定之後，每兩個小節線又有一期過期的從右上方「啪」地丟到那一堆上（整張桌子震一下）——畫面一直有事情發生。
+//  - 鏡頭：斜俯看，慢慢推近封面故事；新的一期落地時鏡頭跟著頓一下。景深對在封面故事上，右上那一堆在焦外。
+//  - 右下角（HUD）是空的木頭桌面。
 // 手法：three.js 的「桌上的紙」舞台（_t4 Stage）：每一期是一張封面（平面）＋一塊書口（方塊，看得到厚度），畫的順序由下往上；
-// 封面在 init() 畫成畫布（一期一張），每格用合成器把「封面＋會變的字（歌詞）」畫進三個有 mipmap 的 render target（最上面三期）。
+// 封面在 init() 畫成畫布（一期一張），每格用合成器把「封面＋會變的字（歌詞）」畫進有 mipmap 的 render target（主疊、右上各三期）。
 import * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
 import { Layer2D, makeRT } from '../engine/gl';
@@ -19,21 +23,32 @@ import { lyricAt, drawHeart, COUPLE_ZH, DATE_DOTS, signature } from './_motifs';
 import { grid, layoutRows, drawRows, paperInk, Stage, camDist, type Grid, type V3 } from './_t4';
 import { drawBarcode } from './_t1';
 import { loadAll, sigOf, block, T21_INVITE, type Block, type Rect } from './_t21';
+import { V2, lyricV2, msgMaxFor } from './_v2';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'print', paper: true, energy: [0.3, 0.95], bars: [4, 8], weight: 1 };
 
-/** 封面（紙面 px）與 render target 的倍率。 */
-const CW = 800, CH = 1040, RES = 1.3;
-/** 封面故事的框、「現場連線」欄。 */
-const STORY = { x: 50, y: 625, w: 700, h: 300 };
-const SIDE = { x: 50, y: 330, w: 400 };
+/** 封面（紙面 px）與 render target 的倍率（右上那一堆在焦外，解析度低一點）。 */
+const CW = 800, CH = 1040, RES = 1.3, RES_FAN = 0.8;
+/** 封面故事的框（封面下半部）、「現場連線」欄。 */
+const STORY = { x: 56, y: 572, w: 688, h: 392 };
+const SIDE = { x: 56, y: 318, w: 330 };
+/** 主疊（留言那一期）在桌上的中心（世界座標）；鏡頭看的點在它右邊，所以它在畫面左邊。 */
+const PILE = { x: -500, y: 0 };
+/** 右上散開的過期特刊：每一期的位置與角度（越後面的越上面）。 */
+// 丟上去的雜誌方向不一定：有的倒過來、有的橫的（刊名與插畫朝畫面中間，空白的下半部出血到畫面外）
+const FAN = [
+  { x: 420, y: 560, rot: 2.95 }, { x: 760, y: 420, rot: -1.72 }, { x: 520, y: 360, rot: 2.7 },
+  { x: 800, y: 600, rot: 3.3 }, { x: 330, y: 470, rot: -1.42 }, { x: 640, y: 300, rot: 3.08 },
+];
+/** 過期特刊的封面故事（小小的冷面標題，在焦外只看得出是一期一期的雜誌）。 */
+const FAN_HEADS = ['兩人份的早餐', '遛狗日誌', '羽球雙打入門', '一起去旅行', '晚安故事集', '今天，我們結婚了'];
 const FAM = F.ming(900);
 const FAM_SIG = F.ming(700);
 const FAM_SIDE = F.hei(700);
 const MAST = F.serif(400, true);
 const THICK = 9;
 
-type Kind = 'main' | 'back' | 'lyric' | 'names';
+type Kind = 'main' | 'back' | 'lyric' | 'names' | 'fan';
 interface Issue {
   kind: Kind;
   line: Line | null;
@@ -49,8 +64,9 @@ interface Issue {
 function makeRig() {
   const st = new Stage(1, 30);
   st.U.ambient.value = 0.8;
-  const slots = [0, 1, 2].map((k) => {
-    const rt = makeRT(CW * RES, CH * RES, { depthBuffer: false, generateMipmaps: true, minFilter: THREE.LinearMipmapLinearFilter });
+  // order0：畫的順序（右上那一堆在主疊下面，主疊落下時從它上面飛過去）
+  const mk = (res: number, order0: number) => {
+    const rt = makeRT(CW * res, CH * res, { depthBuffer: false, generateMipmaps: true, minFilter: THREE.LinearMipmapLinearFilter });
     const mat = st.docMaterial(rt.texture, [rt.width, rt.height], [CW, CH], { radius: 3, edge: 1 });
     const cover = st.docMesh(mat, CW, CH, 0, 0, 1);
     // 書口：一塊薄薄的方塊（頁緣的顏色、一點點層次），只畫朝外的面
@@ -58,10 +74,12 @@ function makeRig() {
     const edge = new THREE.Mesh(new THREE.BoxGeometry(CW - 4, CH - 4, THICK), edgeM);
     edge.frustumCulled = false;
     st.scene.add(edge);
-    cover.renderOrder = 2 * k + 1; edge.renderOrder = 2 * k;
+    cover.renderOrder = order0 + 1; edge.renderOrder = order0;
     return { rt, mat, cover, edge };
-  });
-  return { st, slots };
+  };
+  const slots = [0, 1, 2].map((k) => mk(RES, 2 * k));
+  const fan = [0, 1, 2].map((k) => mk(RES_FAN, 2 * k - 8));
+  return { st, slots, fan };
 }
 
 // ---------------------------------------------------------------- 手繪插畫（封面上的線條畫，不是照片）
@@ -192,8 +210,14 @@ export default class Magazine extends Scene {
   seed = ((this.ctx.params.seed ?? 1) * 97 + (this.msg?.id ?? 0) * 31) >>> 0;
   g!: Grid;
   issues: Issue[] = [];
+  /** 右上那一堆過期特刊（開場就有兩期，之後每兩個小節線丟上來一期）。 */
+  fan: Issue[] = [];
   hasLyrics = false;
   avoid: Rect[] = [];
+  /** 封面在螢幕上的倍數（v2 的字級換算：封面 px × K = 螢幕 px）。 */
+  K = 0.8;
+  /** 留言在螢幕上的字級（歌詞比它小一點）。 */
+  msgScreen: number | null = null;
   private fall = 0.4;
 
   override async init() {
@@ -201,16 +225,24 @@ export default class Magazine extends Scene {
     const s = this.ctx.start, e = this.ctx.end, m = this.msg;
     const others = ((this.ctx.params.messages ?? []) as Msg[]).filter((x) => !m || x.id !== m.id);
     const other = others.length ? others[Math.floor(hash(this.seed, 7) * others.length)]! : null;
-    await loadAll(this.ctx, `Our Day婚禮特刊SPECIAL ISSUE本期封面故事現場連線LIVE上一期今天，我們結婚了NT$ ∞VOL.${other ? other.text + signature(other.name) : ''}`);
+    await loadAll(this.ctx, `Our Day婚禮特刊SPECIAL ISSUE本期封面故事現場連線LIVE上一期過期特刊今天，我們結婚了邀請NT$ ∞VOL.${FAN_HEADS.join('')}${other ? other.text + signature(other.name) : ''}`);
     const g = (this.g = grid(au, s, e));
     this.hasLyrics = lyrics.linesIn(s, e).length > 0;
     this.fall = clamp(g.beat * 0.8, 0.3, 0.42);
+    // 封面在螢幕上的倍數：量封面故事那一段在畫面上多寬（窗格中段的鏡頭；推近前後差不到一成）
+    this.shoot(lerp(s, e, 0.6), null, 0);
+    const st = this.rig.st;
+    const a = st.toScreen([PILE.x - CW / 2 + STORY.x, PILE.y + CH / 2 - STORY.y - STORY.h / 2, THICK * 3]);
+    const b = st.toScreen([PILE.x - CW / 2 + STORY.x + STORY.w, PILE.y + CH / 2 - STORY.y - STORY.h / 2, THICK * 3]);
+    this.K = clamp((b.x - a.x) / STORY.w, 0.5, 1.2);
     // 第一個夠遠的小節線（至少一拍半之後；太遠就兩拍後）
-    let first = g.bars.find((b) => b >= s + g.beat * 1.4) ?? Infinity;
+    let first = g.bars.find((x) => x >= s + g.beat * 1.4) ?? Infinity;
     if (first > s + Math.min(3.5, 0.3 * (e - s))) first = au.timeOfBeat(au.beatAt(s) + 2);
+    const top = { x: PILE.x + 10, y: PILE.y - 6, rot: 0.015 };
+    const under = (k: number) => { const r = mulberry32(this.seed + k * 13 + 3); return { x: PILE.x + (r() - 0.5) * 70, y: PILE.y + (r() - 0.5) * 50, rot: (r() - 0.5) * 0.14 }; };
     if (m) {
-      this.issues.push(this.issue('back', null, -Infinity, 0, other));
-      this.issues.push(this.issue('main', null, first, 1, null));
+      this.issues.push(this.issue('back', null, -Infinity, 0, other, under(0)));
+      this.issues.push(this.issue('main', null, first, 1, null, top));
     } else if (this.hasLyrics) {
       const ls = lyrics.linesIn(s - 0.3, e).slice(0, 6);
       let prev = -Infinity;
@@ -218,82 +250,96 @@ export default class Magazine extends Scene {
         // 那一句開始前的小節線落下（離上一期至少兩拍）；找不到就提早 0.3 秒
         let tl = -Infinity;
         if (line.start - 0.35 > s + 0.2) {
-          const bars = g.bars.filter((b) => b <= line.start - 0.12 && b >= prev + g.beat * 2 && b > s + 0.2);
+          const bars = g.bars.filter((x) => x <= line.start - 0.12 && x >= prev + g.beat * 2 && x > s + 0.2);
           tl = bars.length ? bars[bars.length - 1]! : Math.max(line.start - 0.3, prev + g.beat * 1.5);
         }
-        this.issues.push(this.issue('lyric', line, tl, k, null));
+        this.issues.push(this.issue('lyric', line, tl, k, null, k % 2 ? top : under(k)));
         prev = tl;
       });
       // 窗格開始時桌上一定要有一期
-      if (this.issues[0]!.tLand > s) this.issues.unshift(this.issue('back', null, -Infinity, 9, other));
+      if (this.issues[0]!.tLand > s) this.issues.unshift(this.issue('back', null, -Infinity, 9, other, under(9)));
     } else {
-      this.issues.push(this.issue('back', null, -Infinity, 0, other));
-      this.issues.push(this.issue('names', null, first, 1, null));
+      this.issues.push(this.issue('back', null, -Infinity, 0, other, under(0)));
+      this.issues.push(this.issue('names', null, first, 1, null, top));
     }
-    this.avoid = [[STORY.x, STORY.y, STORY.w, STORY.h], [SIDE.x, SIDE.y - 40, SIDE.w, 200]];
+    // ---- 右上那一堆：開場兩期已經在桌上；主角那一期落定之後，每兩個小節線丟上來一期（歌詞一期一期落下時就不丟，免得太吵）
+    const tf: number[] = [-Infinity, -Infinity];
+    if (m || !this.hasLyrics) {
+      for (const x of g.bars) if (x > first + g.bar * 0.9 && x < e - g.beat && tf.length < FAN.length && Math.round((x - first) / g.bar) % 2 === 1) tf.push(x);
+      // 短窗格：至少丟一期（主角落定後兩拍）
+      if (tf.length === 2) { const x = au.timeOfBeat(au.beatAt(first) + 2); if (x < e - g.beat * 0.5) tf.push(x); }
+    }
+    tf.forEach((tl, k) => {
+      const sp = FAN[k]!;
+      this.fan.push(this.issue('fan', null, tl, 20 + k, null, sp));
+    });
+    const msgBlock = this.issues.find((x) => x.kind === 'main')?.block;
+    this.avoid = [[STORY.x, STORY.y - 30, STORY.w, STORY.h + 30], [SIDE.x, SIDE.y - 40, SIDE.w, 200]];
+    if (msgBlock) this.avoid[0] = msgBlock.box;
   }
 
   /** 做一期：封面畫布（不會變的部分）與放好的位置。 */
-  private issue(kind: Kind, line: Line | null, tLand: number, k: number, other: Msg | null): Issue {
+  private issue(kind: Kind, line: Line | null, tLand: number, k: number, other: Msg | null, at: { x: number; y: number; rot: number }): Issue {
     const seed = (this.seed + k * 101 + (kind === 'back' ? 7 : 0)) >>> 0;
+    const res = kind === 'fan' ? RES_FAN : RES;
     const cv = document.createElement('canvas');
-    cv.width = Math.round(CW * RES); cv.height = Math.round(CH * RES);
+    cv.width = Math.round(CW * res); cv.height = Math.round(CH * res);
     const c = cv.getContext('2d')!;
-    c.scale(RES, RES);
+    c.scale(res, res);
     c.textBaseline = 'alphabetic';
-    const bgs = [mixRgba('paper', 'bone', 0.55), mixRgba('paper', 'signal', 0.2), mixRgba('paper', 'blood', 0.1)];
-    const bg = kind === 'main' || kind === 'names' ? bgs[0]! : bgs[(k + 1) % 3]!;
+    const K = this.K;
+    const bgs = [mixRgba('paper', 'bone', 0.55), mixRgba('paper', 'signal', 0.2), mixRgba('paper', 'blood', 0.1), mixRgba('paper', 'sepia', 0.14)];
+    const bg = kind === 'main' || kind === 'names' ? bgs[0]! : bgs[(k + 1) % bgs.length]!;
     c.fillStyle = bg; c.fillRect(0, 0, CW, CH);
     const ink = rgba('sepia'), soft = rgba('sepia', 0.6);
     // 插畫：訊號色的圓墊在後面，線條畫在上面
-    const ill = kind === 'main' || kind === 'names' ? 0 : (k % 2) + 1;
+    const ill = kind === 'main' || kind === 'names' ? 0 : (k % 3 === 0 ? 1 : k % 3 === 1 ? 2 : 0);
     c.fillStyle = mixRgba('signal', bg, 0.35, 0.55);
-    c.beginPath(); c.arc(590, 425, 178, 0, Math.PI * 2); c.fill();
-    ILLUS[ill]!(c, 590, 395, 300, seed, rgba('sepia', 0.9), mixRgba('signal', 'bone', 0.45, 0.7));
+    c.beginPath(); c.arc(590, 400, 170, 0, Math.PI * 2); c.fill();
+    ILLUS[ill]!(c, 590, 372, 290, seed, rgba('sepia', 0.9), mixRgba('signal', 'bone', 0.45, 0.7));
     // 刊名（細、斜、淡：是封面的一部分，不搶封面故事）
-    c.font = font(MAST, 176); c.fillStyle = rgba('blood', 0.5); c.fillText('Our Day', 42, 222);
-    this.small(c, '婚禮特刊 · SPECIAL ISSUE', 48, 60, F.hei(500), 17, 4, soft);
+    c.font = font(MAST, 132); c.fillStyle = rgba('blood', 0.42); c.fillText('Our Day', 46, 196);
+    this.small(c, '婚禮特刊 · SPECIAL ISSUE', 52, 60, F.hei(500), 17, 4, soft);
     const no = this.msg && kind === 'main' ? `No.${String(this.msg.n).padStart(3, '0')}  ·  ` : `VOL.${1 + (seed % 40)}  ·  `;
-    c.textAlign = 'right'; this.small(c, `${no}${DATE_DOTS}`, CW - 48, 60, F.mono(500), 16, 3, soft); c.textAlign = 'left';
-    c.fillStyle = rgba('sepia', 0.5); c.fillRect(48, 76, CW - 96, 1.5);
+    c.textAlign = 'right'; this.small(c, `${no}${DATE_DOTS}`, CW - 52, 60, F.mono(500), 16, 3, soft); c.textAlign = 'left';
+    c.fillStyle = rgba('sepia', 0.5); c.fillRect(52, 76, CW - 104, 1.5);
     // 右下：條碼與價格（冷面：無價）
-    drawBarcode(c, CW - 170, CH - 74, 120, 36, seed, rgba('sepia', 0.9));
-    this.small(c, 'NT$ ∞', CW - 250, CH - 44, F.mono(500), 15, 2, soft);
+    drawBarcode(c, CW - 170, CH - 58, 120, 30, seed, rgba('sepia', 0.9));
+    this.small(c, 'NT$ ∞', CW - 250, CH - 34, F.mono(500), 15, 2, soft);
     let blk: Block | null = null;
     const kick = (text: string, y: number) => this.small(c, text, STORY.x, y, F.hei(700), 18, 5, rgba('blood', 0.9));
     if (kind === 'main' || (kind === 'back' && other)) {
       const mm = kind === 'main' ? this.msg! : other!;
-      kick(kind === 'main' && mm.couple ? 'FROM THE COUPLE  ·  新人' : '本期封面故事', STORY.y - 18);
-      blk = block(c, mm, FAM, STORY, { align: 'left', sigFamily: FAM_SIG, sigMin: 26, sigMax: 34, min: 47, max: 104, lineHeight: 1.22, maxLines: 5, valign: 0, prefer1: 78, sigText: mm.couple ? '—— 新郎新娘' : sigOf(mm) });
+      kick(kind === 'main' && mm.couple ? 'FROM THE COUPLE  ·  新人' : kind === 'main' ? '本期封面故事' : '上一期', STORY.y - 12);
+      // 封面故事：照 v2 的字級（封面 px × K = 螢幕 px），靠上排，署名在最後一行下面
+      blk = block(c, mm, FAM, STORY, { align: 'left', sigFamily: FAM_SIG, lineHeight: 1.24, maxLines: 5, valign: 0.12, v2: K, sigText: mm.couple ? '—— 新郎新娘' : sigOf(mm) });
       c.font = font(FAM, blk.fit.size); c.fillStyle = kind === 'main' ? ink : rgba('sepia', 0.92);
       for (const ln of blk.lines) this.fillHearts(c, ln.text, ln.x, ln.y);
       c.font = font(FAM_SIG, blk.sig.size); c.fillStyle = soft; c.fillText(blk.sig.text, blk.sig.x, blk.sig.y);
-    } else if (kind === 'back') {
-      kick('上一期', STORY.y - 18);
-      c.font = font(FAM, 76); c.fillStyle = ink; c.fillText('今天，我們結婚了', STORY.x, STORY.y + 90);
+      if (kind === 'main') this.msgScreen = blk.fit.size * K;
+    } else if (kind === 'back' || kind === 'fan') {
+      kick(kind === 'fan' ? '過期特刊' : '上一期', STORY.y - 12);
+      c.font = font(FAM, kind === 'fan' ? 50 : 60 / K); c.fillStyle = kind === 'fan' ? rgba('sepia', 0.85) : ink;
+      c.fillText(kind === 'fan' ? FAN_HEADS[k % FAN_HEADS.length]! : '今天，我們結婚了', STORY.x, STORY.y + 90);
     } else if (kind === 'names') {
-      kick('本期封面故事', STORY.y - 18);
-      c.font = font(FAM, 104); c.fillStyle = ink; this.fillHearts(c, COUPLE_ZH.replace(/\s*&\s*/, ' ♥ '), STORY.x, STORY.y + 110);
-      c.font = font(FAM_SIG, 44); c.fillStyle = soft; c.fillText('今天，我們結婚了', STORY.x, STORY.y + 200);
+      kick('本期封面故事', STORY.y - 12);
+      const sz = V2.msgMax / K;
+      c.font = font(FAM, sz); c.fillStyle = ink; this.fillHearts(c, COUPLE_ZH.replace(/\s*&\s*/, ' ♥ '), STORY.x, STORY.y + 30 + sz);
+      c.font = font(FAM_SIG, V2.sigMax / K); c.fillStyle = soft; c.fillText('今天，我們結婚了', STORY.x, STORY.y + 30 + sz * 2.1);
     } else {
-      kick('本期封面故事  ·  現場連線', STORY.y - 18);
+      kick('本期封面故事  ·  現場連線', STORY.y - 12);
     }
     if (kind === 'main' || kind === 'back' || kind === 'names') {
       this.small(c, kind === 'names' ? '邀請' : '現場連線  ·  LIVE', SIDE.x, SIDE.y - 22, F.hei(700), 17, 5, rgba('blood', 0.9));
       if (kind === 'names') {
-        c.font = font(F.hei(500), 30); c.fillStyle = ink;
-        c.fillText('掃描右下角 QR code，', SIDE.x, SIDE.y + 30); c.fillText('把你的祝福寫上大螢幕', SIDE.x, SIDE.y + 74);
+        c.font = font(F.hei(500), 26 / K); c.fillStyle = ink;
+        c.fillText('掃描右下角 QR code，', SIDE.x, SIDE.y + 32 / K); c.fillText('把你的祝福寫上大螢幕', SIDE.x, SIDE.y + 72 / K);
       }
     }
     const tex = new THREE.CanvasTexture(cv);
     tex.colorSpace = THREE.SRGBColorSpace; tex.minFilter = THREE.LinearFilter; tex.generateMipmaps = false;
     this.track(tex);
-    const r = mulberry32(seed + 3);
-    const top = kind === 'main' || kind === 'names';
-    return {
-      kind, line, tLand, seed, cv, tex, block: blk,
-      x: top ? 10 : (r() - 0.5) * 70, y: top ? -6 : (r() - 0.5) * 50, rot: top ? 0.015 : (r() - 0.5) * 0.16,
-    };
+    return { kind, line, tLand, seed, cv, tex, block: blk, x: at.x, y: at.y, rot: at.rot };
   }
 
   private small(c: Ctx, text: string, x: number, y: number, family: string, size: number, tracking: number, color: string) {
@@ -315,15 +361,47 @@ export default class Magazine extends Scene {
     }
   }
 
-  /** 一期現在的位置：還沒落下 = 在上方（看不到）；落下的 fall 秒：從右上方斜斜掉下來（inQuad，落在小節線上）。 */
+  /**
+   * 一期現在的位置：還沒落下 = 在上方（看不到）；落下的 fall 秒：從右上方斜斜掉下來（inQuad，落在小節線上）。
+   * 右上那一堆是被「丟」上去的：從畫面外更遠的地方飛進來、轉得比較多，落地時滑一小段。
+   */
   private pose(is: Issue, t: number) {
     const u = is.tLand === -Infinity ? 1 : clamp((t - (is.tLand - this.fall)) / this.fall);
     const k = ease.inQuad(u), o = ease.outCubic(u);
-    const settle = is.tLand === -Infinity ? 0 : Math.exp(-Math.max(0, t - is.tLand) * 9) * Math.sin(Math.max(0, t - is.tLand) * 34) * (t > is.tLand ? 1 : 0);
+    const dt = Math.max(0, t - is.tLand);
+    const settle = is.tLand === -Infinity ? 0 : Math.exp(-dt * 9) * Math.sin(dt * 34) * (t > is.tLand ? 1 : 0);
+    if (is.kind === 'fan') {
+      const slide = is.tLand === -Infinity ? 1 : ease.outCubic(clamp(dt / 0.35));
+      return {
+        x: lerp(is.x + 520, is.x + 40, o) - 40 * slide, y: lerp(is.y + 380, is.y + 16, o) - 16 * slide, z: lerp(700, 0, k) + 3 * settle,
+        rot: lerp(is.rot + 0.5, is.rot + 0.05, o) - 0.05 * slide, a: clamp(u * 5), u,
+      };
+    }
     return {
       x: lerp(is.x + 170, is.x, o), y: lerp(is.y + 260, is.y, o), z: lerp(520, 0, k) + 4 * settle,
       rot: lerp(is.rot + 0.3, is.rot, o) + 0.01 * settle, a: clamp(u * 5), u,
     };
+  }
+
+  /**
+   * 鏡頭：斜俯看，看的點在主疊右邊（主疊在畫面左邊、右上是那一堆過期特刊）；整段慢慢推近、稍微往左下（封面故事）移；
+   * 落地時頓一下。hit = 落地的衝擊（0..1）。
+   */
+  private shoot(t: number, top: Issue | null, hit: number) {
+    const st = this.rig.st, s = this.ctx.start, e = this.ctx.end;
+    const D = camDist(30);
+    const push = prog(t, s, e, ease.inOutQuad);
+    const intro = ease.outExpo(prog(t, s, s + Math.min(1.2, this.g.beat * 2.5)));
+    const side = hash(this.seed, 5) < 0.5 ? -1 : 1;
+    const T: V3 = [30 + side * 16 * (1 - push) - 30 * push, 40 - 50 * push, THICK * 3];
+    const dist = D * (1.3 - 0.05 * intro - 0.07 * push - 0.02 * hit);
+    const tilt = THREE.MathUtils.degToRad(22 - 5 * intro);
+    const yaw = side * (0.1 - 0.05 * intro - 0.02 * push);
+    st.look([T[0] + Math.sin(yaw) * dist, T[1] - Math.sin(tilt) * dist, Math.cos(tilt) * dist], T);
+    if (top) {
+      const tp = this.pose(top, t);
+      st.U.focus.value = st.depthOf([tp.x - CW / 2 + STORY.x + STORY.w / 2, tp.y + CH / 2 - STORY.y - STORY.h / 2, THICK * 3]);
+    }
   }
 
   override render(f: Frame, out: THREE.WebGLRenderTarget): PostOverrides {
@@ -332,6 +410,7 @@ export default class Magazine extends Scene {
     const R = this.rig, st = R.st;
     // 看得到的：已經開始落下的最上面三期（由下往上）
     const shown = this.issues.filter((is) => is.tLand === -Infinity || t >= is.tLand - this.fall).slice(-3);
+    const fanShown = this.fan.filter((is) => is.tLand === -Infinity || t >= is.tLand - this.fall).slice(-3);
     // 「現在」那一期：已經落地的最上面一期（新的一期還在空中時，下面那一期的歌詞照樣跟唱）
     const landed = shown.filter((is) => is.tLand === -Infinity || t >= is.tLand);
     const active = landed[landed.length - 1] ?? shown[0]!;
@@ -339,16 +418,19 @@ export default class Magazine extends Scene {
     const L = this.lay; L.clear();
     const c = L.ctx;
     const ink = paperInk();
+    const K = this.K;
     if (active.kind === 'lyric' && active.line) {
-      const lay = layoutRows(c, active.line, { family: FAM, size: 104, minSize: 56, maxW: STORY.w, maxRows: 3, align: 'left', lineHeight: 1.18 });
-      c.save(); c.translate(STORY.x, STORY.y + lay.size * 0.95);
+      // 沒有留言：封面故事就是這一句（歌詞是焦點，52 px）
+      const lay = layoutRows(c, active.line, { family: FAM, size: lyricV2(null) / K, minSize: V2.lyrMin / K, maxW: STORY.w, maxRows: 3, align: 'left', lineHeight: 1.22 });
+      c.save(); c.translate(STORY.x, STORY.y + 40 + lay.size * 0.9);
       drawRows(c, lay, FAM, t, ink, 1);
       c.restore();
     } else if (active.kind !== 'names') {
       const ly = lyricAt(lyrics, t);
       if (ly) {
-        const lay = layoutRows(c, ly.line, { family: FAM_SIDE, size: 54, minSize: 51, maxW: SIDE.w, maxRows: 3, align: 'left', lineHeight: 1.16 });
-        c.save(); c.translate(SIDE.x, SIDE.y + 34);
+        const size = lyricV2(active.kind === 'main' ? this.msgScreen : msgMaxFor('今天，我們結婚了')) / K;
+        const lay = layoutRows(c, ly.line, { family: FAM_SIDE, size, minSize: V2.lyrMin / K, maxW: SIDE.w, maxRows: 3, align: 'left', lineHeight: 1.16 });
+        c.save(); c.translate(SIDE.x, SIDE.y + lay.size * 0.62);
         drawRows(c, lay, FAM_SIDE, t, ink, ly.k);
         c.restore();
       } else if (!this.hasLyrics) {
@@ -357,8 +439,7 @@ export default class Magazine extends Scene {
     }
     L.upload();
     // ---- 封面 → render target → 舞台
-    R.slots.forEach((sl, k) => {
-      const is = shown[k];
+    const place = (sl: (typeof R.slots)[number], is: Issue | undefined, k: number) => {
       sl.cover.visible = sl.edge.visible = !!is;
       if (!is) return;
       comp.draw(renderer, is.tex, sl.rt, { mode: 'replace' });
@@ -368,26 +449,21 @@ export default class Magazine extends Scene {
       sl.cover.position.set(p.x, p.y, z + 0.5); sl.cover.rotation.set(0, 0, p.rot);
       sl.edge.position.set(p.x, p.y, z - THICK / 2); sl.edge.rotation.set(0, 0, p.rot);
       sl.mat.uniforms.opacity!.value = p.a;
-    });
-    // ---- 鏡頭：斜俯看整疊，慢慢推近封面故事；落地時頓一下
-    const D = camDist(30);
-    const lands = this.issues.filter((is) => is.tLand > s && is.tLand < e).map((is) => is.tLand);
-    const hit = lands.reduce((a, tl) => Math.max(a, pulse(t, tl, 0.09)), 0);
-    const push = prog(t, s, e, ease.inOutQuad);
-    const intro = ease.outExpo(prog(t, s, s + Math.min(1.2, this.g.beat * 2.5)));
-    const side = hash(this.seed, 5) < 0.5 ? -1 : 1;
-    const T: V3 = [10 + side * 12 * (1 - push), -30 - 100 * push, THICK * 3];
-    const dist = D * (1.1 - 0.06 * intro - 0.1 * push - 0.02 * hit);
-    const tilt = THREE.MathUtils.degToRad(24 - 6 * intro);
-    const yaw = side * (0.12 - 0.06 * intro - 0.03 * push);
-    st.look([T[0] + Math.sin(yaw) * dist, T[1] - Math.sin(tilt) * dist, Math.cos(tilt) * dist], T);
-    const top = shown[shown.length - 1]!, tp = this.pose(top, t);
-    st.U.focus.value = st.depthOf([tp.x - CW / 2 + STORY.x + STORY.w / 2, tp.y + CH / 2 - STORY.y - STORY.h / 2, THICK * 3]);
-    st.U.aperture.value = 20;
-    st.U.pool.value.set(-260, 260, 1500, 0.6);
-    st.shadows(shown.map((is) => {
+    };
+    R.slots.forEach((sl, k) => place(sl, shown[k], k));
+    R.fan.forEach((sl, k) => place(sl, fanShown[k], k));
+    // ---- 鏡頭
+    const lands = [...this.issues, ...this.fan].filter((is) => is.tLand > s && is.tLand < e);
+    const hit = lands.reduce((a, is) => Math.max(a, pulse(t, is.tLand, 0.09) * (is.kind === 'fan' ? 0.5 : 1)), 0);
+    const top = shown[shown.length - 1]!;
+    this.shoot(t, top, hit);
+    st.U.aperture.value = 24;
+    st.U.pool.value.set(-420, 120, 1500, 0.6);
+    // 右上那一堆本來就在焦外（離鏡頭遠一點），再多糊一點：只是「一期一期的雜誌」，不搶封面故事
+    for (const sl of R.fan) (sl.mat.uniforms.region!.value as THREE.Vector4).set(0.5, 0.5, 1, 7);
+    st.shadows([...shown, ...fanShown].map((is) => {
       const p = this.pose(is, t);
-      return { x: p.x + 16 + p.z * 0.35, y: p.y - 20 - p.z * 0.45, w: CW, h: CH, rot: p.rot, blur: 16 + p.z * 0.12, k: 0.34 * (1 - clamp(p.z / 600)), r: 4 };
+      return { x: p.x + 16 + p.z * 0.35, y: p.y - 20 - p.z * 0.45, w: CW, h: CH, rot: p.rot, blur: 16 + p.z * 0.12, k: 0.34 * (1 - clamp(p.z / 700)), r: 4 };
     }));
     st.render(renderer, out);
     return {
@@ -409,7 +485,7 @@ export default class Magazine extends Scene {
   }
 
   override dispose() {
-    for (const is of this.issues) is.cv.width = is.cv.height = 0;
+    for (const is of [...this.issues, ...this.fan]) is.cv.width = is.cv.height = 0;
     super.dispose();
   }
 }

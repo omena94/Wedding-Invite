@@ -12,6 +12,7 @@ import { font, layout, loadText } from '../engine/type';
 import { fitText, type FitResult } from '../engine/text';
 import { clamp } from '../engine/util';
 import { heartPoints, signature, COUPLE_ZH, DATE_DOTS } from './_motifs';
+import { V2, msgMaxFor, sigV2, fitClauses } from './_v2';
 
 export type Rect = [number, number, number, number];
 export type P2 = { x: number; y: number };
@@ -248,11 +249,17 @@ export interface Block {
  * 在框裡排一則留言＋署名（跟 _t14 的 msgBlock 一樣：字級依「框高扣掉署名那一行」算，署名永遠在最後一行下面），
  * 但字級直接找最大的（不偏好少一行）：這批的留言是寫在大片的紙上、刷在帶子上，字大、行多比較好看。
  */
-export function block(c: CanvasRenderingContext2D, m: Msg, family: string, box: { x: number; y: number; w: number; h: number }, o: { align?: 'left' | 'center'; sigFamily: string; sigMin?: number; sigMax?: number; min?: number; max?: number; lineHeight?: number; maxLines?: number; sigText?: string; valign?: number; prefer1?: number }): Block {
-  const sigMin = o.sigMin ?? 40, sigMax = o.sigMax ?? 54;
-  const fo = { min: o.min ?? 44, max: o.max ?? 130, lineHeight: o.lineHeight ?? 1.3, maxLines: o.maxLines ?? 5 };
+export function block(c: CanvasRenderingContext2D, m: Msg, family: string, box: { x: number; y: number; w: number; h: number }, o: { align?: 'left' | 'center'; sigFamily: string; sigMin?: number; sigMax?: number; min?: number; max?: number; lineHeight?: number; maxLines?: number; sigText?: string; valign?: number; prefer1?: number; v2?: number }): Block {
+  // v2（留言尺寸標準 v2，_v2.ts）：值是「畫面上 1 頁面 px 有幾個螢幕 px」（有鏡頭縮放、3D 的版面要換算）。
+  // 給了就照標準：留言字級上限依字數（msgMaxFor）、下限 40；署名 26～32；先照子句斷行（fitClauses），放不下才交給 fitText
+  const k = o.v2 ?? 0;
+  const sigMin = k ? V2.sigMin / k : o.sigMin ?? 40, sigMax = k ? V2.sigMax / k : o.sigMax ?? 54;
+  const fo = k
+    ? { min: V2.msgMin / k, max: Math.min(o.max ?? Infinity, msgMaxFor(m.text) / k), lineHeight: o.lineHeight ?? 1.3, maxLines: o.maxLines ?? 5 }
+    : { min: o.min ?? 44, max: o.max ?? 130, lineHeight: o.lineHeight ?? 1.3, maxLines: o.maxLines ?? 5 };
   // prefer1：一行放得下、字級又不小於 prefer1 的短留言就排一行（「新婚快樂！！！」不要拆成「新婚／快樂！！！」）
   const fitAt = (h: number) => {
+    if (k) { const r = fitClauses(c, m.text, family, box.w, h, fo); if (r) return r; }
     const f = fitText(c, m.text, family, box.w, h, fo);
     if (o.prefer1 && f.lines.length > 1) {
       const one = fitText(c, m.text, family, box.w, h, { ...fo, maxLines: 1 });
@@ -262,7 +269,7 @@ export function block(c: CanvasRenderingContext2D, m: Msg, family: string, box: 
     return f;
   };
   let sigSize = sigMax, fit = fitAt(box.h - sigSize * 1.7);
-  sigSize = clamp(Math.round(fit.size * 0.45), sigMin, sigMax);
+  sigSize = k ? sigV2(fit.size * k) / k : clamp(Math.round(fit.size * 0.45), sigMin, sigMax);
   fit = fitAt(box.h - sigSize * 1.7);
   const sigText = o.sigText ?? sigOf(m);
   c.font = font(family, fit.size);

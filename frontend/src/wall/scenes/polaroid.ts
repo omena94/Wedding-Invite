@@ -3,9 +3,12 @@
 // 相片正在顯影：一開始是一片灰濛濛的藥膜，最深的線條先浮出來、顏色最後才飽和——顯影出來的是一張手繪線條小插畫
 // （兩杯咖啡冒著愛心形的煙／海邊的夕陽與小帆船／星空下亮著窗的小房子，每次不一樣），不是照片。
 // 相片落地後的下一拍，一支馬克筆在寬寬的白邊上一個字一個字寫下主打留言，最後簽名。
-//  - 一個焦點：白邊上的手寫留言（最大、最深）。歌詞是右邊一條壓字標籤帶（深色帶子上凸起的字，逐字跟唱：正在唱的字是訊號色）。
-//  - 沒有留言：白邊寫「掃描 QR code，把祝福寫在這裡」（邀請），標籤帶的歌詞字大一點；純音樂又沒有留言：標籤帶是新人的名字。
-//  - 鏡頭：斜俯看，一直對著相片，慢慢推近白邊；景深對在白邊上（相機與桌子遠處是糊的）。
+//  - 一個焦點：白邊上的手寫留言。歌詞是相片右邊的一條壓字標籤帶（深色帶子上凸起的字，逐字跟唱：正在唱的字是訊號色）。
+//  - 沒有留言：白邊寫「把你的祝福，寫在這裡」（邀請）；純音樂又沒有留言：標籤帶是新人的名字。
+// v2（留言尺寸標準 v2）：留言那張相片放在畫面左邊（相片是道具，可以大；白邊上的留言 40～60 px，留言區約 510 × 270），
+// 右上是一堆今晚拍的拍立得：開場就有一張，之後每兩個小節線又有一張剛吐出來的被丟到那一堆上（落地彈一下），
+// 在畫面上從灰濛濛的藥膜慢慢顯影——畫面一直有東西在「長出來」。標籤帶的歌詞 40～52 px，不比留言大。右下角（HUD）是空的桌布。
+//  - 鏡頭：開場斜斜地看著相機吐片，相片落地後轉成俯看全景、慢慢推近；景深對在白邊與標籤帶，右上那一堆稍微糊。
 // 手法：three.js 的「桌上的紙」舞台（_t4 Stage）：相機是幾個方塊與圓柱（程序上色），相片與標籤帶是平面；
 // 相片每格用一個 shader 畫進 render target（插畫畫布＋顯影進度＋白邊＋馬克筆的字），標籤帶是 Canvas 合成進 render target。
 import * as THREE from 'three';
@@ -18,14 +21,25 @@ import { Lyrics } from '../engine/lyrics';
 import { lyricAt, drawHeart, COUPLE_ZH, DATE_DOTS } from './_motifs';
 import { grid, layoutRows, Stage, camDist, type Grid, type V3 } from './_t4';
 import { loadAll, t21Grain, GRAIN_GLSL, block, glyphPath, type Block, type Rect } from './_t21';
+import { V2, lyricV2 } from './_v2';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'print', paper: true, energy: [0.1, 0.8], bars: [4, 8], weight: 1 };
 
-/** 相片（紙面 px）：影像 520×520 在 (40, 40)，下面是寬寬的白邊（寫字的地方）。 */
-const PW = 600, PH = 880, IMG = { x: 40, y: 40, s: 520 }, RES = 1.5;
-const MSG_BOX = { x: 40, y: 590, w: 520, h: 262 };
-/** 標籤帶（紙面 px）：一條一行，長的歌詞用兩條。 */
-const TW = 520, TH = 70, TAPE_X = PW / 2 + 60, TAPE_Y = [190, 100];
+/** 相片（紙面 px）：影像 520×520 在 (40, 40)，下面是寬寬的白邊（寫字的地方）。右上那一堆的解析度低一點（在焦外）。 */
+const PW = 600, PH = 880, IMG = { x: 40, y: 40, s: 520 }, RES = 1.5, RES_X = 0.6;
+const MSG_BOX = { x: 32, y: 580, w: 536, h: 284 };
+/** 留言那張相片落定的位置（世界座標，相片中心）與角度。 */
+const MAIN = { x: -540, y: 30, rot: -0.03 };
+/** 標籤帶（紙面 px）：一條一行，長的歌詞用兩條；貼在相片右邊、靠上（開場的鏡頭與全景都看得到，也離 HUD 遠）。 */
+const TW = 560, TH = 84;
+const TAPE = [{ x: -200 + TW / 2, y: 330 }, { x: -172 + TW / 2, y: 236 }];
+/**
+ * 散在桌上的其他拍立得：第一張開場就在（右上）；之後的一張一張丟上來——相片右邊下方（下緣出血到畫面外）、右邊、最右邊。
+ * 都停在 HUD 外面、不蓋到標籤帶。
+ */
+const PILE = [
+  { x: 880, y: 430, rot: 0.28 }, { x: 90, y: -420, rot: -0.2 }, { x: 740, y: 190, rot: 0.12 }, { x: 1180, y: 120, rot: -0.3 },
+];
 const FAM = F.hand(700);
 const FAM_TAPE = F.hei(900);
 /** 沒有留言：白邊上寫一句邀請（空白的相片等著你來寫），署名的位置寫怎麼做。 */
@@ -70,6 +84,14 @@ function makeRig() {
   const photo = makeRT(PW * RES, PH * RES, { depthBuffer: false, generateMipmaps: true, minFilter: THREE.LinearMipmapLinearFilter });
   const st = new Stage(2, 30);
   st.U.ambient.value = 0.8;
+  // 右上那一堆（畫在留言那張下面）
+  const pile = PILE.map((_, k) => {
+    const rt = makeRT(PW * RES_X, PH * RES_X, { depthBuffer: false, generateMipmaps: true, minFilter: THREE.LinearMipmapLinearFilter });
+    const mat = st.docMaterial(rt.texture, [rt.width, rt.height], [PW, PH], { radius: 4, edge: 1 });
+    const mesh = st.docMesh(mat, PW, PH, 0, 0, 1 + k * 0.5);
+    mesh.renderOrder = -6 + k;
+    return { rt, mat, mesh };
+  });
   const tapes = [0, 1].map(() => {
     const rt = makeRT(TW * 1.5, TH * 1.5, { depthBuffer: false, generateMipmaps: true, minFilter: THREE.LinearMipmapLinearFilter });
     const mat = st.docMaterial(rt.texture, [rt.width, rt.height], [TW, TH], { radius: 3, edge: 0.6 });
@@ -101,7 +123,7 @@ function makeRig() {
   // 相片（半透明的材質）會排在不透明的東西後面畫：相機也標成半透明、排在相片之後，才蓋得住還沒吐出來的那一段
   for (const m of [shell, plate, lens, glass, slot, flash, finder]) { m.frustumCulled = false; m.renderOrder = 10; (m.material as THREE.Material).transparent = true; }
   st.scene.add(body);
-  return { photo, st, photoM, photoMesh, tapes, body };
+  return { photo, st, photoM, photoMesh, pile, tapes, body };
 }
 
 // ---------------------------------------------------------------- 手繪插畫（線條＋淡彩，不是照片）
@@ -192,11 +214,16 @@ function house(c: Ctx, S: number, rnd: () => number) {
 }
 const ILLUS = [coffee, seaside, house];
 
+/** 右上那一堆的一張：插畫、丟上去的時間（-Infinity = 開場就在）、落定的位置與角度。 */
+interface PilePhoto { cv: HTMLCanvasElement; tex: THREE.CanvasTexture; tLand: number; x: number; y: number; rot: number }
+
 export default class Polaroid extends Scene {
   pass = shared('polaroid.develop', DEVELOP);
   rig = shared('polaroid.rig', makeRig);
   /** 馬克筆的字（相片座標）、標籤帶（每格重畫）。 */
   ink = this.track(new Layer2D(PW, PH, undefined, { fast: true }));
+  /** 右上那一堆的白邊沒有字：一張空的圖層。 */
+  blank = this.track(new Layer2D(8, 8, 1, { fast: true }));
   tapeL = [0, 1].map(() => this.track(new Layer2D(TW, TH, undefined, { fast: true })));
   ill: THREE.CanvasTexture | null = null;
   illCv: HTMLCanvasElement | null = null;
@@ -208,6 +235,13 @@ export default class Polaroid extends Scene {
   steps: number[] = [];
   tLand = 0; tWrite = 0; writeDur = 1;
   hasLyrics = false;
+  /** 右上那一堆（最多 PILE.length 張）。 */
+  pile: PilePhoto[] = [];
+  /** 相片在螢幕上的倍數（全景時；v2 的字級換算：相片 px × K = 螢幕 px）。 */
+  K = 0.95;
+  /** 標籤帶上歌詞的字級（相片 px）。 */
+  tapeSize = 52;
+  private fall = 0.4;
   /** 馬克筆寫的每個字（相片座標）與它寫完的時間。 */
   glyphs: { ch: string; x: number; y: number; w: number; size: number; family: string; t0: number; t1: number; sig: boolean }[] = [];
 
@@ -217,6 +251,7 @@ export default class Polaroid extends Scene {
     await loadAll(this.ctx, `${INVITE_BORDER}${INVITE_SIG}${COUPLE_ZH}${DATE_DOTS}`);
     const g = (this.g = grid(au, s, e));
     this.hasLyrics = lyrics.linesIn(s, e).length > 0;
+    this.fall = clamp(g.beat * 0.8, 0.3, 0.42);
     // ---- 時間：吐片三拍（短窗格兩拍）、下一個小節線落地（太遠就下一拍）、再下一拍開始寫
     const short = g.nBars < 3.5;
     const b0 = g.b0;
@@ -227,21 +262,32 @@ export default class Polaroid extends Scene {
     this.tLand = tl;
     this.tWrite = au.timeOfBeat(au.beatAt(tl) + 1);
     // ---- 插畫（畫一次）
-    const S = 520, R = 1.5;
-    const cv = (this.illCv = document.createElement('canvas'));
-    cv.width = cv.height = Math.round(S * R);
-    const c = cv.getContext('2d')!;
-    c.scale(R, R);
-    ILLUS[Math.floor(hash(this.seed, 11) * ILLUS.length)]!(c, S, mulberry32(this.seed));
-    const tex = new THREE.CanvasTexture(cv);
-    tex.colorSpace = THREE.SRGBColorSpace; tex.minFilter = THREE.LinearFilter; tex.generateMipmaps = false; tex.flipY = true;
-    this.ill = this.track(tex);
-    // ---- 白邊上要寫的字（一個字一個字，照寫的順序排好時間）
+    const mainIll = Math.floor(hash(this.seed, 11) * ILLUS.length);
+    const drawIll = (k: number, R: number, seed: number) => {
+      const S = 520;
+      const cv = document.createElement('canvas');
+      cv.width = cv.height = Math.round(S * R);
+      const c = cv.getContext('2d')!;
+      c.scale(R, R);
+      ILLUS[k % ILLUS.length]!(c, S, mulberry32(seed));
+      const tex = new THREE.CanvasTexture(cv);
+      tex.colorSpace = THREE.SRGBColorSpace; tex.minFilter = THREE.LinearFilter; tex.generateMipmaps = false; tex.flipY = true;
+      this.track(tex);
+      return { cv, tex };
+    };
+    const mi = drawIll(mainIll, 1.5, this.seed);
+    this.illCv = mi.cv; this.ill = mi.tex;
+    // ---- 相片在螢幕上的倍數：全景的鏡頭（窗格中段）下，白邊的寫字框在畫面上多寬
+    this.shoot(lerp(Math.min(this.tLand + g.bar, e), e, 0.5));
+    const st = this.rig.st;
+    const yM = MAIN.y + PH / 2 - (MSG_BOX.y + MSG_BOX.h / 2);
+    const pa = st.toScreen([MAIN.x - PW / 2 + MSG_BOX.x, yM, 2]), pb = st.toScreen([MAIN.x - PW / 2 + MSG_BOX.x + MSG_BOX.w, yM, 2]);
+    this.K = clamp((pb.x - pa.x) / MSG_BOX.w, 0.5, 1.4);
+    // ---- 白邊上要寫的字（一個字一個字，照寫的順序排好時間）：字級照 v2
     const ic = this.ink.ctx;
-    let text: Msg;
-    if (m) text = m;
-    else text = { id: 0, name: '', text: INVITE_BORDER, n: 0, couple: true };
-    const b = (this.block = block(ic, text, FAM, MSG_BOX, { align: 'left', sigFamily: F.hand(400), sigMin: 26, sigMax: 34, min: 36, max: 72, lineHeight: 1.22, maxLines: 6, valign: 0.3, prefer1: 56, sigText: m ? undefined : INVITE_SIG }));
+    const text: Msg = m ?? { id: 0, name: '', text: INVITE_BORDER, n: 0, couple: true };
+    const b = (this.block = block(ic, text, FAM, MSG_BOX, { align: 'left', sigFamily: F.hand(400), lineHeight: 1.2, maxLines: 6, valign: 0.25, v2: this.K, sigText: m ? undefined : INVITE_SIG }));
+    this.tapeSize = lyricV2(m ? b.fit.size * this.K : null) / this.K;
     const items: { ch: string; x: number; y: number; w: number; size: number; family: string; sig: boolean }[] = [];
     for (const ln of b.lines) for (const gl of layout(ln.text, FAM, b.fit.size).glyphs) if (gl.ch.trim()) items.push({ ch: gl.ch, x: ln.x + gl.x, y: ln.y, w: gl.w, size: b.fit.size, family: FAM, sig: false });
     const sf = F.hand(400);
@@ -257,6 +303,16 @@ export default class Polaroid extends Scene {
       k++;
       return { ...it, t0, t1: t0 + (it.sig ? 0.06 : per) };
     });
+    // ---- 右上那一堆：第一張開場就在；相片落地之後，每兩個小節線丟上來一張（短窗格至少一張：落地後兩拍）
+    const tosses: number[] = [];
+    for (const x of g.bars) if (x > this.tLand + g.bar * 1.5 && x < e - g.beat && tosses.length < PILE.length - 1 && Math.round((x - this.tLand) / g.bar) % 2 === 0) tosses.push(x);
+    if (!tosses.length) { const x = au.timeOfBeat(au.beatAt(this.tLand) + 2); if (x < e - g.beat * 0.5) tosses.push(x); }
+    [-Infinity, ...tosses].forEach((tt, i) => {
+      const p = PILE[i]!;
+      // 不跟留言那張同一張圖：另外兩張輪流
+      const { cv, tex } = drawIll(mainIll + 1 + (i % 2), RES_X, this.seed + 101 * (i + 1));
+      this.pile.push({ cv, tex, tLand: tt, x: p.x, y: p.y, rot: p.rot });
+    });
   }
 
   /** 相片的位置：吐片時一段一段往下（每一段 outExpo，落在拍點）、落地時往下掉（z）彈一下。 */
@@ -268,12 +324,42 @@ export default class Polaroid extends Scene {
     const bounce = t > this.tLand + 0.2 ? Math.exp(-(t - this.tLand - 0.2) * 10) * Math.sin((t - this.tLand - 0.2) * 30) : 0;
     // 吐片口在 y = 相片最後的上緣 + 一點點；out = 1 時整張出來
     const y = lerp(PH + 30, 0, out);
-    return { x: 6 * (1 - drop), y, z: lerp(34, 2, ease.inQuad(drop)) + 3 * bounce, rot: lerp(0, -0.035, ease.outCubic(clamp((t - this.tLand) / 0.5))) };
+    return { x: MAIN.x + 6 * (1 - drop), y: MAIN.y + y, z: lerp(34, 2, ease.inQuad(drop)) + 3 * bounce, rot: lerp(0, MAIN.rot, ease.outCubic(clamp((t - this.tLand) / 0.5))) };
+  }
+
+  /** 右上那一堆的一張：從畫面右上外面被丟進來（轉著、落地滑一小段）。 */
+  private pilePose(p: PilePhoto, t: number) {
+    const u = p.tLand === -Infinity ? 1 : clamp((t - (p.tLand - this.fall)) / this.fall);
+    const k = ease.inQuad(u), o = ease.outCubic(u);
+    const dt = Math.max(0, t - p.tLand);
+    const slide = p.tLand === -Infinity ? 1 : ease.outCubic(clamp(dt / 0.35));
+    const settle = p.tLand === -Infinity ? 0 : Math.exp(-dt * 9) * Math.sin(dt * 34) * (t > p.tLand ? 1 : 0);
+    return {
+      x: lerp(p.x + 480, p.x + 36, o) - 36 * slide, y: lerp(p.y + 420, p.y + 14, o) - 14 * slide, z: lerp(640, 0, k) + 3 * settle,
+      rot: lerp(p.rot + 0.6, p.rot + 0.05, o) - 0.05 * slide, a: clamp(u * 5), u,
+    };
+  }
+
+  /**
+   * 鏡頭：開場斜斜地看著相機吐片（看得到相機的正面與出片口）；相片落地後轉成俯看的全景（相片在左、那一堆在右上），慢慢推近。
+   */
+  private shoot(t: number) {
+    const st = this.rig.st, s = this.ctx.start, e = this.ctx.end;
+    const D = camDist(30);
+    const push = ease.inOutQuad(prog(t, s, e));
+    const intro = ease.outExpo(prog(t, s, s + Math.min(1.2, this.g.beat * 2.5)));
+    const side = hash(this.seed, 3) < 0.5 ? -1 : 1;
+    const down = ease.inOutCubic(clamp((t - this.tLand + 0.1) / Math.max(0.8, this.g.bar * 0.9)));
+    const T3: V3 = [lerp(MAIN.x + 260, 40 + side * 24 * (1 - push), down), lerp(MAIN.y + 190, -20 - 30 * push, down), 0];
+    const dist = D * lerp(0.86 + 0.06 * (1 - intro), 1.1 - 0.04 * push, down);
+    const tilt = THREE.MathUtils.degToRad(lerp(40, 23 - 3 * push, down));
+    const yaw = side * lerp(0.05, 0.03 - 0.02 * push, down);
+    st.look([T3[0] + Math.sin(yaw) * dist, T3[1] - Math.sin(tilt) * dist, Math.cos(tilt) * dist], T3);
   }
 
   override render(f: Frame, out: THREE.WebGLRenderTarget): PostOverrides {
-    const { renderer, comp, lyrics } = this.ctx;
-    const t = f.t, s = this.ctx.start, e = this.ctx.end;
+    const { renderer, comp } = this.ctx;
+    const t = f.t, e = this.ctx.end;
     const R = this.rig, st = R.st;
     // ---- 馬克筆的字
     const I = this.ink; I.clear();
@@ -290,12 +376,29 @@ export default class Polaroid extends Scene {
     }
     const u = this.pass.u;
     u.grainTex!.value = t21Grain(renderer);
+    u.t!.value = t;
+    // ---- 右上那一堆：每一張各自顯影（開場就在的那張已經顯影好；丟上來的從藥膜開始，三秒多慢慢出來）
+    const blank = this.blank.upload();
+    const shownPile = this.pile.filter((p) => p.tLand === -Infinity || t >= p.tLand - this.fall);
+    R.pile.forEach((sl, k) => {
+      const p = this.pile[k];
+      const vis = !!p && shownPile.includes(p);
+      sl.mesh.visible = vis;
+      if (!vis) return;
+      u.ill!.value = p.tex; u.ink!.value = blank;
+      u.dev!.value = p.tLand === -Infinity ? 1 : ease.inOutQuad(prog(t, p.tLand - 0.2, p.tLand + 3.4));
+      this.pass.render(renderer, sl.rt);
+      const q = this.pilePose(p, t);
+      sl.mesh.position.set(q.x, q.y, 1 + k * 0.5 + q.z); sl.mesh.rotation.set(0, 0, q.rot);
+      sl.mat.uniforms.opacity!.value = q.a;
+      // 在焦外（不搶留言），多糊一點
+      (sl.mat.uniforms.region!.value as THREE.Vector4).set(0.5, 0.5, 1, 7);
+    });
+    // ---- 留言那張：顯影從開始吐片到落地後三秒
     u.ill!.value = this.ill;
     u.ink!.value = I.upload();
-    // 顯影：從開始吐片到落地後三秒
     const d0 = this.steps[0]! - 0.2, d1 = Math.min(e - 0.5, this.tLand + clamp((e - this.tLand) * 0.45, 1.6, 3.2));
     u.dev!.value = ease.inOutQuad(prog(t, d0, d1));
-    u.t!.value = t;
     this.pass.render(renderer, R.photo);
     // ---- 標籤帶：深色的帶子、凸起來的字（逐字跟唱）；長的歌詞兩條
     const rows = this.tape(t);
@@ -303,8 +406,8 @@ export default class Polaroid extends Scene {
       tp.mesh.visible = i < rows;
       if (i >= rows) return;
       comp.draw(renderer, this.tapeL[i]!.upload(), tp.rt, { mode: 'replace' });
-      tp.mesh.position.set(TAPE_X + TW / 2 + i * 26, TAPE_Y[i]!, 1.5 + i * 0.5);
-      tp.mesh.rotation.set(0, 0, i ? -0.018 : 0.025);
+      tp.mesh.position.set(TAPE[i]!.x, TAPE[i]!.y, 1.5 + i * 0.5);
+      tp.mesh.rotation.set(0, 0, i ? -0.018 : 0.022);
     });
 
     // ---- 舞台
@@ -313,32 +416,23 @@ export default class Polaroid extends Scene {
     R.photoM.uniforms.opacity!.value = 1;
     // 相機：出片口在相片上緣的起點；落地時被拿走（往上、往遠處，inQuad）
     const lift = ease.inQuad(clamp((t - (this.tLand - 0.05)) / 0.45));
-    R.body.position.set(0, PH / 2 + 26 + lift * 900, lift * 260);
+    R.body.position.set(MAIN.x, MAIN.y + PH / 2 + 26 + lift * 900, lift * 260);
     R.body.visible = lift < 1;
-    // 鏡頭：一直看著相片，慢慢推近白邊；景深對在白邊
-    const D = camDist(30);
-    const push = ease.inOutQuad(prog(t, s, e));
-    const intro = ease.outExpo(prog(t, s, s + Math.min(1.2, this.g.beat * 2.5)));
-    const side = hash(this.seed, 3) < 0.5 ? -1 : 1;
-    // 開場看高一點（看得到相機的正面與出片口）、斜一點；相片落地後往下搖到白邊、變俯看，慢慢推近
-    const down = ease.inOutCubic(clamp((t - this.tLand + 0.1) / Math.max(0.8, this.g.bar * 0.9)));
-    const T3: V3 = [200 + side * 20 * (1 - push), lerp(170, lerp(-60, -130, push), down), 0];
-    const dist = D * (0.8 - 0.05 * push + 0.06 * (1 - intro));
-    const tilt = THREE.MathUtils.degToRad(lerp(40, 23 - 3 * push, down));
-    const yaw = side * (0.05 - 0.03 * push);
-    st.look([T3[0] + Math.sin(yaw) * dist, T3[1] - Math.sin(tilt) * dist, Math.cos(tilt) * dist], T3);
+    this.shoot(t);
     // 對焦在白邊與標籤帶之間（兩個都要清楚）；相機（離桌面高）是糊的前景
-    const fBorder = st.depthOf([0, -PH / 2 + (PH - MSG_BOX.y - MSG_BOX.h / 2), 2]), fTape = st.depthOf([TAPE_X + TW / 2, TAPE_Y[0]!, 1.5]);
+    const fBorder = st.depthOf([MAIN.x, MAIN.y - PH / 2 + (PH - MSG_BOX.y - MSG_BOX.h / 2), 2]), fTape = st.depthOf([TAPE[0]!.x, TAPE[0]!.y, 1.5]);
     st.U.focus.value = (fBorder + fTape) / 2;
     st.U.aperture.value = 12;
-    st.U.pool.value.set(-300, 250, 1600, 0.55);
-    st.shadows([
+    st.U.pool.value.set(-420, 150, 1600, 0.55);
+    const sh = [
+      ...(R.body.visible ? [{ x: MAIN.x + 40, y: R.body.position.y + 40, w: 900, h: 480, blur: 60 + lift * 80, k: 0.4 * (1 - lift), r: 30 }] : []),
       { x: p.x + 12 + p.z * 0.4, y: p.y - 18 - p.z * 0.5, w: PW, h: PH, rot: p.rot, blur: 12 + p.z * 0.5, k: 0.3, r: 5 },
-      ...R.tapes.filter((tp) => tp.mesh.visible).map((tp) => ({ x: tp.mesh.position.x + 5, y: tp.mesh.position.y - 7, w: TW, h: TH, rot: tp.mesh.rotation.z, blur: 6, k: 0.25, r: 3 })),
-      ...(R.body.visible ? [{ x: 40, y: R.body.position.y + 40, w: 900, h: 480, blur: 60 + lift * 80, k: 0.4 * (1 - lift), r: 30 }] : []),
-    ]);
+      ...R.tapes.filter((tp) => tp.mesh.visible).slice(0, 1).map((tp) => ({ x: tp.mesh.position.x + 5, y: tp.mesh.position.y - 7, w: TW, h: TH, rot: tp.mesh.rotation.z, blur: 6, k: 0.25, r: 3 })),
+      ...shownPile.map((pp) => { const q = this.pilePose(pp, t); return { x: q.x + 12 + q.z * 0.35, y: q.y - 16 - q.z * 0.45, w: PW, h: PH, rot: q.rot, blur: 12 + q.z * 0.12, k: 0.28 * (1 - clamp(q.z / 640)), r: 5 }; }),
+    ];
+    st.shadows(sh.slice(0, 6));
     st.render(renderer, out);
-    const hit = Math.max(pulse(t, this.tLand + 0.2, 0.08), ...this.steps.map((x) => pulse(t, x, 0.06) * 0.5));
+    const hit = Math.max(pulse(t, this.tLand + 0.2, 0.08), ...this.steps.map((x) => pulse(t, x, 0.06) * 0.5), ...this.pile.map((pp) => pulse(t, pp.tLand, 0.08) * 0.4));
     return {
       paper: 1, bloom: 0.3, vignette: 0.36, grain: 0.045,
       shake: [0, -hit * 3],
@@ -348,13 +442,16 @@ export default class Polaroid extends Scene {
 
   /**
    * 標籤帶的字：凸起的字（下緣一道暗影），還沒唱三成、正在唱訊號色、唱完紙白；長的歌詞折成兩條。回傳用了幾條。
+   * 字級照 v2（40～52 px，有留言時比留言小一點）。
    */
   private tape(t: number): number {
     const { lyrics, song } = this.ctx;
-    const ly = lyricAt(lyrics, t);
+    // 標籤帶是實體的東西，兩句之間不會變空白：留著上一句（唱完的字），下一句提早 0.35 秒換上
+    const shown = lyricAt(lyrics, t)?.line ?? lyrics.shownLine(t, 1e4, 0.35) ?? lyrics.nextLine(t);
+    const ly = shown ? { line: shown, k: 1 } : null;
     const paint = (c: CanvasRenderingContext2D) => {
       c.fillStyle = mixRgba('blood', 'ink', 0.35); c.fillRect(0, 0, TW, TH);
-      c.fillStyle = rgba('bone', 0.06); c.fillRect(0, 4, TW, 3); c.fillRect(0, TH - 7, TW, 3);
+      c.fillStyle = rgba('bone', 0.06); c.fillRect(0, 5, TW, 3); c.fillRect(0, TH - 8, TW, 3);
     };
     const emboss = (c: CanvasRenderingContext2D, text: string, x: number, y: number, col: string, size: number) => {
       if (text === '♥') { drawHeart(c, x + size * 0.45, y - size * 0.36, size * 0.8); return; }
@@ -365,18 +462,18 @@ export default class Polaroid extends Scene {
       if (this.hasLyrics) return 0;
       const L = this.tapeL[0]!; L.clear(); const c = L.ctx; paint(c);
       const text = this.msg ? `♪ ${song.title}` : COUPLE_ZH.replace(/\s*&\s*/, ' ♥ ');
-      c.font = font(FAM_TAPE, 40); c.textBaseline = 'alphabetic';
+      const size = this.msg ? 30 / this.K : V2.lyrMax / this.K;
+      c.font = font(FAM_TAPE, size); c.textBaseline = 'alphabetic';
       // 字裡的 ♥ 用我們自己的愛心（玫瑰），其他照樣凸字
-      let x = 20;
+      let x = 22;
       for (const part of text.split(/(♥)/)) {
         if (!part) continue;
-        emboss(c, part, x, TH / 2 + 14, rgba('bone', 0.95), 40);
+        emboss(c, part, x, TH / 2 + size * 0.36, rgba('bone', 0.95), size);
         x += c.measureText(part).width;
       }
       return 1;
     }
-    const size = this.msg ? 42 : 48;
-    const lay = layoutRows(this.tapeL[0]!.ctx, ly.line, { family: FAM_TAPE, size, minSize: 40, maxW: TW - 40, maxRows: 2, align: 'left' });
+    const lay = layoutRows(this.tapeL[0]!.ctx, ly.line, { family: FAM_TAPE, size: this.tapeSize, minSize: V2.lyrMin / this.K, maxW: TW - 44, maxRows: 2, align: 'left' });
     const rows = Math.max(1, lay.rows.length);
     for (let r = 0; r < rows; r++) {
       const L = this.tapeL[r]!; L.clear(); const c = L.ctx; paint(c);
@@ -387,7 +484,7 @@ export default class Polaroid extends Scene {
         if (Math.abs(pw.y - lay.rows[r]!.y) > 1) continue;
         const k = Lyrics.wordProgress(pw.word, t);
         const col = k >= 1 ? rgba('bone', 0.95) : k > 0 ? rgba('signal') : rgba('bone', 0.3);
-        emboss(c, pw.word.w, 20 + pw.x, y, col, lay.size);
+        emboss(c, pw.word.w, 22 + pw.x, y, col, lay.size);
       }
       c.globalAlpha = 1;
     }
@@ -405,12 +502,13 @@ export default class Polaroid extends Scene {
   }
   private tapeRect(): Rect {
     const st = this.rig.st;
-    const a = st.toScreen([TAPE_X, TAPE_Y[0]! + TH / 2, 1]), b = st.toScreen([TAPE_X + TW + 26, TAPE_Y[1]! - TH / 2, 1]);
+    const a = st.toScreen([TAPE[0]!.x - TW / 2, TAPE[0]!.y + TH / 2, 1]), b = st.toScreen([TAPE[1]!.x + TW / 2, TAPE[1]!.y - TH / 2, 1]);
     return [Math.min(a.x, b.x), Math.min(a.y, b.y), Math.abs(b.x - a.x), Math.abs(b.y - a.y)];
   }
 
   override dispose() {
     if (this.illCv) this.illCv.width = this.illCv.height = 0;
+    for (const p of this.pile) p.cv.width = p.cv.height = 0;
     super.dispose();
   }
 }
