@@ -569,7 +569,7 @@ export default class Tennis extends Scene {
     const n = this.note;
     if (!n) return;
     const top = B.y + PAD.top, h = B.h - PAD.top - PAD.bottom;
-    const t0 = Math.min(this.hits[0]?.t ?? this.ctx.start + 0.8, this.ctx.start + 1.0);
+    const t0 = Math.min(this.hits[0]?.t ?? this.ctx.start + 0.45, this.ctx.start + 0.45);
     const total = msgChars(n.fit);
     const per = clamp(1.5 / Math.max(1, total), 0.025, 0.09);
     const done = t0 + total * per;

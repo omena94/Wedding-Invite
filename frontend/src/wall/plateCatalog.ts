@@ -130,6 +130,14 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "idea": "俯視或斜俯視的球場，兩人對打，出界球被芃芃撿走；球是 `ball` 色，擊球在鼓點。留言在計分牌。"
  },
  {
+  "name": "pingpong",
+  "title": "桌球",
+  "family": "sport",
+  "light": false,
+  "couple": true,
+  "idea": "桌球桌側面特寫，乒乓在每一拍彈一下（快歌很快、慢歌很慢），歌詞一拍一個詞組跟著球跳。"
+ },
+ {
   "name": "archery",
   "title": "射箭",
   "family": "sport",
