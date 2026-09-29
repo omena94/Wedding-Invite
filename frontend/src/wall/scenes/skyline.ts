@@ -17,21 +17,26 @@ import { F, font, loadText } from '../engine/type';
 import { rgba } from '../engine/palette';
 import { clamp, ease, prog, hash, pulse } from '../engine/util';
 import { fitText } from '../engine/text';
-import { lyricAt, layoutLyric, drawLyric, lyricSizeFor, beatAfter, drawHeart, COUPLE_ZH, type LyricStyle } from './_motifs';
+import { lyricAt, layoutLyric, drawLyric, beatAfter, drawHeart, COUPLE_ZH, type LyricStyle } from './_motifs';
+import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 } from './_v2';
 import { T16_INVITE, T16_TEXT, sigOf, winBars } from './_t16';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'city', paper: false, energy: [0.2, 1], bars: [4, 8] };
 
 /** 窗格的間距（px）：一扇窗一格。 */
-const P = 5;
+const P = 3;
 /** 拼字的範圍（畫面座標，對齊窗格）。 */
-const TB = { x: 180, y: 300, w: 1560, h: 480 };
+/**
+ * 留言標準 v2：字 40～60 px（一扇窗 3 px，字約 13～20 扇窗高，中文筆畫才拼得出來），拼字的樓群在畫面左邊（≤ 860 × 420）；
+ * 右邊的樓群是場景：每個小節線有一棟樓從一樓往上一層層亮燈、每兩小節一班高架電車沿著河岸開過去。
+ */
+const TB = { x: 150, y: 330, w: 860, h: 420 };
 const COLS = Math.floor(TB.w / P), ROWS = Math.floor(TB.h / P);
 /** 河岸（水面）。 */
 const WATER = 800;
 /** 夜空裡的歌詞。 */
-const LYR = { x: 182, y: 206, w: 1160 };
-const LYR_BIG = { x: 182, y: 214, w: 1500 };
+const LYR = { x: 150, y: 206, w: 1160 };
+const LYR_BIG = { x: 150, y: 206, w: 1160 };
 const FAM_MSG = F.hei(500);
 const FAM_LYR = F.archivo(100, 700);
 const NB = 16;
@@ -40,6 +45,8 @@ const BG = () => new FSPass(/* glsl */ `
   uniform sampler2D msk; uniform vec2 grid; uniform vec2 org;
   uniform vec4 bld[${NB}]; uniform float nb;
   uniform float t, kin, pan, farPan, t0, bp, cpb, c0, bar, heatK, beatIdx, blink;
+  uniform vec4 chase; // 一棟樓一層層亮燈：樓的種子、亮到的高度（畫面 y）、亮度、-
+  uniform vec2 train; // 高架電車：車頭的 x、亮度
   const float P = ${P}.0, WATER = ${WATER}.0;
 
   // 近排大樓：這個 x 在哪一棟（回傳頂端的 y 與這棟的種子；沒有樓回傳 -1）
@@ -96,6 +103,9 @@ const BG = () => new FSPass(/* glsl */ `
       vec3 warm = mix(C_BONE, C_EMBER, 0.25 + 0.2 * hash12(cell + 2.0));
       vec3 lit = mix(warm, C_ROSE * 1.1, hrt) * (0.95 + 0.25 * bar) + C_SIGNAL * 2.2 * heat * heatK;
       glass = mix(glass, lit, clamp(m * 1.25, 0.0, 1.0));
+      // 拼字的窗整扇亮（窗框留很細），字的筆畫才連得起來、夠亮
+      float winM = smoothstep(0.02, 0.1, f.x) * (1.0 - smoothstep(0.86, 0.94, f.x)) * smoothstep(0.04, 0.12, f.y) * (1.0 - smoothstep(0.84, 0.92, f.y));
+      win = mix(win, winM * step(b.x + P * 2.0, p.y), clamp(m * 1.25, 0.0, 1.0));
     }
     // 平常的窗：字的範圍裡幾乎都關著；範圍外三成亮著，每四拍有幾扇換狀態
     float amb = 0.0;
@@ -106,7 +116,13 @@ const BG = () => new FSPass(/* glsl */ `
     float pr = mix(0.05 + 0.08 * edge, 0.0, inBlock);
     if (h < pr) amb = 0.1 + 0.16 * hash12(cell + 5.0);
     vec3 ambc = mix(C_EMBER * 0.8, C_BONE * 0.7, hash12(cell + 9.0)) * amb;
-    glass = max(glass, ambc) ;
+    glass = max(glass, ambc);
+    // 這一小節輪到的那棟樓：從一樓往上一層層亮燈（八成的窗）
+    if (abs(b.y - chase.x) < 0.5 && p.y > chase.y && inBlock < 0.5) {
+      // 亮的是一半的窗、暖暖的暗光（前緣那幾層比較亮）：是場景的事件，不能比留言的字搶眼
+      float lit2 = step(hash12(cell + 17.0), 0.45) * chase.z;
+      glass = max(glass, mix(C_BONE * 0.5, C_EMBER, 0.45 + 0.3 * hash12(cell + 4.0)) * lit2 * (0.3 + 0.35 * smoothstep(chase.y + 30.0, chase.y, p.y)));
+    }
     vec3 col = mix(wall, glass, win) * seam;
     return col;
   }
@@ -132,6 +148,24 @@ const BG = () => new FSPass(/* glsl */ `
     float isB;
     vec3 nc = facade(p + vec2(pan, 0.0), isB);
     col = mix(col, nc, isB);
+    // 河岸的高架橋（一條暗的橋面）與電車：車廂一節一節、窗戶亮著，車頭一盞燈
+    if (p.y > WATER - 34.0 && p.y < WATER - 22.0) col = C_INK2 * 0.7 + C_GRAPHITE * 0.03;
+    if (train.y > 0.0 && p.y > WATER - 52.0 && p.y < WATER - 34.0) {
+      float dx = train.x - (p.x + pan);
+      if (dx > 0.0 && dx < 720.0) {
+        float car = mod(dx, 144.0);
+        float body = step(4.0, car);
+        vec3 tc = C_INK2 * 1.2 * body;
+        float wy = step(WATER - 48.0, p.y) * step(p.y, WATER - 40.0);
+        float wx = step(12.0, mod(car, 24.0)) * step(10.0, car) * step(car, 138.0);
+        tc += mix(C_BONE, C_EMBER, 0.4) * 0.7 * wy * wx * body;
+        col = mix(col, tc, train.y);
+      }
+    }
+    if (train.y > 0.0) {
+      float hd = length(vec2(p.x + pan - train.x, p.y - (WATER - 44.0)));
+      col += (C_BONE * 1.5 + C_EMBER) * train.y * (exp(-hd / 3.0) + 0.15 * exp(-hd / 30.0));
+    }
     return col;
   }
   void main() {
@@ -149,18 +183,19 @@ const BG = () => new FSPass(/* glsl */ `
       // 倒影被拉長、糊掉：上下幾個點平均
       vec3 r = vec3(0.0);
       for (int k = 0; k < 5; k++) r += scene(q + vec2(float(k - 2) * 1.7, float(k - 2) * (2.5 + d * 0.03))) * 0.2;
-      col = r * (0.36 - 0.22 * smoothstep(0.0, 280.0, d)) + C_INK * 0.4;
+      col = r * (0.26 - 0.16 * smoothstep(0.0, 280.0, d)) + C_INK * 0.4;
       // 水面一條條細細的反光
       col += C_BONE * 0.01 * step(0.97, hash12(vec2(floor(p.y / 3.0), floor((p.x + t * 20.0) / 40.0))));
-      // 岸邊一道暗線
+      // 岸邊一道暗線；右下角 HUD 底下的水面再暗一點（QR 與小字要清楚）
       col *= smoothstep(0.0, 3.0, d);
+      col *= 1.0 - 0.55 * smoothstep(1300.0, 1400.0, p.x) * smoothstep(800.0, 850.0, p.y);
     }
     col *= kin;
     fragColor = vec4(col, 1.0);
   }`, {
   msk: { value: null }, grid: { value: new THREE.Vector2(COLS, ROWS) }, org: { value: new THREE.Vector2(TB.x, TB.y) },
   bld: { value: Array.from({ length: NB }, () => new THREE.Vector4()) }, nb: { value: 0 },
-  t: { value: 0 }, kin: { value: 1 }, beatIdx: { value: 0 }, blink: { value: 0 }, pan: { value: 0 }, farPan: { value: 0 }, t0: { value: 0 }, bp: { value: 0.5 }, cpb: { value: 8 }, c0: { value: 0 }, bar: { value: 0 }, heatK: { value: 1 },
+  t: { value: 0 }, kin: { value: 1 }, beatIdx: { value: 0 }, blink: { value: 0 }, chase: { value: new THREE.Vector4(-1, 2000, 0, 0) }, train: { value: new THREE.Vector2(-9999, 0) }, pan: { value: 0 }, farPan: { value: 0 }, t0: { value: 0 }, bp: { value: 0.5 }, cpb: { value: 8 }, c0: { value: 0 }, bar: { value: 0 }, heatK: { value: 1 },
 });
 
 export default class Skyline extends Scene {
@@ -175,6 +210,10 @@ export default class Skyline extends Scene {
   bp = 0.5;
   cpb = 8;
   c0 = 0;
+  /** 署名（一般的字，寫在拼出來的字的右下）。 */
+  sigText = ''; sigSize = 28; sigX = 0; sigY = 0;
+  /** 右邊（不拼字）的樓：每個小節線輪流一層層亮燈。 */
+  right: number[] = [];
   /** 字全部亮完的時間（冷面註記在那之後出現）。 */
   tDone = 0;
   bars: number[] = [];
@@ -198,11 +237,12 @@ export default class Skyline extends Scene {
 
     // ---- 把字排在窗格上（單位 = 一扇窗）：扣掉署名那一排的高度再找字級
     const c = this.cv.getContext('2d', { willReadFrequently: true })!;
-    const sigU = m ? 14 : 0;
-    // 很短的留言（「新婚快樂！」「♥♥♥」）字可以更大：它是這一格唯一的焦點
+    // 字級（單位是窗）：v2 的螢幕字級 ÷ 窗距；照標點斷行。署名太小、拼不出來，用一般的字寫在字的下面（見 render）
     const nch = Array.from(text.replace(/\s/g, '')).length;
-    const fit = fitText(c, text, FAM_MSG, COLS - 4, ROWS - (m ? sigU * 1.8 : 0) - 2, { min: 11, max: nch <= 4 ? 46 : nch <= 10 ? 38 : 32, lineHeight: 1.18, maxLines: 5 });
-    const blockH = fit.size * 1.02 + (fit.lines.length - 1) * fit.lineHeight + (m ? sigU * 1.8 : 0);
+    const o = { min: V2.msgMin / P, max: msgMaxFor(text) / P, lineHeight: 1.22, maxLines: 6 };
+    const sigRow = m ? 46 / P : 0;
+    const fit = fitClauses(c, text, FAM_MSG, COLS - 4, ROWS - sigRow - 2, o) ?? fitText(c, text, FAM_MSG, COLS - 4, ROWS - sigRow - 2, o);
+    const blockH = fit.size * 1.02 + (fit.lines.length - 1) * fit.lineHeight + sigRow;
     const top = Math.max(1, Math.round((ROWS - blockH) / 2));
     c.clearRect(0, 0, COLS, ROWS);
     c.textBaseline = 'alphabetic';
@@ -215,9 +255,11 @@ export default class Skyline extends Scene {
       this.fillLine(c, ln, x, Math.round(top + fit.size * 0.9 + i * fit.lineHeight), fit.size);
     });
     if (m) {
-      c.font = font(FAM_MSG, sigU);
-      const w = c.measureText(sig).width;
-      this.fillLine(c, sig, Math.round(Math.min(COLS - w - 1, maxX - w + 2)), Math.round(top + fit.size * 0.9 + (fit.lines.length - 1) * fit.lineHeight + fit.size * 0.3 + sigU * 1.25), sigU);
+      // 署名：畫面上的位置（字的右下），字級 26～32
+      this.sigSize = sigV2(fit.size * P);
+      this.sigText = sig;
+      this.sigX = TB.x + maxX * P;
+      this.sigY = TB.y + (top + fit.size * 0.9 + (fit.lines.length - 1) * fit.lineHeight) * P + fit.size * P * 0.3 + this.sigSize * 1.2;
     }
     this.tex.needsUpdate = true;
     // 亮了幾扇窗（冷面註記用）
@@ -240,17 +282,19 @@ export default class Skyline extends Scene {
     let x = -60, k = 0;
     while (x < W + 120 && k < NB) {
       const w = 110 + 150 * hash(this.seed, k, 1);
-      const inText = x + w > TB.x && x < TB.x + TB.w;
-      const topY = inText ? 176 + 104 * hash(this.seed, k, 2) : 330 + 160 * hash(this.seed, k, 2);
+      const inText = x + w > TB.x - 20 && x < TB.x + TB.w + 20;
+      // 拼字的樓群比字高；右邊的樓高高低低（有一兩棟很高的），是場景
+      const topY = inText ? 236 + 60 * hash(this.seed, k, 2) : x > TB.x + TB.w ? 190 + 330 * hash(this.seed, k, 2) ** 1.4 : 330 + 160 * hash(this.seed, k, 2);
       // 對齊窗格：每棟樓的左右邊落在格線上
       const x0 = TB.x + Math.round((x - TB.x) / P) * P, x1 = TB.x + Math.round((x + w - TB.x) / P) * P;
       bv[k]!.set(x0, x1, TB.y - Math.round((TB.y - topY) / P) * P, k + 1);
+      if (x0 > TB.x + TB.w + 20 && x1 < W - 40) this.right.push(k + 1);
       x = x1; k++;
     }
     this.bg.u.nb!.value = k;
 
-    if (m) this.lyrStyle = { family: FAM_LYR, size: lyricSizeFor(fit.size * P), minSize: 48, maxWidth: LYR.w };
-    else { this.lyrStyle = { family: FAM_LYR, size: 76, minSize: 56, maxWidth: LYR_BIG.w }; this.lyrPos = LYR_BIG; }
+    if (m) this.lyrStyle = { family: FAM_LYR, size: lyricV2(fit.size * P), minSize: V2.lyrMin, maxWidth: LYR.w };
+    else { this.lyrStyle = { family: FAM_LYR, size: lyricV2(null), minSize: V2.lyrMin, maxWidth: LYR_BIG.w }; this.lyrPos = LYR_BIG; }
   }
 
   /** 畫一排字到窗格畫布：一般的字畫白色，愛心畫紅色（shader 用 R − G 認出愛心、畫成玫瑰色的窗）。 */
@@ -279,6 +323,29 @@ export default class Skyline extends Scene {
     const bi = Math.floor(this.ctx.audio.beatAt(t) + 1e-4);
     u.beatIdx!.value = bi; u.blink!.value = pulse(t, this.ctx.audio.timeOfBeat(bi), 0.18);
     u.t0!.value = this.tFirst; u.bp!.value = this.bp; u.cpb!.value = this.cpb; u.c0!.value = this.c0; u.bar!.value = bar; u.heatK!.value = 1;
+    // 每個小節線：右邊輪到的那棟樓從一樓往上一層層亮燈（一拍爬到頂），停一拍，再慢慢暗回去
+    const ch = u.chase!.value as THREE.Vector4;
+    ch.set(-1, 2000, 0, 0);
+    if (this.right.length) {
+      for (let i = 0; i < this.bars.length; i++) {
+        const b0 = this.bars[i]!;
+        if (t < b0 || t >= (this.bars[i + 1] ?? e)) continue;
+        const id = this.right[Math.floor(hash(this.seed, i, 51) * this.right.length)]!;
+        const bv = (u.bld!.value as THREE.Vector4[])[id - 1]!;
+        const climb = ease.outCubic(clamp((t - b0) / this.bp));
+        const fade = 1 - clamp((t - b0 - 2 * this.bp) / (2 * this.bp));
+        ch.set(id, WATER - (WATER - bv.z) * climb, fade, 0);
+      }
+    }
+    // 每兩小節一班高架電車沿著河岸開過去（一小節半開完）
+    const tr = u.train!.value as THREE.Vector2;
+    tr.set(-9999, 0);
+    for (let i = 1; i < this.bars.length; i += 2) {
+      const b0 = this.bars[i]!, dur = this.bp * 6;
+      if (t < b0 || t > b0 + dur) continue;
+      const k = (t - b0) / dur, dir = (i >> 1) % 2 === 0;
+      tr.set(dir ? -200 + (W + 900) * k : W + 700 - (W + 900) * k, Math.min(1, Math.sin(Math.PI * k) * 3));
+    }
     this.bg.render(renderer, out);
 
     // ---- 夜空的歌詞與小字
@@ -297,12 +364,21 @@ export default class Skyline extends Scene {
       c.fillText(`♪  ${song.title}${song.artist ? '  ·  ' + song.artist : ''}`, LYR.x, LYR.y);
       c.letterSpacing = '0px';
     }
+    // 署名：字拼完就寫上（一般的字，跟著樓一起橫移）
+    if (this.sigText) {
+      const sk = prog(t, this.tDone - this.bp, this.tDone);
+      if (sk > 0) {
+        c.font = font(F.hei(500), this.sigSize); c.fillStyle = rgba('bone', 0.82 * sk); c.textAlign = 'right';
+        c.fillText(this.sigText, this.sigX - pan, this.sigY);
+        c.textAlign = 'left';
+      }
+    }
     // 冷面註記：字拼完之後，右上角一行小字（沒有留言時是邀請）
     const done = this.tDone;
     const nk = prog(t, Math.min(done, e - 1.5), Math.min(done, e - 1.5) + 0.6);
     if (nk > 0) {
       c.font = font(F.hei(500), 20); c.letterSpacing = '3px'; c.fillStyle = rgba('ash', 0.62 * nk); c.textAlign = 'right';
-      c.fillText(this.msg ? this.note : T16_INVITE, TB.x + TB.w, 118);
+      c.fillText(this.msg ? this.note : T16_INVITE, 1760, 118);
       c.textAlign = 'left'; c.letterSpacing = '0px';
     }
     comp.draw(renderer, L.upload(), out);

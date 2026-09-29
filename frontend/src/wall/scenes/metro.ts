@@ -17,8 +17,9 @@ import { rgba, mixRgba, LIN } from '../engine/palette';
 import { clamp, ease, prog, pulse, polylineLengths, pointAtLength, TAU, type V2 } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
 import { Lyrics, type Line } from '../engine/lyrics';
-import { lyricAt, layoutLyric, drawLyric, lyricSizeFor, beatAfter, drawHeart, COUPLE_ZH, type LyricStyle, type LyricLayout } from './_motifs';
-import { T16_INVITE, T16_TEXT, sigOf, winBeats } from './_t16';
+import { lyricAt, layoutLyric, drawLyric, beatAfter, drawHeart, COUPLE_ZH, type LyricStyle, type LyricLayout } from './_motifs';
+import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 as STD } from './_v2';
+import { T16_INVITE, T16_TEXT, sigOf, winBeats, winBars } from './_t16';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'city', paper: true, energy: [0.1, 0.85], bars: [4, 8] };
 
@@ -31,15 +32,20 @@ const LINE_B: V2[] = [{ x: 60, y: 990 }, { x: 360, y: 990 }, { x: 560, y: 790 },
 const STOPS = [0.2, 0.45, 0.72, 1];
 const MERGE = { x0: T.x, x1: 1770, y: T.y };
 /** 留言（上方的空白）、歌詞（合併線上方）、沒有留言時的大歌詞。 */
-const MSG = { x: 660, y: 150, w: 1100, h: 480 };
+/**
+ * 留言標準 v2：海報（道具）照樣佔滿畫面，印留言的那一塊只有 860 × 400（海報上的右上方），字 40～60 px
+ * （海報在畫面上大約是原尺寸，所以海報上的字級 ≈ 螢幕字級）。路線圖本身（兩條線、列車、站）是主視覺。
+ */
+const MSG = { x: 720, y: 160, w: 860, h: 400 };
 const LYR = { x: 650, y: 716, w: 1080 };
-const LYR_BIG = { x: 660, y: 470, w: 1080 };
+const LYR_BIG = { x: 700, y: 520, w: 1000 };
 const FAM_MSG = F.ming(700);
 const FAM_LYR = F.hei(700);
 
 /** 把海報拍成牆上的一張海報：單應矩陣反算海報座標、景深、鋁框、磁磚牆、玻璃反光。 */
 const STAGE = () => new FSPass(/* glsl */ `
   uniform sampler2D tex; uniform mat3 Hinv; uniform vec3 zc; uniform float zf, dof, kin;
+  uniform vec2 refl; // 背後開過去的列車映在海報玻璃上：車窗的位移（海報寬的倍數）、亮度
   const vec2 CS = vec2(${W}.0, ${H}.0);
   vec3 samp(vec2 st, float r) {
     vec2 uv = vec2(st.x, 1.0 - st.y);
@@ -68,6 +74,13 @@ const STAGE = () => new FSPass(/* glsl */ `
       col *= 1.0 - 0.06 * smoothstep(0.38, 0.72, length((st - 0.5) * vec2(1.0, 0.8)));
       float sheen = exp(-pow((st.x * 0.8 - st.y * 0.5 - 0.18) / 0.08, 2.0));
       col += C_BONE * 0.035 * sheen;
+      // 列車進站：一排亮著的車窗倒影從玻璃上滑過去（很淡，在海報的下半）
+      if (refl.y > 0.0) {
+        float wx = fract(st.x * 7.0 - refl.x * 7.0), wy = st.y;
+        float win = smoothstep(0.08, 0.12, wx) * (1.0 - smoothstep(0.7, 0.74, wx)) * smoothstep(0.5, 0.53, wy) * (1.0 - smoothstep(0.66, 0.69, wy));
+        float band = step(refl.x - 1.1, st.x - 0.0) * step(st.x, refl.x);
+        col += (C_BONE * 0.035 + C_EMBER * 0.015) * win * band * refl.y;
+      }
     } else if (out_ < 22.0) {
       // 鋁框：上、左亮，下、右暗，內緣一條細陰影
       float k = out_ / 22.0;
@@ -95,7 +108,7 @@ const STAGE = () => new FSPass(/* glsl */ `
     // 燈：上方的月台燈照在牆上，往下暗一點
     col *= 0.92 + 0.1 * (1.0 - clamp(p.y / ${H}.0, 0.0, 1.0));
     fragColor = vec4(col * kin, 1.0);
-  }`, { tex: { value: null }, Hinv: { value: new THREE.Matrix3() }, zc: { value: new THREE.Vector3() }, zf: { value: 0 }, dof: { value: 0 }, kin: { value: 1 } });
+  }`, { tex: { value: null }, Hinv: { value: new THREE.Matrix3() }, zc: { value: new THREE.Vector3() }, zf: { value: 0 }, dof: { value: 0 }, kin: { value: 1 }, refl: { value: new THREE.Vector2(0, 0) } });
 
 /** 單位正方形 (s,t) → 四邊形（畫面 px）的單應矩陣（Heckbert 的公式），row-major 9 個數。 */
 function squareToQuad(p: V2[]): number[] {
@@ -128,6 +141,7 @@ export default class Metro extends Scene {
   lyrStyle: LyricStyle = { family: FAM_LYR, size: 52, minSize: 48, maxWidth: LYR.w };
   lyrPos = LYR;
   beats: number[] = [];
+  bars: number[] = [];
   pathA = { pts: LINE_A, L: polylineLengths(LINE_A) };
   pathB = { pts: LINE_B, L: polylineLengths(LINE_B) };
   private M = new THREE.Matrix3();
@@ -137,10 +151,11 @@ export default class Metro extends Scene {
     const s = this.ctx.start, e = this.ctx.end, m = this.msg;
     this.hasLyrics = lyrics.linesIn(s, e).length > 0;
     const sig = m ? sigOf(m) : '';
-    await loadText(`${T16_TEXT}${m?.text ?? ''}${sig}${song.title}${song.artist}${lyrics.linesIn(s - 1, e).map((l) => l.text).join('')}${COUPLE_ZH}宣文線孟庭線轉乘站祝福終點站永遠開往本站可轉乘`);
+    await loadText(`${T16_TEXT}${m?.text ?? ''}${sig}${song.title}${song.artist}${lyrics.linesIn(s - 1, e).map((l) => l.text).join('')}${COUPLE_ZH}宣文線孟庭線轉乘站祝福終點站永遠開往本站可轉乘幸福捷運路線圖ROUTE MAP·2027.03.13`);
     const beat = au.beatPeriod(s);
     this.tFirst = beatAfter(au, s + Math.min(0.2, beat * 0.4));
     this.beats = winBeats(au, s - 2, e);
+    this.bars = winBars(au, s, e);
     // 列車一拍一站：短窗格走兩站、長的走三站；會合落在第幾拍
     this.nMoves = e - s < 5.5 ? 2 : 3;
     this.tMeet = au.timeOfBeat(Math.round(au.beatAt(this.tFirst)) + this.nMoves);
@@ -150,9 +165,10 @@ export default class Metro extends Scene {
     // ---- 留言（或沒有留言時的大字：純音樂時是新人的名字）
     const text = m ? m.text : this.hasLyrics ? '' : COUPLE_ZH;
     if (text) {
-      const sigH = m ? 62 : 70;
-      const n = Array.from(text.replace(/\s/g, '')).length;
-      const fit = fitText(c, text, FAM_MSG, MSG.w, MSG.h - sigH, { min: 54, max: n <= 4 ? 170 : n <= 10 ? 132 : 108, lineHeight: 1.3, maxLines: 5 });
+      const sigH = m ? 52 : 60;
+      // 字級上限依字數（v2），照標點斷行；扣掉署名那一排
+      const o = { min: STD.msgMin, max: msgMaxFor(text), lineHeight: 1.3, maxLines: 6 };
+      const fit = fitClauses(c, text, FAM_MSG, MSG.w, MSG.h - sigH, o) ?? fitText(c, text, FAM_MSG, MSG.w, MSG.h - sigH, o);
       this.fit = fit;
       const blockH = fit.size + (fit.lines.length - 1) * fit.lineHeight + sigH;
       const top = MSG.y + Math.max(0, (MSG.h - blockH) / 2) + fit.size * 0.9;
@@ -165,15 +181,16 @@ export default class Metro extends Scene {
         fillHearts(c, ln, MSG.x, y, fit.size);
         this.rows.push({ x: MSG.x - 8, y: y - fit.size * 1.0, w: c.measureText(ln).width + 16, h: fit.size * 1.28, t: this.tMeet + 0.08 + i * per });
       });
-      const sy = top + (fit.lines.length - 1) * fit.lineHeight + fit.size * 0.3 + 44;
+      const ss = sigV2(fit.size);
+      const sy = top + (fit.lines.length - 1) * fit.lineHeight + fit.size * 0.3 + ss * 1.3;
       if (m) {
-        c.font = font(F.ming(400), 38); c.fillStyle = rgba('sepia', 0.78); c.textAlign = 'right';
+        c.font = font(F.ming(400), ss); c.fillStyle = rgba('sepia', 0.78); c.textAlign = 'right';
         const sw = c.measureText(sig).width, sx = MSG.x + Math.max(fit.width, sw + 40);
         c.fillText(sig, sx, sy);
         c.textAlign = 'left';
-        this.sig = { x: sx - sw - 8, y: sy - 40, w: sw + 16, t: this.tMeet + 0.08 + fit.lines.length * per + 0.1 };
+        this.sig = { x: sx - sw - 8, y: sy - ss * 1.1, w: sw + 16, t: this.tMeet + 0.08 + fit.lines.length * per + 0.1 };
       } else {
-        c.font = font(F.hei(500), 26); c.fillStyle = rgba('sepia', 0.66); c.letterSpacing = '2px';
+        c.font = font(F.hei(500), 22); c.fillStyle = rgba('sepia', 0.66); c.letterSpacing = '2px';
         c.fillText(T16_INVITE, MSG.x, sy + 10);
         c.letterSpacing = '0px';
       }
@@ -182,14 +199,14 @@ export default class Metro extends Scene {
       c.beginPath(); c.moveTo(T.x + 26, T.y - 30); c.lineTo(MSG.x - 30, MSG.y + MSG.h * 0.55); c.lineTo(MSG.x - 30, top - fit.size * 0.8); c.stroke();
     } else {
       // 沒有留言、有歌詞：歌詞放大印在上方，邀請一行小字
-      c.font = font(F.hei(500), 26); c.fillStyle = rgba('sepia', 0.66); c.letterSpacing = '2px';
-      c.fillText(T16_INVITE, LYR_BIG.x, LYR_BIG.y + 120);
+      c.font = font(F.hei(500), 22); c.fillStyle = rgba('sepia', 0.66); c.letterSpacing = '2px';
+      c.fillText(T16_INVITE, LYR_BIG.x, LYR_BIG.y + 90);
       c.letterSpacing = '0px';
     }
     this.base.upload();
 
-    if (m) this.lyrStyle = { family: FAM_LYR, size: lyricSizeFor(this.fit?.size ?? null), minSize: 48, maxWidth: LYR.w };
-    else if (this.hasLyrics) { this.lyrStyle = { family: FAM_LYR, size: 104, minSize: 86, maxWidth: LYR_BIG.w, lineHeight: 1.14 }; this.lyrPos = LYR_BIG; }
+    if (m) this.lyrStyle = { family: FAM_LYR, size: lyricV2(this.fit?.size ?? null), minSize: STD.lyrMin, maxWidth: LYR.w };
+    else if (this.hasLyrics) { this.lyrStyle = { family: FAM_LYR, size: lyricV2(null), minSize: STD.lyrMin, maxWidth: LYR_BIG.w, lineHeight: 1.18 }; this.lyrPos = LYR_BIG; }
   }
 
   /** 不會變的路線圖：紙、兩條線與車站、合併線、轉乘站、終點、線名與站名。 */
@@ -207,6 +224,21 @@ export default class Metro extends Scene {
     // 合併線：兩色並排
     stroke([{ x: MERGE.x0, y: MERGE.y }, { x: MERGE.x1, y: MERGE.y }], colA, 9, -5.5);
     stroke([{ x: MERGE.x0, y: MERGE.y }, { x: MERGE.x1, y: MERGE.y }], colB, 9, 5.5);
+    // 海報上緣一條細細的標題帶（真的路線圖海報都有），字很小
+    c.fillStyle = mixRgba('sepia', 'ink', 0.2); c.fillRect(0, 0, W, 64);
+    c.fillStyle = rgba('blood'); c.fillRect(0, 64, W, 5);
+    c.font = font(F.hei(700), 22); c.letterSpacing = '6px'; c.fillStyle = rgba('paper', 0.92); c.textBaseline = 'alphabetic';
+    c.fillText('幸福捷運　路線圖', 60, 42);
+    c.font = font(F.mono(500), 16); c.letterSpacing = '4px'; c.fillStyle = rgba('paper', 0.6); c.textAlign = 'right';
+    c.fillText('ROUTE MAP · 2027.03.13', W - 60, 40);
+    c.letterSpacing = '0px'; c.textAlign = 'left';
+    // 其他幾條線（淡淡的灰）：路線圖才像真的，也讓空的地方有東西；不標站名
+    const other = rgba('ash', 0.35);
+    stroke([{ x: 60, y: 640 }, { x: 300, y: 640 }, { x: 420, y: 520 }, { x: 640, y: 520 }], other, 8);
+    stroke([{ x: 640, y: 1080 }, { x: 700, y: 1000 }, { x: 1150, y: 1000 }, { x: 1250, y: 900 }], other, 8);
+    for (const q of [{ x: 180, y: 640 }, { x: 420, y: 520 }, { x: 900, y: 1000 }, { x: 1150, y: 1000 }]) {
+      c.fillStyle = rgba('paper'); c.strokeStyle = other; c.lineWidth = 4; c.beginPath(); c.arc(q.x, q.y, 8, 0, TAU); c.fill(); c.stroke();
+    }
     // 兩條線上的車站（白點、線色的邊）
     const stop = (p: V2, col: string, r = 11) => { c.fillStyle = rgba('paper'); c.strokeStyle = col; c.lineWidth = 5; c.beginPath(); c.arc(p.x, p.y, r, 0, TAU); c.fill(); c.stroke(); };
     for (const [path, col] of [[this.pathA, colA], [this.pathB, colB]] as const) {
@@ -286,6 +318,12 @@ export default class Metro extends Scene {
       roundRect(c, T.x - 26 - 50 * u, T.y - 40 - 50 * u, 52 + 100 * u, 80 + 100 * u, 26 + 50 * u); c.stroke();
     }
     if (meet > 0.02) { c.fillStyle = rgba('blood', 0.5 * meet); roundRect(c, T.x - 20, T.y - 34, 40, 68, 20); c.fill(); }
+    // 會合之後，轉乘站是「您在這裡」：每一拍一圈細細的波紋往外擴（像路線圖上會閃的現在位置）
+    if (t > this.tMeet + 0.8) {
+      const bi = Math.floor(au.beatAt(t) + 1e-4), tb = au.timeOfBeat(bi), k2 = clamp((t - tb) / 0.6);
+      c.strokeStyle = rgba('blood', 0.55 * (1 - k2)); c.lineWidth = 3;
+      roundRect(c, T.x - 30 - 26 * k2, T.y - 44 - 26 * k2, 60 + 52 * k2, 88 + 52 * k2, 30 + 26 * k2); c.stroke();
+    }
 
     // ---- 合併線上的歌詞（站名）與列車
     let trainX = T.x;
@@ -322,6 +360,15 @@ export default class Metro extends Scene {
     const cam = this.cam(t);
     this.shoot(cam);
     this.stage.u.kin!.value = prog(t, s, s + 0.15);
+    // 每兩小節一班列車開進月台（在鏡頭後面）：車窗的倒影在一小節內從左到右滑過海報的玻璃
+    const rf = this.stage.u.refl!.value as THREE.Vector2;
+    rf.set(0, 0);
+    for (let i = 1; i < this.bars.length; i += 2) {
+      const b0 = this.bars[i]!, dur = (this.bars[i + 1] ?? b0 + 2) - b0;
+      if (t < b0 || t > b0 + dur) continue;
+      const k = (t - b0) / dur;
+      rf.set(-0.1 + 2.2 * ease.inOutQuad(k), Math.sin(Math.PI * k));
+    }
     this.stage.render(renderer, out);
     return { paper: 1, bloom: 0.35, vignette: 0.3, halation: 0.08, grain: 0.045 };
   }

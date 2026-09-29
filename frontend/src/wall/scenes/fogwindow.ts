@@ -2,7 +2,9 @@
 //  - 畫面的焦點＝主打留言：有人用手指在霧上把它寫出來（第一個拍點起一個字一個字擦開）。擦開的地方看得到窗外，
 //    燈光在那裡是清楚的光斑（鏡頭對焦在玻璃上）；霧上其他地方只剩一片暖暖的糊光。剛擦開的那一小段帶一點訊號色
 //    （像窗外的招牌光正好照進來），很快冷掉。字的邊緣有一圈被手指推開的水氣。署名也用手指寫在最後一行下面。
-//  - 歌詞（比留言小一級）在窗的下緣，照跟唱規則逐字亮。
+//  - 歌詞（比留言小一級）在窗的右半邊，照跟唱規則逐字亮。
+//  - 2026-09-29 留言標準 v2：手指寫的字 40～60 px，寫在窗的左下一塊（≤ 860 × 430）；窗的上半部霧比較薄，
+//    看得到窗外的城市燈光與斜斜的雨絲（場景是主視覺）；每兩小節一道車燈從霧上掃過去，水珠更常滑。
 //  - 沒有主打留言：歌詞本身用手指寫在霧上（焦點是歌詞），一句寫在上面、下一句寫在下面輪流；
 //    還沒唱的字是「霧重新起來時浮出來的舊指痕」（三成淡），唱到的那一刻才擦開；上一句會慢慢被霧蓋回去。
 //    下面一行小字邀請。純音樂又沒有留言：霧上寫新人的名字。
@@ -20,22 +22,26 @@ import { rgba } from '../engine/palette';
 import { clamp, ease, prog, hash } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
 import { Lyrics, type Line } from '../engine/lyrics';
-import { lyricAt, layoutLyric, drawLyric, lyricSizeFor, beatAfter, heartPoints, COUPLE_ZH, type LyricStyle } from './_motifs';
-import { T16_INVITE, T16_TEXT, sigOf, winBeats, winBars, rowsOf, fitWithSig, glyphCount, charClock, rowFront, type Row } from './_t16';
+import { lyricAt, layoutLyric, drawLyric, beatAfter, heartPoints, COUPLE_ZH, type LyricStyle } from './_motifs';
+import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 } from './_v2';
+import { T16_INVITE, T16_TEXT, sigOf, winBeats, winBars, rowsOf, glyphCount, charClock, rowFront, type Row } from './_t16';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'nature', paper: false, energy: [0, 0.75], bars: [4, 8] };
 
-/** 留言寫在這一塊（手指寫字的「字的空間」，有一點點斜）；下面留署名。 */
-const MSG = { x: 190, y: 170, w: 1400, h: 640 };
+/**
+ * 留言寫在左下這一塊（留言標準 v2：字 40～60 px、這一塊 ≤ 860 × 430、放在畫面一側或下方三分之一）；下面留署名。
+ * 窗的上半部霧比較薄，看得到窗外糊糊的城市燈光——場景是主視覺。
+ */
+const MSG = { x: 150, y: 540, w: 820, h: 390 };
 /** 手寫稍微往右下斜（整塊繞 PIV 轉 ANG），shader 用同一組數字轉回去判斷「寫到哪」。 */
 const ANG = 0.02;
-const PIV = { x: 900, y: 480 };
-/** 有留言時，歌詞在窗的下緣。 */
-const LYR = { x: 190, y: 890, w: 1130 };
-/** 沒有留言：歌詞寫在霧上，上下兩個位置輪流。 */
-const POS = [{ x: 190, y: 150, w: 1480, h: 310 }, { x: 190, y: 480, w: 1480, h: 310 }];
-/** 遮罩的解析度（本來就要模糊，半解析度就夠）。 */
-const MS = 0.5;
+const PIV = { x: MSG.x + MSG.w / 2, y: MSG.y + MSG.h / 2 };
+/** 有留言時，歌詞在窗的右半邊（跟左下的留言錯開）。 */
+const LYR = { x: 1040, y: 600, w: 760 };
+/** 沒有留言：歌詞寫在霧上（左下），上下兩個位置輪流。 */
+const POS = [{ x: 150, y: 560, w: 1150, h: 150 }, { x: 150, y: 726, w: 1150, h: 150 }];
+/** 遮罩的解析度：字變小了（40～60 px），要全解析度，指痕的邊才不會糊成一團。 */
+const MS = 1;
 const FAM_MSG = F.hand(400);
 const FAM_LYR = F.archivo(100, 700);
 const PER = 0.085; // 手指寫一個字幾秒
@@ -54,6 +60,9 @@ const BG = () => new FSPass(/* glsl */ `
   uniform vec4 lcur; uniform vec4 lprev; uniform vec3 lfr; uniform float nslot;
   uniform vec4 drops[${NDROP}]; uniform float ndrop;
   uniform vec4 car;
+  uniform vec2 sweep; // 車燈掃過霧的光：x 位置、亮度
+  uniform vec4 sign; // 窗外對街的招牌光（中心 x, y、半寬、半高）：剛好在手寫字的後面，擦開的字透出暖光
+  uniform float signK;
 
   // 窗外的燈：大多是暖的（訊號色一家子），一些白燈、少數灰的，很少一盞玫瑰色
   vec3 lcol(float h) {
@@ -67,7 +76,7 @@ const BG = () => new FSPass(/* glsl */ `
       vec2 id = id0 + vec2(float(i), float(j));
       float yy = (id.y + 0.5) * S;
       // 越往下燈越多（街道、樓的窗），最上面稀稀落落
-      float d0 = dens * (0.45 + 0.55 * smoothstep(60.0, 560.0, yy));
+      float d0 = dens * (0.12 + 0.88 * smoothstep(260.0, 760.0, yy));
       float h = hash12(id + seed);
       // 沒有燈的格子：亮度乘 0（不用 continue：ANGLE 在迴圈裡的 continue 偶爾會算錯）
       float on = step(h, d0);
@@ -118,6 +127,10 @@ const BG = () => new FSPass(/* glsl */ `
     vec3 sky = mix(C_GRAPHITE * 0.035, C_GRAPHITE * 0.07 + C_SIGNAL * 0.012, smoothstep(0.0, 1080.0, p.y)) * (0.8 + 0.3 * fbm(p / 500.0 + 3.0, 2));
     vec3 sh = lights(p + vec2(drift, 0.0), 150.0, 1.3, 0.5, 1.0) + lights(p + vec2(drift * 0.45 + 37.0, 11.0), 92.0, 7.7, 0.42, 0.55);
     vec3 so = blobs(p + vec2(drift * 0.3, 0.0));
+    {
+      vec2 sd0 = (p - sign.xy) / (sign.zw * 1.6);
+      so += (C_SIGNAL * 0.16 + C_EMBER * 0.05) * exp(-dot(sd0, sd0)) * signK;
+    }
     // 開過去的車：一對車燈（car.x = 前燈的 x、car.y = 亮度、car.z = 白燈 1／尾燈 0）
     if (car.y > 0.0) {
       vec3 cc = mix(C_BLOOD * 1.4 + C_SIGNAL * 0.3, C_BONE, car.z) * car.y;
@@ -128,17 +141,29 @@ const BG = () => new FSPass(/* glsl */ `
         so += cc * exp(-d * d / (2.0 * 90.0 * 90.0)) * 0.9;
       }
     }
-    vec3 view = sky + sh;
+    // 窗外的雨：斜斜的細雨絲，被城市的糊光照亮（只在霧薄的上半部與擦開的地方看得到）
+    vec2 rq = vec2(p.x + p.y * 0.2, p.y + t * 1500.0);
+    float rc = floor(rq.x / 7.0), rs = rq.y / 230.0 + hash11(rc * 0.37);
+    float streak = step(0.93, hash11(rc * 1.7 + floor(rs) * 0.13)) * smoothstep(0.0, 0.08, fract(rs)) * (1.0 - smoothstep(0.22, 0.3, fract(rs)))
+      * (1.0 - smoothstep(0.3, 1.0, abs(fract(rq.x / 7.0) - 0.5) * 7.0));
+    // 對街的招牌：一大片暖暖的糊光，剛好在手寫字的後面（字是擦開的地方，所以字是亮的、霧是灰的，比暗字好讀）
+    vec2 sd = (p - sign.xy) / sign.zw;
+    float sg = exp(-dot(sd, sd) * 1.2) * signK * (0.92 + 0.08 * sin(t * 1.3));
+    vec3 signC = (C_SIGNAL * 0.62 + C_EMBER * 0.3) * sg;
+    vec3 view = sky + sh + signC + (so * 0.9 + C_BONE * 0.018) * streak;
 
     // ---- 霧：隔著霧只看得到糊光，下緣（街道那邊）暖一點
     // 霧本身被室內與城市照亮：整片均勻的乳灰（字才讀得清楚），上面比較冷、下面比較暖
     float n = fbm(p / 320.0 + vec2(t * 0.012, 0.0), 3);
     vec3 glow = (so * 0.095 + (C_ASH * 0.042 + C_SIGNAL * 0.006) + C_SIGNAL * 0.016 * smoothstep(300.0, 1050.0, p.y)) * (0.85 + 0.25 * n);
-    // 霧是不透光的：隔著霧看不到光斑，只剩上面的糊光
-    float dens = kin;
+    // 霧：下半部（手寫字那一帶）很厚、不透光，字才清楚；上半部薄，看得到窗外糊糊的燈光與雨絲（場景）
+    float dens = kin * mix(0.5, 1.0, smoothstep(140.0, 560.0, p.y + 60.0 * n));
+
     // 霧裡細細的水氣顆粒
     float spk = step(0.992, hash12(floor(p / 2.5))) * 0.5 + 0.5 * step(0.975, hash12(floor(p / 5.0) + 3.1)) * 0.3;
     vec3 fogCol = glow + C_BONE * 0.012 * spk;
+    // 每兩小節一道車燈從霧上斜斜地掃過去（霧把光散開）
+    fogCol += (C_BONE * 0.035 + C_SIGNAL * 0.03) * sweep.y * exp(-pow((p.x - sweep.x + (p.y - 540.0) * 0.45) / 170.0, 2.0));
 
     // ---- 手指擦開的字：轉回「字的座標」判斷這一排寫到哪
     vec2 q = rot2(ang) * (p - piv) + piv;
@@ -170,9 +195,8 @@ const BG = () => new FSPass(/* glsl */ `
     if (lprev.x >= 0.0) {
       vec4 pp = lprev.y < 0.5 ? lposA : lposB;
       float b = smoothstep(0.2, 0.7, atlasAt(p, pp, lprev.x));
-      // 霧不是均勻地回來：一塊一塊地蓋回去
-      float nn = 0.5 + 0.5 * snoise(p / 45.0);
-      cl = max(cl, b * smoothstep(nn - 0.12, nn + 0.12, lprev.z));
+      // 霧慢慢蓋回去（字小了，一塊一塊蓋回去會把字切成碎片、像亂碼，改成整句一起淡掉）
+      cl = max(cl, b * smoothstep(0.0, 1.0, lprev.z));
     }
 
     // ---- 水珠滑過的細痕與水珠本身
@@ -185,7 +209,8 @@ const BG = () => new FSPass(/* glsl */ `
       // 痕越往下（越新）越寬，寬度沿路有一點不均（水不是一條管子）
       float w = d.w * (0.35 + 0.45 * smoothstep(d.y, d.z, p.y)) * (0.8 + 0.25 * sin(p.y * 0.08 + d.x * 3.0));
       // 痕的上端淡淡的（水珠是從那裡慢慢聚起來的），越往下越乾淨
-      if (p.y > d.y && p.y < d.z) tr = max(tr, (1.0 - smoothstep(w * 0.6, w, dx)) * (0.35 + 0.5 * smoothstep(d.y, d.y + 120.0, p.y)));
+      // 痕只留在水珠後面一小段：再上面霧又慢慢起來了（整片窗才不會被一條條黑線切開）
+      if (p.y > d.y && p.y < d.z) tr = max(tr, (1.0 - smoothstep(w * 0.6, w, dx)) * (0.35 + 0.5 * smoothstep(d.y, d.y + 120.0, p.y)) * smoothstep(d.z - 260.0, d.z - 60.0, p.y));
       float wz = sin(d.z * 0.027 + d.x) * 2.0 + sin(d.z * 0.009 + d.x * 2.0) * 3.0;
       vec2 hd = (p - vec2(d.x + wz, d.z)) / d.w;
       float hl = length(hd * vec2(1.0, 0.82));
@@ -240,11 +265,12 @@ const BG = () => new FSPass(/* glsl */ `
   lposA: { value: new THREE.Vector4(POS[0]!.x, POS[0]!.y, POS[0]!.w, POS[0]!.h) }, lposB: { value: new THREE.Vector4(POS[1]!.x, POS[1]!.y, POS[1]!.w, POS[1]!.h) },
   lcur: { value: new THREE.Vector4(-1, 0, 0, 0) }, lprev: { value: new THREE.Vector4(-1, 0, 0, 0) }, lfr: { value: new THREE.Vector3() }, nslot: { value: 1 },
   drops: { value: Array.from({ length: NDROP }, () => new THREE.Vector4()) }, ndrop: { value: 0 },
-  car: { value: new THREE.Vector4() },
+  car: { value: new THREE.Vector4() }, sweep: { value: new THREE.Vector2(-9999, 0) },
+  sign: { value: new THREE.Vector4(560, 735, 520, 230) }, signK: { value: 0 },
 });
 
 /** 一顆水珠：出現的時間與位置，之後每一拍滑一段（或不動）。 */
-interface Drop { t0: number; x: number; y0: number; r: number; steps: { t: number; d: number }[]; old: boolean }
+interface Drop { t0: number; x: number; y0: number; r: number; steps: { t: number; d: number }[]; old: boolean; ymax: number }
 /** 沒有留言時，寫在霧上的一句歌詞（每句排一次，指痕畫進圖集的第 slot 格）。 */
 interface FogLine { line: Line; slot: number; pos: number; fit: FitResult; glyphs: { x: number; w: number; row: number; off: number; len: number }[]; rowW: number[] }
 
@@ -290,22 +316,23 @@ export default class FogWindow extends Scene {
     const fogText = m ? m.text : this.hasLyrics ? '' : `${COUPLE_ZH.replace(/\s*&\s*/, ' ♥ ')}`;
     if (fogText) {
       const c = this.mask.ctx;
-      const sigSize = m ? 58 : 0;
-      const fit = fitWithSig(c, fogText, FAM_MSG, MSG.w, MSG.h, { min: 56, max: 180, lineHeight: 1.3, maxLines: 5, sig: m ? sigSize * 1.9 : 0 });
+      // 字級上限依字數（v2），照標點斷行；扣掉署名那一排的高度（署名永遠在最後一行下面）
+      const sigRow = m ? 56 : 0;
+      const o = { min: V2.msgMin, max: msgMaxFor(fogText), lineHeight: 1.3, maxLines: 6 };
+      const fit = fitClauses(c, fogText, FAM_MSG, MSG.w, MSG.h - sigRow, o) ?? fitText(c, fogText, FAM_MSG, MSG.w, MSG.h - sigRow, o);
       this.fit = fit;
-      const blockH = fit.size * 1.05 + (fit.lines.length - 1) * fit.lineHeight + (m ? sigSize * 1.9 : 0);
+      const sigSize = m ? sigV2(fit.size) : 0;
+      const blockH = fit.size * 1.05 + (fit.lines.length - 1) * fit.lineHeight + (m ? sigRow : 0);
       const top = MSG.y + Math.max(0, (MSG.h - blockH) / 2 - 10);
       // 手寫的每一排不會完全對齊：左端各自偏一點
-      // 短的留言不要擠在左邊：整塊放在窗的中間偏左一點
-      const left = MSG.x + Math.max(0, (MSG.w - fit.width) / 2) * 0.8;
-      this.rows = rowsOf(fit, FAM_MSG, left, top).map((r, i) => ({ ...r, x: r.x + (hash(this.seed, i, 3) - 0.5) * 36 + i * 10 }));
+      this.rows = rowsOf(fit, FAM_MSG, MSG.x + 12, top).map((r, i) => ({ ...r, x: r.x + (hash(this.seed, i, 3) - 0.5) * 20 + i * 6 }));
       if (m) {
         const sl = layout(sig, FAM_MSG, sigSize);
         const last = this.rows[this.rows.length - 1]!;
         const right = Math.max(...this.rows.map((r) => r.x + r.width));
         const sx = Math.min(MSG.x + MSG.w - sl.width, Math.max(last.x + 40, right - sl.width + 30));
         const n0 = glyphCount(this.rows);
-        this.rows.push({ text: sig, x: sx, y: last.y + fit.size * 0.42 + sigSize * 1.35, width: sl.width, glyphs: sl.glyphs.map((g, k) => ({ ch: g.ch, x: g.x, w: g.w, i: n0 + k })) });
+        this.rows.push({ text: sig, x: sx, y: last.y + fit.size * 0.34 + sigSize * 1.3, width: sl.width, glyphs: sl.glyphs.map((g, k) => ({ ch: g.ch, x: g.x, w: g.w, i: n0 + k })) });
       }
       // 每排的範圍（字的座標 y0～y1）：手寫字的上緣到基線下面一點；相鄰兩排剛好接起來、不重疊
       this.bands = this.rows.map((r, i) => {
@@ -325,7 +352,7 @@ export default class FogWindow extends Scene {
       c.clearRect(0, 0, W, H);
       c.save();
       c.translate(PIV.x, PIV.y); c.rotate(ANG); c.translate(-PIV.x, -PIV.y);
-      c.filter = 'blur(1.6px)';
+      c.filter = 'blur(1px)';
       c.lineJoin = 'round'; c.lineCap = 'round';
       this.rows.forEach((r, i) => {
         const size = i < fit.lines.length ? fit.size : sigSize;
@@ -335,7 +362,7 @@ export default class FogWindow extends Scene {
           const x = r.x + g.x;
           if (g.ch === '♥') { this.fingerHeart(c, x + g.w / 2, r.y - size * 0.36, Math.min(g.w, size) * 0.8, size); continue; }
           c.fillStyle = c.strokeStyle = MASK_TEXT;
-          c.lineWidth = size * 0.045;
+          c.lineWidth = size * 0.03;
           c.strokeText(g.ch, x, r.y);
           c.fillText(g.ch, x, r.y);
         }
@@ -354,7 +381,8 @@ export default class FogWindow extends Scene {
       const c = atlas.ctx;
       c.clearRect(0, 0, P.w, P.h * nslot);
       lines.forEach((line, k) => {
-        const fit = fitText(c, line.text, FAM_MSG, P.w - 40, P.h - 20, { min: 64, max: 140, lineHeight: 1.2, maxLines: 2 });
+        // 沒有留言時歌詞是焦點，但一樣照 v2（≤ 52 px）
+        const fit = fitText(c, line.text, FAM_MSG, P.w - 40, P.h - 20, { min: V2.lyrMin, max: lyricV2(null), lineHeight: 1.22, maxLines: 2 });
         const glyphs: FogLine['glyphs'] = [];
         const rowW: number[] = [];
         let cursor = 0;
@@ -370,11 +398,11 @@ export default class FogWindow extends Scene {
         this.fogLines.push(fl);
         const y0 = k * P.h + (P.h - fit.height) / 2 + fit.size * 0.9;
         c.save();
-        c.filter = 'blur(1.6px)';
+        c.filter = 'blur(1px)';
         c.lineJoin = 'round';
         c.font = font(FAM_MSG, fit.size);
         c.fillStyle = c.strokeStyle = MASK_TEXT;
-        c.lineWidth = fit.size * 0.045;
+        c.lineWidth = fit.size * 0.03;
         fit.lines.forEach((ln, row) => { c.strokeText(ln, 16, y0 + row * fit.lineHeight); c.fillText(ln, 16, y0 + row * fit.lineHeight); });
         c.restore();
       });
@@ -387,21 +415,23 @@ export default class FogWindow extends Scene {
     // 字的範圍裡的水珠只從字的下面開始滑（滑過字的痕會把字連在一起，讀起來很亂）
     const tb0 = this.textBox();
     const place = (r: number, r2: number, ry: number) => {
-      const x = r2 < 0.6 ? (r < 0.4 ? 70 + r * 280 : 1580 + (r - 0.4) * 440) : 80 + r * 1760;
+      // 大多在右半邊與上半部（字在左下），少數在左邊的窗框旁
+      const x = r2 < 0.75 ? 1000 + r * 820 : 70 + r * 900;
       const inText = x > tb0.x0 - 20 && x < tb0.x1 + 20;
-      const y0 = inText ? Math.max(50 + ry * 560, tb0.y1 + 30) : 50 + ry * 560;
-      return { x, y0: Math.min(y0, 960) };
+      // 字的上方的水珠滑到字的上緣就停住（積在那裡），不會滑過字
+      const y0 = inText ? Math.min(50 + ry * 300, tb0.y0 - 200) : 50 + ry * 560;
+      return { x, y0: Math.min(y0, 960), ymax: inText ? tb0.y0 - 12 : 1040 };
     };
     const rnd = (k: number, j: number) => hash(this.seed, k, j);
     const drops: Drop[] = [];
     for (let k = 0; k < 3; k++) {
       const pl = place(rnd(k, 2), rnd(k, 9) * 0.6, rnd(k, 1) * 0.7);
-      drops.push({ t0: s - 10, x: pl.x, y0: pl.y0, r: 6 + rnd(k, 3) * 3, steps: [{ t: s - 9, d: 120 + rnd(k, 4) * 300 }], old: true });
+      drops.push({ t0: s - 10, x: pl.x, y0: pl.y0, r: 6 + rnd(k, 3) * 3, steps: [{ t: s - 9, d: 120 + rnd(k, 4) * 300 }], old: true, ymax: pl.ymax });
     }
     winBeats(au, this.tWrite, e).forEach((tb, k) => {
-      if (rnd(k, 11) > 0.38) return;
+      if (rnd(k, 11) > 0.5) return;
       const pl = place(rnd(k, 12), rnd(k, 19), rnd(k, 13));
-      const d: Drop = { t0: tb - 0.05, x: pl.x, y0: pl.y0, r: 5.5 + rnd(k, 14) * 4, steps: [], old: false };
+      const d: Drop = { t0: tb - 0.05, x: pl.x, y0: pl.y0, r: 5.5 + rnd(k, 14) * 4, steps: [], old: false, ymax: pl.ymax };
       // 之後每一拍：六成的機率滑一段（越滑越快），不然頓在那裡
       let acc = 0;
       for (let j = 1; j < 24; j++) {
@@ -415,17 +445,17 @@ export default class FogWindow extends Scene {
     });
     this.drops = drops;
 
-    if (m) this.lyrStyle = { family: FAM_LYR, size: lyricSizeFor(this.fit?.size ?? null), minSize: 48, maxWidth: LYR.w };
+    if (m) this.lyrStyle = { family: FAM_LYR, size: lyricV2(this.fit?.size ?? null), minSize: V2.lyrMin, maxWidth: LYR.w };
   }
 
   /** 霧上寫字的範圍（畫面座標，大約）：水珠不從這裡面開始滑。 */
   private textBox() {
     if (this.rows.length) {
       const x0 = Math.min(...this.rows.map((r) => r.x)), x1 = Math.max(...this.rows.map((r) => r.x + r.width));
-      return { x0, x1, y1: this.bands[this.bands.length - 1]![1] + 20 };
+      return { x0, x1, y0: this.bands[0]![0] - 20, y1: this.bands[this.bands.length - 1]![1] + 20 };
     }
-    if (this.fogLyrics) return { x0: POS[0]!.x, x1: POS[0]!.x + POS[0]!.w, y1: POS[1]!.y + POS[1]!.h };
-    return { x0: -1, x1: -1, y1: 0 };
+    if (this.fogLyrics) return { x0: POS[0]!.x, x1: POS[0]!.x + POS[0]!.w, y0: POS[0]!.y, y1: POS[1]!.y + POS[1]!.h };
+    return { x0: -1, x1: -1, y0: 2000, y1: 0 };
   }
 
   /** 手指畫的愛心：沿著愛心的外框描一圈（紅色，shader 認得出來、透出點綴色）。 */
@@ -448,7 +478,7 @@ export default class FogWindow extends Scene {
       if (t <= st.t) break;
       y += st.d * ease.outCubic(clamp((t - st.t) / 0.26));
     }
-    return Math.min(y, 1040);
+    return Math.min(y, d.ymax);
   }
 
   override render(f: Frame, out: THREE.WebGLRenderTarget): PostOverrides {
@@ -463,6 +493,12 @@ export default class FogWindow extends Scene {
     u.focus!.value = 0.15 + 0.85 * fin - 0.6 * fout;
     u.drift!.value = -(t - s) * 5;
     u.kin!.value = prog(t, s, s + 0.15);
+    // 招牌光罩住整塊手寫字（沒有字就關掉）
+    const tb = this.textBox();
+    if (tb.x0 >= 0) {
+      (u.sign!.value as THREE.Vector4).set((tb.x0 + tb.x1) / 2, (tb.y0 + tb.y1) / 2, Math.max(260, (tb.x1 - tb.x0) * 0.62), Math.max(150, (tb.y1 - tb.y0) * 0.7));
+      u.signK!.value = 1;
+    } else u.signK!.value = 0;
 
     // ---- 留言的每一排寫到哪
     const mrow = u.mrow!.value as THREE.Vector4[], mfr = u.mfr!.value as THREE.Vector2[];
@@ -540,6 +576,17 @@ export default class FogWindow extends Scene {
       const x = dir > 0 ? -320 + 2400 * ease.inOutCubic(k) : 2080 - 2400 * ease.inOutCubic(k);
       cv.set(x, Math.sin(Math.PI * k) * 0.9, dir > 0 ? 1 : 0, 0);
     }
+    // ---- 每兩小節（第二、四…個小節線）一道轉彎車的車燈從霧上掃過去：小節線上亮起、一小節內掃完
+    const sw = u.sweep!.value as THREE.Vector2;
+    sw.set(-9999, 0);
+    for (let i = 1; i < this.bars.length; i += 2) {
+      const b0 = this.bars[i]!, b1 = this.bars[i + 1] ?? e;
+      if (t < b0 || t >= b1) continue;
+      const k = (t - b0) / Math.max(0.3, b1 - b0);
+      const dir = ((i - 1) / 2 + (this.seed >> 1)) % 2 === 0 ? 1 : -1;
+      const x = dir > 0 ? -300 + 2600 * ease.inOutCubic(k) : 2200 - 2600 * ease.inOutCubic(k);
+      sw.set(x, Math.sin(Math.PI * k) ** 0.7);
+    }
     this.bg.render(renderer, out);
 
     // ---- 窗下緣：歌詞（有留言時）、小字
@@ -565,8 +612,8 @@ export default class FogWindow extends Scene {
       // 邀請：一行小字（寫完第一句之後才出現）
       const ik = prog(t, this.tWrite + beat, this.tWrite + beat + 0.6);
       if (ik > 0) {
-        c.font = font(F.hei(500), 26); c.letterSpacing = '3px'; c.fillStyle = rgba('bone', 0.55 * ik);
-        c.fillText(T16_INVITE, LYR.x, LYR.y + 20);
+        c.font = font(F.hei(500), 22); c.letterSpacing = '3px'; c.fillStyle = rgba('bone', 0.55 * ik);
+        c.fillText(T16_INVITE, POS[0]!.x + 12, POS[1]!.y + POS[1]!.h + 40);
         c.letterSpacing = '0px';
         drew = true;
       }

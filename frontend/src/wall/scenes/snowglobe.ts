@@ -17,8 +17,10 @@ import { LineBatch } from '../engine/lines';
 import { F, font, loadText } from '../engine/type';
 import { LIN, rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, hash, TAU } from '../engine/util';
-import { lyricAt, layoutLyric, drawLyric, lyricSizeFor, beatAfter, sparkHead, sparkParticles, drawHeart, COUPLE_ZH, DATE_DOTS, type LyricStyle } from './_motifs';
-import { T16_INVITE, T16_TEXT, sigOf, rowsOf, fitWithSig, glyphCount, charClock, rowFront, type Row } from './_t16';
+import { lyricAt, layoutLyric, drawLyric, beatAfter, sparkHead, sparkParticles, drawHeart, COUPLE_ZH, DATE_DOTS, type LyricStyle } from './_motifs';
+import { T16_INVITE, T16_TEXT, sigOf, rowsOf, glyphCount, charClock, rowFront, type Row } from './_t16';
+import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 } from './_v2';
+import { fitText } from '../engine/text';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'nature', paper: false, energy: [0.1, 0.85], bars: [4, 8] };
 
@@ -26,11 +28,20 @@ export const spec: PlateSpecDecl = { group: 'type', family: 'nature', paper: fal
 const C = { x: 760, y: 328 }, R = 272;
 /** 底座正面、銘牌、銘牌上可以刻字的範圍（字要離銘牌邊一點）。 */
 const PL = { x0: 168, x1: 1352, top: 612, y0: 640, y1: 1000 };
-const PLATE = { x0: 226, x1: 1294, y0: 662, y1: 982 };
-const TXT = { x: 280, y: 698, w: 960, h: 262 };
+/**
+ * 留言標準 v2：底座（道具）照樣大，只有嵌在正面的那塊銘牌（寫留言的地方）縮到 860 × 308，字 40～60 px。
+ */
+const PLATE = { x0: 330, x1: 1190, y0: 668, y1: 976 };
+const TXT = { x: 374, y: 694, w: 772, h: 262 };
+/** 底座右側的發條鑰匙（一拍轉四分之一圈）。 */
+const KEY = { x: PL.x1, y: 760 };
+/** 右後方牆上的窗（窗外也在下雪）。歌詞在它上面的暗處。 */
+const WIN = { x0: 1250, y0: 410, x1: 1690, y1: 740 };
+/** 小屋的煙囪口（畫面座標，大約：球裡的雪景經過透鏡放大約 1.06 倍）。 */
+const CHIM = { x: C.x + (-110 + 33) * 1.06, y: 0 };
 /** 歌詞在右上方的暗處。 */
 const LYR = { x: 1150, y: 236, w: 610 };
-const LYR_BIG = { x: 1110, y: 300, w: 640 };
+const LYR_BIG = { x: 1110, y: 250, w: 640 };
 const FAM_MSG = F.ming(700);
 const FAM_LYR = F.archivo(100, 700);
 const PER = 0.08;
@@ -42,6 +53,7 @@ const IS = 1;
 const BG = () => new FSPass(/* glsl */ `
   uniform sampler2D inner; uniform sampler2D txt;
   uniform vec2 off; uniform float tilt; uniform float t, kick, kin;
+  uniform vec4 plate; // 銘牌（x0, y0, x1, y1）：跟著字的多少變大變小（只比字多一點邊）
   uniform vec4 rows[8]; uniform vec2 fr[8]; uniform float nrow;
   const vec2 C = vec2(${C.x}.0, ${C.y}.0); const float R = ${R}.0;
   const vec2 PIV = vec2(${C.x}.0, ${PL.y1}.0);
@@ -66,6 +78,33 @@ const BG = () => new FSPass(/* glsl */ `
     float sh = exp(-pow(length((p - vec2(${C.x + 250}.0, ${C.y + 70}.0)) / vec2(${R + 60}.0, ${R + 120}.0)), 2.0));
     wall *= 1.0 - 0.45 * sh;
     vec3 col = wall;
+    // 右後方牆上的一扇窗：窗外也在下雪（跟球裡呼應），雪一直慢慢落，窗框十字、窗台一道光
+    vec2 wq = p - vec2(${WIN.x0}.0, ${WIN.y0}.0);
+    vec2 wsz = vec2(${WIN.x1 - WIN.x0}.0, ${WIN.y1 - WIN.y0}.0);
+    if (wq.x > -14.0 && wq.y > -14.0 && wq.x < wsz.x + 14.0 && wq.y < wsz.y + 22.0) {
+      vec3 wc = C_INK2 * 0.35 + C_GRAPHITE * 0.03 * (1.0 - wq.y / wsz.y);
+      // 遠處的屋頂剪影與幾盞窗燈
+      float roof = wsz.y - 70.0 - 40.0 * step(0.5, fract(floor(wq.x / 90.0) * 0.37)) - 20.0 * sin(wq.x * 0.01);
+      if (wq.y > roof) {
+        wc = C_INK * 0.6;
+        vec2 wg = wq / vec2(9.0, 8.0);
+        wc += C_EMBER * 0.07 * step(0.92, hash12(floor(wg))) * step(0.35, fract(wg.x)) * step(0.35, fract(wg.y)) * step(roof + 10.0, wq.y);
+      }
+      // 兩層雪：近的大、快，遠的小、慢，左右飄
+      for (int k = 0; k < 2; k++) {
+        float sc = k == 0 ? 26.0 : 15.0, sp = k == 0 ? 60.0 : 32.0;
+        vec2 g = (wq + vec2(sin(t * 0.7 + wq.y * 0.01) * 8.0, -t * sp)) / sc;
+        vec2 id = floor(g), f = fract(g) - 0.5 - (hash22(id + float(k) * 7.0) - 0.5) * 0.6;
+        float r = (k == 0 ? 0.09 : 0.06) * (0.6 + 0.8 * hash12(id + 3.0));
+        wc += C_BONE * (k == 0 ? 0.3 : 0.15) * (1.0 - smoothstep(r * 0.6, r, length(f))) * step(0.55, hash12(id + 11.0));
+      }
+      // 窗框：外框、十字
+      float fr = min(min(wq.x, wsz.x - wq.x), min(wq.y, wsz.y - wq.y));
+      float cross = min(abs(wq.x - wsz.x * 0.5), abs(wq.y - wsz.y * 0.48));
+      if (fr < 0.0 || cross < 5.0) wc = C_INK2 * 0.8 + C_SIGNAL * 0.015 * (1.0 - wq.y / wsz.y);
+      if (wq.y > wsz.y && wq.y < wsz.y + 22.0) wc = C_INK2 * 1.1 + C_SIGNAL * 0.03 * (1.0 - smoothstep(wsz.y, wsz.y + 5.0, wq.y));
+      col = wc * (1.0 - 0.45 * sh);
+    }
     float tableY = ${PL.y1}.0 + off.y * 0.0;
     if (p.y > tableY - 6.0) {
       float g = 0.75 + 0.25 * snoise(vec2(p.x * 0.003, p.y * 0.06));
@@ -96,7 +135,7 @@ const BG = () => new FSPass(/* glsl */ `
 
     // ---- 銘牌：底座正面嵌一塊比較深、比較光滑的木板，四周一圈細細的描金線；
     //      字是刻進木頭再貼金（亮的金色字在深色木頭上，最清楚），凹槽上緣背光、下緣迎光
-    float dP = rbox(q, vec2(${PLATE.x0}.0, ${PLATE.y0}.0), vec2(${PLATE.x1}.0, ${PLATE.y1}.0), 6.0);
+    float dP = rbox(q, plate.xy, plate.zw, 6.0);
     if (dP < 1.0) {
       vec3 gilt = mix(C_BONE, C_SIGNAL, 0.38) * 0.62;
       float g2 = 0.85 + 0.15 * snoise(vec2(q.x * 0.002, q.y * 0.04));
@@ -167,7 +206,7 @@ const BG = () => new FSPass(/* glsl */ `
     col *= kin;
     fragColor = vec4(col, 1.0);
   }`, {
-  inner: { value: null }, txt: { value: null }, off: { value: new THREE.Vector2() }, tilt: { value: 0 }, t: { value: 0 }, kick: { value: 0 }, kin: { value: 1 },
+  inner: { value: null }, txt: { value: null }, off: { value: new THREE.Vector2() }, plate: { value: new THREE.Vector4(PLATE.x0, PLATE.y0, PLATE.x1, PLATE.y1) }, tilt: { value: 0 }, t: { value: 0 }, kick: { value: 0 }, kin: { value: 1 },
   rows: { value: Array.from({ length: 8 }, () => new THREE.Vector4()) }, fr: { value: Array.from({ length: 8 }, () => new THREE.Vector2()) }, nrow: { value: 0 },
 });
 
@@ -181,11 +220,14 @@ export default class SnowGlobe extends Scene {
   txt = this.track(new Layer2D(W, H, undefined, { fast: true }));
   /** 歌詞與小字（每格重畫）。 */
   text = this.track(new Layer2D(W, H, undefined, { fast: true }));
-  snow = this.track(new LineBatch(NFLAKE + 8, { screen2D: true, blend: 'normal' }));
+  snow = this.track(new LineBatch(NFLAKE + 120, { screen2D: true, blend: 'normal' }));
   glow = this.track(new LineBatch(900, { screen2D: true, blend: 'add' }));
   msg: Msg | null = this.ctx.params.message ?? null;
   seed = ((this.ctx.params.seed ?? 1) * 211 + (this.msg?.id ?? 0) * 7919) >>> 0;
   rows: Row[] = [];
+  plate = { ...PLATE };
+  /** 煙囪口的高度（畫面座標）。 */
+  chimY = 0;
   sizes: number[] = [];
   clock: (i: number) => number = () => 0;
   step = PER;
@@ -210,11 +252,14 @@ export default class SnowGlobe extends Scene {
 
     // ---- 銘牌的字：留言（大）＋署名；沒有留言是新人的名字與日期（小一點，焦點讓給歌詞）
     const c = this.txt.ctx;
-    const sigSize = 40;
+    // 字級上限依字數（v2），照標點斷行；扣掉署名那一排再找字級（署名永遠在最後一行下面）
     let fit;
-    if (m) fit = fitWithSig(c, m.text, FAM_MSG, TXT.w, TXT.h, { min: 44, max: 150, lineHeight: 1.26, maxLines: 4, sig: sigSize * 1.5 });
-    else fit = fitWithSig(c, plateText, FAM_MSG, TXT.w, 120, { min: 56, max: 88, lineHeight: 1.2, maxLines: 1, sig: 0 });
-    const extra = m ? sigSize * 1.5 : 52;
+    if (m) {
+      const o = { min: V2.msgMin, max: msgMaxFor(m.text), lineHeight: 1.28, maxLines: 5 };
+      fit = fitClauses(c, m.text, FAM_MSG, TXT.w, TXT.h - 46, o) ?? fitText(c, m.text, FAM_MSG, TXT.w, TXT.h - 46, o);
+    } else fit = fitText(c, plateText, FAM_MSG, TXT.w, 90, { min: 44, max: 56, lineHeight: 1.2, maxLines: 1 });
+    const sigSize = sigV2(fit.size);
+    const extra = m ? sigSize * 1.5 : 46;
     const blockH = fit.size * 1.02 + (fit.lines.length - 1) * fit.lineHeight + extra;
     const top = TXT.y + Math.max(0, (TXT.h - blockH) / 2);
     this.rows = rowsOf(fit, FAM_MSG, TXT.x + TXT.w / 2, top, 'center');
@@ -229,9 +274,17 @@ export default class SnowGlobe extends Scene {
       this.rows.push({ ...lay, y: last.y + fit.size * 0.3 + sigSize * 1.2, glyphs: lay.glyphs.map((g, k) => ({ ...g, i: n0 + k })) });
       this.sizes.push(sigSize);
     } else {
-      const dl = rowsOf({ size: 30, lines: [DATE_DOTS], lineHeight: 30, width: 0, height: 30 }, F.mono(500), TXT.x + TXT.w / 2, 0, 'center')[0]!;
-      this.rows.push({ ...dl, y: last.y + 56, glyphs: dl.glyphs.map((g, k) => ({ ...g, i: n0 + k })) });
-      this.sizes.push(30);
+      const dl = rowsOf({ size: 26, lines: [DATE_DOTS], lineHeight: 26, width: 0, height: 26 }, F.mono(500), TXT.x + TXT.w / 2, 0, 'center')[0]!;
+      this.rows.push({ ...dl, y: last.y + 48, glyphs: dl.glyphs.map((g, k) => ({ ...g, i: n0 + k })) });
+      this.sizes.push(26);
+    }
+    // 銘牌只比字多一點邊（v2：容器要輕）：以原本的中心為準，寬高照這塊字（含署名）加邊距，最大就是原本那塊
+    {
+      const x0 = Math.min(...this.rows.map((r) => r.x)), x1 = Math.max(...this.rows.map((r) => r.x + r.width));
+      const y0 = this.rows[0]!.y - this.sizes[0]! * 1.05, y1 = this.rows[this.rows.length - 1]!.y + this.sizes[this.sizes.length - 1]! * 0.35;
+      const cx = (PLATE.x0 + PLATE.x1) / 2, cy = (PLATE.y0 + PLATE.y1) / 2;
+      const hw = clamp((x1 - x0) / 2 + 56, 240, (PLATE.x1 - PLATE.x0) / 2), hh = clamp((y1 - y0) / 2 + 34, 70, (PLATE.y1 - PLATE.y0) / 2);
+      this.plate = { x0: cx - hw, y0: cy - hh, x1: cx + hw, y1: cy + hh };
     }
     // 字模：白字畫在畫面座標上（shader 用 alpha 當刻痕的深淺）
     c.clearRect(0, 0, W, H);
@@ -261,11 +314,13 @@ export default class SnowGlobe extends Scene {
     this.rowEnd = this.rows.map((r) => this.clock(r.glyphs[r.glyphs.length - 1]!.i) + this.step);
 
     // ---- 歌詞：有留言時小一級在右上；沒有留言時放大
-    if (m) this.lyrStyle = { family: FAM_LYR, size: lyricSizeFor(fit.size), minSize: 48, maxWidth: LYR.w };
-    else { this.lyrStyle = { family: FAM_LYR, size: 86, minSize: 56, maxWidth: LYR_BIG.w, lineHeight: 1.12 }; this.lyrPos = LYR_BIG; }
+    if (m) this.lyrStyle = { family: FAM_LYR, size: lyricV2(fit.size), minSize: V2.lyrMin, maxWidth: LYR.w };
+    else { this.lyrStyle = { family: FAM_LYR, size: lyricV2(null), minSize: V2.lyrMin, maxWidth: LYR_BIG.w, lineHeight: 1.16 }; this.lyrPos = LYR_BIG; }
 
     // ---- 球裡的雪景
     this.drawInner();
+    const hb = this.groundY(C.x - 110) + 6;
+    this.chimY = C.y + (hb - 72 - 56 - C.y) * 1.06;
 
     // ---- 雪花：停在雪地上的位置、被甩起來多高、左右擺多大、多久落回去
     const rnd = (i: number, k: number) => hash(this.seed, i, k);
@@ -409,6 +464,58 @@ export default class SnowGlobe extends Scene {
     return { x, y, air: clamp((gy - y) / 24) };
   }
 
+  /**
+   * 球裡小屋的煙囪冒煙：每 0.2 秒一團，往上飄、慢慢變大變淡，往一邊斜（很淡的灰，不發光）。
+   * 每團的位置只由它出生的時間決定（確定性）。
+   */
+  private smoke(lb: LineBatch, t: number, xf: (x: number, y: number) => { x: number; y: number }, kin: number) {
+    const dt = 0.2, life = 2.4, A = LIN.ash;
+    const top = this.chimY;
+    for (let n = Math.floor((t - life) / dt); n <= Math.floor(t / dt); n++) {
+      const age = t - n * dt;
+      if (age < 0 || age > life) continue;
+      const u = age / life;
+      const x = CHIM.x + 22 * u + 7 * Math.sin(age * 2.2 + n) * u;
+      const y = top - 42 * age - 6 * u * u;
+      // 球裡：碰到上面的玻璃就不畫了
+      if (Math.hypot(x - C.x, y - C.y) > R * 0.9) continue;
+      const q = xf(x, y);
+      const a = 0.3 * Math.sin(Math.PI * Math.min(1, u * 1.4)) * kin;
+      lb.seg2(q.x, q.y, q.x + 0.01, q.y, 6 + 18 * u, [A[0] * 0.8, A[1] * 0.8, A[2] * 0.8], a);
+    }
+  }
+
+  /** 底座右側的發條鑰匙：每一拍轉四分之一圈（落在拍點、回彈一下）；轉的時候從側面看，翼片的高度跟著 cos 變。 */
+  private drawKey(c: CanvasRenderingContext2D, t: number, xf: (x: number, y: number) => { x: number; y: number }) {
+    const au = this.ctx.audio;
+    const bi = au.beatAt(t), k = Math.floor(bi), u = bi - k;
+    const ang = (k + ease.outBack(clamp(u / 0.35), 1.6)) * (Math.PI / 2);
+    const h = Math.abs(Math.cos(ang));
+    const p0 = xf(KEY.x, KEY.y), p1 = xf(KEY.x + 26, KEY.y), p2 = xf(KEY.x + 78, KEY.y);
+    c.save();
+    c.lineCap = 'round';
+    // 軸
+    c.strokeStyle = mixRgba('graphite', 'ash', 0.35); c.lineWidth = 9;
+    c.beginPath(); c.moveTo(p0.x, p0.y); c.lineTo(p1.x, p1.y); c.stroke();
+    // 翼片：一片平的蝴蝶形鐵片接在軸的尾端（上下兩個圓耳、中間一個轂）；轉到側面時整片壓成一條線
+    const metal = mixRgba('graphite', 'ash', 0.6), edge = mixRgba('ink2', 'graphite', 0.3);
+    const cx = p1.x + 22, cy = p1.y;
+    c.fillStyle = metal; c.strokeStyle = edge; c.lineWidth = 2;
+    c.beginPath();
+    c.ellipse(cx, cy - 26 * h, 20, Math.max(1.2, 17 * h), 0, 0, Math.PI * 2);
+    c.ellipse(cx, cy + 26 * h, 20, Math.max(1.2, 17 * h), 0, 0, Math.PI * 2);
+    c.fill(); c.stroke();
+    c.beginPath(); c.ellipse(cx, cy, 11, Math.max(2, 13 * h), 0, 0, Math.PI * 2); c.fill(); c.stroke();
+    // 耳上的孔（正對鏡頭時才看得到）
+    c.fillStyle = rgba('ink', 0.7 * h);
+    for (const sgn of [-1, 1]) { c.beginPath(); c.ellipse(cx, cy + sgn * 28 * h, 7, Math.max(0.5, 6 * h), 0, 0, Math.PI * 2); c.fill(); }
+    // 高光：翼片正對燈的時候亮一下
+    c.fillStyle = rgba('bone', 0.3 * h * h);
+    c.beginPath(); c.ellipse(cx - 8, cy - 36 * h, 6, Math.max(0.5, 4 * h), 0, 0, Math.PI * 2); c.fill();
+    void p2;
+    c.restore();
+  }
+
   override render(f: Frame, out: THREE.WebGLRenderTarget): PostOverrides {
     const { renderer, comp, lyrics, song } = this.ctx;
     const t = f.t, s = this.ctx.start, e = this.ctx.end;
@@ -419,6 +526,7 @@ export default class SnowGlobe extends Scene {
     u.tilt!.value = hp.tilt;
     u.t!.value = t; u.kick!.value = f.a.kick; u.kin!.value = kin;
     u.inner!.value = this.inner.texture; u.txt!.value = this.txt.texture;
+    (u.plate!.value as THREE.Vector4).set(this.plate.x0, this.plate.y0, this.plate.x1, this.plate.y1);
     // 銘牌上每一排刻到哪
     const rows = u.rows!.value as THREE.Vector4[], fr = u.fr!.value as THREE.Vector2[];
     u.nrow!.value = Math.min(8, this.rows.length);
@@ -435,10 +543,17 @@ export default class SnowGlobe extends Scene {
     });
     this.bg.render(renderer, out);
 
+    // 整座雪花球（跳、晃）的座標轉換：雪、煙、鑰匙、火花都跟著它
+    const cs = Math.cos(hp.tilt), sn = Math.sin(hp.tilt);
+    const xf = (x: number, y: number) => {
+      const dx = x - C.x, dy = y - PL.y1;
+      return { x: C.x + cs * dx - sn * dy + hp.x, y: PL.y1 + sn * dx + cs * dy + hp.y };
+    };
     // ---- 歌詞（右上方暗處）
     const L = this.text; L.clear();
     const c = L.ctx;
     c.globalAlpha = kin;
+    this.drawKey(c, t, xf);
     if (this.hasLyrics) {
       const ly = lyricAt(lyrics, t);
       if (ly) {
@@ -455,7 +570,7 @@ export default class SnowGlobe extends Scene {
       const ik = prog(t, this.tFirst + 0.8, this.tFirst + 1.4);
       if (ik > 0) {
         c.font = font(F.hei(500), 24); c.letterSpacing = '3px'; c.fillStyle = rgba('bone', 0.5 * ik);
-        c.fillText(T16_INVITE, this.lyrPos.x, this.lyrPos.y + (this.hasLyrics ? 190 : 50));
+        c.fillText(T16_INVITE, this.lyrPos.x, this.hasLyrics ? WIN.y0 - 34 : this.lyrPos.y + 50);
         c.letterSpacing = '0px';
       }
     }
@@ -464,11 +579,7 @@ export default class SnowGlobe extends Scene {
     // ---- 雪花（跟著整座一起跳）
     const sb = this.snow; sb.clear();
     const B = LIN.bone;
-    const cs = Math.cos(hp.tilt), sn = Math.sin(hp.tilt);
-    const xf = (x: number, y: number) => {
-      const dx = x - C.x, dy = y - PL.y1;
-      return { x: C.x + cs * dx - sn * dy + hp.x, y: PL.y1 + sn * dx + cs * dy + hp.y };
-    };
+    this.smoke(sb, t, xf, kin);
     this.flakes.forEach((fl, i) => {
       const p = this.flakeAt(fl, t, i);
       if (p.air < 0.02) return;

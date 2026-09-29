@@ -18,14 +18,23 @@ import { clamp, ease, prog, hash, pulse } from '../engine/util';
 import { fitText } from '../engine/text';
 import { lyricAt, layoutLyric, drawLyric, drawHeart, COUPLE_ZH, type LyricStyle } from './_motifs';
 import { T16_INVITE, T16_TEXT, sigOf, winBars, winBeats } from './_t16';
+import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 } from './_v2';
+import { LineBatch } from '../engine/lines';
+import { LIN } from '../engine/palette';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'city', paper: false, energy: [0.3, 1], bars: [4, 8] };
 
 /** 鏡頭：焦距（px）、地平線、消失點的 x、鏡頭離路面高度（m）、落定時離門架的距離（m）。 */
 const FL = 1400, H0 = 620, CX = 960, CAMH = 6.5, D0 = 13.6;
 /** 落定時門架上的東西在畫面上的位置（離開這個距離就繞消失點縮放）。 */
-const TOP = { x: 160, y: 176, w: 1230, h: 140 };
-const BIG = { x: 160, y: 336, w: 1230, h: 444 };
+/**
+ * 留言標準 v2：門架（道具）照樣橫跨整條路，但上面的路牌（寫留言的那一塊）只有 860 寬、高度照字決定（≤ 430），
+ * 掛在門架左半邊；右半邊是 LED 看板（歌詞 40～52 px，燈距 3 px）。下半個畫面是路，是主視覺。
+ */
+const SIGN = { x: 150, y: 184, w: 860, h: 430 };
+const LEDR = { x: 1070, y: 184, w: 690, h: 132 };
+/** LED 看板的燈距。 */
+const PITCH = 3;
 /** 門架鋼構（落定時的畫面 y）與兩根柱子（世界 x，m）。 */
 const TRUSS = { y0: 124, y1: 166 };
 const POSTS = [-9.6, 9.2];
@@ -140,6 +149,8 @@ const ROAD = () => new FSPass(/* glsl */ `
         vec2 a = vec2(CX + (c.x - 0.8) * s, H0 + (CAMH - 0.8) * s), b = vec2(CX + (c.x + 0.8) * s, a.y);
         vec3 tl = (C_BLOOD * 1.6 + C_SIGNAL * 0.4) * c.w;
         col += lamp(p, a, c.y, tl) + lamp(p, b, c.y, tl);
+        // 方向燈（c.z：-1 左、1 右）
+        if (abs(c.z) > 0.5) col += lamp(p, vec2(CX + (c.x + sign(c.z) * 1.05) * s, a.y - 0.1 * s), c.y, (C_SIGNAL * 1.6 + C_EMBER * 0.5) * c.w);
       }
       vec4 o = onc[i];
       if (o.w > 0.0 && o.y > 3.0) {
@@ -234,13 +245,18 @@ export default class RoadSign extends Scene {
   passes: { t: number; x: number; k: number }[] = [];
   bars: number[] = [];
   beats: number[] = [];
+  msgSize: number | null = null;
+  bp = 0.5;
+  /** 看板角上的警示燈、超車的方向燈（加亮、會發光）。 */
+  glow = this.track(new LineBatch(64, { screen2D: true, blend: 'add' }));
 
   constructor(ctx: ConstructorParameters<typeof Scene>[0]) {
     super(ctx);
     const m = ctx.params.message ?? null;
-    // 有留言：大路牌＝留言、上面的 LED 看板＝歌詞；沒有留言：大的是 LED 看板（歌詞）、上面是小路牌
-    this.signRect = m ? BIG : TOP;
-    this.ledRect = m ? TOP : BIG;
+    // 路牌在門架左半邊、LED 看板在右半邊（有沒有留言都一樣；沒有留言時路牌只寫「往 幸福」，小小的）
+    void m;
+    this.signRect = SIGN;
+    this.ledRect = LEDR;
     this.sign = this.track(new Layer2D(this.signRect.w, this.signRect.h, RES, { fast: true }));
   }
 
@@ -251,6 +267,7 @@ export default class RoadSign extends Scene {
     const sig = m ? sigOf(m) : '';
     await loadText(`${T16_TEXT}${m?.text ?? ''}${sig}${song.title}${song.artist}${lyrics.linesIn(s - 1, e).map((l) => l.text).join('')}${SMALL_TEXT.flat().join('')}往幸福出口EXIT 0313↗→`);
     const beat = au.beatPeriod(s);
+    this.bp = beat;
     this.bars = winBars(au, s, e);
     this.beats = winBeats(au, s, e);
 
@@ -275,13 +292,13 @@ export default class RoadSign extends Scene {
     this.sign.upload();
 
     // ---- LED 看板：燈距（有留言時小看板 4 px、沒留言的大看板 6 px）
-    this.pitch = m ? 4 : 6;
+    this.pitch = PITCH;
     this.cols = Math.floor(this.ledRect.w / this.pitch);
     this.rows = Math.floor(this.ledRect.h / this.pitch);
     this.ledCv.width = this.cols; this.ledCv.height = this.rows;
-    this.lyrStyle = m
-      ? { family: FAM_LYR, size: 15, minSize: 12, maxWidth: this.cols - 6, align: 'center', lineHeight: 1.1 }
-      : { family: FAM_LYR, size: 26, minSize: 15, maxWidth: this.cols - 8, align: 'center', lineHeight: 1.12 };
+    // 歌詞的字級（單位是燈）：v2 的螢幕字級 ÷ 燈距
+    const ls = lyricV2(m ? this.msgSize : null) / PITCH;
+    this.lyrStyle = { family: FAM_LYR, size: ls, minSize: V2.lyrMin / PITCH, maxWidth: this.cols - 8, align: 'center', lineHeight: 1.1 };
   }
 
   /** 路牌的底：主題的深色、反光的紙白圓角邊框。 */
@@ -301,38 +318,42 @@ export default class RoadSign extends Scene {
   private drawSign(sig: string) {
     const c = this.sign.ctx, r = this.signRect, m = this.msg;
     c.clearRect(0, 0, r.w, r.h);
-    this.plate(c, r.w, r.h, m ? 6 : 4);
     c.textBaseline = 'alphabetic';
     if (m) {
+      // 留言：字級上限依字數（v2），照標點斷行，扣掉署名那一排再找字級；牌子的高度照字決定（只比字多一點邊）
+      const box = { x: 48, y: 64, w: r.w - 96 };
+      const o = { min: V2.msgMin, max: msgMaxFor(m.text), lineHeight: 1.26, maxLines: 5 };
+      const hMax = r.h - box.y - 30 - 44;
+      const fit = fitClauses(c, m.text, FAM_SIGN, box.w, hMax, o) ?? fitText(c, m.text, FAM_SIGN, box.w, hMax, o);
+      this.msgSize = fit.size;
+      const ss = sigV2(fit.size);
+      const top = box.y + fit.size * 0.9;
+      const sy = top + (fit.lines.length - 1) * fit.lineHeight + fit.size * 0.3 + ss * 1.3;
+      const ph = Math.min(r.h, sy + 30);
+      this.plate(c, r.w, ph, 5);
       // 右上角的出口編號小牌（婚禮日期）
       c.fillStyle = rgba('bone', 0.9);
-      roundRect(c, r.w - 196, 26, 160, 38, 6); c.fill();
-      c.font = font(F.hei(700), 22); c.fillStyle = mixRgba('blood', 'ink', 0.5); c.textAlign = 'center'; c.letterSpacing = '2px';
-      c.fillText('EXIT 0313', r.w - 116, 53);
+      roundRect(c, r.w - 168, 20, 128, 30, 5); c.fill();
+      c.font = font(F.hei(700), 18); c.fillStyle = mixRgba('blood', 'ink', 0.5); c.textAlign = 'center'; c.letterSpacing = '2px';
+      c.fillText('EXIT 0313', r.w - 104, 41);
       c.letterSpacing = '0px'; c.textAlign = 'left';
-      // 留言：扣掉署名那一排再找字級
-      const box = { x: 64, y: 70, w: r.w - 128, h: r.h - 118 };
-      const n = Array.from(m.text.replace(/\s/g, '')).length;
-      const fit = fitText(c, m.text, FAM_SIGN, box.w, box.h - 58, { min: 50, max: n <= 4 ? 170 : n <= 10 ? 132 : 104, lineHeight: 1.24, maxLines: 5 });
-      const blockH = fit.size + (fit.lines.length - 1) * fit.lineHeight + 58;
-      const top = box.y + Math.max(0, (box.h - blockH) / 2) + fit.size * 0.9;
       c.font = font(FAM_SIGN, fit.size); c.fillStyle = rgba('bone', 0.97);
       fit.lines.forEach((ln, i) => fillHearts(c, ln, box.x, top + i * fit.lineHeight, fit.size));
-      c.font = font(F.hei(500), 40); c.fillStyle = rgba('bone', 0.82); c.textAlign = 'right';
-      c.fillText(sig, box.x + box.w, top + (fit.lines.length - 1) * fit.lineHeight + fit.size * 0.34 + 48);
+      c.font = font(F.hei(500), ss); c.fillStyle = rgba('bone', 0.82); c.textAlign = 'right';
+      c.fillText(sig, box.x + box.w, sy);
       c.textAlign = 'left';
     } else {
-      // 沒有留言：小路牌「往 幸福 ↗」與一行小字邀請（右上角小小的新人名字當出口名）
-      c.font = font(FAM_SIGN, 62); c.fillStyle = rgba('bone', 0.96);
-      c.fillText('往 幸福', 52, 82);
-      c.font = font(F.hei(700), 64); c.textAlign = 'right';
-      c.fillText('↗', r.w - 50, 86);
-      c.font = font(F.hei(500), 24); c.fillStyle = rgba('bone', 0.7);
-      c.fillText(`${COUPLE_ZH} 出口`, r.w - 130, 70);
-      c.fillStyle = rgba('bone', 0.96);
+      // 沒有留言：小路牌「往 幸福 ↗」、新人的名字當出口名、一行小字邀請
+      this.plate(c, r.w, 150, 4);
+      c.font = font(FAM_SIGN, 52); c.fillStyle = rgba('bone', 0.96);
+      c.fillText('往 幸福', 44, 74);
+      c.font = font(F.hei(700), 54); c.textAlign = 'right';
+      c.fillText('↗', r.w - 40, 78);
+      c.font = font(F.hei(500), 22); c.fillStyle = rgba('bone', 0.7);
+      c.fillText(`${COUPLE_ZH} 出口`, r.w - 110, 64);
       c.textAlign = 'left';
-      c.font = font(F.hei(500), 22); c.fillStyle = rgba('bone', 0.66); c.letterSpacing = '2px';
-      c.fillText(T16_INVITE, 54, 118);
+      c.font = font(F.hei(500), 20); c.fillStyle = rgba('bone', 0.66); c.letterSpacing = '2px';
+      c.fillText(T16_INVITE, 46, 118);
       c.letterSpacing = '0px';
     }
   }
@@ -374,7 +395,10 @@ export default class RoadSign extends Scene {
       const lane = [3.5, 0, -3.5][Math.floor(hash(this.seed, tb * 10, 1) * 3)]!;
       // 車的相對距離：超車那一下在鏡頭前 2 m，之後每秒比鏡頭多跑 26 m（鏡頭自己在動也要算進去）
       const zc = D - this.dist(tb) + 2 + 26 * (t - tb);
-      cars[i]!.set(lane, zc, 0, clamp((t - tb) / 0.2) * (1 - clamp((zc - 180) / 60)));
+      // 超車後切回中間車道前打方向燈：前兩拍每拍亮半拍（落在拍點）
+      const bt = (t - tb) / this.bp;
+      const blink = bt < 2 && bt - Math.floor(bt) < 0.5 ? (lane > 0 ? -1 : 1) : 0;
+      cars[i]!.set(lane, zc, blink, clamp((t - tb) / 0.2) * (1 - clamp((zc - 180) / 60)));
     });
     // 對向來車：每 1.1 秒左右一台
     const onc = u.onc!.value as THREE.Vector4[];
@@ -397,6 +421,18 @@ export default class RoadSign extends Scene {
       (lu.grid!.value as THREE.Vector2).set(this.cols, this.rows);
       lu.dat!.value = this.ledTex; lu.kin!.value = kin; lu.lit!.value = 1; lu.pad!.value = 9 * lr.w / this.ledRect.w;
       this.led.render(renderer, out);
+      // LED 看板上方兩顆琥珀色警示燈，每一拍左右輪流閃
+      const gl = this.glow; gl.clear();
+      const bi = Math.floor(this.ctx.audio.beatAt(t) + 1e-4), bk = pulse(t, this.ctx.audio.timeOfBeat(bi), 0.22);
+      const S = LIN.signal, E = LIN.ember;
+      [0, 1].forEach((j) => {
+        const on = (bi + j) % 2 === 0 ? 0.25 + bk : 0.12;
+        const q = at({ x: LEDR.x + (j ? LEDR.w - 22 : 22), y: LEDR.y - 16, w: 0, h: 0 }, D);
+        const sc = D0 / D;
+        gl.seg2(q.x, q.y, q.x + 0.01, q.y, 26 * sc, [S[0] * 0.8 * on, S[1] * 0.8 * on, S[2] * 0.8 * on], 0.5);
+        gl.seg2(q.x, q.y, q.x + 0.01, q.y, 9 * sc, [E[0] * 3 * on + 0.2, E[1] * 3 * on + 0.1, E[2] * 3 * on], 1);
+      });
+      gl.render(renderer, out);
     }
 
     // ---- 途中掠過的路邊小路牌（比門架近，後畫；遠的先畫）：鏡頭正好在拍點經過它，從畫面右邊刷出去
@@ -411,7 +447,10 @@ export default class RoadSign extends Scene {
     vis.sort((a, b) => a.r.w - b.r.w).forEach(({ r, i }) => this.place(this.smalls[i]!.texture, r, kin * 0.95, out));
     // 落定那一下鏡頭輕輕頓一下（zoom 小小的回彈）
     const land = pulse(t, this.tArr, 0.12);
-    return { bloom: 0.7, vignette: 0.55, halation: 0.3, zoom: 1 + 0.012 * land };
+    // 每個小節線車子壓過伸縮縫：畫面輕輕顛一下
+    let bump = 0;
+    for (const tb of this.bars) if (tb > this.tArr && tb <= t) bump = Math.sin(Math.min(1, (t - tb) / 0.25) * Math.PI) * Math.exp(-(t - tb) / 0.15);
+    return { bloom: 0.7, vignette: 0.55, halation: 0.3, zoom: 1 + 0.012 * land, shake: [0, 2.2 * bump] };
   }
 
   /** 把一張路牌貼到畫面上的範圍 r（亮度 k：車燈照到反光膜的程度）。Compositor 只會整張縮放平移，用 scale／offset 對到那一塊。 */

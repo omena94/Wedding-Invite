@@ -1,49 +1,48 @@
-// 水族箱（暗）：夜裡水族館的展廳，整面大水族箱在背景發光，左前方立著一塊解說牌。
-//  - 畫面的焦點＝主打留言：印在解說牌上（思源宋體）。解說牌是一個燈箱，第一個拍點「啪、啪」閃兩下亮起來（日光燈管的樣子），
-//    字就在亮起來的燈箱上；署名在最後一行下面。上下各一行很小的字：「展示物種：祝福」「＊請勿拍打玻璃，魚會害羞。」
-//  - 歌詞＝一大群銀色的小魚游過來排成字：一句歌詞在要唱之前約一秒開始聚集、排好（還沒唱的字是暗暗的魚），
-//    唱到的那一刻那個字的魚亮成訊號色（像會發光的魚），唱完變成銀白；唱完一句魚群散開、游去排下一句。
-//    每一拍有一道「轉身」從左到右掃過排好的魚（一起擺一下尾巴）。沒有歌詞時魚群在水裡繞圈，每個小節線整群突然轉向。
+// 水族箱（暗）：夜裡水族館的展廳，整面大水族箱在背景發光，左下角立著一塊小小的解說牌。
+//  - 畫面的焦點＝主打留言：印在解說牌上（思源宋體）。解說牌是一片薄薄的壓克力燈箱，第一個拍點「啪、啪」閃兩下亮起來，
+//    字就在亮起來的燈箱上；署名在最後一行下面；上面一行很小的「展示物種：祝福　No.042」。
+//  - 2026-09-29 留言標準 v2：留言 40～60 px，燈箱只比字多一點邊（≤ 760 × 380），放在左下角；整面水族箱是主視覺。
+//    本來歌詞是魚群排成的大字（100 px 以上），v2 的歌詞只能 40～52 px，魚排不出來，改成：
+//  - 歌詞＝貼在玻璃左上角的一行白色字（像水族館玻璃上的貼字），照跟唱規則逐字亮。
+//  - 魚群是主角：一大群銀色的小魚，每個小節線換一個隊形（球、環、波浪、螺旋、長流），整群在小節線上轉向、
+//    從前一個隊形「流」到下一個（每條魚晚一點點出發，像一陣波）；每一拍一道銀光從左到右掃過魚群（一起翻身反光）。
 //  - 氣泡：每一拍從右下角的打氣石冒出一串氣泡。水面在上面搖，光從水面斜斜照下來，沙底有水波的光紋，水草在搖。
-//  - 沒有主打留言：解說牌寫「展示物種：祝福」與邀請（小），魚群排的歌詞是主角。純音樂又沒留言：魚群排出新人的名字。
+//  - 沒有主打留言：解說牌寫「祝福魚群」與邀請（小），歌詞是焦點（52 px）。
 // 手法：水、光、沙、水草、缸框、展廳、解說牌（燈箱）都在一個 shader；魚與氣泡是 LineBatch（每條魚兩段：身體與尾巴）；
-// 魚排字的點用 textPoints 在 init() 取一次；解說牌上的字是一張 init 畫好的 Canvas2D（燈箱亮度用疊上去的透明度）。
+// 解說牌上的字是一張 init 畫好的 Canvas2D（燈箱亮度用疊上去的透明度）；歌詞每格畫在另一張。
 import * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
 import { FSPass, Layer2D, W, H } from '../engine/gl';
 import { LineBatch } from '../engine/lines';
-import { F, font, loadText, layout } from '../engine/type';
+import { F, font, loadText } from '../engine/type';
 import { LIN, rgba } from '../engine/palette';
 import { clamp, ease, prog, hash, pulse, TAU } from '../engine/util';
-import { Lyrics, type Line } from '../engine/lyrics';
-import { layoutLyric, drawMessage, beatAfter, COUPLE_ZH, type LyricStyle } from './_motifs';
 import { fitText, type FitResult } from '../engine/text';
+import { lyricAt, layoutLyric, drawLyric, drawMessage, beatAfter, type LyricStyle } from './_motifs';
 import { T16_TEXT, sigOf, winBeats, winBars, no3 } from './_t16';
+import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 } from './_v2';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'nature', paper: false, energy: [0.15, 0.9], bars: [4, 8] };
 
-/** 解說牌（燈箱）與上面的字的範圍。 */
-const PANEL = { x0: 130, x1: 690, y0: 168, y1: 902 };
-const PTXT = { x: 184, y: 262, w: 452, h: 560 };
-/**
- * 有留言時（2026-09-29 主導者：留言要明顯大於魚排的字）：解說牌放大成左半邊的大燈箱、留言 ≥ 72 px；
- * 魚排的歌詞縮到約 64 px、排在右上方遠一點的水裡（魚小、顏色暗一點，像比較遠），焦點留給解說牌。
- */
-const PANEL_M = { x0: 110, x1: 1010, y0: 130, y1: 940 };
-const PTXT_M = { x: 172, y: 236, w: 776, h: 624 };
-const FISH_M = { x: 1070, y: 180, w: 730, h: 380 };
-/** 魚排字的範圍（水族箱右邊的開闊水域）。 */
-const FISH = { x: 770, y: 150, w: 1030, h: 470 };
+/** 解說牌（燈箱）的左下角錨點、邊距與字的最大範圍（v2：燈箱 ≤ 760 × 380，只比字多一點邊）。 */
+const PANEL_AT = { x0: 120, y1: 936 };
+const PAD = { x: 40, top: 58, bottom: 30 };
+const PTXT_MAX = { w: 680, h: 300 };
+/** 貼在玻璃左上角的歌詞。 */
+const LYR = { x: 150, y: 196, w: 1100 };
 /** 缸：上緣的框、水面、沙底、底櫃、地板。 */
 const TANK = { top: 40, surf: 84, sand: 720, base: 830, floor: 930 };
 const FAM_MSG = F.ming(700);
-const FAM_FISH = F.hei(700);
-/** 魚最多幾條（排字的點數上限另外算）。 */
-const MAXFISH = 2600;
+const FAM_LYR = F.hei(700);
+/** 魚的條數。 */
+const NFISH = 620;
 const STONE = { x: 1690, y: 800 };
-/** 解說牌上下兩行小字（冷面的館方口吻）。 */
+/** 解說牌上面的小字（冷面的館方口吻）、沒有留言時的邀請。 */
 const HEAD = '展示物種：祝福';
-const FOOT = '＊請勿拍打玻璃，魚會害羞。';
+const INVITE = ['掃描右下角 QR code，', '把你的祝福傳上大螢幕，', '魚群會替你游一圈。'];
+/** 魚群的隊形。 */
+type Shape = 'ball' | 'ring' | 'wave' | 'spiral' | 'stream';
+const SHAPES: Shape[] = ['ball', 'ring', 'wave', 'spiral', 'stream'];
 
 const BG = () => new FSPass(/* glsl */ `
   uniform float t, kin, lamp, kick;
@@ -141,247 +140,149 @@ const BG = () => new FSPass(/* glsl */ `
     // 燈箱四周的空氣被照亮一點（很淡）
     col += (C_BONE * 0.01 + C_SIGNAL * 0.004) * lamp * exp(-max(dp, 0.0) / 60.0) * step(0.0, dp);
     if (dp < 0.0) {
-      float frame = step(-12.0, dp);
+      float frame = step(-6.0, dp);
       vec2 u = (p - pnl.xy) / (pnl.zw - pnl.xy);
       // 面板：燈箱亮起來是暖暖的深灰（字是亮的，面板本身不刺眼），中間亮、邊緣暗
       vec3 face = C_INK2 * 0.9 + (C_GRAPHITE * 0.12 + C_SIGNAL * 0.012) * lamp * (1.0 - 0.35 * length(u - 0.5));
       vec3 fr = C_INK * 0.9 + C_GRAPHITE * 0.05;
       fr += (C_BONE * 0.08 + C_SIGNAL * 0.05) * smoothstep(pnl.z - 12.0, pnl.z - 2.0, p.x);  // 右邊框的邊光
       fr += C_BONE * 0.03 * (1.0 - smoothstep(0.0, 3.0, p.y - pnl.y));
-      col = mix(face, fr, frame);
+      // 燈箱是一片薄薄的壓克力：後面的水族箱透過來一點點（容器要輕）
+      col = mix(mix(col, face, 0.86), fr, frame);
     }
     col *= kin;
     fragColor = vec4(col, 1.0);
-  }`, { t: { value: 0 }, kin: { value: 1 }, lamp: { value: 1 }, kick: { value: 0 }, pnl: { value: new THREE.Vector4(PANEL.x0, PANEL.y0, PANEL.x1, PANEL.y1) } });
+  }`, { t: { value: 0 }, kin: { value: 1 }, lamp: { value: 1 }, kick: { value: 0 }, pnl: { value: new THREE.Vector4(120, 560, 860, 936) } });
 
-/** 排字的一個點：魚要去的位置、屬於哪個字（詞）、在詞裡的左右位置（0..1，跟唱擦過去用）。 */
-interface FPt { x: number; y: number; w: number; u: number }
-/** 一句歌詞的魚陣：什麼時候開始聚、什麼時候散。 */
-interface School { line: Line | null; pts: FPt[]; a: number; b: number }
+interface Fish { u: number; v: number; d: number; s: number; w: number }
+interface Form { t: number; shape: Shape; x: number; y: number; r: number; dir: number }
 
 export default class Aquarium extends Scene {
   bg = shared('aquarium.bg', BG);
   /** 解說牌上的字（init 畫一次）。 */
   panel = this.track(new Layer2D(W, H, undefined, { fast: true }));
-  fish = this.track(new LineBatch(MAXFISH * 2 + 1200, { screen2D: true, blend: 'normal' }));
+  /** 玻璃上的歌詞（每格重畫）。 */
+  text = this.track(new Layer2D(W, H, undefined, { fast: true }));
+  fish = this.track(new LineBatch(NFISH * 2 + 1200, { screen2D: true, blend: 'normal' }));
   msg: Msg | null = this.ctx.params.message ?? null;
   seed = ((this.ctx.params.seed ?? 1) * 173 + (this.msg?.id ?? 0) * 7919) >>> 0;
-  /** 這個窗格的配置：解說牌、牌上的字、魚排字的範圍（有留言時解說牌大、魚字小）。 */
-  pnl = this.msg ? PANEL_M : PANEL;
-  ptxt = this.msg ? PTXT_M : PTXT;
-  fa = this.msg ? FISH_M : FISH;
-  schools: School[] = [];
-  /** 魚的狀態（null = 自由游）與狀態之間的轉換時間。 */
-  seq: (School | null)[] = [null];
-  tr: { t0: number; dur: number }[] = [];
-  nfish = 400;
-  /** 魚群中心的路徑：每個小節線換一個點（整群突然轉向）。 */
-  way: { t: number; x: number; y: number }[] = [];
+  /** 燈箱（x0, y0, x1, y1）：照字的多少決定大小。 */
+  pnl = { x0: PANEL_AT.x0, y0: 560, x1: 860, y1: PANEL_AT.y1 };
+  fp: Fish[] = [];
+  /** 每個小節線的隊形。 */
+  forms: Form[] = [];
   beats: number[] = [];
   tFirst = 0;
-  /** 每條魚的個性：繞群心的半徑、速度、相位、落後幾秒。 */
-  fp: { r: number; ry: number; w: number; ph: number; lag: number; d: number; s: number }[] = [];
+  hasLyrics = false;
+  msgSize: number | null = null;
+  lyrStyle: LyricStyle = { family: FAM_LYR, size: 48, minSize: V2.lyrMin, maxWidth: LYR.w };
 
   override async init() {
     const { audio: au, lyrics, song } = this.ctx;
     const s = this.ctx.start, e = this.ctx.end, m = this.msg;
-    const lines = lyrics.linesIn(s - 0.5, e + 1.2);
+    this.hasLyrics = lyrics.linesIn(s, e).length > 0;
     const sig = m ? sigOf(m) : '';
-    await loadText(`${T16_TEXT}${m?.text ?? ''}${sig}${lines.map((l) => l.text).join('')}${song.title}${song.artist}${COUPLE_ZH}${HEAD}${FOOT}${no3(m?.n ?? 0)}展示物種祝福魚群`);
+    await loadText(`${T16_TEXT}${m?.text ?? ''}${sig}${lyrics.linesIn(s - 1, e + 1).map((l) => l.text).join('')}${song.title}${song.artist}${HEAD}${no3(m?.n ?? 0)}${INVITE.join('')}祝福魚群Benedictio aeterna`);
     const beat = au.beatPeriod(s);
     this.tFirst = beatAfter(au, s + Math.min(0.2, beat * 0.4));
     this.beats = winBeats(au, s - 2, e);
 
-    // ---- 魚陣：每句歌詞一陣（窗格裡的）；純音樂又沒有留言時排新人的名字。
-    // 魚的「狀態」依時間排成一串：自由游 → 第一句 → 第二句 → … → 自由游；兩句之間魚直接從上一句的字游到下一句的字
-    // （上一句唱完才開始散、下一句要唱之前排好），兩句隔很久才先散開自由游一陣。
-    let maxPts = 0;
-    const seq: (School | null)[] = [null];
-    const tr: { t0: number; dur: number }[] = [];
-    if (lines.length) {
-      lines.forEach((ln) => {
-        const pts = this.linePoints(ln.text, ln);
-        maxPts = Math.max(maxPts, pts.length);
-        const sc: School = { line: ln, pts, a: 0, b: 0 };
-        this.schools.push(sc);
-        const prev = seq[seq.length - 1];
-        const pl = prev?.line;
-        if (!pl) { tr.push({ t0: ln.start - 1.1, dur: 0.9 }); seq.push(sc); return; }
-        if (ln.start - pl.end > 3.2) {
-          tr.push({ t0: pl.end + 0.8, dur: 0.9 }); seq.push(null);
-          tr.push({ t0: ln.start - 1.1, dur: 0.9 }); seq.push(sc);
-          return;
-        }
-        const T = Math.max(pl.end + 0.1, ln.start - 1.0);
-        tr.push({ t0: T, dur: clamp(ln.start - 0.1 - T, 0.35, 0.9) }); seq.push(sc);
-      });
-      const last = seq[seq.length - 1]!;
-      tr.push({ t0: last.line!.end + 0.8, dur: 0.9 }); seq.push(null);
-    } else if (!m) {
-      const pts = this.linePoints(COUPLE_ZH.replace(/\s*&\s*/, ' ♥ '), null);
-      maxPts = pts.length;
-      const sc: School = { line: null, pts, a: 0, b: 0 };
-      this.schools.push(sc);
-      tr.push({ t0: this.tFirst - 0.6, dur: 0.9 }); seq.push(sc);
-    }
-    this.seq = seq; this.tr = tr;
-    this.nfish = Math.min(MAXFISH, Math.max(420, maxPts + 90));
+    // ---- 魚：每條魚在隊形裡的位置參數（u 沿著隊形、v 橫向）、出發晚多少、大小
     const rnd = (i: number, k: number) => hash(this.seed, i, k);
-    for (let i = 0; i < this.nfish; i++) {
-      this.fp.push({ r: 30 + 220 * Math.sqrt(rnd(i, 1)), ry: 0.35 + 0.35 * rnd(i, 2), w: (0.5 + 0.6 * rnd(i, 3)) * (rnd(i, 4) < 0.8 ? 1 : -1), ph: rnd(i, 5) * TAU, lag: Math.round((0.05 + 0.6 * rnd(i, 6) ** 1.5) * 30) / 30, d: 0.35 * rnd(i, 7), s: 0.8 + 0.5 * rnd(i, 8) });
-    }
-    // 魚群中心：每個小節線換一個點（在開闊水域裡），整群在小節線上轉向
-    const bars = winBars(au, s - 4, e + 2);
-    let px = 1200, py = 380;
-    for (let k = 0; k < bars.length; k++) {
-      // 有魚陣的時候，沒排字的魚在字的下面游（不要穿過字）
-      const nx = m ? 1180 + 480 * rnd(k, 21) : 900 + 760 * rnd(k, 21), ny = this.schools.length ? (m ? 640 : 610) + 60 * rnd(k, 22) : 220 + 330 * rnd(k, 22);
-      this.way.push({ t: bars[k]!, x: px, y: py });
-      px = nx; py = ny;
-    }
-    this.way.push({ t: e + 10, x: px, y: py });
+    for (let i = 0; i < NFISH; i++) this.fp.push({ u: rnd(i, 1), v: rnd(i, 2), d: 0.35 * rnd(i, 3), s: 0.75 + 0.5 * rnd(i, 4), w: 0.6 + 0.8 * rnd(i, 5) });
+    // ---- 隊形：窗格開始前一個（開場時魚已經在游）＋每個小節線換一個，中心在開闊的水裡（避開左上的歌詞、左下的解說牌）
+    const bars = winBars(au, s - 4, e + 1);
+    let prevShape = -1;
+    bars.forEach((tb, k) => {
+      let si = Math.floor(rnd(k, 31) * SHAPES.length);
+      if (si === prevShape) si = (si + 1) % SHAPES.length;
+      prevShape = si;
+      this.forms.push({ t: tb, shape: SHAPES[si]!, x: 1000 + 560 * rnd(k, 32), y: 380 + 200 * rnd(k, 33), r: 150 + 70 * rnd(k, 34), dir: rnd(k, 35) < 0.5 ? 1 : -1 });
+    });
+    if (!this.forms.length) this.forms.push({ t: s - 1, shape: 'ball', x: 1280, y: 460, r: 180, dir: 1 });
 
     // ---- 解說牌上的字（畫一次）
     this.drawPanel(sig);
+    this.lyrStyle = { family: FAM_LYR, size: lyricV2(this.msgSize), minSize: V2.lyrMin, maxWidth: LYR.w, lineHeight: 1.18 };
   }
 
-  /** 一段字排成魚陣的點（每個字分開取點，才知道每個點屬於哪個詞、在詞裡的哪裡）。 */
-  private linePoints(text: string, line: Line | null): FPt[] {
-    const c = this.panel.ctx;
-    // 魚排的字要夠大才認得出來：中文筆畫多，寧可折成兩行也不要縮到 132 px 以下；英文 104 px 就讀得到
-    const cjk = /[　-鿿가-힯]/.test(text);
-    // 有留言時魚字小一級（約 64 px，魚也小、密一點才排得出筆畫），明顯比解說牌上的留言小
-    const st: LyricStyle = this.msg
-      ? { family: FAM_FISH, size: 66, minSize: 60, maxWidth: this.fa.w, align: 'center', lineHeight: 1.14 }
-      : cjk
-        ? { family: FAM_FISH, size: 150, minSize: 132, maxWidth: this.fa.w, align: 'center', lineHeight: 1.1 }
-        : { family: FAM_FISH, size: 128, minSize: 104, maxWidth: this.fa.w, align: 'center', lineHeight: 1.12 };
-    // 沒有歌詞物件（新人的名字）時自己排一行
-    const fake: Line = line ?? { i: -1, text, start: 0, end: 0, words: Array.from(text).map((w, k) => ({ w, start: 0, end: 0, line: -1, index: k, gi: -1, o: k })) };
-    const lay = layoutLyric(c, fake, st);
-    const top = this.fa.y + (this.fa.h - lay.height) / 2 + lay.size * 0.9;
-    const cx = this.fa.x + this.fa.w / 2;
-    // 點排在整齊的格子上（像點陣字，筆畫比亂撒的點清楚），格子對齊整個畫面，字跟字之間也對得齊；點太多就放疏一點
-    let step = Math.max(this.msg ? 2.6 : 5, lay.size / 26);
-    const sample = (stp: number) => {
-      const out: FPt[] = [];
-      lay.words.forEach((pw, wi) => {
-        if (!pw.word.w.trim()) return;
-        for (const g of layout(pw.word.w, FAM_FISH, lay.size).glyphs) {
-          if (!g.ch.trim()) continue;
-          const ox = cx + pw.x + g.x, oy = top + pw.y;
-          for (const q of gridPoints(g.ch, FAM_FISH, lay.size, stp, ox, oy)) out.push({ x: q.x, y: q.y, w: wi, u: clamp((q.x - cx - pw.x) / Math.max(1, pw.w)) });
-        }
-      });
-      return out;
-    };
-    let pts = sample(step);
-    if (pts.length > MAXFISH - 120) { step *= Math.sqrt(pts.length / (MAXFISH - 120)) * 1.02; pts = sample(step); }
-    // 打散順序：魚從四面八方游進來，不是一排一排
-    const r = (i: number) => hash(this.seed, i, 91);
-    return pts.map((p, i) => ({ p, k: r(i) })).sort((a, b) => a.k - b.k).map((x) => x.p);
-  }
-
-  /** 解說牌：上面一行小字、留言（大）、署名、下面一行小字。沒有留言：展示物種與邀請。 */
+  /** 解說牌：上面一行小字、留言、署名；沒有留言：「祝福魚群」與邀請。燈箱的大小照字決定（左下角固定）。 */
   private drawPanel(sig: string) {
-    const c = this.panel.ctx, m = this.msg, P = this.ptxt, Q = this.pnl;
+    const c = this.panel.ctx, m = this.msg;
     c.clearRect(0, 0, W, H);
     c.textBaseline = 'alphabetic';
-    c.font = font(F.hei(500), 18); c.letterSpacing = '4px'; c.fillStyle = rgba('ash', 0.75);
-    c.fillText(m ? `${HEAD}　${no3(m.n)}` : HEAD, P.x, Q.y0 + 58);
-    c.letterSpacing = '0px';
-    c.fillStyle = rgba('ash', 0.3); c.fillRect(P.x, Q.y0 + 76, P.w, 1);
+    let bw: number, bh: number;
+    let paint: (x: number, y: number) => void;
     if (m) {
-      const n = Array.from(m.text.replace(/\s/g, '')).length;
-      const fit: FitResult = fitText(c, m.text, FAM_MSG, P.w, P.h - 70, { min: 72, max: n <= 4 ? 170 : n <= 10 ? 140 : 116, lineHeight: 1.28, maxLines: 7 });
-      const blockH = fit.size + (fit.lines.length - 1) * fit.lineHeight + 70;
-      const top = P.y + Math.max(0, (P.h - blockH) / 2 - 20) + fit.size * 0.9;
-      drawMessage(c, fit, FAM_MSG, P.x, top, { color: rgba('bone', 0.97) });
-      c.font = font(F.ming(400), 42); c.fillStyle = rgba('bone', 0.72); c.textAlign = 'right';
-      c.fillText(sig, P.x + P.w, top + (fit.lines.length - 1) * fit.lineHeight + fit.size * 0.45 + 50);
-      c.textAlign = 'left';
+      const o = { min: V2.msgMin, max: msgMaxFor(m.text), lineHeight: 1.3, maxLines: 6 };
+      const fit: FitResult = fitClauses(c, m.text, FAM_MSG, PTXT_MAX.w, PTXT_MAX.h - 46, o) ?? fitText(c, m.text, FAM_MSG, PTXT_MAX.w, PTXT_MAX.h - 46, o);
+      this.msgSize = fit.size;
+      const ss = sigV2(fit.size);
+      c.font = font(F.ming(400), ss);
+      const sw = c.measureText(sig).width;
+      bw = Math.max(fit.width, sw + 40, 300);
+      bh = fit.size + (fit.lines.length - 1) * fit.lineHeight + ss * 1.7;
+      paint = (x, y) => {
+        drawMessage(c, fit, FAM_MSG, x, y + fit.size * 0.9, { color: rgba('bone', 0.97) });
+        c.font = font(F.ming(400), ss); c.fillStyle = rgba('bone', 0.72); c.textAlign = 'right';
+        c.fillText(sig, x + bw, y + fit.size * 0.9 + (fit.lines.length - 1) * fit.lineHeight + fit.size * 0.3 + ss * 1.3);
+        c.textAlign = 'left';
+      };
     } else {
-      c.font = font(F.ming(700), 50); c.fillStyle = rgba('bone', 0.9);
-      c.fillText('祝福魚群', P.x, P.y + 110);
-      c.font = font(F.serif(400, true), 30); c.fillStyle = rgba('bone', 0.6);
-      c.fillText('Benedictio aeterna', P.x, P.y + 172);
-      c.font = font(F.hei(500), 26); c.fillStyle = rgba('bone', 0.72);
-      const lines = ['掃描右下角 QR code，', '把你的祝福傳上大螢幕，', '魚群會把它游出來。'];
-      lines.forEach((ln, i) => c.fillText(ln, P.x, P.y + 300 + i * 44));
+      bw = 380; bh = 44 + 34 + INVITE.length * 34;
+      paint = (x, y) => {
+        c.font = font(F.ming(700), 40); c.fillStyle = rgba('bone', 0.92);
+        c.fillText('祝福魚群', x, y + 38);
+        c.font = font(F.serif(400, true), 24); c.fillStyle = rgba('bone', 0.6);
+        c.fillText('Benedictio aeterna', x + 180, y + 36);
+        c.font = font(F.hei(500), 22); c.fillStyle = rgba('bone', 0.72);
+        INVITE.forEach((ln, i) => c.fillText(ln, x, y + 44 + 34 + i * 34));
+      };
     }
-    c.font = font(F.hei(500), 17); c.letterSpacing = '2px'; c.fillStyle = rgba('ash', 0.6);
-    c.fillText(FOOT, P.x, Q.y1 - 44);
+    // 燈箱：左下角固定，寬高 = 字 + 邊距
+    const W0 = bw + PAD.x * 2, H0 = bh + PAD.top + PAD.bottom;
+    this.pnl = { x0: PANEL_AT.x0, y0: PANEL_AT.y1 - H0, x1: PANEL_AT.x0 + W0, y1: PANEL_AT.y1 };
+    const x = this.pnl.x0 + PAD.x, y = this.pnl.y0 + PAD.top;
+    c.font = font(F.hei(500), 17); c.letterSpacing = '4px'; c.fillStyle = rgba('ash', 0.75);
+    c.fillText(m ? `${HEAD}　${no3(m.n)}` : HEAD, x, this.pnl.y0 + 34);
     c.letterSpacing = '0px';
+    c.fillStyle = rgba('ash', 0.3); c.fillRect(x, this.pnl.y0 + 46, W0 - PAD.x * 2, 1);
+    paint(x, y);
     this.panel.upload();
   }
 
-  /** 魚群中心在 t 的位置：小節線之間用強烈緩動從一點衝到下一點（整群在小節線轉向）。 */
-  private cc = new Map<number, { x: number; y: number }>();
-  private center(t: number) {
-    // 每條魚落後的秒數只有幾十種（init 量化過），同一格裡很多魚問同一個時間：記起來
-    const hit = this.cc.get(t);
-    if (hit) return hit;
-    const r = this.center0(t);
-    this.cc.set(t, r);
-    return r;
+  /** 隊形 f 裡第 i 條魚在 t 的位置（隊形本身也在慢慢轉、流動）。 */
+  private shapeAt(f: Form, fi: Fish, t: number) {
+    const w = t * 0.5 * f.dir * fi.w, R = f.r;
+    let x = 0, y = 0;
+    switch (f.shape) {
+      case 'ball': { const r = R * Math.sqrt(fi.u), a = fi.v * TAU + w; x = Math.cos(a) * r * 1.35; y = Math.sin(a) * r * 0.75; break; }
+      case 'ring': { const r = R * (0.82 + 0.18 * fi.v), a = fi.u * TAU + w * 0.8; x = Math.cos(a) * r * 1.4; y = Math.sin(a) * r * 0.62; break; }
+      case 'wave': { const L = R * 3.2; x = (fi.u - 0.5) * L; y = Math.sin(fi.u * TAU * 1.3 + t * 2.2 * f.dir) * R * 0.45 + (fi.v - 0.5) * 46; break; }
+      case 'spiral': { const r = R * (0.15 + 0.85 * fi.u), a = fi.u * TAU * 2.2 + w * 1.4; x = Math.cos(a) * r * 1.35 + (fi.v - 0.5) * 20; y = Math.sin(a) * r * 0.7 + (fi.v - 0.5) * 20; break; }
+      case 'stream': { const L = R * 3.6, k = fract(fi.u + t * 0.12 * f.dir); x = (k - 0.5) * L; y = (k - 0.5) * L * -0.22 + Math.sin(k * 9 + t) * 18 + (fi.v - 0.5) * 60; break; }
+    }
+    return { x: f.x + x, y: f.y + y };
   }
-  private center0(t: number) {
-    const w = this.way;
+
+  /** 第 i 條魚在 t 的位置：從上一個隊形流到這一個（小節線上出發，每條魚晚一點點，路上往外拱一點）。 */
+  private pos(i: number, t: number) {
+    const fi = this.fp[i]!, F2 = this.forms;
     let k = 0;
-    while (k < w.length - 1 && w[k + 1]!.t <= t) k++;
-    const a = w[k]!, b = w[Math.min(k + 1, w.length - 1)]!;
-    const nxt = w[k + 2] ?? b;
-    const dur = Math.max(0.3, nxt.t - b.t);
-    const u = ease.inOutCubic(clamp((t - b.t) / (dur * 0.8)));
-    // 還沒到第一個小節線：停在 a
-    if (t < b.t) return { x: a.x, y: a.y };
-    return { x: b.x + (nxt.x - b.x) * u, y: b.y + (nxt.y - b.y) * u };
-  }
-
-  /** 第 i 條魚「自由游」的位置：繞著（落後一點的）群心轉圈。 */
-  private free(i: number, t: number) {
-    const f = this.fp[i]!;
-    const c = this.center(t - f.lag);
-    const a = f.ph + t * f.w;
-    // 群不是一顆正橢圓：半徑跟著時間鼓縮、上下有波，落後越多的魚在越外圍（群有一條尾巴）
-    const rr = f.r * (0.85 + 0.25 * Math.sin(t * 0.9 + f.ph * 2));
-    return { x: c.x + Math.cos(a) * rr * 1.6 + 26 * Math.sin(t * 0.7 + i * 0.37), y: c.y + Math.sin(a) * rr * f.ry + 22 * Math.sin(a * 2 + t * 1.1) };
-  }
-
-  /** 一個狀態裡第 i 條魚的位置（自由游，或排在字上的那一點再輕輕浮動）與它是不是排在字上。 */
-  private at(st: School | null, i: number, t: number) {
-    if (st && i < st.pts.length) {
-      const q = st.pts[i]!;
-      return { x: q.x + 0.8 * Math.sin(t * 3.1 + i), y: q.y + 0.6 * Math.cos(t * 2.4 + i * 1.7), pt: q as FPt | null, sch: st as School | null };
-    }
-    const f = this.free(i, t);
-    return { x: f.x, y: f.y, pt: null, sch: null };
-  }
-
-  /** 第 i 條魚在 t 的位置與它在魚陣裡的程度（0 = 自由游、1 = 排好）。兩個狀態之間游過去時路線往外拱一點（像游，不是平移）。 */
-  private pos(i: number, t: number): { x: number; y: number; k: number; sch: School | null; pt: FPt | null } {
-    const d = this.fp[i]!.d;
-    for (let j = 0; j < this.tr.length; j++) {
-      const tj = this.tr[j]!;
-      const a = tj.t0 + d * tj.dur * 0.4, b = a + tj.dur * 0.75;
-      if (t < a) { const p = this.at(this.seq[j]!, i, t); return { x: p.x, y: p.y, k: p.pt ? 1 : 0, sch: p.sch, pt: p.pt }; }
-      if (t < b) {
-        const A = this.at(this.seq[j]!, i, t), B = this.at(this.seq[j + 1]!, i, t);
-        const u = ease.inOutCubic((t - a) / (b - a));
-        const x = A.x + (B.x - A.x) * u, y = A.y + (B.y - A.y) * u;
-        const f = this.free(i, t), arc = 0.3 * Math.sin(Math.PI * u);
-        const kA = A.pt ? 1 : 0, kB = B.pt ? 1 : 0;
-        const near = u < 0.5 ? (A.pt ? A : B) : (B.pt ? B : A);
-        return { x: x + (f.x - x) * arc, y: y + (f.y - y) * arc, k: kA + (kB - kA) * u, sch: near.sch, pt: near.pt };
-      }
-    }
-    const p = this.at(this.seq[this.seq.length - 1] ?? null, i, t);
-    return { x: p.x, y: p.y, k: p.pt ? 1 : 0, sch: p.sch, pt: p.pt };
+    while (k < F2.length - 1 && F2[k + 1]!.t <= t) k++;
+    const cur = F2[k]!, prev = F2[Math.max(0, k - 1)]!;
+    const b = this.shapeAt(cur, fi, t);
+    if (k === 0) return b;
+    const u = ease.inOutCubic(clamp((t - cur.t - fi.d) / 0.9));
+    if (u >= 1) return b;
+    const a = this.shapeAt(prev, fi, t);
+    const arc = Math.sin(Math.PI * u) * (fi.v - 0.5) * 120;
+    return { x: a.x + (b.x - a.x) * u, y: a.y + (b.y - a.y) * u + arc };
   }
 
   override render(f: Frame, out: THREE.WebGLRenderTarget): PostOverrides {
-    const { renderer, comp } = this.ctx;
-    const t = f.t, s = this.ctx.start, e = this.ctx.end;
+    const { renderer, comp, lyrics, song } = this.ctx;
+    const t = f.t, s = this.ctx.start;
     const u = this.bg.u;
     const kin = prog(t, s, s + 0.2);
     // 燈箱：第一拍「啪、啪」閃兩下亮起來
@@ -390,58 +291,29 @@ export default class Aquarium extends Scene {
     u.t!.value = t; u.kin!.value = kin; u.lamp!.value = lamp; u.kick!.value = f.a.kick;
     (u.pnl!.value as THREE.Vector4).set(this.pnl.x0, this.pnl.y0, this.pnl.x1, this.pnl.y1);
     this.bg.render(renderer, out);
-    comp.draw(renderer, this.panel.texture, out, { opacity: kin * (0.12 + 0.88 * lamp) });
 
-    // ---- 魚
-    this.cc.clear();
+    // ---- 魚（燈箱在缸前面：燈箱後面的魚不畫）
     const lb = this.fish; lb.clear();
-    const B = LIN.bone, S = LIN.signal, E = LIN.ember;
-    // 每一拍：一道「擺尾」從左到右掃過排好的魚
+    const B = LIN.bone, S = LIN.signal;
     let lastBeat = -Infinity;
     for (const b of this.beats) if (b <= t) lastBeat = b;
-    for (let i = 0; i < this.nfish; i++) {
-      const p = this.pos(i, t);
-      const q = this.pos(i, t - 0.04);
-      let ang = Math.atan2(p.y - q.y, p.x - q.x);
-      const sp = Math.hypot(p.x - q.x, p.y - q.y);
-      // 排好的魚一起朝右；擺尾的那一下轉一點
-      const sweep = lastBeat > -Infinity ? pulse(t, lastBeat + (p.x - this.fa.x) / 2600, 0.09) : 0;
-      if (p.k > 0.01) {
-        const target = 0.45 * sweep * (i % 2 ? 1 : -1);
-        const a2 = sp < 0.4 ? target : ang;
-        ang = a2 + (target - a2) * p.k;
-      }
-      // 顏色：自由游的是銀色；排字的魚照跟唱規則（還沒唱暗、正在唱訊號色、唱完銀白）
-      let col: [number, number, number] = [B[0] * 0.55, B[1] * 0.55, B[2] * 0.55];
-      let a = 0.75 * this.fp[i]!.s;
-      if (p.k > 0.02 && p.sch && p.pt) {
-        let st = 1; // 0 = 還沒唱、1 = 正在唱、2 = 唱完
-        if (p.sch.line) {
-          const wd = p.sch.line.words[p.pt.w];
-          const pr = wd ? Lyrics.wordProgress(wd, t) : 0;
-          st = pr <= 0 || p.pt.u > pr ? 0 : pr < 1 ? 1 : 2;
-          if (st === 2 && wd && t - wd.end < 0.35) st = 1;
-        } else st = t > this.tFirst + 0.8 ? 2 : 1;
-        const k = p.k;
-        // 有留言時魚排的歌詞退一步（唱完的銀白暗一點），焦點留給解說牌上的留言
-        const far = this.msg ? 1 : 0;
-        const sung = far ? 0.66 : 0.95, hot = far ? 1.5 : 2.2, un = far ? 0.24 : 0.3;
-        const base: [number, number, number] = st === 0 ? [B[0] * un, B[1] * un, B[2] * un] : st === 1 ? [S[0] * hot + E[0] * 0.3, S[1] * hot + E[1] * 0.3, S[2] * hot + E[2] * 0.3] : [B[0] * sung, B[1] * sung, B[2] * sung];
-        col = [col[0] + (base[0] - col[0]) * k, col[1] + (base[1] - col[1]) * k, col[2] + (base[2] - col[2]) * k];
-        a = a + ((st === 0 ? 0.6 : 1) - a) * k;
-      }
-      a *= kin;
-      // 解說牌在水族箱前面：牌後面的魚看不到
-      const pn = this.pnl;
+    const pn = this.pnl;
+    for (let i = 0; i < NFISH; i++) {
+      const p = this.pos(i, t), q = this.pos(i, t - 0.04);
       if (p.x > pn.x0 - 4 && p.x < pn.x1 + 4 && p.y > pn.y0 - 4 && p.y < pn.y1 + 4) continue;
-      // 排字的魚小一點、細一點（字的筆畫才不會糊在一起）；有留言時魚字小，排字的魚更小（像在比較遠的水裡）
-      const fk = this.msg ? 0.62 : 0.35;
-      const L = 6.5 * this.fp[i]!.s * (1 - fk * p.k), cx = Math.cos(ang), cy = Math.sin(ang);
-      // 身體（前粗後細用兩段）＋尾巴
-      lb.seg2(p.x - cx * L * 0.3, p.y - cy * L * 0.3, p.x + cx * L * 0.5, p.y + cy * L * 0.5, (3.0 - (this.msg ? 1.5 : 0.6) * p.k) * this.fp[i]!.s, col, a);
-      const wag = Math.sin(t * 18 + i) * 0.5 + sweep * 0.9;
+      if (p.y < TANK.surf + 10 || p.y > TANK.sand + 20) continue;
+      const ang = Math.atan2(p.y - q.y, p.x - q.x);
+      // 每一拍：一道銀光從左到右掃過魚群（一起翻身反光）
+      const glint = lastBeat > -Infinity ? pulse(t, lastBeat + (p.x - 700) / 3000, 0.1) : 0;
+      const fi = this.fp[i]!;
+      const k = 0.5 + 0.12 * fi.w + 0.45 * glint;
+      const col: [number, number, number] = [B[0] * k + S[0] * 0.25 * glint, B[1] * k + S[1] * 0.25 * glint, B[2] * k + S[2] * 0.25 * glint];
+      const a = 0.8 * kin;
+      const L = 7 * fi.s, cx = Math.cos(ang), cy = Math.sin(ang);
+      lb.seg2(p.x - cx * L * 0.3, p.y - cy * L * 0.3, p.x + cx * L * 0.5, p.y + cy * L * 0.5, 3.0 * fi.s, col, a);
+      const wag = Math.sin(t * 18 + i) * 0.5 + glint * 0.9;
       const tx = -cx * L * 0.3, ty = -cy * L * 0.3;
-      lb.seg2(p.x + tx, p.y + ty, p.x + tx - Math.cos(ang + wag) * L * 0.5, p.y + ty - Math.sin(ang + wag) * L * 0.5, 1.5 * this.fp[i]!.s, col, a * 0.8);
+      lb.seg2(p.x + tx, p.y + ty, p.x + tx - Math.cos(ang + wag) * L * 0.5, p.y + ty - Math.sin(ang + wag) * L * 0.5, 1.5 * fi.s, col, a * 0.8);
     }
 
     // ---- 氣泡：每一拍從打氣石冒一串（4～6 顆），一邊晃一邊往上，到水面就沒了
@@ -466,36 +338,27 @@ export default class Aquarium extends Scene {
       }
     });
     lb.render(renderer, out);
+
+    // ---- 解說牌上的字（燈箱亮度）、玻璃上的歌詞
+    comp.draw(renderer, this.panel.texture, out, { opacity: kin * (0.12 + 0.88 * lamp) });
+    const L = this.text; L.clear();
+    const c = L.ctx;
+    c.globalAlpha = kin;
+    if (this.hasLyrics) {
+      const ly = lyricAt(lyrics, t);
+      if (ly) {
+        c.save(); c.translate(LYR.x, LYR.y);
+        drawLyric(c, ly.line, t, this.lyrStyle, layoutLyric(c, ly.line, this.lyrStyle), ly.k);
+        c.restore();
+      }
+    } else {
+      c.font = font(F.mono(500), 18); c.letterSpacing = '4px'; c.fillStyle = rgba('ash', 0.6);
+      c.fillText(`♪  ${song.title}${song.artist ? '  ·  ' + song.artist : ''}`, LYR.x, LYR.y);
+      c.letterSpacing = '0px';
+    }
+    comp.draw(renderer, L.upload(), out);
     return { bloom: 0.7, vignette: 0.55, halation: 0.22, zoom: 1 + 0.035 * ease.inOutQuad(f.p) };
   }
 }
 
-let gridCv: CanvasRenderingContext2D | null = null;
-/**
- * 一個字的格點：把字畫在一張小畫布上，在整齊的格子（對齊整個畫面座標，格距 step）上取「在字裡面」的點。
- * （engine 的 textPoints 是亂撒的點，魚排出來筆畫會糊；格點排出來像點陣字，中文也認得出來。）
- */
-function gridPoints(ch: string, family: string, size: number, step: number, ox: number, oy: number): { x: number; y: number }[] {
-  const pad = Math.ceil(size * 0.25), w = Math.ceil(size * 1.3 + pad * 2), h = Math.ceil(size * 1.5);
-  if (!gridCv) gridCv = document.createElement('canvas').getContext('2d', { willReadFrequently: true })!;
-  const c = gridCv;
-  if (c.canvas.width < w || c.canvas.height < h) { c.canvas.width = Math.max(c.canvas.width, w); c.canvas.height = Math.max(c.canvas.height, h); }
-  c.clearRect(0, 0, c.canvas.width, c.canvas.height);
-  c.font = font(family, size);
-  c.fillStyle = 'rgb(255,255,255)'; // 取樣用的遮罩（不是畫面上的顏色）
-  c.textBaseline = 'alphabetic';
-  const base = Math.round(size * 1.12);
-  c.fillText(ch, pad, base);
-  const data = c.getImageData(0, 0, w, h).data;
-  const out: { x: number; y: number }[] = [];
-  // 畫布左上角在畫面上的位置
-  const x0 = ox - pad, y0 = oy - base;
-  for (let gy = Math.ceil(y0 / step) * step; gy < y0 + h; gy += step) {
-    for (let gx = Math.ceil(x0 / step) * step; gx < x0 + w; gx += step) {
-      const ix = Math.round(gx - x0), iy = Math.round(gy - y0);
-      if (ix < 0 || iy < 0 || ix >= w || iy >= h) continue;
-      if (data[(iy * w + ix) * 4 + 3]! > 110) out.push({ x: gx, y: gy });
-    }
-  }
-  return out;
-}
+const fract = (x: number) => x - Math.floor(x);
