@@ -314,6 +314,14 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "idea": "從後排看兩人的背影和狗狗的頭，大銀幕上放的是歌詞（跟唱），爆米花在小鼓跳；片頭字卡是留言。"
  },
  {
+  "name": "laundry",
+  "title": "曬衣服",
+  "family": "home",
+  "light": true,
+  "couple": true,
+  "idea": "陽台晾衣繩，兩人一件一件夾上去，衣服與床單上寫著留言與歌詞（一拍一件），風吹起來。"
+ },
+ {
   "name": "paperplane",
   "title": "紙飛機",
   "family": "home",
