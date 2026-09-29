@@ -15,7 +15,7 @@ const ORIGINAL = [
   ['karaoke', '跟唱', 'type', false, '最單純的版面：留言與逐字跟唱的歌詞'],
   ['sparkler', '仙女棒寫字', 'light', false, '仙女棒的火花在暗色信紙上一個字一個字寫出留言'],
   ['slam', '大字重擊', 'type', false, '副歌用：歌詞或留言一拍一組大字打上來'],
-  ['certificate', '結婚書約', 'doc', true, '桌上的祝福登記表，留言是祝福內容，最後蓋章'],
+  ['certificate', '結婚書約', 'doc', false, '桌上的祝福登記表，留言是祝福內容，最後蓋章'],
   ['heartbeat', '心電圖', 'machine', false, '暗房裡的監護儀，心跳跟著大鼓；留言是前面的醫囑紙條'],
   ['stars', '星空', 'nature', false, '電影感夜空：留言是天上的大字，每個字跟著一顆星亮起'],
   ['banknote', '愛情準備銀行', 'doc', true, '桌上一張鈔票，雕刻紋與交扣的戒指，留言印在鈔票上'],

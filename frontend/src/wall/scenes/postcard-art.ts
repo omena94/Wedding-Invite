@@ -3,6 +3,9 @@
 // 座標：卡片上的東西一律用「卡面座標」（左上角 (0,0)、y 向下、1 單位 = 鏡頭在基準距離時螢幕上的 1 px）。
 // 世界座標：桌面是 z = 0 的平面、y 向上，卡片靜止時中心在原點。
 // MV 融合原則：畫面上只有一個焦點（留言；沒有留言時是歌詞），其他字一律小（≤ 22 px）、淡，集中成兩小群（表頭、右邊的郵務欄）。
+// v2（2026-09-28「留言板太大」「多補動畫」）：鏡頭拉遠，卡片在螢幕上只有約 0.49 倍（≈ 640×417，卡片本身就是留言的容器）；
+// 背面的留言區加寬（郵務欄縮成右邊窄窄一條）；桌上多了道具（茶杯、散落的郵票、一個信封：畫在桌面 shader 取樣的一張圖上）、
+// 窗外樹影在桌布上晃；前景是一叢失焦的葉子（取代原本失焦的鋼筆：真的鋼筆現在會在卡片上寫字）。
 import * as THREE from 'three';
 import { FSPass, makeRT, W, H } from '../engine/gl';
 import { GLSL_COMMON, THEME_UNIFORMS } from '../engine/glsl/common';
@@ -17,16 +20,16 @@ export const CW = 1300, CH = 846;
 export const PIC = { x0: 38, y0: 38, x1: CW - 38, y1: 640 };
 /** 背面的格局：留言占左邊大部分；右邊一條窄窄的郵務欄（郵票、郵戳、地址，全部小而淡）；最下面一條 P.S.（歌詞）。 */
 export const BACK = {
-  headY: 66,
-  msg: { x: 76, y: 104, w: 820, h: 552 },
-  divX: 944,
-  right: { x0: 984, x1: 1226 },
-  stamp: { x: 1122, y: 46, w: 104, h: 128 },
-  mark: { x: 1084, y: 168, r: 50 },
-  zipY: 292,
-  addr: [376, 428, 480],
-  psRule: 676,
-  ps: { x: 76, y0: 690, y1: 812, x1: 1170 },
+  headY: 62,
+  msg: { x: 64, y: 92, w: 978, h: 604 },
+  divX: 1064,
+  right: { x0: 1086, x1: 1258 },
+  stamp: { x: 1150, y: 36, w: 104, h: 128 },
+  mark: { x: 1112, y: 158, r: 50 },
+  zipY: 262,
+  addr: [360, 440, 520],
+  psRule: 706,
+  ps: { x: 64, y0: 716, y1: 834, x1: 1250 },
 };
 
 // ---------------------------------------------------------------- 3D：桌面（亞麻布＋檯燈的光＋景深＋卡片的影子）
@@ -50,6 +53,10 @@ uniform float focus;       // 對焦距離（鏡頭到卡片）
 uniform vec2 lamp;         // 檯燈照在桌上的光斑中心（世界座標）
 uniform vec4 shC;          // 影子中心 xy、半寬高（世界座標）
 uniform vec3 shP;          // 旋轉、模糊半徑、濃度
+uniform float uT;          // 時間（樹影在風裡晃）
+uniform sampler2D propsTex; // 桌上的道具（茶杯、郵票、信封）：一張 fast 圖層，蓋在 propsR 這個範圍（世界座標）
+uniform vec4 propsR;
+uniform float propsOn;
 ${GLSL_COMMON}
 void main() {
   vec2 p = vWP.xy;
@@ -66,8 +73,20 @@ void main() {
   // 檯燈：左上方一盞燈，桌上一圈暖暖的光，往外慢慢暗下去（背景要能呼吸：光斑是唯一的大塊明暗）
   float d = length(p - lamp);
   float pool = exp(-d * d / (1350.0 * 1350.0));
-  col *= 0.5 + 0.66 * pool;
+  col *= 0.7 + 0.46 * pool;
   col = mix(col, col * (C_EMBER / max(max(C_EMBER.r, C_EMBER.g), C_EMBER.b)), 0.18 * pool);
+  // 桌上的道具（景深：離對焦面遠的地方貼圖也跟著糊一點，取比較粗的 mip）
+  if (propsOn > 0.5) {
+    vec2 pu = (p - propsR.xy) / propsR.zw;
+    if (pu.x > 0.0 && pu.x < 1.0 && pu.y > 0.0 && pu.y < 1.0) {
+      vec4 pr = fastLayer(texture(propsTex, pu));
+      col = col * (1.0 - pr.a) + pr.rgb * (0.55 + 0.6 * pool);
+    }
+  }
+  // 窗外的樹影：只在畫面右上方的桌布上，很慢地在風裡晃（葉縫之間是亮的）
+  vec2 lp = p * 0.0021 + vec2(0.3 * sin(uT * 0.45) + 0.07 * sin(uT * 1.3), 0.14 * sin(uT * 0.33 + 1.0));
+  float leafM = smoothstep(400.0, 1900.0, p.x) * smoothstep(0.0, 1000.0, p.y);
+  col *= 1.0 - 0.1 * leafM * smoothstep(0.17, 0.25, fbm(lp, 3));
   // 卡片的影子：旋轉過的方框、邊緣模糊（抬得越高越模糊越淡）
   vec2 q = rot2(shP.x) * (p - shC.xy);
   float sd = sdBox(q, shC.zw);
@@ -276,6 +295,7 @@ export const CARD3D = () => {
     uniforms: {
       ...THEME_UNIFORMS, focus: { value: 2800 }, lamp: { value: new THREE.Vector2(...LAMP) },
       shC: { value: new THREE.Vector4(0, 0, 1, 1) }, shP: { value: new THREE.Vector3(0, 8, 0.3) },
+      uT: { value: 0 }, propsTex: { value: null }, propsR: { value: new THREE.Vector4(0, 0, 1, 1) }, propsOn: { value: 0 },
     },
     depthTest: false, depthWrite: false,
   }));
@@ -364,10 +384,10 @@ export function drawBackStatic(c: Ctx2, cp: BackCopy) {
   c.textBaseline = 'alphabetic';
   // 表頭：一小群（POST CARD · 明信片 · No.042）
   c.fillStyle = rgba('sepia', 0.42);
-  c.font = font(F.serif(600), 20); c.letterSpacing = '8px';
+  c.font = font(F.serif(600), 30); c.letterSpacing = '10px';
   c.fillText('POST CARD', BACK.msg.x, BACK.headY);
   const hw = c.measureText('POST CARD').width;
-  c.font = font(F.mono(500), 12); c.letterSpacing = '3px'; c.fillStyle = rgba('sepia', 0.36);
+  c.font = font(F.mono(500), 18); c.letterSpacing = '4px'; c.fillStyle = rgba('sepia', 0.36);
   c.fillText(`明信片  ·  ${cp.tag}`, BACK.msg.x + hw + 18, BACK.headY - 2);
   c.letterSpacing = '0px';
   // 分隔線
@@ -376,12 +396,12 @@ export function drawBackStatic(c: Ctx2, cp: BackCopy) {
   // 右邊的郵務欄（第二小群）：郵票、郵遞區號、地址
   drawStamp(c, BACK.stamp.x, BACK.stamp.y, BACK.stamp.w, BACK.stamp.h);
   const R = BACK.right;
-  c.font = font(F.mono(500), 10); c.letterSpacing = '3px'; c.fillStyle = rgba('sepia', 0.36);
-  c.fillText('ZIP', R.x0, BACK.zipY - 8);
+  c.font = font(F.mono(500), 14); c.letterSpacing = '3px'; c.fillStyle = rgba('sepia', 0.36);
+  c.fillText('ZIP', R.x0, BACK.zipY - 38);
   c.letterSpacing = '0px';
   c.strokeStyle = rgba('blood', 0.45); c.lineWidth = 1.1;
   ['5', '2', '0'].forEach((d, i) => {
-    const bx = R.x0 + 34 + i * 34;
+    const bx = R.x0 + 6 + i * 38;
     c.strokeRect(bx, BACK.zipY - 28, 28, 32);
     c.fillStyle = rgba('sepia', 0.6); c.font = font(F.hand(700), 22); c.textAlign = 'center';
     c.fillText(d, bx + 14, BACK.zipY - 4);
@@ -392,9 +412,9 @@ export function drawBackStatic(c: Ctx2, cp: BackCopy) {
   BACK.addr.forEach((y, i) => {
     c.fillStyle = rgba('sepia', 0.2);
     c.fillRect(R.x0, y + 10, R.x1 - R.x0, 1);
-    if (labels[i]) { c.font = font(F.mono(500), 10); c.letterSpacing = '3px'; c.fillStyle = rgba('sepia', 0.34); c.fillText(labels[i]!, R.x0, y - 26); c.letterSpacing = '0px'; }
+    if (labels[i]) { c.font = font(F.mono(500), 14); c.letterSpacing = '3px'; c.fillStyle = rgba('sepia', 0.34); c.fillText(labels[i]!, R.x0, y - 34); c.letterSpacing = '0px'; }
     c.fillStyle = rgba('sepia', i === 0 ? 0.62 : 0.5);
-    fitHand(c, texts[i]!, R.x0 + 2, y, R.x1 - R.x0 - 4, 22);
+    fitHand(c, texts[i]!, R.x0 + 2, y, R.x1 - R.x0 - 4, 28);
   });
   // P.S. 那一條的線
   c.fillStyle = rgba('sepia', 0.16);
@@ -478,32 +498,57 @@ export function makePostmark(center: string, seed: number): { cv: HTMLCanvasElem
 export const MARK_DATE = DATE_DOTS.replace(/ · /g, '.');
 
 /**
- * 前景虛化：一支斜放在桌角、比卡片離鏡頭近很多的鋼筆（失焦的一團深色，帶一條模糊的亮線），
- * 鏡頭推近時它移得比卡片快，空間感就出來了。在 init() 畫一次（blur 濾鏡只跑一次）。
+ * 前景虛化：畫面左下角一叢離鏡頭很近的葉子（失焦的深色剪影），在風裡輕輕晃（主檔每格給一點位移與轉動）。
+ * 在 init() 畫一次（blur 濾鏡只跑一次）。原本這裡是一支失焦的鋼筆——v2 的鋼筆會在卡片上寫字，前景就換成葉子。
  */
-export function drawForegroundPen(c: Ctx2) {
+export function drawForegroundLeaves(c: Ctx2) {
   c.clearRect(0, 0, W, H);
   c.save();
-  c.filter = 'blur(8px)';
-  c.translate(-60, 1058); c.rotate(-0.12);
-  // 筆桿（墨色的圓柱：上亮下暗）、筆蓋上的金屬環（訊號色的暗部）、筆夾、銀色的筆尖
-  const R = 30;
-  const body = c.createLinearGradient(0, -R, 0, R);
-  body.addColorStop(0, mixRgba('sepia', 'ash', 0.55, 0.95)); body.addColorStop(0.3, rgba('sepia', 0.95)); body.addColorStop(1, rgba('ink', 0.95));
-  c.fillStyle = body;
-  c.beginPath(); c.roundRect(-40, -R, 560, 2 * R, R); c.fill();
-  // 握位與筆尖
-  const grip = c.createLinearGradient(0, -R * 0.8, 0, R * 0.8);
-  grip.addColorStop(0, rgba('ash', 0.9)); grip.addColorStop(1, rgba('graphite', 0.95));
-  c.fillStyle = grip;
-  c.beginPath(); c.moveTo(520, -R * 0.8); c.lineTo(600, -R * 0.55); c.lineTo(600, R * 0.55); c.lineTo(520, R * 0.8); c.closePath(); c.fill();
-  c.fillStyle = mixRgba('ash', 'bone', 0.5, 0.95);
-  c.beginPath(); c.moveTo(600, -R * 0.45); c.lineTo(690, 0); c.lineTo(600, R * 0.45); c.closePath(); c.fill();
-  c.fillStyle = mixRgba('blood', 'signal', 0.5, 0.95);
-  c.fillRect(150, -R, 16, 2 * R);
-  c.fillRect(470, -R, 12, 2 * R);
-  // 圓柱的高光
-  c.fillStyle = rgba('bone', 0.35);
-  c.fillRect(0, -R * 0.62, 500, 7);
+  c.filter = 'blur(9px)';
+  const rnd = mulberry32(11);
+  const leaf = (x: number, y: number, a: number, L: number, wd: number) => {
+    c.save(); c.translate(x, y); c.rotate(a);
+    c.beginPath(); c.moveTo(0, 0);
+    c.quadraticCurveTo(L * 0.45, -wd, L, 0); c.quadraticCurveTo(L * 0.45, wd, 0, 0);
+    c.fill();
+    c.restore();
+  };
+  // 兩根枝子從左下角伸進畫面，葉子一左一右
+  for (const [bx, by, ba, n] of [[-40, 1120, -0.75, 7], [120, 1140, -1.05, 5]] as const) {
+    let x = bx, y = by;
+    for (let i = 0; i < n; i++) {
+      const L = 150 + 60 * rnd(), a = ba + (rnd() - 0.5) * 0.3;
+      x += Math.cos(a) * 70; y += Math.sin(a) * 70;
+      const g = c.createLinearGradient(x, y - 40, x, y + 40);
+      g.addColorStop(0, mixRgba('ink2', 'sepia', 0.25, 0.92)); g.addColorStop(1, rgba('ink', 0.95));
+      c.fillStyle = g;
+      leaf(x, y, a + (i % 2 ? 0.9 : -0.9), L, 34 + 14 * rnd());
+    }
+  }
   c.restore();
+}
+
+/**
+ * 桌上的道具（世界座標的一塊，桌面 shader 取樣）：茶杯（跟祝福登記表同一組）、三張散落的郵票、一個信封。
+ * 畫一次；熱氣會動，主檔另外畫在螢幕上。
+ */
+export const PROPS_R = { x: 1080, y: -620, w: 1360, h: 1560 };
+export const CUP_W = { x: 1800, y: 560 };
+export function drawTableProps(c: Ctx2, cup: HTMLCanvasElement, cupO: { ox: number; oy: number }, env: HTMLCanvasElement, envO: { ox: number; oy: number }) {
+  const R = PROPS_R;
+  c.clearRect(0, 0, R.w, R.h);
+  // 世界 (x, y) → 這張圖的座標（y 向下）
+  const at = (x: number, y: number) => ({ x: x - R.x, y: R.y + R.h - y });
+  // 右下角 HUD（螢幕 x ≥ 1460、y ≥ 820）那一塊不放東西：信封小一點、往上放
+  const e = at(1590, -210);
+  c.save(); c.translate(e.x, e.y); c.drawImage(env, -envO.ox, -envO.oy); c.restore();
+  const rnd = mulberry32(5);
+  for (const [x, y, a] of [[1150, 380, -0.3], [1300, 300, 0.25], [1120, 190, 0.1]] as const) {
+    const q = at(x + 40 * rnd(), y);
+    c.save(); c.translate(q.x, q.y); c.rotate(a); c.scale(1.5, 1.5);
+    drawStamp(c, -52, -64, 104, 128);
+    c.restore();
+  }
+  const cp = at(CUP_W.x, CUP_W.y);
+  c.save(); c.translate(cp.x, cp.y); c.scale(1.4, 1.4); c.drawImage(cup, -cupO.ox, -cupO.oy); c.restore();
 }

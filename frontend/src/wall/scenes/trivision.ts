@@ -2,13 +2,17 @@
 //  - 看板是 32 根直立的三角柱，三面各印著一張海報的直條。三角柱在拍點「喀啦」一起翻：由左到右一波、每根晚一點點，
 //    最後回彈一下停住，翻出下一張。翻到一半的面轉離燈，會暗下來（光是真的算的）。
 //  - 有留言：一開始是看板本來的「廣告」（新人的名字、日期、一句冷面的「今晚，本看板只刊登祝福。」），
-//    第一個小節線翻成留言（大大的手寫字＋署名，畫面上最大的字），一直停到窗格結束。
-//    歌詞在看板下面、兩根柱子之間的燈箱橫條（逐字跟唱，比留言小一級）。
+//    第一個小節線翻成留言（手寫字＋署名），一直停到窗格結束。
+//    歌詞在看板下面的燈箱橫條（逐字跟唱，不比留言大）。
 //  - 沒有留言：每換一句歌詞看板就翻一次，歌詞印在看板上（焦點，逐字跟唱），燈箱橫條放邀請。
 //  - 純音樂又沒有留言：廣告 → 邀請。
+// v2（2026-09-28 新人：「留言板都太大太突兀」「可以再多補一些動畫」）：
+//  - 看板縮到畫面右上角（螢幕上約 810×360，1 世界單位 ≈ 0.52 px）：留言在螢幕上 40～60 px、署名 26～32、歌詞 40～52。
+//  - 看板立在一條夜裡的街邊（trivision-street.ts）：遠方的建築窗戶每兩拍有幾扇換亮暗、兩盞路燈、濕的路面映著光；
+//    車子一台台開過（遠車道往左、近車道往右），車頭燈往前照一片、在濕路面上拉出倒影，經過畫面中央的那一刻落在小節線或第三拍。
 // 手法：three.js 真的 3D（三角柱是 instanced 網格，頂點 shader 轉角度；三張海報是三張 Canvas 圖層，
-// 片段 shader 依「第幾根、第幾面」取樣對的直條），4x MSAA（直條的邊才不會閃）。背景是夜空與遠方城市的剪影（全螢幕 shader），
-// 燈光裡的飛塵與燈頭的亮點用 LineBatch。鏡頭：從街上稍微仰拍，整個窗格很慢地往右平移、推近；翻完的那一下輕輕一震。
+// 片段 shader 依「第幾根、第幾面」取樣對的直條），4x MSAA（直條的邊才不會閃）。街景是全螢幕 shader（車在看板的前面，另外一層蓋上去），
+// 燈光裡的飛塵與燈頭的亮點用 LineBatch。鏡頭：從對街稍微仰拍，整個窗格很慢地往右平移、推近；翻完的那一下輕輕一震。
 import * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
 import { FSPass, Layer2D, W, H, sharedMSAA } from '../engine/gl';
@@ -19,27 +23,36 @@ import { LIN, rgba } from '../engine/palette';
 import { clamp, ease, prog, hash, pulse } from '../engine/util';
 import { fitText } from '../engine/text';
 import type { Line } from '../engine/lyrics';
-import { lyricSizeFor, drawHeart, fillWithHearts, COUPLE_ZH, COUPLE_EN, DATE_DOTS } from './_motifs';
+import { drawHeart, fillWithHearts, COUPLE_ZH, COUPLE_EN, DATE_DOTS } from './_motifs';
 import { grid, layoutRows, drawRows, paperInk, darkInk } from './_t4';
 import { msgBlock, INVITE, type MsgBlock } from './_t14';
-import { shownLyric, sigOf, type Rect } from './_t24';
+import { shownLyric, sigOf } from './_t24';
+import { msgMaxFor, lyricV2, V2 } from './_v2';
+import { STREET_FRAG, CARS_FRAG, MAX_CARS } from './trivision-street';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'local', paper: false, energy: [0.3, 1], bars: [4, 8], weight: 1 };
 
-/** 三角柱的根數、看板（＝海報）的大小（世界單位＝海報 px，鏡頭在正前方時約等於螢幕 px）。 */
+/** 三角柱的根數、看板（＝海報）的大小（世界單位＝海報 px）。 */
 const N = 32;
 const BW = 1504, BH = 640;
 const SW = BW / N;
 const BX0 = -BW / 2, BY0 = -206;
 const APO = SW / (2 * Math.sqrt(3));
-/** 燈箱橫條（看板下面，掛在兩根柱子之間；右端不進右下角 QR 區）。 */
-const STRIP = { x0: -752, x1: 300, y0: -372, y1: -270 };
+/** 燈箱橫條：掛在看板下面、跟看板一樣寬（v2：螢幕上的字 40～52 px，條比原本高）。 */
+const STRIP = { x0: -752, x1: 752, y0: -452, y1: -300 };
 const SPW = STRIP.x1 - STRIP.x0, SPH = STRIP.y1 - STRIP.y0;
+/** 柱子立在對面人行道上（世界 y）。 */
+const Y_GROUND = -600;
 /** 四盞投射燈：掛在看板上緣往前伸的支架上，往下往後照。 */
 const LAMPS = [-560, -188, 188, 560];
 const LAMP_Y = BY0 + BH + 120, LAMP_Z = 210;
 const FOV = 30;
 const DIST = (H / 2) / Math.tan((FOV / 2) * Math.PI / 180);
+/** v2：看板平面上 1 世界單位 ≈ 螢幕上幾 px（看板縮到約 810×360）；看板中心（鏡頭對準的點）在螢幕上的位置。 */
+const S_BOARD = 0.52;
+const AIM = { x: 1262, y: 318 };
+/** 世界字級：螢幕上的 px ÷ S_BOARD。 */
+const wpx = (screenPx: number) => screenPx / S_BOARD;
 /** 一根翻一次的時間、由左到右一波的總延遲。 */
 const FLIP = 0.4, WAVE = 0.28;
 
@@ -137,33 +150,17 @@ void main() {
   fragColor = vec4(col, 1.0);
 }`;
 
-const SKY = () => new FSPass(/* glsl */ `
-  uniform float par;
-  void main() {
-    vec2 p = FRAG_PX;
-    float y = p.y / 1080.0;
-    // 夜空：上面最暗，接近地平線帶一點城市的暖光
-    vec3 col = mix(C_INK2 * 1.25 + C_BLOOD * 0.05, C_INK, smoothstep(0.02, 0.85, y));
-    col += C_SIGNAL * 0.05 * exp(-p.y / 160.0) + C_BLOOD * 0.04 * exp(-p.y / 380.0);
-    // 很淡的雲
-    col += C_INK2 * 0.35 * smoothstep(0.1, 0.7, fbm(vec2(p.x / 900.0 + par * 0.0002, p.y / 300.0), 3)) * smoothstep(0.2, 0.7, y);
-    // 遠方城市的剪影（跟著鏡頭慢一點地移：視差）與幾扇亮著的窗
-    float x = p.x + par * 0.18;
-    float bx = floor(x / 58.0);
-    float hgt = 40.0 + 170.0 * hash11(bx * 1.37 + 3.0) * (0.55 + 0.45 * sin(bx * 0.23 + 1.0));
-    // 遠景是失焦的：輪廓軟軟的，窗戶是一團團小光
-    float bld = 1.0 - smoothstep(hgt - 3.0, hgt + 3.0, p.y);
-    vec2 wc = vec2(fract(x / 16.0), fract(p.y / 22.0)) - 0.5;
-    float win = exp(-dot(wc, wc) * 30.0) * step(0.9, hash12(floor(vec2(x / 16.0, p.y / 22.0))));
-    col = mix(col, C_INK * 0.85, bld * 0.9);
-    col += mix(C_SIGNAL, C_EMBER, 0.3) * 0.1 * win * bld * step(10.0, hgt - p.y);
-    fragColor = vec4(col, 1.0);
-  }`, { par: { value: 0 } });
+const STREET = () => new FSPass(STREET_FRAG, {
+  par: { value: 0 }, uT: { value: 0 }, beatI: { value: 0 }, boardR: { value: new THREE.Vector4() }, lampK: { value: 1 },
+});
+const CARS = () => new FSPass(CARS_FRAG, {
+  cars: { value: Array.from({ length: MAX_CARS }, () => new THREE.Vector4()) }, nCars: { value: 0 }, uT: { value: 0 },
+}, { over: true });
 
 // ---------------------------------------------------------------- 共用的 3D 道具
 class Rig {
   scene = new THREE.Scene();
-  cam = new THREE.PerspectiveCamera(FOV, W / H, 50, 20000);
+  cam = new THREE.PerspectiveCamera(FOV, W / H, 50, 30000);
   geo: THREE.InstancedBufferGeometry;
   rot: THREE.InstancedBufferAttribute;
   prismMat: THREE.RawShaderMaterial;
@@ -231,9 +228,9 @@ class Rig {
     box(BX0 - F0, BX0, BY0, BY0 + BH, -50, 34);
     box(-BX0, -BX0 + F0, BY0, BY0 + BH, -50, 34);
     box(BX0, -BX0, BY0, BY0 + BH, -60, -40);
-    // 兩根柱子（往下伸出畫面）、燈箱橫條掛在柱子前面
-    for (const x of [-430, 430]) box(x - 30, x + 30, -1500, BY0 - F0, -40, 20);
-    box(STRIP.x0 - 12, STRIP.x1 + 12, STRIP.y0 - 12, STRIP.y1 + 12, 20, 34);
+    // 兩根柱子（立在對面人行道上）、燈箱橫條掛在柱子前面
+    for (const x of [-430, 430]) box(x - 30, x + 30, Y_GROUND, BY0 - F0, -40, 20);
+    box(STRIP.x0 - 14, STRIP.x1 + 14, STRIP.y0 - 14, STRIP.y1 + 14, 20, 34);
     const strip = new THREE.Mesh(new THREE.PlaneGeometry(SPW, SPH), this.stripMat);
     strip.position.set((STRIP.x0 + STRIP.x1) / 2, (STRIP.y0 + STRIP.y1) / 2, 34.5);
     strip.frustumCulled = false;
@@ -263,14 +260,18 @@ class Rig {
 
 // ---------------------------------------------------------------- 版面
 type Item = { kind: 'ad' } | { kind: 'msg' } | { kind: 'invite' } | { kind: 'line'; line: Line };
+/** 一台開過去的車：經過畫面中央的時間、車道（0 遠、1 近）、速度（px/秒）、種子。 */
+interface Car { tc: number; lane: number; v: number; seed: number }
 
 export default class Trivision extends Scene {
   rig = shared('trivision.rig', () => new Rig());
-  sky = shared('trivision.sky', SKY);
+  street = shared('trivision.street', STREET);
+  carsPass = shared('trivision.cars', CARS);
   /** 全引擎共用的 4x MSAA（畫完同一個 render() 裡就解析到 out，不 track／dispose）。 */
   msaa = sharedMSAA();
-  faces = [0, 1, 2].map(() => this.track(new Layer2D(BW, BH, undefined, { fast: true })));
-  strip = this.track(new Layer2D(SPW, SPH, undefined, { fast: true }));
+  /** 海報的圖層：看板在螢幕上只有約 0.52 倍大，圖層用 0.62 倍解析度（貼圖比畫面略大就好，縮小取樣才不會閃）。 */
+  faces = [0, 1, 2].map(() => this.track(new Layer2D(BW, BH, 0.62, { fast: true })));
+  strip = this.track(new Layer2D(SPW, SPH, 0.62, { fast: true }));
   dust = this.track(new LineBatch(256, { screen2D: true, blend: 'add' }));
   msg: Msg | null = this.ctx.params.message ?? null;
   seed = ((this.ctx.params.seed ?? 1) * 131 + (this.msg?.id ?? 0) * 17) >>> 0;
@@ -280,9 +281,9 @@ export default class Trivision extends Scene {
   flips: number[] = [];
   faceSig = ['', '', ''];
   stripSig = '';
-  lyrSize = 56;
+  lyrSize = 48;
   inviteFit: ReturnType<typeof fitText> | null = null;
-  avoid: Rect[] = [];
+  cars: Car[] = [];
 
   override async init() {
     const { audio: au, lyrics, song } = this.ctx;
@@ -297,16 +298,19 @@ export default class Trivision extends Scene {
     let firstLand = gr.nBars < 3 ? gr.b0 : gr.bar0;
     if (firstLand - s < 0.9) firstLand += gr.nBars < 3 ? gr.beat : gr.bar;
     if (m) {
-      this.block = msgBlock(c, m, FAM_MSG, { x: 120, y: 64, w: BW - 240, h: BH - 150 }, { align: 'left', sigFamily: FAM_SIG, sigMin: 44, sigMax: 60, min: 56, max: 170, lineHeight: 1.26, maxLines: 4, sigText: sigOf(m) });
-      this.lyrSize = Math.min(58, lyricSizeFor(this.block.fit.size));
-      // 窗格短：第一拍就翻；長一點：第一個小節線
+      // v2：字級照螢幕上的標準（40～60，依字數），換成看板上的世界單位
+      this.block = msgBlock(c, m, FAM_MSG, { x: 110, y: 58, w: BW - 220, h: BH - 116 }, {
+        align: 'left', sigFamily: FAM_SIG, sigMin: wpx(V2.sigMin), sigMax: wpx(V2.sigMax),
+        min: wpx(V2.msgMin), max: wpx(msgMaxFor(m.text)), lineHeight: 1.28, maxLines: 5, sigText: sigOf(m),
+      });
+      this.lyrSize = wpx(lyricV2(this.block.fit.size * S_BOARD));
       this.items = [{ kind: 'ad' }, { kind: 'msg' }];
       this.flips = [flipAt(firstLand)];
     } else {
+      this.lyrSize = wpx(lyricV2(null));
       const ls = lyrics.linesIn(s - 4, e).filter((l) => l.end > s - 1.5);
       if (!ls.length) {
-        c.font = font(FAM_MSG, 100);
-        this.inviteFit = fitText(c, INVITE, FAM_MSG, BW - 280, BH - 200, { min: 70, max: 120, lineHeight: 1.3, maxLines: 2 });
+        this.inviteFit = fitText(c, INVITE, FAM_MSG, BW - 280, BH - 200, { min: wpx(V2.msgMin), max: wpx(V2.lyrMax), lineHeight: 1.3, maxLines: 2 });
         this.items = [{ kind: 'ad' }, { kind: 'invite' }];
         this.flips = [flipAt(firstLand)];
       } else {
@@ -329,7 +333,19 @@ export default class Trivision extends Scene {
         this.flips = flips;
       }
     }
-    this.avoid = [[180, 90, 1560, 690], [200, 790, 1070, 120]];
+    // ---- 車（v2 多補的動畫）：每小節一到兩台，經過畫面中央的那一刻落在小節線或第三拍；遠車道往左、近車道往右
+    const beat = gr.beat;
+    for (let b = Math.floor(au.barAt(s)) - 1, k = 0; k < 40; b++, k++) {
+      const tb = au.timeOfBar(b);
+      if (tb > e + 1.5) break;
+      for (const half of [0, 2]) {
+        if (hash(this.seed, b, half, 41) > (half ? 0.45 : 0.75)) continue;
+        const lane = hash(this.seed, b, half, 42) < 0.5 ? 0 : 1;
+        this.cars.push({ tc: tb + half * beat, lane, v: lane ? 1150 + 250 * hash(this.seed, b, half, 43) : 700 + 180 * hash(this.seed, b, half, 43), seed: hash(this.seed, b, half, 44) });
+        if (this.cars.length >= MAX_CARS) break;
+      }
+      if (this.cars.length >= MAX_CARS) break;
+    }
   }
 
   /** t 時第 i 根三角柱的角度（弧度）：每次翻 −120°，outBack 回彈一下停住。 */
@@ -347,7 +363,7 @@ export default class Trivision extends Scene {
   private flipsStarted(t: number) { let n = 0; for (const f0 of this.flips) if (t >= f0) n++; return n; }
 
   override render(f: Frame, out: THREE.WebGLRenderTarget): PostOverrides {
-    const { renderer, comp, lyrics } = this.ctx;
+    const { renderer, comp, audio: au } = this.ctx;
     const t = f.t, s = this.ctx.start, e = this.ctx.end;
     const rig = this.rig;
 
@@ -372,35 +388,50 @@ export default class Trivision extends Scene {
     // 燈：切進來時已經亮著；每個大鼓稍微閃一下（電壓不穩的老燈）
     rig.lampI.value = 1 + 0.05 * f.a.kick;
     rig.beamMat.uniforms.beamA!.value = 0.045 + 0.02 * f.a.kick;
-    // 鏡頭：稍微仰拍，整個窗格很慢地往右平移、推近；翻完那一下輕輕一震
+    // 鏡頭：從對街稍微仰拍，整個窗格很慢地往右平移、推近；翻完那一下輕輕一震。看板中心固定在螢幕的 AIM
     const p = clamp((t - s) / Math.max(1, e - s)), pe = ease.inOutQuad(p);
     const land = prog(t, s, s + 1.1, ease.outCubic);
     let shake = 0;
     for (const f0 of this.flips) shake += pulse(t, f0 + WAVE + FLIP * 0.55, 0.09) * Math.sin((t - f0) * 60);
     const cam = rig.cam;
-    cam.position.set(-250 + 170 * pe, -260 - 60 * (1 - land) + 5 * shake, DIST * (1.0 - 0.03 * pe) + 120 * (1 - land));
+    const D = DIST / S_BOARD;
+    cam.position.set(-200 + 150 * pe, -330 - 50 * (1 - land) + 6 * shake, D * (1 - 0.035 * pe) + 260 * (1 - land));
     cam.up.set(0, 1, 0);
-    cam.lookAt(-10 + 40 * pe, 25, 0);
+    cam.lookAt(-10 + 30 * pe, 110, 0);
+    cam.setViewOffset(W, H, W / 2 - AIM.x, H / 2 - AIM.y, W, H);
     cam.updateMatrixWorld();
     cam.updateProjectionMatrix();
 
+    // ---- 街景（最底層）→ 看板（3D）→ 車（蓋在看板前面）
+    const v = new THREE.Vector3();
+    const proj = (x: number, y: number, z: number) => { v.set(x, y, z).project(cam); return { x: (v.x * 0.5 + 0.5) * W, y: (0.5 - v.y * 0.5) * H }; };
+    const b0 = proj(BX0, BY0 + BH, 0), b1 = proj(-BX0, BY0, 0);
+    const su = this.street.u;
+    su.par!.value = cam.position.x;
+    su.uT!.value = t;
+    su.beatI!.value = Math.floor(au.beatAt(t) + 1e-4);
+    (su.boardR!.value as THREE.Vector4).set(b0.x, b0.y, b1.x, b1.y);
+    su.lampK!.value = 1 + 0.04 * f.a.kick;
     const rt = this.msaa;
-    this.sky.u.par!.value = cam.position.x;
-    this.sky.render(renderer, rt);
+    this.street.render(renderer, rt);
     renderer.setRenderTarget(rt);
     renderer.clearDepth();
     renderer.render(rig.scene, cam);
     comp.draw(renderer, rt.texture, out, { mode: 'replace', premult: false });
+    const cu = this.carsPass.u;
+    const cv = cu.cars!.value as THREE.Vector4[];
+    this.cars.forEach((c, i) => cv[i]!.set(c.tc, c.lane, c.v, c.seed));
+    cu.nCars!.value = this.cars.length;
+    cu.uT!.value = t;
+    this.carsPass.render(renderer, out);
 
     // ---- 燈頭的亮點、燈光裡的飛塵（2D，投影到畫面）
     const db = this.dust; db.clear();
-    const v = new THREE.Vector3();
-    const proj = (x: number, y: number, z: number) => { v.set(x, y, z).project(cam); return { x: (v.x * 0.5 + 0.5) * W, y: (0.5 - v.y * 0.5) * H }; };
     const em = LIN.ember, bone = LIN.bone;
     for (const x of LAMPS) {
       const q = proj(x, LAMP_Y - 30, LAMP_Z - 10);
-      db.seg2(q.x - 22, q.y, q.x + 22, q.y, 9, [em[0] * 3, em[1] * 3, em[2] * 3], 1);
-      db.seg2(q.x - 8, q.y, q.x + 8, q.y, 5, [em[0] * 6, em[1] * 6, em[2] * 6], 1);
+      db.seg2(q.x - 12, q.y, q.x + 12, q.y, 6, [em[0] * 3, em[1] * 3, em[2] * 3], 1);
+      db.seg2(q.x - 4, q.y, q.x + 4, q.y, 3.5, [em[0] * 6, em[1] * 6, em[2] * 6], 1);
     }
     for (let k = 0; k < 70; k++) {
       const L = LAMPS[k % 4]!;
@@ -411,14 +442,14 @@ export default class Trivision extends Scene {
       const x = L + (hash(this.seed, k, 3) - 0.5) * (60 + 520 * u) + 18 * Math.sin(t * 1.3 + k);
       const q = proj(x, y, z);
       const a = Math.sin(u * Math.PI) * (0.25 + 0.5 * hash(this.seed, k, 4)) * (0.6 + 0.4 * Math.sin(t * 7 + k * 3));
-      db.seg2(q.x, q.y, q.x + 0.6, q.y + 0.6, 1.8, [bone[0] * a, bone[1] * a, bone[2] * a], 1);
+      db.seg2(q.x, q.y, q.x + 0.5, q.y + 0.5, 1.4, [bone[0] * a, bone[1] * a, bone[2] * a], 1);
     }
     db.render(renderer, out);
     const exit = prog(t, e - 0.35, e, ease.inCubic);
-    return { bloom: 0.6, vignette: 0.6, halation: 0.25, zoom: 1 + 0.004 * f.a.kick + 0.02 * exit, popupAvoid: this.avoid };
+    return { bloom: 0.6, vignette: 0.6, halation: 0.25, zoom: 1 + 0.004 * f.a.kick + 0.02 * exit };
   }
 
-  // ---------------------------------------------------------------- 海報
+  // ---------------------------------------------------------------- 海報（世界單位；螢幕上約 0.52 倍）
   /** 畫一面海報（內容沒變就不重畫；正在唱的歌詞每格重畫）。 */
   private drawFace(k: number, it: Item, j: number, t: number) {
     let sig = `${j}:${it.kind}`;
@@ -431,7 +462,7 @@ export default class Trivision extends Scene {
     const L = this.faces[k]!, c = L.ctx;
     L.clear(rgba('paper'));
     c.textBaseline = 'alphabetic';
-    // 印刷的底：邊緣很淡的暗角、一條細細的內框
+    // 印刷的底：邊緣很淡的暗角
     const g = c.createRadialGradient(BW / 2, BH / 2, BH * 0.3, BW / 2, BH / 2, BW * 0.62);
     g.addColorStop(0, rgba('sepia', 0)); g.addColorStop(1, rgba('sepia', 0.07));
     c.fillStyle = g; c.fillRect(0, 0, BW, BH);
@@ -442,26 +473,26 @@ export default class Trivision extends Scene {
     L.upload();
   }
 
-  /** 看板本來的廣告：新人的名字、日期、一句冷面的話、一顆愛心。 */
+  /** 看板本來的廣告：新人的名字、日期、一句冷面的話、一顆愛心（螢幕上名字約 50 px，只停一小節）。 */
   private drawAd(c: CanvasRenderingContext2D) {
     c.fillStyle = rgba('sepia');
-    c.font = font(F.ming(900), 120);
-    c.fillText(COUPLE_ZH, 120, 300);
-    c.font = font(F.serif(400, true), 50);
+    c.font = font(F.ming(900), 100);
+    c.fillText(COUPLE_ZH, 120, 270);
+    c.font = font(F.serif(400, true), 48);
     c.fillStyle = rgba('sepia', 0.75);
-    c.fillText(COUPLE_EN, 126, 372);
-    c.font = font(F.mono(500), 26); c.letterSpacing = '8px';
+    c.fillText(COUPLE_EN, 126, 346);
+    c.font = font(F.mono(500), 34); c.letterSpacing = '10px';
     c.fillStyle = rgba('blood');
-    c.fillText(DATE_DOTS, 128, 450);
+    c.fillText(DATE_DOTS, 128, 430);
     c.letterSpacing = '0px';
     c.fillStyle = rgba('blood', 0.85);
-    c.fillRect(128, 488, 90, 4);
-    c.font = font(F.hei(500), 30); c.fillStyle = rgba('sepia', 0.7);
-    c.fillText(AD_LINE, 128, 556);
-    drawHeart(c, 1170, 318, 300, rgba('rose'));
+    c.fillRect(128, 470, 110, 7);
+    c.font = font(F.hei(500), 40); c.fillStyle = rgba('sepia', 0.7);
+    c.fillText(AD_LINE, 128, 548);
+    drawHeart(c, 1170, 318, 250, rgba('rose'));
   }
 
-  /** 留言：大大的手寫字＋署名；新人的留言標一個小標籤；左下一行冷面的註腳。 */
+  /** 留言：手寫字＋署名；新人的留言標一個小標籤；左下一行冷面的註腳。 */
   private drawMsg(c: CanvasRenderingContext2D) {
     const b = this.block!, m = this.msg!;
     c.font = font(FAM_MSG, b.fit.size);
@@ -471,14 +502,14 @@ export default class Trivision extends Scene {
     c.fillStyle = rgba('sepia', 0.78);
     c.fillText(b.sig.text, b.sig.x, b.sig.y);
     c.fillStyle = rgba('blood', 0.85);
-    c.fillRect(120, 40, 70, 4);
+    c.fillRect(110, 30, 110, 7);
     if (m.couple) {
-      c.font = font(F.mono(500), 20); c.letterSpacing = '5px'; c.fillStyle = rgba('blood');
-      c.fillText('FROM THE COUPLE · 新人', 210, 50);
+      c.font = font(F.mono(500), 32); c.letterSpacing = '6px'; c.fillStyle = rgba('blood');
+      c.fillText('FROM THE COUPLE · 新人', 250, 44);
       c.letterSpacing = '0px';
     }
-    c.font = font(F.hei(500), 20); c.fillStyle = rgba('sepia', 0.45);
-    c.fillText(FOOT, 120, BH - 34);
+    c.font = font(F.hei(500), 32); c.fillStyle = rgba('sepia', 0.45);
+    c.fillText(FOOT, 110, BH - 26);
   }
 
   private drawInvite(c: CanvasRenderingContext2D) {
@@ -487,19 +518,19 @@ export default class Trivision extends Scene {
     const top = (BH - ft.height) / 2 + ft.size * 0.85;
     ft.lines.forEach((ln, i) => c.fillText(ln, 140, top + i * ft.lineHeight));
     c.fillStyle = rgba('blood', 0.85);
-    c.fillRect(140, top - ft.size - 40, 90, 4);
+    c.fillRect(140, top - ft.size - 40, 110, 7);
   }
 
-  /** 沒有留言：歌詞印在看板上（焦點），逐字跟唱。 */
+  /** 沒有留言：歌詞印在看板上（焦點，逐字跟唱；螢幕上 52 px）。 */
   private drawLyricFace(c: CanvasRenderingContext2D, line: Line, t: number) {
-    const st = { family: FAM_LYR, size: 150, minSize: 84, maxW: BW - 240, maxRows: 2, align: 'left' as const, lineHeight: 1.12 };
+    const st = { family: FAM_LYR, size: this.lyrSize, minSize: wpx(V2.lyrMin), maxW: BW - 240, maxRows: 3, align: 'left' as const, lineHeight: 1.14 };
     const lay = layoutRows(c, line, st);
     const y = (BH - lay.height) / 2 + lay.size * 0.8;
     c.save(); c.translate(120, y);
     drawRows(c, lay, FAM_LYR, t, paperInk());
     c.restore();
     c.fillStyle = rgba('blood', 0.85);
-    c.fillRect(124, y - lay.size - 36, 90, 4);
+    c.fillRect(124, y - lay.size - 36, 110, 7);
   }
 
   /** 燈箱橫條：有留言放歌詞（逐字跟唱）；沒有留言放邀請；純音樂放歌名。 */
@@ -519,21 +550,20 @@ export default class Trivision extends Scene {
     c.fillStyle = g; c.fillRect(0, 0, SPW, SPH);
     c.textBaseline = 'alphabetic';
     if (ly) {
-      const st = { family: FAM_LYR, size: this.lyrSize, minSize: 48, maxW: SPW - 70, maxRows: 1, align: 'left' as const };
+      const st = { family: FAM_LYR, size: this.lyrSize, minSize: wpx(V2.lyrMin), maxW: SPW - 90, maxRows: 1, align: 'left' as const };
       const lay = layoutRows(c, ly.line, st);
-      c.save(); c.translate(36, SPH / 2 + lay.size * 0.36);
+      c.save(); c.translate(46, SPH / 2 + lay.size * 0.36);
       drawRows(c, lay, FAM_LYR, t, darkInk(), ly.k);
       c.restore();
     } else if (this.msg || this.inviteFit) {
       // 有留言但沒有歌詞、或看板上已經是邀請：橫條放歌名
-      c.font = font(F.mono(500), 22); c.letterSpacing = '5px'; c.fillStyle = rgba('bone', 0.6);
-      c.fillText(`♪  ${song.title}${song.artist ? '  ·  ' + song.artist : ''}`.toUpperCase(), 36, SPH / 2 + 8);
+      c.font = font(F.mono(500), 38); c.letterSpacing = '8px'; c.fillStyle = rgba('bone', 0.6);
+      c.fillText(`♪  ${song.title}${song.artist ? '  ·  ' + song.artist : ''}`.toUpperCase(), 46, SPH / 2 + 13);
       c.letterSpacing = '0px';
     } else {
-      c.font = font(F.hei(500), 30); c.fillStyle = rgba('bone', 0.82);
-      c.fillText(INVITE, 36, SPH / 2 + 11);
+      c.font = font(F.hei(500), 54); c.fillStyle = rgba('bone', 0.82);
+      c.fillText(INVITE, 46, SPH / 2 + 19);
     }
     L.upload();
   }
 }
-

@@ -1,5 +1,6 @@
 // 收音機的 shader：紙（纖維、邊緣暗一點）、喇叭網（織布，歌詞從布後面透出來，大鼓一打布就往外鼓一下）、
 // 刻度窗的玻璃、調諧指示的「魔眼」（真空管收音機上那顆會開合的綠眼睛，這裡是訊號色）。
+// v2：一道窗光很慢地掃過整張紙。
 import { H } from '../engine/gl';
 
 export const FRAG_RADIO = /* glsl */ `
@@ -59,6 +60,8 @@ void main() {
       vec3 cloth = mix(C_INK * 0.6, yarn, smoothstep(0.1, 0.95, thread)) * (0.62 + 0.3 * thread);
       cloth *= 1.0 + 0.25 * uPump * bump;
       cloth *= 0.85 + 0.15 * fbm(q / 60.0, 2);
+      // 真空管的暖光從布後面透出來，跟著音量一明一暗（v2：大片的布也在動）
+      cloth += mix(C_BLOOD, C_EMBER, 0.4) * 0.07 * (0.35 + 1.1 * uLevel) * exp(-dot(rel * vec2(0.9, 1.3), rel * vec2(0.9, 1.3)) * 1.8) * (0.4 + 0.6 * hole);
       // 布後面的字：解預乘、轉線性；布紋蓋掉一點點（還是要讀得清楚）
       vec2 tuv = (p - uGrille.xy) / uGrille.zw;
       vec4 tx4 = texture(uText, vec2(tuv.x, 1.0 - tuv.y));
@@ -87,6 +90,14 @@ void main() {
       e += C_BONE * 0.1 * (1.0 - smoothstep(0.0, 1.8, abs(r - uEye.z * 0.36)));
       col = mix(col, e, m);
     }
+  }
+  // 窗光（v2 多補的動畫）：一道斜斜的光很慢地在整張紙上來回掃，光裡有樹影在晃（收音機也被照到）
+  {
+    float sP = dot(p, vec2(0.8, 0.6));
+    float cB = 1150.0 + 420.0 * sin(uT * 0.07);
+    float band = exp(-pow((sP - cB) / 280.0, 2.0));
+    float dap = 0.35 + 0.65 * smoothstep(0.05, 0.35, fbm(p / 170.0 + vec2(uT * 0.06, -uT * 0.035), 2));
+    col *= 1.0 + 0.11 * band * dap;
   }
   fragColor = vec4(col * mix(0.9, 1.0, uIn), 1.0);
 }`;

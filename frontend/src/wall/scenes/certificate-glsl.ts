@@ -13,13 +13,15 @@
 //    推近時是微距鏡頭的淺景深：畫面上下緣的墨慢慢糊掉（tilt-shift），焦點在中間那一帶（正在打的字、歌詞）。
 //  - 印好的表格（formTex）不再每格 drawImage 進墨的畫布（那一下要好幾毫秒），而是開場上傳一次、在這裡直接用紙面座標取樣
 //    （有 mipmap：全景時細線不會閃；一律用 textureLod，確定性）。
+//  - v2（2026-09-28「留言板太大」「多補動畫」）：鏡頭拉遠，整張桌面都在畫面裡——桌面比烤好的紙面範圍大很多，
+//    改成程序生成的深色木紋（不用烤）；桌燈的光斑放大到蓋住紙與右邊的道具；窗外樹葉的影子很慢地在桌面右上角晃（風）。
 import { W, H } from '../engine/gl';
 import { L } from './certificate-form';
 
 /** 印好的表格畫布涵蓋的紙面範圍與解析度（主檔畫表格、這裡取樣都用它）。 */
-export const FORM_BOX = { x: 60, y: 80, w: 1720, h: 930 }, FORM_RES = 1.5;
+export const FORM_BOX = { x: 60, y: 76, w: 1720, h: 956 }, FORM_RES = 1.0;
 
-/** 烤好的紙面範圍（紙面座標）：鏡頭最遠 z≈0.96、再加上震動，看得到的都在裡面。 */
+/** 烤好的紙面範圍（紙面座標）：紙和紙緣的陰影在裡面就好（桌面不用烤的貼圖）。 */
 export const BAKE = { x: -120, y: -120, w: 2200, h: 1340 };
 
 /** 烤紙：r = 紙的明暗倍率（0.8 + r × 0.4）、g = 打字墨的濃淡、b = 印泥的濃淡、a = 纖維（吃墨少的地方）。 */
@@ -63,6 +65,7 @@ uniform vec3 camA; uniform vec3 camB;     // 螢幕像素（y 向下）→ 紙�
 uniform vec2 blurV;                        // 鏡頭甩動時的動態模糊（螢幕像素）
 uniform float dofR;                        // 淺景深：畫面上下緣最糊的半徑（螢幕像素；全景是 0）
 uniform vec4 st0; uniform vec4 st0b;       // 方章（訊號色）：中心 xy、半寬高 | 角度、力道、種子、-
+uniform float uT;                          // 時間（樹影在風裡晃）
 
 float stampMask(vec2 p, vec4 s, vec4 sb) {
   if (sb.y <= 0.0) return 0.0;
@@ -102,18 +105,32 @@ void main() {
   float sd = sdBox(pp - sc, sh);
   float aw = max(fwidth(sd), 1e-3) + dr * ppx * 0.8;
   float onSheet = 1.0 - smoothstep(-aw, aw, sd);
-  // 桌燈：固定在桌上（紙面座標），中間亮、往外慢慢暗；桌面離燈遠的地方暗得更快
-  float ld = length((pp - vec2(860.0, 560.0)) * vec2(1.0, 1.2));
-  float lamp = 1.0 - 0.17 * smoothstep(220.0, 1250.0, ld);
-  float deskLamp = 0.42 + 0.58 * (1.0 - smoothstep(500.0, 1500.0, ld));
-  // 桌面：暗、帶一點紙墨的暖色，紙的陰影往右下落
-  float sdS = sdBox(pp - sc - vec2(12.0, 18.0), sh);
-  float shadow = exp(-max(sdS, 0.0) / 30.0);
-  vec3 desk = mix(C_INK, C_SEPIA, 0.22) * (0.85 + 0.3 * bk.r) * deskLamp * (1.0 - 0.6 * shadow);
+  // 桌燈：固定在桌上（紙面座標），照著紙和右邊的道具，往外慢慢暗；桌面離燈遠的地方暗得更快
+  float ld = length((pp - vec2(1180.0, 520.0)) * vec2(0.85, 1.15));
+  float lamp = 1.0 - 0.17 * smoothstep(300.0, 1400.0, ld);
+  float deskLamp = 0.3 + 0.7 * (1.0 - smoothstep(600.0, 1900.0, ld));
+  // 窗外的樹影：只在右上角（離留言遠），很慢地在風裡晃；葉縫之間是亮的
+  float leafM = smoothstep(900.0, 1900.0, pp.x) * smoothstep(900.0, 100.0, pp.y);
+  float leaf = 0.0;
+  if (leafM > 0.01) {
+    vec2 lp = pp * 0.0032 + vec2(0.22 * sin(uT * 0.45) + 0.06 * sin(uT * 1.3), 0.12 * sin(uT * 0.33 + 1.0));
+    leaf = leafM * smoothstep(0.14, 0.3, fbm(lp, 3));
+  }
+  float leafShade = 1.0 - 0.16 * leaf;
+  // 桌面：深色木紋（程序生成）＋一條條木板的接縫，紙的陰影往右下落
+  float wg = snoise(vec2(pp.x * 0.0008, pp.y * 0.009));
+  float ring = 0.5 + 0.5 * sin(pp.y * 0.05 + wg * 6.0 + snoise(vec2(pp.x * 0.003, pp.y * 0.02)) * 1.3);
+  float pu = fract((pp.y + 90.0) / 380.0) * 380.0;
+  float seam = 1.0 - 0.45 * (1.0 - smoothstep(0.6, 2.6, min(pu, 380.0 - pu)));
+  float sdS = sdBox(pp - sc - vec2(14.0, 20.0), sh);
+  float shadow = exp(-max(sdS, 0.0) / 34.0);
+  // 胡桃木：墨色帶一點暖（固定的暖色，換主題時桌子還是木頭），燈下看得到木紋
+  vec3 wood = mix(mix(C_SEPIA, C_FUR, 0.16), C_PAPER, 0.05 + 0.045 * ring);
+  vec3 desk = wood * (0.86 + 0.14 * wg) * seam * deskLamp * leafShade * (1.0 - 0.6 * shadow);
 
   // ---- 紙（淺景深的地方纖維也跟著柔掉一點）
   float grain = mix(bk.r, 0.5, sat(dr / 6.0) * 0.6);
-  vec3 paper = C_PAPER * (0.8 + 0.4 * grain) * lamp;
+  vec3 paper = C_PAPER * (0.8 + 0.4 * grain) * lamp * mix(1.0, leafShade, 0.4);
   // 斜斜打過來的光：左上亮一點
   paper *= 0.975 + 0.03 * (vUv.y * 0.6 + (1.0 - vUv.x) * 0.4);
 

@@ -7,6 +7,11 @@
 //  - 沒有留言：點歌卡縮成一張小便條（邀請大家掃 QR），歌詞放大成焦點。
 //  - 鏡頭整段慢慢推近。
 // 這個版面是紙：底色是主題的紙色，線與字是墨色（sepia），指針與正在唱的字是訊號色。
+// v2（2026-09-28 新人：「留言板都太大太突兀」「可以再多補一些動畫」）：
+//  - 點歌卡縮成右邊一張小卡（寬 660、高 ≤ 430，跟著字的多寡長高），留言 40～60 px、署名 26～32；
+//    喇叭網後面的歌詞 40～52（不比留言大）。收音機（還有它周圍會動的東西）才是畫面的主體。
+//  - 多補的動畫：收音機右上角一根伸縮天線，在風裡輕輕晃、大鼓一打彈一下，每一拍天線尖端發出一圈圈電波（小節線那一圈是訊號色）；
+//    旁邊一盆線稿的小盆栽，葉子跟著拍子搖；一道窗光很慢地掃過整張紙（光裡有樹影在晃）。
 import * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
 import { FSPass, Layer2D, W, H } from '../engine/gl';
@@ -17,6 +22,7 @@ import { clamp, ease, lerp, prog, hash, springStep, TAU } from '../engine/util';
 import { fitText, phrases, type FitResult } from '../engine/text';
 import { Lyrics } from '../engine/lyrics';
 import { beatAfter, barAfter, signature, lyricAt, COUPLE_EN, COUPLE_ZH } from './_motifs';
+import { msgMaxFor, lyricV2, sigV2, V2 } from './_v2';
 import { fillWithHearts } from '../engine/motifs';
 import { layoutWordRows } from './_t7';
 import { FRAG_RADIO } from './radio-glsl';
@@ -24,20 +30,31 @@ import { FRAG_RADIO } from './radio-glsl';
 export const spec: PlateSpecDecl = { group: 'type', family: 'machine', paper: true, energy: [0, 0.75], bars: [4, 8] };
 
 // ---------------------------------------------------------------- 版面（px，y 往下）
-const CAB = { x: 110, y: 150, w: 900, h: 790 };
-const DIAL = { x: 236, y: 188, w: 648, h: 128 };
+/** v2：收音機整台往下移一點，上面留空間給天線與電波。 */
+const DY = 60;
+const CAB = { x: 110, y: 150 + DY, w: 900, h: 790 };
+const DIAL = { x: 236, y: 188 + DY, w: 648, h: 128 };
 /** 刻度：88～108 MHz 排在這一段。 */
-const SC = { x0: 266, x1: 790, y: 262 };
-const EYE = { x: 842, y: 252, r: 26 };
-const KNOB_L = { x: 172, y: 252, r: 38 };
-const KNOB_R = { x: 948, y: 252, r: 38 };
-const GRILLE = { x: 160, y: 386, w: 800, h: 504 };
-/** 點歌卡：有留言時是焦點（大）；沒有留言時是一張小便條。 */
-const CARD_BIG = { x: 930, y: 168, w: 840, h: 640 };
-const CARD_SMALL = { x: 1130, y: 520, w: 600, h: 280 };
+const SC = { x0: 266, x1: 790, y: 262 + DY };
+const EYE = { x: 842, y: 252 + DY, r: 26 };
+const KNOB_L = { x: 172, y: 252 + DY, r: 38 };
+const KNOB_R = { x: 948, y: 252 + DY, r: 38 };
+const GRILLE = { x: 160, y: 386 + DY, w: 800, h: 504 };
+/**
+ * 點歌卡（v2）：有留言時寬 660、高照字算（≤ 430），直立靠在收音機右邊、畫面右側中間；
+ * 沒有留言時是一張更小的便條（邀請）。高度在 measureCard 裡決定。
+ */
+const CARD_BIG = { x: 1120, y: 0, w: 660, h: 400 };
+const CARD_SMALL = { x: 1150, y: 330, w: 580, h: 210 };
+/** 點歌卡的垂直中心。 */
+const CARD_CY = 428;
 const FEAT = 103.13;
-/** 點歌卡上：表頭的高度、署名那一列的高度。 */
-const CARD_TOP = 78, CARD_SIG = 110;
+/** 點歌卡上：表頭的高度、左右留白、署名那一列的高度。 */
+const CARD_TOP = 64, CARD_PAD = 36, CARD_SIG = 58;
+/** 天線：根部（收音機右上角）、長度、平常的角度（離垂直往右傾，弧度）。 */
+const ANT = { x: CAB.x + CAB.w - 96, y: CAB.y + 8, len: 232, a: 1.1 };
+/** 盆栽：盆底中心（跟收音機放在同一張桌上）。 */
+const POT = { x: 1215, y: CAB.y + CAB.h + 12 };
 
 const F_LYR = F.archivo(100, 800);
 const F_MSG = F.hand(400);
@@ -65,7 +82,7 @@ export default class Radio extends Scene {
   CARD = { ...CARD_BIG };
   CL = { x: 0, y: 0, w: 1, h: 1 };
   card!: Layer2D;
-  lines = this.track(new LineBatch(256, { screen2D: true, blend: 'normal' }));
+  lines = this.track(new LineBatch(1600, { screen2D: true, blend: 'normal' }));
   glow = this.track(new LineBatch(64, { screen2D: true, blend: 'add' }));
   msg: Msg | null = this.ctx.params.message ?? null;
   stations: Station[] = [];
@@ -77,6 +94,7 @@ export default class Radio extends Scene {
   chunks: { line: number; from: number; to: number; t: number }[] = [];
   sigT = Infinity;
   stampT = Infinity;
+  sigSize = 30;
   private txtKey = '';
   private cardKey = '';
 
@@ -88,11 +106,13 @@ export default class Radio extends Scene {
     this.tCard = this.tBoot;
     const m = this.msg;
     this.CARD = { ...(m ? CARD_BIG : CARD_SMALL) };
-    this.CL = { x: this.CARD.x - 40, y: this.CARD.y - 40, w: this.CARD.w + 80, h: this.CARD.h + 80 };
-    this.card = this.track(new Layer2D(this.CL.w, this.CL.h, undefined, { fast: true }));
     this.stations = this.makeStations();
     const inWin = lyrics.lines.filter((l) => l.end > s - 1 && l.start < e + 1);
     await loadText(TEXT + this.stations.map((x) => x.name).join('') + (m ? m.text + m.name + signature(m.name) : '') + inWin.map((l) => l.text).join('') + (song.title ?? '') + COUPLE_ZH);
+    // 卡片的大小跟著字（先量字，再開卡片的圖層）
+    this.measureCard(m ? m.text : INVITE);
+    this.CL = { x: this.CARD.x - 40, y: this.CARD.y - 40, w: this.CARD.w + 80, h: this.CARD.h + 80 };
+    this.card = this.track(new Layer2D(this.CL.w, this.CL.h, undefined, { fast: true }));
     this.bg.u.uText!.value = this.txt.texture;
 
     // 指針：前兩拍一台一台掃過去，第三拍對準主打的那一台（窗格很短就第一拍直接對準）；之後每四小節微調一下
@@ -143,21 +163,32 @@ export default class Radio extends Scene {
   }
 
   // ---------------------------------------------------------------- 點歌卡
+  /**
+   * 排點歌卡的字，決定卡片多高（v2：卡片只比字多一點邊距）。有留言：字級照 v2 標準（40～60），最多五行；
+   * 沒有留言的小便條：邀請 28～34 px。卡片放在畫面右側、垂直置中在 CARD_CY。
+   */
+  private measureCard(body: string) {
+    const c = document.createElement('canvas').getContext('2d')!;
+    const CARD = this.CARD;
+    if (this.msg) {
+      this.fit = fitText(c, body, F_MSG, CARD.w - 2 * CARD_PAD, V2.boxH - CARD_TOP - CARD_SIG - 30, { min: V2.msgMin, max: msgMaxFor(body), lineHeight: 1.3, maxLines: 5 });
+      CARD.h = Math.round(CARD_TOP + this.fit.height + 18 + CARD_SIG + 12);
+      this.sigSize = sigV2(this.fit.size);
+    } else {
+      this.fit = fitText(c, body, F_MSG, CARD.w - 2 * CARD_PAD, CARD.h - CARD_TOP - 24, { min: 28, max: 34, lineHeight: 1.3, maxLines: 3 });
+    }
+    CARD.y = Math.round(CARD_CY - CARD.h / 2);
+  }
+
   private layoutCard(body: string) {
     const { audio: au } = this.ctx;
     const e = this.ctx.end;
-    const c = this.card.ctx;
-    // 字的框：表頭下面到署名上面（沒有留言的小便條：整張都是字、小一點）
-    const CARD = this.CARD;
-    this.fit = this.msg
-      ? fitText(c, body, F_MSG, CARD.w - 110, CARD.h - CARD_TOP - CARD_SIG, { min: 44, max: 118, lineHeight: 1.22, maxLines: 7 })
-      : fitText(c, body, F_MSG, CARD.w - 90, CARD.h - CARD_TOP - 30, { min: 30, max: 40, lineHeight: 1.3, maxLines: 4 });
     const ph = phrases(body.replace(/\s+/g, ' '), 6);
     const t0 = beatAfter(au, this.tCard + 0.3);
     const n = ph.length + (this.msg ? 1 : 0);
     let step = n <= 8 ? this.beat : this.beat / 2;
     if (t0 + n * step > e - 0.8) step = Math.max(0.12, (e - 0.8 - t0) / Math.max(1, n));
-    const lines = this.fit.lines.map((l) => Array.from(l));
+    const lines = this.fit!.lines.map((l) => Array.from(l));
     let li = 0, ci = 0;
     ph.forEach((p, k) => {
       let left = Array.from(p.replace(/\s/g, '')).length;
@@ -203,20 +234,20 @@ export default class Radio extends Scene {
     c.strokeRect(0.5, 0.5, CARD.w - 1, CARD.h - 1);
     // 表頭：一條訊號色的細線、小小的「點歌卡 · FM 103.13」
     c.fillStyle = rgba('signal', 0.85);
-    c.fillRect(0, 58, CARD.w, 2);
+    c.fillRect(0, 46, CARD.w, 2);
     c.textBaseline = 'alphabetic';
-    c.font = font(F.hei(500), 20); c.letterSpacing = '5px'; c.fillStyle = rgba('sepia', 0.55);
-    c.fillText(m?.couple ? '新人點歌  ·  FM 103.13' : '點歌卡  ·  FM 103.13', 36, 40);
+    c.font = font(F.hei(500), 18); c.letterSpacing = '5px'; c.fillStyle = rgba('sepia', 0.55);
+    c.fillText(m?.couple ? '新人點歌  ·  FM 103.13' : '點歌卡  ·  FM 103.13', CARD_PAD, 32);
     c.letterSpacing = '0px';
     // 橫線（卡片的格線）
-    const y0 = CARD_TOP + (m ? (CARD.h - CARD_TOP - CARD_SIG - fit.height) / 2 : 10) + fit.size;
+    const y0 = CARD_TOP + (m ? 0 : Math.max(0, (CARD.h - CARD_TOP - 16 - fit.height) / 2)) + fit.size * 0.92;
     c.fillStyle = rgba('sepia', 0.1);
-    for (let i = 0; i < fit.lines.length; i++) c.fillRect(36, y0 + i * fit.lineHeight + fit.size * 0.18, CARD.w - 72, 1);
+    for (let i = 0; i < fit.lines.length; i++) c.fillRect(CARD_PAD - 6, y0 + i * fit.lineHeight + fit.size * 0.18, CARD.w - 2 * CARD_PAD + 12, 1);
     // 留言：一個詞組一個詞組「寫」上去
     c.font = font(F_MSG, fit.size);
     c.fillStyle = m ? rgba('sepia') : rgba('sepia', 0.72);
     const lines = fit.lines.map((l) => Array.from(l));
-    const x0 = m ? 52 : 40;
+    const x0 = CARD_PAD;
     for (const k of this.chunks) {
       const r = wp(k.t);
       if (r <= 0) continue;
@@ -231,20 +262,21 @@ export default class Radio extends Scene {
     // 署名
     if (m && t >= this.sigT) {
       const r = wp(this.sigT);
-      c.font = font(F.hand(700), Math.max(46, Math.min(64, fit.size * 0.6)));
+      c.font = font(F.hand(700), this.sigSize);
       c.textAlign = 'right';
       const sg = signature(m.couple ? COUPLE_ZH : m.name), w = c.measureText(sg).width;
-      c.save(); c.beginPath(); c.rect(CARD.w - 48 - w - 4, CARD.h - 104, (w + 8) * r, 90); c.clip();
-      c.fillText(sg, CARD.w - 48, CARD.h - 40);
+      const sy = CARD.h - 22;
+      c.save(); c.beginPath(); c.rect(CARD.w - CARD_PAD - w - 4, sy - this.sigSize * 1.2, (w + 8) * r, this.sigSize * 1.6); c.clip();
+      c.fillText(sg, CARD.w - CARD_PAD, sy);
       c.restore();
       c.textAlign = 'left';
     }
     // 已播出的章（訊號色，歪的，蓋下去那一下比較大）
     if (stampK > 0) {
       c.save();
-      c.translate(CARD.w - 110, 118);
+      c.translate(CARD_PAD + 64, CARD.h - 46);
       c.rotate(-0.22);
-      const sc = 1.25 - 0.25 * stampK;
+      const sc = (1.25 - 0.25 * stampK) * 0.76;
       c.scale(sc, sc);
       c.globalAlpha = 0.8 * stampK;
       c.strokeStyle = rgba('signal'); c.lineWidth = 4;
@@ -307,6 +339,9 @@ export default class Radio extends Scene {
     rr(CAB.x, CAB.y, CAB.w, CAB.h, 70, 26); c.stroke();
     c.strokeStyle = ink(0.5); c.lineWidth = 1;
     rr(CAB.x + 12, CAB.y + 12, CAB.w - 24, CAB.h - 24, 60, 18); c.stroke();
+    // 桌面：一條淡淡的線（收音機與盆栽擺在同一張桌上）
+    c.fillStyle = ink(0.2);
+    c.fillRect(40, CAB.y + CAB.h + 16, 1320, 1.4);
     // 腳
     c.fillStyle = ink(0.85);
     for (const x of [CAB.x + 110, CAB.x + CAB.w - 170]) { rr(x, CAB.y + CAB.h - 2, 60, 18, 3, 8); c.fill(); }
@@ -345,7 +380,7 @@ export default class Radio extends Scene {
     c.beginPath(); c.arc(EYE.x, EYE.y, EYE.r + 6, 0, TAU); c.strokeStyle = ink(0.9); c.lineWidth = 2; c.stroke();
     // 廠牌：刻度窗與喇叭之間，一行斜體
     c.font = font(F.serif(600, true), 26); c.letterSpacing = '1px'; c.fillStyle = ink(0.75); c.textAlign = 'center';
-    c.fillText(`${COUPLE_EN}`, CAB.x + CAB.w / 2, 360);
+    c.fillText(`${COUPLE_EN}`, CAB.x + CAB.w / 2, 360 + DY);
     c.textAlign = 'left';
     c.letterSpacing = '0px';
     // 喇叭網的框：外一圈粗線、內一圈細線、上緣一點斜線陰影
@@ -368,16 +403,18 @@ export default class Radio extends Scene {
       this.txtKey = key;
       this.txt.clear();
       c.textAlign = 'center'; c.textBaseline = 'alphabetic';
-      c.font = font(F.archivo(100, 800), 56); c.fillStyle = rgba('bone', 0.36);
+      c.font = font(F.archivo(100, 800), 44); c.fillStyle = rgba('bone', 0.36);
       c.fillText('FM 103.13', GRILLE.w / 2, GRILLE.h / 2 - 10);
-      c.font = font(F.hei(700), 28); c.fillStyle = rgba('bone', 0.3);
+      c.font = font(F.hei(700), 24); c.fillStyle = rgba('bone', 0.3);
       c.fillText(`現正播放《${song.title || '今晚的歌'}》`, GRILLE.w / 2, GRILLE.h / 2 + 46);
       c.textAlign = 'left';
       this.txt.upload();
       return;
     }
     // 有留言時歌詞是第二順位（比留言小一級）；沒有留言時歌詞是焦點
-    const lay = layoutWordRows(c, ly.line, F_LYR, GRILLE.w - PAD * 2, GRILLE.h - PAD * 2, big ? { min: 60, max: 132, maxRows: 4, lh: 1.14 } : { min: 48, max: 74, maxRows: 4, lh: 1.16 });
+    // v2：歌詞 40～52 px，有留言時不比留言大
+    const top = lyricV2(this.msg && this.fit ? this.fit.size : null);
+    const lay = layoutWordRows(c, ly.line, F_LYR, GRILLE.w - PAD * 2, GRILLE.h - PAD * 2, big ? { min: 44, max: top, maxRows: 3, lh: 1.16 } : { min: V2.lyrMin, max: top, maxRows: 3, lh: 1.16 });
     // 內容：每個字的狀態＋正在唱的字彈到哪（量化，一樣就不重畫）
     const pops = lay.words.map((b) => {
       const p = Lyrics.wordProgress(b.word, t);
@@ -407,6 +444,113 @@ export default class Radio extends Scene {
     }
     c.restore();
     this.txt.upload();
+  }
+
+  // ---------------------------------------------------------------- 天線、電波、盆栽（v2 多補的動畫，細線畫在 LineBatch）
+  /** 天線的角度（離垂直往右傾）：風裡很慢地晃，大鼓一打往後彈一下。 */
+  private antAngle(t: number) {
+    return ANT.a + 0.03 * Math.sin(t * 0.8) + 0.012 * Math.sin(t * 2.1 + 1) - 0.05 * this.ctx.audio.hit('kick', t, 0.16);
+  }
+
+  /**
+   * 伸縮天線（三節，越往上越細、頂端一顆小球）＋電波：每一拍從天線尖端發出一圈弧線往外擴散、變淡，
+   * 小節線那一圈是訊號色（「正在播出」）。弧線朝天線指的方向張開，不會畫進收音機裡。
+   */
+  private drawAntenna(f: Frame) {
+    const t = f.t, au = this.ctx.audio, Lb = this.lines;
+    const a = this.antAngle(t), dx = Math.sin(a), dy = -Math.cos(a), len = ANT.len;
+    const ink = LIN.sepia, hi = LIN.paper;
+    const at = (u: number) => ({ x: ANT.x + dx * len * u, y: ANT.y + dy * len * u });
+    // 底座的鉸鏈
+    for (let q = 0; q < 16; q++) {
+      const a0 = (q / 16) * TAU, a1 = ((q + 1) / 16) * TAU;
+      Lb.seg2(ANT.x + Math.cos(a0) * 10, ANT.y + Math.sin(a0) * 10, ANT.x + Math.cos(a1) * 10, ANT.y + Math.sin(a1) * 10, 2, ink, 0.9);
+    }
+    for (const [u0, u1, w] of [[0, 0.44, 6.5], [0.42, 0.76, 4.6], [0.74, 1, 3.2]] as const) {
+      const p = at(u0), q = at(u1);
+      Lb.seg2(p.x, p.y, q.x, q.y, w, ink, 0.95);
+      Lb.seg2(p.x - dy * w * 0.12, p.y + dx * w * 0.12, q.x - dy * w * 0.12, q.y + dx * w * 0.12, w * 0.26, hi, 0.75);
+      // 套管的接頭：一小段粗一點的環
+      const j = at(u1 - 0.02);
+      Lb.seg2(j.x - dy * (w + 2), j.y + dx * (w + 2), j.x + dy * (w + 2), j.y - dx * (w + 2), 3, ink, 0.9);
+    }
+    const tip = at(1);
+    Lb.seg2(tip.x, tip.y, tip.x + 0.01, tip.y, 12, ink, 0.95);
+    Lb.seg2(tip.x - 2, tip.y - 2, tip.x - 1.99, tip.y - 2, 3.5, hi, 0.8);
+    // 電波：最近三拍各一圈
+    const dir = Math.atan2(dy, dx), beat = this.beat;
+    const bi = Math.floor(au.beatAt(t) + 1e-4);
+    for (let k = 0; k < 3; k++) {
+      const tb = au.timeOfBeat(bi - k), u = (t - tb) / (2.2 * beat);
+      if (u < 0 || u > 1) continue;
+      const down = Math.abs(au.barAt(tb) - Math.round(au.barAt(tb))) < 0.02;
+      const r = 18 + 165 * ease.outCubic(u), al = 0.75 * (1 - u) ** 1.4;
+      const col = down ? LIN.signal : ink, spread = 0.8;
+      for (let q = 0; q < 16; q++) {
+        const a0 = dir - spread + (2 * spread * q) / 16, a1 = dir - spread + (2 * spread * (q + 1)) / 16;
+        Lb.seg2(tip.x + Math.cos(a0) * r, tip.y + Math.sin(a0) * r, tip.x + Math.cos(a1) * r, tip.y + Math.sin(a1) * r, down ? 2.6 : 1.8, col, al);
+      }
+    }
+  }
+
+  /**
+   * 盆栽：線稿的陶盆（右半邊斜線陰影）＋六根莖、每根兩片葉子。整盆在風裡慢慢晃，大鼓一打葉子一左一右抖一下。
+   * 都是細線（LineBatch），不佔圖層。
+   */
+  private drawPlant(f: Frame) {
+    const t = f.t, Lb = this.lines, ink = LIN.sepia;
+    const { x, y } = POT;
+    const top = y - 104, wT = 64, wB = 48;
+    const poly = (pts: [number, number][], w: number, al: number, close = false) => {
+      for (let i = 1; i < pts.length + (close ? 1 : 0); i++) {
+        const p = pts[i - 1]!, q = pts[i % pts.length]!;
+        Lb.seg2(p[0], p[1], q[0], q[1], w, ink, al);
+      }
+    };
+    // 陶盆：盆身、盆緣、右邊一片斜線陰影
+    poly([[x - wT, top], [x + wT, top], [x + wB, y], [x - wB, y]], 2.2, 0.9, true);
+    poly([[x - wT - 7, top - 18], [x + wT + 7, top - 18], [x + wT + 7, top], [x - wT - 7, top]], 2, 0.9, true);
+    for (let k = 0; k < 7; k++) {
+      const yy = top + 12 + k * 13, xr = x + wT - (wT - wB) * ((yy - top) / (y - top));
+      Lb.seg2(xr - 26, yy + 8, xr - 4, yy - 4, 1.1, ink, 0.45);
+    }
+    // 莖與葉
+    const au = this.ctx.audio;
+    const sway = 0.05 * Math.sin(t * 1.05) + 0.025 * Math.sin(t * 2.3 + 1);
+    const kick = au.hit('kick', t, 0.2);
+    const base = { x, y: top - 18 };
+    const stems = [[-0.62, 128], [-0.34, 180], [-0.1, 212], [0.12, 198], [0.36, 166], [0.62, 124]] as const;
+    stems.forEach(([a0, len], i) => {
+      const a = a0 + sway * (0.6 + 0.4 * (len / 250)) + kick * 0.035 * (i % 2 ? 1 : -1);
+      const bend = 0.38 * Math.sign(a0 || 0.1);
+      const pt = (u: number) => {
+        // 莖往外彎：角度隨高度加大
+        let px = base.x + (i - 2.5) * 5, py = base.y;
+        const N = 8;
+        for (let j = 0; j < Math.round(u * N); j++) {
+          const aa = a + bend * (j / N);
+          px += Math.sin(aa) * (len / N); py -= Math.cos(aa) * (len / N);
+        }
+        return { x: px, y: py, a: a + bend * u };
+      };
+      let prev = pt(0);
+      for (let j = 1; j <= 8; j++) { const q = pt(j / 8); Lb.seg2(prev.x, prev.y, q.x, q.y, 1.8, ink, 0.85); prev = q; }
+      const leaf = (u: number, side: number, L0: number) => {
+        const p = pt(u);
+        const la = p.a + side * 0.75 + 0.08 * Math.sin(t * 1.7 + i * 1.3 + side) + kick * 0.08 * side;
+        const ux = Math.sin(la), uy = -Math.cos(la), nx = -uy, ny = ux;
+        const L: [number, number][] = [], R: [number, number][] = [];
+        for (let k = 0; k <= 8; k++) {
+          const v = k / 8, w = Math.sin(Math.PI * v) * L0 * 0.24;
+          L.push([p.x + ux * L0 * v + nx * w, p.y + uy * L0 * v + ny * w]);
+          R.push([p.x + ux * L0 * v - nx * w, p.y + uy * L0 * v - ny * w]);
+        }
+        poly(L, 1.6, 0.85); poly(R, 1.6, 0.85);
+        Lb.seg2(p.x, p.y, p.x + ux * L0 * 0.85, p.y + uy * L0 * 0.85, 1, ink, 0.5);
+      };
+      leaf(0.55, i % 2 ? 1 : -1, 46);
+      leaf(1, 0, 58);
+    });
   }
 
   // ---------------------------------------------------------------- 每一格
@@ -441,6 +585,8 @@ export default class Radio extends Scene {
     };
     knob(KNOB_R, -Math.PI / 2 + (fq - 98) * 0.42);
     knob(KNOB_L, -Math.PI / 2 - 0.9 + 1.4 * clamp(0.3 + f.a.rms));
+    this.drawAntenna(f);
+    this.drawPlant(f);
     this.lines.render(renderer, out);
     this.glow.render(renderer, out);
 

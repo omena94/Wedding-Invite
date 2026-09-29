@@ -37,7 +37,7 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "name": "certificate",
   "title": "結婚書約",
   "family": "doc",
-  "light": true,
+  "light": false,
   "couple": false,
   "idea": "桌上的祝福登記表，留言是祝福內容，最後蓋章"
  },

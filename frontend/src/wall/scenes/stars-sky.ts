@@ -6,6 +6,8 @@
 //  - 星野分兩層：很多很淡的小星（空氣感）、少數亮星（有柔光，hi-hat 一打一小撮會閃）；銀河只是一道很淡的雲氣；
 //  - 星圖的經緯網只在星座附近淡淡浮出來（像望遠鏡視野裡的疊圖），離星座越遠越淡，留言後面完全沒有；
 //  - 留言後面的天空暗一點、星星少一點（不加框），字才清楚。
+//  - v2（2026-09-28「多補一些動畫」）：銀河亮一點；地平線上方有一層薄雲很慢地飄（遮住後面的星、底下被城市的光照亮）；
+//    近山的稜線上一排草，在風裡左右晃。
 //
 // 投影照古星圖的「圓錐投影」：北天極在畫面上方很遠的地方，鏡頭平移＝天空繞北天極轉（周日運動）。
 // 座標都是「靜止座標」（窗格開始時的螢幕 px，y 向下）；Sky.fwd() 換成這一格的螢幕位置，shader 做反方向的換算。
@@ -99,6 +101,9 @@ export const makeSkyPass = () => new FSPass(/* glsl */ `
     float xf = q.x + ridge.x, xn = q.x + ridge.y;
     float yFar = 962.0 + 24.0 * sin(xf / 340.0 + 1.3) + 15.0 * sin(xf / 131.0 + 0.4) + 6.0 * snoise(vec2(xf / 85.0, 3.3));
     float yNear = 1024.0 + 30.0 * sin(xn / 430.0 + 4.1) + 12.0 * sin(xn / 167.0 + 2.2) + 5.0 * snoise(vec2(xn / 58.0, 8.1));
+    // 稜線上的草：一根根細尖，風一吹整排往同一邊偏（相位跟著時間與位置慢慢走）
+    float sway = 0.8 * sin(t * 1.25 + xn * 0.0035) + 0.35 * sin(t * 2.3 + xn * 0.011);
+    yNear -= (5.0 + 11.0 * (0.5 + 0.5 * snoise(vec2(xn / 90.0, 2.7)))) * pow(abs(sin(xn * 0.3 + sway)), 12.0);
     float aFar = smoothstep(-1.0, 1.0, q.y - yFar);
     float aNear = smoothstep(-3.0, 3.0, q.y - yNear);
 
@@ -125,7 +130,7 @@ export const makeSkyPass = () => new FSPass(/* glsl */ `
     float cloud = fbm(r / 420.0 + seedOff * 40.0, 2) * 0.5 + 0.5;
     float rift = smoothstep(0.05, 0.45, abs(n / mw.z + 0.15 + 0.3 * snoise(r / 420.0 + 7.0)));
     float dens = band * smoothstep(0.25, 0.85, cloud) * mix(0.3, 1.0, rift);
-    col += mix(C_BONE, C_ASH, 0.5) * dens * 0.028 * (1.0 - 0.7 * quietM) * ext * skyM;
+    col += mix(C_BONE, C_ASH, 0.5) * dens * 0.042 * (1.0 - 0.7 * quietM) * ext * skyM;
 
     // ---- 星野：很多很淡的小星（銀河裡更密）＋少數亮星
     float sp1, sp2;
@@ -133,6 +138,15 @@ export const makeSkyPass = () => new FSPass(/* glsl */ `
     float bright = starField(r + 7.0, 70.0, 0.3, 0.14, 0.7, 1.0, sp2);
     float stars = (fine + bright + sp2 * 0.25) * (1.0 - 0.8 * quietM) * ext * skyM;
     col += C_BONE * stars;
+
+    // ---- 地平線上方的薄雲：很慢地往一邊飄，遮住後面的星，底下被遠方城市的光照亮一點
+    if (q.y > 620.0) {
+      float band2 = smoothstep(620.0, 800.0, q.y) * (1.0 - smoothstep(900.0, 990.0, q.y));
+      float cl = fbm(vec2(q.x / 760.0 + t * 0.014 + seedOff.y * 9.0, q.y / 105.0 + seedOff.x * 3.0), 3);
+      float cm = smoothstep(0.0, 0.42, cl) * band2 * (1.0 - 0.6 * quietM);
+      vec3 cloudCol = C_INK2 * 1.5 + mix(C_BLOOD, C_SIGNAL, 0.25) * 0.025 * smoothstep(760.0, 960.0, q.y);
+      col = mix(col, cloudCol, cm * 0.6 * skyM);
+    }
 
     // ---- 經緯網：只在星座附近浮出來（赤緯每 10°、赤經每 1 小時），越遠越淡
     float dd = abs(fract(dec / 10.0 + 0.5) - 0.5) * 10.0 * kDec;

@@ -11,6 +11,11 @@
 //  - 沒有主打留言：星座是新人（宣 文 ♥ 孟 庭），放在上方正中；黃道抬高、歌詞放大當主角；邀請是一行小字。
 //  - 命名（最後一顆星亮起後的重拍）：星座下方寫上「{名字}座」與座標（婚禮日期：3 月 13 日 → 赤經 03h13m、
 //    2027 年 → 赤緯 +20°27′，星座真的就畫在經緯網的那個位置）。之後每拍輪流閃一顆星，長窗格有流星、每四小節一道光重描星座。
+// v2（2026-09-28 新人：「留言板都太大太突兀」「可以再多補一些動畫」）：
+//  - 留言縮成天上一側的一小段字（螢幕 40～60 px，整塊 ≤ 620×440，署名 26～32），歌詞 40～52 不比留言大；
+//    星座放大到畫面的另一大半，星空才是主角。
+//  - 多補的動畫：流星從第二小節起幾乎每小節一顆、銀河亮一點、地平線上方有薄雲慢慢飄過（遮住後面的星）、
+//    近山稜線上的草在風裡晃、山腳有幾隻螢火蟲一明一滅地飄。
 import * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides } from '../engine/scene';
 import { Layer2D, W, H } from '../engine/gl';
@@ -21,6 +26,7 @@ import { clamp, ease, prog, hash, pulse, polylineLengths, pointAtLength, TAU } f
 import { fitText, badBreaks, wrap, type FitResult } from '../engine/text';
 import { Lyrics } from '../engine/lyrics';
 import { sparkHead, sparkParticles, drawHeart, lyricAt, layoutLyric, beatAfter, barAfter, signature, COUPLE_ZH, WEDDING_DATE, type LyricStyle } from './_motifs';
+import { msgMaxFor, lyricV2, sigV2, V2 } from './_v2';
 import { Sky, makeSkyPass, eclY, type P2 } from './stars-sky';
 import { units, unitOfChar, buildConstellation, type Unit, type StarPt, type Zone } from './stars-chart';
 
@@ -31,12 +37,15 @@ const DEC_C = Math.floor(DY / 100) + Math.min(59, DY % 100) / 60;
 const pad2 = (n: number) => String(n).padStart(2, '0');
 const COORD = `RA ${pad2(DM)}h${pad2(DD)}m · Dec +${Math.floor(DY / 100)}°${pad2(DY % 100)}′`;
 
-/** 有留言的兩種構圖（種子挑）：留言在左、星座在右，或反過來。留言的高度範圍兩種一樣。 */
+/**
+ * 有留言的兩種構圖（種子挑）：留言在左、星座在右，或反過來。留言的高度範圍兩種一樣。
+ * v2：留言只佔一側窄窄的一條（寬 ≤ 620），星座放大到另一大半。
+ */
 const MSG_COMPS: { zone: Zone; mx: number; mw: number }[] = [
-  { zone: { x0: 1090, y0: 190, x1: 1720, y1: 560 }, mx: 150, mw: 800 },
-  { zone: { x0: 200, y0: 190, x1: 830, y1: 560 }, mx: 1010, mw: 760 },
+  { zone: { x0: 860, y0: 150, x1: 1730, y1: 610 }, mx: 160, mw: 600 },
+  { zone: { x0: 200, y0: 150, x1: 1070, y1: 610 }, mx: 1190, mw: 560 },
 ];
-const MSG_Y0 = 165, MSG_Y1 = 715;
+const MSG_Y0 = 250, MSG_Y1 = 690;
 /** 沒有留言：新人的星座在上方正中，黃道抬高給放大的歌詞。 */
 const NOMSG_ZONE: Zone = { x0: 620, y0: 165, x1: 1300, y1: 440 };
 const ECL_NOMSG = -150;
@@ -87,8 +96,8 @@ export default class Stars extends Scene {
   glyphs: Glyph[] = [];
   /** 留言整塊（含署名）在靜止座標的範圍：天空在這裡暗一點、星星退開。 */
   mbox: Rect = { x0: -9999, y0: -9999, x1: -9998, y1: -9998 };
-  sigX = 0; sigY = 0;
-  lyricSize = 54;
+  sigX = 0; sigY = 0; sigSize = 30;
+  lyricSize = 48;
   inviteSize = 0; inviteY = 0; inviteBig = false;
   meteors: { t: number; a: P2; b: P2 }[] = [];
   /** 長窗格：每四小節一道光沿著星座的連線從頭跑到尾（重溫點亮的那一刻）。 */
@@ -156,10 +165,11 @@ export default class Stars extends Scene {
 
     // ---- 留言：天空一側的大字（宋體），署名靠右；整塊在留言高度範圍裡上下置中（稍微偏上）
     if (m) {
-      const fit = this.fitMessage(c, m.text, MSG_Y1 - MSG_Y0 - 76);
+      const fit = this.fitMessage(c, m.text, MSG_Y1 - MSG_Y0 - 60);
       this.fit = fit;
-      const sigW = measure(this.signature(), F.ming(400), 36);
-      const blockH = fit.size + (fit.lines.length - 1) * fit.lineHeight + 76;
+      this.sigSize = sigV2(fit.size);
+      const sigW = measure(this.signature(), F.ming(400), this.sigSize);
+      const blockH = fit.size + (fit.lines.length - 1) * fit.lineHeight + 60;
       const top = MSG_Y0 + Math.max(0, (MSG_Y1 - MSG_Y0 - blockH) / 2 - 16);
       const base0 = top + fit.size * 0.92;
       const uoc = unitOfChar(m.text, this.us);
@@ -174,24 +184,25 @@ export default class Stars extends Scene {
           this.glyphs.push({ ch: g.ch, x: this.mx + g.x, y: base0 + li * fit.lineHeight, unit: uoc[idx] ?? 0 });
         }
       });
-      this.sigY = base0 + (fit.lines.length - 1) * fit.lineHeight + 66;
+      this.sigY = base0 + (fit.lines.length - 1) * fit.lineHeight + fit.size * 0.45 + this.sigSize * 1.1;
       this.sigX = this.mx + Math.max(fit.width, sigW);
       this.mbox = { x0: this.mx - 20, y0: top - 10, x1: this.sigX + 20, y1: this.sigY + 14 };
-      this.lyricSize = clamp(Math.round(fit.size * 0.72), 48, 58);
+      this.lyricSize = lyricV2(fit.size);
     } else {
-      this.lyricSize = 80;
+      this.lyricSize = lyricV2(null);
       // 邀請：有歌詞時是黃道下方一行小字；純音樂時歌詞不在，邀請放大成兩行（寫在黃道上方）
       this.inviteBig = !this.lyricsInWindow;
       this.inviteSize = this.inviteBig ? 46 : 28;
       this.inviteY = this.inviteBig ? eclY(LYR_X, this.eclOff) - 150 : eclY(LYR_X, this.eclOff) + 64;
     }
 
-    // ---- 長窗格：命名之後隔小節來一顆流星（往留言的反方向、劃過星座上方）
+    // ---- 流星（v2：多補動畫）：第二小節起幾乎每小節一顆（落在小節線或第三拍），往留言的反方向、劃過星座上方；
+    //      仙女棒正在點星的時候不放（同時兩道火會搶戲）
     const barLen = au.timeOfBar(au.barAt(this.tName) + 1) - this.tName;
-    for (let b = Math.ceil(au.barAt(this.tName + barLen) - 1e-3); ; b += 2) {
-      const tb = au.timeOfBar(b);
-      if (tb > e - barLen * 0.9) break;
-      if (hash(this.seed, b, 11) < 0.3) continue;
+    for (let b = Math.ceil(au.barAt(s) - 1e-3) + 1; ; b += 1) {
+      const tb = au.timeOfBar(b) + (hash(this.seed, b, 15) < 0.4 ? 2 * beat : 0);
+      if (tb > e - barLen * 0.6) break;
+      if (hash(this.seed, b, 11) < 0.2 || (tb > this.tLead - 0.3 && tb < this.tLast + 0.4)) continue;
       const z = this.zone, r1 = hash(this.seed, b, 12), r2 = hash(this.seed, b, 13), r3 = hash(this.seed, b, 14);
       const fx = 0.08 + 0.4 * r1;
       const a = { x: dir > 0 ? z.x0 + (z.x1 - z.x0) * fx : z.x1 - (z.x1 - z.x0) * fx, y: 112 + 70 * r2 };
@@ -351,6 +362,7 @@ export default class Stars extends Scene {
       sparkHead(this.glow, lyricHead.x, lyricHead.y, t, head ? 0.5 : 0.7, (head ? 0.55 : 0.85) * I);
     }
     this.drawMeteors(t, I);
+    this.drawFireflies(t, I * k);
     if (this.glow.count) this.glow.render(renderer, out);
     return { bloom: 0.75, vignette: 0.6, halation: 0.28, zoom: 1 + 0.024 * f.p + 0.018 * exit };
   }
@@ -541,6 +553,24 @@ export default class Stars extends Scene {
     }
   }
 
+  /**
+   * 山腳的螢火蟲（v2 多補的環境動態）：十幾顆小光點在近山前面慢慢飄，各自的節奏一明一滅。
+   * 只在畫面左邊到中間（右下角是 QR 區），高度在歌詞下面，不搶字。
+   */
+  private drawFireflies(t: number, I: number) {
+    const E = LIN.ember, lb = this.glow;
+    for (let k = 0; k < 16; k++) {
+      const h1 = hash(this.seed, k, 31), h2 = hash(this.seed, k, 32), h3 = hash(this.seed, k, 33);
+      const x = 90 + 1230 * h1 + 50 * Math.sin(t * (0.2 + 0.2 * h2) + k) + 18 * Math.sin(t * 0.9 + k * 2);
+      const y = 925 + 115 * h2 + 22 * Math.sin(t * (0.35 + 0.3 * h3) + k * 1.7);
+      const per = 1.8 + 2.4 * h3, ph = (((t + h1 * 7) % per) + per) % per / per;
+      const b = Math.pow(Math.max(0, 1 - Math.abs(ph - 0.3) / 0.2), 2) * I;
+      if (b < 0.02) continue;
+      lb.seg2(x, y, x + 0.01, y, 13, [E[0] * 0.35 * b, E[1] * 0.35 * b, E[2] * 0.35 * b], 0.3);
+      lb.seg2(x, y, x + 0.01, y, 3.4, [E[0] * 2.2 * b, E[1] * 2.2 * b, E[2] * 2.2 * b], 1);
+    }
+  }
+
   // ------------------------------------------------------------------ 黃道上的歌詞
   /** 歌詞沿著黃道寫，照跟唱規則逐字亮；唱到哪，黃道就亮到哪。回傳仙女棒的位置（正在唱時）。 */
   private drawEcliptic(c: CanvasRenderingContext2D, t: number): P2 | null {
@@ -574,7 +604,7 @@ export default class Stars extends Scene {
     }
     const ly = lyricAt(lyrics, t);
     if (!ly) return null;
-    const st: LyricStyle = { family: FAM_LYRIC, size: this.lyricSize, minSize: this.msg ? 48 : 56, maxWidth: LYR_W };
+    const st: LyricStyle = { family: FAM_LYRIC, size: this.lyricSize, minSize: V2.lyrMin, maxWidth: LYR_W };
     const lay = layoutLyric(c, ly.line, st);
     const size = lay.size;
     // 新的一行從黃道上浮起來
@@ -649,7 +679,8 @@ export default class Stars extends Scene {
   private fitMessage(c: CanvasRenderingContext2D, text: string, h: number): FitResult {
     // 很短的留言（「新婚快樂！」「♥♥♥」）字可以更大：它是這一格唯一的焦點，不要小小一行飄在天上
     const n = Array.from(text.replace(/\s/g, '')).length;
-    const o = { min: 50, max: n <= 4 ? 150 : n <= 10 ? 120 : 104, lineHeight: 1.36, maxLines: 6 };
+    // v2：字級上限照字數（短句 60、長留言 44），最多五行
+    const o = { min: V2.msgMin, max: msgMaxFor(text), lineHeight: 1.4, maxLines: 5 };
     const endsOk = /[，。！？、,.!?~～…：；:;）)」』♥\s]$/u;
     const hasPunct = /[，。！？、,.!?~～…：；:;\s]/u.test(text.slice(0, -1));
     const cands = [1, 0.94, 0.88, 0.82, 0.76].map((k) => fitText(c, text, FAM_MSG, this.mw * k, h, o));
@@ -716,7 +747,7 @@ export default class Stars extends Scene {
     // 署名：最後一顆星亮了就寫上
     const sk = prog(t, this.tLast + 0.1, this.tLast + 0.6, ease.outCubic);
     if (sk > 0) {
-      c.font = font(F.ming(400), 36); c.textAlign = 'right'; c.fillStyle = rgba('bone', 0.72 * sk);
+      c.font = font(F.ming(400), this.sigSize); c.textAlign = 'right'; c.fillStyle = rgba('bone', 0.72 * sk);
       c.fillText(this.signature(), this.sigX, this.sigY);
       c.textAlign = 'left';
     }
