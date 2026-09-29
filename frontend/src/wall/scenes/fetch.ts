@@ -1,11 +1,14 @@
-// 丟網球（亮、dog）：紅磚公園步道，宣文把黃綠色網球丟出去，芃芃與 QQ 追、QQ 在拍點上跳起來接住、叼回來。
-//  - 一輪兩小節：小節線上出手（丟的動作有預備與跟隨）→ 球飛兩拍 → 第三拍 QQ 跳到最高點剛好咬住（落在拍點）→
-//    兩隻狗跑回來 → 第八拍宣文蹲下接球 → 下一個小節線再丟。孟庭在旁邊跟著拍子拍手，接到球的那一刻歡呼。
-//  - 歌詞沿著球的拋物線排（lyricOnPath），照跟唱規則逐字亮；球飛過的路留下一條訊號色的細線。
-//  - **焦點是主打留言**：寫在公園的木牌上（木頭的顏色、木紋、兩根柱子、牌子的陰影），字最大；牌子上只留一個小小的「公園公告」。
-//    木牌大小跟著留言長短。沒有留言時木牌寫邀請、歌詞放大變主角。
-//  - 鏡頭：整個窗格慢慢推近木牌；背景的樹很淡，只是空氣。
-//  - 開場：火花把人和狗的線稿描出來；紙底（亮版面）、線是墨色（sepia）。
+// 丟網球（亮、dog）：紅磚公園步道，宣文把黃綠色網球丟出去，芃芃與 QQ 追、QQ 在拍點上跳起來接住、叼回來。角色是 Codex 畫的紙偶（_puppet.ts）。
+//  - 一輪兩小節：小節線上出手（throw_1 往後拉 → throw_2 丟出去）→ 球飛兩拍 → 第三拍 QQ 跳到最高點剛好咬住（落在拍點）→
+//    兩隻狗跑回來（QQ 叼著球）→ 第八拍 QQ 把球交給宣文 → 下一個小節線再丟。孟庭在旁邊跟著拍子點頭，接到球的那一刻跳起來歡呼。
+//  - 球的接力：出手前球畫在 throw_1 的手上（圖裡的球）；出手後圖上的球蓋掉，改由程式沿拋物線飛（留下訊號色的細線）；
+//    QQ 跳起來那張圖本來就畫了嘴前的球：飛行中蓋掉、咬到的那一刻打開，終點就是那顆球的位置，所以接得剛剛好。
+//  - 歌詞沿著球的拋物線排（lyricOnPath），照跟唱規則逐字亮；比留言小一級（標準 v2：40～52）。
+//  - **焦點是主打留言**：寫在公園的木牌上（木頭的顏色、兩根柱子、牌子的陰影）；照「留言尺寸與版面比例標準 v2」：
+//    字 40～60、牌子最大 700 × 400，高度跟著留言長短，牌子架高，狗跑過去不會擋到字。牌子上只留一個小小的「公園公告」。
+//    沒有留言時木牌寫邀請、歌詞變主角。
+//  - 鏡頭：整個窗格慢慢推近木牌；背景的樹很淡，只是空氣，樹梢跟著拍子輕輕晃。
+//  - 開場：四個紙偶從側面翻正進場（仙女棒的火花在腳邊）；紙底（亮版面）、線是墨色（sepia）。
 import * as THREE from 'three';
 import { Scene, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
 import { Layer2D, W, H } from '../engine/gl';
@@ -14,22 +17,28 @@ import { F, font, loadText } from '../engine/type';
 import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, lerp } from '../engine/util';
 import { lyricAt, barAfter, beatAfter, sparkHead, sparkParticles, msgChars } from './_motifs';
-import {
-  drawPerson, drawDog, inkFor, paperBG, inkLine, inkPath, inkPoly, inkEllipse, hatch, tennisBall, POSE, DOG, DOG_STRIDE, beatSwing, arcAt, arcPts, lyricOnPath, lerpPose, fitNote, drawNote,
-  type Pt, type Pose, type DogPose, type Note,
-} from './_couple';
+import { inkFor, paperBG, inkLine, inkPath, inkPoly, inkEllipse, hatch, tennisBall, arcAt, arcPts, lyricOnPath, drawNote, type Pt, type Note } from './_couple';
+import { loadPuppets, drawPuppet, drawCycle, drawPick, puppetPoint, puppetShadow, puppetIn, jumpArc, landSquash, breathe, beatKick, hop, noteV2, tightenNote, type PuppetOpts } from './_puppet';
+import { lyricV2 } from './_v2';
 
 export const spec: PlateSpecDecl = { group: 'couple', family: 'dog', paper: true, energy: [0.3, 1], bars: [4, 8] };
 
 const GROUND = 880;
 const SZ = 390;
-const ALAN_X = 330, OM_X = 175;
-/** 木牌的最大範圍（底邊固定、高度跟著留言）與寫字的內距。 */
-const SIGN = { x: 580, y: 394, w: 760, h: 428 };
-const PAD = { x: 40, top: 70, bottom: 36 };
-const CATCH_X = 1510;
-const REST_Q = ALAN_X + 135, REST_P = ALAN_X + 260;
+const ALAN_X = 330, OM_X = 150;
+/** 木牌：寬、底邊（架高，狗跑過去擋不到字）、最大高度（標準 v2：寬 ≤ 860、高 ≤ 430）與寫字的內距。 */
+const SIGN = { x: 660, w: 700, bottom: 724, h: 400 };
+const PAD = { x: 38, top: 62, bottom: 30 };
+/** QQ 跳起來咬球的地方（最高點）與跳多高。 */
+const CATCH_X = 1390, QJUMP = 92, PJUMP = 48;
+const REST_Q = 530, REST_P = 680;
+/** 狗在這個版面放大一點（牠們是主角，遠處的桌子也要認得出是芃芃和 QQ）。 */
+const DOG_S = 1.2;
 const INVITE = '掃描右下角 QR code，把祝福寫上大螢幕';
+const SPRITES = [
+  'xw_throw_1', 'xw_throw_2', 'xw_cheer', 'xw_idle_front', 'mt_idle_front', 'mt_cheer',
+  'qq_stand', 'qq_run_1', 'qq_run_2', 'qq_jump', 'qq_ball', 'pp_sit', 'pp_run_1', 'pp_run_2', 'pp_jump',
+];
 
 interface Cycle { rel: number; ctc: number; back: number; next: number }
 /** 慢慢起跑、慢慢停下（狗追球與跑回來）。 */
@@ -42,25 +51,27 @@ export default class Fetch extends Scene {
   glow = this.track(new LineBatch(1024, { screen2D: true, blend: 'add' }));
   msg: Msg | null = this.ctx.params.message ?? null;
   cycles: Cycle[] = [];
+  /** 宣文的姿勢時間軸。 */
+  alanKeys: [number, string][] = [];
   release: Pt = { x: 0, y: 0 };
   catchPt: Pt = { x: 0, y: 0 };
   hgt = 300;
-  arc: Pt[] = [];
   lyricPath: Pt[] = [];
   note: Note | null = null;
-  sign = { ...SIGN };
+  sign = { x: SIGN.x, y: SIGN.bottom - SIGN.h, w: SIGN.w, h: SIGN.h };
+  lyricSize = 52;
 
   override async init() {
     const { audio: au } = this.ctx;
     await loadText('公園公告一位賓客' + INVITE);
-    const c = this.fg.ctx;
-    // 出手點與接球點：用那一格的姿勢算（reveal 0 = 只算不畫）
-    const a = drawPerson(c, 'alan', POSE.throw(0), { x: ALAN_X, y: GROUND, h: SZ, reveal: 0 });
-    const q = drawDog(c, 'qq', DOG.jump(0, 1.1), { x: CATCH_X, y: GROUND, h: SZ, reveal: 0 });
-    this.release = a.handA; this.catchPt = q.mouth;
-    // 頂點在 y 165：歌詞的字頂離上緣還有 96 px 以上
-    this.hgt = Math.min(this.release.y, this.catchPt.y) - 165;
-    this.arc = arcPts(this.release, this.catchPt, this.hgt, 64);
+    this.track(await loadPuppets(SPRITES));
+    // 出手點 = throw_2 圖上的球；接球點 = QQ 跳到最高時圖上嘴前的球
+    this.release = puppetPoint('xw_throw_2', 'ball', ALAN_X, GROUND, { h: SZ })!;
+    this.catchPt = puppetPoint('qq_jump', 'ball', CATCH_X, GROUND - QJUMP, { h: SZ, scale: DOG_S })!;
+    // 頂點在 y 170：歌詞的字頂離上緣還有 96 px 以上
+    this.hgt = Math.min(this.release.y, this.catchPt.y) - 170;
+    // 歌詞只排在拋物線中間八成（兩端太靠近人和狗）
+    this.lyricPath = arcPts(this.release, this.catchPt, this.hgt, 64).slice(7, 55);
     // 每一輪：小節線出手、兩拍後接到、第七拍回來、兩小節後下一輪；窗格太短就在下一拍出手
     let rel = barAfter(au, this.ctx.start + 0.8);
     if (this.ctx.end - rel < au.beatPeriod(rel) * 3) rel = beatAfter(au, this.ctx.start + 0.8);
@@ -70,17 +81,26 @@ export default class Fetch extends Scene {
       this.cycles.push({ rel, ctc: au.timeOfBeat(b + 2), back: au.timeOfBeat(b + 7), next });
       rel = next;
     }
-    // 木牌上的留言：字級依「牌面扣掉署名那一列」算；牌子高度跟著留言長短（短的留言不要一大塊空牌子）
+    // 宣文：等 → 出手前一拍拿出球往後拉 → 出手 → 看 → 接到時歡呼 → 站著等 → QQ 交球（半拍後）→ 往後拉
+    const ks: [number, string][] = [[-1e9, 'xw_idle_front']];
+    for (const cy of this.cycles) {
+      const bp = au.beatPeriod(cy.rel);
+      if (ks[ks.length - 1]![1] !== 'xw_throw_1') ks.push([cy.rel - bp, 'xw_throw_1']);
+      ks.push([cy.rel, 'xw_throw_2'], [cy.rel + bp * 1.1, 'xw_idle_front'], [cy.ctc, 'xw_cheer'], [cy.ctc + bp * 1.4, 'xw_idle_front'], [cy.back + bp * 0.5, 'xw_throw_1']);
+    }
+    this.alanKeys = ks;
+    // 木牌上的留言：標準 v2 的字級；牌子的寬高跟著留言（底邊固定、往上長，左右置中）
+    const c = this.fg.ctx;
     const w = SIGN.w - PAD.x * 2, hmax = SIGN.h - PAD.top - PAD.bottom;
-    this.note = this.msg ? fitNote(c, this.msg.text, this.msg.name, w, hmax, { min: 46, max: 84 }) : fitNote(c, INVITE, null, w, hmax * 0.5, { min: 44, max: 56 });
-    const h = Math.min(SIGN.h, Math.max(300, PAD.top + this.note.height + PAD.bottom + 30));
-    this.sign = { x: SIGN.x, y: SIGN.y + SIGN.h - h, w: SIGN.w, h };
-    // 歌詞只排在拋物線中間八成（兩端太靠近邊）
-    this.lyricPath = this.arc.slice(6, 59);
+    this.note = this.msg ? noteV2(c, this.msg.text, this.msg.name, w, hmax) : noteV2(c, INVITE, null, w, hmax * 0.5, { max: 44 });
+    const h = Math.min(SIGN.h, Math.max(230, PAD.top + this.note.height + PAD.bottom + 16));
+    const sw = Math.min(SIGN.w, tightenNote(c, this.note, 360) + PAD.x * 2);
+    this.sign = { x: SIGN.x + (SIGN.w - sw) / 2, y: SIGN.bottom - h, w: sw, h };
+    this.lyricSize = lyricV2(this.msg ? this.note.fit.size : null);
     this.drawBackground();
   }
 
-  /** 不會動的：紅磚步道、草、兩棵樹、木牌（畫一次；背景的線不抖，角色才跳得出來）。 */
+  /** 不會動的：紅磚步道、草、木牌（畫一次；背景的線不抖，角色才跳得出來）。樹每格畫（樹梢跟著拍子晃）。 */
   private drawBackground() {
     const L = this.bg, c = L.ctx, ink = inkFor(true);
     L.clear();
@@ -92,7 +112,7 @@ export default class Fetch extends Scene {
     c.lineWidth = 1.4;
     c.beginPath();
     const rows = [GROUND + 18, GROUND + 38, GROUND + 58];
-    rows.forEach((y, r) => { c.moveTo(40, y); c.lineTo(1880, y); });
+    rows.forEach((y) => { c.moveTo(40, y); c.lineTo(1880, y); });
     for (let r = 0; r < 4; r++) {
       const y0 = r === 0 ? GROUND : rows[r - 1]!, y1 = rows[r] ?? GROUND + 77;
       for (let x = 60 + (r % 2) * 32; x < 1860; x += 64) { c.moveTo(x, y0 + 2); c.lineTo(x - 2, y1 - 2); }
@@ -101,13 +121,8 @@ export default class Fetch extends Scene {
     c.restore();
     // 草：步道後緣一撮一撮
     for (let x = 40; x < 1880; x += 38 + ((x * 7) % 23)) {
-      if (x > SIGN.x + 20 && x < SIGN.x + SIGN.w - 20 && x % 3 === 0) continue;
       inkPath(c, [{ x, y: GROUND - 1 }, { x: x + 4, y: GROUND - 12 - (x % 9) }, { x: x + 9, y: GROUND - 1 }], { ink, w: 0.5, color: rgba('sepia', 0.5), seed: x });
     }
-    // 樹：左邊一棵（被畫面切掉一半）、右邊遠一點一棵；很淡，只是空氣
-    const faint = inkFor(true, { line: rgba('sepia', 0.4) });
-    this.tree(c, 70, GROUND, 1.25, faint, 11);
-    this.tree(c, 1720, GROUND - 6, 0.95, faint, 12);
     this.drawSign(c, ink);
     L.upload();
   }
@@ -142,26 +157,30 @@ export default class Fetch extends Scene {
     c.font = font(F.hei(500), 18);
     c.letterSpacing = '8px';
     c.fillStyle = rgba('sepia', 0.5);
-    c.fillText('公園公告', S.x + PAD.x, S.y + 46);
+    c.fillText('公園公告', S.x + PAD.x, S.y + 42);
     c.letterSpacing = '0px';
   }
 
-  private tree(c: CanvasRenderingContext2D, x: number, y: number, k: number, ink: ReturnType<typeof inkFor>, seed: number) {
+  /** 樹：樹幹不動，樹冠的幾團跟著拍子輕輕晃（sway 0..1 在拍點上推一下再回來）；很淡，只是空氣。 */
+  private tree(c: CanvasRenderingContext2D, x: number, y: number, k: number, ink: ReturnType<typeof inkFor>, seed: number, sway: number) {
     const top = y - 420 * k;
     inkLine(c, [{ x: x - 14 * k, y }, { x: x - 8 * k, y: top + 120 * k }], { ink, w: 1, seed });
     inkLine(c, [{ x: x + 14 * k, y }, { x: x + 9 * k, y: top + 120 * k }], { ink, w: 1, seed: seed + 1 });
     inkLine(c, [{ x: x + 2 * k, y: top + 190 * k }, { x: x + 60 * k, y: top + 120 * k }], { ink, w: 0.7, seed: seed + 2 });
     const blobs: [number, number, number][] = [[0, 60, 130], [-85, 120, 95], [90, 110, 100], [-10, 170, 110]];
     for (const [dx, dy, r] of blobs) {
-      inkEllipse(c, x + dx * k, top + dy * k, r * k, r * 0.8 * k, 0, { ink, fill: rgba('paper'), w: 0.9, seed: seed + dx });
+      const s = sway * (1 - dy / 220) * 7;
+      inkEllipse(c, x + (dx + s) * k, top + dy * k, r * k, r * 0.8 * k, 0, { ink, fill: rgba('paper'), w: 0.9, seed: seed + dx });
     }
     const crown = [{ x: x - 150 * k, y: top + 200 * k }, { x: x - 150 * k, y: top - 40 * k }, { x: x + 170 * k, y: top - 40 * k }, { x: x + 170 * k, y: top + 200 * k }];
     hatch(c, crown, { ink, angle: -0.9, gap: 12, w: 0.25, color: rgba('sepia', 0.08), seed });
   }
 
+  /** 這一格屬於哪一輪：上一輪 QQ 把球交給宣文（下一次出手前半拍）之後才換下一輪。 */
   private cycleAt(t: number): Cycle | null {
+    const au = this.ctx.audio;
     let cur: Cycle | null = null;
-    for (const cy of this.cycles) if (cy.rel - 0.7 <= t) cur = cy;
+    for (const cy of this.cycles) if (cy.rel - au.beatPeriod(cy.rel) * 0.5 <= t) cur = cy;
     return cur;
   }
 
@@ -178,43 +197,41 @@ export default class Fetch extends Scene {
     const rv = prog(t, s, s + 0.6, ease.inOutCubic);
     const cy = this.cycleAt(t);
 
+    // 樹（很淡）：拍點上樹梢被風推一下
+    const gust = beatKick(au, t, 0.5);
+    const faint = inkFor(true, { line: rgba('sepia', 0.4) });
+    this.tree(c, 70, GROUND, 1.25, faint, 11, gust);
+    this.tree(c, 1720, GROUND - 6, 0.95, faint, 12, gust * 0.8);
+
     // 歌詞：沿著球的拋物線
     const ly = lyricAt(lyrics, t);
     if (ly) {
-      lyricOnPath(c, ly.line, t, this.lyricPath, { family: F.archivo(100, this.msg ? 600 : 700), size: this.msg ? 50 : 62, minSize: 48, offset: 14, alpha: ly.k * rv, unsung: rgba('sepia', 0.24), sung: rgba('sepia', this.msg ? 0.8 : 0.94), active: rgba('signal') });
+      lyricOnPath(c, ly.line, t, this.lyricPath, { family: F.archivo(100, this.msg ? 600 : 700), size: this.lyricSize, minSize: 40, offset: 14, alpha: ly.k * rv, unsung: rgba('sepia', 0.24), sung: rgba('sepia', this.msg ? 0.8 : 0.94), active: rgba('signal') });
     }
 
-    // ---- 狗
-    const dq = this.dogState(t, cy, 'qq'), dp = this.dogState(t, cy, 'penpen');
-    // ---- 人
-    const pa = this.alanPose(t, cy, bp), po = this.omenaPose(t, cy, bp);
-    const o = drawPerson(c, 'omena', po, { x: OM_X, y: GROUND, h: SZ, ink, t, reveal: rv });
-    const a = drawPerson(c, 'alan', pa, { x: ALAN_X, y: GROUND, h: SZ, ink, t, reveal: rv });
-    const p = drawDog(c, 'penpen', dp.pose, { x: dp.x, y: GROUND, h: SZ, dir: dp.dir, ink, t, reveal: rv, wag: dp.wag });
-    const q = drawDog(c, 'qq', dq.pose, { x: dq.x, y: GROUND, h: SZ, dir: dq.dir, ink, t, reveal: rv, ball: dq.ball, wag: dq.wag });
-    for (const j of [a, o, p, q]) if (j.pen) { const pn = j.pen; sparkHead(this.glow, pn.x, pn.y, t, 0.7); sparkParticles(this.glow, t, () => pn, { rate: 50, life: 0.25, speed: 140 }); }
+    // ---- 人（後面）→ 狗（前面）
+    this.drawOmena(c, t, cy, bp);
+    this.drawAlan(c, t, cy, bp);
+    this.drawDog(c, t, cy, 'pp');
+    this.drawDog(c, t, cy, 'qq');
 
-    // ---- 球：出手前在手上、飛行中沿著拋物線（留下訊號色的線）、接到後在 QQ 嘴裡、撿回來後又在手上
-    const r = SZ * 0.03;
-    if (rv >= 1 && cy) {
-      if (t < cy.rel) tennisBall(c, a.handA.x, a.handA.y, r, { ink, t });
-      else if (t < cy.ctc) {
-        const u = (t - cy.rel) / (cy.ctc - cy.rel);
-        const bpnt = arcAt(this.release, this.catchPt, this.hgt, u);
-        c.save();
-        c.lineCap = 'round';
-        const n = 30;
-        for (let k = 1; k <= n; k++) {
-          const u0 = ((k - 1) / n) * u, u1 = (k / n) * u;
-          const p0 = arcAt(this.release, this.catchPt, this.hgt, u0), p1 = arcAt(this.release, this.catchPt, this.hgt, u1);
-          c.strokeStyle = rgba('signal', 0.15 + 0.8 * (k / n) ** 2);
-          c.lineWidth = 1.5 + 2.5 * (k / n);
-          c.beginPath(); c.moveTo(p0.x, p0.y); c.lineTo(p1.x, p1.y); c.stroke();
-        }
-        c.restore();
-        tennisBall(c, bpnt.x, bpnt.y, r, { ink, t });
-      } else if (t >= cy.back + bp * 0.5) tennisBall(c, a.handA.x, a.handA.y, r, { ink, t });
-    } else if (rv >= 1) tennisBall(c, a.handA.x, a.handA.y, r, { ink, t });
+    // ---- 飛行中的球：沿著拋物線（留下訊號色的線）
+    const r = 8;
+    if (cy && t >= cy.rel && t < cy.ctc) {
+      const u = (t - cy.rel) / (cy.ctc - cy.rel);
+      const bpnt = arcAt(this.release, this.catchPt, this.hgt, u);
+      c.save();
+      c.lineCap = 'round';
+      const n = 30;
+      for (let k = 1; k <= n; k++) {
+        const p0 = arcAt(this.release, this.catchPt, this.hgt, ((k - 1) / n) * u), p1 = arcAt(this.release, this.catchPt, this.hgt, (k / n) * u);
+        c.strokeStyle = rgba('signal', 0.15 + 0.8 * (k / n) ** 2);
+        c.lineWidth = 1.5 + 2.5 * (k / n);
+        c.beginPath(); c.moveTo(p0.x, p0.y); c.lineTo(p1.x, p1.y); c.stroke();
+      }
+      c.restore();
+      tennisBall(c, bpnt.x, bpnt.y, r, { ink, t });
+    }
     // 接到的那一刻：嘴邊一圈短線（訊號色）
     if (cy) {
       const k = 1 - clamp((t - cy.ctc) / 0.22);
@@ -226,7 +243,7 @@ export default class Fetch extends Scene {
         c.beginPath();
         for (let i = 0; i < 7; i++) {
           const ang = (i / 7) * Math.PI * 2 - 0.4;
-          const r0 = 22 + (1 - k) * 26, r1 = r0 + 14 * k;
+          const r0 = 24 + (1 - k) * 26, r1 = r0 + 14 * k;
           c.moveTo(this.catchPt.x + Math.cos(ang) * r0, this.catchPt.y + Math.sin(ang) * r0);
           c.lineTo(this.catchPt.x + Math.cos(ang) * r1, this.catchPt.y + Math.sin(ang) * r1);
         }
@@ -243,58 +260,114 @@ export default class Fetch extends Scene {
     return { paper: 1, bloom: 0.2, bloomThreshold: 1.6, halation: 0.03, vignette: 0.24, grain: 0.045, ca: 0.5, zoom: 1 + 0.03 * push, shake: [-(this.sign.x + this.sign.w / 2 - W / 2) * 0.03 * push, -(this.sign.y + this.sign.h / 2 - H / 2) * 0.03 * push] };
   }
 
-  /** 宣文：拿著球 → 丟（小節線出手）→ 看 → 接到時歡呼 → 蹲下接球 → 站起來拿著球。 */
-  private alanPose(t: number, cy: Cycle | null, bp: number): Pose {
-    if (!cy) return POSE.throw(-1);
-    if (t < cy.rel + 0.5) return POSE.throw(beatSwing(t, cy.rel, Math.min(0.6, bp * 1.2), 0.5));
-    const watch = POSE.lookUp();
-    const cheer = POSE.cheer();
-    const crouch = POSE.crouch();
-    if (t < cy.ctc) return lerpPose(POSE.throw(1), watch, prog(t, cy.rel + 0.5, cy.rel + 0.9, ease.inOutCubic));
-    if (t < cy.ctc + bp * 1.2) return lerpPose(watch, cheer, prog(t, cy.ctc - 0.05, cy.ctc + 0.12, ease.outCubic));
-    if (t < cy.back - bp) return lerpPose(cheer, POSE.stand(), prog(t, cy.ctc + bp * 1.2, cy.ctc + bp * 1.8, ease.inOutCubic));
-    if (t < cy.back + bp * 0.6) return lerpPose(POSE.stand(), crouch, prog(t, cy.back - bp, cy.back - bp * 0.2, ease.inOutCubic));
-    return lerpPose(crouch, POSE.throw(-1), prog(t, cy.back + bp * 0.6, cy.back + bp * 1.4, ease.inOutCubic));
+  /** 進場：從側面翻正（火花在腳邊）。回傳要加到 opts 的 spin／alpha；還沒輪到回傳 null。 */
+  private enter(t: number, delay: number, x: number, seed: number) {
+    const e = puppetIn(t, this.ctx.start + delay, 0.42);
+    if (e.alpha <= 0) return null;
+    if (e.k < 1) {
+      const px = x, py = GROUND - 6;
+      sparkHead(this.glow, px, py, t, 0.7);
+      sparkParticles(this.glow, t, () => ({ x: px, y: py }), { rate: 50, life: 0.25, speed: 140, seed });
+    }
+    return { spin: e.spin, alpha: e.alpha };
   }
 
-  /** 孟庭：狗在追的時候跟著拍子拍手、接到時歡呼，其他時候站著看。 */
-  private omenaPose(t: number, cy: Cycle | null, bp: number): Pose {
+  /** 宣文：姿勢照時間軸；出手前往後拉、出手往前送；歡呼時跳一下；等的時候跟著拍子。 */
+  private drawAlan(c: CanvasRenderingContext2D, t: number, cy: Cycle | null, bp: number) {
+    const en = this.enter(t, 0.05, ALAN_X, 1);
+    if (!en) return;
     const au = this.ctx.audio;
-    const nb = au.timeOfBeat(Math.round(au.beatAt(t)));
-    const clap = POSE.clap(clamp((t - nb) / (bp * 0.5), -1, 1));
-    if (!cy) return lerpPose(POSE.stand(), clap, 0.0);
-    if (t < cy.rel) return POSE.stand();
-    if (t < cy.ctc) return clap;
-    if (t < cy.ctc + bp * 1.2) return lerpPose(clap, POSE.cheer(), prog(t, cy.ctc - 0.05, cy.ctc + 0.12, ease.outCubic));
-    return lerpPose(POSE.cheer(), clap, prog(t, cy.ctc + bp * 1.2, cy.ctc + bp * 1.6));
+    let rot = 0, lift = 0, squash = breathe(t, 0.008, 3.2) + 0.01 * beatKick(au, t, 0.3);
+    // 出手前一拍往後拉、出手往前送（每一輪都算：往後拉的時候上一輪還沒結束）
+    for (const k of this.cycles) {
+      if (t < k.rel) rot -= 0.07 * prog(t, k.rel - bp, k.rel, ease.inOutCubic);
+      else if (t < k.rel + bp * 2) rot += 0.08 * Math.exp(-(t - k.rel) / (bp * 0.4));
+    }
+    if (cy) {
+      const j = jumpArc(t, cy.ctc - 0.02, cy.ctc + bp * 0.7, 30, { crouch: 0.06, land: 0.1 });
+      if (j.air || t > cy.ctc) { lift = -j.y; squash += j.squash; }
+    }
+    // throw_2 圖上的球一律蓋掉（出手後球由程式在飛）；throw_1 的球是手上拿著的，不蓋
+    const o: PuppetOpts = { h: SZ, rot, pivot: 0.4, squash, spin: en.spin, alpha: en.alpha, hide: ['xw_throw_2:ball'] };
+    puppetShadow(c, 'xw', ALAN_X, GROUND, { h: SZ, lift, alpha: 0.3 * en.alpha, color: '70,45,25' });
+    drawPick(c, this.alanKeys, t, ALAN_X, GROUND - lift, o);
   }
 
-  /** 狗的位置與姿勢：等 → 追（跑）→ QQ 在拍點跳起來接 → 跑回來 → 在宣文腳邊坐好。 */
-  private dogState(t: number, cy: Cycle | null, who: 'qq' | 'penpen'): { x: number; dir: 1 | -1; pose: DogPose; ball: boolean; wag?: number } {
+  /** 孟庭：站在旁邊跟著拍子點頭；接到球的那一刻跳起來歡呼。 */
+  private drawOmena(c: CanvasRenderingContext2D, t: number, cy: Cycle | null, bp: number) {
+    const en = this.enter(t, 0.14, OM_X, 2);
+    if (!en) return;
+    const au = this.ctx.audio;
+    const cheer = !!cy && t >= cy.ctc - 0.03 && t < cy.ctc + bp * 1.5;
+    let lift = 0, squash = breathe(t, 0.01, 2.9, 0.3) + 0.03 * beatKick(au, t, 0.25);
+    const rot = cheer ? 0 : 0.025 * Math.sin(au.beatAt(t) * Math.PI);
+    if (cy) {
+      const j = jumpArc(t, cy.ctc - 0.03, cy.ctc + bp * 0.8, 44, { crouch: 0.08, land: 0.12 });
+      if (j.air || t > cy.ctc) { lift = -j.y; squash = j.squash || squash; }
+    }
+    puppetShadow(c, 'mt', OM_X, GROUND, { h: SZ, lift, alpha: 0.3 * en.alpha, color: '70,45,25' });
+    drawPuppet(c, cheer ? 'mt_cheer' : 'mt_idle_front', OM_X, GROUND - lift, { h: SZ, rot, pivot: 0.1, squash, spin: en.spin, alpha: en.alpha });
+  }
+
+  /**
+   * 一隻狗：等（QQ 站著、芃芃坐著，拍點上興奮地壓一下）→ 出手後追（跑步兩張、半拍一張、一步一彈）→
+   * 在拍點跳起來（QQ 咬到球、芃芃撲空）→ 轉身跑回來（QQ 叼著球）→ 回到宣文腳邊（QQ 面向宣文叼著球，交球後轉回來）。
+   */
+  private drawDog(c: CanvasRenderingContext2D, t: number, cy: Cycle | null, who: 'qq' | 'pp') {
     const qq = who === 'qq';
     const rest = qq ? REST_Q : REST_P;
-    const target = qq ? CATCH_X : CATCH_X - 120;
+    const en = this.enter(t, qq ? 0.24 : 0.32, rest, qq ? 3 : 4);
+    if (!en) return;
     const au = this.ctx.audio, bp = au.beatPeriod(t);
-    const runPh = (x: number) => x / (DOG_STRIDE.run * SZ);
-    const idle = qq ? DOG.play() : DOG.sit();
-    if (!cy || t < cy.rel) return { x: rest, dir: 1, pose: idle, ball: false, wag: Math.sin(t * Math.PI * 2 * 3) };
-    // 追：出手後才起跑（芃芃晚一點點），越跑越快、快到的時候放慢
+    const idle = qq ? 'qq_stand' : 'pp_sit';
+    const base: PuppetOpts = { h: SZ, scale: DOG_S, spin: en.spin, alpha: en.alpha };
+    const shadow = (x: number, lift: number) => puppetShadow(c, who, x, GROUND, { h: SZ * DOG_S, lift, alpha: 0.32 * en.alpha, color: '70,45,25' });
+    const wait = (flip: boolean, name: string) => {
+      shadow(rest, 0);
+      drawPuppet(c, name, rest, GROUND, { ...base, flip, squash: 0.05 * beatKick(au, t, 0.25) + breathe(t, 0.015, 1.3, qq ? 0 : 0.5) });
+    };
+    if (!cy || t < cy.rel) { wait(false, idle); return; }
+    const air = Math.min(0.5, bp * 1.1);
+    const jx = qq ? CATCH_X : CATCH_X - 190;
+    const takeoff = cy.ctc - air / 2, land = cy.ctc + air / 2;
     const go = cy.rel + (qq ? 0.05 : 0.18);
-    if (t < cy.ctc + 0.4) {
-      const u = clamp((t - go) / (cy.ctc - go));
-      const x = lerp(rest, target, sine(u));
-      let pose = DOG.run(runPh(x - rest));
-      if (qq && t > cy.ctc - 0.35) pose = DOG.jump(beatSwing(t, cy.ctc, 0.35, 0.4), 1.1);
-      if (!qq && t > cy.ctc - 0.3) pose = DOG.jump(beatSwing(t, cy.ctc + 0.08, 0.3, 0.35), 0.5);
-      return { x, dir: 1, pose, ball: qq && t >= cy.ctc };
+    const runs = [`${who}_run_1`, `${who}_run_2`];
+    // 追：出手後才起跑（芃芃晚一點點），越跑越快、快到的時候放慢，剛好在起跳點
+    if (t < takeoff) {
+      const x = lerp(rest, jx - 65, sine(clamp((t - go) / (takeoff - go))));
+      if (t < go) { wait(false, idle); return; }
+      const b = hop(au.beatAt(t), 2) * 9;
+      shadow(x, b);
+      drawCycle(c, au, t, runs, 2, x, GROUND - b, { ...base, rot: 0.04 });
+      return;
     }
-    // 跑回來（叼著球），到了就坐好
-    const u = clamp((t - (cy.ctc + 0.4)) / Math.max(0.3, cy.back - bp * 0.3 - (cy.ctc + 0.4)));
-    const x = lerp(target, rest, sine(u));
-    if (u < 1) return { x, dir: -1, pose: DOG.run(runPh(target - x)), ball: qq };
-    // 回到腳邊：QQ 把球交給宣文（半拍後球回到手上），兩隻狗坐著搖尾巴等下一球
-    const hand = t < cy.back + bp * 0.5;
-    return { x: rest, dir: 1, pose: qq ? DOG.sit() : DOG.play(), ball: qq && hand, wag: Math.sin(t * Math.PI * 2 * 3.2) };
+    // 跳：最高點在拍點上（QQ 咬到球：飛行中蓋掉圖上的球，咬到的那一刻打開）
+    const back0 = land + 0.12, back1 = Math.max(back0 + 0.3, cy.back - bp * 0.3);
+    if (t < land + 0.12) {
+      // 最高點（拍點）剛好在 jx、身體水平：接球點（init 裡的 catchPt）就是照這個位置算的
+      const j = jumpArc(t, takeoff, land, qq ? QJUMP : PJUMP, { crouch: 0, land: 0.2 });
+      const x = lerp(jx - 65, jx + 65, clamp((t - takeoff) / (land - takeoff)));
+      shadow(x, -j.y);
+      const hide = !qq || t < cy.ctc ? ['ball'] : undefined;
+      if (j.air) drawPuppet(c, `${who}_jump`, x, GROUND + j.y, { ...base, hide, rot: -0.2 + 0.4 * j.u, pivot: 0.5, squash: j.squash });
+      else drawPuppet(c, `${who}_run_1`, jx + 65, GROUND, { ...base, squash: landSquash(t, land, 0.2) });
+      return;
+    }
+    // 跑回來（叼著球），到了就停在宣文腳邊
+    if (t < back1) {
+      const x = lerp(jx + 65, rest, sine(clamp((t - back0) / (back1 - back0))));
+      const b = hop(au.beatAt(t), 2) * 9;
+      shadow(x, b);
+      const o: PuppetOpts = { ...base, flip: true, rot: -0.04 };
+      const name = drawCycle(c, au, t, runs, 2, x, GROUND - b, o);
+      if (qq) { const m = puppetPoint(name, 'mouth', x, GROUND - b, o); if (m) tennisBall(c, m.x, m.y + 2, 8, { ink: inkFor(true), t }); }
+      return;
+    }
+    // 回到腳邊：QQ 面向宣文叼著球，半拍後交球（球回到宣文手上），轉回來等下一球；芃芃坐下
+    const squash = landSquash(t, back1, 0.12);
+    if (qq && t < cy.back + bp * 0.5) { shadow(rest, 0); drawPuppet(c, 'qq_ball', rest, GROUND, { ...base, flip: true, squash }); return; }
+    if (!qq) { shadow(rest, 0); drawPuppet(c, 'pp_sit', rest, GROUND, { ...base, squash: squash + 0.04 * beatKick(au, t, 0.25) }); return; }
+    wait(false, idle);
   }
 
   /** 木牌上的留言：第一拍起一個字一個字寫上去（手寫字、墨色），寫完署名淡入；在牌面上垂直置中。 */

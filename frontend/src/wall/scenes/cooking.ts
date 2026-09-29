@@ -1,39 +1,43 @@
-// 一起做菜（亮、home）：廚房的側面。孟庭在爐子前甩鍋，宣文在中島另一邊端著盤子等，QQ 在孟庭腳邊站起來討吃的。
-//  - 甩鍋落在拍點：每兩拍一次（大鼓通常在 1、3 拍），鍋子往上一甩（預備 → 甩 = 拍點 → 收回），鍋裡的菜飛起來、
-//    在下一次甩之前落回鍋裡。每兩小節有一塊「飛出去」，QQ 在拍點上跳起來咬住。
-//  - 歌詞像食譜的步驟：直接寫在爐子上方的牆上，旁邊一個小小的「STEP 0N」（每換一行加一），比留言小一級。
-//  - **焦點是主打留言**：寫在冰箱門上的便條（膠帶貼著、稍微歪、有影子），深墨手寫字；便條大小跟著留言長短。
-//    沒有留言時便條寫邀請、字淡，歌詞放大變主角。
-//  - 鏡頭：整個窗格慢慢推近冰箱上的便條。
-//  - 開場：火花把人和狗描出來；紙底、墨色線。
+// 一起做菜（亮、home）：廚房的側面。孟庭在爐子前甩鍋，宣文在中島另一邊端著盤子等，QQ 在孟庭身後站起來討吃的。角色是 Codex 畫的紙偶（_puppet.ts）。
+//  - 甩鍋落在拍點：每兩拍一次（大鼓通常在 1、3 拍）。拍點前壓低往後帶（wok_1）→ 拍點上換成鍋子往上甩、菜飛在空中的那張（wok_2），
+//    整個人往上一送 → 下一次甩之前收回（wok_1）。每兩小節有一塊菜「飛出去」越過孟庭的頭，QQ 在拍點上跳起來咬住（嘴邊冒一顆小愛心）。
+//  - 中島與爐口的位置照 wok_1 圖上鍋子的位置擺（鍋子剛好坐在爐火上）；爐火大鼓時竄高、鍋子冒蒸氣。
+//  - 歌詞像食譜的步驟：直接寫在爐子上方的牆上，旁邊一個小小的「STEP 0N」（每換一行加一），比留言小一級（標準 v2：40～52）。
+//  - **焦點是主打留言**：寫在冰箱門上的便條（膠帶貼著、稍微歪、有影子），深墨手寫字；照「留言尺寸與版面比例標準 v2」：
+//    字 40～60、便條最大 480 × 400，放在畫面左側，高度跟著留言長短。沒有留言時便條寫邀請、字淡，歌詞變主角。
+//  - 宣文每拍輕輕點頭，甩鍋時盤子往前遞一點。鏡頭：整個窗格慢慢推近冰箱上的便條。
+//  - 開場：紙偶從側面翻正進場（仙女棒的火花在腳邊）；紙底、墨色線。
 import * as THREE from 'three';
 import { Scene, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
 import { Layer2D, W, H } from '../engine/gl';
 import { LineBatch } from '../engine/lines';
 import { F, font, loadText } from '../engine/type';
 import { rgba } from '../engine/palette';
-import { clamp, ease, prog, lerp, hash } from '../engine/util';
+import { clamp, ease, prog, hash } from '../engine/util';
 import { lyricAt, layoutLyric, drawLyric, beatAfter, sparkHead, sparkParticles, msgChars } from './_motifs';
-import {
-  drawPerson, drawDog, inkFor, inkLine, inkPath, inkShape, inkPoly, inkRect, inkEllipse, hatch, pan, plate, paperBG, POSE, DOG, beatSwing, arcAt, lerpDog, fitNote, drawNote,
-  type Pt, type Ink, type Note,
-} from './_couple';
+import { inkFor, inkLine, inkPath, inkShape, inkPoly, inkRect, inkEllipse, hatch, paperBG, arcAt, drawNote, type Pt, type Ink, type Note } from './_couple';
+import { loadPuppets, drawPuppet, drawPick, puppetPoint, puppetShadow, puppetIn, jumpArc, breathe, beatKick, noteV2, tightenNote, type PuppetOpts } from './_puppet';
+import { lyricV2 } from './_v2';
 
 export const spec: PlateSpecDecl = { group: 'couple', family: 'home', paper: true, energy: [0.3, 1], bars: [4, 8] };
 
 const FLOOR = 880;
 const SZ = 420;
-const OM_X = 820, AL_X = 1250, QQ_X = 690;
-const ISLAND = { x: 930, w: 210, top: FLOOR - SZ * 0.5 };
-const FRIDGE = { x: 100, y: 170, w: 520, h: FLOOR - 170 };
-/** 冰箱門上的便條：最大的範圍（上緣貼膠帶的位置固定、高度跟著留言）與寫字的內距。 */
-const NOTE = { x: 140, y: 238, w: 452, h: 492, rot: -0.018 };
-const PAD = { x: 30, top: 44, bottom: 30 };
+const OM_X = 800, AL_X = 1290, QQ_X = 700;
+/** 狗在這個版面放大一點（遠處的桌子也要認得出是 QQ）。 */
+const DOG_S = 1.2;
+/** QQ 跳多高。 */
+const QJUMP = 70;
+const FRIDGE = { x: 96, y: 170, w: 548, h: FLOOR - 170 };
+/** 冰箱門上的便條：最大的範圍（標準 v2；上緣貼膠帶的位置固定、高度跟著留言）與寫字的內距。 */
+const NOTE = { x: 130, y: 236, w: 480, h: 400, rot: -0.018 };
+const PAD = { x: 30, top: 36, bottom: 24 };
 /** 牆上寫歌詞（食譜步驟）的範圍：爐子上方，沒有框。 */
-const WALL = { x: 790, y: 160, w: 540 };
+const WALL = { x: 790, y: 160, w: 560 };
 const INVITE = '掃描右下角 QR code，把祝福寫上大螢幕';
+const SPRITES = ['mt_wok_1', 'mt_wok_2', 'xw_plate', 'qq_beg', 'qq_jump'];
 
-interface Toss { t: number; land: number; escape: boolean }
+interface Toss { t: number; back: number; escape: boolean }
 
 export default class Cooking extends Scene {
   paper = paperBG();
@@ -42,31 +46,43 @@ export default class Cooking extends Scene {
   glow = this.track(new LineBatch(1024, { screen2D: true, blend: 'add' }));
   msg: Msg | null = this.ctx.params.message ?? null;
   tosses: Toss[] = [];
+  keys: [number, string][] = [];
   note: Note | null = null;
   sheet = { ...NOTE };
-  panAt: Pt = { x: 0, y: 0 };
+  /** 鍋子（wok_1 靜止時、wok_2 甩起來時）與 QQ 跳到最高時嘴的位置。 */
+  wokLow: Pt = { x: 0, y: 0 };
+  wokHigh: Pt = { x: 0, y: 0 };
   qqMouth: Pt = { x: 0, y: 0 };
+  island = { x: 930, w: 230, top: 700 };
+  lyricSize = 52;
 
   override async init() {
     const { audio: au } = this.ctx;
     await loadText('一位賓客（間奏：小火慢炒）' + INVITE);
-    // 甩鍋：開場描線後的第一拍起，每兩拍一次；每四次（兩小節）有一塊菜飛出去給 QQ
+    this.track(await loadPuppets(SPRITES));
+    // 甩鍋：開場進場後的第一拍起，每兩拍一次；每四次（兩小節）有一塊菜飛出去給 QQ
     let b = Math.ceil(au.beatAt(beatAfter(au, this.ctx.start + 0.7)) - 1e-6);
     for (let k = 0; k < 80; k++) {
       const t = au.timeOfBeat(b);
       if (t > this.ctx.end + 1) break;
-      this.tosses.push({ t, land: au.timeOfBeat(b + 2) - au.beatPeriod(t) * 0.18, escape: k % 4 === 3 });
+      this.tosses.push({ t, back: au.timeOfBeat(b + 1.1), escape: k % 4 === 3 });
       b += 2;
     }
+    // 孟庭的姿勢時間軸：拍點上甩（wok_2）、一拍多一點之後收回（wok_1）
+    this.keys = [[-1e9, 'mt_wok_1']];
+    for (const ts of this.tosses) this.keys.push([ts.t, 'mt_wok_2'], [ts.back, 'mt_wok_1']);
+    // 鍋子在哪：中島（爐口）照靜止時的鍋子擺，鍋底坐在爐火上
+    this.wokLow = puppetPoint('mt_wok_1', 'wok', OM_X, FLOOR, { h: SZ })!;
+    this.wokHigh = puppetPoint('mt_wok_2', 'wok', OM_X, FLOOR - 10, { h: SZ })!;
+    this.island = { x: this.wokLow.x - 80, w: 270, top: this.wokLow.y + 22 };
+    this.qqMouth = puppetPoint('qq_jump', 'mouth', QQ_X, FLOOR - QJUMP, { h: SZ, scale: DOG_S })!;
+    // 冰箱上的便條：標準 v2 的字級；便條的寬高跟著留言（在冰箱門上置中）
     const c = this.fg.ctx;
-    // 鍋子（甩的那一刻）與 QQ 跳起來咬的位置（reveal 0 = 只算不畫）
-    const o = drawPerson(c, 'omena', POSE.panToss(0), { x: OM_X, y: FLOOR, h: SZ, reveal: 0 });
-    this.panAt = { x: o.handA.x + Math.cos(o.handAngA) * SZ * 0.2, y: o.handA.y + Math.sin(o.handAngA) * SZ * 0.2 - 10 };
-    this.qqMouth = drawDog(c, 'qq', DOG.jump(0, 0.9), { x: QQ_X, y: FLOOR, h: SZ, reveal: 0 }).mouth;
-    // 冰箱上的便條：字級依「便條扣掉署名那一列」算；便條高度跟著留言長短
     const w = NOTE.w - PAD.x * 2, hmax = NOTE.h - PAD.top - PAD.bottom;
-    this.note = this.msg ? fitNote(c, this.msg.text, this.msg.name, w, hmax, { min: 46, max: 80 }) : fitNote(c, INVITE, null, w, hmax * 0.5, { min: 44, max: 52 });
-    this.sheet = { ...NOTE, h: Math.min(NOTE.h, Math.max(240, PAD.top + this.note.height + PAD.bottom + 20)) };
+    this.note = this.msg ? noteV2(c, this.msg.text, this.msg.name, w, hmax) : noteV2(c, INVITE, null, w, hmax * 0.5, { max: 44 });
+    const nw = Math.min(NOTE.w, tightenNote(c, this.note, 280) + PAD.x * 2);
+    this.sheet = { ...NOTE, x: FRIDGE.x + FRIDGE.w / 2 - nw / 2, w: nw, h: Math.min(NOTE.h, Math.max(220, PAD.top + this.note.height + PAD.bottom + 16)) };
+    this.lyricSize = lyricV2(this.msg ? this.note.fit.size : null);
     this.drawBackground();
   }
 
@@ -83,10 +99,10 @@ export default class Cooking extends Scene {
     const F0 = FRIDGE;
     inkRect(c, F0.x, F0.y, F0.w, F0.h, { ink, fill: rgba('paper'), w: 1.1, seed: 3, r: 24 });
     inkLine(c, [{ x: F0.x + F0.w / 2, y: F0.y + 10 }, { x: F0.x + F0.w / 2 + 1, y: F0.y + F0.h - 6 }], { ink, w: 0.8, seed: 4 });
-    for (const x of [F0.x + F0.w / 2 - 20, F0.x + F0.w / 2 + 20]) inkLine(c, [{ x, y: F0.y + 330 }, { x, y: F0.y + 470 }], { ink, w: 1.6, seed: x });
+    for (const x of [F0.x + F0.w / 2 - 20, F0.x + F0.w / 2 + 20]) inkLine(c, [{ x, y: F0.y + 480 }, { x, y: F0.y + 600 }], { ink, w: 1.6, seed: x });
     hatch(c, [{ x: F0.x + F0.w - 60, y: F0.y + 20 }, { x: F0.x + F0.w - 10, y: F0.y + 20 }, { x: F0.x + F0.w - 10, y: F0.y + F0.h - 10 }, { x: F0.x + F0.w - 60, y: F0.y + F0.h - 10 }], { ink, gap: 10, angle: 1.2, color: rgba('sepia', 0.18), w: 0.35 });
     // 中島：檯面（厚一點）＋櫃門＋把手；爐口在孟庭那一側
-    const I = ISLAND;
+    const I = this.island;
     inkRect(c, I.x, I.top + 14, I.w, FLOOR - I.top - 14, { ink, fill: rgba('paper'), w: 1, seed: 7, r: 3 });
     inkRect(c, I.x - 16, I.top, I.w + 32, 18, { ink, fill: rgba('paper'), w: 1.1, seed: 8, r: 4 });
     inkLine(c, [{ x: I.x + 24, y: I.top + 50 }, { x: I.x + I.w - 24, y: I.top + 50 }, { x: I.x + I.w - 24, y: FLOOR - 24 }, { x: I.x + 24, y: FLOOR - 24 }, { x: I.x + 24, y: I.top + 50 }], { ink, w: 0.6, seed: 9, taper: 0.1 });
@@ -109,15 +125,9 @@ export default class Cooking extends Scene {
     L.upload();
   }
 
-  private nearestToss(t: number) {
-    let best: Toss | null = null;
-    for (const s of this.tosses) if (!best || Math.abs(s.t - t) < Math.abs(best.t - t)) best = s;
-    return best;
-  }
-
   override render(f: Frame, out: THREE.WebGLRenderTarget): PostOverrides {
-    const { renderer, comp, lyrics, audio: au } = this.ctx;
-    const t = f.t, s = this.ctx.start;
+    const { renderer, comp, audio: au } = this.ctx;
+    const t = f.t;
     const bp = au.beatPeriod(t);
     this.paper.render(renderer, out);
     comp.draw(renderer, this.bg.texture, out);
@@ -125,63 +135,41 @@ export default class Cooking extends Scene {
     const c = L.ctx;
     this.glow.clear();
     const ink = inkFor(true);
-    const rv = prog(t, s, s + 0.6, ease.inOutCubic);
 
     this.drawRecipe(c, t);
 
-    // ---- 孟庭甩鍋
-    const nt = this.nearestToss(t);
-    const p = nt ? beatSwing(t, nt.t, Math.min(0.32, bp * 0.7), Math.min(0.45, bp * 0.9)) : -1;
-    const o = drawPerson(c, 'omena', POSE.panToss(p), { x: OM_X, y: FLOOR, h: SZ, ink, t, reveal: rv });
-    // 鍋裡的菜：飛在空中的時候鍋是空的
-    let flying = false;
-    for (const ts of this.tosses) if (t >= ts.t && t < ts.land) flying = true;
-    const pc = rv > 0.8 ? pan(c, o.handA, o.handAngA, { ink, t, h: SZ, food: flying ? 0.15 : 1 }) : o.handA;
-    // 爐火：鍋子下面幾條小小的訊號色火苗（大鼓時竄高）
-    const fl = 0.5 + 0.8 * f.a.kick;
-    const I = ISLAND;
+    // ---- 爐火：鍋子下面幾條小小的訊號色火苗（大鼓與甩鍋時竄高）
+    const I = this.island;
+    let flare = 0;
+    for (const ts of this.tosses) { const d = t - ts.t; if (d >= 0 && d < 0.4) flare = Math.max(flare, 1 - d / 0.4); }
+    const fl = 0.5 + 0.6 * f.a.kick + 0.6 * flare;
     c.save();
     c.strokeStyle = rgba('signal', 0.9);
     c.lineWidth = 2.4;
     c.lineCap = 'round';
     c.beginPath();
     for (let k = 0; k < 5; k++) {
-      const x = I.x + 36 + k * 16, hh = (10 + 8 * hash(k, Math.floor(t * 12))) * fl;
+      const x = this.wokLow.x - 34 + k * 17, hh = (10 + 8 * hash(k, Math.floor(t * 12))) * fl;
       c.moveTo(x, I.top - 2); c.quadraticCurveTo(x + 4, I.top - hh * 0.6, x + (k % 2 ? 3 : -3), I.top - hh);
     }
     c.stroke();
     c.restore();
+
+    // ---- 孟庭甩鍋
+    const pc = this.drawOmena(c, t, bp);
     // 鍋子冒的蒸氣（兩三條淡淡的曲線往上飄）
     for (let k = 0; k < 3; k++) {
       const u = ((t * 0.6 + k / 3) % 1);
-      const x0 = pc.x - 30 + k * 30, y0 = pc.y - 20 - u * 150;
+      const x0 = pc.x - 30 + k * 30, y0 = pc.y - 30 - u * 150;
       inkPath(c, [{ x: x0, y: y0 + 40 }, { x: x0 + 10 * Math.sin(t * 2 + k), y: y0 + 20 }, { x: x0 - 8, y: y0 }], { ink, t, w: 0.5, color: rgba('sepia', 0.35 * Math.sin(Math.PI * u)), seed: 40 + k });
     }
 
-    // ---- 飛起來的菜
-    for (const ts of this.tosses) {
-      if (t < ts.t || t > ts.land + (ts.escape ? bp * 2 : 0)) continue;
-      this.food(c, ink, t, ts, pc);
-    }
-
-    // ---- 宣文端盤子（每拍輕輕點頭；甩鍋時盤子往前伸一點）
-    const dn = (t - au.timeOfBeat(Math.round(au.beatAt(t)))) / 0.12;
-    const nod = Math.exp(-dn * dn);
-    const ap = POSE.offer();
-    ap.head += 8 * nod;
-    ap.armA[0] += 6 * (nt ? Math.max(0, 1 - Math.abs(t - nt.t) / 0.4) : 0);
-    const a = drawPerson(c, 'alan', ap, { x: AL_X, y: FLOOR, h: SZ, ink, t, reveal: rv, dir: -1 });
-    if (rv > 0.8) plate(c, a.handA.x - 20, a.handA.y - 4, { ink, t, h: SZ, food: true });
-
+    // ---- 宣文端盤子（每拍輕輕點頭；甩鍋時盤子往前遞一點）
+    this.drawAlan(c, t);
     // ---- QQ：站起來討，菜飛出來的時候在拍點跳起來咬住
-    let dp = DOG.beg();
-    for (const ts of this.tosses) {
-      if (!ts.escape) continue;
-      const catchT = ts.land + bp * 0.5;
-      if (Math.abs(t - catchT) < 0.6) dp = lerpDog(DOG.beg(), DOG.jump(beatSwing(t, catchT, 0.35, 0.45), 0.8), 1 - clamp((Math.abs(t - catchT) - 0.4) / 0.2));
-    }
-    const q = drawDog(c, 'qq', dp, { x: QQ_X, y: FLOOR, h: SZ, ink, t, reveal: rv, wag: Math.sin(t * Math.PI * 2 * 3) });
-    for (const j of [o, a, q]) if (j.pen) { const pn = j.pen; sparkHead(this.glow, pn.x, pn.y, t, 0.7); sparkParticles(this.glow, t, () => pn, { rate: 50, life: 0.25, speed: 140 }); }
+    this.drawQQ(c, t, bp);
+    // ---- 飛出去的那塊菜
+    for (const ts of this.tosses) if (ts.escape) this.escape(c, ink, t, ts);
 
     this.drawNote(c, t);
     comp.draw(renderer, L.upload(), out);
@@ -191,53 +179,109 @@ export default class Cooking extends Scene {
     return { paper: 1, bloom: 0.2, bloomThreshold: 1.6, halation: 0.03, vignette: 0.24, grain: 0.045, ca: 0.5, zoom: 1 + 0.03 * push, shake: [-(N.x + N.w / 2 - W / 2) * 0.03 * push, -(N.y + N.h / 2 - H / 2) * 0.03 * push] };
   }
 
-  /** 一次甩鍋飛起來的菜：三塊落回鍋裡；每兩小節那一次多一塊飛向 QQ 的嘴（在拍點被咬住）。 */
-  private food(c: CanvasRenderingContext2D, ink: Ink, t: number, ts: Toss, pc: Pt) {
-    const bp = this.ctx.audio.beatPeriod(ts.t);
-    const u = clamp((t - ts.t) / (ts.land - ts.t));
-    for (let k = 0; k < 3; k++) {
-      if (t > ts.land) break;
-      const hgt = 120 + 60 * hash(ts.t * 10, k);
-      const dx = (k - 1) * 26 + 18 * Math.sin(Math.PI * u) * (k - 1);
-      const x = lerp(this.panAt.x, pc.x, u) + dx;
-      const y = lerp(this.panAt.y, pc.y, u) - 4 * hgt * u * (1 - u) - 6;
-      this.bit(c, ink, x, y, t * 6 + k, k, t);
+  /** 進場：從側面翻正（火花在腳邊）。還沒輪到回傳 null。 */
+  private enter(t: number, delay: number, x: number, seed: number) {
+    const e = puppetIn(t, this.ctx.start + delay, 0.42);
+    if (e.alpha <= 0) return null;
+    if (e.k < 1) {
+      sparkHead(this.glow, x, FLOOR - 6, t, 0.7);
+      sparkParticles(this.glow, t, () => ({ x, y: FLOOR - 6 }), { rate: 50, life: 0.25, speed: 140, seed });
     }
-    if (ts.escape) {
-      // 飛出去的那塊：從鍋子飛到 QQ 跳起來的嘴邊
-      const catchT = ts.land + bp * 0.5;
-      const v = clamp((t - ts.t) / (catchT - ts.t));
-      if (t <= catchT) {
-        const q = arcAt(this.panAt, this.qqMouth, 150, v);
-        this.bit(c, ink, q.x, q.y, t * 8, 3, t);
-      } else {
-        // 咬到的瞬間：嘴邊冒一顆小愛心（點綴色）
-        const k = (t - catchT) / 0.6;
-        if (k < 1) {
-          c.save();
-          c.globalAlpha = 1 - k;
-          c.fillStyle = rgba('rose');
-          const hx = this.qqMouth.x + 10, hy = this.qqMouth.y - 30 - k * 30, sz = 14;
-          c.beginPath(); c.moveTo(hx, hy + sz * 0.35);
-          c.bezierCurveTo(hx - sz, hy - sz * 0.4, hx - sz * 0.4, hy - sz, hx, hy - sz * 0.35);
-          c.bezierCurveTo(hx + sz * 0.4, hy - sz, hx + sz, hy - sz * 0.4, hx, hy + sz * 0.35);
-          c.fill();
-          c.restore();
-        }
+    return e;
+  }
+
+  /** 孟庭：拍點前壓低往後帶、拍點上甩起來（整個人往上一送）、收回。回傳這一格鍋子的位置（蒸氣用）。 */
+  private drawOmena(c: CanvasRenderingContext2D, t: number, bp: number): Pt {
+    const en = this.enter(t, 0.05, OM_X, 1);
+    let rot = 0, squash = breathe(t, 0.008, 3), lift = 0;
+    let high = false;
+    for (const ts of this.tosses) {
+      const d = t - ts.t;
+      if (d > -bp * 0.5 && d < 0) { const k = prog(t, ts.t - bp * 0.5, ts.t, ease.inOutCubic); rot -= 0.05 * k; squash += 0.05 * k; }
+      if (d >= 0 && t < ts.back) {
+        high = true;
+        // 甩：一下子往上送、慢慢落回來
+        lift = 10 * Math.sin(Math.PI * clamp(d / (ts.back - ts.t)));
+        rot += 0.04 * Math.exp(-d / 0.15);
+        squash -= 0.04 * Math.exp(-d / 0.12);
       }
     }
+    if (!en) return high ? this.wokHigh : this.wokLow;
+    puppetShadow(c, 'mt', OM_X, FLOOR, { h: SZ, lift, alpha: 0.3 * en.alpha, color: '70,45,25' });
+    drawPick(c, this.keys, t, OM_X, FLOOR - lift, { h: SZ, rot, pivot: 0.2, squash, spin: en.spin, alpha: en.alpha });
+    return high ? { x: this.wokHigh.x, y: this.wokHigh.y - lift } : this.wokLow;
+  }
+
+  /** 宣文：端著盤子面向孟庭（圖朝右，翻過來），每拍點一下頭；甩鍋那一下盤子往前遞一點。 */
+  private drawAlan(c: CanvasRenderingContext2D, t: number) {
+    const en = this.enter(t, 0.16, AL_X, 2);
+    if (!en) return;
+    const au = this.ctx.audio;
+    let reach = 0;
+    for (const ts of this.tosses) reach = Math.max(reach, 1 - Math.abs(t - ts.t) / 0.4);
+    const nod = beatKick(au, t, 0.24);
+    puppetShadow(c, 'xw', AL_X, FLOOR, { h: SZ, alpha: 0.3 * en.alpha, color: '70,45,25' });
+    drawPuppet(c, 'xw_plate', AL_X - 8 * reach, FLOOR, { h: SZ, flip: true, rot: -0.03 * nod - 0.02 * reach, pivot: 0.1, squash: 0.012 * nod + breathe(t, 0.008, 3.3, 0.5), spin: en.spin, alpha: en.alpha });
+  }
+
+  /** QQ：在孟庭身後站起來討吃的（每拍搖一下）；菜飛過來時跳起來、最高點在拍點上咬住。 */
+  private drawQQ(c: CanvasRenderingContext2D, t: number, bp: number) {
+    const en = this.enter(t, 0.26, QQ_X, 3);
+    if (!en) return;
+    const au = this.ctx.audio;
+    const base: PuppetOpts = { h: SZ, scale: DOG_S, spin: en.spin, alpha: en.alpha };
+    for (const ts of this.tosses) {
+      if (!ts.escape) continue;
+      const ct = this.catchT(ts), air = Math.min(0.5, bp * 1.1);
+      if (t > ct - air / 2 - 0.12 && t < ct + air / 2 + 0.3) {
+        const j = jumpArc(t, ct - air / 2, ct + air / 2, QJUMP, { crouch: 0.1, land: 0.2 });
+        puppetShadow(c, 'qq', QQ_X, FLOOR, { h: SZ * DOG_S, lift: -j.y, alpha: 0.32 * en.alpha, color: '70,45,25' });
+        // 跳起來那張圖嘴前畫了網球：這裡咬的是菜，一律蓋掉
+        if (j.air) drawPuppet(c, 'qq_jump', QQ_X, FLOOR + j.y, { ...base, hide: ['ball'], rot: -0.12 + 0.24 * j.u, pivot: 0.5, squash: j.squash });
+        else drawPuppet(c, 'qq_beg', QQ_X, FLOOR, { ...base, squash: j.squash });
+        return;
+      }
+    }
+    puppetShadow(c, 'qq', QQ_X, FLOOR, { h: SZ * DOG_S, alpha: 0.32 * en.alpha, color: '70,45,25' });
+    drawPuppet(c, 'qq_beg', QQ_X, FLOOR, { ...base, rot: 0.04 * Math.sin(au.beatAt(t) * Math.PI), pivot: 0.1, squash: 0.04 * beatKick(au, t, 0.25) });
+  }
+
+  /** 飛出去的那塊菜在哪一刻被咬到：甩鍋後兩拍（落在拍點上）。 */
+  private catchT(ts: Toss) { return this.ctx.audio.timeOfBeat(Math.round(this.ctx.audio.beatAt(ts.t)) + 2); }
+
+  /** 每兩小節那一次多一塊菜：從甩起來的鍋子越過孟庭的頭，飛到 QQ 跳起來的嘴邊（在拍點被咬住），咬到時冒一顆小愛心。 */
+  private escape(c: CanvasRenderingContext2D, ink: Ink, t: number, ts: Toss) {
+    const ct = this.catchT(ts);
+    if (t < ts.t || t > ct + 0.6) return;
+    if (t <= ct) {
+      const v = clamp((t - ts.t) / (ct - ts.t));
+      const q = arcAt(this.wokHigh, this.qqMouth, 190, v);
+      this.bit(c, ink, q.x, q.y, t * 8, 3, t);
+      return;
+    }
+    // 咬到的瞬間：嘴邊冒一顆小愛心（點綴色）
+    const k = (t - ct) / 0.6;
+    c.save();
+    c.globalAlpha = 1 - k;
+    c.fillStyle = rgba('rose');
+    const hx = this.qqMouth.x + 10, hy = this.qqMouth.y - 30 - k * 30, sz = 16;
+    c.beginPath(); c.moveTo(hx, hy + sz * 0.35);
+    c.bezierCurveTo(hx - sz, hy - sz * 0.4, hx - sz * 0.4, hy - sz, hx, hy - sz * 0.35);
+    c.bezierCurveTo(hx + sz * 0.4, hy - sz, hx + sz, hy - sz * 0.4, hx, hy + sz * 0.35);
+    c.fill();
+    c.restore();
   }
 
   /** 一塊菜（炒飯裡的蛋、蔥、蝦）：淺色的小塊＋墨線，一邊飛一邊轉。 */
   private bit(c: CanvasRenderingContext2D, ink: Ink, x: number, y: number, rot: number, k: number, t: number) {
-    const r = [9, 7, 11, 10][k % 4]!;
+    const r = [9, 7, 11, 11][k % 4]!;
     const pts: Pt[] = [];
     for (let i = 0; i < 6; i++) {
       const a = rot + (i / 6) * Math.PI * 2;
       const rr = r * (0.7 + 0.3 * hash(k, i));
       pts.push({ x: x + Math.cos(a) * rr, y: y + Math.sin(a) * rr * 0.8 });
     }
-    inkShape(c, pts, { ink, t, fill: k === 1 ? rgba('gingham', 0.8) : rgba('bone'), w: 0.6, seed: 60 + k });
+    inkShape(c, pts, { ink, t, fill: rgba('ember', 0.9), w: 0.6, seed: 60 + k });
   }
 
   /** 牆上的食譜步驟：小小的 STEP 0N（歌詞第幾行）＋ 正在唱的歌詞（跟唱）。間奏與純音樂時寫一行「小火慢炒」。 */
@@ -253,12 +297,12 @@ export default class Cooking extends Scene {
     c.letterSpacing = '0px';
     if (ly) {
       const big = !this.msg;
-      const st = { family: F.archivo(100, big ? 800 : 700), size: big ? 64 : 52, minSize: 48, maxWidth: WALL.w, unsung: rgba('sepia', 0.24), sung: rgba('sepia', big ? 0.94 : 0.82), active: rgba('signal') };
+      const st = { family: F.archivo(100, big ? 800 : 700), size: this.lyricSize, minSize: 40, maxWidth: WALL.w, unsung: rgba('sepia', 0.24), sung: rgba('sepia', big ? 0.94 : 0.82), active: rgba('signal') };
       const lay = layoutLyric(c, ly.line, st);
       c.translate(WALL.x, WALL.y + 30 + lay.size * 0.84);
       drawLyric(c, ly.line, t, st, lay, ly.k);
     } else {
-      c.font = font(F.hand(400), 46);
+      c.font = font(F.hand(400), 44);
       c.fillStyle = rgba('sepia', 0.45);
       c.fillText('（間奏：小火慢炒）', WALL.x, WALL.y + 76);
     }

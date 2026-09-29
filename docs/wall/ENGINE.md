@@ -175,6 +175,63 @@ export const spec: PlateSpecDecl = {
   道具 `racket／shuttle／tennisBall／pan／plate／champagne／bouquet／umbrella／leash／sign／bubble…`；`lyricOnPath` 讓歌詞沿著曲線跟唱；`paperBG()` 亮版面的紙。
   範例：`badminton`、`fetch`、`waltz`、`cooking`。
 
+## 紙偶角色（`scenes/_puppet.ts`，2026-09-29 起人物版面一律用這套）
+
+新人看了程式畫的角色覺得「太醜太不像」，看了本機 Codex 畫的寫實手繪插畫說「像很多」，所以人物改成**紙偶動畫**：
+Codex 畫每個動作的關鍵姿勢（透明背景 PNG），程式負責在場景裡移動、彈跳、傾斜、照節拍換姿勢、影子、落地壓扁回彈。
+`_couple.ts` 的道具、`fitNote／drawNote`、`lyricOnPath`、`arcAt` 照樣可以用，只是人和狗不要再用 `drawPerson／drawDog` 畫。
+範例：`badminton`（暗，姿勢時間軸＋跳殺）、`fetch`（亮，跑步換影格、球在圖與程式之間接力）、`cooking`（亮，甩鍋、狗跳起來咬）、`waltz`（暗，雙人紙偶翻面轉身）。
+
+**規則：照片永遠不能進影片**（新人的要求）。角色只能是畫的：Codex 照 `wall-out/codex-chars/` 的定案設定圖（新人看過）畫，
+設定圖本身也是畫的；不要把新人給的生活照、或照片描出來的圖放進 `public/`、專案或畫面。
+
+### 加新姿勢
+
+1. 跑 Codex（本機的圖片生成）。提示詞照前幾批的 `PROMPT.md`（附上設定圖 faces／couple-daily／couple-wedding／dogs-side／dogs-front），一定要寫到：
+   **真正透明的背景**（白衣服、白狗沒辦法去背）、不畫地板與影子、同一個角色同一個比例（人 1024×1536 腳底 y≈1490、狗 1024×1024 腳底 y≈960、
+   兩人一起 1536×1536）、**側面一律朝右**、四肢與道具不要被畫布切到。檔名：宣文 `xw_*`、孟庭 `mt_*`、兩人一起 `cp_*`、芃芃 `pp_*`、QQ `qq_*`。
+2. 打開每一張檢查（疊在深色與洋紅底上看最清楚）：背景真的透明、長相跟設定圖一樣、沒有被切掉。不合格的請 Codex 重畫，**不要用程式修圖**。
+3. `cd frontend && node scripts/wall-sprites.mjs <資料夾>... --clean`：裁掉透明邊、縮到大螢幕用的大小（人站直 600 px、狗 260～280 px）、轉 webp 到
+   `public/wall-sprites/`，更新 `src/wall/spriteManifest.ts`。四個角不透明的圖會被擋下來並列出。
+   - 每個角色用自己的**基準姿勢**校正比例（`SERIES`：`xw_idle_front`、`mt_idle_front`、`pp_stand`、`qq_stand`、`cp_hug`、`cp_waltz_1`）；
+     新的一組（例如別套衣服）要在 `SERIES` 加一行。校正值存在 manifest，之後只補幾張不用再跑基準姿勢。
+   - 道具點（球拍面、手上的球、嘴、鍋心、盤子）在 `POINTS` 手動量（原圖的 px、半徑），版面用來接球的軌跡、蓋掉圖上的道具。
+     錨點 x 自動取身體中心，不好的在 `ANCHOR` 手動給。
+   - 打開 `wall-out/sprites-contact.png` 看：紅十字 = 腳底錨點、綠圈 = 道具點；下半部是同一個動作的疊圖，換圖時身體與腳不該亂跳。
+   - 全部的圖加起來控制在 3～4 MB 以內（現在 49 張約 1.9 MB）。
+
+### 用法
+
+```ts
+import { loadPuppets, drawPuppet, drawPick, drawCycle, puppetPoint, puppetShadow, puppetIn, puppetLight, jumpArc, hop, breathe, beatKick } from './_puppet';
+fg = this.track(new Layer2D(W, H, undefined, { fast: true }));
+async init() {
+  this.track(await loadPuppets(['xw_walk_1', 'xw_walk_2', 'qq_run_1', 'qq_run_2']));   // 共用快取，窗格結束自動還
+  this.catchAt = puppetPoint('qq_jump', 'ball', 1390, 880 - 92, { h: SZ });            // 道具點 → 畫面座標（算軌跡端點）
+}
+render(f) {
+  const c = this.fg.ctx; this.fg.clear();
+  puppetShadow(c, 'xw', x, GROUND, { h: SZ, lift });                                   // 腳底的橢圓影子，離地越高越小越淡
+  drawCycle(c, au, f.t, ['xw_walk_1', 'xw_walk_2'], 1, x, GROUND - hop(f.beat) * 8, { h: SZ }); // 一拍一步、換圖交叉淡化 2 格
+  drawPick(c, [[-1e9, 'xw_bad_ready'], [hit, 'xw_bad_swing']], f.t, x, GROUND, { h: SZ, flip: true });
+}
+```
+
+- `(x, y)` 是**腳底**（身體水平中心的地面點）；`h` 是場景尺度（宣文的身高 px），同一場景所有角色傳同一個值，孟庭、狗的比例自動換算（`PUPPET_H`），
+  要誇張一點用 `scale`（`fetch`／`cooking` 的狗 1.2 倍）。`flip` 朝左、`rot`＋`pivot` 傾斜（0 = 繞腳底、0.5 = 繞身體中間）、
+  `squash`（> 0 壓扁、< 0 拉長，腳底不動）、`alpha`、`spin`（紙偶翻面：0.25 圈變成一條線、0.5 圈翻過來，`waltz` 的轉身就是這樣做的）、
+  `hide: ['ball']` 或 `['xw_throw_2:ball']` 蓋掉圖上畫好的道具（球由程式在飛的時候）。
+- 換姿勢：`drawPick(時間軸)`／`drawCycle(照節拍)` 換圖時舊的一張疊在上面淡掉 1～2 格（`FADE`），新的一張先畫滿，人不會變透明。
+  「那一下」放在拍點：擊球、出手、咬到的時間點就是換圖的時間點，軌跡的端點用 `puppetPoint` 從圖上的道具點算。
+- 活起來：`breathe`（呼吸）、`hop`（走路跑步一步一彈）、`beatKick`（每拍一下）、`sway`、`jumpArc`（起跳前蹲、空中拉長、落地壓扁回彈；
+  頂點在起跳與落地的正中間，要讓頂點落在拍點就把拍點放中間）、`landSquash`、`puppetIn`（進場：從側面翻正）。
+- 暗版面：紙偶是亮的插畫，直接貼會像剪下來的照片、而且比留言還搶眼。紙偶畫完（同一層還沒畫別的）呼叫 `puppetLight(c, 範圍, 上, 下)`
+  讓它上亮下暗、融進場景的光；亮版面通常不用。
+- 留言（標準 v2）：`noteV2(c, 文字, 名字, 寬, 高)` 排字（字級 40～60、署名 26～32、照子句斷行），回傳 `_couple` 的 Note 給 `drawNote` 畫；
+  `tightenNote(c, note, 最小寬)` 把寬縮到實際的字寬，牌子／卡片的寬高都跟著留言，不會掛一大塊空板子。
+- 確定性：只看 `f.t`、節拍與種子；圖在 `init()` 載好才畫。只畫自己 `loadPuppets` 過的圖（別的版面載的圖隨時可能被釋放）。
+- 效能：一格畫 3～5 張紙偶加一張 fast 的 Canvas2D 層，四個範例版面每格約 1～2 ms（`qa` 量的）。
+
 ## 參考
 
 pdoom 原本的每個場景都在 `D:\Work\pdoom-video\app\src\scenes\`（`docs/TREATMENT.md` 有每個場景的說明，`app/public/plates/fig*.jpg` 是代表畫面）。
