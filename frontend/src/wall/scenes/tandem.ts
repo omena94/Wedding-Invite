@@ -52,6 +52,37 @@ class Cloth {
   dispose() { this.canvas.width = this.canvas.height = 0; }
 }
 
+/**
+ * 一層視差背景：一條頭尾接得起來的橫向長圖（週期 L px，畫面的 y0 到 y0 + h），init 畫一次，每格照捲動距離貼兩三次。
+ * 以前每格用手繪筆重畫幾十條線、幾十個橢圓（每格 5 ms 多），現在每層只剩幾次 drawImage。
+ * 圖裡的東西照週期排（第 i 個用 hash(i mod N)），所以一個週期裡的每一樣都要畫三份（左移、原位、右移一個週期），跨過接縫的才完整。
+ */
+class Strip {
+  canvas = document.createElement('canvas');
+  ctx: CanvasRenderingContext2D;
+  constructor(public L: number, public y0: number, public h: number, res = SCALE) {
+    this.canvas.width = Math.ceil(L * res);
+    this.canvas.height = Math.ceil(h * res);
+    this.ctx = this.canvas.getContext('2d')!;
+    this.ctx.scale(res, res);
+    this.ctx.translate(0, -y0);
+  }
+  /** 畫一個週期的內容（畫面座標；x 在 0..L），左右各多畫一份。 */
+  paint(fn: (c: CanvasRenderingContext2D) => void) {
+    for (const k of [-1, 0, 1]) { this.ctx.save(); this.ctx.translate(k * this.L, 0); fn(this.ctx); this.ctx.restore(); }
+  }
+  /** 貼到畫面：捲了 off px（往左），再往右挪 dx px。 */
+  blit(c: CanvasRenderingContext2D, off: number, dx = 0) {
+    let x = -(((off % this.L) + this.L) % this.L) + dx;
+    while (x > 0) x -= this.L;
+    for (; x < W; x += this.L) c.drawImage(this.canvas, x, this.y0, this.L, this.h);
+  }
+  dispose() { this.canvas.width = this.canvas.height = 0; }
+}
+
+/** 視差背景的週期（px）：樹與路燈每 520 一組、五組一個週期；路的虛線 150、路邊草 170（2550 兩個都整除）；前景草坡每 120 一撮、二十撮一個週期。 */
+const PER = { city: 2600, river: 2200, trees: 2600, road: 2550, verge: 2400 };
+
 export default class Tandem extends Scene {
   paper = paperBG();
   bg = this.track(new Layer2D(W, H, undefined, { fast: true }));
@@ -60,6 +91,8 @@ export default class Tandem extends Scene {
   msg: Msg | null = this.ctx.params.message ?? null;
   note: Note | null = null;
   cloth: Cloth | null = null;
+  /** 視差背景的長圖（init 畫好）：遠城、河、樹與路燈（還有一張樹冠的遮罩：蓋住後面的城與河）、路面的虛線與路邊草、前景草坡。 */
+  strips: { city: Strip; river: Strip; trees: Strip; treeMask: Strip; road: Strip; verge: Strip } | null = null;
   /** 車子這一格的錨點 y（輪子剛好著地）、兩個輪軸、輪子半徑、籃子、車尾（綁繩子、插旗桿）——在 init 用第一張圖算好（四張車身一樣）。 */
   bikeY = GROUND;
   wheels: Pt[] = [];
@@ -93,6 +126,7 @@ export default class Tandem extends Scene {
     this.paintCloth();
     this.lyricSize = lyricV2(this.msg ? this.note.fit.size : null);
     this.drawBackground();
+    this.paintStrips();
   }
 
   /** 布條（一次）：紙白的布、上下兩道縫邊、左右兩端的布邊，字寫在上面（手寫、墨色）。 */
@@ -112,19 +146,148 @@ export default class Tandem extends Scene {
     drawNote(c, n, PAD.x, PAD.top + Math.max(0, (h - PAD.top - PAD.bottom - n.height) / 2), { color: this.msg ? rgba('sepia', 0.95) : rgba('sepia', 0.62), sigColor: rgba('sepia', 0.74) });
   }
 
-  /** 不會動的：天上很淡的太陽（右上）。其他的景都在捲，每格畫。 */
+  /** 不會動的（畫一次）：天上很淡的太陽（右上）、河堤的線、路面（底色、上下緣）、前景草坡的邊線；右下角（HUD）那一塊淡掉。 */
   private drawBackground() {
     const L = this.bg, c = L.ctx, ink = inkFor(true);
     L.clear();
     inkEllipse(c, 1560, 250, 74, 74, 0, { ink, w: 0.5, seed: 3, color: rgba('sepia', 0.22), fill: mixRgba('paper', 'signal', 0.12) });
     for (let k = 0; k < 3; k++) inkEllipse(c, 1560, 250, 100 + k * 34, 100 + k * 34, 0, { ink, w: 0.25, seed: 4 + k, color: rgba('sepia', 0.07 - k * 0.015) });
+    inkLine(c, [{ x: 0, y: 792 }, { x: W, y: 792 }], { ink, w: 0.5, seed: 7, color: rgba('sepia', 0.3) });
+    c.fillStyle = rgba('sepia', 0.045);
+    c.fillRect(0, ROAD.top, W, ROAD.bottom - ROAD.top);
+    inkLine(c, [{ x: 0, y: ROAD.top }, { x: W, y: ROAD.top }], { ink, w: 0.7, seed: 9, color: rgba('sepia', 0.5) });
+    inkLine(c, [{ x: 0, y: ROAD.bottom }, { x: W, y: ROAD.bottom }], { ink, w: 0.9, seed: 10, color: rgba('sepia', 0.55) });
+    inkLine(c, [{ x: 0, y: 900 }, { x: W, y: 900 }], { ink, w: 0.4, seed: 12, color: rgba('sepia', 0.2) });
+    this.hudFade(c);
     L.upload();
+  }
+
+  /** 右下角（HUD）：景在那裡淡掉（挖掉這一層已經畫的東西）。 */
+  private hudFade(c: CanvasRenderingContext2D) {
+    c.save();
+    c.globalCompositeOperation = 'destination-out';
+    const g = c.createRadialGradient(1760, 1040, 60, 1760, 1040, 500);
+    g.addColorStop(0, 'rgba(0,0,0,1)'); g.addColorStop(0.5, 'rgba(0,0,0,0.9)'); g.addColorStop(1, 'rgba(0,0,0,0)');
+    c.fillStyle = g;
+    c.fillRect(1200, 700, 720, 380);
+    c.restore();
+  }
+
+  /**
+   * 畫視差背景的長圖（一次）。每一層的內容跟以前每格畫的一樣（位置、線、顏色），只是第 i 個用 i mod N 挑形狀，整條頭尾接得起來。
+   * 樹冠的手繪線以前每 1/8 秒抖一次（boiling），遠景這一點點抖動拿掉，換來每格少畫幾十個橢圓。
+   */
+  private paintStrips() {
+    const ink = inkFor(true);
+    // 遠處的城市：一排高高低低的樓（很淡），接一座拱橋（以前 x0 = 捲動 - 200，所以內容從 -200 開始）
+    const city = this.track(new Strip(PER.city, 430, 215));
+    city.paint((c) => {
+      c.strokeStyle = rgba('sepia', 0.16);
+      c.lineWidth = 1.2;
+      c.beginPath();
+      const x0 = -200;
+      let x = x0;
+      c.moveTo(x, 640);
+      for (let k = 0; k < 34; k++) {
+        const bw = 50 + hash(k, 1) * 70, bh = 30 + hash(k, 2) * (k % 7 === 3 ? 160 : 80);
+        c.lineTo(x, 640 - bh); c.lineTo(x + bw, 640 - bh); c.lineTo(x + bw, 640);
+        x += bw + hash(k, 3) * 20;
+      }
+      c.moveTo(x0 + 1700, 640); c.quadraticCurveTo(x0 + 1950, 520, x0 + 2200, 640);
+      c.moveTo(x0 + 1680, 600); c.lineTo(x0 + 2220, 600);
+      c.stroke();
+    });
+    // 河面：幾道淡淡的水紋
+    const river = this.track(new Strip(PER.river, 650, 135));
+    river.paint((c) => {
+      c.strokeStyle = rgba('sepia', 0.1);
+      c.lineWidth = 1.4;
+      c.beginPath();
+      for (let k = 0; k < 16; k++) {
+        const y = 660 + (k % 6) * 22 + hash(k, 4) * 8, len = 60 + hash(k, 5) * 120;
+        const x = hash(k, 6) * PER.river - 150;
+        c.moveTo(x, y); c.lineTo(x + len, y);
+      }
+      c.stroke();
+    });
+    // 河堤的樹與路燈：每 520 px 一棵樹（以前的 x = i × 520 + 180）、樹與樹之間一盞路燈
+    const trees = this.track(new Strip(PER.trees, 425, 385));
+    const treeMask = this.track(new Strip(PER.trees, 425, 385, SCALE * 0.5));
+    const blobs: [number, number, number, number, number][] = [];
+    const n = PER.trees / 520;
+    for (const kk of [-1, 0, 1]) {
+      for (let i = 0; i < n; i++) {
+        const x = kk * PER.trees + i * 520 + 180, hk = 0.8 + 0.4 * hash(i, 8);
+        for (const [dx, dy, r] of [[0, -230, 90], [-70, -180, 66], [74, -186, 70], [0, -150, 64]] as const) blobs.push([x + dx * hk, 792 + dy * hk, r * hk, r * 0.78 * hk, i * 10 + dx]);
+      }
+    }
+    {
+      const c = trees.ctx;
+      trees.paint((c) => {
+        for (let i = 0; i < n; i++) {
+          const x = i * 520 + 180, hk = 0.8 + 0.4 * hash(i, 8);
+          inkLine(c, [{ x, y: 792 }, { x: x + 2, y: 792 - 150 * hk }], { ink, w: 0.8, seed: i, color: rgba('sepia', 0.35) });
+          const lx = x + 260;
+          inkLine(c, [{ x: lx, y: 800 }, { x: lx, y: 560 }], { ink, w: 0.7, seed: i + 50, color: rgba('sepia', 0.4) });
+          inkPath(c, [{ x: lx, y: 560 }, { x: lx + 14, y: 540 }, { x: lx + 42, y: 538 }], { ink, w: 0.7, seed: i + 60, color: rgba('sepia', 0.4) });
+          c.fillStyle = rgba('sepia', 0.3);
+          c.fillRect(lx + 34, 538, 16, 8);
+        }
+      });
+      for (const [x, y, rx, ry, sd] of blobs) inkEllipse(c, x, y, rx, ry, 0, { ink, w: 0.5, seed: sd, color: rgba('sepia', 0.24) });
+      const union = (cc: CanvasRenderingContext2D, d: number) => { cc.beginPath(); for (const [x, y, rx, ry] of blobs) { cc.moveTo(x + rx - d, y); cc.ellipse(x, y, rx - d, ry - d, 0, 0, Math.PI * 2); } };
+      // 樹冠裡面挖空（只留外輪廓）、再鋪一層很淡的墨；遮罩是同一塊（貼的時候挖掉後面的城與河，樹冠才擋得住後面的線）
+      c.save();
+      c.globalCompositeOperation = 'destination-out';
+      c.fillStyle = '#000';
+      union(c, 2.5); c.fill();
+      c.restore();
+      union(c, 0); c.fillStyle = rgba('sepia', 0.05); c.fill();
+      union(treeMask.ctx, 2.5); treeMask.ctx.fillStyle = '#000'; treeMask.ctx.fill();
+    }
+    // 路面的虛線（每 150）與路邊的小草（每 170）
+    const road = this.track(new Strip(PER.road, 728, 110));
+    road.paint((c) => {
+      c.strokeStyle = rgba('sepia', 0.3);
+      c.lineWidth = 4;
+      c.beginPath();
+      for (let x = 0; x < PER.road; x += 150) { c.moveTo(x, ROAD.dash + 26); c.lineTo(x + 80, ROAD.dash + 26); }
+      c.stroke();
+      c.strokeStyle = rgba('sepia', 0.3);
+      c.lineWidth = 1.3;
+      c.beginPath();
+      for (let i = 0; i < PER.road / 170; i++) {
+        const x = i * 170 + hash(i, 11) * 60;
+        for (let j = 0; j < 3; j++) { const gx = x + j * 6; c.moveTo(gx, ROAD.top); c.quadraticCurveTo(gx - 2, ROAD.top - 8, gx - 6 + j * 3, ROAD.top - 14 - 6 * hash(i, j)); }
+      }
+      c.stroke();
+    });
+    // 前景：路外側的草坡，一撮一撮的草與幾朵小花（每 120 一撮）
+    const verge = this.track(new Strip(PER.verge, 905, 160));
+    verge.paint((c) => {
+      c.strokeStyle = rgba('sepia', 0.28);
+      c.lineWidth = 1.6;
+      c.lineCap = 'round';
+      c.beginPath();
+      for (let i = 0; i < PER.verge / 120; i++) {
+        const x = i * 120 + hash(i, 21) * 50, y = 950 + hash(i, 22) * 110;
+        for (let j = 0; j < 4; j++) { const gx = x + j * 7, h = 16 + 22 * hash(i, 23 + j); c.moveTo(gx, y); c.quadraticCurveTo(gx - 2, y - h * 0.6, gx - 8 + j * 4, y - h); }
+      }
+      c.stroke();
+      c.fillStyle = rgba('signal', 0.35);
+      for (let i = 0; i < PER.verge / 120; i++) {
+        if (hash(i, 31) < 0.6) continue;
+        const x = i * 120 + hash(i, 21) * 50 + 10, y = 950 + hash(i, 22) * 110 - 34;
+        c.beginPath(); c.arc(x, y, 4, 0, Math.PI * 2); c.fill();
+      }
+    });
+    this.strips = { city, river, trees, treeMask, road, verge };
   }
 
   /** 捲動的距離（px）：一拍 K px，從窗格開始算。 */
   private scroll(t: number) { return K * (this.ctx.audio.beatAt(t) - this.ctx.audio.beatAt(this.ctx.start)); }
 
-  /** 一層一層往後捲的景：遠的城市（0.08 倍）、河面（0.2）、河堤的樹與路燈（0.5）、路面的線（1）。 */
+  /** 一層一層往後捲的景：雲與鳥每格畫（很少、會動）；遠的城市（0.08 倍）、河面（0.2）、河堤的樹與路燈（0.5）、路面的線（1）、前景草坡（1.35）貼 init 畫好的長圖。 */
   private scenery(c: CanvasRenderingContext2D, t: number, ink: Ink) {
     const s = this.scroll(t);
     const wrap = (x: number, span: number) => ((x % span) + span) % span;
@@ -148,120 +311,21 @@ export default class Tandem extends Scene {
     }
     c.stroke();
     c.restore();
-    // 遠處的城市：一排高高低低的樓（很淡），接一座拱橋
-    c.save();
-    c.strokeStyle = rgba('sepia', 0.16);
-    c.lineWidth = 1.2;
-    c.beginPath();
-    const span = 2600, off = wrap(-s * 0.08, span);
-    for (let rep = -1; rep <= 1; rep++) {
-      const x0 = off + rep * span - 200;
-      let x = x0;
-      c.moveTo(x, 640);
-      for (let k = 0; k < 34; k++) {
-        const bw = 50 + hash(k, 1) * 70, bh = 30 + hash(k, 2) * (k % 7 === 3 ? 160 : 80);
-        c.lineTo(x, 640 - bh); c.lineTo(x + bw, 640 - bh); c.lineTo(x + bw, 640);
-        x += bw + hash(k, 3) * 20;
-      }
-      // 拱橋
-      c.moveTo(x0 + 1700, 640); c.quadraticCurveTo(x0 + 1950, 520, x0 + 2200, 640);
-      c.moveTo(x0 + 1680, 600); c.lineTo(x0 + 2220, 600);
-    }
-    c.stroke();
-    c.restore();
-    // 河面：幾道淡淡的水紋
-    c.save();
-    c.strokeStyle = rgba('sepia', 0.1);
-    c.lineWidth = 1.4;
-    c.beginPath();
-    for (let k = 0; k < 16; k++) {
-      const y = 660 + (k % 6) * 22 + hash(k, 4) * 8, len = 60 + hash(k, 5) * 120;
-      const x = wrap(hash(k, 6) * 2200 - s * 0.2, 2200) - 150;
-      c.moveTo(x, y); c.lineTo(x + len, y);
-    }
-    c.stroke();
-    c.restore();
-    inkLine(c, [{ x: 0, y: 792 }, { x: W, y: 792 }], { ink, w: 0.5, seed: 7, color: rgba('sepia', 0.3) });
-    // 河堤的樹與路燈（0.5 倍）：每 520 px 一棵樹、樹與樹之間一盞路燈；樹梢在拍點上被風推一下
-    const gust = beatKick(this.ctx.audio, t, 0.5);
-    const blobs: [number, number, number, number, number][] = [];
-    for (let k = -1; k < 6; k++) {
-      const i = Math.floor(s * 0.5 / 520) + k;
-      const x = i * 520 - s * 0.5 + 180;
-      if (x < -300 || x > W + 300) continue;
-      const hk = 0.8 + 0.4 * hash(i, 8);
-      inkLine(c, [{ x, y: 792 }, { x: x + 2, y: 792 - 150 * hk }], { ink, w: 0.8, seed: i, color: rgba('sepia', 0.35) });
-      for (const [dx, dy, r] of [[0, -230, 90], [-70, -180, 66], [74, -186, 70], [0, -150, 64]] as const) {
-        blobs.push([x + dx * hk + gust * 5 * (1 + dy / 300), 792 + dy * hk, r * hk, r * 0.78 * hk, i * 10 + dx]);
-      }
-      // 路燈
-      const lx = x + 260;
-      inkLine(c, [{ x: lx, y: 800 }, { x: lx, y: 560 }], { ink, w: 0.7, seed: i + 50, color: rgba('sepia', 0.4) });
-      inkPath(c, [{ x: lx, y: 560 }, { x: lx + 14, y: 540 }, { x: lx + 42, y: 538 }], { ink, w: 0.7, seed: i + 60, color: rgba('sepia', 0.4) });
-      c.fillStyle = rgba('sepia', 0.3);
-      c.fillRect(lx + 34, 538, 16, 8);
-    }
-    for (const [x, y, rx, ry, sd] of blobs) inkEllipse(c, x, y, rx, ry, 0, { ink, w: 0.5, seed: sd, color: rgba('sepia', 0.24), t });
-    const union = (d: number) => { c.beginPath(); for (const [x, y, rx, ry] of blobs) { c.moveTo(x + rx - d, y); c.ellipse(x, y, rx - d, ry - d, 0, 0, Math.PI * 2); } };
+    // 各層視差背景：照捲動距離貼長圖（遠城 0.08、河 0.2、樹與路燈 0.5、路 1、前景草坡 1.35）
+    const S = this.strips;
+    if (!S) return;
+    S.city.blit(c, s * 0.08);
+    S.river.blit(c, s * 0.2);
+    // 樹：拍點上被風推一下（整排往右挪一點點）；先用遮罩挖掉樹冠後面的城與河，再貼樹
+    const gust = beatKick(this.ctx.audio, t, 0.5) * 2;
     c.save();
     c.globalCompositeOperation = 'destination-out';
-    c.fillStyle = '#000';
-    union(2.5); c.fill();
+    S.treeMask.blit(c, s * 0.5, gust);
     c.restore();
-    union(0); c.fillStyle = rgba('sepia', 0.05); c.fill();
-    // 路面：上下緣、中間的虛線（1 倍，跟車速一樣）
-    c.fillStyle = rgba('sepia', 0.045);
-    c.fillRect(0, ROAD.top, W, ROAD.bottom - ROAD.top);
-    inkLine(c, [{ x: 0, y: ROAD.top }, { x: W, y: ROAD.top }], { ink, w: 0.7, seed: 9, color: rgba('sepia', 0.5) });
-    inkLine(c, [{ x: 0, y: ROAD.bottom }, { x: W, y: ROAD.bottom }], { ink, w: 0.9, seed: 10, color: rgba('sepia', 0.55) });
-    c.save();
-    c.strokeStyle = rgba('sepia', 0.3);
-    c.lineWidth = 4;
-    c.beginPath();
-    const d0 = wrap(-s, 150);
-    for (let x = d0 - 150; x < W; x += 150) { c.moveTo(x, ROAD.dash + 26); c.lineTo(x + 80, ROAD.dash + 26); }
-    c.stroke();
-    c.restore();
-    // 路邊的小草（1 倍）
-    c.save();
-    c.strokeStyle = rgba('sepia', 0.3);
-    c.lineWidth = 1.3;
-    c.beginPath();
-    for (let k = -1; k < 14; k++) {
-      const i = Math.floor(s / 170) + k, x = i * 170 - s + hash(i, 11) * 60;
-      for (let j = 0; j < 3; j++) { const gx = x + j * 6; c.moveTo(gx, ROAD.top); c.quadraticCurveTo(gx - 2, ROAD.top - 8, gx - 6 + j * 3, ROAD.top - 14 - 6 * hash(i, j)); }
-    }
-    c.stroke();
-    c.restore();
-    // 前景：路外側的草坡（1.35 倍，比路還快，拉出景深），一撮一撮的草與幾朵小花
-    c.save();
-    c.strokeStyle = rgba('sepia', 0.28);
-    c.lineWidth = 1.6;
-    c.lineCap = 'round';
-    c.beginPath();
-    for (let k = -1; k < 18; k++) {
-      const i = Math.floor(s * 1.35 / 120) + k, x = i * 120 - s * 1.35 + hash(i, 21) * 50;
-      const y = 950 + hash(i, 22) * 110;
-      for (let j = 0; j < 4; j++) { const gx = x + j * 7, h = 16 + 22 * hash(i, 23 + j); c.moveTo(gx, y); c.quadraticCurveTo(gx - 2, y - h * 0.6, gx - 8 + j * 4, y - h); }
-    }
-    c.stroke();
-    c.fillStyle = rgba('signal', 0.35);
-    for (let k = -1; k < 18; k++) {
-      const i = Math.floor(s * 1.35 / 120) + k;
-      if (hash(i, 31) < 0.6) continue;
-      const x = i * 120 - s * 1.35 + hash(i, 21) * 50 + 10, y = 950 + hash(i, 22) * 110 - 34;
-      c.beginPath(); c.arc(x, y, 4, 0, Math.PI * 2); c.fill();
-    }
-    c.restore();
-    inkLine(c, [{ x: 0, y: 900 }, { x: W, y: 900 }], { ink, w: 0.4, seed: 12, color: rgba('sepia', 0.2) });
-    // 右下角（HUD）：路在那裡淡掉
-    c.save();
-    c.globalCompositeOperation = 'destination-out';
-    const g = c.createRadialGradient(1760, 1040, 60, 1760, 1040, 500);
-    g.addColorStop(0, 'rgba(0,0,0,1)'); g.addColorStop(0.5, 'rgba(0,0,0,0.9)'); g.addColorStop(1, 'rgba(0,0,0,0)');
-    c.fillStyle = g;
-    c.fillRect(1200, 700, 720, 380);
-    c.restore();
+    S.trees.blit(c, s * 0.5, gust);
+    S.road.blit(c, s);
+    S.verge.blit(c, s * 1.35);
+    this.hudFade(c);
   }
 
   override render(f: Frame, out: THREE.WebGLRenderTarget): PostOverrides {
@@ -372,7 +436,8 @@ export default class Tandem extends Scene {
     const rk = { x: this.rack.x, y: this.rack.y + dy };
     inkPath(c, [rk, { x: (rk.x + x1) / 2, y: (rk.y + y0) / 2 + 6 }, { x: x1, y: y0 + wave(x1) }], { ink: inkFor(true), w: 0.5, seed: 81, color: rgba('sepia', 0.6), t });
     inkPath(c, [rk, { x: (rk.x + x1) / 2, y: (rk.y + y0 + bh) / 2 + 6 }, { x: x1, y: y0 + bh + wave(x1) }], { ink: inkFor(true), w: 0.5, seed: 82, color: rgba('sepia', 0.6), t });
-    const step = 6;
+    // 一條 12 px：夠細、看起來是連續的波浪，貼圖次數只有 6 px 的一半
+    const step = 12;
     const src = K2.canvas;
     for (let sx = bw - shown; sx < bw; sx += step) {
       const w = Math.min(step, bw - sx) + 0.6;
@@ -383,7 +448,7 @@ export default class Tandem extends Scene {
       c.fillRect(x + 8, y0 + o + 12, w, bh);
       c.drawImage(src, sx * SCALE, 0, w * SCALE, bh * SCALE, x, y0 + o, w, bh);
       // 布的明暗：斜率往下的地方暗一點
-      const slope = wave(x + step) - wave(x);
+      const slope = (wave(x + step) - wave(x)) * (6 / step);
       if (slope > 0) { c.fillStyle = rgba('sepia', Math.min(0.1, slope * 0.02)); c.fillRect(x, y0 + o, w, bh); }
     }
   }
