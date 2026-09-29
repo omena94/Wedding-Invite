@@ -27,7 +27,7 @@ import { Loading } from "./ui.jsx";
 // 2026-09-08 依新人要求移除「廠商」與「比價」頁；2026-09-10 其他頁的廠商欄位也一併移除（後端資料與 API 保留）
 // 2026-09-27 每一頁對應一把鑰匙（perm）；角色能用哪些鑰匙由設定頁的權限表決定
 const NAV = [
-  { to: "/guests", label: "賓客名單", icon: Users, perm: ["guests_view"] }, // 2026-09-08 依新人要求改名為「賓客名單」
+  { to: "/guests", label: "婚宴", icon: Users, perm: ["guests_view"] }, // 2026-09-29 依新人要求改名，裡面分賓客名單／菜單 // 2026-09-08 依新人要求改名為「賓客名單」
   { to: "/seating", label: "座位圖", icon: Armchair, perm: ["seating_view", "seating_edit"] },
   { to: "/gifts", label: "喜餅", icon: Gift, perm: ["gifts_view"] },
   { to: "/budget", label: "花費", icon: Wallet, perm: ["budget"] }, // 2026-09-08 依新人要求移除「預算」概念，只記實際金額

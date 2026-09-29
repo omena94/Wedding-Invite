@@ -1528,3 +1528,22 @@ tbody tr:last-child td { border-bottom: none; }
 .wp-idea { font-size: 12.5px; color: var(--text-muted); line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .wp-meta { display: flex; align-items: center; gap: 6px; margin-top: auto; padding-top: 6px; }
 .wp-toggle { margin-left: auto; }
+/* 婚宴 → 菜單（2026-09-29） */
+.menu-summary { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; align-self: end; padding-bottom: 18px; }
+.menu-files { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.menu-files li { display: flex; align-items: center; gap: 8px; font-size: 13.5px; }
+.menu-file-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.menu-pick { display: flex; gap: 8px; align-items: center; margin-top: 10px; }
+.menu-pick .ui-select { flex: 1; max-width: 420px; }
+.menu-group { margin-top: 14px; }
+.menu-group-head { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; font-size: 14px; color: var(--milk-tea-900); }
+.menu-group-head .btn { margin-left: auto; }
+.menu-table td, .menu-table th { vertical-align: middle; }
+.menu-move { white-space: nowrap; }
+.menu-move button { border: none; background: none; color: var(--text-muted); cursor: pointer; padding: 2px; }
+.menu-move button:hover { color: var(--milk-tea-700); }
+.menu-name { font-weight: 600; color: var(--milk-tea-900); }
+.menu-row.confirmed .menu-name { color: #5f7a63; }
+.menu-row.change .menu-name { color: var(--rose-accent); text-decoration: line-through; text-decoration-color: rgba(195,139,124,.6); }
+.menu-note { width: 100%; min-width: 180px; padding: 6px 10px; font-size: 13px; border: 1px solid transparent; background: transparent; border-radius: 8px; }
+.menu-note:hover, .menu-note:focus { border-color: var(--border-highlight); background: #fff; }

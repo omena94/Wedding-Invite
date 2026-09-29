@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session, selectinload
 from ..config import settings
 from ..database import get_db
 from ..models import (
-    Expense, FileAsset, GiftOrder, Memo, Payment, ProgramGame, ProgramIdea, ProgramSegment, Quote, Rsvp, Task, Vendor,
+    Expense, FileAsset, GiftOrder, Memo, MenuItem, Payment, ProgramGame, ProgramIdea, ProgramSegment, Quote, Rsvp, Task, Vendor,
     VendorCategory,
 )
 from ..schemas import (
@@ -29,6 +29,10 @@ from ..schemas import (
     IdeaPatch,
     MemoIn,
     MemoPatch,
+    MenuImport,
+    MenuItemIn,
+    MenuItemPatch,
+    MenuReorder,
     PaymentIn,
     PaymentPatch,
     QuoteIn,
@@ -1332,3 +1336,83 @@ def file_thumb(file_id: int, db: Session = Depends(get_db)):
     if not path.is_file():
         raise HTTPException(404, "檔案不存在")
     return FileResponse(path, media_type=f.mime)
+
+
+# ---------------------------------------------------------------------
+# 婚宴菜單（2026-09-29）：跟飯店討論中的菜色，只給新人看（鑰匙 menu）
+# ---------------------------------------------------------------------
+def _menu_out(m: MenuItem) -> dict:
+    return {"id": m.id, "category": m.category, "sort_order": m.sort_order, "name": m.name, "name_en": m.name_en,
+            "status": m.status, "note": m.note}
+
+
+def _menu_all(db: Session) -> list[MenuItem]:
+    return db.scalars(select(MenuItem).order_by(MenuItem.sort_order.asc(), MenuItem.id.asc())).all()
+
+
+@router.get("/menu")
+def list_menu(db: Session = Depends(get_db)):
+    return [_menu_out(m) for m in _menu_all(db)]
+
+
+@router.post("/menu", status_code=201)
+def create_menu_item(payload: MenuItemIn, db: Session = Depends(get_db)):
+    last = db.scalar(select(func.max(MenuItem.sort_order))) or 0
+    # 新的一道放在同類別最後面：同類別最後一道的 sort_order 之後，其餘往後推
+    same = [m for m in _menu_all(db) if m.category == payload.category]
+    order = (same[-1].sort_order + 1) if same else last + 1
+    for m in _menu_all(db):
+        if m.sort_order >= order:
+            m.sort_order += 1
+    m = MenuItem(**payload.model_dump(), sort_order=order)
+    db.add(m)
+    db.commit()
+    return _menu_out(m)
+
+
+@router.patch("/menu/{item_id}")
+def update_menu_item(item_id: int, payload: MenuItemPatch, db: Session = Depends(get_db)):
+    m = _get_or_404(db, MenuItem, item_id, "菜色")
+    for k, v in payload.model_dump(exclude_unset=True).items():
+        setattr(m, k, v)
+    db.commit()
+    return _menu_out(m)
+
+
+@router.delete("/menu/{item_id}", status_code=204)
+def delete_menu_item(item_id: int, db: Session = Depends(get_db)):
+    m = _get_or_404(db, MenuItem, item_id, "菜色")
+    db.delete(m)
+    db.commit()
+    return None
+
+
+@router.post("/menu/reorder")
+def reorder_menu(payload: MenuReorder, db: Session = Depends(get_db)):
+    rows = {m.id: m for m in _menu_all(db)}
+    order = 1
+    for mid in payload.ids:
+        if mid in rows:
+            rows[mid].sort_order = order
+            order += 1
+    for m in rows.values():  # 沒列到的排在後面
+        if m.id not in payload.ids:
+            m.sort_order = order
+            order += 1
+    db.commit()
+    return [_menu_out(m) for m in _menu_all(db)]
+
+
+@router.post("/menu/import", status_code=201)
+def import_menu(payload: MenuImport, db: Session = Depends(get_db)):
+    if payload.replace:
+        for m in _menu_all(db):
+            db.delete(m)
+        db.flush()
+        start = 0
+    else:
+        start = db.scalar(select(func.max(MenuItem.sort_order))) or 0
+    for i, it in enumerate(payload.items, 1):
+        db.add(MenuItem(**it.model_dump(), sort_order=start + i))
+    db.commit()
+    return {"count": len(payload.items), "items": [_menu_out(m) for m in _menu_all(db)]}
