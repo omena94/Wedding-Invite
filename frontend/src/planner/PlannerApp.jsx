@@ -6,7 +6,8 @@ import {
   Settings as SettingsIcon, LogOut, Lock, LogIn, Home as HomeIcon, Armchair, Images, Gift, NotebookPen, PartyPopper, Camera, Monitor, ExternalLink, MessageSquareHeart, LayoutGrid,
   ChevronDown, ClipboardList, Sparkles, UtensilsCrossed,
 } from "lucide-react";
-import { adminLogin, clearToken, getRole, getToken, setRole, setToken, fetchMe } from "../api.js";
+import { adminLogin, clearStash, clearToken, getRole, getStashedCouple, getToken, restoreCouple, setRole, setToken, stashCouple, switchRole, fetchMe } from "../api.js";
+import { toastErr } from "./ui.jsx";
 import Guests from "./Guests.jsx";
 import Budget from "./Budget.jsx";
 import Timeline from "./Timeline.jsx";
@@ -61,6 +62,7 @@ export default function PlannerApp() {
 
   const logout = () => {
     clearToken();
+    clearStash(); // 真的登出：連收在旁邊的新人 token 一起清掉
     setAuthed(false);
     setPerms(null);
   };
@@ -183,6 +185,7 @@ function Shell({ role, can, onLogout, children }) {
           <div className="pl-brand-script">Alan &amp; Omena</div>
           <div className="pl-brand-title">婚禮籌備後台</div>
           <div className="pl-brand-role">{role === "helper" ? "幫手模式" : "新人模式"}</div>
+          <ModeSwitch role={role} />
         </div>
         <nav className="pl-nav">{nav}</nav>
         <div className="pl-side-foot">
@@ -191,6 +194,41 @@ function Shell({ role, can, onLogout, children }) {
         </div>
       </aside>
       <main className="pl-main">{children}</main>
+    </div>
+  );
+}
+
+// 2026-09-29 新人要求：一鍵切換 新人／幫手／賓客 視角。
+// 新人切到幫手：跟後端換一把幫手 token（新人 token 收在旁邊）；切到賓客：暫時登出，賓客頁上方會有「回到後台」；
+// 切回新人：把收在旁邊的 token 放回來，不用重打密碼。幫手密碼登入的人看不到這個切換（沒有新人 token 可以回）。
+function ModeSwitch({ role }) {
+  const [busy, setBusy] = useState(false);
+  if (role !== "couple" && !getStashedCouple()) return null;
+  const go = async (target) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      if (target === "couple") {
+        if (!restoreCouple()) return;
+      } else if (target === "helper") {
+        if (role === "helper") return;
+        const { token } = await switchRole("helper");
+        stashCouple();
+        setToken(token); setRole("helper");
+      } else {
+        stashCouple();
+        localStorage.removeItem("wedding_admin_token"); localStorage.removeItem("wedding_admin_role");
+        window.location.href = "/";
+        return;
+      }
+      window.location.reload();
+    } catch (e) { toastErr(e); setBusy(false); }
+  };
+  return (
+    <div className="pl-mode-switch" role="group" aria-label="切換視角">
+      <button type="button" className={role === "couple" ? "on" : undefined} disabled={busy} onClick={() => go("couple")}>新人</button>
+      <button type="button" className={role === "helper" ? "on" : undefined} disabled={busy} onClick={() => go("helper")}>幫手</button>
+      <button type="button" disabled={busy} onClick={() => go("guest")}>賓客</button>
     </div>
   );
 }
@@ -233,6 +271,11 @@ function LoginGate({ onOk }) {
         <button className="btn btn-primary" style={{ width: "100%", justifyContent: "center" }} disabled={busy} onClick={submit}>
           {busy ? "登入中…" : <><LogIn size={16} /> 進入後台</>}
         </button>
+        {getStashedCouple() && (
+          <button className="btn btn-ghost" style={{ width: "100%", justifyContent: "center", marginTop: 10 }} onClick={() => { if (restoreCouple()) { setRole("couple"); onOk("couple"); } }}>
+            切回新人（剛才用賓客視角看，不用重打密碼）
+          </button>
+        )}
         <p style={{ marginTop: 16, marginBottom: 0 }}>幫手（招待）用幫手密碼登入，只會看到賓客名單、座位圖與喜餅領取名單</p>
       </div>
     </div>

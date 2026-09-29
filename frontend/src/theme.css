@@ -1565,3 +1565,12 @@ tbody tr:last-child td { border-bottom: none; }
 .pl-nav-group-items { display: flex; flex-direction: column; gap: 2px; margin-left: 19px; padding-left: 8px; border-left: 1px solid var(--border-soft); }
 .pl-nav-group-items a { padding: 8px 10px; font-size: 13.5px; }
 .pl-nav-group:not(.open) .pl-nav-group-items { display: none; }
+
+/* 後台視角切換（2026-09-29） */
+.pl-mode-switch { display: inline-flex; margin-top: 8px; border: 1px solid var(--border-soft); border-radius: 999px; padding: 2px; background: var(--bg-card-subtle); }
+.pl-mode-switch button { border: none; background: none; font: inherit; font-size: 11.5px; padding: 3px 10px; border-radius: 999px; color: var(--text-muted); cursor: pointer; }
+.pl-mode-switch button.on { background: #fff; color: var(--milk-tea-900); font-weight: 600; box-shadow: 0 1px 2px rgba(61,45,32,.08); }
+.pl-mode-switch button:disabled { opacity: .6; cursor: default; }
+/* 固定在最上面、蓋過首頁的邀請卡封面，不然在首頁會被封面擋住看不到 */
+.preview-banner.guest-view { position: fixed; top: 0; left: 0; right: 0; z-index: 1001; /* 首頁封面是 1000 */ margin: 0; border-radius: 0; border-width: 0 0 1px; padding: 6px 14px; font-size: 12.5px; background: #EEF3EC; border-color: #CFDCCB; color: #3F5A45; }
+.preview-banner.guest-view .preview-actions button { color: #3F5A45; border-color: #B9CDB6; }
