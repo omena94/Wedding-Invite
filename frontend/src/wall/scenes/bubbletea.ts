@@ -4,6 +4,12 @@
 //    一落地就長成一個字（深咖啡色，像珍珠的顏色）——一個字一顆珍珠，最後署名淡淡出現。
 //  - 歌詞印在杯套上（圓柱的曲面，逐字跟唱，比留言小一級）。
 //  - 沒有留言：珍珠變成正在唱的歌詞（唱到哪個字、那顆珍珠剛好落地），杯套上印邀請；純音樂又沒有留言：珍珠排出邀請。
+// v2（2026-09-29「留言尺寸與版面比例標準 v2」）：落在牆上的字照標準（留言 40～60 px、署名 26～32、歌詞 40～52），
+// 整塊縮在右邊 780×400 以內；杯子仍是主角，而且一直有事：
+//  - 每一拍：冰塊被震得浮一下；大鼓一打珍珠堆跳一下（上面的跳得高）；奶茶裡一直有細細的氣泡往上冒；
+//  - 每吐一顆珍珠：吸管被頂得晃一下，吸管口噴出幾滴奶茶；飛著的珍珠在牆上投一個淡淡的影子；
+//  - 每個小節線：杯子外面一顆水珠沿著杯身滑下來，留下一道擦亮的水痕；
+//  - 每兩小節：窗外有人走過，牆上的窗光被一道影子掃過；窗光本身也很慢地移動（午後的太陽）。
 // 手法：一個全螢幕 shader 畫整個場景（牆的窗光、吧台、塑膠杯的反光與水珠、奶茶、冰塊、珍珠堆〔每顆是一個球，
 // 位置在 uniform 陣列〕、吸管與吸管裡的珍珠、杯套〔Canvas 圖層照圓柱取樣〕）；飛出去的珍珠與字是另一張 Canvas 圖層。
 // 鏡頭：切進來時貼近杯子，第一拍往後拉開露出右邊，之後很慢地推近。
@@ -11,14 +17,15 @@ import * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
 import { FSPass, Layer2D, W, H } from '../engine/gl';
 import { F, font, layout, loadText } from '../engine/type';
-import { rgba } from '../engine/palette';
+import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, hash, mulberry32, lerp } from '../engine/util';
 import { fitText } from '../engine/text';
 import { Lyrics, type Line, type Word } from '../engine/lyrics';
 import { drawHeart } from './_motifs';
 import { grid, stagger, layoutRows, drawRows, paperInk } from './_t4';
-import { msgBlock, INVITE, type MsgBlock } from './_t14';
+import { msgBlockV2, INVITE, type MsgBlock } from './_t14';
 import { shownLyric, sigOf, type Rect } from './_t24';
+import { V2, lyricV2, fitClauses } from './_v2';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'local', paper: true, energy: [0.25, 0.9], bars: [4, 8], weight: 1 };
 
@@ -28,9 +35,9 @@ const CX = 540, YT = 262, YB = 986, HT = 248, HB = 186;
 const YL = 318, SY0 = 548, SY1 = 772, TABLE = 1004;
 /** 吸管：從杯蓋（A）往右上斜到吸管口（B）。 */
 const SA = { x: CX + 64, y: YT }, SB = { x: CX + 150, y: 92 }, SR = 25;
-const NP = 48, NSP = 10;
-/** 留言（或歌詞）的框。 */
-const BOX = { x: 930, y: 150, w: 830, h: 650 };
+const NP = 48, NSP = 10, ND = 3;
+/** 留言（或歌詞）的框（v2：寬 ≤ 860、高 ≤ 430，放在右邊、杯子的旁邊）。 */
+const BOX = { x: 980, y: 250, w: 780, h: 400 };
 const SLW = 700, SLH = SY1 - SY0;
 const FAM = F.hand(700), FAM_SIG = F.hand(400);
 const FAM_LYR = F.archivo(100, 800);
@@ -42,30 +49,39 @@ const BG = () => new FSPass(/* glsl */ `
   uniform float t; uniform float zoom; uniform vec2 zc;
   uniform vec3 pl[${NP}];     // 珍珠：中心 x、y、半徑（頁面座標）
   uniform vec2 sp[${NSP}];    // 吸管裡的珍珠：沿吸管的位置 0..1、在不在
+  uniform vec4 drops[${ND}];  // 滑下來的水珠：x、起點 y、現在的 y、在不在
   uniform sampler2D sleeve;
-  uniform float kick;
+  uniform float kick; uniform float bob; uniform float walk; uniform vec2 sB;
   const float CX = ${CX}.0, YT = ${YT}.0, YB = ${YB}.0, HT = ${HT}.0, HB = ${HB}.0, YL = ${YL}.0;
   float hwAt(float y) { return mix(HT, HB, sat((y - YT) / (YB - YT))); }
   // 奶茶：紙色（牛奶）＋訊號色的暗部（茶）——燭光金是焦糖奶茶，鼠尾草變抹茶、薰衣草變芋頭，剛好
   // （紙色的藍太多，加多了會變成灰粉紅；茶色主要來自 blood，再帶一點訊號色）
   vec3 tea() { return (C_PAPER * 0.25 + C_BLOOD * 0.45 + C_SIGNAL * 0.1) * 1.08; }
-  // 吸管的軸：A（杯蓋）→ B（吸管口）；回傳到軸的距離與沿軸的位置（0 在 A、1 在 B）
+  // 吸管的軸：A（杯蓋）→ sB（吸管口，吐珍珠時被頂得晃一下）；回傳到軸的距離與沿軸的位置（0 在 A、1 在 B）
   vec2 strawD(vec2 P) {
-    vec2 A = vec2(${SA.x}.0, ${SA.y}.0), B = vec2(${SB.x}.0, ${SB.y}.0);
-    vec2 ba = B - A; float h = dot(P - A, ba) / dot(ba, ba);
+    vec2 A = vec2(${SA.x}.0, ${SA.y}.0);
+    vec2 ba = sB - A; float h = dot(P - A, ba) / dot(ba, ba);
     return vec2(length(P - A - ba * h), h);
   }
   void main() {
     vec2 sp0 = vec2(FRAG_PX.x, ${H}.0 - FRAG_PX.y);
     vec2 P = (sp0 - zc) / zoom + zc;
-    // ---- 牆：午後的窗光斜斜打在牆上（兩道窗格的影子），越上面越暗
-    // 窗光：一塊斜斜的亮面落在杯子後面（兩道窗格的影子），右邊寫字的地方是均勻的柔光
-    vec2 wq = vec2(P.x - 0.45 * P.y, P.y);
+    // ---- 牆：午後的窗光斜斜打在牆上（窗格的影子），很慢地往右移（太陽在走）；每兩小節窗外有人走過，一道影子掃過窗光
+    vec2 wq = vec2(P.x - 0.45 * P.y - t * 1.5, P.y);
     float wpatch = smoothstep(80.0, 180.0, wq.x) * (1.0 - smoothstep(620.0, 760.0, wq.x)) * smoothstep(60.0, 260.0, P.y);
     float mull = 1.0 - 0.5 * (1.0 - smoothstep(6.0, 16.0, abs(wq.x - 360.0))) - 0.5 * (1.0 - smoothstep(6.0, 16.0, abs(P.y - 520.0)));
-    vec3 col = C_PAPER * (0.74 + 0.2 * wpatch * mull) * (0.94 + 0.06 * smoothstep(0.0, 800.0, P.y));
+    wpatch *= 1.0 - 0.55 * exp(-pow((wq.x - walk) / 70.0, 2.0));
+    // 杯子在牆上的影子（窗光從左上來，影子往右下偏）：擋掉窗光；光穿過奶茶那一段在影子裡聚成一片晃動的琥珀色光斑
+    // （杯套、珍珠擋光；冰塊一浮、大鼓一打，光斑跟著晃）
+    vec2 S = P - vec2(120.0, 46.0);
+    float sdx = S.x - CX, shw = hwAt(S.y);
+    float shadow = smoothstep(4.0, -10.0, abs(sdx) - shw) * smoothstep(YT - 8.0, YT + 8.0, S.y) * smoothstep(YB + 12.0, YB - 6.0, S.y);
+    float thru = step(YL, S.y) * (1.0 - step(${SY0}.0, S.y) * step(S.y, ${SY1}.0)) * (1.0 - smoothstep(620.0, 680.0, S.y));
+    float caus = pow(0.5 + 0.5 * snoise(vec2(S.x / 38.0 + 0.4 * bob, S.y / 55.0 + t * 0.35)), 3.0) * (0.6 + 0.8 * exp(-pow(sdx / (shw * 0.45), 2.0))) * (1.0 + 0.6 * kick);
+    vec3 col = C_PAPER * (0.74 + 0.2 * wpatch * mull * (1.0 - 0.8 * shadow)) * (0.94 + 0.06 * smoothstep(0.0, 800.0, P.y));
+    col += tea() * 0.3 * wpatch * shadow * thru * caus;
     // 右邊（字的後面）一片柔柔的亮
-    col += C_PAPER * 0.1 * exp(-pow((P.x - 1350.0) / 520.0, 2.0) - pow((P.y - 480.0) / 420.0, 2.0));
+    col += C_PAPER * 0.1 * exp(-pow((P.x - 1370.0) / 520.0, 2.0) - pow((P.y - 450.0) / 380.0, 2.0));
     // ---- 吧台：淺色木頭，杯子的影子往右後方
     if (P.y > ${TABLE}.0) {
       float g = fbm(vec2(P.x / 900.0, P.y / 40.0), 3);
@@ -73,9 +89,9 @@ const BG = () => new FSPass(/* glsl */ `
       col *= 1.0 - 0.06 * (1.0 - smoothstep(${TABLE}.0, ${TABLE + 4}.0, P.y));
       vec2 sq = (P - vec2(CX + 170.0, ${TABLE + 14}.0)) / vec2(300.0, 14.0);
       col *= 1.0 - 0.3 * exp(-dot(sq, sq));
-      // 光穿過奶茶打在桌上的一片琥珀色
-      vec2 cq = (P - vec2(CX + 250.0, ${TABLE + 26}.0)) / vec2(160.0, 12.0);
-      col += tea() * 0.12 * exp(-dot(cq, cq));
+      // 光穿過奶茶打在桌上的一片琥珀色（跟著奶茶微微晃）
+      vec2 cq = (P - vec2(CX + 250.0 + 6.0 * sin(t * 1.3), ${TABLE + 26}.0)) / vec2(160.0, 12.0);
+      col += tea() * (0.1 + 0.03 * sin(t * 2.1 + P.x / 30.0)) * exp(-dot(cq, cq));
     }
     // ---- 杯子
     float dx = P.x - CX;
@@ -92,6 +108,16 @@ const BG = () => new FSPass(/* glsl */ `
         // 奶茶：中間厚一點（深），邊緣薄（淺、帶一點杯子的白）
         c = mix(tea() * 1.12, tea() * 0.9, nz);
         c *= 0.96 + 0.04 * snoise(vec2(P.x / 90.0, P.y / 260.0 + t * 0.05));
+        // 細細的氣泡一直往上冒（珍珠堆上面那一段）
+        if (P.y < 660.0) {
+          vec2 bq = vec2(P.x, P.y + t * 46.0);
+          vec2 bc = floor(bq / 30.0);
+          vec2 bo = (bc + 0.2 + 0.6 * hash22(bc)) * 30.0 + vec2(3.0 * sin(t * 2.0 + bc.y), 0.0);
+          float br = 1.2 + 2.2 * hash12(bc + 5.0);
+          float bd = length(bq - bo);
+          float bub = step(0.6, hash12(bc + 9.0)) * (1.0 - smoothstep(br - 0.8, br + 0.4, bd)) * smoothstep(YL + 20.0, YL + 60.0, P.y);
+          c = mix(c, mix(c, C_BONE, 0.45), bub * (0.4 + 0.6 * smoothstep(br * 0.3, br, bd)));
+        }
         // 珍珠堆：找最靠前（球面最高）的那一顆
         if (P.y > 640.0) {
           float best = -1.0; vec3 bp = vec3(0.0);
@@ -120,10 +146,11 @@ const BG = () => new FSPass(/* glsl */ `
         // 液面以上：透過杯子看到後面的牆（有點霧）＋浮在上面的冰塊
         c = mix(col, C_BONE, 0.18);
       }
-      // 冰塊：幾顆半透明的圓角方塊，卡在液面附近
+      // 冰塊：幾顆半透明的圓角方塊，卡在液面附近；每一拍被震得浮一下、轉一點
       for (int k = 0; k < 4; k++) {
-        vec2 ic = vec2(CX - 150.0 + float(k) * 100.0 + 12.0 * sin(float(k) * 3.1), YL + 30.0 + 30.0 * sin(float(k) * 1.7));
-        vec2 iq = rot2(0.3 * sin(float(k) * 2.3)) * (P - ic);
+        float fk = float(k);
+        vec2 ic = vec2(CX - 150.0 + fk * 100.0 + 12.0 * sin(fk * 3.1), YL + 30.0 + 30.0 * sin(fk * 1.7) - bob * (6.0 + 4.0 * sin(fk * 2.7)));
+        vec2 iq = rot2(0.3 * sin(fk * 2.3) + 0.05 * bob * sin(fk * 5.1)) * (P - ic);
         float idd = sdBox(iq, vec2(44.0, 38.0)) - 10.0;
         float ice = 1.0 - smoothstep(-1.5, 1.5, idd);
         vec3 icol = mix(c, C_BONE, 0.32) + C_BONE * 0.25 * (1.0 - smoothstep(0.0, 5.0, abs(idd + 5.0)));
@@ -148,6 +175,22 @@ const BG = () => new FSPass(/* glsl */ `
         float dr = 2.0 + 3.5 * hash12(dg + 3.0);
         float dd = length(P - dc);
         float drop = step(0.72, hash12(dg + 11.0)) * step(YL + 40.0, P.y) * (1.0 - smoothstep(dr - 1.0, dr, dd));
+        // 滑下來的水珠：經過的地方小水珠被帶走、留下一道比較透的水痕，水珠本身圓圓亮亮的
+        for (int k = 0; k < ${ND}; k++) {
+          vec4 dp = drops[k];
+          if (dp.w < 0.01) continue;
+          float wob = 2.0 * sin((P.y - dp.y) / 30.0);
+          float tx = abs(P.x - dp.x - wob);
+          float along = step(dp.y, P.y) * step(P.y, dp.z);
+          float trail = (1.0 - smoothstep(2.0, 4.0, tx)) * along * dp.w;
+          drop *= 1.0 - (1.0 - smoothstep(4.0, 9.0, tx)) * step(dp.y, P.y) * step(P.y, dp.z + 6.0);
+          c = mix(c, c * 0.86, trail * 0.9);
+          c += C_BONE * 0.4 * trail * (1.0 - smoothstep(0.0, 1.2, abs(P.x - dp.x - wob + 1.5)));
+          vec2 hq = (P - vec2(dp.x, dp.z)) / vec2(7.0, 9.5);
+          float head = (1.0 - smoothstep(0.85, 1.05, length(hq))) * dp.w;
+          c = mix(c, c * 0.78, head);
+          c += C_BONE * 0.55 * head * (1.0 - smoothstep(0.0, 0.45, length(hq + vec2(0.3, 0.35))));
+        }
         c = mix(c, c * 0.8, drop);
         c += C_BONE * 0.35 * drop * (1.0 - smoothstep(0.0, dr * 0.5, length(P - dc + vec2(dr * 0.35))));
       }
@@ -166,15 +209,14 @@ const BG = () => new FSPass(/* glsl */ `
       col *= 1.0 - 0.25 * (1.0 - smoothstep(0.0, 0.08, 1.0 - ld));
     }
     // ---- 吸管（杯蓋以上）：半透明、帶訊號色，裡面有正在被吸上去的珍珠；吸管口斜切
-    float cutd = dot(P - vec2(${SB.x}.0, ${SB.y}.0), normalize(vec2(1.0, -0.7)));
+    float cutd = dot(P - sB, normalize(vec2(1.0, -0.7)));
     if (sd.x < ${SR}.0 && sd.y > 0.0 && cutd < 0.0 && P.y < YT + 4.0) {
       float u = sd.x / ${SR}.0;
       vec3 sc = mix(col, C_SIGNAL, 0.55) * (0.85 + 0.15 * sqrt(1.0 - u * u));
       // 吸管裡的珍珠
       for (int k = 0; k < ${NSP}; k++) {
         if (sp[k].y < 0.5) continue;
-        vec2 A = vec2(${SA.x}.0, ${SA.y}.0), B = vec2(${SB.x}.0, ${SB.y}.0);
-        vec2 pc = mix(A, B, sp[k].x);
+        vec2 pc = mix(vec2(${SA.x}.0, ${SA.y}.0), sB, sp[k].x);
         float pd = length(P - pc);
         float pm = 1.0 - smoothstep(19.0, 21.0, pd);
         vec3 pcol = mix(C_SEPIA * 0.45, C_INK, 0.45) + C_BONE * 0.4 * (1.0 - smoothstep(0.0, 6.0, length(P - pc + vec2(6.0, 6.0))));
@@ -187,8 +229,10 @@ const BG = () => new FSPass(/* glsl */ `
     fragColor = vec4(col, 1.0);
   }`, {
   t: { value: 0 }, zoom: { value: 1 }, zc: { value: new THREE.Vector2(CX, 540) }, kick: { value: 0 },
+  bob: { value: 0 }, walk: { value: -1e4 }, sB: { value: new THREE.Vector2(SB.x, SB.y) },
   pl: { value: Array.from({ length: NP }, () => new THREE.Vector3(-999, -999, 1)) },
   sp: { value: Array.from({ length: NSP }, () => new THREE.Vector2(0, 0)) },
+  drops: { value: Array.from({ length: ND }, () => new THREE.Vector4(0, 0, 0, 0)) },
   sleeve: { value: null },
 });
 
@@ -225,8 +269,11 @@ export default class BubbleTea extends Scene {
   glyphs: Glyph[] = [];
   lineGlyphs = new Map<Line, { gl: Glyph[]; size: number }>();
   b0 = 0;
+  /** 小節線（水珠滑下來）、窗外有人走過（每兩小節）的時間。 */
+  bars: number[] = [];
+  walks: number[] = [];
   sleeveSig = '';
-  lyrSize = 52;
+  lyrSize: number = V2.lyrMax;
   avoid: Rect[] = [];
 
   override async init() {
@@ -234,19 +281,24 @@ export default class BubbleTea extends Scene {
     const s = this.ctx.start, e = this.ctx.end, m = this.msg;
     const gr = grid(au, s, e);
     this.b0 = gr.b0;
+    this.bars = gr.bars.length ? gr.bars : [gr.bar0];
+    this.walks = this.bars.filter((_, i) => i % 2 === 1);
     const lines = m ? [] : lyrics.linesIn(s - 4, e).filter((l) => l.end > s - 1.5);
     await loadText(`${m?.text ?? ''}${m ? sigOf(m) : ''}${INVITE}${lines.map((l) => l.text).join('')}${song.title}FROM THE COUPLE · 新人`);
     const c = this.layer.ctx;
+    /** 沒有留言時落在牆上的字（歌詞或邀請）：v2 歌詞的字級（≤ 52），照子句斷行。 */
+    const fitLyric = (text: string) => fitClauses(c, text, FAM, BOX.w, BOX.h, { min: V2.lyrMin, max: lyricV2(null), lineHeight: 1.3, maxLines: 3 })
+      ?? fitText(c, text, FAM, BOX.w, BOX.h, { min: V2.lyrMin, max: lyricV2(null), lineHeight: 1.3, maxLines: 3 });
     if (m) {
-      const b = (this.block = msgBlock(c, m, FAM, BOX, { align: 'left', sigFamily: FAM_SIG, sigMin: 42, sigMax: 58, min: 50, max: 140, lineHeight: 1.3, maxLines: 5 }));
+      const b = (this.block = msgBlockV2(c, m, FAM, BOX, { align: 'left', sigFamily: FAM_SIG, lineHeight: 1.32 }));
       const gl = this.glyphsOf(b.lines, b.fit.size);
       const ts = stagger(au, gr.b0, gl.length, Math.min(gr.bar * 1.75, Math.max(gr.beat * 2, (e - gr.b0) * 0.5)));
       gl.forEach((g, i) => { g.t = ts[i]!; });
       this.glyphs = gl;
-      this.lyrSize = Math.max(48, Math.min(56, Math.round(b.fit.size * 0.62)));
+      this.lyrSize = lyricV2(b.fit.size);
       this.avoid = [b.box];
     } else if (!lines.length) {
-      const ft = fitText(c, INVITE, FAM, BOX.w, BOX.h, { min: 60, max: 120, lineHeight: 1.3, maxLines: 3 });
+      const ft = fitLyric(INVITE);
       const top = BOX.y + (BOX.h - ft.height) / 2 + ft.size * 0.88;
       const gl = this.glyphsOf(ft.lines.map((ln, i) => ({ text: ln, x: BOX.x, y: top + i * ft.lineHeight })), ft.size);
       const ts = stagger(au, gr.b0, gl.length, gr.bar * 1.75);
@@ -256,7 +308,7 @@ export default class BubbleTea extends Scene {
     } else {
       // 沒有留言：每一句歌詞排一次；每個字（英文一個字）在它開始唱的那一刻落地
       for (const l of lines) {
-        const ft = fitText(c, l.text, FAM, BOX.w, BOX.h * 0.8, { min: 64, max: 150, lineHeight: 1.26, maxLines: 3 });
+        const ft = fitLyric(l.text);
         const top = BOX.y + (BOX.h - ft.height) / 2 + ft.size * 0.88;
         const gl = this.glyphsOf(ft.lines.map((ln, i) => ({ text: ln, x: BOX.x, y: top + i * ft.lineHeight })), ft.size, l);
         this.lineGlyphs.set(l, { gl, size: ft.size });
@@ -319,14 +371,37 @@ export default class BubbleTea extends Scene {
       const jump = (5 + p.row * 7) * f.a.kick * (0.6 + 0.4 * hash(i, 3));
       pl[i]!.set(p.x + 1.5 * Math.sin(t * 1.3 + i), p.y - jump, p.r);
     }
-    // ---- 吸管裡的珍珠
+    // ---- 吸管裡的珍珠；吐出去那一下吸管被頂得晃一下（阻尼的擺動）
     const sp = u.sp!.value as THREE.Vector2[];
-    let nsp = 0;
+    let nsp = 0, recoil = 0;
     for (const g of gl) {
       const a = g.t - FLY - SUCK;
       if (t >= a && t < g.t - FLY && nsp < NSP) sp[nsp++]!.set((t - a) / SUCK, 1);
+      const d = t - (g.t - FLY);
+      if (d > 0 && d < 0.6) recoil += Math.exp(-d * 9) * Math.sin(d * 38) * lineAlpha;
     }
     for (let k = nsp; k < NSP; k++) sp[k]!.set(0, 0);
+    (u.sB!.value as THREE.Vector2).set(SB.x + 6 * recoil, SB.y - 3 * recoil);
+    // ---- 每一拍冰塊浮一下；每兩小節窗外有人走過；每個小節線一顆水珠沿著杯身滑下來
+    const bp = f.beatPhase;
+    u.bob!.value = Math.sin(Math.min(1, bp * 3) * Math.PI) * Math.exp(-bp * 2);
+    let walk = -1e4;
+    for (const tw of this.walks) { const k = (t - tw) / 1.6; if (k >= 0 && k <= 1) walk = lerp(-60, 860, ease.inOutQuad(k)); }
+    u.walk!.value = walk;
+    const dr = u.drops!.value as THREE.Vector4[];
+    let nd = 0;
+    for (let i = this.bars.length - 1; i >= 0 && nd < ND; i--) {
+      const tb = this.bars[i]!, age = t - tb;
+      if (age < 0 || age > 2.6) continue;
+      // 單數的從杯套上面滑下來（滑進杯套底下），雙數的從杯套下面滑到杯底
+      const top = i % 2 === 0;
+      const y0 = top ? YL + 50 + 60 * hash(tb, 2) : SY1 + 20 + 50 * hash(tb, 2);
+      const yEnd = top ? SY0 + 10 : YB - 10;
+      const y = Math.min(yEnd, y0 + 40 * age + 150 * age * age);
+      const x = CX + (hash(tb, 1) - 0.5) * 1.4 * hw(y0);
+      dr[nd++]!.set(x, y0, y, clamp((2.6 - age) / 0.5));
+    }
+    for (let k = nd; k < ND; k++) dr[k]!.set(0, 0, 0, 0);
     // ---- 杯套（歌詞或邀請）
     this.drawSleeve(t);
     // ---- 字與飛出去的珍珠
@@ -349,22 +424,37 @@ export default class BubbleTea extends Scene {
   }
 
   /**
-   * 字：落地前是一顆飛著的珍珠（從吸管口拋物線飛過去），落地那一刻珍珠縮小、字從珍珠長出來（彈一下）。
-   * 歌詞：正在唱是 blood、唱完是墨色；還沒唱的字淡淡的先在那裡。
+   * 字：落地前是一顆飛著的珍珠（從吸管口拋物線飛過去，牆上跟著一個淡淡的影子），落地那一刻珍珠縮小、字從珍珠長出來（彈一下）。
+   * 珍珠吐出來那一下，吸管口噴出幾滴奶茶。歌詞：正在唱是 blood、唱完是墨色；還沒唱的字淡淡的先在那裡。
    */
   private drawGlyphs(c: CanvasRenderingContext2D, gl: Glyph[], t: number, alpha: number, line: Line | null) {
     const M = this.mouth();
     c.textBaseline = 'alphabetic';
     c.globalAlpha = alpha;
-    for (const g of gl) {
+    for (let gi = 0; gi < gl.length; gi++) {
+      const g = gl[gi]!;
       const cx = g.x + g.w / 2, cy = g.y - g.size * 0.36;
       const tl = g.t;
-      // 飛行中的珍珠
+      // 吸管口噴出來的奶茶（幾滴，往右上噴、落下）
+      const ds = t - (tl - FLY);
+      if (ds > 0 && ds < 0.55) {
+        c.fillStyle = mixRgba('blood', 'paper', 0.35, 0.75 * (1 - ds / 0.55));
+        for (let k = 0; k < 4; k++) {
+          const vx = 60 + 140 * hash(gi, k, 1), vy = -(120 + 160 * hash(gi, k, 2));
+          c.beginPath(); c.arc(M.x + vx * ds, M.y + vy * ds + 900 * ds * ds, 2.2 + 1.8 * hash(gi, k, 3), 0, Math.PI * 2); c.fill();
+        }
+      }
+      // 飛行中的珍珠（大小跟字差不多）與它在牆上的影子
       if (t >= tl - FLY && t < tl + 0.12) {
         const q = clamp((t - (tl - FLY)) / FLY);
         const x = lerp(M.x, cx, q), y = lerp(M.y, cy, q) - 70 * 4 * q * (1 - q);
-        const r = 20 * (t < tl ? 1 : 1 - clamp((t - tl) / 0.12));
+        const r = g.size * 0.36 * (t < tl ? 1 : 1 - clamp((t - tl) / 0.12));
         if (r > 0.5) {
+          // 影子：珍珠離牆越遠（飛在中間）影子越偏、越淡
+          const off = 10 + 26 * 4 * q * (1 - q);
+          const sg = c.createRadialGradient(x + off, y + off * 1.3, 0, x + off, y + off * 1.3, r * 1.6);
+          sg.addColorStop(0, rgba('sepia', 0.16)); sg.addColorStop(1, rgba('sepia', 0));
+          c.fillStyle = sg; c.beginPath(); c.arc(x + off, y + off * 1.3, r * 1.6, 0, Math.PI * 2); c.fill();
           const pg = c.createRadialGradient(x - r * 0.35, y - r * 0.35, r * 0.1, x, y, r);
           pg.addColorStop(0, rgba('graphite')); pg.addColorStop(0.35, rgba('sepia')); pg.addColorStop(1, rgba('ink'));
           c.fillStyle = pg; c.beginPath(); c.arc(x, y, r, 0, Math.PI * 2); c.fill();
@@ -403,7 +493,7 @@ export default class BubbleTea extends Scene {
       c.fillText(b.sig.text, b.sig.x, b.sig.y);
       if (this.msg.couple) {
         c.font = font(F.mono(500), 18); c.letterSpacing = '4px'; c.fillStyle = rgba('blood');
-        c.fillText('FROM THE COUPLE · 新人', BOX.x, BOX.y - 10);
+        c.fillText('FROM THE COUPLE · 新人', BOX.x, b.box[1] - 16);
         c.letterSpacing = '0px';
       }
     }
@@ -424,12 +514,13 @@ export default class BubbleTea extends Scene {
     c.fillRect(0, 10, SLW, 3); c.fillRect(0, SLH - 13, SLW, 3);
     c.textBaseline = 'alphabetic';
     if (ly) {
-      const st = { family: FAM_LYR, size: this.lyrSize, minSize: 48, maxW: SLW * 0.6, maxRows: 3, align: 'center' as const, lineHeight: 1.1 };
+      // 杯套中間 1 貼圖 px ≈ 1 螢幕 px：v2 歌詞字級直接用
+      const st = { family: FAM_LYR, size: this.lyrSize, minSize: V2.lyrMin, maxW: SLW * 0.6, maxRows: 3, align: 'center' as const, lineHeight: 1.1 };
       const lay = layoutRows(c, ly.line, st);
       c.save(); c.translate(SLW / 2, SLH / 2 - lay.height / 2 + lay.size * 0.82);
       drawRows(c, lay, FAM_LYR, t, paperInk(), ly.k);
       c.restore();
-    } else if (!this.msg) {
+    } else if (!this.msg && this.lineGlyphs.size) {
       const ft = fitText(c, INVITE, F.hei(700), SLW * 0.56, SLH - 60, { min: 22, max: 34, lineHeight: 1.35, maxLines: 3 });
       c.font = font(F.hei(700), ft.size); c.fillStyle = rgba('sepia', 0.85); c.textAlign = 'center';
       ft.lines.forEach((ln, i) => c.fillText(ln, SLW / 2, SLH / 2 - ft.height / 2 + ft.size * 0.85 + i * ft.lineHeight));
