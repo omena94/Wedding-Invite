@@ -15,10 +15,11 @@ import { GLSL_COMMON, THEME_UNIFORMS } from '../engine/glsl/common';
 import { F, font, loadText } from '../engine/type';
 import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, hash, lerp, prog, pulse } from '../engine/util';
-import type { FitResult } from '../engine/text';
+import { fitText, type FitResult } from '../engine/text';
 import type { Line } from '../engine/lyrics';
 import { drawLyric, drawMessage, drawHeart, lyricAt, signature, WEDDING_DATE } from './_motifs';
-import { grid, fitMsg, boxLyric, mono, tag, pad3, paperLyric, fiberTex, withMips, windowLines, type Grid } from './_t3';
+import { grid, boxLyric, mono, tag, pad3, paperLyric, fiberTex, withMips, windowLines, type Grid } from './_t3';
+import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 } from './_v2';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'doc', paper: true, energy: [0.2, 0.9], bars: [4, 8], weight: 1 };
 
@@ -31,6 +32,8 @@ const LYR_FAM = F.archivo(100, 700);
 const MSG_FAM = F.hand(400);
 const LYR_BOX = { x: 30, y: 352, w: PW - 60, h: 112 };
 const FORTUNE = { x: 30, y: 492, w: PW - 60, h: 330 };
+/** 推近到運勢之後，頁面 1 px 在螢幕上約 K px（v2 的字級是螢幕 px，排版時用它換算）。 */
+const K = 1.06;
 const WD = ['日', '一', '二', '三', '四', '五', '六'];
 const WD_EN = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
 /** 婚禮前幾天的冷面宜忌與運勢（離婚禮幾天 → 內容）。 */
@@ -43,6 +46,11 @@ const FIXED = '民國一一六年丁未年三月星期日一二三四五六宜�
 // ---------------------------------------------------------------- 牆
 const WALL = () => new FSPass(/* glsl */ `
   uniform sampler2D fiber; uniform vec4 shadowRect; uniform float t;
+  uniform vec3 clock; uniform vec3 hands; // 牆上的掛鐘：螢幕位置與半徑；時針、分針、秒針的角度（12 點鐘方向為 0，順時針）
+  float hand(vec2 p, float a, float len, float w) {
+    vec2 d = vec2(sin(a), -cos(a));
+    return 1.0 - smoothstep(w * 0.5 - 0.8, w * 0.5 + 0.8, sdSegment(p, -d * len * 0.18, d * len));
+  }
   void main() {
     vec2 s = vec2(FRAG_PX.x, ${H}.0 - FRAG_PX.y);
     vec4 fb = texture(fiber, vUv);
@@ -51,12 +59,38 @@ const WALL = () => new FSPass(/* glsl */ `
     col *= 1.0 - 0.025 * smoothstep(0.3, 0.5, abs(fract(s.x / 14.0) - 0.5));
     vec2 lq = (s - vec2(640.0, 260.0)) / vec2(1200.0, 900.0);
     col *= 0.7 + 0.42 * exp(-dot(lq, lq) * 1.6);
+    // 窗戶照進來的一塊光（右邊的牆），窗外的樹葉讓光慢慢晃：畫面一直有空氣在動
+    vec2 wq = s - vec2(1480.0 + 40.0 * sin(t * 0.13), 560.0);
+    wq = vec2(wq.x + wq.y * 0.35, wq.y);
+    float win = (1.0 - smoothstep(170.0, 230.0, abs(wq.x))) * (1.0 - smoothstep(250.0, 320.0, abs(wq.y)));
+    // 窗框的十字影子
+    float mull = max(1.0 - smoothstep(3.0, 9.0, abs(wq.x)), 1.0 - smoothstep(3.0, 9.0, abs(wq.y)));
+    float leaf = smoothstep(-0.15, 0.35, fbm(s / 240.0 + vec2(t * 0.05, t * 0.03), 3));
+    col *= 1.0 + 0.1 * win * (1.0 - 0.8 * mull) * (0.45 + 0.55 * leaf);
     // 日曆在牆上的影子：往右下、很軟
     vec2 c = (shadowRect.xy + shadowRect.zw) * 0.5 + vec2(26.0, 34.0), h = (shadowRect.zw - shadowRect.xy) * 0.5;
     float d = sdBox(s - c, h);
     col *= 1.0 - 0.34 * (1.0 - smoothstep(-30.0, 60.0, d));
+    // 掛鐘：影子、鐘面、刻度、時針分針、訊號色的秒針（每一拍跳一格）
+    vec2 cp = s - clock.xy; float R = clock.z;
+    float cd = length(cp);
+    col *= 1.0 - 0.22 * (1.0 - smoothstep(R * 0.9, R * 1.25, length(cp - vec2(R * 0.12, R * 0.16))));
+    if (cd < R * 1.02) {
+      vec3 face = mix(C_PAPER, C_BONE, 0.35);
+      float rim = smoothstep(R * 0.9, R * 0.93, cd);
+      vec3 cc = mix(face, mix(C_SEPIA, C_PAPER, 0.35), rim);
+      float ang = atan(cp.x, -cp.y);
+      float tick = 1.0 - smoothstep(0.5, 1.5, abs(fract(ang / (TAU / 12.0) + 0.5) - 0.5) * (TAU / 12.0) * cd);
+      tick *= smoothstep(R * 0.72, R * 0.74, cd) * (1.0 - smoothstep(R * 0.84, R * 0.86, cd));
+      cc = mix(cc, C_SEPIA, tick * 0.8);
+      cc = mix(cc, C_SEPIA, hand(cp, hands.x, R * 0.45, R * 0.06));
+      cc = mix(cc, C_SEPIA, hand(cp, hands.y, R * 0.66, R * 0.04));
+      cc = mix(cc, C_BLOOD, hand(cp, hands.z, R * 0.74, R * 0.018));
+      cc = mix(cc, C_BLOOD, 1.0 - smoothstep(R * 0.035, R * 0.045, cd));
+      col = mix(col, cc, 1.0 - smoothstep(R - 1.0, R + 1.0, cd));
+    }
     fragColor = vec4(col, 1.0);
-  }`, { fiber: { value: null }, shadowRect: { value: new THREE.Vector4(0, 0, 1, 1) }, t: { value: 0 } });
+  }`, { fiber: { value: null }, shadowRect: { value: new THREE.Vector4(0, 0, 1, 1) }, t: { value: 0 }, clock: { value: new THREE.Vector3(1600, 300, 100) }, hands: { value: new THREE.Vector3() } });
 
 // ---------------------------------------------------------------- 3D 的紙
 const VERT = /* glsl */ `
@@ -141,6 +175,7 @@ export default class Almanac extends Scene {
   arrive = 0;
   tCircle = Infinity; tHeart = Infinity;
   fit: FitResult | null = null;
+  sigSize = 30;
   lines: Line[] = [];
   private boardDrawn = false;
 
@@ -193,7 +228,17 @@ export default class Almanac extends Scene {
     const nb = au.timeOfBar(Math.ceil(au.barAt(this.arrive + 0.2) - 1e-6));
     if (nb < e - g.beat) this.tCircle = nb;
     if (nb + g.bar < e - g.beat) this.tHeart = nb + g.bar;
-    if (m) this.fit = fitMsg(this.page.ctx, m.text, MSG_FAM, FORTUNE.w, FORTUNE.h - 104, { min: 48, max: 92, lineHeight: 1.24 });
+    if (m) {
+      // v2：字級是螢幕 px（40～60，依字數），換成頁面 px；可用高度先扣掉署名，署名永遠在最後一行下面
+      const c = this.page.ctx;
+      const max = msgMaxFor(m.text) / K, sigEst = sigV2(msgMaxFor(m.text)) / K;
+      const boxH = FORTUNE.h - 44 - (sigEst * 1.5 + max * 0.3);
+      const opt = { min: V2.msgMin / K, max, lineHeight: 1.24, maxLines: 5 };
+      const byW = fitText(c, m.text, MSG_FAM, FORTUNE.w, boxH, opt);
+      const byC = fitClauses(c, m.text, MSG_FAM, FORTUNE.w, boxH, opt);
+      this.fit = byC && byC.size >= byW.size * 0.9 ? byC : byW;
+      this.sigSize = sigV2(this.fit.size * K) / K;
+    }
   }
 
   override dispose() {
@@ -240,7 +285,7 @@ export default class Almanac extends Scene {
     tag(c, '今日一句', LYR_BOX.x, LYR_BOX.y + 14, { size: 15, color: ink(0.5), tracking: 4 });
     const ly = lyricAt(this.ctx.lyrics, t);
     if (ly) {
-      const lay = boxLyric(c, ly.line, LYR_FAM, LYR_BOX.w, LYR_BOX.h - 26, { min: 54, max: this.fit ? Math.min(62, Math.round(this.fit.size * 0.86)) : 72, lineHeight: 1.12, maxLines: 2 });
+      const lay = boxLyric(c, ly.line, LYR_FAM, LYR_BOX.w, LYR_BOX.h - 26, { min: V2.lyrMin / K, max: lyricV2(this.fit ? this.fit.size * K : null) / K, lineHeight: 1.12, maxLines: 2 });
       const y0 = LYR_BOX.y + 26 + Math.max(0, (LYR_BOX.h - 26 - lay.height) / 2) + lay.size * 0.8;
       c.save(); c.translate(LYR_BOX.x, y0);
       drawLyric(c, ly.line, t, { family: LYR_FAM, size: lay.size, maxWidth: LYR_BOX.w, ...paperLyric() }, lay, ly.k);
@@ -257,20 +302,21 @@ export default class Almanac extends Scene {
       const fit = this.fit;
       const top = FORTUNE.y + 44 + fit.size * 0.88;
       drawMessage(c, fit, MSG_FAM, FORTUNE.x, top, { color: ink(0.94) });
-      c.font = font(MSG_FAM, 36); c.fillStyle = ink(0.7); c.textAlign = 'right';
-      c.fillText(signature(m.name), FORTUNE.x + FORTUNE.w, Math.min(FORTUNE.y + FORTUNE.h + 2, top + fit.height - fit.size + 64));
+      // 署名（v2：26～32 px）：最後一行的基線往下讓出下伸部再放
+      c.font = font(MSG_FAM, this.sigSize); c.fillStyle = ink(0.7); c.textAlign = 'right';
+      c.fillText(signature(m.name), FORTUNE.x + Math.max(fit.width, FORTUNE.w * 0.6), top + (fit.lines.length - 1) * fit.lineHeight + fit.size * 0.3 + this.sigSize * 1.15);
       c.textAlign = 'left';
       mono(c, `NO.${pad3(m.n)}`, FORTUNE.x + FORTUNE.w, FORTUNE.y + 16, { size: 12, color: ink(0.4), align: 'right', tracking: 3 });
     } else if (wed) {
-      c.font = font(MSG_FAM, 60); c.fillStyle = ink(0.9);
+      c.font = font(MSG_FAM, 54); c.fillStyle = ink(0.9);
       c.fillText('大吉。', FORTUNE.x, FORTUNE.y + 110);
-      c.font = font(MSG_FAM, 42); c.fillStyle = ink(0.8);
-      c.fillText('掃描右下角 QR code，', FORTUNE.x, FORTUNE.y + 180);
-      c.fillText('把你的祝福寫進今天。', FORTUNE.x, FORTUNE.y + 236);
+      c.font = font(MSG_FAM, 40); c.fillStyle = ink(0.8);
+      c.fillText('掃描右下角 QR code，', FORTUNE.x, FORTUNE.y + 176);
+      c.fillText('把你的祝福寫進今天。', FORTUNE.x, FORTUNE.y + 230);
     } else {
       const f = BEFORE[day.offset]?.fortune ?? ['大吉。'];
-      c.font = font(MSG_FAM, 54); c.fillStyle = ink(0.88);
-      f.forEach((s, j) => c.fillText(s, FORTUNE.x, FORTUNE.y + 104 + j * 66));
+      c.font = font(MSG_FAM, 48); c.fillStyle = ink(0.88);
+      f.forEach((s, j) => c.fillText(s, FORTUNE.x, FORTUNE.y + 100 + j * 62));
     }
     // 婚禮那一頁：麥克筆圈日期、畫愛心
     if (wed) {
@@ -369,6 +415,15 @@ export default class Almanac extends Scene {
     const xs = corners.map((p) => p.x), ys = corners.map((p) => p.y);
     (this.wall.u.shadowRect!.value as THREE.Vector4).set(Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys));
     this.wall.u.fiber!.value = fiber;
+    this.wall.u.t!.value = t;
+    // 掛鐘：掛在日曆右邊的牆上（跟著鏡頭投影，推近時一起放大）；秒針每一拍跳一格（落在拍點，outBack 彈一下）
+    const cp = new THREE.Vector3(700, 190, -2).project(this.cam), ce = new THREE.Vector3(805, 190, -2).project(this.cam);
+    const ccx = (cp.x * 0.5 + 0.5) * W, ccy = (0.5 - cp.y * 0.5) * H;
+    (this.wall.u.clock!.value as THREE.Vector3).set(ccx, ccy, Math.abs(((ce.x - cp.x) * 0.5) * W));
+    const au = this.ctx.audio, bi = Math.floor(au.beatAt(t) + 1e-6), bt = au.timeOfBeat(bi);
+    const sec = bi + ease.outBack(clamp((t - bt) / 0.12), 2.2) - 1;
+    const mins = 30 + t / 60;
+    (this.wall.u.hands!.value as THREE.Vector3).set(((7 + mins / 60) / 12) * Math.PI * 2, (mins / 60) * Math.PI * 2, (sec / 60) * Math.PI * 2);
     this.wall.render(renderer, out);
     renderer.setRenderTarget(out);
     renderer.clearDepth();

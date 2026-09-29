@@ -7,7 +7,7 @@ import { FSPass, makeRT, W, H, SCALE } from '../engine/gl';
 import type { AudioData } from '../engine/audio';
 import type { Line, Lyrics } from '../engine/lyrics';
 import { F, font } from '../engine/type';
-import { rgba } from '../engine/palette';
+import { rgba, mixRgba } from '../engine/palette';
 import { fitText, type FitResult } from '../engine/text';
 import { clamp, mulberry32 } from '../engine/util';
 import { beatAfter, barAfter, layoutMessage, type LyricLayout, type LyricStyle } from './_motifs';
@@ -253,6 +253,13 @@ uniform sampler2D tex; uniform sampler2D fiber;
 uniform vec2 docSize; uniform mat3 toDoc; uniform vec4 rect; uniform vec2 shOff;
 uniform vec2 focus; uniform vec2 focusR; uniform float blurMax; uniform float lodK; uniform float t;
 vec4 fib(vec2 d) { return texture(fiber, fract(d / vec2(${W}.0, ${H}.0))); }
+// SCR：這個像素的螢幕座標（main 一開始設好）。paperCol 只拿到文件座標，光影要「跟著房間走、不跟著紙走」時用它
+vec2 SCR;
+/** 窗外樹葉的影子（0 = 影子、1 = 陽光）：兩層慢慢漂的噪聲，邊緣很柔。桌面與紙都用它，才會是同一道光。 */
+float dapple(vec2 s, float tt) {
+  float n = fbm(s / 560.0 + vec2(tt * 0.03, tt * 0.017), 3) + 0.45 * snoise(s / 190.0 + vec2(tt * 0.09, -tt * 0.06));
+  return smoothstep(-0.12, 0.38, n);
+}
 ${paper}
 ${/float\s+cut\s*\(/.test(paper) ? '' : 'float cut(vec2 d, float soft) { return 1.0; }'}
 const vec2 DISC[8] = vec2[8](vec2(1.0, 0.0), vec2(0.707, 0.707), vec2(0.0, 1.0), vec2(-0.707, 0.707), vec2(-1.0, 0.0), vec2(-0.707, -0.707), vec2(0.0, -1.0), vec2(0.707, -0.707));
@@ -270,6 +277,7 @@ vec4 ink(vec2 d, float lod) {
 }
 void main() {
   vec2 s = vec2(FRAG_PX.x, ${H}.0 - FRAG_PX.y);
+  SCR = s;
   vec3 q = toDoc * vec3(s, 1.0);
   vec2 d = q.xy / q.z;
   // 景深：焦點橢圓以內清楚，外面越遠越糊
@@ -420,4 +428,27 @@ export function inkStamp(text: string, size: number, round: boolean, seed: numbe
   g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(0.5 + 0.4 * (rnd() - 0.5), 'rgba(0,0,0,0)'); g.addColorStop(1, `rgba(0,0,0,${0.3 + 0.3 * rnd()})`);
   c.fillStyle = g; c.fillRect(0, 0, size + pad * 2, size + pad * 2);
   return cv;
+}
+
+// ---------------------------------------------------------------- 鉛筆／紅筆
+/**
+ * 一支筆（筆尖在 (x, y)，筆身往右上）：lift 是抬起來的高度（影子跟著離遠）。color：筆身用訊號色（鉛筆）或它的暗部（紅筆）。
+ * 填字、樂譜、成績單共用：筆是「誰在寫」的線索，寫字的時候跟著字跳，沒在寫的時候抬起來停在旁邊。
+ */
+export function drawPencil(c: CanvasRenderingContext2D, x: number, y: number, lift: number, o: { color?: 'signal' | 'blood'; len?: number; ang?: number } = {}) {
+  const hue = o.color ?? 'signal';
+  const L = o.len ?? 330, ang = o.ang ?? -1.05, dx = Math.cos(ang), dy = Math.sin(ang);
+  const pt = (d: number, off = 0) => ({ x: x - lift * 0.3 + dx * d - dy * off, y: y - lift + dy * d + dx * off });
+  const poly = (pts: { x: number; y: number }[], fill: string) => { c.beginPath(); pts.forEach((p, j) => (j ? c.lineTo(p.x, p.y) : c.moveTo(p.x, p.y))); c.closePath(); c.fillStyle = fill; c.fill(); };
+  c.save();
+  c.strokeStyle = rgba('sepia', 0.16); c.lineWidth = 20; c.lineCap = 'round';
+  c.beginPath(); c.moveTo(x + 14 + lift, y + 12 + lift * 0.6); c.lineTo(x + 14 + lift + dx * L, y + 12 + lift * 0.6 + dy * L); c.stroke();
+  poly([pt(0), pt(36, -10), pt(36, 10)], mixRgba('paper', 'sepia', 0.25));
+  poly([pt(0), pt(12, -3.3), pt(12, 3.3)], hue === 'blood' ? rgba('blood') : rgba('sepia', 0.95));
+  poly([pt(36, -10.5), pt(L - 44, -10.5), pt(L - 44, 10.5), pt(36, 10.5)], mixRgba(hue, 'blood', 0.2));
+  poly([pt(42, -3.4), pt(L - 44, -3.4), pt(L - 44, 3.4), pt(42, 3.4)], mixRgba(hue, 'ember', 0.4));
+  poly([pt(36, 5.5), pt(L - 44, 5.5), pt(L - 44, 10.5), pt(36, 10.5)], mixRgba(hue, 'sepia', 0.4));
+  poly([pt(L - 44, -11), pt(L - 16, -11), pt(L - 16, 11), pt(L - 44, 11)], rgba('ash'));
+  poly([pt(L - 16, -10.5), pt(L + 6, -10.5), pt(L + 9, 0), pt(L + 6, 10.5), pt(L - 16, 10.5)], mixRgba('paper', 'blood', 0.45));
+  c.restore();
 }

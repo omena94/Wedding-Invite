@@ -20,7 +20,8 @@ import { clamp, ease, hash, lerp, prog, pulse } from '../engine/util';
 import { Lyrics, type Line } from '../engine/lyrics';
 import { wrap } from '../engine/text';
 import { signature, drawHeart } from './_motifs';
-import { grid, stagger, windowLines, mono, tag, pad3, DocCam, withMips, HUD, EDGE, type Grid, type Pose } from './_t3';
+import { grid, stagger, windowLines, mono, tag, pad3, DocCam, withMips, drawPencil, HUD, EDGE, type Grid, type Pose } from './_t3';
+import { msgMaxFor, lyricV2, sigV2, V2 } from './_v2';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'doc', paper: true, energy: [0.2, 0.85], bars: [4, 8], weight: 1 };
 
@@ -29,7 +30,11 @@ const DW = 1700, DH = 1240;
 const TS = SCALE * 1.3; // 文件圖層每個文件 px 幾個像素（鏡頭會推近）
 const PAGE: [number, number, number, number] = [50, 20, 1640, 1380];
 const GX = 170, GY = 196; // 格子左上角
-const GRID_H = 760, GRID_W = 940;
+const GRID_H = 760;
+/** 鏡頭的平均縮放（文件 px → 螢幕 px）：v2 的字級、留言區都是螢幕上的大小，排版時用它換算。 */
+const K = 1.03;
+/** 直的提示（2～5）的答案：平面圖畫完之後，每個小節線鉛筆去解一題（劃掉提示、寫上答案）。 */
+const ANSWERS = ['網球', '永久', '一家', '平手'];
 const MSG_FAM = F.hand(700);
 const LYR_FAM = F.archivo(100, 800);
 const FIXED = '愛的日報週末益智版年月日星期六第期填字遊戲主題一起提示此刻正在唱的一句芃芃最愛的圓形物體本婚姻的保固期限兩人加兩隻狗搶棉被冠軍解答網球永久一家平手想對新人說的話格掃描右下角的寫下你的祝福本曲曲名純音樂新人';
@@ -42,11 +47,13 @@ vec3 paperCol(vec2 d, vec4 fb) {
   float fy = d.y - 1150.0;
   p *= 1.0 - 0.045 * exp(-abs(fy) * 0.08) * sign(fy) - 0.03 * exp(-abs(fy) * 0.4);
   p *= 0.93 + 0.08 * exp(-dot((d - focus) / vec2(900.0, 700.0), (d - focus) / vec2(900.0, 700.0)));
-  return p;
+  // 窗外樹葉的影子慢慢在紙上漂（桌面也是同一道光）：畫面一直有空氣在動
+  return p * (0.94 + 0.07 * dapple(SCR, t));
 }
 vec3 deskCol(vec2 s, vec4 fb) {
+  // 桌面不要太暗：右下角的 QR 與「已收到 N 則祝福」是深色字，要讀得到
   float grain = fbm(vec2(s.x / 900.0, s.y / 26.0), 3);
-  return mix(C_PAPER, C_SEPIA, 0.36 + 0.05 * grain) * (0.9 + 0.1 * fb.r) * (0.82 + 0.18 * (1.0 - s.y / 1080.0));
+  return mix(C_PAPER, C_SEPIA, 0.22 + 0.05 * grain) * (0.9 + 0.1 * fb.r) * (0.88 + 0.13 * dapple(s, t));
 }`;
 
 // ---------------------------------------------------------------- 排格子
@@ -124,6 +131,11 @@ export default class Crossword extends Scene {
   titleTimes: number[] = [];
   instr = false;
   clueX = 0;
+  /** 留言的字級（文件 px）與它在螢幕上的大小、歌詞與署名的字級（文件 px）。 */
+  msgSize = 50; msgScreen: number | null = null; lyrSize = 48; sigSize = 30;
+  /** 提示在紙上的位置（劃掉用）與解題的時間。 */
+  clues: { n: string; x: number; y: number; w: number }[] = [];
+  solves: { i: number; t: number }[] = [];
   /** 鏡頭的安全位移（格子投影後不能碰到邊、不能進右下角 HUD），init 算一次。 */
   shift = { x: 0, y: 0 };
   private baseDrawn = false;
@@ -137,17 +149,25 @@ export default class Crossword extends Scene {
     this.instr = wl.length === 0;
     await loadText(`${FIXED}${INVITE}${song.title}${m ? m.text + signature(m.name) : ''}${wl.map((l) => l.text).join('')}`);
     const mw = msgWords(m ? m.text : INVITE);
-    // 欄數：10～15 欄裡挑格子最大的；一句歌詞要翻頁（超過三排）比較難讀，格子小一點也寧可不翻
-    let best = { nc: 12, cs: 0, mr: 1, lr: 1, score: -1 };
-    for (const nc of [10, 11, 12, 13, 14, 15]) {
+    // 欄數：8～15 欄。v2：留言的字（格子 × 0.74）在螢幕上 40～60（依字數，msgMaxFor），留言那幾排 ≤ 820 × 400（螢幕 px）；
+    // 挑格子最大的，一樣大挑欄數少的（格子區窄一點、場景露多一點）；一句歌詞要翻頁（超過三排）比較難讀，扣分
+    const mMax = msgMaxFor(m ? m.text : INVITE);
+    let best = { nc: 12, cs: 0, mr: 1, lr: 1, score: -1e9 };
+    for (let nc = 8; nc <= 15; nc++) {
       const mr = flow(mw, nc).rows;
-      const raw = this.instr ? 1 : Math.max(1, ...wl.map((l) => flow(lineWords(l), nc).rows));
+      // 純音樂：♪ 那幾排寫曲名（最多兩排）
+      const raw = this.instr ? clamp(flow(msgWords(song.title || '純音樂'), nc).rows, 1, 2) : Math.max(1, ...wl.map((l) => flow(lineWords(l), nc).rows));
       const lr = clamp(raw, 1, 3);
-      const cs = Math.floor(Math.min(92, GRID_H / (mr + 1 + lr), GRID_W / nc));
-      const score = cs - (raw > 3 ? 10 : 0);
-      if (score > best.score + 1) best = { nc, cs, mr, lr, score };
+      const cs = Math.floor(Math.min(mMax / (0.74 * K), 820 / (nc * K), 400 / (mr * K), GRID_H / (mr + 1 + lr)));
+      const score = cs - (raw > 3 ? 10 : 0) - (cs * 0.74 * K < V2.msgMin ? 100 : 0);
+      if (score > best.score + 0.5) best = { nc, cs, mr, lr, score };
     }
     this.nc = best.nc; this.cs = best.cs; this.msgRows = best.mr; this.lyrRows = best.lr;
+    this.msgSize = this.cs * 0.74;
+    this.msgScreen = m ? this.msgSize * K : null;
+    // 歌詞比留言小一點（lyricV2），也不超過格子；署名 26～32
+    this.lyrSize = Math.max(V2.lyrMin / K, Math.min(this.cs * 0.64, lyricV2(this.msgScreen) / K));
+    this.sigSize = sigV2(this.msgSize * K) / K;
     this.clueX = GX + this.nc * this.cs + 80;
     this.msgCells = flow(mw, this.nc).cells;
     const maxDur = clamp((e - g.b0) * 0.45, g.beat * 2, g.bar * 1.6);
@@ -166,7 +186,7 @@ export default class Crossword extends Scene {
       for (const tt of [e, this.msgDone + g.bar]) {
         this.cam.pose(this.pose(tt), DW, DH);
         // 格子四角＋署名那一行
-        const pts = [this.cam.project(GX, GY), this.cam.project(GX + gw, GY), this.cam.project(GX, GY + gh), this.cam.project(GX + gw, GY + gh), this.cam.project(GX + gw, GY + gh + 70)];
+        const pts = [this.cam.project(GX, GY), this.cam.project(GX + gw, GY), this.cam.project(GX, GY + gh), this.cam.project(GX + gw, GY + gh), this.cam.project(GX + gw, GY + gh + this.sigSize * 1.6)];
         for (const p of pts) {
           if (p.y > HUD.y - 10 && p.x > HUD.x - 20) left = Math.max(left, p.x - (HUD.x - 20));
           if (p.y > 1080 - EDGE) up = Math.max(up, p.y - (1080 - EDGE));
@@ -174,6 +194,13 @@ export default class Crossword extends Scene {
         }
       }
       this.shift.x += right - left; this.shift.y -= up;
+    }
+    // 解題：留言寫完、螢光筆劃過之後的每個小節線解一題（直的 2～5）
+    let k = 0;
+    for (const b of g.bars) {
+      if (k >= ANSWERS.length) break;
+      if (b < this.msgDone + g.beat * 2.2 || b > e - g.beat * 1.2) continue;
+      this.solves.push({ i: k++, t: b });
     }
   }
 
@@ -186,7 +213,8 @@ export default class Crossword extends Scene {
     const toAll = ease.inOutCubic(prog(t, this.msgDone + g.beat, this.msgDone + g.beat + g.bar));
     const slow = ease.inOutCubic(prog(t, this.ctx.start, this.ctx.end));
     return {
-      x: GX + gw / 2 + 60, y: lerp(lerp(msgC, allC, 0.45), allC, toAll),
+      // 格子放在畫面左邊（中心約在螢幕 x ≈ 500～700），右邊留給提示欄、鉛筆解題與光影
+      x: GX + 700 - gw * 0.1, y: lerp(lerp(msgC, allC, 0.45), allC, toAll),
       z: lerp(0.94, 1.02, settle) + 0.05 * slow,
       roll: lerp(-0.07, -0.035, settle) + 0.01 * slow, tilt: 0.34 - 0.04 * slow, pan: -0.06 + 0.05 * slow,
       sx: 900 + this.shift.x, sy: 548 + this.shift.y,
@@ -202,13 +230,17 @@ export default class Crossword extends Scene {
     c.drawImage(this.base.canvas, 0, 0, DW, DH);
     this.drawMsg(c, t);
     const head = this.drawLyrics(c, t);
-    this.drawPencil(c, t, head);
+    const solve = this.drawSolves(c, t);
+    this.drawPencil(c, t, head, solve);
     D.upload();
     const cs = this.cs, gw = this.nc * cs, gh = (this.msgRows + 1 + this.lyrRows) * cs;
     this.cam.pose(this.pose(t), DW, DH);
+    // 解題的時候焦點往提示欄移一點（拉焦），解完回到格子
+    let fs = 0;
+    for (const sv of this.solves) fs = Math.max(fs, prog(t, sv.t - 0.25, sv.t + 0.1, ease.inOutCubic) * (1 - prog(t, sv.t + this.g.beat * 1.2, sv.t + this.g.beat * 2.2, ease.inOutCubic)));
     this.cam.render(renderer, out, {
-      tex: D.texture, docW: DW, docH: DH, texScale: TS, rect: PAGE,
-      focus: { x: GX + gw / 2, y: GY + gh / 2 }, focusR: [gw * 0.54 + 20, gh * 0.56 + 40], blur: 8, shadow: [16, 26],
+      tex: D.texture, docW: DW, docH: DH, texScale: TS, rect: PAGE, t,
+      focus: { x: GX + gw / 2 + fs * 260, y: GY + gh / 2 }, focusR: [gw * 0.54 + 60 + fs * 120, gh * 0.56 + 60], blur: 7, shadow: [16, 26],
     });
     return { paper: 1, bloom: 0.25, vignette: 0.34, grain: 0.05, halation: 0.08, zoom: 1 + 0.003 * pulse(t, this.g.b0 + 0.05, 0.1) };
   }
@@ -266,6 +298,7 @@ export default class Crossword extends Scene {
       c.font = font(F.hei(500), 20); c.fillStyle = ink(0.66);
       const ls = wrap(c, s, cw - 36);
       ls.forEach((ln, i) => c.fillText(ln, x + 32, y + i * 27));
+      if (/^[2-5]$/.test(n)) this.clues.push({ n, x: x + 32, y: y + (ls.length - 1) * 27, w: c.measureText(ls[ls.length - 1]!).width });
       y += (ls.length - 1) * 27 + 38;
     };
     const m = this.msg;
@@ -290,7 +323,7 @@ export default class Crossword extends Scene {
   // ------------------------------------------------------------ 1 橫：留言（焦點）
   private drawMsg(c: CanvasRenderingContext2D, t: number) {
     const cs = this.cs, m = this.msg;
-    const size = Math.max(46, Math.round(cs * 0.74));
+    const size = this.msgSize;
     // 寫完的下一拍：螢光筆一排一排劃過去（畫在字底下）
     const tHi = this.msgDone + this.g.beat;
     for (let r = 0; r < this.msgRows; r++) {
@@ -330,8 +363,9 @@ export default class Crossword extends Scene {
       const a = prog(t, this.msgDone + 0.2, this.msgDone + 0.5);
       if (a > 0) {
         c.save(); c.globalAlpha *= a;
-        c.font = font(F.hand(400), 40); c.fillStyle = rgba('sepia', 0.82); c.textAlign = 'right';
-        c.fillText(signature(m.name), GX + this.nc * cs, GY + (this.msgRows + 1 + this.lyrRows) * cs + 56);
+        // 署名永遠在整個格子下面（v2：26～32 px），不會跟留言重疊
+        c.font = font(F.hand(400), this.sigSize); c.fillStyle = rgba('sepia', 0.82); c.textAlign = 'right';
+        c.fillText(signature(m.name), GX + this.nc * cs, GY + (this.msgRows + 1 + this.lyrRows) * cs + this.sigSize * 1.3);
         c.textAlign = 'left';
         c.restore();
       }
@@ -342,7 +376,7 @@ export default class Crossword extends Scene {
   /** 回傳鉛筆該在的位置（正在唱的那一格）。 */
   private drawLyrics(c: CanvasRenderingContext2D, t: number): { x: number; y: number; t0: number } | null {
     const cs = this.cs, R0 = this.msgRows + 1, nr = this.lyrRows;
-    const size = Math.max(50, Math.round(cs * 0.6));
+    const size = this.lyrSize;
     c.textAlign = 'center'; c.textBaseline = 'alphabetic';
     if (this.instr) {
       c.font = font(LYR_FAM, size);
@@ -419,11 +453,42 @@ export default class Crossword extends Scene {
     }
   }
 
+  // ------------------------------------------------------------ 解題（小節線上的小事件）
+  /** 劃掉提示、寫上答案；回傳鉛筆正在劃的位置（沒在解題回傳 null）。 */
+  private drawSolves(c: CanvasRenderingContext2D, t: number): { x: number; y: number; t0: number } | null {
+    let head: { x: number; y: number; t0: number } | null = null;
+    const beat = this.g.beat;
+    for (const sv of this.solves) {
+      const cl = this.clues[sv.i];
+      if (!cl || t < sv.t) continue;
+      // 劃線（半拍）→ 寫答案（半拍）
+      const u = prog(t, sv.t, sv.t + beat * 0.5, ease.inOutCubic);
+      c.strokeStyle = rgba('sepia', 0.75); c.lineWidth = 2.4; c.lineCap = 'round';
+      c.beginPath(); c.moveTo(cl.x - 4, cl.y - 7); c.lineTo(cl.x - 4 + (cl.w + 8) * u, cl.y - 8 + 2 * u); c.stroke();
+      const ax = cl.x + cl.w + 16;
+      const v = prog(t, sv.t + beat * 0.5, sv.t + beat, ease.outCubic);
+      if (v > 0) {
+        const ans = ANSWERS[sv.i]!;
+        c.save();
+        c.font = font(F.hand(700), 22); c.fillStyle = rgba('sepia', 0.9);
+        const aw = c.measureText(ans).width;
+        c.beginPath(); c.rect(ax - 2, cl.y - 26, aw * v + 4, 34); c.clip();
+        c.fillText(ans, ax, cl.y);
+        c.restore();
+      }
+      if (u < 1) head = { x: cl.x - 4 + (cl.w + 8) * u, y: cl.y - 7, t0: sv.t };
+      else if (v < 1) head = { x: ax + 30 * v, y: cl.y - 6, t0: sv.t };
+    }
+    return head;
+  }
+
   // ------------------------------------------------------------ 鉛筆
-  /** 訊號色的鉛筆：筆尖停在剛寫的那一格（每寫一格就跳過去），沒在寫時抬起來。 */
-  private drawPencil(c: CanvasRenderingContext2D, t: number, lyrHead: { x: number; y: number; t0: number } | null) {
+  /** 訊號色的鉛筆：筆尖停在剛寫的那一格（每寫一格就跳過去）、解題時跟著劃線，沒在寫時抬起來。 */
+  private drawPencil(c: CanvasRenderingContext2D, t: number, lyrHead: { x: number; y: number; t0: number } | null, solve: { x: number; y: number; t0: number } | null) {
     const cs = this.cs;
     let tx: number, ty: number, t0: number, px: number, py: number, writing = false;
+    // 筆身的方向：寫留言時往右上（留言在最上面幾排）；寫歌詞、休息時往右下，筆身才不會橫過留言
+    let ang = -1.05;
     const i = this.msgTimes.findIndex((x) => x > t) - 1;
     const idx = i < -1 ? this.msgTimes.length - 1 : i;
     if (idx >= 0 && t < this.msgDone + 0.25) {
@@ -431,32 +496,20 @@ export default class Crossword extends Scene {
       const a = this.cellXY(cell.r, cell.c), b = this.cellXY(prev.r, prev.c);
       tx = a.x + cs * 0.72; ty = a.y + cs * 0.7; px = b.x + cs * 0.72; py = b.y + cs * 0.7; t0 = this.msgTimes[idx]!;
       writing = true;
+    } else if (solve) {
+      // 解題：筆從格子那邊飛過去（第一下用 outExpo，之後跟著劃線）
+      tx = solve.x; ty = solve.y; px = GX + this.nc * cs + 26; py = GY + (this.msgRows + 0.5) * cs; t0 = solve.t0 - 0.12; writing = true;
+      if (t > solve.t0) { px = tx; py = ty; }
     } else if (lyrHead) {
-      tx = lyrHead.x + cs * 0.22; ty = lyrHead.y + cs * 0.2; px = tx - cs; py = ty; t0 = lyrHead.t0; writing = true;
+      tx = lyrHead.x + cs * 0.22; ty = lyrHead.y + cs * 0.2; px = tx - cs; py = ty; t0 = lyrHead.t0; writing = true; ang = 1.1;
     } else {
-      tx = GX + this.nc * cs + 26; ty = GY + (this.msgRows + 0.5) * cs; px = tx; py = ty; t0 = -1e9;
+      // 休息：擱在格子右下角外面
+      tx = GX + this.nc * cs + 30; ty = GY + (this.msgRows + 1 + this.lyrRows) * cs - 30; px = tx; py = ty; t0 = -1e9; ang = 0.55;
     }
     const u = prog(t, t0, t0 + 0.09, ease.outExpo);
     let x = lerp(px, tx, u), y = lerp(py, ty, u);
     if (writing) { x += Math.sin(t * 53) * 1.5; y += Math.sin(t * 37 + 1) * 2; }
-    const lift = writing ? 0 : 16;
-    const ang = -1.05, dx = Math.cos(ang), dy = Math.sin(ang);
-    const Lp = 330;
-    const pt = (d: number, o = 0) => ({ x: x - lift * 0.3 + dx * d - dy * o, y: y - lift + dy * d + dx * o });
-    const polyF = (pts: { x: number; y: number }[], fill: string) => { c.beginPath(); pts.forEach((p, j) => (j ? c.lineTo(p.x, p.y) : c.moveTo(p.x, p.y))); c.closePath(); c.fillStyle = fill; c.fill(); };
-    c.save();
-    // 影子（筆抬得越高離得越遠）
-    c.strokeStyle = rgba('sepia', 0.16); c.lineWidth = 20; c.lineCap = 'round';
-    c.beginPath(); c.moveTo(x + 14 + lift, y + 12 + lift * 0.6); c.lineTo(x + 14 + lift + dx * Lp, y + 12 + lift * 0.6 + dy * Lp); c.stroke();
-    // 筆芯、削過的木頭、六角形的筆身（訊號色，中間一條亮面）、金屬箍、橡皮擦（點綴色只給愛心，橡皮擦用訊號色的暗部調淡）
-    polyF([pt(0), pt(36, -10), pt(36, 10)], mixRgba('paper', 'sepia', 0.25));
-    polyF([pt(0), pt(12, -3.3), pt(12, 3.3)], rgba('sepia', 0.95));
-    polyF([pt(36, -10.5), pt(Lp - 44, -10.5), pt(Lp - 44, 10.5), pt(36, 10.5)], mixRgba('signal', 'blood', 0.2));
-    polyF([pt(42, -3.4), pt(Lp - 44, -3.4), pt(Lp - 44, 3.4), pt(42, 3.4)], mixRgba('signal', 'ember', 0.4));
-    polyF([pt(36, 5.5), pt(Lp - 44, 5.5), pt(Lp - 44, 10.5), pt(36, 10.5)], mixRgba('signal', 'blood', 0.55));
-    polyF([pt(Lp - 44, -11), pt(Lp - 16, -11), pt(Lp - 16, 11), pt(Lp - 44, 11)], rgba('ash'));
-    polyF([pt(Lp - 16, -10.5), pt(Lp + 6, -10.5), pt(Lp + 9, 0), pt(Lp + 6, 10.5), pt(Lp - 16, 10.5)], mixRgba('paper', 'blood', 0.45));
-    c.restore();
+    drawPencil(c, x, y, writing ? 0 : 16, { color: 'signal', ang });
     void pad3;
   }
 }

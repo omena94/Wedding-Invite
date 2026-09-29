@@ -16,11 +16,12 @@ import { FSPass, Layer2D, W, H } from '../engine/gl';
 import { LineBatch } from '../engine/lines';
 import { F, font, layout, loadText } from '../engine/type';
 import { LIN, rgba, mixRgba } from '../engine/palette';
-import { clamp, ease, lerp, prog, pulse } from '../engine/util';
-import type { FitResult } from '../engine/text';
+import { clamp, ease, hash, lerp, prog, pulse } from '../engine/util';
+import { fitText, type FitResult } from '../engine/text';
 import type { Line } from '../engine/lyrics';
 import { drawLyric, signature, sparkHead, sparkParticles, drawHeart, DATE_DOTS, type LyricStyle } from './_motifs';
-import { grid, stagger, windowLines, boxLyric, fitMsg, mono, tag, pad3, fiberTex, inOut, type Grid, type P2, type Rect } from './_t3';
+import { grid, stagger, windowLines, boxLyric, mono, tag, pad3, fiberTex, inOut, type Grid, type P2, type Rect } from './_t3';
+import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 } from './_v2';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'doc', paper: false, energy: [0.2, 0.85], bars: [4, 8], weight: 1 };
 
@@ -37,6 +38,8 @@ const NOTE = { x: 1030, y: 176, w: 690, h: 560 };
 const MARK = { x: 906, y: 330 };
 /** 鏡頭推的中心（世界座標）：整張圖（尺寸線到標註）的中間。 */
 const CAM = { x: 925, y: 536 };
+/** 鏡頭推近的平均倍數（v2 的字級是螢幕 px，排版時換成世界座標用）。 */
+const ZK = 1.03;
 
 interface Room { zh: string; en: string; r: [number, number, number, number]; box: Rect; tagAt: P2 }
 /** 會住進歌詞的三個房間（依序輪流），框避開家具與門。 */
@@ -51,7 +54,7 @@ const FIXED = '我們的家平面圖比例實際大小附註設計者本案尚�
 
 // ---------------------------------------------------------------- 曬圖紙
 const PAPER = () => new FSPass(/* glsl */ `
-  uniform sampler2D fiber; uniform vec3 cam; uniform vec4 room; uniform float roomK; uniform vec2 light;
+  uniform sampler2D fiber; uniform vec3 cam; uniform vec4 room; uniform float roomK; uniform vec2 light; uniform vec2 sweep;
   void main() {
     vec2 s = vec2(FRAG_PX.x, ${H}.0 - FRAG_PX.y);
     vec2 p = (s - cam.xy) / cam.z; // 螢幕 → 世界
@@ -64,6 +67,8 @@ const PAPER = () => new FSPass(/* glsl */ `
     // 一塊比較亮的光（像檯燈照著留言那一帶），讓畫面有空氣
     vec2 lq = (p - light) / vec2(820.0, 560.0);
     col *= 0.9 + 0.28 * exp(-dot(lq, lq));
+    // 曬圖機的燈條：每四小節從左掃到右一次（很淡），紙上有光在走
+    col += C_BONE * 0.04 * sweep.y * exp(-pow((p.x - sweep.x) / 70.0, 2.0));
     // 細格（25 px）與粗格（125 px）：很淡
     vec2 g = abs(fract(p / 25.0 + 0.5) - 0.5) * 25.0, G = abs(fract(p / 125.0 + 0.5) - 0.5) * 125.0;
     float gr = max(pxLine(g.x * cam.z, 0.2, 1.0), pxLine(g.y * cam.z, 0.2, 1.0)) * 0.022 + max(pxLine(G.x * cam.z, 0.4, 1.3), pxLine(G.y * cam.z, 0.4, 1.3)) * 0.04;
@@ -82,7 +87,7 @@ const PAPER = () => new FSPass(/* glsl */ `
     col = mix(col, C_SIGNAL, hat * inR * 0.16);
     col += C_SIGNAL * inR * 0.025;
     fragColor = vec4(col, 1.0);
-  }`, { fiber: { value: null }, cam: { value: new THREE.Vector3(0, 0, 1) }, room: { value: new THREE.Vector4() }, roomK: { value: 0 }, light: { value: new THREE.Vector2(1300, 460) } });
+  }`, { fiber: { value: null }, cam: { value: new THREE.Vector3(0, 0, 1) }, room: { value: new THREE.Vector4() }, roomK: { value: 0 }, light: { value: new THREE.Vector2(1300, 460) }, sweep: { value: new THREE.Vector2(0, 0) } });
 
 // ---------------------------------------------------------------- 線稿
 /** 一筆（一條折線）：寬度、透明度。畫的時候拆成 ≤ 22 px 的小段，每段記得自己在這一組的第幾 px 被畫到。 */
@@ -212,7 +217,11 @@ export default class Blueprint extends Scene {
   planDone = 0;
   writeEnd = 0;
   lyrMax = 64;
+  sigSize = 30;
   instr = false;
+  /** 平面圖畫完之後，每個小節線筆回來「複查」一個地方（描一條線、一個門、一個狗窩），窗格長時中段也有事發生。 */
+  inspect: { pts: P2[]; t0: number; dur: number }[] = [];
+  sweeps: number[] = [];
   /** 鏡頭（世界 → 螢幕：s = w · z + o）。 */
   cz = 1; ox = 0; oy = 0;
 
@@ -225,14 +234,23 @@ export default class Blueprint extends Scene {
     this.instr = wl.length === 0;
     await loadText(`${FIXED}${song.title}${m ? m.text + signature(m.name) : ''}${wl.map((l) => l.text).join('')}`);
     const c = this.live.ctx;
-    // 標註（留言）：大字、白色鉛筆，靠上排；引線接到第一行
+    // 標註（留言）：白色鉛筆的手寫字，寫在平面圖右邊。v2 標準：字級是螢幕 px（40～60，依字數），
+    // 這裡的世界座標 ≈ 螢幕 px，鏡頭最多推到 1.045 倍，所以排版時除以 ZK；留言區 ≤ 690 × 430、署名永遠在最後一行下面
     if (m) {
-      this.fit = fitMsg(c, m.text, MSG_FAM, NOTE.w, NOTE.h - 110, { min: 50, max: 108, lineHeight: 1.3 });
-      // 短留言不要擠在右上角：留言＋署名整塊往標註區的中間靠（只移七成，還是偏上，像寫在引線旁邊）
-      this.noteTop = NOTE.y + 40 + Math.max(0, (NOTE.h - 110 - this.fit.height) / 2) * 0.7 + this.fit.size * 0.86;
-      // 歌詞比留言小一號（MV 融合原則：兩組大字要分主從）
-      this.lyrMax = clamp(Math.round(this.fit.size * 0.8), 48, 64);
-    } else this.lyrMax = 84;
+      const max = msgMaxFor(m.text) / ZK, sigEst = sigV2(msgMaxFor(m.text)) / ZK;
+      const areaH = V2.boxH / ZK;
+      const boxH = areaH - (sigEst * 1.5 + max * 0.3);
+      const opt = { min: V2.msgMin / ZK, max, lineHeight: 1.3, maxLines: 6 };
+      const byW = fitText(c, m.text, MSG_FAM, NOTE.w, boxH, opt);
+      const byC = fitClauses(c, m.text, MSG_FAM, NOTE.w, boxH, opt);
+      this.fit = byC && byC.size >= byW.size * 0.9 ? byC : byW;
+      this.sigSize = sigV2(this.fit.size * ZK) / ZK;
+      // 留言＋署名整塊在標註區裡偏上（像寫在引線旁邊）
+      const blockH = this.fit.height + this.fit.size * 0.3 + this.sigSize * 1.45;
+      this.noteTop = NOTE.y + 30 + Math.max(0, areaH - blockH) * 0.4 + this.fit.size * 0.86;
+      // 歌詞比留言小一點（lyricV2：小 4 px、40～52）
+      this.lyrMax = lyricV2(this.fit.size * ZK) / ZK;
+    } else this.lyrMax = lyricV2(null) / ZK;
     const tot = e - g.b0;
     // 筆的行程：外牆＋引線（一小節內）→ 寫留言（一小節半內）→ 補細節
     const A = planA(this.noteTop - (this.fit?.size ?? 60) * 0.35);
@@ -255,7 +273,8 @@ export default class Blueprint extends Scene {
         for (const gl of lay.glyphs) this.glyphs.push({ ch: gl.ch, x: NOTE.x + gl.x, y: this.noteTop + i * fit.lineHeight, t: ts[k++]!, w: gl.w });
       });
       const last = this.glyphs[this.glyphs.length - 1]!;
-      this.sig = { x: NOTE.x + NOTE.w, y: this.noteTop + (fit.lines.length - 1) * fit.lineHeight + 78, t: last.t + g.beat * 0.5 };
+      // 署名：最後一行的基線往下讓出下伸部（0.3 字級）再放署名，永遠不會跟最後一行疊在一起
+      this.sig = { x: NOTE.x + NOTE.w, y: this.noteTop + (fit.lines.length - 1) * fit.lineHeight + fit.size * 0.3 + this.sigSize * 1.15, t: last.t + g.beat * 0.5 };
       this.writeEnd = this.sig.t + 0.4;
     }
     const B = planB();
@@ -265,6 +284,26 @@ export default class Blueprint extends Scene {
     // 歌詞搬進房間：客廳、主臥、廚房輪流；同一個房間的下一句搬進來時，舊的那句才搬走
     this.placed = wl.map((l, i) => ({ line: l, room: i % ROOMS.length, tIn: l.start - 0.35, tOut: Infinity }));
     this.placed.forEach((p, i) => { const nx = this.placed[i + ROOMS.length]; if (nx) p.tOut = nx.tIn; });
+    // 複查：平面圖畫完之後的每個小節線（跟換句描房間撞在一起的讓給房間）
+    const circle = (cx: number, cy: number, r: number): P2[] => Array.from({ length: 29 }, (_, i) => ({ x: cx + Math.cos(-Math.PI / 2 + (i / 28) * Math.PI * 2) * r, y: cy + Math.sin(-Math.PI / 2 + (i / 28) * Math.PI * 2) * r }));
+    const arcP = (cx: number, cy: number, r: number, a0: number, a1: number): P2[] => Array.from({ length: 13 }, (_, i) => ({ x: cx + Math.cos(a0 + ((a1 - a0) * i) / 12) * r, y: cy + Math.sin(a0 + ((a1 - a0) * i) / 12) * r }));
+    const rectP = (x: number, y: number, w: number, h: number): P2[] => [{ x, y }, { x: x + w, y }, { x: x + w, y: y + h }, { x, y: y + h }, { x, y }];
+    const cands: P2[][] = [
+      rectP(X0, Y0, X1 - X0, Y1 - Y0), arcP(452, YB, 76, Math.PI / 2, 0), arcP(XC, 572, 76, 0, Math.PI / 2), arcP(770, Y1, 82, -Math.PI / 2, 0),
+      circle(784, 672, 46), circle(880, 690, 36), rectP(XA + 8, Y0 + 8, X1 - XA - 16, 56), rectP(252, Y1 - 76, 330, 66),
+      [{ x: X0, y: 128 }, { x: X1, y: 128 }], [{ x: 128, y: Y0 }, { x: 128, y: Y1 }],
+    ];
+    let last = -1;
+    g.bars.forEach((b, i) => {
+      if (b < this.planDone + 0.1 || b > e - g.beat * 0.8) return;
+      if (this.placed.some((p) => Math.abs(Math.max(p.tIn, this.planDone + 0.05) - b) < g.beat * 0.6)) return;
+      let ci = Math.floor(hash(i, 31) * cands.length);
+      if (ci === last) ci = (ci + 1) % cands.length;
+      last = ci;
+      this.inspect.push({ pts: cands[ci]!, t0: b, dur: g.beat * 0.8 });
+    });
+    // 燈條：從第二個小節線起每四小節掃一次
+    for (let i = 1; i < g.bars.length; i += 4) this.sweeps.push(g.bars[i]!);
   }
 
   /** 世界 → 螢幕。 */
@@ -288,7 +327,11 @@ export default class Blueprint extends Scene {
       u.roomK!.value = ease.outExpo(prog(t, cur.tIn, cur.tIn + 0.4)) * (1 - prog(t, cur.line.end + 1.0, cur.line.end + 1.5)) * k;
     } else u.roomK!.value = 0;
     // 光：有留言時照著留言，沒有時照著平面圖
-    (u.light!.value as THREE.Vector2).set(this.msg ? 1260 : 700, this.msg ? 440 : 560);
+    // 燈慢慢晃（像吊燈），紙上的亮處跟著移
+    (u.light!.value as THREE.Vector2).set((this.msg ? 1260 : 700) + 70 * Math.sin(t * 0.41), (this.msg ? 440 : 560) + 45 * Math.sin(t * 0.33 + 1));
+    const sw = this.sweeps.filter((x) => x <= t).pop();
+    const swu = sw === undefined ? 1 : prog(t, sw, sw + this.g.bar, ease.inOutCubic);
+    (u.sweep!.value as THREE.Vector2).set(lerp(-100, 2020, swu), swu > 0 && swu < 1 ? Math.sin(Math.PI * swu) : 0);
     this.paper.render(renderer, out);
 
     // ---- 線稿
@@ -343,39 +386,47 @@ export default class Blueprint extends Scene {
     return { x: l.bx, y: l.by };
   }
 
-  /** 平面圖畫完以後：每一句歌詞搬進房間的那一刻，筆沿著房間的內緣描一圈（0.45 拍）。回傳筆尖（世界座標）。 */
+  /** 平面圖畫完以後：每一句歌詞搬進房間的那一刻，筆沿著房間的內緣描一圈（0.45 拍）；沒換句的小節線，筆去複查一個地方。回傳筆尖（世界座標）。 */
   private traceHead(t: number, k: number): P2 | null {
     let head: P2 | null = null;
-    const beat = this.g.beat, z = this.cz;
+    const beat = this.g.beat;
     for (const p of this.placed) {
       const t0 = Math.max(p.tIn, this.planDone + 0.05);
-      if (t0 >= p.tOut || t < t0 || t > t0 + beat * 0.45 + 0.6) continue;
+      if (t0 >= p.tOut) continue;
       const [x0, y0, x1, y1] = ROOMS[p.room]!.r;
       const ins = 16;
       const pts = [{ x: x0 + ins, y: y0 + ins }, { x: x1 - ins, y: y0 + ins }, { x: x1 - ins, y: y1 - ins }, { x: x0 + ins, y: y1 - ins }, { x: x0 + ins, y: y0 + ins }];
-      const per = 2 * (x1 - x0 + y1 - y0 - 4 * ins);
-      const dur = beat * 0.45;
-      const done = clamp((t - t0) / dur) * per;
-      let acc = 0;
-      for (let i = 1; i < pts.length; i++) {
-        const a = pts[i - 1]!, b = pts[i]!, sl = Math.hypot(b.x - a.x, b.y - a.y);
-        if (acc >= done) break;
-        const n = Math.ceil(sl / 24);
-        for (let j = 0; j < n; j++) {
-          const s0 = acc + (sl * j) / n, s1 = acc + (sl * (j + 1)) / n;
-          if (s0 >= done) break;
-          const e1 = Math.min(s1, done);
-          const heat = Math.max(0, 1 - (t - (t0 + (s0 / per) * dur)) / 0.45);
-          if (heat <= 0) continue;
-          const ua = (s0 - acc) / sl, ub = (e1 - acc) / sl;
-          this.glow.seg2(this.sx(lerp(a.x, b.x, ua)), this.sy(lerp(a.y, b.y, ua)), this.sx(lerp(a.x, b.x, ub)), this.sy(lerp(a.y, b.y, ub)), 2.2 * z, [LIN.signal[0] * 2.2, LIN.signal[1] * 2.2, LIN.signal[2] * 2.2], heat * heat * k);
-        }
-        if (done < acc + sl) head = { x: lerp(a.x, b.x, (done - acc) / sl), y: lerp(a.y, b.y, (done - acc) / sl) };
-        acc += sl;
-      }
-      if (done >= per) head = null;
+      head = this.trace(pts, t0, beat * 0.45, t, k) ?? head;
     }
+    for (const q of this.inspect) head = this.trace(q.pts, q.t0, q.dur, t, k) ?? head;
     return head;
+  }
+
+  /** 沿著折線描一次（訊號色、剛描到的地方最燙、0.45 秒冷卻），回傳筆尖（描完回傳 null）。 */
+  private trace(pts: P2[], t0: number, dur: number, t: number, k: number): P2 | null {
+    if (t < t0 || t > t0 + dur + 0.5) return null;
+    const z = this.cz;
+    let per = 0;
+    for (let i = 1; i < pts.length; i++) per += Math.hypot(pts[i]!.x - pts[i - 1]!.x, pts[i]!.y - pts[i - 1]!.y);
+    const done = clamp((t - t0) / dur) * per;
+    let acc = 0, head: P2 | null = null;
+    for (let i = 1; i < pts.length; i++) {
+      const a = pts[i - 1]!, b = pts[i]!, sl = Math.hypot(b.x - a.x, b.y - a.y);
+      if (acc >= done) break;
+      const n = Math.max(1, Math.ceil(sl / 24));
+      for (let j = 0; j < n; j++) {
+        const s0 = acc + (sl * j) / n, s1 = acc + (sl * (j + 1)) / n;
+        if (s0 >= done) break;
+        const e1 = Math.min(s1, done);
+        const heat = Math.max(0, 1 - (t - (t0 + (s0 / per) * dur)) / 0.45);
+        if (heat <= 0) continue;
+        const ua = (s0 - acc) / sl, ub = (e1 - acc) / sl;
+        this.glow.seg2(this.sx(lerp(a.x, b.x, ua)), this.sy(lerp(a.y, b.y, ua)), this.sx(lerp(a.x, b.x, ub)), this.sy(lerp(a.y, b.y, ub)), 2.2 * z, [LIN.signal[0] * 2.2, LIN.signal[1] * 2.2, LIN.signal[2] * 2.2], heat * heat * k);
+      }
+      if (done < acc + sl) head = { x: lerp(a.x, b.x, (done - acc) / sl), y: lerp(a.y, b.y, (done - acc) / sl) };
+      acc += sl;
+    }
+    return done >= per ? null : head;
   }
 
   /** 現在該打斜線的那一句（正在唱、或剛唱完還在停留的）。 */
@@ -449,7 +500,7 @@ export default class Blueprint extends Scene {
       const end = Math.min(p.line.end + 1.5, next ? next.tIn + 0.2 : Infinity);
       if (t < p.tIn || t >= end) return;
       const [bx, by, bw, bh] = ROOMS[p.room]!.box;
-      const lay = boxLyric(c, p.line, LYR_FAM, bw, bh, { min: 48, max: this.lyrMax, lineHeight: 1.14 });
+      const lay = boxLyric(c, p.line, LYR_FAM, bw, bh, { min: V2.lyrMin / ZK, max: this.lyrMax, lineHeight: 1.14 });
       const y0 = by + Math.max(0, (bh - lay.height) / 2) + lay.size * 0.8;
       const a = prog(t, p.tIn, p.tIn + 0.25) * (1 - prog(t, end - 0.25, end));
       const st: LyricStyle = { family: LYR_FAM, size: lay.size, maxWidth: bw, active: rgba('signal'), sung: rgba('bone', 0.92), unsung: rgba('bone', 0.3) };
@@ -483,7 +534,7 @@ export default class Blueprint extends Scene {
       const ks = prog(t, this.sig.t, this.sig.t + 0.35);
       if (ks > 0) {
         c.save(); c.globalAlpha *= ks;
-        c.font = font(MSG_FAM, 42); c.fillStyle = rgba('bone', 0.72); c.textAlign = 'right';
+        c.font = font(MSG_FAM, this.sigSize); c.fillStyle = rgba('bone', 0.72); c.textAlign = 'right';
         c.fillText(signature(m.name), this.sig.x, this.sig.y);
         c.textAlign = 'left';
         c.restore();
@@ -493,8 +544,8 @@ export default class Blueprint extends Scene {
       const a = prog(t, this.writeEnd, this.writeEnd + 0.5) * note;
       c.save(); c.globalAlpha *= a;
       tag(c, '① 附註', NOTE.x, NOTE.y - 6, { size: 16, color: rgba('bone', 0.45), tracking: 4 });
-      c.font = font(MSG_FAM, 46); c.fillStyle = rgba('bone', 0.62);
-      ['本案尚缺一則祝福。', '請掃描右下角 QR code，', '把想對新人說的話標註在這裡。'].forEach((s, i) => c.fillText(s, NOTE.x, NOTE.y + 70 + i * 66));
+      c.font = font(MSG_FAM, 40); c.fillStyle = rgba('bone', 0.62);
+      ['本案尚缺一則祝福。', '請掃描右下角 QR code，', '把想對新人說的話標註在這裡。'].forEach((s, i) => c.fillText(s, NOTE.x, NOTE.y + 70 + i * 58));
       c.restore();
     }
     return pen;

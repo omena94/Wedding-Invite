@@ -14,9 +14,10 @@ import { Layer2D, SCALE } from '../engine/gl';
 import { F, font, loadText } from '../engine/type';
 import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, hash, lerp, prog, pulse } from '../engine/util';
-import type { FitResult } from '../engine/text';
+import { fitText, type FitResult } from '../engine/text';
 import { drawLyric, drawMessage, lyricAt, signature, type LyricStyle } from './_motifs';
-import { grid, stagger, windowLines, fitMsg, boxLyric, mono, tag, pad3, paperLyric, DocCam, withMips, inkStamp, HUD, EDGE, type Grid, type Pose } from './_t3';
+import { grid, stagger, windowLines, boxLyric, mono, tag, pad3, paperLyric, DocCam, withMips, inkStamp, HUD, EDGE, type Grid, type Pose } from './_t3';
+import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 } from './_v2';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'doc', paper: true, energy: [0.3, 0.9], bars: [4, 8], weight: 1 };
 
@@ -27,6 +28,9 @@ const CARD: [number, number, number, number] = [100, 70, 1400, 860];
 const PERF = 1170; // 齒孔（寄回聯撕線）
 const X0 = 150, X1 = 1125;
 const MSG_BOX = { x: X0, y: 452, w: X1 - X0, h: 300 };
+/** 卡片 1 px 在螢幕上約 K px（v2 的字級、留言區是螢幕上的大小，排版時用它換算）；意見欄的字寬 ≤ 820 螢幕 px。 */
+const K = 1.06;
+const MSG_W = Math.min(MSG_BOX.w - 10, 820 / K);
 const LYR = { x: X0, y: 782, w: X1 - X0, h: 118 };
 const SEAL = { x: 1328, y: 318, r: 108 };
 const MSG_FAM = F.hand(400);
@@ -70,12 +74,13 @@ vec3 paperCol(vec2 d, vec4 fb) {
     p = mix(p, foil * (1.0 - 0.25 * rim), edge);
   }
   vec2 q = (d - focus) / vec2(900.0, 600.0);
-  return p * (0.9 + 0.1 * exp(-dot(q, q)));
+  // 窗外的樹影慢慢在卡上漂
+  return p * (0.9 + 0.1 * exp(-dot(q, q))) * (0.94 + 0.07 * dapple(SCR, t));
 }
 vec3 deskCol(vec2 s, vec4 fb) {
-  // 深一點的桌面（皮革墊）：細細的顆粒
+  // 桌面（皮革墊）：細細的顆粒。不要太暗：右下角 QR 旁的深色字要讀得到
   float n = fbm(s / 240.0, 3);
-  return mix(C_SEPIA, C_PAPER, 0.28 + 0.04 * n) * (0.86 + 0.14 * fb.r) * (0.75 + 0.25 * (1.0 - s.y / 1080.0));
+  return mix(C_PAPER, C_SEPIA, 0.3 + 0.04 * n) * (0.88 + 0.12 * fb.r) * (0.9 + 0.1 * (1.0 - s.y / 1080.0)) * (0.87 + 0.14 * dapple(s, t));
 }`;
 
 interface Punch { x: number; y: number; r: number; t: number; label: string }
@@ -93,6 +98,7 @@ export default class Warranty extends Scene {
   g!: Grid;
   punches: Punch[] = [];
   fit: FitResult | null = null;
+  sigSize = 30; lyrMax = 52;
   msgTimes: number[] = [];
   tDone = 0;
   stampCv: HTMLCanvasElement | null = null;
@@ -123,11 +129,20 @@ export default class Warranty extends Scene {
     // 留言：第二個打孔的時候開始寫，一小節半內寫完
     const tWrite = pt[1]!;
     if (m) {
-      this.fit = fitMsg(this.doc.ctx, m.text, MSG_FAM, MSG_BOX.w - 10, MSG_BOX.h - 70, { min: 54, max: 108, lineHeight: 1.22 });
+      // v2：字級是螢幕 px（40～60，依字數），換成卡面 px；可用高度先扣掉署名，署名永遠在最後一行下面
+      const c = this.doc.ctx;
+      const max = msgMaxFor(m.text) / K, sigEst = sigV2(msgMaxFor(m.text)) / K;
+      const boxH = MSG_BOX.h - 10 - (sigEst * 1.5 + max * 0.3);
+      const opt = { min: V2.msgMin / K, max, lineHeight: 1.22, maxLines: 5 };
+      const byW = fitText(c, m.text, MSG_FAM, MSG_W, boxH, opt);
+      const byC = fitClauses(c, m.text, MSG_FAM, MSG_W, boxH, opt);
+      this.fit = byC && byC.size >= byW.size * 0.9 ? byC : byW;
+      this.sigSize = sigV2(this.fit.size * K) / K;
+      this.lyrMax = lyricV2(this.fit.size * K) / K;
       const n = Array.from(this.fit.lines.join('')).length;
       this.msgTimes = stagger(au, tWrite, n, clamp((e - g.b0) * 0.4, g.beat * 2, g.bar * 1.5));
       this.tDone = (this.msgTimes[n - 1] ?? tWrite) + g.beat * 0.5;
-    } else this.tDone = tWrite + g.bar;
+    } else { this.tDone = tWrite + g.bar; this.lyrMax = lyricV2(null) / K; }
     const last = g.bars.filter((b) => b >= this.tDone + g.bar * 0.9 && b < e - g.beat * 1.5).pop();
     if (last !== undefined) { this.tStamp = last; this.stampCv = inkStamp('品質保證', 176, true, 31, '永久保固'); }
     // 鏡頭推到最近時：歌詞那一行不能碰到下緣／HUD
@@ -181,8 +196,7 @@ export default class Warranty extends Scene {
     // 使用說明（現場）＝歌詞
     const ly = lyricAt(lyrics, t);
     if (ly) {
-      const max = this.fit ? Math.min(60, Math.round(this.fit.size * 0.84)) : 74;
-      const lay = boxLyric(c, ly.line, LYR_FAM, LYR.w, LYR.h - 30, { min: 52, max, lineHeight: 1.1, maxLines: 2 });
+      const lay = boxLyric(c, ly.line, LYR_FAM, LYR.w, LYR.h - 30, { min: V2.lyrMin / K, max: this.lyrMax, lineHeight: 1.1, maxLines: 2 });
       const y0 = LYR.y + 30 + Math.max(0, (LYR.h - 30 - lay.height) / 2) + lay.size * 0.8;
       c.save(); c.translate(LYR.x, y0);
       const st: LyricStyle = { family: LYR_FAM, size: lay.size, maxWidth: LYR.w, ...paperLyric() };
@@ -208,7 +222,7 @@ export default class Warranty extends Scene {
     (u.sheen!.value as THREE.Vector2).set(pan * 3 + tilt, tilt * 3 - pan);
     this.cam.pose(this.pose(t), DW, DH);
     this.cam.render(renderer, out, {
-      tex: D.texture, docW: DW, docH: DH, texScale: TS, rect: CARD,
+      tex: D.texture, docW: DW, docH: DH, texScale: TS, rect: CARD, t,
       focus: { x: 640, y: 600 }, focusR: [620, 300], blur: 6, shadow: [12, 22],
     });
     return { paper: 1, bloom: 0.34, vignette: 0.36, grain: 0.05, halation: 0.08 };
@@ -288,21 +302,23 @@ export default class Warranty extends Scene {
     const pen = mixRgba('sepia', 'blood', 0.12, 0.95);
     if (m && this.fit) {
       const n = this.msgTimes.filter((x) => x <= t).length;
-      drawMessage(c, this.fit, MSG_FAM, MSG_BOX.x, MSG_BOX.y + 10 + this.fit.size * 0.88, { chars: n, color: pen });
+      const top = MSG_BOX.y + 10 + this.fit.size * 0.88;
+      drawMessage(c, this.fit, MSG_FAM, MSG_BOX.x, top, { chars: n, color: pen });
       const ks = prog(t, this.tDone, this.tDone + 0.3);
       if (ks > 0) {
         c.save(); c.globalAlpha *= ks;
-        c.font = font(MSG_FAM, 40); c.fillStyle = mixRgba('sepia', 'blood', 0.1, 0.78); c.textAlign = 'right';
-        c.fillText(signature(m.name), X1, Math.min(LYR.y - 26, MSG_BOX.y + 10 + this.fit.height + 52));
+        // 署名（v2：26～32 px）：最後一行的基線往下讓出下伸部再放，永遠在留言下面
+        c.font = font(MSG_FAM, this.sigSize); c.fillStyle = mixRgba('sepia', 'blood', 0.1, 0.78); c.textAlign = 'right';
+        c.fillText(signature(m.name), MSG_BOX.x + Math.max(this.fit.width, MSG_W * 0.6), top + (this.fit.lines.length - 1) * this.fit.lineHeight + this.fit.size * 0.3 + this.sigSize * 1.15);
         c.textAlign = 'left';
         c.restore();
       }
     } else if (!m) {
       c.save(); c.globalAlpha *= prog(t, this.g.b0, this.g.b0 + 0.4);
-      c.font = font(MSG_FAM, 56); c.fillStyle = mixRgba('sepia', 'ash', 0.3, 0.72);
-      c.fillText('請寫下你對新人的祝福，', MSG_BOX.x, MSG_BOX.y + 90);
-      c.font = font(MSG_FAM, 42);
-      c.fillText('掃描右下角 QR code，讓這張卡生效。', MSG_BOX.x, MSG_BOX.y + 170);
+      c.font = font(MSG_FAM, 48); c.fillStyle = mixRgba('sepia', 'ash', 0.3, 0.72);
+      c.fillText('請寫下你對新人的祝福，', MSG_BOX.x, MSG_BOX.y + 80);
+      c.font = font(MSG_FAM, 38);
+      c.fillText('掃描右下角 QR code，讓這張卡生效。', MSG_BOX.x, MSG_BOX.y + 150);
       c.restore();
     }
   }

@@ -14,9 +14,10 @@ import { Layer2D, SCALE } from '../engine/gl';
 import { F, font, loadText } from '../engine/type';
 import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, hash, lerp, prog, pulse } from '../engine/util';
-import type { FitResult } from '../engine/text';
+import { fitText, type FitResult } from '../engine/text';
 import { drawLyric, drawMessage, lyricAt, signature, COUPLE_ZH, type LyricStyle } from './_motifs';
-import { grid, stagger, windowLines, fitMsg, boxLyric, mono, tag, pad3, paperLyric, DocCam, withMips, inkStamp, HUD, EDGE, type Grid, type Pose } from './_t3';
+import { grid, stagger, windowLines, boxLyric, mono, tag, pad3, paperLyric, DocCam, withMips, inkStamp, drawPencil, HUD, EDGE, type Grid, type Pose } from './_t3';
+import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 } from './_v2';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'doc', paper: true, energy: [0.3, 1], bars: [4, 8], weight: 1 };
 
@@ -28,6 +29,10 @@ const X0 = 270, X1 = 1230; // 內容左右
 const TABLE = { y: 250, rowH: 60, cols: [X0, 580, 760, 940, X1] }; // 科目｜宣文｜孟庭｜備註
 const LYR = { x: X0, y: 628, w: X1 - X0, h: 118 };
 const CMT = { x: X0, y: 782, w: X1 - X0, h: 300 };
+/** 看評語時，文件 1 px 在螢幕上約 K px（v2 的字級、留言區都是螢幕上的大小，排版時用它換算）。 */
+const K = 1.15;
+/** 評語的寬度上限（文件 px）：螢幕上 ≤ 820。 */
+const CMT_W = Math.min(X1 - X0, 820 / K);
 const MSG_FAM = F.hand(400);
 const LYR_FAM = F.archivo(100, 700);
 const [GROOM, BRIDE] = COUPLE_ZH.split(/\s*&\s*/) as [string, string];
@@ -46,12 +51,13 @@ vec3 paperCol(vec2 d, vec4 fb) {
   // 厚一點的卡紙：纖維淡；焦點附近被檯燈照亮
   vec3 p = mix(C_PAPER, C_BONE, 0.18) * (0.93 + 0.1 * (fb.r - 0.5) + 0.05 * (fb.g - 0.5));
   vec2 q = (d - focus) / vec2(900.0, 650.0);
-  return p * (0.9 + 0.1 * exp(-dot(q, q)));
+  // 窗外的樹影慢慢在紙上漂
+  return p * (0.9 + 0.1 * exp(-dot(q, q))) * (0.94 + 0.07 * dapple(SCR, t));
 }
 vec3 deskCol(vec2 s, vec4 fb) {
-  // 木頭書桌：橫紋，右上方比較亮
+  // 木頭書桌：橫紋，右上方比較亮。不要太暗：右下角 QR 旁的深色字要讀得到
   float grain = fbm(vec2(s.x / 700.0, s.y / 22.0), 3);
-  return mix(C_PAPER, C_SEPIA, 0.44 + 0.06 * grain) * (0.78 + 0.22 * (s.x / 1920.0)) * (0.92 + 0.08 * fb.r);
+  return mix(C_PAPER, C_SEPIA, 0.26 + 0.05 * grain) * (0.86 + 0.14 * (s.x / 1920.0)) * (0.92 + 0.08 * fb.r) * (0.88 + 0.13 * dapple(s, t));
 }`;
 
 /** 一個印章：先畫在自己的小畫布上（有缺墨的顆粒），每格只 drawImage。 */
@@ -68,6 +74,9 @@ export default class ReportCard extends Scene {
   fit: FitResult | null = null;
   msgTimes: number[] = [];
   tWrite = 0; tDone = 0;
+  sigSize = 30; lyrMax = 52;
+  /** 評語寫完之後，每個小節線導師拿紅筆在成績單上加一筆（圈、勾、底線、「加油！」）：窗格長時中段也有事發生。 */
+  notes: { kind: number; t: number }[] = [];
   shift = { x: 0, y: 0 };
   private baseDrawn = false;
 
@@ -91,14 +100,30 @@ export default class ReportCard extends Scene {
     // 紅筆寫評語：成績蓋到一半就開始寫，一小節多一點寫完
     this.tWrite = ts[4] ?? g.b0;
     if (m) {
-      this.fit = fitMsg(this.doc.ctx, m.text, MSG_FAM, CMT.w - 20, CMT.h - 110, { min: 54, max: 104, lineHeight: 1.22 });
+      // v2：字級是螢幕 px（40～60，依字數），換成文件 px；評語寬 ≤ 820 螢幕 px；可用高度先扣掉署名
+      const c = this.doc.ctx;
+      const max = msgMaxFor(m.text) / K, sigEst = sigV2(msgMaxFor(m.text)) / K;
+      const boxH = Math.min(CMT.h, V2.boxH / K) - 38 - (sigEst * 1.5 + max * 0.3);
+      const opt = { min: V2.msgMin / K, max, lineHeight: 1.22, maxLines: 5 };
+      const byW = fitText(c, m.text, MSG_FAM, CMT_W, boxH, opt);
+      const byC = fitClauses(c, m.text, MSG_FAM, CMT_W, boxH, opt);
+      this.fit = byC && byC.size >= byW.size * 0.9 ? byC : byW;
+      this.sigSize = sigV2(this.fit.size * K) / K;
+      this.lyrMax = lyricV2(this.fit.size * K) / K;
       const n = Array.from(this.fit.lines.join('')).length;
       this.msgTimes = stagger(au, this.tWrite, n, clamp(tot * 0.35, g.beat * 2, g.bar * 1.25));
       this.tDone = (this.msgTimes[n - 1] ?? this.tWrite) + g.beat * 0.5;
-    } else this.tDone = this.tWrite + g.bar;
+    } else { this.tDone = this.tWrite + g.bar; this.lyrMax = lyricV2(null) / K; }
     // 校長的圓章：最後一個小節線（至少在評語寫完一小節之後），蓋在頁尾「校長　芃芃」旁邊
     const last = g.bars.filter((b) => b >= this.tDone + g.bar * 0.9 && b < e - g.beat * 1.5).pop();
     if (last !== undefined) this.seal = { cv: inkStamp('准予升級', 190, true, 7, '愛情學校校長'), w: 206, h: 206, x: X0 + 470, y: CMT.y + CMT.h + 44, rot: -0.12, t: last };
+    // 紅筆加註：評語寫完的下一個小節線起，每個小節線一筆（校長章那一個小節線讓給章）
+    let kind = 0;
+    for (const b of g.bars) {
+      if (kind >= 4) break;
+      if (b < this.tDone + g.beat * 0.5 || b > e - g.beat * 1.2 || (this.seal && Math.abs(b - this.seal.t) < 0.1)) continue;
+      this.notes.push({ kind: kind++, t: b });
+    }
     // 鏡頭推到最近時，評語的最後一行、簽名不能碰到下緣／HUD
     for (let it = 0; it < 3; it++) {
       this.cam.pose(this.pose(e), DW, DH);
@@ -141,8 +166,7 @@ export default class ReportCard extends Scene {
     // 校歌（歌詞）
     const ly = lyricAt(lyrics, t);
     if (ly) {
-      const max = this.fit ? Math.min(62, Math.round(this.fit.size * 0.84)) : 76;
-      const lay = boxLyric(c, ly.line, LYR_FAM, LYR.w, LYR.h - 34, { min: 52, max, lineHeight: 1.1, maxLines: 2 });
+      const lay = boxLyric(c, ly.line, LYR_FAM, LYR.w, LYR.h - 34, { min: V2.lyrMin / K, max: this.lyrMax, lineHeight: 1.1, maxLines: 2 });
       const y0 = LYR.y + 34 + Math.max(0, (LYR.h - 34 - lay.height) / 2) + lay.size * 0.8;
       c.save(); c.translate(LYR.x, y0);
       const st: LyricStyle = { family: LYR_FAM, size: lay.size, maxWidth: LYR.w, ...paperLyric() };
@@ -152,14 +176,22 @@ export default class ReportCard extends Scene {
       c.font = font(F.serif(400, true), 40); c.fillStyle = rgba('sepia', 0.6);
       c.fillText(`♪ ${this.ctx.song.title || '純音樂'}`, LYR.x, LYR.y + 96);
     }
-    this.drawComment(c, t);
+    const head = this.drawComment(c, t);
+    const note = this.drawNotes(c, t);
     if (this.seal) this.stamp(c, this.seal, t, 1.8);
+    // 紅筆：寫評語時跟著字、加註時跟著筆畫，沒在寫的時候擱在評語右上角
+    if (head) drawPencil(c, head.x, head.y, 0, { color: 'blood', len: 300 });
+    else if (note) drawPencil(c, note.x, note.y, 0, { color: 'blood', len: 300 });
+    else drawPencil(c, X1 - 40, CMT.y - 40, 14, { color: 'blood', len: 300, ang: -0.35 });
     D.upload();
     const toCmt = ease.inOutCubic(prog(t, this.tWrite - 0.1, this.tWrite + this.g.bar * 0.9));
     this.cam.pose(this.pose(t), DW, DH);
+    // 紅筆加註的時候焦點往成績表移一點（拉焦），加完回到評語
+    let fs = 0;
+    for (const n of this.notes) fs = Math.max(fs, prog(t, n.t - 0.25, n.t + 0.1, ease.inOutCubic) * (1 - prog(t, n.t + this.g.beat * 1.2, n.t + this.g.beat * 2.2, ease.inOutCubic)));
     this.cam.render(renderer, out, {
-      tex: D.texture, docW: DW, docH: DH, texScale: TS, rect: CARD,
-      focus: { x: 750, y: lerp(430, 830, toCmt) }, focusR: [640, lerp(260, 320, toCmt)], blur: 7, shadow: [14, 24],
+      tex: D.texture, docW: DW, docH: DH, texScale: TS, rect: CARD, t,
+      focus: { x: 750, y: lerp(lerp(430, 830, toCmt), 640, fs) }, focusR: [640, lerp(260, 320, toCmt) + 80 * fs], blur: 7, shadow: [14, 24],
     });
     return { paper: 1, bloom: 0.26, vignette: 0.36, grain: 0.05, halation: 0.06 };
   }
@@ -209,32 +241,95 @@ export default class ReportCard extends Scene {
     tag(c, '校長　芃芃　　訓導主任　QQ', X0, CMT.y + CMT.h + 76, { size: 16, color: ink(0.5), tracking: 3 });
   }
 
+  // ------------------------------------------------------------ 紅筆加註（小節線上的小事件）
+  /** 四種加註：圈起「丙」、備註欄寫「加油！」、遛狗那一列打勾、「分享最後一口」畫底線。回傳筆尖（沒在寫回傳 null）。 */
+  private drawNotes(c: CanvasRenderingContext2D, t: number): { x: number; y: number } | null {
+    const { y: ty, rowH, cols } = TABLE;
+    const rowC = (i: number) => ty + (i + 1) * rowH + rowH / 2;
+    let head: { x: number; y: number } | null = null;
+    c.save();
+    c.strokeStyle = mixRgba('blood', 'sepia', 0.15, 0.85); c.lineWidth = 3.2; c.lineCap = 'round'; c.lineJoin = 'round';
+    for (const n of this.notes) {
+      if (t < n.t) continue;
+      const u = prog(t, n.t, n.t + this.g.beat * 0.6, ease.inOutCubic);
+      let pts: { x: number; y: number }[] = [];
+      if (n.kind === 0) {
+        // 圈起宣文的「丙」（手畫的圈：收尾超過起點一點）
+        const cx = (cols[1]! + cols[2]!) / 2, cy = rowC(4);
+        pts = Array.from({ length: 33 }, (_, i) => { const a = -2.4 + (i / 32) * Math.PI * 2.15; const r = 1 + 0.06 * Math.sin(i * 0.5); return { x: cx + Math.cos(a) * 58 * r, y: cy + Math.sin(a) * 36 * r }; });
+      } else if (n.kind === 1) {
+        // 遛狗那一列：備註欄後面打一個勾
+        const x = cols[3]! + 150, y = rowC(2);
+        pts = [{ x: x - 14, y: y - 4 }, { x, y: y + 12 }, { x: x + 28, y: y - 22 }];
+      } else if (n.kind === 2) {
+        // 「分享最後一口」畫波浪底線
+        const x0 = cols[0]! + 16, y = rowC(3) + 18;
+        pts = Array.from({ length: 21 }, (_, i) => ({ x: x0 + i * 7.5, y: y + Math.sin(i * 1.3) * 3 }));
+      } else {
+        // 丙的備註後面寫「加油！」（字用剪裁一筆一筆露出來）
+        const x = cols[3]! + 110, y = rowC(4) + 8;
+        c.save();
+        c.font = font(MSG_FAM, 22); c.fillStyle = mixRgba('blood', 'sepia', 0.15, 0.9);
+        const w = c.measureText('加油！').width;
+        c.beginPath(); c.rect(x - 2, y - 26, (w + 4) * u, 36); c.clip();
+        c.fillText('加油！', x, y);
+        c.restore();
+        if (u < 1) head = { x: x + w * u, y: y - 6 };
+        continue;
+      }
+      // 沿著折線畫到 u
+      let total = 0;
+      for (let i = 1; i < pts.length; i++) total += Math.hypot(pts[i]!.x - pts[i - 1]!.x, pts[i]!.y - pts[i - 1]!.y);
+      const len = total * u;
+      let acc = 0;
+      c.beginPath(); c.moveTo(pts[0]!.x, pts[0]!.y);
+      for (let i = 1; i < pts.length; i++) {
+        const a = pts[i - 1]!, b = pts[i]!, sl = Math.hypot(b.x - a.x, b.y - a.y);
+        if (acc + sl <= len) { c.lineTo(b.x, b.y); acc += sl; continue; }
+        const k = sl > 0 ? (len - acc) / sl : 0;
+        const p = { x: lerp(a.x, b.x, k), y: lerp(a.y, b.y, k) };
+        c.lineTo(p.x, p.y);
+        if (u < 1) head = p;
+        break;
+      }
+      c.stroke();
+    }
+    c.restore();
+    return head;
+  }
+
   // ------------------------------------------------------------ 導師評語（留言，紅筆，焦點）
-  private drawComment(c: CanvasRenderingContext2D, t: number) {
+  /** 回傳紅筆的筆尖（正在寫的時候）。 */
+  private drawComment(c: CanvasRenderingContext2D, t: number): { x: number; y: number } | null {
     const m = this.msg;
     const ink = (a: number) => rgba('sepia', a);
     tag(c, m?.couple ? '新人的話' : '導師評語', CMT.x, CMT.y + 16, { size: 16, color: ink(0.5), tracking: 4 });
     if (m) mono(c, `NO.${pad3(m.n)}`, X1, CMT.y + 14, { size: 12, color: ink(0.38), align: 'right', tracking: 3 });
     const pen = mixRgba('blood', 'sepia', 0.18, 0.95);
+    let head: { x: number; y: number } | null = null;
     if (m && this.fit) {
       const n = this.msgTimes.filter((x) => x <= t).length;
-      drawMessage(c, this.fit, MSG_FAM, CMT.x, CMT.y + 38 + this.fit.size * 0.9, { chars: n, color: pen });
+      const top = CMT.y + 38 + this.fit.size * 0.9;
+      const h = drawMessage(c, this.fit, MSG_FAM, CMT.x, top, { chars: n, color: pen });
+      if (h && n > 0 && t < this.tDone) head = { x: h.x + Math.sin(t * 53) * 1.5, y: h.y + this.fit.size * 0.3 + Math.sin(t * 37 + 1) * 2 };
       const ks = prog(t, this.tDone, this.tDone + 0.3);
       if (ks > 0) {
         c.save(); c.globalAlpha *= ks;
         const who = m.couple ? COUPLE_ZH : m.name || '一位賓客';
-        c.font = font(MSG_FAM, 40); c.fillStyle = pen; c.textAlign = 'right';
-        c.fillText(`導師：${who}`, X1, CMT.y + 38 + this.fit.height + 58);
+        // 署名（v2：26～32 px）：最後一行的基線往下讓出下伸部再放，永遠在評語下面
+        c.font = font(MSG_FAM, this.sigSize); c.fillStyle = pen; c.textAlign = 'right';
+        c.fillText(`導師：${who}`, CMT.x + Math.max(this.fit.width, CMT_W * 0.7), top + (this.fit.lines.length - 1) * this.fit.lineHeight + this.fit.size * 0.3 + this.sigSize * 1.15);
         c.textAlign = 'left';
         c.restore();
       }
     } else if (!m) {
       c.save(); c.globalAlpha *= prog(t, this.tWrite, this.tWrite + 0.4);
-      c.font = font(MSG_FAM, 56); c.fillStyle = mixRgba('blood', 'sepia', 0.3, 0.7);
-      c.fillText('本欄留給你寫。', CMT.x, CMT.y + 110);
-      c.font = font(MSG_FAM, 42);
-      c.fillText('掃描右下角 QR code，把給新人的評語寫在這裡。', CMT.x, CMT.y + 180);
+      c.font = font(MSG_FAM, 46); c.fillStyle = mixRgba('blood', 'sepia', 0.3, 0.7);
+      c.fillText('本欄留給你寫。', CMT.x, CMT.y + 100);
+      c.font = font(MSG_FAM, 36);
+      c.fillText('掃描右下角 QR code，把給新人的評語寫在這裡。', CMT.x, CMT.y + 160);
       c.restore();
     }
+    return head;
   }
 }

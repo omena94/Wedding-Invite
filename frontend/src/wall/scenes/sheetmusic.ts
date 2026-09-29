@@ -16,7 +16,9 @@ import { clamp, ease, hash, lerp, prog, pulse } from '../engine/util';
 import type { FitResult } from '../engine/text';
 import type { Line, Word } from '../engine/lyrics';
 import { drawLyric, drawMessage, signature, COUPLE_ZH, type LyricLayout, type LyricStyle } from './_motifs';
-import { grid, stagger, windowLines, fitMsg, mono, pad3, paperLyric, DocCam, withMips, HUD, EDGE, type Grid, type Pose } from './_t3';
+import { grid, stagger, windowLines, mono, pad3, paperLyric, DocCam, withMips, drawPencil, HUD, EDGE, type Grid, type Pose } from './_t3';
+import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 } from './_v2';
+import { fitText } from '../engine/text';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'doc', paper: true, energy: [0.05, 0.8], bars: [4, 8], weight: 1 };
 
@@ -30,7 +32,10 @@ const SX0 = 170, SX1 = 1630; // 譜表左右
 const NX0 = 320, NX1 = 1590; // 音符可以放的範圍
 const LYR_FAM = F.archivo(75, 700);
 const MSG_FAM = F.hand(400);
-const MSG_BOX = { x: 176, y: 640, w: 1440, h: 300 };
+/** 附記（留言）：譜下面偏左的一塊（v2：留言區 ≤ 860 × 430 螢幕 px；右邊留給擱著的鉛筆與光影）。 */
+const MSG_BOX = { x: 176, y: 640, w: 900, h: 330 };
+/** 鏡頭的平均縮放（文件 px → 螢幕 px），v2 的字級換算用。 */
+const K = 0.96;
 const FIXED = '婚禮進行曲現場版為兩人兩隻狗與全體賓客而作作曲編曲全體賓客深情地附記作曲者的話新人空白處請賓客自由填寫祝福掃描右下角把你的一句寫進來';
 
 const PAPER_GLSL = /* glsl */ `
@@ -38,12 +43,13 @@ vec3 paperCol(vec2 d, vec4 fb) {
   // 厚一點的譜紙：比一般的紙白一點、纖維淡；焦點附近被燈照亮一點
   vec3 p = mix(C_PAPER, C_BONE, 0.25) * (0.92 + 0.1 * (fb.r - 0.5) + 0.04 * (fb.g - 0.5));
   vec2 q = (d - focus) / vec2(1100.0, 700.0);
-  return p * (0.9 + 0.1 * exp(-dot(q, q)));
+  // 窗外的光（樹葉的影子）慢慢在譜上漂
+  return p * (0.9 + 0.1 * exp(-dot(q, q))) * (0.94 + 0.07 * dapple(SCR, t));
 }
 vec3 deskCol(vec2 s, vec4 fb) {
-  // 譜架後面：暗暗的木頭（直紋），上面比較暗
+  // 譜架後面：淺色的木頭（直紋）。不要太暗：右下角 QR 旁的深色字要讀得到
   float grain = fbm(vec2(s.x / 30.0, s.y / 700.0), 3);
-  return mix(C_SEPIA, C_PAPER, 0.22 + 0.05 * grain) * (0.55 + 0.25 * (s.y / 1080.0)) * (0.92 + 0.08 * fb.r);
+  return mix(C_PAPER, C_SEPIA, 0.26 + 0.05 * grain) * (0.86 + 0.1 * (s.y / 1080.0)) * (0.92 + 0.08 * fb.r) * (0.88 + 0.13 * dapple(s, t));
 }`;
 
 // ---------------------------------------------------------------- 高音譜號（程式畫）
@@ -88,7 +94,7 @@ interface System {
   t0: number;
   line: Line | null;
   notes: Note[];
-  bars: { x: number; n: number }[];
+  bars: { x: number; n: number; t: number }[];
   rests: { x: number; t: number }[];
   lyr: LyricLayout | null;
   /** 時間 → x（游標用）。 */
@@ -109,6 +115,11 @@ export default class SheetMusic extends Scene {
   tSig = 0;
   meter = 4;
   lyrMax = 56;
+  lyrMin = 42;
+  sigSize = 30;
+  /** 鉛筆：寫附記時跟著字，寫完擱在附記右邊。 */
+  pen: { x: number; y: number } | null = null;
+  penLift = 14; penAng = 0.5;
   shift = { x: 0, y: 0 };
 
   override async init() {
@@ -122,12 +133,20 @@ export default class SheetMusic extends Scene {
     const c = this.doc.ctx;
     // 附記（焦點）：先排，歌詞的字級要比它小一號
     if (m) {
-      this.fit = fitMsg(c, m.text, MSG_FAM, MSG_BOX.w - 150, MSG_BOX.h - 70, { min: 52, max: 104, lineHeight: 1.24 });
-      this.lyrMax = clamp(Math.round(this.fit.size * 0.82), 52, 60);
+      // v2：字級是螢幕 px（40～60，依字數），這裡換成文件 px；可用高度先扣掉署名，署名永遠在最後一行下面
+      const max = msgMaxFor(m.text) / K, sigEst = sigV2(msgMaxFor(m.text)) / K;
+      const boxH = MSG_BOX.h - (sigEst * 1.5 + max * 0.3);
+      const opt = { min: V2.msgMin / K, max, lineHeight: 1.24, maxLines: 5 };
+      const byW = fitText(c, m.text, MSG_FAM, MSG_BOX.w - 120, boxH, opt);
+      const byC = fitClauses(c, m.text, MSG_FAM, MSG_BOX.w - 120, boxH, opt);
+      this.fit = byC && byC.size >= byW.size * 0.9 ? byC : byW;
+      this.sigSize = sigV2(this.fit.size * K) / K;
+      this.lyrMax = lyricV2(this.fit.size * K) / K;
       const n = Array.from(this.fit.lines.join('')).length;
       this.msgTimes = stagger(au, g.b0, n, clamp((e - g.b0) * 0.45, g.beat * 2, g.bar * 1.5));
       this.tSig = (this.msgTimes[n - 1] ?? g.b0) + g.beat * 0.5;
-    } else this.lyrMax = 64;
+    } else this.lyrMax = lyricV2(null) / K;
+    this.lyrMin = V2.lyrMin / K;
     // 行的時間表：每句一行（太長就拆兩行）；句子之間超過一小節半的空檔、窗格開頭、整首純音樂，用兩小節一行的間奏補上
     const segs: { t0: number; line: Line | null; words: Word[]; t1: number }[] = [];
     const filler = (a: number, b: number) => {
@@ -166,9 +185,9 @@ export default class SheetMusic extends Scene {
     }
   }
 
-  /** 一句歌詞要不要拆成兩行：52 px（鏡頭拉遠時螢幕上約 48 px）、字間最少 10 px 還是放不下就拆。 */
+  /** 一句歌詞要不要拆成兩行：最小字級（螢幕 40 px）、字間最少 10 px 還是放不下就拆。 */
   private split(c: CanvasRenderingContext2D, l: Line): Word[][] {
-    c.font = font(LYR_FAM, 52);
+    c.font = font(LYR_FAM, this.lyrMin);
     const need = l.words.reduce((a, w) => a + Math.max(SP * 2.2, c.measureText(w.w).width + 10), 0);
     if (need <= NX1 - NX0 || l.words.length < 2) return [l.words];
     const half = Math.ceil(l.words.length / 2);
@@ -190,7 +209,7 @@ export default class SheetMusic extends Scene {
     let onsets: { t: number; w: Word | null; need: number }[];
     let size = this.lyrMax;
     if (sg.words.length) {
-      for (size = this.lyrMax; size > 52; size -= 2) {
+      for (size = this.lyrMax; size > this.lyrMin; size -= 2) {
         c.font = font(LYR_FAM, size);
         if (sg.words.reduce((a, w) => a + Math.max(SP * 2.2, c.measureText(w.w).width + 12), 0) <= NX1 - NX0) break;
       }
@@ -237,7 +256,7 @@ export default class SheetMusic extends Scene {
     for (let i = Math.ceil(au.barAt(tA) + 0.02); au.timeOfBar(i) < tB; i++) {
       let x = this.xAt(sys, au.timeOfBar(i)) - SP * 1.1;
       for (const nt of sys.notes) if (Math.abs(nt.x - x) < SP * 0.9) x = nt.x - SP * 1.2;
-      if (x > NX0 - SP && x < NX1 + SP) sys.bars.push({ x, n: i + 1 });
+      if (x > NX0 - SP && x < NX1 + SP) sys.bars.push({ x, n: i + 1, t: au.timeOfBar(i) });
     }
     if (sg.words.length) {
       c.font = font(LYR_FAM, size);
@@ -279,11 +298,12 @@ export default class SheetMusic extends Scene {
     if (ci > 0 && slide < 1) this.drawSystem(c, this.systems[ci - 1]!, t, -DW * slide, false);
     this.drawSystem(c, cur, t, DW * (1 - slide), true);
     this.drawNote(c, t);
+    if (this.pen) drawPencil(c, this.pen.x, this.pen.y, this.penLift, { color: 'signal', ang: this.penAng });
     D.upload();
     const cx = cur.map.length ? this.xAt(cur, t) : 900;
     this.cam.pose(this.pose(t, cx), DW, DH);
     this.cam.render(renderer, out, {
-      tex: D.texture, docW: DW, docH: DH, texScale: TS, rect: [60, 40, DW - 120, DH - 60],
+      tex: D.texture, docW: DW, docH: DH, texScale: TS, rect: [60, 40, DW - 120, DH - 60], t,
       focus: { x: 900, y: 620 }, focusR: [760, 380], blur: 6, shadow: [10, 22],
     });
     return { paper: 1, bloom: 0.28, vignette: 0.4, grain: 0.045, halation: 0.06 };
@@ -327,6 +347,9 @@ export default class SheetMusic extends Scene {
     }
     for (const b of sys.bars) {
       c.fillStyle = ink(0.75); c.fillRect(b.x - 1, VT, 2, VB - VT);
+      // 每個小節線：游標經過的那一刻，小節線亮一下（訊號色），往外散一點
+      const fl = current ? pulse(t, b.t, 0.14) : 0;
+      if (fl > 0.02) { c.fillStyle = rgba('signal', 0.5 * fl); c.fillRect(b.x - 1 - 6 * fl, VT - 10, 2 + 12 * fl, VB - VT + 20); }
       c.font = font(F.serif(400, true), 18); c.fillStyle = ink(0.5);
       c.fillText(String(b.n), b.x - 4, VT - 14);
     }
@@ -461,22 +484,30 @@ export default class SheetMusic extends Scene {
     c.beginPath(); c.moveTo(B.x + 10, B.y - 22); c.quadraticCurveTo(B.x - 6, B.y - 60, B.x + 30, B.y - 88); c.stroke();
     c.beginPath(); c.moveTo(B.x + 30, B.y - 88); c.lineTo(B.x + 14, B.y - 86); c.moveTo(B.x + 30, B.y - 88); c.lineTo(B.x + 26, B.y - 72); c.stroke();
     const lx = B.x + 120;
+    // 鉛筆：寫字時跟著最後一個字（小抖動），寫完／沒留言時擱在附記右邊（筆身往右下，不蓋到字）
+    // 擱著的鉛筆放在附記右邊、筆身幾乎水平朝右（上面是歌詞、右下角是 HUD，都不能蓋到）
+    const rest = { x: lx + Math.min(this.fit ? this.fit.width : 740, 740) + 60, y: B.y + 70 };
+    this.pen = rest; this.penLift = 14; this.penAng = 0.1;
     if (m && this.fit) {
       const n = this.msgTimes.filter((x) => x <= t).length;
-      drawMessage(c, this.fit, MSG_FAM, lx, B.y + this.fit.size * 0.88, { chars: n, color: pencil });
+      const head = drawMessage(c, this.fit, MSG_FAM, lx, B.y + this.fit.size * 0.88, { chars: n, color: pencil });
+      const sigY = B.y + this.fit.size * 0.88 + (this.fit.lines.length - 1) * this.fit.lineHeight + this.fit.size * 0.3 + this.sigSize * 1.15;
+      const writing = n > 0 && t < this.tSig + 0.3;
+      if (writing && head) { this.pen = { x: head.x + Math.sin(t * 53) * 1.5, y: head.y + this.fit.size * 0.3 + Math.sin(t * 37 + 1) * 2 }; this.penLift = 0; this.penAng = -1.05; }
       const ks = prog(t, this.tSig, this.tSig + 0.3);
       if (ks > 0) {
         c.globalAlpha *= ks;
-        c.font = font(MSG_FAM, 40); c.fillStyle = mixRgba('sepia', 'ash', 0.25, 0.82); c.textAlign = 'right';
-        c.fillText(signature(m.name), B.x + B.w, B.y + this.fit.height + 62);
+        // 署名（v2：26～32 px）：最後一行的基線往下讓出下伸部再放，永遠在留言下面
+        c.font = font(MSG_FAM, this.sigSize); c.fillStyle = mixRgba('sepia', 'ash', 0.25, 0.82); c.textAlign = 'right';
+        c.fillText(signature(m.name), lx + this.fit.width, sigY);
         c.textAlign = 'left';
       }
     } else if (!m) {
       c.globalAlpha *= prog(t, this.g.b0, this.g.b0 + 0.4);
-      c.font = font(MSG_FAM, 50); c.fillStyle = mixRgba('sepia', 'ash', 0.25, 0.7);
+      c.font = font(MSG_FAM, 44); c.fillStyle = mixRgba('sepia', 'ash', 0.25, 0.7);
       c.fillText('空白處請賓客自由填寫祝福——', lx, B.y + 44);
-      c.font = font(MSG_FAM, 40);
-      c.fillText('掃描右下角 QR code，把你的一句寫進來。', lx, B.y + 112);
+      c.font = font(MSG_FAM, 36);
+      c.fillText('掃描右下角 QR code，把你的一句寫進來。', lx, B.y + 106);
     }
     c.restore();
   }
