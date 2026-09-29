@@ -1,0 +1,36 @@
+{
+  "group": "hoops",
+  "series": {
+    "cp_hoops_": {"ref":"cp_hoops_stand","refFrac":0.6354166666666666,"groundFrac":0.9583333333333334,"target":800},
+    "xw_hoops_": {"ref":"xw_hoops_idle_front","refFrac":0.6184895833333334,"groundFrac":0.962890625,"target":600},
+    "mt_hoops_": {"ref":"mt_hoops_idle_front","refFrac":0.5852864583333334,"groundFrac":0.9622395833333334,"target":600},
+    "pp_hoops_": {"ref":"pp_stand","refFrac":0.8310546875,"groundFrac":0.927734375,"target":260,"from":"base:pp_"},
+    "qq_hoops_": {"ref":"qq_stand","refFrac":0.9326171875,"groundFrac":0.958984375,"target":280,"from":"base:qq_"}
+  },
+  "sprites": {
+    "cp_hoops_cheer": {"kind":"couple","w":627,"h":827,"ax":288.1,"ay":823.4,"ref":800,"pts":{"bucket":[522.1,73.8]}},
+    "cp_hoops_hug": {"kind":"couple","w":448,"h":821,"ax":157.8,"ay":816.8,"ref":800},
+    "cp_hoops_kiss_1": {"kind":"couple","w":489,"h":762,"ax":234,"ay":758.6,"ref":800},
+    "cp_hoops_kiss_2": {"kind":"couple","w":499,"h":825,"ax":233.2,"ay":820.1,"ref":800},
+    "cp_hoops_kiss_3": {"kind":"couple","w":534,"h":803,"ax":266.8,"ay":799.6,"ref":800},
+    "cp_hoops_sit_1": {"kind":"couple","w":543,"h":819,"ax":252,"ay":814.3,"ref":800},
+    "cp_hoops_sit_2": {"kind":"couple","w":634,"h":791,"ax":303.7,"ay":787.3,"ref":800},
+    "cp_hoops_stand": {"kind":"couple","w":493,"h":807,"ax":216,"ay":802.9,"ref":800},
+    "cp_hoops_tense": {"kind":"couple","w":558,"h":825,"ax":283.2,"ay":821.7,"ref":800},
+    "mt_hoops_block": {"kind":"person","w":348,"h":595,"ax":146.5,"ay":591.7,"ref":600,"pts":{"hand":[317,31.4]}},
+    "mt_hoops_cheer": {"kind":"person","w":222,"h":626,"ax":93.1,"ay":621.7,"ref":600},
+    "mt_hoops_guard": {"kind":"person","w":387,"h":518,"ax":183.2,"ay":514.2,"ref":600},
+    "mt_hoops_idle_front": {"kind":"person","w":182,"h":607,"ax":89.1,"ay":603,"ref":600},
+    "mt_hoops_wave_1": {"kind":"person","w":291,"h":700,"ax":170.5,"ay":695.8,"ref":600},
+    "mt_hoops_wave_2": {"kind":"person","w":306,"h":710,"ax":118.5,"ay":706.5,"ref":600},
+    "pp_hoops_whistle": {"kind":"dog","w":215,"h":243,"ax":124.2,"ay":239.4,"ref":260,"pts":{"mouth":[188.2,81.6]}},
+    "qq_hoops_call": {"kind":"dog","w":226,"h":271,"ax":114.5,"ay":267.8,"ref":280},
+    "xw_hoops_cheer": {"kind":"person","w":309,"h":669,"ax":146.8,"ay":665.4,"ref":600},
+    "xw_hoops_dribble_1": {"kind":"person","w":321,"h":529,"ax":137.4,"ay":525.2,"ref":600,"pts":{"hand":[305.1,284.2]}},
+    "xw_hoops_dribble_2": {"kind":"person","w":312,"h":557,"ax":177.2,"ay":553.6,"ref":600,"pts":{"hand":[283.6,178.7]}},
+    "xw_hoops_idle_front": {"kind":"person","w":203,"h":606,"ax":103.9,"ay":602.8,"ref":600},
+    "xw_hoops_laugh": {"kind":"person","w":231,"h":548,"ax":121.6,"ay":544.7,"ref":600},
+    "xw_hoops_shoot_1": {"kind":"person","w":229,"h":601,"ax":95.1,"ay":596.5,"ref":600,"pts":{"ball":[163.6,41.7,45.5]}},
+    "xw_hoops_shoot_2": {"kind":"person","w":243,"h":688,"ax":86.2,"ay":683.7,"ref":600,"pts":{"hand":[221.1,13.9]}}
+  }
+}

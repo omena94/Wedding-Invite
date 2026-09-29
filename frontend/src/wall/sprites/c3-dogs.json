@@ -5,14 +5,14 @@
     "qq_dogportrait_oil": {"ref":"qq_dogportrait_oil","refFrac":0.9546875,"groundFrac":0.97578125,"target":640},
     "pp_": {"ref":"pp_stand","refFrac":0.8310546875,"groundFrac":0.927734375,"target":260,"from":"base:pp_"},
     "qq_": {"ref":"qq_stand","refFrac":0.9326171875,"groundFrac":0.958984375,"target":280,"from":"base:qq_"},
-    "cp_zoomies_": {"ref":"cp_hug","refFrac":0.9736842105263158,"groundFrac":0.9864433811802232,"target":600,"from":"base:cp_"},
-    "cp_ringbearer_": {"ref":"cp_waltz_1","refFrac":0.96484375,"groundFrac":0.9830729166666666,"target":600,"from":"waltz:cp_waltz_"}
+    "cp_zoomies_": {"ref":"cp_hug","refFrac":0.9760765550239234,"groundFrac":0.9864433811802232,"target":600,"from":"base:cp_"},
+    "cp_ringbearer_": {"ref":"cp_waltz_1","refFrac":0.96875,"groundFrac":0.9830729166666666,"target":600,"from":"waltz:cp_waltz_"}
   },
   "sprites": {
-    "cp_ringbearer_kneel": {"kind":"couple","w":554,"h":602,"ax":239.5,"ay":598.2,"ref":600},
-    "cp_ringbearer_wait": {"kind":"couple","w":410,"h":591,"ax":189.7,"ay":586.8,"ref":600},
-    "cp_zoomies_sofa_1": {"kind":"couple","w":596,"h":570,"ax":297.7,"ay":565.9,"ref":600,"pts":{"legs":[297.7,499.1]}},
-    "cp_zoomies_sofa_2": {"kind":"couple","w":603,"h":563,"ax":302.1,"ay":559.4,"ref":600,"pts":{"legs":[302.1,479.8]}},
+    "cp_ringbearer_kneel": {"kind":"couple","w":552,"h":600,"ax":238.5,"ay":595.8,"ref":600},
+    "cp_ringbearer_wait": {"kind":"couple","w":408,"h":588,"ax":188.9,"ay":584.5,"ref":600},
+    "cp_zoomies_sofa_1": {"kind":"couple","w":602,"h":563,"ax":300.9,"ay":559.3,"ref":600,"pts":{"legs":[300.9,482.6]}},
+    "cp_zoomies_sofa_2": {"kind":"couple","w":602,"h":562,"ax":301.3,"ay":558.1,"ref":600,"pts":{"legs":[301.3,478.6]}},
     "pp_dogportrait_back": {"kind":"dog","w":168,"h":239,"ax":88.1,"ay":235.4,"ref":260},
     "pp_dogportrait_oil": {"kind":"dog","w":512,"h":646,"ax":255.8,"ay":642.9,"ref":640,"height":1},
     "pp_dogportrait_tilt": {"kind":"dog","w":208,"h":287,"ax":108.6,"ay":284,"ref":260},

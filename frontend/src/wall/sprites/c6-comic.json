@@ -1,0 +1,26 @@
+{
+  "group": "c6-comic",
+  "series": {
+    "xw_comic_": {"ref":"xw_comic_stand","refFrac":0.9765625,"groundFrac":0.9850260416666666,"target":600},
+    "mt_comic_": {"ref":"mt_comic_stand","refFrac":0.970703125,"groundFrac":0.9850260416666666,"target":600},
+    "cp_comic_": {"ref":"cp_comic_wedding","refFrac":0.9808612440191388,"groundFrac":0.988835725677831,"target":600},
+    "cp_booth_": {"ref":"cp_booth_1","refFrac":0.9521531100478469,"groundFrac":0.9992025518341308,"target":600},
+    "pp_comic_": {"ref":"pp_stand","refFrac":0.8310546875,"groundFrac":0.927734375,"target":260,"from":"base:pp_"},
+    "qq_comic_": {"ref":"qq_stand","refFrac":0.9326171875,"groundFrac":0.958984375,"target":280,"from":"base:qq_"}
+  },
+  "sprites": {
+    "cp_booth_1": {"kind":"couple","w":630,"h":603,"ax":306.8,"ay":602.8,"ref":600},
+    "cp_booth_2": {"kind":"couple","w":630,"h":612,"ax":314.3,"ay":611.8,"ref":600},
+    "cp_booth_3": {"kind":"couple","w":630,"h":583,"ax":317.8,"ay":579.1,"ref":600},
+    "cp_booth_4": {"kind":"couple","w":630,"h":627,"ax":307.3,"ay":626.4,"ref":600},
+    "cp_comic_wedding": {"kind":"couple","w":483,"h":607,"ax":233.4,"ay":603.2,"ref":600},
+    "mt_comic_stand": {"kind":"person","w":184,"h":607,"ax":90.7,"ay":603,"ref":600},
+    "mt_comic_surprise": {"kind":"person","w":168,"h":608,"ax":84.7,"ay":604.2,"ref":600},
+    "pp_comic_jump": {"kind":"dog","w":302,"h":208,"ax":147.3,"ay":238.9,"ref":260},
+    "pp_comic_sit": {"kind":"dog","w":237,"h":290,"ax":135.8,"ay":285.8,"ref":260},
+    "qq_comic_sit": {"kind":"dog","w":261,"h":277,"ax":146.4,"ay":273.3,"ref":280},
+    "xw_comic_jump": {"kind":"person","w":374,"h":536,"ax":202.6,"ay":578.4,"ref":600},
+    "xw_comic_kneel": {"kind":"person","w":392,"h":493,"ax":186.6,"ay":489.4,"ref":600},
+    "xw_comic_stand": {"kind":"person","w":209,"h":606,"ax":105,"ay":603,"ref":600}
+  }
+}

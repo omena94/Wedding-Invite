@@ -29,7 +29,9 @@ const SZ = 700;
 const FLOOR = 1076;
 /** 吧台檯面：後緣、前緣的 y（稍微往下看，看得到檯面與杯面）。 */
 const TOP = { back: 640, front: 846 };
-const AL_X = 880, OM_X = 1236;
+const AL_X = 846, OM_X = 1184;
+/** 右下角 HUD（時間、QR）的左緣：吧台前緣的粗邊與線在這之前淡掉，時間的字後面才乾淨。 */
+const HUD_X = 1360;
 /** 杯口橢圓中心的 y、杯口半徑與俯角的壓扁比例（杯子的 x 對齊圖上奶柱落下的地方，在 init 算）。 */
 const CUP_Y = 768, CUP_R = 106, CUP_K = 0.5;
 /** 黑板菜單：最大的範圍（標準 v2；上緣固定、高度跟著留言）與寫字的內距。 */
@@ -215,17 +217,20 @@ export default class Coffee extends Scene {
     }
     c.stroke();
     inkLine(c, [{ x: 0, y: TOP.back }, { x: W, y: TOP.back - 1 }], { ink, w: 0.9, seed: 31 });
-    // 前板：檯面前緣（厚一點）＋直條木片；右下角（HUD）只留很淡的底色
-    c.fillStyle = mixRgba('paper', 'fur', 0.4);
-    c.fillRect(0, TOP.front, W, 18);
+    // 前板：檯面前緣（厚一點）＋直條木片；右下角（HUD）只留很淡的底色：前緣的粗邊在 HUD 左緣之前漸漸淡成底色，線也在那之前收筆
     c.fillStyle = mixRgba('paper', 'fur', 0.16);
-    c.fillRect(0, TOP.front + 18, W, H - TOP.front - 18);
-    inkLine(c, [{ x: 0, y: TOP.front }, { x: W, y: TOP.front + 1 }], { ink, w: 1.1, seed: 32 });
-    inkLine(c, [{ x: 0, y: TOP.front + 18 }, { x: W, y: TOP.front + 18 }], { ink, w: 0.8, seed: 33 });
+    c.fillRect(0, TOP.front, W, H - TOP.front);
+    const edge = c.createLinearGradient(HUD_X - 160, 0, HUD_X - 20, 0);
+    edge.addColorStop(0, mixRgba('paper', 'fur', 0.4));
+    edge.addColorStop(1, mixRgba('paper', 'fur', 0.16));
+    c.fillStyle = edge;
+    c.fillRect(0, TOP.front, HUD_X - 20, 18);
+    inkLine(c, [{ x: 0, y: TOP.front }, { x: HUD_X - 40, y: TOP.front + 1 }], { ink, w: 1.1, seed: 32 });
+    inkLine(c, [{ x: 0, y: TOP.front + 18 }, { x: HUD_X - 70, y: TOP.front + 18 }], { ink, w: 0.8, seed: 33 });
     c.strokeStyle = rgba('sepia', 0.1);
     c.lineWidth = 1.5;
     c.beginPath();
-    for (let x = 40; x < W; x += 58) { c.moveTo(x, TOP.front + 26); c.lineTo(x, H); }
+    for (let x = 40; x < HUD_X - 40; x += 58) { c.moveTo(x, TOP.front + 26); c.lineTo(x, H); }
     c.stroke();
     // 兩個杯子：杯盤（影子、盤子）、杯身（白瓷，右邊一個耳）、杯口的厚度
     for (const p of this.cups) {
