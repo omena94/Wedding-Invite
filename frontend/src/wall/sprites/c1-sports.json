@@ -25,6 +25,8 @@
     "mt_tennis_ready": {"kind":"person","w":363,"h":531,"ax":149.6,"ay":527.3,"ref":600},
     "pp_frisbee_leap": {"kind":"dog","w":293,"h":227,"ax":149.2,"ay":247.2,"ref":260,"pts":{"mouth":[248.4,51.6]}},
     "qq_frisbee_leap": {"kind":"dog","w":273,"h":213,"ax":120.6,"ay":244.2,"ref":280,"pts":{"mouth":[232.8,54.5]}},
+    "xw_frisbee_throw_1": {"kind":"person","w":372,"h":536,"ax":192.8,"ay":532,"ref":600},
+    "xw_frisbee_throw_2": {"kind":"person","w":414,"h":558,"ax":189.1,"ay":554.2,"ref":600,"pts":{"hand":[387.7,103.9]}},
     "xw_pingpong_hit": {"kind":"person","w":416,"h":565,"ax":211.7,"ay":561.2,"ref":600,"pts":{"paddle":[381.9,116.2,28.7]}},
     "xw_pingpong_ready": {"kind":"person","w":337,"h":533,"ax":159.1,"ay":529.6,"ref":600},
     "xw_tennis_back": {"kind":"person","w":418,"h":555,"ax":208.8,"ay":551.3,"ref":600},
