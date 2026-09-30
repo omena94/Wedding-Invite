@@ -76,10 +76,21 @@ export class Director {
   startSong(song: SongRuntime, startAt = 0) {
     this.song = song;
     this.startAt = startAt;
+    this.songStart = startAt;
     this.idx = 0;
     this.history = [];
     this.salt = this.fixedSeed ? 0 : Math.floor(Math.random() * 1e6);
   }
+
+  /**
+   * 操作列拉進度條跳到 t（2026-09-30 新人要求）：呼叫前先把引擎的時間軸清空，這裡從 t 重新排。
+   * 跳到歌的中間就不再放歌名卡（歌名卡只在一首歌的開頭），跳回開頭幾秒內才重放。
+   */
+  seek(t: number) {
+    this.startAt = t;
+    this.idx = t - this.songStart > 8 ? Math.max(this.idx, 1) : 0;
+  }
+  private songStart = 0;
 
   /**
    * 這一次播放的亂數種子：每次開始一首歌都換（2026-09-28 新人：「模板可以不要每次都一樣順序嗎」）。

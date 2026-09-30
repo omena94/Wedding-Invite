@@ -4,7 +4,8 @@
 //  - 時間的來源是音樂（<audio> 的 currentTime，用 performance.now 補平），畫面永遠跟著歌走。
 //  - 每 2 秒拉一次留言：新留言下一拍就在畫面角落跳出小卡；導演排下一個窗格時也會優先主打新留言。
 //  - 被新人隱藏的留言：小卡馬上收、主打它的窗格在下一拍切走。
-//  - 一首接一首（歌單順序，播完從頭），下一首在背景先下載、分析好。歌單是空的就先無聲地跑留言。
+//  - 一首接一首（歌單順序，播完從頭；可以隨機播放），下一首在背景先下載、分析好。歌單是空的就先無聲地跑留言。
+//  - 操作列（2026-09-30）：進度條可以拖拉跳到任何時間；旁邊的歌單面板看下一首與待播清單，可以「現在播」「插播」。
 //  - 開發模式 ?dev=1：不連後端，用 dev/fixtures 的假留言與本機的測試音檔（見 vite.config.js 的 wall-dev），
 //    加上 ?export=1 給截圖腳本（scripts/wall-render.mjs）用。
 import { Engine, SCENES, type SongRuntime } from './engine/engine';
@@ -59,7 +60,7 @@ let playlist: SongRow[] = [];
 let songsRev = '';
 let cur: LoadedSong | null = null;
 let next: Promise<LoadedSong | null> | null = null;
-let nextFor = -1;
+let nextFor = -1; // next 準備的是哪一首（歌的 id）
 let silent = false;
 let t = 0;
 let playing = false;
@@ -141,52 +142,202 @@ function startSilent() {
 }
 let silentStart = 0;
 
-function indexOfSong(id: number) { return playlist.findIndex((s) => s.id === id); }
+// ------------------------------------------------------------------ 播放順序、插播、隨機播放（2026-09-30）
+// order 是這一晚的播放順序，pos 是現在播到第幾個。後面永遠至少排好一整輪（隨機播放時下一輪先洗好），
+// 歌單面板看到的待播清單就是真的會播的順序，下一首也才能先在背景準備。
+// 插播（面板上的「插播」「現在播」）：把那首搬到現在這首的正後面、標成插播，其他歌的先後不變，
+// 所以插播完就回到原本的順序。好幾首插播照按的先後排。
+interface Slot { id: number; ins?: boolean }
+let order: Slot[] = [];
+let pos = -1;
+let shuffle = readNum('wall_shuffle', 0) === 1;
 
-function prepare(idx: number, prevTheme: string): Promise<LoadedSong | null> {
-  const row = playlist[((idx % playlist.length) + playlist.length) % playlist.length];
+function indexOfSong(id: number) { return playlist.findIndex((s) => s.id === id); }
+const rowById = (id: number) => playlist.find((s) => s.id === id);
+const songIds = () => playlist.map((s) => s.id);
+
+function shuffled(list: number[], avoidFirst?: number): number[] {
+  const a = list.slice();
+  for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j]!, a[i]!]; }
+  // 新的一輪不要一開始就是剛播完的那首
+  if (a.length > 1 && a[0] === avoidFirst) { const j = 1 + Math.floor(Math.random() * (a.length - 1)); [a[0], a[j]] = [a[j]!, a[0]!]; }
+  return a;
+}
+/** 照歌單的順序從 id 的下一首繞一圈（最後一首是 id 自己）；id 不在歌單裡就從第一首開始。 */
+function cycleAfter(id: number | undefined): number[] {
+  const all = songIds(), i = id === undefined ? -1 : all.indexOf(id);
+  return [...all.slice(i + 1), ...all.slice(0, i + 1)];
+}
+/** 現在這首之後至少排好一整輪；播一整晚 order 會越接越長，前面播過的只留最近 50 首（「上一首」用）。 */
+function ensureAhead() {
+  const n = playlist.length;
+  if (!n) return;
+  while (order.length - 1 - pos < n) {
+    // 照歌單：從最後排的那首接著繞；隨機：整份洗牌，但不要一開頭就是剛排過的那首
+    const last = order[order.length - 1]?.id;
+    order.push(...(shuffle ? shuffled(songIds(), last) : cycleAfter(last)).map((id) => ({ id })));
+  }
+  if (pos > 200) { order = order.slice(pos - 50); pos = 50; }
+}
+/** 插播的都排在現在這首的正後面：還有幾首插播沒播。 */
+function insertsAhead() { let k = 0; while (order[pos + 1 + k]?.ins) k++; return k; }
+/**
+ * 重排現在這首之後的順序（插播的留著）：照歌單就從現在這首（或最後一首照順序播的歌）的下一首接下去；
+ * 隨機就把其他歌重新洗牌。開關「隨機播放」、按「重新洗牌」、歌單的排序改了都用這個。
+ */
+function rebuildAhead() {
+  const all = songIds();
+  const ins = order.slice(pos + 1, pos + 1 + insertsAhead()).filter((e) => all.includes(e.id));
+  // 已經排好插播的，這一輪不用再排一次
+  const skip = new Set(ins.map((e) => e.id));
+  let rest: number[];
+  if (shuffle) rest = shuffled(all.filter((id) => id !== cur?.row.id && !skip.has(id)));
+  else {
+    // 從最後一首照順序播的歌（不是插播的）的下一首接下去；那之後插播過的歌，這一輪也不再播
+    let a = pos;
+    while (a >= 0 && (order[a]!.ins || !all.includes(order[a]!.id))) a--;
+    for (const e of order.slice(a + 1, pos + 1)) if (e.ins) skip.add(e.id);
+    rest = cycleAfter(a >= 0 ? order[a]!.id : undefined).filter((id) => !skip.has(id));
+  }
+  order = [...order.slice(0, pos + 1), ...ins, ...rest.map((id) => ({ id }))];
+  ensureAhead();
+}
+/** 歌單改了（加歌、刪歌、停用、排序）：照歌單播的重排；隨機播放的保留已經洗好的順序，拿掉沒了的、新歌隨便插進去。 */
+function syncOrder() {
+  const all = songIds(), has = new Set(all);
+  if (!shuffle) return rebuildAhead();
+  const ahead = order.slice(pos + 1).filter((e) => has.has(e.id));
+  for (const id of all) if (!order.some((e) => e.id === id)) ahead.splice(Math.floor(Math.random() * (ahead.length + 1)), 0, { id });
+  order = [...order.slice(0, pos + 1), ...ahead];
+  ensureAhead();
+}
+/** 開機或從無聲模式回來：從 startId（網址的 ?song=）或第一首開始排。 */
+function initOrder(startId?: number) {
+  const all = songIds();
+  const i = startId !== undefined ? all.indexOf(startId) : -1;
+  const first = shuffle
+    ? (i >= 0 ? [startId!, ...shuffled(all.filter((id) => id !== startId))] : shuffled(all))
+    : (i >= 0 ? cycleAfter(all[(i + all.length - 1) % all.length]) : all);
+  order = first.map((id) => ({ id }));
+  pos = -1;
+  ensureAhead();
+}
+
+function prepare(id: number, prevTheme: string): Promise<LoadedSong | null> {
+  const row = rowById(id);
   if (!row) return Promise.resolve(null);
-  const i = indexOfSong(row.id);
-  return loadSong(row, i + 1, playlist.length, prevTheme, (s) => setStatus(s), devLoadOpts(row)).catch((e) => {
+  return loadSong(row, indexOfSong(id) + 1, playlist.length, prevTheme, (s) => setStatus(s), devLoadOpts(row)).catch((e) => {
     console.error('song load failed', e);
     setStatus(`「${row.title}」讀不到：${(e as Error).message}，跳過`, false);
     return null;
   });
 }
+/** 下一首先在背景準備（插播、洗牌、歌單改了之後，下一首可能換了）。 */
+function refreshNext() {
+  if (!cur || !playlist.length) { next = null; nextFor = -1; return; }
+  ensureAhead();
+  const id = order[pos + 1]?.id;
+  if (id === undefined || id === nextFor) return;
+  nextFor = id;
+  next = prepare(id, cur.runtime.info.theme);
+}
 
-/** 播第 idx 首（歌單的位置）。失敗就往下一首找，都失敗就進無聲模式。 */
-async function playIndex(idx: number, preloaded?: LoadedSong | null) {
-  if (!playlist.length) return startSilent();
-  for (let tries = 0; tries < playlist.length; tries++) {
-    const k = (((idx + tries) % playlist.length) + playlist.length) % playlist.length;
-    const s = preloaded && tries === 0 ? preloaded : await prepare(k, cur?.runtime.info.theme ?? '');
-    if (!s) continue;
-    silent = false;
-    cur = s;
-    await player.load(s);
-    startRuntime(s.runtime, s.startAt);
-    if (playing) await player.play().catch(() => {});
-    // 下一首先在背景準備
-    nextFor = k + 1;
-    next = prepare(k + 1, s.runtime.info.theme);
-    updateUi();
-    return;
+/**
+ * 換歌都經過這裡，一次只換一首：歌播完的那幾格會連續呼叫、按鈕也可能連點，
+ * 不擋的話 pos 會一次往前跳好幾首。
+ */
+let switching = false;
+async function transition(fn: () => Promise<void> | void) {
+  if (switching) return;
+  switching = true;
+  try { await fn(); } finally { switching = false; updateUi(); }
+}
+/** 播 order[pos]。讀不到就往下一首找，整份歌單都讀不到就進無聲模式。 */
+async function playPos() {
+  for (let tries = 0; tries < Math.max(1, playlist.length); tries++) {
+    ensureAhead();
+    const id = order[pos]?.id;
+    if (id === undefined) break;
+    const pre = next && nextFor === id ? await next : null;
+    const s = pre && pre.row.id === id ? pre : await prepare(id, cur?.runtime.info.theme ?? '');
+    if (s) {
+      silent = false;
+      cur = s;
+      nextFor = -1; next = null;
+      await player.load(s);
+      startRuntime(s.runtime, s.startAt);
+      if (playing) await player.play().catch(() => {});
+      refreshNext();
+      return;
+    }
+    pos++;
   }
   startSilent();
 }
-
-async function nextSong() {
-  if (!cur) return playIndex(0);
-  const k = indexOfSong(cur.row.id);
-  const want = k + 1;
-  const pre = next && nextFor === want ? await next : null;
-  await playIndex(want, pre && pre.row.id === playlist[want % playlist.length]?.id ? pre : null);
+function nextSong() {
+  return transition(async () => {
+    if (!playlist.length) return startSilent();
+    if (!cur) initOrder();
+    pos++;
+    await playPos();
+  });
 }
-async function prevSong() {
-  if (!cur) return playIndex(0);
-  // 播超過五秒：從頭；不然回上一首
-  if (t - cur.startAt > 5) { player.el.currentTime = cur.startAt; startRuntime(cur.runtime, cur.startAt); return; }
-  await playIndex(indexOfSong(cur.row.id) - 1);
+function prevSong() {
+  return transition(async () => {
+    if (!cur) return;
+    // 播超過五秒：從頭；不然回上一首
+    if (t - cur.startAt > 5 || pos <= 0) return seekTo(cur.startAt);
+    pos--;
+    await playPos();
+  });
+}
+/** 待播清單的第 j 個（order 的位置）：搬到現在這首的正後面、標成插播（排在已經插播的後面）。 */
+function insertAt(j: number) {
+  const [e] = order.splice(j, 1);
+  if (!e) return;
+  order.splice(pos + 1 + insertsAhead(), 0, { id: e.id, ins: true });
+  ensureAhead();
+  refreshNext();
+}
+/** 「現在播」：馬上切過去；其他歌的先後不變，播完照原本的順序。 */
+function playNow(j: number) {
+  return transition(async () => {
+    const [e] = order.splice(j, 1);
+    if (!e) return;
+    order.splice(pos + 1, 0, { id: e.id, ins: true });
+    pos++;
+    await playPos();
+  });
+}
+/** 取消插播：照歌單播的，重排回它原本的位置；隨機播放的，放回這一輪還沒播的歌中間。 */
+function cancelInsert(j: number) {
+  const e = order[j];
+  if (!e?.ins) return;
+  order.splice(j, 1);
+  if (!shuffle) rebuildAhead();
+  else {
+    const from = pos + 1 + insertsAhead(), to = Math.max(from, pos + playlist.length - 1);
+    order.splice(from + Math.floor(Math.random() * (to - from + 1)), 0, { id: e.id });
+    ensureAhead();
+  }
+  refreshNext();
+}
+function setShuffle(on: boolean) {
+  shuffle = on;
+  saveNum('wall_shuffle', on ? 1 : 0);
+  rebuildAhead();
+  refreshNext();
+}
+
+/** 拖拉進度條、Shift＋← → 跳到 x 秒：音樂跳過去，畫面的時間軸清空、由導演從那裡重排。 */
+function seekTo(x: number) {
+  if (!cur || silent) return;
+  const to = Math.max(cur.startAt, Math.min(cur.endAt - 0.5, x));
+  player.el.currentTime = to;
+  engine.drop(-Infinity);
+  director.seek(to);
+  t = to;
+  updateUi();
 }
 
 // ------------------------------------------------------------------ 留言
@@ -228,9 +379,11 @@ async function pollFeed(initial = false) {
       const changed = rows.map((r) => `${r.id}@${r.updated_at}`).join() !== playlist.map((r) => `${r.id}@${r.updated_at}`).join();
       playlist = rows;
       if (changed && !initial) {
+        // 歌改過（歌詞、配色…）：已經準備好的下一首要重新準備
         next = null; nextFor = -1;
-        if (silent && playlist.length) playIndex(0);
-        else if (cur && indexOfSong(cur.row.id) >= 0) { const k = indexOfSong(cur.row.id); nextFor = k + 1; next = prepare(k + 1, cur.runtime.info.theme); }
+        if (silent && playlist.length) { initOrder(); void transition(async () => { pos = 0; await playPos(); }); }
+        else if (playlist.length) { syncOrder(); refreshNext(); }
+        updateUi();
       }
     }
     if (!statusLine.ok) setStatus('連線正常', true);
@@ -248,6 +401,8 @@ let lastFrame = performance.now(), fpsAcc = 0, fpsN = 0, fps = 60;
   t, playing, silent, song: cur?.row.title ?? '', textures: engine.renderer.info.memory.textures, geometries: engine.renderer.info.memory.geometries,
   programs: engine.renderer.info.programs?.length ?? 0, heap: (performance as any).memory?.usedJSHeapSize ?? 0, timeline: engine.timeline.length, scenes: engine.loaded.size,
   messages: pool.count, errors: engine.errors.length, fps,
+  // 接下來的播放順序（歌的 id，i = 插播）：測試插播、隨機播放用
+  queue: order.slice(pos, pos + 10).map((e) => `${e.id}${e.ins ? 'i' : ''}`).join(' '),
 });
 
 function tick() {
@@ -266,31 +421,99 @@ function tick() {
     engine.gc(t);
     engine.render(t, 1 / 60);
   }
+  if (ui.classList.contains('show') && now - lastSeekDraw > 150) { lastSeekDraw = now; drawSeek(); }
   if (debugEl && !debugEl.hidden) debugEl.textContent = `${t.toFixed(2)}s  beat ${au?.beatAt(t).toFixed(2)}  bar ${au?.barAt(t).toFixed(2)}  [${engine.timeline.find((e) => t >= e.start && t < e.end)?.id ?? '—'}]  ${fps.toFixed(0)}fps  留言 ${pool.count}  errors ${engine.errors.length}`;
   requestAnimationFrame(tick);
 }
 
 // ------------------------------------------------------------------ 操作列（滑鼠一動就出現，三秒不動就藏起來）
+// 2026-09-30：上面加一條可以拖拉的進度條；右邊的歌單面板（L 開關）跟著操作列一起出現與收起。
 const ui = $<HTMLDivElement>('ui');
+const queueEl = $<HTMLElement>('queue');
 const debugEl = $<HTMLPreElement>('debug');
 let uiTimer = 0;
+let hovering = false; // 滑鼠停在操作列或歌單上：不要收起來
+let showQueue = readNum('wall_queue', 1) === 1;
+let drag: number | null = null; // 正在拖進度條：放開後要跳到的時間
+let lastSeekDraw = 0;
 function showUi() {
   ui.classList.add('show');
+  queueEl.classList.toggle('show', showQueue);
   document.body.classList.remove('idle');
   clearTimeout(uiTimer);
-  uiTimer = window.setTimeout(() => { ui.classList.remove('show'); document.body.classList.add('idle'); }, 3000);
+  uiTimer = window.setTimeout(hideUi, 3000);
+}
+function hideUi() {
+  // 滑鼠還停在操作列／歌單上、或正在拖進度條：晚一點再收
+  if (hovering || drag !== null) { uiTimer = window.setTimeout(hideUi, 1000); return; }
+  ui.classList.remove('show');
+  queueEl.classList.remove('show');
+  document.body.classList.add('idle');
+}
+const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
+const mmss = (x: number) => { const v = Math.max(0, Math.floor(x)); return `${Math.floor(v / 60)}:${String(v % 60).padStart(2, '0')}`; };
+const lenOf = (r: SongRow) => Math.max(0, (r.end_at || r.duration) - (r.start_at || 0));
+
+/** 進度條：這首歌的播放範圍（後台剪掉的前奏尾奏不算），拖的時候畫拖到的位置。 */
+function drawSeek() {
+  const row = $('ui-seek');
+  const on = !!cur && !silent;
+  row.classList.toggle('off', !on);
+  if (!on) return;
+  const a = cur!.startAt, b = cur!.endAt, x = drag ?? t;
+  const p = Math.max(0, Math.min(1, (x - a) / Math.max(0.1, b - a)));
+  $('ui-fill').style.width = `${p * 100}%`;
+  $('ui-knob').style.left = `${p * 100}%`;
+  $('ui-t').textContent = mmss(x);
+  $('ui-dur').textContent = mmss(b);
+}
+
+/** 歌單面板：現在播放、下一首、之後一整輪的待播清單（就是真的會播的順序）。 */
+function renderQueue() {
+  $('q-shuffle').textContent = shuffle ? '隨機播放：開' : '隨機播放：關';
+  $('q-shuffle').classList.toggle('on', shuffle);
+  $('q-reshuffle').hidden = !shuffle;
+  const nowRow = cur && !silent ? cur.row : null;
+  $('q-now').innerHTML = nowRow
+    ? `<small>現在播放${order[pos]?.ins ? '（插播）' : ''}</small><b>${esc(nowRow.title)}</b><span>${esc(nowRow.artist)}</span>`
+    : `<small>現在播放</small><b>${silent ? '歌單是空的：先無聲播放留言' : '—'}</b>`;
+  if (!playlist.length || silent) { $('q-list').innerHTML = ''; return; }
+  ensureAhead();
+  // 一整輪（不含又輪回現在這首）加上插播的
+  const count = insertsAhead() + Math.max(1, playlist.length - 1);
+  $('q-list').innerHTML = order.slice(pos + 1, pos + 1 + count).map((e, k) => {
+    const r = rowById(e.id);
+    if (!r) return '';
+    const j = pos + 1 + k, data = `data-j="${j}" data-id="${e.id}"`;
+    return `<li class="${k === 0 ? 'next' : ''}${e.ins ? ' ins' : ''}">`
+      + `<span class="q-no">${k === 0 ? '下一首' : k + 1}</span>`
+      + `<span class="q-main"><b>${esc(r.title)}</b><small>${[r.artist && esc(r.artist), lenOf(r) > 0 && mmss(lenOf(r)), e.ins && '插播'].filter(Boolean).join(' · ') || '&nbsp;'}</small></span>`
+      + `<span class="q-acts"><button type="button" data-act="now" ${data} title="馬上切過去，播完照原本的順序">現在播</button>`
+      + (e.ins ? `<button type="button" data-act="cancel" ${data}>取消插播</button>`
+        : k > 0 ? `<button type="button" data-act="ins" ${data} title="排在下一首（已經有插播的話排在它們後面），播完回到原本的順序">插播</button>` : '')
+      + `</span></li>`;
+  }).join('');
+}
+function toggleQueue(on = !showQueue) {
+  showQueue = on;
+  saveNum('wall_queue', on ? 1 : 0);
+  queueEl.classList.toggle('show', on && ui.classList.contains('show'));
 }
 function setStatus(s: string, ok = true) { statusLine.text = s; statusLine.ok = ok; updateUi(); const g = document.getElementById('gate-status'); if (g) g.textContent = s; }
 function updateUi() {
   const info = cur?.runtime.info;
   $('ui-song').textContent = silent ? '（歌單是空的：先無聲播放留言）' : info ? `${info.index}/${info.count}　${info.title}${info.artist ? ' — ' + info.artist : ''}` : '—';
-  const nx = playlist.length && cur ? playlist[(indexOfSong(cur.row.id) + 1) % playlist.length] : null;
-  $('ui-next').textContent = nx ? `下一首：${nx.title}` : '';
+  const nx = playlist.length && cur && !silent ? order[pos + 1] : undefined;
+  const nxRow = nx ? rowById(nx.id) : undefined;
+  $('ui-next').textContent = nxRow ? `下一首：${nxRow.title}${nx!.ins ? '（插播）' : ''}` : '';
   $('ui-vol').textContent = `${Math.round(player.volume * 100)}%`;
   $('ui-sync').textContent = `${player.offsetMs > 0 ? '+' : ''}${player.offsetMs} ms`;
   $('ui-play').textContent = playing ? '暫停' : '播放';
   $('ui-status').textContent = `留言 ${pool.count} 則　${statusLine.text}`;
   $('ui-status').classList.toggle('bad', !statusLine.ok);
+  $('ui-queue-btn').classList.toggle('on', showQueue);
+  renderQueue();
+  drawSeek();
 }
 function bindUi() {
   const on = (id: string, fn: () => void) => $(id).addEventListener('click', (e) => { e.stopPropagation(); fn(); updateUi(); });
@@ -302,6 +525,67 @@ function bindUi() {
   on('ui-sync-down', () => setSync(player.offsetMs - 20));
   on('ui-sync-up', () => setSync(player.offsetMs + 20));
   on('ui-full', () => toggleFull());
+  on('ui-queue-btn', () => toggleQueue());
+  for (const el of [ui, queueEl]) {
+    el.addEventListener('pointerenter', () => { hovering = true; });
+    el.addEventListener('pointerleave', () => { hovering = false; });
+  }
+  // 進度條：按下去就開始拖，拖的時候只畫位置，放開才真的跳過去（一路跳的話畫面會一直重排）
+  const bar = $('ui-bar'), tip = $('ui-tip');
+  const timeAt = (ev: PointerEvent) => {
+    const r = bar.getBoundingClientRect(), p = Math.max(0, Math.min(1, (ev.clientX - r.left) / r.width));
+    return cur ? cur.startAt + p * (cur.endAt - cur.startAt) : 0;
+  };
+  const showTip = (ev: PointerEvent) => {
+    if (!cur || silent) return;
+    const r = bar.getBoundingClientRect();
+    tip.hidden = false;
+    tip.style.left = `${Math.max(0, Math.min(r.width, ev.clientX - r.left))}px`;
+    tip.textContent = mmss(drag ?? timeAt(ev));
+  };
+  bar.addEventListener('pointerdown', (ev) => {
+    if (!cur || silent) return;
+    ev.preventDefault();
+    bar.setPointerCapture(ev.pointerId);
+    drag = timeAt(ev);
+    bar.classList.add('drag');
+    showTip(ev); drawSeek();
+  });
+  bar.addEventListener('pointermove', (ev) => {
+    if (drag !== null) { drag = timeAt(ev); drawSeek(); showUi(); }
+    showTip(ev);
+  });
+  const endDrag = (ev: PointerEvent, go: boolean) => {
+    if (drag === null) return;
+    const to = timeAt(ev);
+    drag = null;
+    bar.classList.remove('drag');
+    if (go) seekTo(to);
+    drawSeek();
+  };
+  bar.addEventListener('pointerup', (ev) => endDrag(ev, true));
+  bar.addEventListener('pointercancel', (ev) => endDrag(ev, false));
+  bar.addEventListener('pointerleave', () => { if (drag === null) tip.hidden = true; });
+  // 歌單面板的按鈕；清單是照當下的順序畫的，按的時候確認那個位置還是同一首（中間剛好換歌就找它的新位置）
+  queueEl.addEventListener('click', (ev) => {
+    const b = (ev.target as HTMLElement).closest('button');
+    if (!b) return;
+    ev.stopPropagation();
+    if (b.id === 'q-shuffle') setShuffle(!shuffle);
+    else if (b.id === 'q-reshuffle') { rebuildAhead(); refreshNext(); }
+    else if (b.id === 'q-close') toggleQueue(false);
+    else if (!switching) {
+      let j = Number(b.dataset.j);
+      const id = Number(b.dataset.id);
+      if (order[j]?.id !== id) j = order.findIndex((e, i) => i > pos && e.id === id);
+      if (j > pos) {
+        if (b.dataset.act === 'now') void playNow(j);
+        else if (b.dataset.act === 'ins') insertAt(j);
+        else if (b.dataset.act === 'cancel') cancelInsert(j);
+      }
+    }
+    updateUi(); showUi();
+  });
   on('ui-quality', () => { const s = Q.get('scale') === '0.75' ? '1' : '0.75'; Q.set('scale', s); location.search = Q.toString(); });
   $('ui-quality').textContent = Q.get('scale') === '0.75' ? '畫質：省電' : '畫質：高';
   window.addEventListener('mousemove', showUi);
@@ -310,6 +594,7 @@ function bindUi() {
     const k = ev.key;
     if (k === ' ') { ev.preventDefault(); togglePlay(); }
     else if (PREVIEW && (k === 'ArrowRight' || k === 'ArrowLeft')) setPreview(previewIdx + (k === 'ArrowRight' ? 1 : -1));
+    else if (ev.shiftKey && !DEV && (k === 'ArrowRight' || k === 'ArrowLeft')) seekTo(t + (k === 'ArrowRight' ? 10 : -10));
     else if (k === 'ArrowRight' && !DEV) void nextSong();
     else if (k === 'ArrowLeft' && !DEV) void prevSong();
     else if (k === 'ArrowUp') setVolume(player.volume + 0.1);
@@ -318,6 +603,7 @@ function bindUi() {
     else if (k === '[') setSync(player.offsetMs - 20);
     else if (k === ']') setSync(player.offsetMs + 20);
     else if (k === 'd' || k === 'D') debugEl.hidden = !debugEl.hidden;
+    else if (k === 'l' || k === 'L') toggleQueue();
     else if (DEV && (k === 'ArrowRight' || k === 'ArrowLeft')) { const dt = (k === 'ArrowRight' ? 1 : -1) * (ev.shiftKey ? 15 : 5); player.el.currentTime = Math.max(0, player.el.currentTime + dt); engine.drop(0); engine.setSong(engine.song); director.startSong(engine.song, Math.max(0, t + dt)); }
     else if (DEV && (k === 'n' || k === 'N')) void nextSong();
     else return;
@@ -474,7 +760,7 @@ function showLogin(msg = '') {
 function showStart() {
   gate.innerHTML = `<div class="gate-card">
     <p class="gate-eyebrow">ALAN &amp; OMENA · 2027.03.13</p><h1>大螢幕準備好了</h1>
-    <p class="gate-sub">按「開始播放」後會進入全螢幕。滑鼠移動會出現操作列：上一首／下一首、音量、音畫同步。<br/>空白鍵暫停、F 全螢幕、↑↓ 音量、[ ] 音畫同步。</p>
+    <p class="gate-sub">按「開始播放」後會進入全螢幕。滑鼠移動會出現操作列：進度條（可以拖拉）、上一首／下一首、歌單（插播、隨機播放）、音量、音畫同步。<br/>空白鍵暫停、F 全螢幕、Shift＋← → 倒退／快轉 10 秒、L 歌單、↑↓ 音量、[ ] 音畫同步。</p>
     <button id="go" type="button">開始播放</button><p id="gate-status" class="gate-status">${statusLine.text}</p></div>`;
   $('go').addEventListener('click', async () => {
     gate.hidden = true;
@@ -515,7 +801,12 @@ async function boot() {
   if (PREVIEW) setupPreview();
   // ?song=歌的 id：從那一首開始播（後台「在大螢幕試播」用）
   const want = Number(Q.get('song'));
-  if (playlist.length) { setStatus(`歌單 ${playlist.length} 首，準備第一首…`); await playIndex(want ? Math.max(0, indexOfSong(want)) : 0); setStatus('準備好了'); }
+  if (playlist.length) {
+    setStatus(`歌單 ${playlist.length} 首，準備第一首…`);
+    initOrder(want || undefined);
+    await transition(async () => { pos = 0; await playPos(); });
+    setStatus('準備好了');
+  }
   else startSilent();
   showStart();
   requestAnimationFrame(tick);
