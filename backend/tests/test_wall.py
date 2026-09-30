@@ -206,17 +206,21 @@ def test_songs(setup, monkeypatch):
     p = r.json()
     assert p["title"] == "新歌名" and p["enabled"] is False and p["lyrics_lrc"] == lrc and p["lyrics_source"] == "manual" and p["lyrics_offset"] == -0.5 and p["instrumental"] is True
     assert p["artist"] == ""  # 沒送的欄位不動
+    # 中文翻譯（韓文歌）：預設空的，存了拿得回來
+    assert p["lyrics_trans"] == ""
+    trans = "[00:01.00]<00:01.00>我 <00:01.50>愛 <00:02.00>你\n[00:03.00]永遠"
+    assert c.patch(f"/api/planner/wall/songs/{a['id']}", json={"lyrics_trans": trans}, headers=COUPLE).json()["lyrics_trans"] == trans
     # 「歌詞對好了」標記：預設沒標，可以標、可以取消，改其他欄位不會動到它
     assert p["lyrics_done"] is False
     assert c.patch(f"/api/planner/wall/songs/{a['id']}", json={"lyrics_done": True}, headers=COUPLE).json()["lyrics_done"] is True
     assert c.patch(f"/api/planner/wall/songs/{a['id']}", json={"lyrics_lrc": lrc}, headers=COUPLE).json()["lyrics_done"] is True
     assert c.patch(f"/api/planner/wall/songs/{a['id']}", json={"lyrics_done": "yes"}, headers=COUPLE).status_code == 422
     # 對好了就鎖起來：歌詞、偏移、純音樂、來源都不能改（送一樣的值可以），歌名等其他欄位照常能改
-    for change in ({"lyrics_lrc": "[00:01.00]改掉"}, {"lyrics_offset": 0.3}, {"instrumental": False}, {"lyrics_source": "lrclib"}):
+    for change in ({"lyrics_lrc": "[00:01.00]改掉"}, {"lyrics_trans": "[00:01.00]改掉"}, {"lyrics_offset": 0.3}, {"instrumental": False}, {"lyrics_source": "lrclib"}):
         r = c.patch(f"/api/planner/wall/songs/{a['id']}", json=change, headers=COUPLE)
         assert r.status_code == 409 and "對好了" in r.json()["detail"], change
     assert c.patch(f"/api/planner/wall/songs/{a['id']}", json={"lyrics_done": True, "lyrics_lrc": "[00:01.00]改掉"}, headers=COUPLE).status_code == 409
-    same = {"lyrics_lrc": lrc, "lyrics_offset": -0.5, "instrumental": True, "lyrics_source": "manual", "title": "還是新歌名"}
+    same = {"lyrics_lrc": lrc, "lyrics_trans": trans, "lyrics_offset": -0.5, "instrumental": True, "lyrics_source": "manual", "title": "還是新歌名"}
     r = c.patch(f"/api/planner/wall/songs/{a['id']}", json=same, headers=COUPLE)
     assert r.status_code == 200 and r.json()["title"] == "還是新歌名" and r.json()["lyrics_lrc"] == lrc
     # 同一個請求裡取消「對好了」就能改；之後就不再鎖
@@ -236,6 +240,7 @@ def test_songs(setup, monkeypatch):
     assert c.patch(f"/api/planner/wall/songs/{a['id']}", json={"enabled": "yes"}, headers=COUPLE).status_code == 422
     assert c.patch(f"/api/planner/wall/songs/{a['id']}", json={"lyrics_offset": "1"}, headers=COUPLE).status_code == 422
     assert c.patch(f"/api/planner/wall/songs/{a['id']}", json={"lyrics_lrc": "x" * 200_001}, headers=COUPLE).status_code == 400
+    assert c.patch(f"/api/planner/wall/songs/{a['id']}", json={"lyrics_trans": "x" * 200_001}, headers=COUPLE).status_code == 400
     assert c.patch("/api/planner/wall/songs/9999", json={"title": "x"}, headers=COUPLE).status_code == 404
     # 分析：存了拿得回來，列表標 has_analysis，版本號變
     assert c.get(f"/api/planner/wall/songs/{a['id']}/analysis", headers=COUPLE).status_code == 404

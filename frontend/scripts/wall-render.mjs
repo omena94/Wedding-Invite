@@ -7,6 +7,8 @@
 //   node scripts/wall-render.mjs sheet  --scene slam --from 20 --to 32 --n 12 --cols 4 --out ../wall-out/slam.png
 //   node scripts/wall-render.mjs perf   --scene stars --from 20 [--n 180]
 //   node scripts/wall-render.mjs timeline [--song x.mp3]      （印出導演排出來的時間軸）
+//   node scripts/wall-render.mjs ko --scene a,b,c              （韓文歌原文副行驗收，每個版面一張 wall-out/ko/<版面>.jpg）
+//   stills／sheet 加 --ko：用韓文佔位歌詞＋中文翻譯（中文大字、韓文原文小字在下面）。
 //   不給 --scene：讓導演排整首歌（跟現場一樣）。
 //
 // 測試音檔：環境變數 WALL_DEV_AUDIO_DIR 指到一個放 mp3（可附同名 .lrc）的資料夾；沒有的話用無聲的假節拍。
@@ -61,11 +63,13 @@ try {
   const cacheFile = song ? path.join(CACHE, `${song.replace(/[^\w.-]+/g, '_')}.json`) : '';
   const analysis = cacheFile && existsSync(cacheFile) ? JSON.parse(readFileSync(cacheFile, 'utf8')) : null;
   const setup = {
-    song, scene: opt('scene'), message: opt('message') ? Number(opt('message')) : undefined,
+    song, scene: mode === 'ko' ? opt('scene')?.split(',')[0] : opt('scene'), message: opt('message') ? Number(opt('message')) : undefined,
     params: opt('params') ? JSON.parse(opt('params')) : undefined, theme: opt('theme'), analysis,
     from: opt('win-from') ? Number(opt('win-from')) : undefined, to: opt('win-to') ? Number(opt('win-to')) : undefined,
     // --no-lyrics：當成純音樂（沒有歌詞）測試
     ...(argv.includes('--no-lyrics') ? { lrc: '' } : {}),
+    // --ko：韓文佔位歌詞＋中文翻譯（測原文副行）
+    ...(argv.includes('--ko') ? { ko: true } : {}),
   };
   const info = await page.evaluate((o) => window.__wall.setup(o), setup);
   // 先寫暫存檔再改名：同時有別人在讀也不會讀到寫一半的檔
@@ -253,6 +257,59 @@ try {
     const total = [...self.values()].reduce((a, b) => a + b, 0);
     console.log(`平均每格 ${ms.toFixed(2)} ms；CPU 取樣前 25 名（self time）：`);
     for (const [k, v] of [...self].sort((a, b) => b[1] - a[1]).slice(0, 25)) console.log(`${(100 * v / total).toFixed(1).padStart(5)}%  ${k}`);
+  } else if (mode === 'ko') {
+    // 韓文歌驗收（2026-09-30）：中文主行＋韓文原文副行。每個版面 6 格（一格 960×540，副行的字才看得清楚）拼成
+    // wall-out/ko/<版面>.jpg：快歌沒留言 3 格、慢歌沒留言 2 格、有主打留言 1 格（有留言時副行要收起來、只剩中文）。
+    // 時間點挑「有副行的句子唱到一半」。--scene 可以給好幾個（逗號分隔），同一個瀏覽器一次跑完。
+    const FAST = 'Test Band - Fast Pop.mp3', SLOW = 'Test Band - Slow Ballad.mp3';
+    if (!songs.includes(FAST) || !songs.includes(SLOW)) throw new Error(`ko 需要標準測試音檔（${FAST}、${SLOW}）`);
+    const outDir = path.resolve(opt('out', path.join(ROOT, '..', 'wall-out', 'ko')));
+    mkdirSync(outDir, { recursive: true });
+    const analyses = {};
+    for (const scene of (opt('scene') ?? '').split(',').filter(Boolean)) {
+      const cases = [
+        { label: '快歌・沒留言', song: FAST, params: { message: null }, theme: 'gold', from: 20, to: 36.4, pick: 3 },
+        { label: '慢歌・沒留言', song: SLOW, params: { message: null }, theme: 'rose', from: 20, to: 40, pick: 2 },
+        { label: '有留言（副行收起來）', song: FAST, message: 3, theme: 'champagne', from: 20, to: 36.4, pick: 1 },
+      ];
+      const TW = 960, TH = 540, LH = 30;
+      await page.evaluate(([TW, TH, LH]) => {
+        const cv = new OffscreenCanvas(TW * 2, 3 * (TH + LH));
+        const c = cv.getContext('2d');
+        c.fillStyle = '#111'; c.fillRect(0, 0, cv.width, cv.height);
+        window.__ko = { cv, c };
+      }, [TW, TH, LH]);
+      let cell = 0;
+      const shots = [];
+      for (const cs of cases) {
+        const cf = path.join(CACHE, `${cs.song.replace(/[^\w.-]+/g, '_')}.json`);
+        analyses[cs.song] ??= existsSync(cf) ? JSON.parse(readFileSync(cf, 'utf8')) : null;
+        const inf = await page.evaluate((o) => window.__wall.setup(o), { song: cs.song, scene, message: cs.message, params: cs.params, theme: cs.theme, analysis: analyses[cs.song], from: cs.from, to: cs.to, ko: true });
+        analyses[cs.song] ??= inf.analysis;
+        // 窗格裡有副行的句子，平均挑 pick 句，取唱到 55% 的時間點
+        const cand = inf.spans.filter(([a, b, s]) => s && a > cs.from + 1 && b < cs.to - 0.3);
+        const picks = cs.pick === 1 ? [cand[Math.floor(cand.length / 2)]] : Array.from({ length: cs.pick }, (_, i) => cand[Math.round((i * (cand.length - 1)) / Math.max(1, cs.pick - 1))]);
+        for (const sp of picks.filter(Boolean)) {
+          const t = sp[0] + (sp[1] - sp[0]) * 0.55;
+          await page.evaluate((tt) => window.__wall.still(tt), t);
+          await page.evaluate(([i, label, TW, TH, LH]) => {
+            const k = window.__ko, x = (i % 2) * TW, y = Math.floor(i / 2) * (TH + LH);
+            k.c.fillStyle = '#e8e0d0'; k.c.font = '600 18px sans-serif'; k.c.fillText(label, x + 8, y + 21);
+            k.c.drawImage(document.getElementById('c'), x, y + LH, TW, TH);
+          }, [cell++, `${cs.label}  ${t.toFixed(2)}s`, TW, TH, LH]);
+          shots.push(t);
+        }
+      }
+      const b64 = await page.evaluate(async () => {
+        const bl = new Uint8Array(await (await window.__ko.cv.convertToBlob({ type: 'image/jpeg', quality: 0.9 })).arrayBuffer());
+        let s = ''; for (let i = 0; i < bl.length; i += 0x8000) s += String.fromCharCode(...bl.subarray(i, i + 0x8000));
+        return btoa(s);
+      });
+      const f = path.join(outDir, `${scene}.jpg`);
+      writeFileSync(f, Buffer.from(b64, 'base64'));
+      const errs = await page.evaluate(() => window.__wall.errors);
+      console.log(`${f}  （${shots.length} 格${errs.length ? `，錯誤 ${errs.length} 個` : ''}）`);
+    }
   } else if (mode === 'perf') {
     const ms = await page.evaluate(([f, n]) => window.__wall.perf(f, n), [Number(opt('from', '5')), Number(opt('n', '180'))]);
     console.log(`平均每格 ${ms.toFixed(2)} ms（約 ${(1000 / ms).toFixed(0)} fps，含 GPU 同步）`);

@@ -588,6 +588,9 @@ class WallSong(Base):
     instrumental: Mapped[bool] = mapped_column(Boolean, default=False)
     # 新人自己標「這首歌詞對好了」（2026-09-30）：歌單上才分得出哪些還要修；只是標記，不影響大螢幕播放
     lyrics_done: Mapped[bool] = mapped_column(Boolean, default=False)
+    # 中文翻譯（2026-09-30，韓文歌）：另一份 LRC，照順序一句對一句配到原文；大螢幕中文大字、原文小字放在下面。
+    # 時間一律跟原文走（原文改時間翻譯自動跟著），這份的時間只拿來在句數對不上時找最接近的句子。
+    lyrics_trans: Mapped[str] = mapped_column(Text, default="")
     theme: Mapped[str] = mapped_column(String(20), default="")          # 大螢幕配色；空 = 自動挑（gold / rose / champagne / coral / lilac / sage）
     # 只播中間一段（秒）：前奏、尾奏太長時剪掉；0 = 從頭／播到完
     start_at: Mapped[float] = mapped_column(Float, default=0)

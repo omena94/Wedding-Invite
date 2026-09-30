@@ -122,7 +122,7 @@ import { clamp, lerp, ease, TAU } from '../engine/util';
 import { Lyrics, type Line } from '../engine/lyrics';
 import { font, F } from '../engine/type';
 import type { FitResult } from '../engine/text';
-import { layoutMessage, drawMessage, signature } from './_motifs';
+import { layoutMessage, drawMessage, signature, lyricSubOf, subSizeFor, subGap } from './_motifs';
 import { FSPass } from '../engine/gl';
 import { shared } from '../engine/scene';
 
@@ -3696,5 +3696,17 @@ export function lyricOnPath(c: Ctx, line: Line, t: number, path: readonly Pt[], 
     }
   });
   c.restore();
+  // 原文副行（韓文歌）：沿同一條曲線、在主行最後一排下面，字小一號、比較安靜（正在唱不用訊號色）
+  const sub = lyricSubOf(line);
+  if (sub) {
+    const ss = subSizeFor(size);
+    const sung = st.sung ?? rgba('bone', 0.96);
+    const r = lyricOnPath(c, sub, t, path, {
+      ...st, size: ss, minSize: Math.min(ss, 26), tracking: (st.tracking ?? 0) * 0.5,
+      offset: off - (rows.length - 1) * size * gap - subGap(size, ss), active: sung, sung, alpha: (st.alpha ?? 1) * 0.85,
+    });
+    const [bx, by, bw, bh] = r.box;
+    if (bw > 0) { x0 = Math.min(x0, bx); y0 = Math.min(y0, by); x1 = Math.max(x1, bx + bw); y1 = Math.max(y1, by + bh); }
+  }
   return { head, box: [x0, y0, Math.max(0, x1 - x0), Math.max(0, y1 - y0)] };
 }

@@ -10,7 +10,7 @@
 //  - 正式播放時場景壞掉不能畫紅色：只在 debug（開發模式）畫紅色，平常畫底色並跳過。
 import * as THREE from 'three';
 import { AudioData } from './audio';
-import { Lyrics } from './lyrics';
+import { Lyrics, lyricSub } from './lyrics';
 import { Compositor, FSPass, W, H, PW, PH, SS_TAP, makeRT, clearRT } from './gl';
 import { DEFAULT_POST, Post, type PostParams } from './post';
 import { Hud } from './hud';
@@ -167,6 +167,8 @@ export class Engine {
           renderer: this.renderer, audio: this.song.audio, lyrics: this.song.lyrics, comp: this.comp, W, H,
           id: e.id, params: e.params, start: e.start, end: e.end, song: this.song.info, live: this.live,
         };
+        // 有主打留言的窗格不畫韓文副行（lyrics.ts 的 lyricSub）；init 同步排版的部分也照這個窗格的設定
+        lyricSub.on = !e.params?.message;
         const s = new cls(ctx);
         await s.init();
         // 等待期間已經換歌或被拿掉了：直接丟
@@ -269,6 +271,8 @@ export class Engine {
       const tin = prev ? Math.min(1, (t - e.start) / Math.max(1e-3, prev.end - e.start)) : 1;
       const tout = next ? Math.max(0, (t - next.start) / Math.max(1e-3, e.end - next.start)) : 0;
       const s = rec.scene!;
+      // 韓文副行：這個窗格有主打留言就收起來（轉場時兩個窗格各自設）
+      lyricSub.on = !e.params?.message;
       // (sub-frames of one frame may step back within its shutter: not a seek)
       const sceneSeeked = seeked || rec.lastT < 0 || Math.abs(t - rec.lastT) > 0.25;
       if (s.stateful && sceneSeeked) {

@@ -7,6 +7,10 @@
 //  - 每個字的開始吸到最近的十六分音符格（流行歌的旋律幾乎都在拍子格上），看起來才會「跟著唱」。
 // 有加強版逐字時間（<mm:ss.xx>）的行就直接用，不推估；可以每個字標，也可以一段標一次（段內平均分）。
 // 沒標的行照舊推估，所以一首歌只要修唱不準的那幾行。
+//
+// 中文翻譯（韓文歌，2026-09-30）：另一份 LRC，照順序一句對一句配到原文（句數不同時找開始時間最接近的）。
+// 配到的行：主行換成中文、原文掛在 sub。時間一律跟原文走——中文那句也有 <時間> 分段、段數跟原文一樣時，
+// 中文第 k 段跟原文第 k 段同時亮；不然中文照原文這句「唱到幾成」等比例亮。原文改時間，中文自動跟著。
 import type { AudioData } from '../engine/audio';
 import { Lyrics, type LyricsJSON } from '../engine/lyrics';
 import { parseLrc, type LrcLine } from './lrc';
@@ -60,21 +64,114 @@ function snap16(au: AudioData, t: number): number {
  * 解析 LRC、推估逐字時間，回傳 Lyrics。`offset`：整首平移（秒，正數＝延後），後台的「整首提早／延後」。
  * 沒有時間的歌詞（還沒對時）回傳空的 Lyrics：大螢幕不顯示沒對好的歌詞，比顯示錯的好。
  */
-export function buildLyrics(src: string, au: AudioData, offset = 0): Lyrics {
+export function buildLyrics(src: string, au: AudioData, offset = 0, trans = ''): Lyrics {
   const doc = parseLrc(src);
   const lines = doc.lines.filter((l) => !Number.isNaN(l.t)).map((l) => ({ ...l, t: l.t + offset, words: l.words?.map((w) => ({ ...w, t: w.t + offset })) }));
   if (!lines.length) return Lyrics.empty();
   const out: LyricsJSON['lines'] = [];
+  const kept: LrcLine[] = []; // 跟 out 一一對應的原文行（配翻譯用）
   for (let i = 0; i < lines.length; i++) {
     const l = lines[i]!;
-    const text = l.words?.length ? l.words.map((w) => w.w).join('').replace(/\s+/g, ' ').trim() : l.text;
+    const text = lineText(l);
     if (!text || !LETTER.test(text)) continue;
     const next = lines.slice(i + 1).find((x) => x.t > l.t + 0.05)?.t ?? au.duration;
     const words = l.words?.some((w) => w.w.trim()) ? fromTags(l, next, au) : estimate(text, l.t, next, au);
     if (!words.length) continue;
     out.push({ text, start: words[0]!.start, end: words[words.length - 1]!.end, words });
+    kept.push(l);
   }
+  if (trans.trim()) attachTrans(out, kept, trans, offset);
   return new Lyrics({ lines: out });
+}
+
+const lineText = (l: LrcLine) => (l.words?.length ? l.words.map((w) => w.w).join('').replace(/\s+/g, ' ').trim() : l.text);
+const same = (a: string, b: string) => a.toLowerCase().replace(/[^\p{L}\p{N}]/gu, '') === b.toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
+
+/**
+ * 翻譯的每一行配到哪一句原文（回傳跟 orig 一樣長，配不到是 null）。
+ * 句數一樣就照順序一句對一句（原文之後改時間、提早延後都不會配錯）；不一樣就找開始時間最接近的（1.5 秒內）。
+ * 兩邊的時間都是 LRC 上寫的（各自扣掉自己的 [offset:]），跟整首的提早／延後無關。
+ */
+export function pairTrans(orig: LrcLine[], trans: string): (LrcLine | null)[] {
+  const tr = parseLrc(trans).lines.filter((l) => !Number.isNaN(l.t) && LETTER.test(lineText(l)));
+  if (tr.length === orig.length) return tr;
+  return orig.map((o) => {
+    let best: LrcLine | null = null;
+    for (const l of tr) if (Math.abs(l.t - o.t) <= 1.5 && (!best || Math.abs(l.t - o.t) < Math.abs(best.t - o.t))) best = l;
+    return best;
+  });
+}
+
+type WordJSON = LyricsJSON['lines'][number]['words'][number];
+
+/** 把翻譯掛上去：配到的行主行換成中文、原文變 sub。兩行一樣（「Ah-ah, mine」）就不掛，照原文顯示一行。 */
+function attachTrans(out: LyricsJSON['lines'], orig: LrcLine[], trans: string, offset: number) {
+  const pairs = pairTrans(orig.map((l) => ({ ...l, t: l.t - offset })), trans);
+  out.forEach((line, i) => {
+    const tr = pairs[i];
+    const text = tr && lineText(tr);
+    if (!tr || !text || same(text, line.text)) return;
+    const words = segmentsMatch(orig[i]!, tr) ? bySegments(orig[i]!, tr, line.words) : byProgress(text, line.words);
+    if (!words.length) return;
+    out[i] = {
+      text, words,
+      start: Math.min(words[0]!.start, line.start), end: Math.max(words[words.length - 1]!.end, line.end),
+      sub: line,
+    };
+  });
+}
+
+/** 兩邊都有 <時間> 分段、而且段數一樣（連空白段、結尾標記都算）：中文第 k 段就跟原文第 k 段一起唱。 */
+const segmentsMatch = (o: LrcLine, tr: LrcLine) => !!o.words?.length && !!tr.words?.length && o.words.length === tr.words.length;
+
+/** 中文第 k 段的時間 = 原文第 k 段開始到第 k+1 段開始（最後一段到原文最後一個字唱完），段內照音節平均分。 */
+function bySegments(o: LrcLine, tr: LrcLine, ko: WordJSON[]): WordJSON[] {
+  const koEnd = ko[ko.length - 1]!.end;
+  // 原文的段落時間照 fromTags 的規則往後推（手打倒退的時間不讓字倒著亮）
+  const bounds: number[] = [];
+  let floor = -Infinity;
+  for (const w of o.words!) { floor = Math.max(w.t, floor); bounds.push(floor); }
+  const res: WordJSON[] = [];
+  tr.words!.forEach((seg, k) => {
+    const units = lyricUnits(seg.w).filter((u) => u.w.trim());
+    if (!units.length) return;
+    const start = Math.min(bounds[k]!, koEnd), end = Math.max(start + 0.05, Math.min(bounds[k + 1] ?? koEnd, koEnd));
+    const total = units.reduce((s, u) => s + Math.max(1, u.syl), 0);
+    let acc = 0;
+    for (const u of units) {
+      const t0 = start + ((end - start) * acc) / total;
+      acc += Math.max(1, u.syl);
+      res.push({ w: u.w, start: t0, end: start + ((end - start) * acc) / total });
+    }
+  });
+  return res;
+}
+
+/**
+ * 段落對不上時：中文照原文這句「唱到幾成」等比例亮（原文唱第幾個音節，中文就亮到整句的幾成），
+ * 原文中間停頓時中文也停，兩行同時開始、同時唱完。
+ */
+function byProgress(text: string, ko: WordJSON[]): WordJSON[] {
+  const kw = ko.map((w) => Math.max(1, lyricUnits(w.w).reduce((s, u) => s + u.syl, 0)));
+  const kTotal = kw.reduce((a, b) => a + b, 0);
+  const cum = [0];
+  for (const w of kw) cum.push(cum[cum.length - 1]! + w);
+  // 唱到整句的 p（0..1）是幾秒；atEnd：剛好在兩個字的交界時算前一個字唱完（不然會跳到下一個字的開始、把停頓吃掉）
+  const timeAt = (p: number, atEnd: boolean) => {
+    const x = p * kTotal;
+    for (let j = 0; j < ko.length; j++) {
+      if (atEnd ? x <= cum[j + 1]! + 1e-9 : x < cum[j + 1]! - 1e-9) return ko[j]!.start + ((x - cum[j]!) / kw[j]!) * (ko[j]!.end - ko[j]!.start);
+    }
+    return ko[ko.length - 1]!.end;
+  };
+  const units = lyricUnits(text).filter((u) => u.w.trim());
+  const total = units.reduce((s, u) => s + Math.max(1, u.syl), 0) || 1;
+  let acc = 0;
+  return units.map((u) => {
+    const a = acc / total;
+    acc += Math.max(1, u.syl);
+    return { w: u.w, start: timeAt(a, false), end: timeAt(acc / total, true) };
+  });
 }
 
 /**

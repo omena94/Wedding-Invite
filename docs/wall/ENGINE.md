@@ -54,6 +54,21 @@
   中文一個字一個 Word、英文一個單字一個 Word。**不要用內容找歌詞**（歌每首不一樣）：用時間找——
   `lyricAt(lyrics, t)`（`scenes/_motifs.ts`，回傳這一格該顯示的行與進出場係數）、`lyrics.lineAt(t)`、`lyrics.nextLine(t)`、`lyrics.linesIn(t0, t1)`、
   `Lyrics.wordProgress(word, t)`、`Lyrics.lineCharProgress(line, t)`。有些歌是純音樂（`lyrics.has === false`），版面要撐得住。
+- **原文副行（韓文歌，2026-09-30 新人要求）**：後台可以替一首歌貼「中文翻譯」LRC。有翻譯的行，`line.text／words` 是**中文**
+  （時間照原文唱的進度），原文掛在 **`line.sub`**（也是一個 `Line`，逐字時間是原文自己的）。畫面規則：
+  - 中文是主角，樣式、位置、特效照舊；**原文在中文正下方**，同字族、同對齊、同寬，字級 `subSizeFor(主行字級)`（0.6 倍，32～56 px），
+    基線離主行最後一排基線 `subGap(主行字級)`。比較安靜：唱到、唱完都用「唱完」的顏色（不用訊號色）、再淡兩成；還沒唱的跟主行一樣三成。
+  - **有主打留言的窗格不畫原文**（留言是焦點，歌詞已經縮小，原文再縮會看不清楚）：引擎每個窗格設好開關，
+    一律用 **`lyricSubOf(line)`** 拿原文（收起來或沒有翻譯時是 `null`），不要直接讀 `line.sub`。
+  - `drawLyric`／`layoutLyric`（`_motifs.ts`）與 `lyricOnPath`（`_couple.ts`）**自動**畫原文：`layoutLyric` 的 `height` 算到原文最後一排的基線，
+    所以照 `height` 置中或貼底的版面，原文自動在框裡。`lay.rows`／`lay.words` 只有中文，原文在 `lay.sub = { lay, dy }`。
+  - 自己畫歌詞的版面：`const sub = lyricSubOf(line)`，有的話 translate 到「主行最後一排基線 + `subGap(主行字級)`」，
+    呼叫 `drawLyricSub(c, sub, t, 主行樣式, 主行字級, alpha)`；或照同樣的規則自己畫（寫在同一個物件上、跟著同樣的透視與材質）。
+    固定大小的框（燈牌、螢幕、翻牌格子）要替原文留位置：有原文時縮主行或加一排，不能爆框、不能被裁掉。
+  - 一次顯示好幾句的版面（歌詞本、捲動的清單）：至少正在唱的那句要有原文；其他句放不下就不放。
+  - 兩行一樣的句子（「Ah-ah, mine」）不會有 `sub`，只顯示一行。
+  - 檢查：`node scripts/wall-render.mjs ko --scene <名字>`（可以逗號分隔好幾個）→ `wall-out/ko/<名字>.jpg`，一格 960×540；
+    全尺寸看 `stills --ko --params '{"message":null}' ...`。韓文佔位歌詞在 `dev/fixtures.ts` 的 `dummyKoLrc`（自己寫的句子）。
 - `ctx.audio`（`engine/audio.ts`）：`beats[]`、`downbeats[]`、`sections[]`（多了 `energy` 0..1）、`beatAt(t)`、`barAt(t)`、`timeOfBeat(i)`、`timeOfBar(i)`、
   `beatPeriod(t)`、`nextBeat(t)`、`nextDownbeat(t)`、`energyAt(t)`、`env(name, t)`（`rms|low|mid|high|vocal|drums|bass|other`，0..1）、
   `hit(kind, t, halfLife)`（`kick|snare|hat|vocal`）。沒有分軌，vocal 之類是頻帶近似。`_motifs.ts` 有 `beatAfter(au, t, k)`、`barAfter(au, t, k)`。

@@ -4,6 +4,8 @@
 //  - pdoom 的歌詞是英文，「字」之間一定有空白；婚禮歌單有中文、韓文，中文一個字就是一個 Word、中間沒有空白。
 //    所以每個 Word 多記一個 o（在整行文字裡的起始位置），lineCharProgress 改用它算，不再假設空白。
 //  - 歌詞來源是後台的 LRC（lyrics/build.ts 轉成這個格式），沒有 load()。
+//  - 有中文翻譯的歌（韓文歌，2026-09-30）：每行的 text／words 是中文（照原文唱的進度亮），原文掛在 sub，
+//    版面在中文下面小一號畫原文（`_motifs.ts` 的 drawLyric／lyricOnPath 自動畫；自己畫歌詞的版面用 lyricSubOf）。
 import { smart } from './type';
 
 export interface Word {
@@ -25,11 +27,22 @@ export interface Line {
   start: number;
   end: number;
   words: Word[];
+  /** 原文（有翻譯的歌才有）：真正在唱的那一行，逐字時間是原文自己的。 */
+  sub?: Line;
 }
 
+type LineJSON = { text: string; start: number; end: number; words: { w: string; start: number; end: number; syl?: [number, number][] }[] };
 export interface LyricsJSON {
-  lines: { text: string; start: number; end: number; words: { w: string; start: number; end: number; syl?: [number, number][] }[] }[];
+  lines: (LineJSON & { sub?: LineJSON })[];
 }
+
+/**
+ * 這一格要不要畫原文副行。有主打留言的窗格收起來：留言是焦點、歌詞已經縮小一級，副行再縮會小到看不清楚。
+ * 引擎在每個窗格 render 之前設（engine.ts），版面不用自己管。
+ */
+export const lyricSub = { on: true };
+/** 這一行要畫的原文副行：有翻譯、而且這一格沒有收起來才有。自己畫歌詞的版面用這個判斷要不要畫第二行。 */
+export const lyricSubOf = (line: Line | null | undefined): Line | null => (lyricSub.on && line?.sub) || null;
 
 export class Lyrics {
   lines: Line[];
@@ -37,7 +50,7 @@ export class Lyrics {
   constructor(j: LyricsJSON) {
     // display text gets curly apostrophes and quotes (the data keeps the typed ones); mono UI
     // text that wants them straight uses plain()
-    this.lines = j.lines.map((l, li) => {
+    const mk = (l: LineJSON, li: number): Line => {
       const text = smart(l.text);
       let at = 0;
       const words = l.words.map((w, wi) => {
@@ -47,7 +60,13 @@ export class Lyrics {
         at = o + ww.length;
         return { ...w, w: ww, line: li, index: wi, gi: 0, o };
       });
-      return { ...l, i: li, text, words };
+      return { text, start: l.start, end: l.end, i: li, words };
+    };
+    this.lines = j.lines.map((l, li) => {
+      const line = mk(l, li);
+      // 原文的字不進 this.words（wordAt、findWords 等全域查詢都是對主行）
+      if (l.sub) line.sub = mk(l.sub, li);
+      return line;
     });
     this.words = this.lines.flatMap((l) => l.words);
     this.words.forEach((w, i) => (w.gi = i));

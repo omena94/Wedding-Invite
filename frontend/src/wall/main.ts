@@ -22,7 +22,8 @@ import { applyTheme, pickTheme } from './themes';
 import { loadSong, type LoadedSong } from './songs';
 import { fetchFeed, fetchSongs, getToken, login, syncRemote, HttpError, type RemoteCommand, type SongRow } from './net';
 import { buildLyrics } from './lyrics/build';
-import { DEV_LIVE, DEV_MESSAGES, dummyLrc } from './dev/fixtures';
+import { loadText } from './engine/type';
+import { DEV_LIVE, DEV_MESSAGES, dummyLrc, dummyKoLrc } from './dev/fixtures';
 import { analyzeArrayBuffer } from './analysis/client';
 
 const Q = new URLSearchParams(location.search);
@@ -749,7 +750,7 @@ function setPreview(i: number) {
 }
 
 // ------------------------------------------------------------------ 開發模式的資料來源
-interface DevSong { id: number; file: string; title: string; artist: string; lrc: string }
+interface DevSong { id: number; file: string; title: string; artist: string; lrc: string; trans?: string }
 let devSongs: DevSong[] = [];
 function devLoadOpts(row: SongRow) {
   if (!DEV) return {};
@@ -763,7 +764,7 @@ async function devInit() {
   try { devSongs = await (await fetch('/wall-dev/songs.json')).json(); } catch { devSongs = []; }
   playlist = devSongs.map((s, i) => ({
     id: s.id, title: s.title, artist: s.artist, original_name: s.file, size: 0, content_type: '', sort_order: i, enabled: true,
-    duration: 0, bpm: 0, has_analysis: false, analysis_version: 0, lyrics_lrc: s.lrc, lyrics_source: s.lrc ? 'manual' : '', lyrics_offset: 0,
+    duration: 0, bpm: 0, has_analysis: false, analysis_version: 0, lyrics_lrc: s.lrc, lyrics_trans: s.trans ?? '', lyrics_source: s.lrc ? 'manual' : '', lyrics_offset: 0,
     instrumental: false, theme: Q.get('theme') ?? '', start_at: 0, end_at: 0, updated_at: 'dev',
   }));
   await pool.sync(DEV_MESSAGES, true);
@@ -790,7 +791,7 @@ function setupExport() {
      * message = 主打第幾則假留言（1 起算）；theme = 配色；analysis = 之前算好的分析（腳本會快取，省時間）。
      * 回傳這首歌的分析（腳本存起來下次用）與時間軸。
      */
-    async setup(o: { song?: string; scene?: string; params?: Record<string, any>; message?: number; theme?: string; analysis?: any; lrc?: string; from?: number; to?: number } = {}) {
+    async setup(o: { song?: string; scene?: string; params?: Record<string, any>; message?: number; theme?: string; analysis?: any; lrc?: string; trans?: string; ko?: boolean; from?: number; to?: number } = {}) {
       const d = (o.song ? devSongs.find((s) => s.file === o.song) : devSongs[0]);
       let audio: AudioData, lyrics: Lyrics, json: any = null;
       if (d) {
@@ -798,7 +799,11 @@ function setupExport() {
         if (!json) json = await analyzeArrayBuffer(await (await fetch(`/wall-dev/audio/${encodeURIComponent(d.file)}`)).arrayBuffer());
         analysisCache.set(d.file, json);
         audio = new AudioData(json);
-        lyrics = buildLyrics(o.lrc ?? (d.lrc || dummyLrc(audio)), audio);
+        // ko：韓文佔位歌詞＋中文翻譯（測原文副行）
+        const ko = o.ko ? dummyKoLrc(audio) : null;
+        lyrics = ko ? buildLyrics(ko.lrc, audio, 0, ko.trans) : buildLyrics(o.lrc ?? (d.lrc || dummyLrc(audio)), audio, 0, o.trans ?? d.trans ?? '');
+        // 截圖要確定性：歌詞（連韓文副行）的字型先載好再畫
+        await loadText(lyrics.lines.map((l) => l.text + (l.sub?.text ?? '')).join(''));
       } else { audio = AudioData.silent(120); lyrics = buildLyrics(dummyLrc(audio), audio); }
       const theme = o.theme ?? pickTheme(audio, d?.id ?? 0);
       startRuntime({ info: { id: d?.id ?? 0, title: d?.title ?? '測試', artist: d?.artist ?? '', index: 1, count: Math.max(1, devSongs.length), theme }, audio, lyrics }, 0);
@@ -809,7 +814,7 @@ function setupExport() {
         // 導演把整首歌排完（截圖任何時間點都有窗格）
         for (let tt = 0; tt < audio.duration; tt += 4) director.update(tt);
       }
-      return { analysis: json, timeline: engine.timeline.map(({ id, scene, start, end }) => ({ id, scene, start, end })), duration: audio.duration, bpm: audio.bpm, lines: lyrics.lines.length };
+      return { analysis: json, timeline: engine.timeline.map(({ id, scene, start, end }) => ({ id, scene, start, end })), duration: audio.duration, bpm: audio.bpm, lines: lyrics.lines.length, spans: lyrics.lines.map((l) => [l.start, l.end, l.sub ? 1 : 0]) };
     },
     /** 在 t 秒排一張即時小卡（測試小卡的樣子）。 */
     async popup(id: number, at: number, fresh = true) { const m = pool.all.find((x) => x.id === id); if (!m) return false; await engine.prepare(at); engine.render(at, 1 / 60, false); return engine.overlay.schedule(m, at, fresh, engine.lastPost.popupAvoid); },

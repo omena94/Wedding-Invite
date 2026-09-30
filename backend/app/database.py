@@ -77,6 +77,8 @@ def init_db() -> None:
                 "ALTER TABLE gift_recipients ADD COLUMN IF NOT EXISTS box_count INTEGER NOT NULL DEFAULT 1",
                 # 2026-09-30 大螢幕歌單：新人標記「這首歌詞對好了」
                 "ALTER TABLE wall_songs ADD COLUMN IF NOT EXISTS lyrics_done BOOLEAN NOT NULL DEFAULT FALSE",
+                # 2026-09-30 大螢幕歌詞的中文翻譯（韓文歌：中文大字、原文在下面）
+                "ALTER TABLE wall_songs ADD COLUMN IF NOT EXISTS lyrics_trans TEXT NOT NULL DEFAULT ''",
                 "ALTER TABLE seat_objects ADD COLUMN IF NOT EXISTS hall_id INTEGER REFERENCES seat_halls(id) ON DELETE CASCADE",
                 "CREATE INDEX IF NOT EXISTS ix_seat_objects_hall_id ON seat_objects (hall_id)",
                 "ALTER TABLE seat_assignments ADD COLUMN IF NOT EXISTS hall_id INTEGER REFERENCES seat_halls(id) ON DELETE CASCADE",

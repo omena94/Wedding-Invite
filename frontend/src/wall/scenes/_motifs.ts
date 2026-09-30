@@ -5,7 +5,8 @@
 //  - 留言的聲音：手寫（霞鶩文楷）或典雅（思源宋體），署名用「—— 名字」。
 // 版面檔可以自由決定怎麼把這兩種聲音「放進畫面裡」（寫在證書上、沿著心電圖、變成星座…），
 // 但字的時間與顏色規則用這裡的函式，整晚才一致。
-import { Lyrics, type Line, type Word } from '../engine/lyrics';
+import { Lyrics, lyricSubOf, type Line, type Word } from '../engine/lyrics';
+export { lyricSubOf };
 import type { AudioData } from '../engine/audio';
 import { font } from '../engine/type';
 import { rgba } from '../engine/palette';
@@ -47,7 +48,24 @@ export interface LyricStyle {
 }
 
 export interface PlacedWord { word: Word; x: number; y: number; w: number }
-export interface LyricLayout { size: number; rows: { text: string; x: number; y: number; width: number }[]; words: PlacedWord[]; height: number }
+export interface LyricLayout {
+  size: number; rows: { text: string; x: number; y: number; width: number }[]; words: PlacedWord[];
+  /** 第一排頂到最後一排基線的高度；有原文副行時算到副行最後一排的基線（版面照舊用它置中或貼底，副行就在框裡）。 */
+  height: number;
+  /** 原文副行（韓文歌）：自己的排版，dy = 副行第一排基線離主行第一排基線多遠。drawLyric 會畫，版面不用管。 */
+  sub?: { lay: LyricLayout; dy: number };
+}
+
+// ---- 原文副行（韓文歌的原文，2026-09-30 新人要求：中文大字、原文小一號放在正下方）
+/** 副行字級：主行的 0.6 倍，32～56 px（會場後排也要認得出來，也不能大到搶中文）。 */
+export const subSizeFor = (size: number) => Math.round(clamp(size * 0.6, 32, 56));
+/** 主行最後一排基線到副行第一排基線的距離：主行下緣留約四分之一字高的空，再加副行的字高。 */
+export const subGap = (size: number, subSize = subSizeFor(size)) => size * 0.37 + subSize * 0.88;
+/** 副行的排版樣式：跟主行同字族、同對齊、同寬，字小一號。 */
+export function subStyleFor(st: LyricStyle, size = st.size): LyricStyle {
+  const s = subSizeFor(size);
+  return { ...st, size: s, minSize: Math.min(s, 26), tracking: (st.tracking ?? 0) * 0.5 };
+}
 
 const layoutCache = new WeakMap<Line, Map<string, LyricLayout>>();
 
@@ -56,7 +74,8 @@ const layoutCache = new WeakMap<Line, Map<string, LyricLayout>>();
  * 回傳每個字的位置（相對 (0,0) = 第一行基線的「對齊點」）。同一行同樣式的結果會快取。
  */
 export function layoutLyric(c: CanvasRenderingContext2D, line: Line, st: LyricStyle): LyricLayout {
-  const key = `${st.family}|${st.size}|${st.minSize}|${st.maxWidth}|${st.align}|${st.tracking}`;
+  const sub = lyricSubOf(line);
+  const key = `${st.family}|${st.size}|${st.minSize}|${st.maxWidth}|${st.align}|${st.tracking}|${st.lineHeight}|${sub ? 1 : 0}`;
   let m = layoutCache.get(line);
   if (!m) { m = new Map(); layoutCache.set(line, m); }
   const hit = m.get(key);
@@ -81,6 +100,13 @@ export function layoutLyric(c: CanvasRenderingContext2D, line: Line, st: LyricSt
   }
   const lh = size * (st.lineHeight ?? 1.18);
   const out: LyricLayout = { size, rows: [], words: [], height: size + (rows.length - 1) * lh };
+  if (sub) {
+    // 副行跟著主行縮：主行縮到多小，副行就照那個字級的比例
+    const lay = layoutLyric(c, sub, subStyleFor(st, size));
+    const dy = (rows.length - 1) * lh + subGap(size, lay.size);
+    out.sub = { lay, dy };
+    out.height = dy + (lay.height - lay.size) + size;
+  }
   rows.forEach((r, ri) => {
     const text = rowText(line, r.from, r.to);
     const width = widthAt(text, size);
@@ -109,6 +135,27 @@ function rowText(line: Line, from: number, to: number) {
  * `alpha` 讓版面做進出場。
  */
 export function drawLyric(c: CanvasRenderingContext2D, line: Line, t: number, st: LyricStyle, lay = layoutLyric(c, line, st), alpha = 1): { x: number; y: number } | null {
+  const head = paintWords(c, lay, t, st, alpha, st.active ?? rgba('signal'), st.sung ?? rgba('bone', 0.96));
+  if (lay.sub) {
+    c.save();
+    c.translate(0, lay.sub.dy);
+    drawSubWords(c, lay.sub.lay, t, st, alpha);
+    c.restore();
+  }
+  return head;
+}
+
+/**
+ * 副行（原文）的畫法：比主行安靜——正在唱與唱完都用「唱完」的顏色（不用訊號色，不跟中文搶），整體再淡一點；
+ * 還沒唱的跟主行一樣三成。逐字時間是原文自己的，所以原文跟著真正的歌聲亮。
+ */
+function drawSubWords(c: CanvasRenderingContext2D, lay: LyricLayout, t: number, st: LyricStyle, alpha: number) {
+  const sung = st.sung ?? rgba('bone', 0.96);
+  paintWords(c, lay, t, st, alpha, sung, sung, 0.8);
+}
+
+/** 逐字反白：還沒唱的淡字，唱到的部分用 clip 蓋上亮字。回傳正在唱的字的筆尖位置。 */
+function paintWords(c: CanvasRenderingContext2D, lay: LyricLayout, t: number, st: LyricStyle, alpha: number, active: string, sung: string, litAlpha = 1): { x: number; y: number } | null {
   c.save();
   c.font = font(st.family, lay.size);
   c.letterSpacing = `${st.tracking ?? 0}px`;
@@ -124,13 +171,25 @@ export function drawLyric(c: CanvasRenderingContext2D, line: Line, t: number, st
     c.beginPath();
     c.rect(pw.x - lay.size * 0.1, pw.y - lay.size * 1.1, (pw.w + lay.size * 0.2) * p, lay.size * 1.5);
     c.clip();
-    c.fillStyle = p < 1 ? (st.active ?? rgba('signal')) : (st.sung ?? rgba('bone', 0.96));
+    c.globalAlpha = alpha * litAlpha;
+    c.fillStyle = p < 1 ? active : sung;
     c.fillText(pw.word.w, pw.x, pw.y);
     c.restore();
     if (p < 1) head = { x: pw.x + pw.w * p, y: pw.y + lay.size * 0.12 };
   }
   c.restore();
   return head;
+}
+
+/**
+ * 自己畫歌詞的版面用：在目前的原點（已經 translate 到副行第一排基線的對齊點）畫原文副行。
+ * `st` 傳主行的樣式（字族、對齊、寬、顏色），`mainSize` 傳主行實際排出來的字級；回傳副行的排版（height 給版面算位置）。
+ * 典型用法：`const sub = lyricSubOf(line); if (sub) { c.translate(x, 主行最後一排基線 + subGap(主行字級)); drawLyricSub(c, sub, t, st, 主行字級); }`
+ */
+export function drawLyricSub(c: CanvasRenderingContext2D, sub: Line, t: number, st: LyricStyle, mainSize = st.size, alpha = 1): LyricLayout {
+  const lay = layoutLyric(c, sub, subStyleFor(st, mainSize));
+  drawSubWords(c, lay, t, st, alpha);
+  return lay;
 }
 
 /** 這一格要顯示的歌詞行與它的進出場係數（0..1）：提早 0.35 秒淡入、唱完停 1.2 秒再淡出。 */

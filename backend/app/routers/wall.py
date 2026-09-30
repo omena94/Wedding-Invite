@@ -244,7 +244,7 @@ def _song_out(s: WallSong) -> dict:
         "size": s.size, "content_type": s.content_type, "sort_order": s.sort_order, "enabled": s.enabled,
         "duration": s.duration, "bpm": s.bpm, "has_analysis": bool(s.analysis_json), "analysis_version": s.analysis_version,
         "lyrics_lrc": s.lyrics_lrc, "lyrics_source": s.lyrics_source, "lyrics_offset": s.lyrics_offset,
-        "instrumental": s.instrumental, "lyrics_done": s.lyrics_done, "theme": s.theme, "start_at": s.start_at, "end_at": s.end_at,
+        "instrumental": s.instrumental, "lyrics_done": s.lyrics_done, "lyrics_trans": s.lyrics_trans, "theme": s.theme, "start_at": s.start_at, "end_at": s.end_at,
         "created_at": _iso(s.created_at), "updated_at": _iso(s.updated_at),
     }
 
@@ -338,6 +338,7 @@ class SongPatch(BaseModel):
     lyrics_offset: StrictFloat | StrictInt | None = None
     instrumental: StrictBool | None = None
     lyrics_done: StrictBool | None = None
+    lyrics_trans: StrictStr | None = None
     theme: StrictStr | None = None
     start_at: StrictFloat | StrictInt | None = None
     end_at: StrictFloat | StrictInt | None = None
@@ -357,11 +358,12 @@ def _finite(value: Any, label: str, lo: float, hi: float) -> float:
 def update_wall_song(song_id: int, payload: SongPatch, db: Session = Depends(get_db)):
     s = _get_song(db, song_id)
     fields = payload.model_fields_set
-    # 標了「歌詞對好了」的歌鎖起來（新人 2026-09-30）：歌詞、偏移、純音樂都不能改，要先取消勾選（同一個請求取消也可以）。
+    # 標了「歌詞對好了」的歌鎖起來（新人 2026-09-30）：歌詞、翻譯、偏移、純音樂都不能改，要先取消勾選（同一個請求取消也可以）。
     # 送一樣的值不算改：編輯視窗按「儲存」會把整張表單送回來。
     if s.lyrics_done and not ("lyrics_done" in fields and payload.lyrics_done is False):
         same = {
             "lyrics_lrc": lambda v: v == s.lyrics_lrc,
+            "lyrics_trans": lambda v: v == s.lyrics_trans,
             "lyrics_source": lambda v: v.strip()[:20] == s.lyrics_source,
             "lyrics_offset": lambda v: isinstance(v, (int, float)) and math.isfinite(v) and abs(v - s.lyrics_offset) < 1e-6,
             "instrumental": lambda v: v == s.instrumental,
@@ -378,6 +380,10 @@ def update_wall_song(song_id: int, payload: SongPatch, db: Session = Depends(get
         if len(payload.lyrics_lrc) > LYRICS_MAX:
             raise HTTPException(400, "歌詞太長了")
         s.lyrics_lrc = payload.lyrics_lrc
+    if "lyrics_trans" in fields and payload.lyrics_trans is not None:
+        if len(payload.lyrics_trans) > LYRICS_MAX:
+            raise HTTPException(400, "翻譯太長了")
+        s.lyrics_trans = payload.lyrics_trans
     if "lyrics_source" in fields and payload.lyrics_source is not None:
         s.lyrics_source = payload.lyrics_source.strip()[:20]
     if "lyrics_offset" in fields and payload.lyrics_offset is not None:

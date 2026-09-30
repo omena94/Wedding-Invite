@@ -33,7 +33,7 @@ function cleanUrls() {
 }
 
 // 大螢幕的開發模式（/wall?dev=1）：不連後端，測試音檔從本機資料夾讀。
-// 資料夾由環境變數 WALL_DEV_AUDIO_DIR 指定（放 mp3/m4a，同名的 .lrc 會當歌詞；檔名「歌名 - 歌手.mp3」）。
+// 資料夾由環境變數 WALL_DEV_AUDIO_DIR 指定（放 mp3/m4a，同名的 .lrc 會當歌詞、.trans.lrc 當中文翻譯；檔名「歌名 - 歌手.mp3」）。
 // 只在 npm run dev 有作用，打包出去的網站沒有這些網址。
 function wallDevAudio() {
   const AUDIO = /\.(mp3|m4a|aac|wav|ogg|flac|mp4)$/i;
@@ -53,8 +53,9 @@ function wallDevAudio() {
             const stem = file.replace(AUDIO, "");
             const [title, artist] = stem.includes(" - ") ? stem.split(" - ", 2) : [stem, ""];
             const lrcPath = path.join(dir, `${stem}.lrc`);
+            const transPath = path.join(dir, `${stem}.trans.lrc`);
             // 檔名不能有「/」，常被換成「_」（24_7 → 24/7），跟後台上傳時一樣換回來
-            return { id: i + 1, file, title: title.replace(/(\d)_(\d)/g, "$1/$2"), artist, lrc: existsSync(lrcPath) ? readFileSync(lrcPath, "utf8") : "" };
+            return { id: i + 1, file, title: title.replace(/(\d)_(\d)/g, "$1/$2"), artist, lrc: existsSync(lrcPath) ? readFileSync(lrcPath, "utf8") : "", trans: existsSync(transPath) ? readFileSync(transPath, "utf8") : "" };
           });
           res.setHeader("Content-Type", "application/json");
           return res.end(JSON.stringify(songs));

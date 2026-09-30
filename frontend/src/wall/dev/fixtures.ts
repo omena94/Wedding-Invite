@@ -57,3 +57,43 @@ export function dummyLrc(au: AudioData): string {
   }
   return out.join('\n');
 }
+
+/**
+ * 韓文歌的佔位歌詞（自己寫的句子，不是任何歌的歌詞）與中文翻譯，測原文副行用（截圖 `--ko`、`ko` 驗收）。
+ * 「|」是 <時間> 分段：大部分句子兩邊段數一樣（中文跟原文一段一段一起亮），
+ * 第 8 句中文故意不分段（照原文唱的進度等比例亮），第 9 句兩邊一樣（只顯示一行）。
+ */
+const DUMMY_KO: [string, string][] = [
+  ['오늘 밤 모든 불빛이 |너를 위해 빛나', '今晚所有的燈光 |都為你閃耀'],
+  ["It's |for |sure |너와 함께라면", "It's |for |sure |只要和你在一起"],
+  ['손을 잡고 걸어가자 |끝까지', '牽著手一起走 |走到最後'],
+  ['우리 둘만의 노래를 불러요', '唱一首只屬於我們兩個人的歌'],
+  ['처음 만난 그날처럼 설레', '像第一次見面那天一樣心動'],
+  ['No, |no |doubt |in my mind |너는 나의 특별한 사람', 'No, |no |doubt |in my mind |你是我最特別的人'],
+  ['Making you mine, |making you mine, |영원히', 'Making you mine, |making you mine, |直到永遠'],
+  ['고마워 |내 곁에 있어줘서', '謝謝你一直在我身邊'],
+  ['Ah-ah, |mine, |hmm-mmm', 'Ah-ah, |mine, |hmm-mmm'],
+  ['매일 아침 눈을 뜨면 |네가 보여', '每天早上睜開眼 |就看到你'],
+  ['넘쳐나는 love |난 없어 걱정', '滿滿都是 love |我一點也不擔心'],
+  ['지금 이 순간을 |기억해줘', '請記住 |此刻這一瞬間'],
+];
+
+/** 跟 dummyLrc 一樣每兩小節一句；回傳原文（韓文）與翻譯（中文）兩份 LRC，時間與分段一一對應。 */
+export function dummyKoLrc(au: AudioData): { lrc: string; trans: string } {
+  const ko: string[] = [], zh: string[] = [];
+  const bar = (i: number) => au.timeOfBar(i);
+  const tagged = (s: string, t0: number, span: number) => {
+    const segs = s.split('|');
+    if (segs.length === 1) return s;
+    return segs.map((g, k) => `<${fmtTime(t0 + (span * 0.8 * k) / segs.length)}>${g}`).join('') + `<${fmtTime(t0 + span * 0.85)}>`;
+  };
+  let k = 0;
+  for (let b = 2; bar(b + 2) < au.duration - 4; b += 2) {
+    if (b % 16 === 14) continue;
+    const [a, z] = DUMMY_KO[k++ % DUMMY_KO.length]!;
+    const t0 = bar(b), span = bar(b + 2) - t0;
+    ko.push(`[${fmtTime(t0)}]${tagged(a, t0, span)}`);
+    zh.push(`[${fmtTime(t0)}]${tagged(z, t0, span)}`);
+  }
+  return { lrc: ko.join('\n'), trans: zh.join('\n') };
+}

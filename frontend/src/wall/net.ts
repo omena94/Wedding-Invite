@@ -40,6 +40,8 @@ export interface SongRow {
   id: number; title: string; artist: string; original_name: string; size: number; content_type: string;
   sort_order: number; enabled: boolean; duration: number; bpm: number; has_analysis: boolean; analysis_version: number;
   lyrics_lrc: string; lyrics_source: string; lyrics_offset: number; instrumental: boolean;
+  /** 中文翻譯的 LRC（韓文歌；空字串 = 沒有翻譯）。 */
+  lyrics_trans?: string;
   theme: string; start_at: number; end_at: number; updated_at: string;
 }
 export const fetchSongs = () => api<{ items: SongRow[] }>('/api/planner/wall/songs').then((r) => r.items);
