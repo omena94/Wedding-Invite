@@ -345,6 +345,63 @@ def test_remote_control(setup):
     assert c.get("/api/planner/wall/remote/state", headers=HELPER).status_code == 403
 
 
+def test_remote_two_screens(setup):
+    """同時開兩台大螢幕（2026-09-30）：只有最後按「開始播放」的那台拿到指令、手機看到那台的狀態與台數；
+    只是打開沒按開始的不會搶走遙控；備用那台可以按「改由這台接收遙控」搶回來；關掉的那台 8 秒後不算。"""
+    c, db, _ = setup
+    def sync(client, after, started=True, claim=False):
+        body = {"client": client, "after": after, "state": {"started": started, "song": {"title": client}}, "claim": claim}
+        return c.post("/api/planner/wall/remote/sync", json=body, headers=COUPLE).json()
+    cmd = lambda action: c.post("/api/planner/wall/remote/command", json={"action": action}, headers=COUPLE)
+    state = lambda: c.get("/api/planner/wall/remote/state", headers=COUPLE).json()
+
+    # 會場那台先開、按了開始
+    ra = sync("hall", -1)
+    assert ra["leader"] is True and ra["screens"] == 1
+    a = ra["seq"]
+    # 幫手用筆電打開看一下（還沒按開始）：遙控還是會場那台
+    rb = sync("laptop", -1, started=False)
+    assert rb["leader"] is False and rb["screens"] == 2
+    b = rb["seq"]
+    assert state()["screens"] == 2 and state()["state"]["song"]["title"] == "hall"
+    assert cmd("next").status_code == 201
+    rb = sync("laptop", b, started=False)
+    assert rb["commands"] == [] and rb["seq"] > b  # 備用的不做，但編號跟上
+    b = rb["seq"]
+    ra = sync("hall", a)
+    assert [x["action"] for x in ra["commands"]] == ["next"]
+    a = ra["seq"]
+    # 筆電也按了開始：改由筆電接收，會場那台變備用
+    assert sync("laptop", b)["leader"] is True
+    ra = sync("hall", a)
+    assert ra["leader"] is False and state()["state"]["song"]["title"] == "laptop"
+    a = ra["seq"]
+    assert cmd("pause").status_code == 201
+    ra = sync("hall", a)
+    assert ra["commands"] == [] and ra["seq"] > a
+    a = ra["seq"]
+    rb = sync("laptop", b)
+    assert [x["action"] for x in rb["commands"]] == ["pause"]
+    b = rb["seq"]
+    # 會場那台按「改由這台接收遙控」：搶回來；之前給筆電的指令不會補做
+    ra = sync("hall", a, claim=True)
+    assert ra["leader"] is True and ra["commands"] == []
+    a = ra["seq"]
+    assert sync("laptop", b)["leader"] is False
+    # 筆電關掉：超過 8 秒沒回報就不算，手機只看到一台
+    from datetime import datetime, timedelta, timezone
+    from app.models import WallScreen
+    db.get(WallScreen, "laptop").seen_at = datetime.now(timezone.utc) - timedelta(seconds=20)
+    db.commit()
+    s = state()
+    assert s["screens"] == 1 and s["online"] is True and s["client"] == "hall"
+    # 會場那台也斷線：手機顯示最後回報的那台、沒有連線
+    db.get(WallScreen, "hall").seen_at = datetime.now(timezone.utc) - timedelta(seconds=12)
+    db.commit()
+    s = state()
+    assert s["screens"] == 0 and s["online"] is False and s["client"] == "hall" and s["age"] >= 11
+
+
 def test_duck_level(setup):
     """講話模式的音量（2026-09-30）：預設 20%，有 wall 鑰匙就能調（0～90），大螢幕從 feed 拿、手機遙控頁從 remote/state 拿。"""
     c, db, _ = setup

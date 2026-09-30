@@ -68,6 +68,10 @@ let t = 0;
 let playing = false;
 let started = false; // 現場按過「開始播放」了（之前手機的指令不做）
 const statusLine = { text: '', ok: true };
+// 手機遙控（版面預覽、開發、截圖模式不參與）：同時開好幾台大螢幕時只有一台接收（伺服器決定），其他台是備用。
+// 放在這裡而不是下面「手機遙控」那段，是因為 updateUi 一開始就會用到
+const REMOTE = !DEV && !EXPORT && !PREVIEW;
+const remote = { leader: true, screens: 1, claim: false };
 
 declare global { interface Window { __wall: any } }
 
@@ -532,6 +536,12 @@ function updateUi() {
   $('ui-play').textContent = playing ? '暫停' : '播放';
   $('ui-status').textContent = `留言 ${pool.count} 則　${statusLine.text}`;
   $('ui-status').classList.toggle('bad', !statusLine.ok);
+  // 開了不只一台：這台是備用就說清楚、給一個搶回遙控的按鈕（手機遙控頁也會警告）
+  const multi = REMOTE && (!remote.leader || remote.screens > 1);
+  $('ui-remote').hidden = !multi;
+  $('ui-remote-text').textContent = !remote.leader ? `備用畫面：手機遙控的是另一台大螢幕（共 ${remote.screens} 台開著）`
+    : `另外還開著 ${remote.screens - 1} 台大螢幕，手機遙控的是這台`;
+  $('ui-claim').hidden = remote.leader;
   $('ui-queue-btn').classList.toggle('on', showQueue);
   $('ui-duck').classList.toggle('on', player.ducked);
   $('ui-duck').textContent = player.ducked ? '講話模式中（音樂小聲）' : '講話模式';
@@ -553,6 +563,7 @@ function bindUi() {
   on('ui-duck', () => setDuck(!player.ducked));
   on('ui-duck-down', () => setDuckLevel(duckLevel - 5, true));
   on('ui-duck-up', () => setDuckLevel(duckLevel + 5, true));
+  on('ui-claim', () => { remote.claim = true; void remoteSync(); });
   for (const el of [ui, queueEl]) {
     el.addEventListener('pointerenter', () => { hovering = true; });
     el.addEventListener('pointerleave', () => { hovering = false; });
@@ -674,8 +685,7 @@ function setDuck(on: boolean) {
 
 // ------------------------------------------------------------------ 手機遙控（2026-09-30）
 // 每秒 POST 一次：回報播放狀態（手機遙控頁顯示），拿走手機按的指令照順序做。
-// 版面預覽、開發、截圖模式不參與；還沒按「開始播放」只回報、不做指令（現場還沒準備好）。
-const REMOTE = !DEV && !EXPORT && !PREVIEW;
+// 還沒按「開始播放」只回報、不做指令（現場還沒準備好）；備用畫面伺服器不給指令。
 const remoteClient = Math.random().toString(36).slice(2, 10);
 let remoteAfter = -1;
 let remoteBusy = false;
@@ -700,9 +710,13 @@ async function remoteSync() {
   remoteBusy = true;
   let did = false;
   try {
-    const r = await syncRemote({ client: remoteClient, after: remoteAfter, state: remoteState() });
+    const claim = remote.claim;
+    const r = await syncRemote({ client: remoteClient, after: remoteAfter, state: remoteState(), claim });
+    if (claim) remote.claim = false;
     const first = remoteAfter < 0;
     remoteAfter = Math.max(remoteAfter, r.seq);
+    const leader = r.leader ?? true, screens = r.screens ?? 1;
+    if (leader !== remote.leader || screens !== remote.screens) { remote.leader = leader; remote.screens = screens; updateUi(); }
     if (!first) for (const c of r.commands) { await runRemote(c); did = true; }
   } catch { /* 斷線：下一秒再試 */ }
   remoteBusy = false;

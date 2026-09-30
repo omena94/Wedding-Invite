@@ -57,8 +57,9 @@ export const saveAnalysis = (id: number, payload: { version: number; duration: n
 export interface RemoteCommand { id: number; action: string; args: Record<string, any> }
 /** 講話模式把音樂降到幾 %（0～90）：存在伺服器，手機遙控頁看到的、其他電腦開的大螢幕都一樣。 */
 export const saveDuckLevel = (level: number) => api<{ level: number }>('/api/planner/wall/duck', { method: 'PUT', body: { level } });
-export const syncRemote = (body: { client: string; after: number; state: unknown }) =>
-  api<{ seq: number; commands: RemoteCommand[] }>('/api/planner/wall/remote/sync', { method: 'POST', body });
+// 同時開好幾台時只有一台接收遙控（leader），screens 是現在開著幾台；claim = 按了「改由這台接收遙控」
+export const syncRemote = (body: { client: string; after: number; state: unknown; claim?: boolean }) =>
+  api<{ seq: number; commands: RemoteCommand[]; leader?: boolean; screens?: number }>('/api/planner/wall/remote/sync', { method: 'POST', body });
 
 const AUDIO_CACHE = 'wedding-wall-audio-v1';
 

@@ -24,7 +24,7 @@ from sqlalchemy.orm import Session
 from .. import guest_access
 from ..config import settings
 from ..database import get_db
-from ..models import WallCommand, WallMessage, WallRemoteState, WallSong
+from ..models import WallCommand, WallMessage, WallScreen, WallSong
 from ..permissions import require_perm
 from ..security import optional_staff
 from ..stage import WALL_DUCK_KEY, WALL_MODERATION_KEY, WALL_OPEN_KEY, WALL_PACE_KEY, WALL_PLATES_OFF_KEY, get_setting, is_on, set_setting
@@ -530,46 +530,67 @@ class RemoteSyncIn(BaseModel):
     client: StrictStr = ""
     after: StrictInt = -1   # 大螢幕做過的最後一個指令；-1 = 剛打開，只拿目前的編號、不補做以前的
     state: dict[str, Any] = {}
+    claim: StrictBool = False  # 備用那台按了「改由這台接收遙控」
+
+
+def _online_screens(db: Session, now: datetime) -> list[WallScreen]:
+    """還開著的大螢幕，接收遙控的排第一：最後按「開始播放」（或搶過遙控）的那台；都還沒按就是最後打開的。
+    用「開始播放」而不是「打開」來選，是因為幫手拿筆電打開大螢幕看一下，不該把會場那台的遙控搶走；
+    會場那台重新整理後要再按一次開始播放，就會拿回來。"""
+    rows = db.scalars(select(WallScreen).where(WallScreen.seen_at >= now - timedelta(seconds=REMOTE_ONLINE))).all()
+    far = datetime.min.replace(tzinfo=timezone.utc)
+    return sorted(rows, key=lambda r: (_aware(r.lead_at) if r.lead_at else far, _aware(r.opened_at), r.client), reverse=True)
 
 
 @router.post("/api/planner/wall/remote/sync", dependencies=[Perm])
 def wall_remote_sync(payload: RemoteSyncIn, db: Session = Depends(get_db)):
-    """大螢幕每秒一次：存下播放狀態，回傳還沒做的指令。"""
+    """大螢幕每秒一次：存下播放狀態；接收遙控的那台才拿到還沒做的指令，備用的只更新編號（之後接手時不補做舊指令）。"""
     raw = json.dumps(payload.state, ensure_ascii=False)
     if len(raw) > REMOTE_STATE_MAX:
         raise HTTPException(413, "播放狀態太大")
     now = _now()
+    client = payload.client.strip()[:40] or "-"
+
+    def save() -> None:
+        row = db.get(WallScreen, client)
+        if row is None:
+            row = WallScreen(client=client, opened_at=now)
+            db.add(row)
+        if payload.claim or (payload.state.get("started") is True and row.lead_at is None):
+            row.lead_at = now
+        row.state_json, row.seen_at = raw, now
+        db.commit()
+
+    db.execute(delete(WallScreen).where(WallScreen.seen_at < now - timedelta(hours=1)))
+    try:
+        save()
+    except IntegrityError:
+        # 同一個分頁的兩個請求剛好同時建第一列：另一個已經建好了，改成更新它
+        db.rollback()
+        save()
+    screens = _online_screens(db, now)
+    leader = bool(screens) and screens[0].client == client
     seq = db.scalar(select(func.max(WallCommand.id))) or 0
     commands = []
-    if payload.after >= 0:
+    if leader and payload.after >= 0:
         rows = db.scalars(select(WallCommand).where(WallCommand.id > payload.after, WallCommand.created_at >= now - timedelta(seconds=REMOTE_TTL))
                           .order_by(WallCommand.id)).all()
         commands = [{"id": r.id, "action": r.action, "args": json.loads(r.args_json or "{}")} for r in rows]
-    row = db.get(WallRemoteState, 1)
-    if row is None:
-        row = WallRemoteState(id=1)
-        db.add(row)
-    row.client, row.state_json, row.updated_at = payload.client.strip()[:40], raw, now
-    try:
-        db.commit()
-    except IntegrityError:
-        # 兩個 worker 同時建第一列：另一個已經建好了，改成更新它
-        db.rollback()
-        row = db.get(WallRemoteState, 1)
-        row.client, row.state_json, row.updated_at = payload.client.strip()[:40], raw, now
-        db.commit()
-    return {"seq": max([seq, *[c["id"] for c in commands]]), "commands": commands}
+    return {"seq": max([seq, *[c["id"] for c in commands]]), "commands": commands, "leader": leader, "screens": len(screens)}
 
 
 @router.get("/api/planner/wall/remote/state", dependencies=[Perm])
 def wall_remote_state(db: Session = Depends(get_db)):
-    """手機遙控頁每秒一次：大螢幕最近回報的狀態、隔了幾秒、算不算連線中。"""
-    row = db.get(WallRemoteState, 1)
+    """手機遙控頁每秒一次：接收遙控那台的狀態、隔了幾秒、算不算連線中、同時開著幾台。
+    都斷線了就拿最後回報的那台，手機才能顯示「最後一次回報是幾秒前」。"""
+    now = _now()
+    screens = _online_screens(db, now)
+    row = screens[0] if screens else db.scalars(select(WallScreen).order_by(WallScreen.seen_at.desc()).limit(1)).first()
     if row is None:
-        return {"state": None, "age": None, "online": False, "client": "", "duck_level": _duck_level(db)}
-    age = max(0.0, (_now() - _aware(row.updated_at)).total_seconds())
+        return {"state": None, "age": None, "online": False, "client": "", "screens": 0, "duck_level": _duck_level(db)}
+    age = max(0.0, (now - _aware(row.seen_at)).total_seconds())
     return {"state": json.loads(row.state_json or "{}"), "age": round(age, 2), "online": age < REMOTE_ONLINE, "client": row.client,
-            "duck_level": _duck_level(db)}
+            "screens": len(screens), "duck_level": _duck_level(db)}
 
 
 # ---------------- 講話模式的音量（2026-09-30） ----------------

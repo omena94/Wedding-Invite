@@ -608,14 +608,17 @@ class WallCommand(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
 
 
-class WallRemoteState(Base):
-    """大螢幕最近一次回報的播放狀態（只有 id = 1 這一列）：手機遙控頁看現在播什麼、播到哪、待播清單。"""
-    __tablename__ = "wall_remote_state"
+class WallScreen(Base):
+    """開著的大螢幕分頁（2026-09-30）：一個分頁一列，存它最近一次回報的播放狀態。
+    原本只存一列（舊表 wall_remote_state 已不用），開了兩台時狀態會互相蓋掉、手機指令兩台都做；
+    改成每台分開記，才能選出「接收遙控」的那一台（最後按「開始播放」或按了「改由這台接收遙控」的），其他台當備用。"""
+    __tablename__ = "wall_screens"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    client: Mapped[str] = mapped_column(String(40), default="")  # 哪一個大螢幕分頁回報的（開了兩個時分得出來）
+    client: Mapped[str] = mapped_column(String(40), primary_key=True)  # 大螢幕分頁打開時隨機產生，重新整理就換一個
+    opened_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    lead_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)  # 按「開始播放」或搶過遙控的時間
+    seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
     state_json: Mapped[str] = mapped_column(Text, default="{}")
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class MenuItem(Base):

@@ -3,7 +3,7 @@
 // 大螢幕每秒回報一次狀態、順便拿走這裡按的指令（後端 routers/wall.py 的 remote/*），所以按下去大約一兩秒後生效；
 // 在那之前畫面先照「按下去的樣子」顯示（pending），大螢幕回報跟上了就改用真的狀態。
 import { useEffect, useRef, useState } from "react";
-import { ListMusic, Mic, MicOff, Minus, Pause, Play, Plus, SkipBack, SkipForward, Wifi, WifiOff } from "lucide-react";
+import { ListMusic, Mic, MicOff, Minus, MonitorSmartphone, Pause, Play, Plus, SkipBack, SkipForward, Wifi, WifiOff } from "lucide-react";
 import { fetchWallRemote, saveWallDuck, sendWallRemote } from "../api.js";
 import Toggle from "../components/Toggle.jsx";
 import { PageHead, confirmAsk, toastErr } from "./ui.jsx";
@@ -97,6 +97,13 @@ export default function WallRemote() {
     <div className="wr">
       <PageHead title="大螢幕遙控" sub="用手機操作會場大螢幕：切歌、拖進度、插播、講話模式。按下去大約一兩秒後生效。" />
       <div className={`wr-conn ${conn.cls}`}><ConnIcon size={16} /> <span>{conn.text}</span></div>
+      {/* 同時開了好幾台大螢幕（2026-09-30）：只有一台照手機做，要讓人知道控制的是哪一台、怎麼換 */}
+      {online && snap.screens > 1 && (
+        <div className="wr-conn wait"><MonitorSmartphone size={16} />
+          <span>偵測到 {snap.screens} 台大螢幕同時開著。手機只控制<b>最後按「開始播放」的那台</b>（上面顯示的就是它），其他台畫面照播、不跟著遙控。
+            用不到的請關掉；要改控制另一台，在那台的操作列按「改由這台接收遙控」。</span>
+        </div>
+      )}
 
       <div className="panel wr-now">
         <div className="wr-label">{song?.ins ? "現在播放（插播）" : "現在播放"}</div>

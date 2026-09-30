@@ -31,6 +31,8 @@
       #ui-song { font-weight: 700; max-width: 420px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
       #ui-next, #ui-status { color: #a1978a; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 360px; }
       #ui-status.bad { color: #ff9a7a; }
+      #ui-remote { flex-basis: 100%; color: #ffb547; font-size: 13px; }
+      #ui-remote[hidden], #ui-claim[hidden] { display: none; }
       #ui button.on { border-color: #ffb547; color: #ffb547; }
       /* 進度條（2026-09-30）：整條都可以按、拖；拖的時候上面的小標籤顯示放開會跳到幾分幾秒 */
       #ui-seek { flex-basis: 100%; display: flex; align-items: center; gap: 12px; color: #a1978a; font: 13px/1 Consolas, "Cascadia Mono", Menlo, monospace; }
@@ -116,6 +118,7 @@
       <div class="grp"><span class="lbl">音畫同步</span><button id="ui-sync-down" type="button" title="[">−</button><span id="ui-sync">0 ms</span><button id="ui-sync-up" type="button" title="]">＋</button></div>
       <div class="grp"><button id="ui-queue-btn" type="button" title="歌單（L）">歌單</button><button id="ui-quality" type="button" title="電腦比較慢時改成省電">畫質：高</button><button id="ui-full" type="button" title="F">全螢幕</button></div>
       <span id="ui-status"></span>
+      <div id="ui-remote" class="grp" hidden><span id="ui-remote-text"></span><button id="ui-claim" type="button" title="手機遙控改成控制這台，原本那台變備用">改由這台接收遙控</button></div>
     </div>
     <aside id="queue" aria-label="歌單">
       <div class="q-head"><b>歌單</b><button id="q-shuffle" type="button" title="打亂順序播放（這台電腦會記住）">隨機播放：關</button><button id="q-reshuffle" type="button" hidden>重新洗牌</button><button id="q-close" type="button" title="收起歌單（L）">✕</button></div>
