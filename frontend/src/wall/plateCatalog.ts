@@ -602,7 +602,7 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "「FLIGHT AO0313 → 永遠」登機證，乘客姓名 = 留言署名，登機門、座位、條碼；留言印在登機證上，歌詞像廣播字幕。票根在小節線撕下。",
-  "bilingual": false
+  "bilingual": true
  },
  {
   "name": "passport",
@@ -2213,6 +2213,15 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": true,
   "idea": "咖啡廳裡兩人用單字卡互考：孟庭舉卡（原文），宣文搶答（中文），答對擊掌、答錯被彈額頭；卡片上的字是歌詞；留言寫在桌上的筆記本。",
+  "bilingual": true
+ },
+ {
+  "name": "dogswim",
+  "title": "狗狗游泳",
+  "family": "dog",
+  "light": true,
+  "couple": true,
+  "idea": "狗狗游泳池，三隻狗在水裡划水（元元游最快、芃芃套著游泳圈），兩人在池邊丟玩具、拿毛巾等；泳池邊的雙語告示牌是歌詞；留言寫在救生圈上。",
   "bilingual": true
  }
 ];
