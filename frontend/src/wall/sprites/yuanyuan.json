@@ -1,0 +1,20 @@
+{
+  "group": "yuanyuan",
+  "series": {
+    "yy_": {"ref":"yy_stand","refFrac":0.5859375,"groundFrac":0.9365234375,"target":400}
+  },
+  "sprites": {
+    "yy_ball": {"kind":"dog","w":490,"h":407,"ax":261,"ay":402.3,"ref":400,"height":0.42,"pts":{"ball":[453.3,117.3,22.7],"mouth":[453.3,117.3]}},
+    "yy_beg": {"kind":"dog","w":328,"h":407,"ax":199.7,"ay":403,"ref":400,"height":0.42,"pts":{"mouth":[297.3,83.3]}},
+    "yy_howl": {"kind":"dog","w":327,"h":440,"ax":193.7,"ay":436.3,"ref":400,"height":0.42},
+    "yy_jump": {"kind":"dog","w":573,"h":466,"ax":310.3,"ay":512,"ref":400,"height":0.42,"pts":{"ball":[541.3,30.7,29.3],"mouth":[468.7,99.3]}},
+    "yy_run_1": {"kind":"dog","w":607,"h":285,"ax":351,"ay":281,"ref":400,"height":0.42,"pts":{"mouth":[532.7,91.3]}},
+    "yy_run_2": {"kind":"dog","w":500,"h":365,"ax":255.7,"ay":360.3,"ref":400,"height":0.42,"pts":{"mouth":[454.7,121.3]}},
+    "yy_shake": {"kind":"dog","w":513,"h":407,"ax":262.3,"ay":403,"ref":400,"height":0.42},
+    "yy_sit": {"kind":"dog","w":280,"h":407,"ax":121.7,"ay":403,"ref":400,"height":0.42},
+    "yy_sleep": {"kind":"dog","w":493,"h":158,"ax":248.3,"ay":153.7,"ref":400,"height":0.42},
+    "yy_stand": {"kind":"dog","w":496,"h":407,"ax":259.7,"ay":403,"ref":400,"height":0.42,"pts":{"mouth":[448.7,111.3]}},
+    "yy_tilt": {"kind":"dog","w":252,"h":407,"ax":115,"ay":403,"ref":400,"height":0.42},
+    "yy_walk": {"kind":"dog","w":550,"h":407,"ax":307.7,"ay":402.3,"ref":400,"height":0.42}
+  }
+}
