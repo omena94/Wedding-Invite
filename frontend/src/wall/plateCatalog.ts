@@ -2288,6 +2288,15 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "bilingual": true
  },
  {
+  "name": "videocall",
+  "title": "遠距視訊",
+  "family": "date",
+  "light": false,
+  "couple": true,
+  "idea": "分割畫面：左邊宣文在家、右邊孟庭在醫院值班休息室（護理服），兩人隔著螢幕比愛心，通話畫面下方是雙語即時字幕（歌詞）；留言是聊天室的訊息。",
+  "bilingual": true
+ },
+ {
   "name": "bookstore",
   "title": "書店約會",
   "family": "date",
@@ -2303,6 +2312,15 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": true,
   "idea": "機場登機口，兩人拖著行李、拿著護照與登機證，三隻狗坐在寵物提籃裡探頭；登機口螢幕是雙語航班資訊（歌詞）；留言是行李吊牌。",
+  "bilingual": true
+ },
+ {
+  "name": "studydate",
+  "title": "圖書館讀書",
+  "family": "date",
+  "light": true,
+  "couple": true,
+  "idea": "圖書館長桌，兩人一起讀語言課本，孟庭在宣文的課本上畫愛心、宣文打瞌睡被戳醒（照拍子）；課本上的例句是雙語歌詞；留言是借書卡。",
   "bilingual": true
  },
  {
