@@ -1,7 +1,11 @@
-// 網球（亮、sport）：午後的硬地球場，鏡頭在場邊斜斜往下看（看得到透視的場地線），宣文與孟庭隔網對打，芃芃是球僮。角色是 Codex 畫的紙偶（_puppet.ts）。
+// 網球（亮、sport）：午後的硬地球場，鏡頭在場邊斜斜往下看（看得到透視的場地線），宣文與孟庭隔網對打，三隻狗都在場邊。角色是 Codex 畫的紙偶（_puppet.ts）。
 //  - 一分兩小節（快歌四小節）：小節線上宣文發球（拋球 → 最高點落下 → 拍點上擊球），之後一拍一球（快歌兩拍一球）來回，
-//    每一球都在對方那半場彈地一次（彈地也落在半拍附近，地上留一圈訊號色的小波紋）。第六球孟庭打出界：
-//    球從宣文身邊飛過、在拍點上落在場外，滾到角落；芃芃下一拍衝過去叼起來（咬到在拍點），跑回網柱邊、把球丟進球籃坐好。
+//    每一球都在對方那半場彈地一次（彈地也落在半拍附近，地上留一圈訊號色的小波紋）。第六球孟庭打出界，從宣文身邊飛過去。
+//  - 三隻狗（2026-09-30 新人加了元元：有狗的版面三隻都要在）：芃芃、QQ 是坐在網柱邊球籃旁的球僮，元元（白色柴犬，最大隻、穩重愛笑）
+//    是坐在左邊底線外的「線審」，正面坐著笑，每個小節線歪一次頭。出界球三隻輪流處理：
+//    芃芃、QQ 那一輪，球在拍點落地、滾到宣文腳邊，球僮下一拍衝過去叼起來（咬到在拍點），跑回網柱邊、把球丟進球籃坐好；
+//    元元那一輪，牠先站起來，出界球還沒落地就在拍點上跳起來空中接住（兩隻博美跳不到那麼高），落地、下一拍把球一甩丟進球籃，再坐回去。
+//    有狗接到球的那一刻，坐著的另外兩隻跟著彈一下。
 //  - 擊球一定落在拍點：引拍（back）→ 拍點上換成擊球瞬間（hit，球就在拍面上）→ 收拍（follow）→ 回到準備（ready）。
 //    發球：拋球時換成 serve（球拍在腦後），球落到頭頂的那一刻（拍點）擊出、換成收拍。
 //  - 球是 ball 色（固定的黃綠色），飛的時候後面拖一小段訊號色的線；地上有它的影子（離地越高越小越淡），斜俯視才看得出球有多高。
@@ -10,7 +14,7 @@
 //    照「留言尺寸與版面比例標準 v2」：字 40～60、牌子最大 650 × 420，高度跟著留言長短。牌子上只有一行小小的比分：
 //    每丟一分就翻一次「15 · LOVE」「30 · LOVE」「40 · LOVE」「GAME」（網球的 0 分叫 love）。沒有留言時牌子寫邀請。
 //  - 光線：左上角的太陽，影子往右下拖；樹梢在拍點上被風推一下、雲慢慢飄。鏡頭整個窗格慢慢推近計分牌。
-//  - 右下角 HUD：場地在那裡淡掉，球、狗都不會跑進去。
+//  - 右下角 HUD：場地在那裡淡掉，球、狗都不會跑進去。三隻狗都坐在畫面下緣的場外區，不擋留言、歌詞。
 import * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
 import { FSPass, Layer2D, W, H } from '../engine/gl';
@@ -20,7 +24,7 @@ import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, lerp } from '../engine/util';
 import { lyricAt, layoutLyric, drawLyric, barAfter, beatAfter, sparkHead, sparkParticles, msgChars } from './_motifs';
 import { inkFor, inkLine, inkPath, inkPoly, inkEllipse, tennisBall, drawNote, type Pt, type Note, type Ink } from './_couple';
-import { loadPuppets, drawPuppet, drawPick, drawCycle, puppetPoint, puppetShadow, puppetIn, breathe, beatKick, hop, landSquash, noteV2, tightenNote, type PuppetOpts } from './_puppet';
+import { loadPuppets, drawPuppet, drawPick, drawCycle, puppetPoint, puppetShadow, puppetIn, breathe, beatKick, hop, landSquash, jumpArc, noteV2, tightenNote, type PuppetOpts } from './_puppet';
 import { lyricV2 } from './_v2';
 
 export const spec: PlateSpecDecl = { group: 'couple', family: 'sport', paper: true, energy: [0.35, 1], bars: [4, 8] };
@@ -38,9 +42,15 @@ const depthK = (v: number) => lenAt(v) / lenAt(VP);
 
 const SZ = 330;
 const XW = 300, MT = 1235;
-/** 芃芃（球僮）坐的地方、球籃、出界球最後停的地方。 */
-const DOG_X = 640, DOG_Y = 992, BASKET = { x: 548, y: 1000 };
-const OUT_REST = { x: 84, g: 962 };
+/** 三隻狗坐的地方（場外區，腳底都在 DOG_Y）、球籃、出界球（博美那兩輪）彈地與最後停的地方（宣文腳邊、元元的右邊）。 */
+const DOG_Y = 992, BASKET = { x: 548, y: 1000 };
+type Dog = 'pp' | 'qq' | 'yy';
+const HOME: Record<Dog, number> = { pp: 640, qq: 745, yy: 120 };
+/** 出界球輪流：芃芃、元元、QQ。 */
+const FETCH: Dog[] = ['pp', 'yy', 'qq'];
+const OUT_B1 = { x: 262, g: 948 }, OUT_B2 = { x: 238, g: 978 }, OUT_REST = { x: 226, g: 996 };
+/** 狗在這個版面放大一點（1.25 倍，三隻用同一個倍數，大小比例不變）。元元在空中接球：跳多高、最高點在哪裡。 */
+const DOG_S = 1.25, YJUMP = 58, YCATCH_X = 172;
 /** 計分牌：掛在鐵網右邊（最大 650 × 420，標準 v2；實際高度跟著留言），寫字的內距。 */
 const BOARD = { x: 1150, y: 96, w: 650, h: 420 };
 const PAD = { x: 40, top: 70, bottom: 32 };
@@ -57,7 +67,8 @@ const WHO = [
 ] as const;
 const POSES = [
   ...WHO.flatMap(({ p }) => [`${p}_tennis_ready`, `${p}_tennis_back`, `${p}_tennis_hit`, `${p}_tennis_follow`]),
-  'xw_tennis_serve', 'pp_sit', 'pp_run_1', 'pp_run_2', 'pp_ball',
+  'xw_tennis_serve', 'pp_sit', 'pp_run_1', 'pp_run_2', 'pp_ball', 'qq_sit', 'qq_run_1', 'qq_run_2', 'qq_ball',
+  'yy_sit', 'yy_tilt', 'yy_stand', 'yy_jump', 'yy_ball', 'yy_walk',
 ];
 
 type Kind = 'serve' | 'hit' | 'out';
@@ -65,8 +76,10 @@ interface Hit { t: number; who: 0 | 1; kind: Kind; point: number }
 /** 球在 3D 裡的一段路：x（畫面橫向）、g（地面在畫面上的 y，= 深度）、h（離地高度 px）；高度照拋物線，peak = 比直線多出來的高度。 */
 interface Leg { t0: number; t1: number; a: B3; b: B3; peak: number; bounce?: boolean }
 interface B3 { x: number; g: number; h: number }
-/** 一分結束（出界球）：落地、停住、芃芃咬到、送回球籃。 */
-interface Rally { serve: number; bounce: number; rest: number; pick: number; home: number; drop: number; point: number }
+/**
+ * 一分結束（出界球）：bounce 落地（元元那一輪是空中接住）、rest 滾停、pick 咬到（元元：甩球）、home 回到位子、drop 球進籃、dog 輪到誰。
+ */
+interface Rally { serve: number; bounce: number; rest: number; pick: number; home: number; drop: number; point: number; dog: Dog }
 
 /**
  * 球場的底（一次畫在 shader 裡，浮點＋抖色，淡漸層才不會一圈一圈）：紙、左上角的太陽光、場地的底色（比紙深一點點），
@@ -112,6 +125,8 @@ export default class Tennis extends Scene {
   /** 擊球點（擊球瞬間那張圖上的拍面）與發球點（頭頂前上方）。 */
   contact: [Pt, Pt] = [{ x: 0, y: 0 }, { x: 0, y: 0 }];
   servePt: Pt = { x: 0, y: 0 };
+  /** 元元跳到最高點時嘴前那顆球的位置（出界球在這裡被接住）。 */
+  yyCatch: Pt = { x: 0, y: 0 };
   note: Note | null = null;
   board = { ...BOARD };
   lyricSize = 52;
@@ -126,6 +141,7 @@ export default class Tennis extends Scene {
       this.contact[i] = puppetPoint(`${w.p}_tennis_hit`, 'racket', w.x, GROUND, o) ?? { x: w.x + w.dir * SZ * 0.36, y: GROUND - SZ * 0.5 };
     });
     this.servePt = { x: XW + SZ * 0.16, y: GROUND - SZ * 1.2 };
+    this.yyCatch = puppetPoint('yy_jump', 'ball', YCATCH_X, DOG_Y - YJUMP, { h: SZ, scale: DOG_S }) ?? { x: YCATCH_X + 100, y: DOG_Y - 260 };
     this.schedule();
     // 計分牌上的留言：標準 v2 的字級；牌子的寬高跟著留言，靠右掛
     const c = this.fg.ctx;
@@ -154,7 +170,7 @@ export default class Tennis extends Scene {
       this.hits.push({ t: at(0), who: 0, kind: 'serve', point });
       for (let s = 1; s <= 5; s++) this.hits.push({ t: at(s), who: (s % 2) as 0 | 1, kind: s === 5 ? 'out' : 'hit', point });
       const sp = at(1) - at(0);
-      this.rallies.push({ serve: at(0), bounce: at(6), rest: at(6) + sp * 0.8, pick: at(7), home: at(7) + sp * 1.45, drop: at(7) + sp * 1.7, point: point + 1 });
+      this.rallies.push({ serve: at(0), bounce: at(6), rest: at(6) + sp * 0.8, pick: at(7), home: at(7) + sp * 1.45, drop: at(7) + sp * 1.7, point: point + 1, dog: FETCH[point % 3]! });
       point++;
       t0 = at(8);
     }
@@ -171,7 +187,13 @@ export default class Tennis extends Scene {
       }
       if (h.kind === 'out') {
         const rally = this.rallies[h.point]!;
-        const b1: B3 = { x: 150, g: 928, h: 0 }, b2: B3 = { x: 108, g: 950, h: 0 }, R: B3 = { x: OUT_REST.x, g: OUT_REST.g, h: 0 };
+        if (rally.dog === 'yy') {
+          // 元元那一輪：球飛到元元跳到最高點時嘴前的那顆球（yy_jump 圖上的球）就停了——空中接住
+          const cp = this.yyCatch;
+          this.legs.push({ t0: h.t, t1: rally.bounce, a: A, b: { x: cp.x, g: DOG_Y, h: DOG_Y - cp.y }, peak: SZ * 0.3 });
+          continue;
+        }
+        const b1: B3 = { x: OUT_B1.x, g: OUT_B1.g, h: 0 }, b2: B3 = { x: OUT_B2.x, g: OUT_B2.g, h: 0 }, R: B3 = { x: OUT_REST.x, g: OUT_REST.g, h: 0 };
         this.legs.push({ t0: h.t, t1: rally.bounce, a: A, b: b1, peak: SZ * 0.34 });
         this.legs.push({ t0: rally.bounce, t1: rally.bounce + sp * 0.42, a: b1, b: b2, peak: SZ * 0.09, bounce: true });
         this.legs.push({ t0: rally.bounce + sp * 0.42, t1: rally.rest, a: b2, b: R, peak: 0, bounce: true });
@@ -376,7 +398,7 @@ export default class Tennis extends Scene {
     // 人（影子往右下拖：太陽在左上）
     this.drawPlayer(c, 0, t);
     this.drawPlayer(c, 1, t);
-    this.drawDog(c, t);
+    this.drawDogs(c, t);
     this.drawBall(c, t);
     this.drawBoardText(c, t);
     comp.draw(renderer, L.upload(), out);
@@ -425,10 +447,10 @@ export default class Tennis extends Scene {
   /** 球、球的影子、拖在後面的一小段訊號色的線、擊球與彈地的小波紋。 */
   private drawBall(c: CanvasRenderingContext2D, t: number) {
     const ink = inkFor(true);
-    // 出界球停在角落（芃芃咬起來之前）
+    // 出界球停在宣文腳邊（球僮咬起來之前；元元那一輪球在牠嘴裡，不停在地上）
     let b = this.ballAt(t);
     if (!b) {
-      const r = this.rallies.find((r) => t >= r.rest && t < r.pick);
+      const r = this.rallies.find((r) => r.dog !== 'yy' && t >= r.rest && t < r.pick);
       if (r) b = { x: OUT_REST.x, g: OUT_REST.g, h: 0, leg: this.legs[0]!, u: 1 };
     }
     // 擊球的瞬間：拍面炸一圈短線（訊號色）
@@ -492,28 +514,52 @@ export default class Tennis extends Scene {
     c.restore();
   }
 
+  /** 元元那一輪的跳躍：起跳、落地（最高點在出界球的拍點上）。 */
+  private yyLeap(r: Rally) {
+    const air = Math.min(0.56, (r.pick - r.bounce) * 1.15);
+    return { t0: r.bounce - air / 2, t1: r.bounce + air / 2 };
+  }
+
+  /** 三隻狗：先畫後面的元元（線審），再畫網柱邊的兩個球僮。 */
+  private drawDogs(c: CanvasRenderingContext2D, t: number) {
+    // 有狗接到球的那一刻（博美咬到、元元空中接住），坐著的另外兩隻跟著彈一下
+    let cheer = 0;
+    for (const r of this.rallies) {
+      const tc = r.dog === 'yy' ? r.bounce : r.pick;
+      const u = (t - tc) / 0.32;
+      if (u > 0 && u < 1) cheer = Math.max(cheer, Math.sin(Math.PI * u));
+    }
+    this.drawYuan(c, t, cheer);
+    for (const d of ['pp', 'qq'] as const) this.drawBallkid(c, t, d, cheer);
+  }
+
   /**
-   * 芃芃（球僮）：坐在網柱邊跟著拍子點頭 → 出界球落地時起跑（朝左）→ 下一拍咬到（拍點）→ 叼著球跑回來 → 把球丟進球籃、坐好。
+   * 球僮（芃芃、QQ）：坐在網柱邊跟著拍子點頭 → 輪到自己時，出界球落地就起跑（朝左）→ 下一拍咬到（拍點）→ 叼著球跑回來 → 把球丟進球籃、坐好。
    */
-  private drawDog(c: CanvasRenderingContext2D, t: number) {
+  private drawBallkid(c: CanvasRenderingContext2D, t: number, d: 'pp' | 'qq', cheer: number) {
     const au = this.ctx.audio;
-    const en = puppetIn(t, this.ctx.start + 0.3, 0.42);
+    const en = puppetIn(t, this.ctx.start + (d === 'pp' ? 0.3 : 0.38), 0.42);
     if (en.alpha <= 0) return;
-    const base: PuppetOpts = { h: SZ, scale: 1.25, spin: en.spin, alpha: en.alpha };
-    const shadow = (x: number, lift = 0) => puppetShadow(c, 'pp', x + 10, DOG_Y + 2, { h: SZ * 1.25, lift, alpha: 0.28 * en.alpha, color: '70,45,25' });
-    const r = this.rallies.find((r) => t >= r.bounce - 0.25 && t < r.drop + 0.6);
-    const sit = (x: number) => { shadow(x); drawPuppet(c, 'pp_sit', x, DOG_Y, { ...base, squash: 0.05 * beatKick(au, t, 0.25) + breathe(t, 0.014, 1.3) }); };
-    if (!r) { sit(DOG_X); return; }
-    // 咬球的地方：pp_ball 的嘴（圖上的球）剛好在停住的球上方
-    const probe = puppetPoint('pp_ball', 'ball', 0, DOG_Y, { ...base, flip: true });
+    const X = HOME[d];
+    const base: PuppetOpts = { h: SZ, scale: DOG_S, spin: en.spin, alpha: en.alpha };
+    const shadow = (x: number, lift = 0) => puppetShadow(c, d, x + 10, DOG_Y + 2, { h: SZ * DOG_S, lift, alpha: 0.28 * en.alpha, color: '70,45,25' });
+    const r = this.rallies.find((r) => r.dog === d && t >= r.bounce - 0.25 && t < r.drop + 0.6);
+    const sit = (x: number) => {
+      const lift = 12 * cheer;
+      shadow(x, lift);
+      drawPuppet(c, `${d}_sit`, x, DOG_Y - lift, { ...base, squash: 0.05 * beatKick(au, t, 0.25) + breathe(t, 0.014, 1.3, d === 'pp' ? 0 : 0.5) });
+    };
+    if (!r) { sit(X); return; }
+    // 咬球的地方：<狗>_ball 的嘴（圖上的球）剛好在停住的球上方
+    const probe = puppetPoint(`${d}_ball`, 'ball', 0, DOG_Y, { ...base, flip: true });
     const pickX = OUT_REST.x - (probe ? probe.x : -40);
     const go = r.bounce - 0.12;
-    if (t < go) { sit(DOG_X); return; }
-    const runs = ['pp_run_1', 'pp_run_2'];
+    if (t < go) { sit(X); return; }
+    const runs = [`${d}_run_1`, `${d}_run_2`];
     if (t < r.pick) {
       // 衝過去：越跑越快、快到的時候放慢，剛好在拍點咬到
       const u = clamp((t - go) / (r.pick - go));
-      const x = lerp(DOG_X, pickX, 0.5 - 0.5 * Math.cos(Math.PI * u));
+      const x = lerp(X, pickX, 0.5 - 0.5 * Math.cos(Math.PI * u));
       const b = hop(au.beatAt(t), 2) * 8;
       shadow(x, b);
       drawCycle(c, au, t, runs, 2, x, DOG_Y - b, { ...base, flip: true, rot: -0.04 });
@@ -523,7 +569,7 @@ export default class Tennis extends Scene {
     if (t < r.pick + (r.home - r.pick) * 0.22) {
       // 咬到：叼著球（圖上的球）停一下
       shadow(pickX);
-      drawPuppet(c, 'pp_ball', pickX, DOG_Y, { ...base, flip: true, squash: landSquash(t, r.pick, 0.12) });
+      drawPuppet(c, `${d}_ball`, pickX, DOG_Y, { ...base, flip: true, squash: landSquash(t, r.pick, 0.12) });
       if (probe && k > 0) this.burst(c, OUT_REST.x, probe.y, k, 14);
       return;
     }
@@ -531,7 +577,7 @@ export default class Tennis extends Scene {
       // 跑回來（朝右），球在嘴裡
       const t0 = r.pick + (r.home - r.pick) * 0.22;
       const u = clamp((t - t0) / (r.home - t0));
-      const x = lerp(pickX, DOG_X, 0.5 - 0.5 * Math.cos(Math.PI * u));
+      const x = lerp(pickX, X, 0.5 - 0.5 * Math.cos(Math.PI * u));
       const b = hop(au.beatAt(t), 2) * 8;
       shadow(x, b);
       const o: PuppetOpts = { ...base, rot: 0.03 };
@@ -541,12 +587,76 @@ export default class Tennis extends Scene {
       return;
     }
     // 到了：把球丟進球籃（小小的拋物線），坐好
-    sit(DOG_X);
+    sit(X);
     if (t < r.drop) {
       const u = clamp((t - r.home) / (r.drop - r.home));
-      const m = { x: DOG_X + 40, y: DOG_Y - 62 };
+      const m = { x: X + 40, y: DOG_Y - SZ * DOG_S * 0.16 };
       tennisBall(c, lerp(m.x, BASKET.x, u), lerp(m.y, BASKET.y - 48, u) - 60 * u * (1 - u), BALL_R, { ink: inkFor(true), t });
     }
+  }
+
+  /**
+   * 元元（線審）：正面坐著笑，每個小節線歪一次頭（sit ↔ tilt）→ 輪到牠時，孟庭出手那一拍站起來（面向來球）→
+   * 最高點在出界球的拍點上跳起來接住（飛行中蓋掉圖上的球，接到那一刻打開）→ 落地叼著 → 下一拍把球一甩丟進球籃 → 走回位子坐下。
+   */
+  private drawYuan(c: CanvasRenderingContext2D, t: number, cheer: number) {
+    const au = this.ctx.audio;
+    const en = puppetIn(t, this.ctx.start + 0.22, 0.42);
+    if (en.alpha <= 0) return;
+    const X = HOME.yy;
+    const base: PuppetOpts = { h: SZ, scale: DOG_S, spin: en.spin, alpha: en.alpha };
+    const shadow = (x: number, lift = 0) => puppetShadow(c, 'yy', x + 10, DOG_Y + 2, { h: SZ * DOG_S, lift, alpha: 0.26 * en.alpha, color: '70,45,25' });
+    const sit = () => {
+      const lift = 10 * cheer;
+      shadow(X, lift);
+      const tilt = Math.floor(au.barAt(t)) % 2 === 1;
+      drawPuppet(c, tilt ? 'yy_tilt' : 'yy_sit', X, DOG_Y - lift, { ...base, squash: 0.03 * beatKick(au, t, 0.25) + breathe(t, 0.012, 1.8, 0.2) });
+    };
+    const r = this.rallies.find((r) => r.dog === 'yy' && t >= r.bounce - (r.pick - r.bounce) * 1.3 && t < r.home + 0.1);
+    if (!r) { sit(); return; }
+    const sp = r.pick - r.bounce;
+    const L = this.yyLeap(r);
+    const standAt = r.bounce - sp * 1.2;
+    if (t < L.t0) {
+      // 站起來、面向來球，起跳前蹲一下（jumpArc 的預備）
+      const j = jumpArc(t, L.t0, L.t1, YJUMP);
+      const x = lerp(X, YCATCH_X - 50, prog(t, standAt, L.t0, ease.inOutCubic));
+      shadow(x);
+      drawPuppet(c, 'yy_stand', x, DOG_Y, { ...base, squash: j.squash + landSquash(t, standAt, 0.06) });
+      return;
+    }
+    if (t < L.t1 + 0.1) {
+      // 跳：最高點（拍點）剛好在 YCATCH_X、身體水平；接到之前蓋掉圖上的球
+      const j = jumpArc(t, L.t0, L.t1, YJUMP, { crouch: 0, land: 0.18 });
+      const x = lerp(YCATCH_X - 50, YCATCH_X + 50, clamp((t - L.t0) / (L.t1 - L.t0)));
+      shadow(x, -j.y);
+      if (j.air) {
+        drawPuppet(c, 'yy_jump', x, DOG_Y + j.y, { ...base, rot: -0.18 + 0.36 * j.u, pivot: 0.5, squash: j.squash, hide: t < r.bounce ? ['ball'] : undefined });
+        const k = 1 - clamp((t - r.bounce) / 0.22);
+        if (k > 0 && t >= r.bounce) this.burst(c, this.yyCatch.x, this.yyCatch.y, k, 16);
+      } else drawPuppet(c, 'yy_ball', YCATCH_X + 50, DOG_Y, { ...base, squash: j.squash });
+      return;
+    }
+    const x1 = YCATCH_X + 50;
+    if (t < r.pick) {
+      // 落地叼著球（圖上的球），跟著拍子點頭
+      shadow(x1);
+      drawPuppet(c, 'yy_ball', x1, DOG_Y, { ...base, squash: 0.03 * beatKick(au, t, 0.2) });
+      return;
+    }
+    // 甩球：拍點上頭往前一甩（往前傾一下），球沿拋物線飛進球籃；然後走回位子（朝左）坐下
+    const toss = puppetPoint('yy_ball', 'ball', x1, DOG_Y, base) ?? { x: x1 + 90, y: DOG_Y - 150 };
+    const u = clamp((t - r.pick) / (r.drop - r.pick));
+    if (u < 1) tennisBall(c, lerp(toss.x, BASKET.x, u), lerp(toss.y, BASKET.y - 48, u) - 120 * u * (1 - u), BALL_R, { ink: inkFor(true), t });
+    const back = prog(t, r.pick + sp * 0.35, r.home, ease.inOutCubic);
+    if (back <= 0) {
+      shadow(x1);
+      drawPuppet(c, 'yy_stand', x1, DOG_Y, { ...base, rot: -0.08 * Math.exp(-(t - r.pick) / 0.12), pivot: 0.3 });
+      return;
+    }
+    const x = lerp(x1, X, back);
+    shadow(x, hop(au.beatAt(t), 2) * 4);
+    drawPuppet(c, 'yy_walk', x, DOG_Y - hop(au.beatAt(t), 2) * 4, { ...base, flip: true });
   }
 
   /** 計分牌上的比分（每丟一分翻一次）與主打留言（第一球起逐字寫上去，寫完署名淡入）。 */
