@@ -171,8 +171,10 @@ export const spec: PlateSpecDecl = {
   **著色器要在建構時（欄位）或 `init()` 裡建好、存在版面自己的欄位（或 `this.track`）**，不要在 `render()` 裡第一次才 `new`；
   模組層級的共用物件（例如 `_t3` 的紙纖維）要讓用到的版面存一個參考（`fiber = fiberBake()`），引擎才找得到。
   `ctx.measureText` 有全域快取（`engine/type.ts`，同字型同一句只量一次，結果一模一樣），`layout`／`measure` 也有。
-- 現場播放每秒最多約 60 格（120／144Hz 螢幕隔一次更新才畫一格）、畫面時鐘是平滑過的（`main.ts` 的 `Player.time`），
-  `dt` 一律當 1/60。截圖模式（`?export`）不受影響，也只有它開 `preserveDrawingBuffer`。
+- 現場播放**不鎖每秒 60 格**（2026-10-01 起每次螢幕更新都畫，120／144Hz 螢幕就畫 120／144 格）、畫面時鐘是平滑過的
+  （`main.ts` 的 `Player.time`），`dt` 是跟上一格差幾秒的歌曲時間（暫停時 0）。所以**畫面只能由 `t` 決定**，
+  不要每格固定加一點（`x += 0.5`），不然高更新率螢幕上會變快；閃爍這類「每格換一次」的用 `frameIdx(t)`（照 60 格切，快慢不隨螢幕變）。
+  截圖模式（`?export`）不受影響，也只有它開 `preserveDrawingBuffer`。
 - 可以回傳的後製參數：`exposure, bloom, bloomThreshold, bloomKnee, bloomRadius, halation, ca, grain, vignette, hud, frame（裁切角標，只給片頭卡）,
   qr（角落 QR，自己畫了大 QR 才設 0）, popups（即時小卡透明度，滿版大字時可調低，別設 0）, **popupAvoid**（重要文字的範圍 `[x,y,w,h][]`，
   即時小卡挑位置時避開；回傳整個窗格會用到的範圍，render 的回傳型別標成 `PostOverrides`）, paper（亮版面設 1：HUD 與小卡改成深色字）,

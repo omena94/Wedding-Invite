@@ -145,7 +145,8 @@ class Player {
    * 畫面該畫的歌曲時間：音樂時間（用 performance.now 補平）扣掉輸出延遲，加上手動微調。
    * 2026-10-01 平滑：瀏覽器更新 currentTime 的時間點不規律，直接跟著它，畫面時間每隔一陣子就被拉一下
    * （這格只走 2 毫秒、下一格補 11 毫秒），歌詞移動看起來一頓一頓的。改成畫面時鐘照實際經過的時間走，
-   * 每格只修正跟音樂差距的一成（十幾格內就追上，肉眼看不出快慢）；差超過 0.1 秒（拖進度、換歌、電腦卡住）才直接對齊。
+   * 每 1/60 秒修正跟音樂差距的一成（約兩三百毫秒內追上，肉眼看不出快慢）；差超過 0.1 秒（拖進度、換歌、電腦卡住）才直接對齊。
+   * 修正量照經過的時間算、不照格數：畫面不鎖每秒 60 格，144Hz 螢幕一秒畫的格數多一倍多，追的快慢要一樣。
    */
   time(): number {
     const now = performance.now();
@@ -154,7 +155,8 @@ class Player {
     if (this.el.paused || this.smP < 0) this.sm = a;
     else {
       const pred = this.sm + (now - this.smP) / 1000, err = a - pred;
-      this.sm = Math.abs(err) > 0.1 ? a : pred + err * 0.1;
+      const k = 1 - Math.pow(0.9, ((now - this.smP) / 1000) * 60); // 60 格時 = 0.1，跟原本一樣
+      this.sm = Math.abs(err) > 0.1 ? a : pred + err * k;
     }
     this.smP = now;
     const lat = this.ctx ? (this.ctx.outputLatency || 0) + (this.ctx.baseLatency || 0) : 0;
@@ -455,27 +457,11 @@ let lastFrame = performance.now(), fpsAcc = 0, fpsN = 0, fps = 60;
   gain: player.gain?.gain.value ?? player.el.volume, ducked: player.ducked, volume: player.volume,
 });
 
-// 高更新率螢幕（120／144Hz…）每隔幾個畫面更新才畫一格，大約每秒 60 格（2026-10-01 省效能）：
-// 動畫本來就照每秒 60 格設計（engine.render 的 dt 固定 1/60），多畫的格數只是讓顯示卡多做一倍的工。
-// 用「每幾次更新畫一格」而不是計時器，格與格的間隔才平均；更新率是量最近幾十次 requestAnimationFrame 的間隔中位數。
-const vsyncGaps: number[] = [];
-let lastVsync = 0, vsyncN = 0, every = 1;
-function frameDue(now: number) {
-  if (lastVsync) {
-    vsyncGaps.push(now - lastVsync);
-    if (vsyncGaps.length > 60) vsyncGaps.shift();
-    if (vsyncGaps.length >= 30 && vsyncN % 30 === 0) {
-      const med = [...vsyncGaps].sort((a, b) => a - b)[vsyncGaps.length >> 1]!;
-      every = Math.max(1, Math.floor((1000 / med + 10) / 60)); // 60/75/90Hz → 每次都畫；120/144Hz → 隔一次；240Hz → 隔三次
-    }
-  }
-  lastVsync = now;
-  return vsyncN++ % every === 0;
-}
-
+// 每次螢幕更新都畫一格，不鎖每秒 60 格（2026-10-01 新人要求：120／144Hz 螢幕上看起來更順）。
+// 版面的畫面只由歌曲時間 t 決定，畫得多只是更順、不會變快；交給版面的 dt 是這格跟上一格差了幾秒的歌曲時間。
+let lastT = 0;
 function tick() {
   const now = performance.now();
-  if (!frameDue(now)) { requestAnimationFrame(tick); return; }
   fpsAcc += now - lastFrame; fpsN++; lastFrame = now;
   if (fpsAcc > 1000) { fps = (fpsN * 1000) / fpsAcc; fpsAcc = 0; fpsN = 0; }
   if (playing) {
@@ -488,8 +474,10 @@ function tick() {
     else if (playing && silent && t > 239) startSilent();
     director.update(t);
     engine.gc(t);
-    engine.render(t, 1 / 60);
+    // 暫停時 0；拖進度、換歌這種跳動引擎自己會當成跳轉，這裡只要別給負數或過大的值
+    engine.render(t, Math.min(0.1, Math.max(0, t - lastT)));
   }
+  lastT = t;
   if (ui.classList.contains('show') && now - lastSeekDraw > 150) { lastSeekDraw = now; drawSeek(); }
   if (debugEl && !debugEl.hidden) debugEl.textContent = `${t.toFixed(2)}s  beat ${au?.beatAt(t).toFixed(2)}  bar ${au?.barAt(t).toFixed(2)}  [${engine.timeline.find((e) => t >= e.start && t < e.end)?.id ?? '—'}]  ${fps.toFixed(0)}fps  留言 ${pool.count}  errors ${engine.errors.length}`;
   requestAnimationFrame(tick);
