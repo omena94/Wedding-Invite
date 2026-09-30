@@ -2,13 +2,13 @@
 // 只有有 wall 鑰匙的人看得到；開關跟當天照片一樣存在設定表（wall_open、wall_moderation）。
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import qrcode from "qrcode-generator";
-import { Check, Download, MessageSquareHeart, Monitor, Plus, QrCode, Trash2 } from "lucide-react";
+import { Check, Download, MessageSquareHeart, Monitor, Plus, QrCode, Smartphone, Trash2 } from "lucide-react";
 import {
   createWallMessage, deleteWallMessage, fetchPlannerSettings, fetchWallMessages, savePlannerSettings, updateWallMessage,
 } from "../api.js";
 import Toggle from "../components/Toggle.jsx";
 import WallSongs from "./WallSongs.jsx";
-import { Empty, ErrorBox, Loading, PageHead, confirmDelete, toastErr, toastOk, useLoader } from "./ui.jsx";
+import { Empty, ErrorBox, Loading, Modal, PageHead, confirmDelete, toastErr, toastOk, useLoader } from "./ui.jsx";
 
 const TEXT_MAX = 60; // 跟後端、/wish 一致
 const NAME_MAX = 20;
@@ -38,6 +38,7 @@ export default function Wall() {
   const [addText, setAddText] = useState("");
   const [adding, setAdding] = useState(false);
   const [working, setWorking] = useState(null); // 正在改哪一則（按鈕先鎖住，避免連點）
+  const [remoteQr, setRemoteQr] = useState(false); // 「手機遙控」的 QR code 視窗
   // 每次改動就 +1：改動途中送出去的輪詢，回來時已經過時，丟掉才不會畫面跳回舊狀態
   const gen = useRef(0);
 
@@ -104,7 +105,11 @@ export default function Wall() {
   return (
     <div>
       <PageHead title="現場留言" sub="賓客掃 QR code 到 /wish 留言，會即時出現在會場大螢幕上。大螢幕請用會場電腦登入後開啟。"
-        actions={<button type="button" className="btn btn-primary" onClick={() => window.open("/wall", "_blank", "noopener")}><Monitor size={15} /> 開啟大螢幕</button>} />
+        actions={<>
+          <button type="button" className="btn btn-ghost" onClick={() => setRemoteQr(true)}><Smartphone size={15} /> 手機遙控</button>
+          <button type="button" className="btn btn-primary" onClick={() => window.open("/wall", "_blank", "noopener")}><Monitor size={15} /> 開啟大螢幕</button>
+        </>} />
+      {remoteQr && <RemoteQr url={`${location.origin}/planner/wall-remote`} onClose={() => setRemoteQr(false)} />}
 
       <div className="wall-top">
         <div className="panel">
@@ -206,15 +211,42 @@ function makeQr(text) {
   return qr;
 }
 
+// QR code 的 SVG 路徑：一格一個小方塊，四周留白
+function qrPath(qr) {
+  const n = qr.getModuleCount();
+  let d = "";
+  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (qr.isDark(r, c)) d += `M${c + QUIET},${r + QUIET}h1v1h-1z`;
+  return d;
+}
+
+// 手機遙控頁的 QR code（2026-09-30）：幫手用手機相機掃，登入後就能遙控大螢幕
+function RemoteQr({ url, onClose }) {
+  const qr = useMemo(() => makeQr(url), [url]);
+  const size = qr.getModuleCount() + QUIET * 2;
+  return (
+    <Modal title="用手機遙控大螢幕" onClose={onClose}>
+      <div className="wall-qr">
+        <svg className="wall-qr-code" viewBox={`0 0 ${size} ${size}`} shapeRendering="crispEdges" role="img" aria-label={`QR code：${url}`}>
+          <rect width={size} height={size} fill="#fff" />
+          <path d={qrPath(qr)} fill="#000" />
+        </svg>
+        <div className="wall-qr-side">
+          <div className="wall-qr-url">{url}</div>
+          <div className="helper-text">
+            用手機相機掃，登入後台（新人密碼，或有「現場留言」權限的幫手密碼）就是遙控器：切歌、拖進度、插播、講話模式。
+            也可以在手機後台的選單點「大螢幕遙控」。會場電腦的大螢幕要先按「開始播放」。
+          </div>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 // 賓客留言頁的 QR code：畫面上用 SVG，下載用 canvas 另外畫一張夠大的 PNG（印海報、放桌卡）
 function WishQr({ url }) {
   const qr = useMemo(() => makeQr(url), [url]);
   const n = qr.getModuleCount();
-  const path = useMemo(() => {
-    let d = "";
-    for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (qr.isDark(r, c)) d += `M${c + QUIET},${r + QUIET}h1v1h-1z`;
-    return d;
-  }, [qr, n]);
+  const path = useMemo(() => qrPath(qr), [qr]);
   const size = n + QUIET * 2;
 
   const download = () => {

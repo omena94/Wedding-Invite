@@ -17,13 +17,14 @@ from typing import Any
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Response, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, StrictBool, StrictFloat, StrictInt, StrictStr
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from .. import guest_access
 from ..config import settings
 from ..database import get_db
-from ..models import WallMessage, WallSong
+from ..models import WallCommand, WallMessage, WallRemoteState, WallSong
 from ..permissions import require_perm
 from ..security import optional_staff
 from ..stage import WALL_MODERATION_KEY, WALL_OPEN_KEY, WALL_PACE_KEY, WALL_PLATES_OFF_KEY, get_setting, is_on
@@ -456,3 +457,108 @@ def delete_wall_song(song_id: int, db: Session = Depends(get_db)):
     db.delete(s)
     db.commit()
     return Response(status_code=204)
+
+
+# ---------------- 手機遙控（2026-09-30） ----------------
+# 幫手在手機後台按的指令先存進 wall_commands；大螢幕每秒 POST 一次 remote/sync：
+# 回報自己的播放狀態（手機遙控頁顯示用），同時拿走還沒做的指令。
+REMOTE_ACTIONS = ("play", "pause", "next", "prev", "seek", "now", "insert", "cancel", "shuffle", "reshuffle", "volume", "duck")
+REMOTE_TTL = 30       # 秒：大螢幕剛打開（或斷線很久）時，不要把很久以前按的指令一次補做
+REMOTE_ONLINE = 8     # 秒：超過這麼久沒回報，手機上就顯示「沒有連線」
+REMOTE_STATE_MAX = 64 * 1024
+
+
+def _aware(dt: datetime) -> datetime:
+    # SQLite（測試機）讀回來會掉時區，存的都是 UTC
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
+def _remote_args(action: str, args: dict[str, Any]) -> dict[str, Any]:
+    """每種指令只留它要的參數，型別、範圍不對就擋（大螢幕那邊照單全收）。"""
+    def num(k: str, lo: float, hi: float) -> float:
+        v = args.get(k)
+        if isinstance(v, bool) or not isinstance(v, (int, float)):
+            raise HTTPException(400, "參數格式不正確")
+        return _finite(v, "參數", lo, hi)
+
+    def whole(k: str) -> int:
+        v = args.get(k)
+        if isinstance(v, bool) or not isinstance(v, int):
+            raise HTTPException(400, "參數格式不正確")
+        return v
+
+    if action == "seek":
+        return {"t": num("t", 0, 24 * 3600)}
+    if action in ("now", "insert", "cancel"):
+        return {"id": whole("id"), "j": whole("j")}
+    if action in ("shuffle", "duck"):
+        if not isinstance(args.get("on"), bool):
+            raise HTTPException(400, "參數格式不正確")
+        return {"on": args["on"]}
+    if action == "volume":
+        return {"v": num("v", 0, 1.5)}
+    return {}
+
+
+class RemoteCommandIn(BaseModel):
+    action: StrictStr
+    args: dict[str, Any] = {}
+
+
+@router.post("/api/planner/wall/remote/command", status_code=201, dependencies=[Perm])
+def wall_remote_command(payload: RemoteCommandIn, db: Session = Depends(get_db)):
+    """手機遙控按下去：排一個指令給大螢幕。"""
+    if payload.action not in REMOTE_ACTIONS:
+        raise HTTPException(400, "沒有這個操作")
+    args = _remote_args(payload.action, payload.args)
+    now = _now()
+    db.execute(delete(WallCommand).where(WallCommand.created_at < now - timedelta(hours=1)))
+    row = WallCommand(action=payload.action, args_json=json.dumps(args), created_at=now)
+    db.add(row)
+    db.commit()
+    return {"id": row.id}
+
+
+class RemoteSyncIn(BaseModel):
+    client: StrictStr = ""
+    after: StrictInt = -1   # 大螢幕做過的最後一個指令；-1 = 剛打開，只拿目前的編號、不補做以前的
+    state: dict[str, Any] = {}
+
+
+@router.post("/api/planner/wall/remote/sync", dependencies=[Perm])
+def wall_remote_sync(payload: RemoteSyncIn, db: Session = Depends(get_db)):
+    """大螢幕每秒一次：存下播放狀態，回傳還沒做的指令。"""
+    raw = json.dumps(payload.state, ensure_ascii=False)
+    if len(raw) > REMOTE_STATE_MAX:
+        raise HTTPException(413, "播放狀態太大")
+    now = _now()
+    seq = db.scalar(select(func.max(WallCommand.id))) or 0
+    commands = []
+    if payload.after >= 0:
+        rows = db.scalars(select(WallCommand).where(WallCommand.id > payload.after, WallCommand.created_at >= now - timedelta(seconds=REMOTE_TTL))
+                          .order_by(WallCommand.id)).all()
+        commands = [{"id": r.id, "action": r.action, "args": json.loads(r.args_json or "{}")} for r in rows]
+    row = db.get(WallRemoteState, 1)
+    if row is None:
+        row = WallRemoteState(id=1)
+        db.add(row)
+    row.client, row.state_json, row.updated_at = payload.client.strip()[:40], raw, now
+    try:
+        db.commit()
+    except IntegrityError:
+        # 兩個 worker 同時建第一列：另一個已經建好了，改成更新它
+        db.rollback()
+        row = db.get(WallRemoteState, 1)
+        row.client, row.state_json, row.updated_at = payload.client.strip()[:40], raw, now
+        db.commit()
+    return {"seq": max([seq, *[c["id"] for c in commands]]), "commands": commands}
+
+
+@router.get("/api/planner/wall/remote/state", dependencies=[Perm])
+def wall_remote_state(db: Session = Depends(get_db)):
+    """手機遙控頁每秒一次：大螢幕最近回報的狀態、隔了幾秒、算不算連線中。"""
+    row = db.get(WallRemoteState, 1)
+    if row is None:
+        return {"state": None, "age": None, "online": False, "client": ""}
+    age = max(0.0, (_now() - _aware(row.updated_at)).total_seconds())
+    return {"state": json.loads(row.state_json or "{}"), "age": round(age, 2), "online": age < REMOTE_ONLINE, "client": row.client}

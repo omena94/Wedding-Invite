@@ -296,3 +296,45 @@ def test_pace(setup):
     assert c.patch("/api/planner/settings", json={"wall_pace": "fast"}, headers=COUPLE).status_code == 200
     assert _feed(c)["pace"] == "fast"
     assert c.patch("/api/planner/settings", json={"wall_pace": "turbo"}, headers=COUPLE).status_code == 400
+
+
+def test_remote_control(setup):
+    """手機遙控（2026-09-30）：手機送指令、大螢幕每秒同步拿走並回報狀態；剛打開的大螢幕不補做以前的指令。"""
+    c, db, _ = setup
+    sync = lambda after, state=None, h=COUPLE: c.post("/api/planner/wall/remote/sync", json={"client": "wall-a", "after": after, "state": state or {}}, headers=h)
+    cmd = lambda action, args=None, h=COUPLE: c.post("/api/planner/wall/remote/command", json={"action": action, "args": args or {}}, headers=h)
+    # 還沒有大螢幕回報：手機看到沒有連線
+    r = c.get("/api/planner/wall/remote/state", headers=COUPLE).json()
+    assert r["state"] is None and r["online"] is False
+    # 大螢幕打開前按的指令：剛打開（after=-1）只拿編號、不補做
+    assert cmd("next").status_code == 201
+    r = sync(-1, {"playing": True, "song": {"id": 3, "title": "告白氣球"}}).json()
+    assert r["commands"] == [] and r["seq"] >= 1
+    seq = r["seq"]
+    st = c.get("/api/planner/wall/remote/state", headers=COUPLE).json()
+    assert st["online"] is True and st["state"]["song"]["title"] == "告白氣球" and st["client"] == "wall-a" and st["age"] < 5
+    # 手機按了：大螢幕下一次同步照順序拿到，參數只留該有的
+    assert cmd("duck", {"on": True, "extra": "x"}).status_code == 201
+    assert cmd("seek", {"t": 83.5}).status_code == 201
+    assert cmd("insert", {"id": 7, "j": 3}).status_code == 201
+    assert cmd("volume", {"v": 1}).status_code == 201
+    r = sync(seq).json()
+    assert [(x["action"], x["args"]) for x in r["commands"]] == [("duck", {"on": True}), ("seek", {"t": 83.5}), ("insert", {"id": 7, "j": 3}), ("volume", {"v": 1.0})]
+    seq = r["seq"]
+    assert sync(seq).json()["commands"] == []  # 做過的不會再拿到
+    # 不合法的指令、參數
+    for action, args in (("explode", {}), ("seek", {"t": "10"}), ("seek", {"t": -1}), ("duck", {"on": 1}), ("now", {"id": 1.5, "j": 2}), ("volume", {"v": 3}), ("shuffle", {"on": True, "x": 1})):
+        res = cmd(action, args)
+        assert (res.status_code == 400) == (action != "shuffle"), (action, args, res.text)
+    # 超過 30 秒沒被拿走的指令就不做了（大螢幕斷線很久才回來，不要一次補做一堆）
+    from datetime import datetime, timedelta, timezone
+    from app.models import WallCommand
+    old = WallCommand(action="next", args_json="{}", created_at=datetime.now(timezone.utc) - timedelta(seconds=60))
+    db.add(old)
+    db.commit()
+    assert [x["action"] for x in sync(seq).json()["commands"]] == ["shuffle"]
+    # 狀態太大擋掉；沒有 wall 鑰匙的幫手不能用
+    assert sync(seq, {"x": "a" * 70000}).status_code == 413
+    assert cmd("next", h=HELPER).status_code == 403
+    assert sync(seq, h=HELPER).status_code == 403
+    assert c.get("/api/planner/wall/remote/state", headers=HELPER).status_code == 403

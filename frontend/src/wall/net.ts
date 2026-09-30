@@ -51,6 +51,11 @@ export async function fetchAnalysis(id: number): Promise<{ version: number; data
 export const saveAnalysis = (id: number, payload: { version: number; duration: number; bpm: number; data: unknown }) =>
   api(`/api/planner/wall/songs/${id}/analysis`, { method: 'PUT', body: payload });
 
+// 手機遙控（2026-09-30）：每秒回報播放狀態，順便拿走手機按的指令（after：做過的最後一個指令編號，-1 = 剛打開）
+export interface RemoteCommand { id: number; action: string; args: Record<string, any> }
+export const syncRemote = (body: { client: string; after: number; state: unknown }) =>
+  api<{ seq: number; commands: RemoteCommand[] }>('/api/planner/wall/remote/sync', { method: 'POST', body });
+
 const AUDIO_CACHE = 'wedding-wall-audio-v1';
 
 /**
