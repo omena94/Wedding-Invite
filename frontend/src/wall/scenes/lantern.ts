@@ -5,6 +5,8 @@
 //  - 寫完之後的拍點：仙女棒的火花飛進燈底的金紙點著——火苗、燈裡透出暖光、燈紙鼓起來彈一下，兩人的臉被照亮。
 //  - 下一個小節線：兩人一起放手（雙手往上舉、輕輕一跳），天燈慢慢升起；鏡頭跟著往上搖（人往畫面下方沉、遠山跟著降），
 //    燈只在畫面上升一點點，所以**留言一直在燈面上讀得到**。放手的那一小節芃芃和 QQ 在小鼓上跳一下；鏡頭搖到人沉到燈底下之後（兩小節後的小節線），兩人翻成背影、摟著肩抬頭看。
+//  - 三隻狗：芃芃、QQ 坐在兩邊，放手那一小節在小鼓上跳；元元（白色柴犬，比博美大）坐在前景燈的右下方，寫字時歪頭看、
+//    點火後站起來轉向燈、放手的小節線上仰頭對著升起的天燈長嚎（第 1、3 拍），之後坐下來陪著看。
 //  - 遠處的天空已經升著一大片天燈（有遠有近、慢慢往上飄、輕輕晃），近一點的幾盞寫著其他賓客的留言（小字、很淡，只是氣氛）。
 //  - 歌詞沿著右上天空一道弧線（天燈飄上去的路）逐字亮，仙女棒的火花騎在正在唱的字上；比留言小一級（標準 v2：40～52）。
 //  - 照「留言尺寸與版面比例標準 v2」：留言 40～60、署名 26～32，燈面寫字的範圍約 350 × 400。沒有留言時燈上寫邀請（字小、淡），歌詞變主角。
@@ -18,7 +20,7 @@ import { LIN, rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, hash, lerp } from '../engine/util';
 import { lyricAt, barAfter, beatAfter, sparkHead, sparkParticles, msgChars } from './_motifs';
 import { lyricOnPath, drawNote, type Pt, type Note } from './_couple';
-import { loadPuppets, drawPuppet, puppetPoint, puppetShadow, puppetIn, jumpArc, breathe, beatKick, noteV2, tightenNote, type PuppetOpts } from './_puppet';
+import { loadPuppets, drawPuppet, puppetPoint, puppetBox, puppetShadow, puppetIn, jumpArc, breathe, beatKick, noteV2, tightenNote, type PuppetOpts } from './_puppet';
 import { lyricV2 } from './_v2';
 import { mixC } from './_c4';
 
@@ -35,10 +37,12 @@ const TEXT_W = 420, LH_MAX = 450;
 const TILT = 190, LIFT = 60;
 const DOG_S = 1.15;
 const MT_X = 262, XW_X = 1004, PP_X = 128, QQ_X = 1150;
+/** 元元（白色柴犬，比博美大）：坐在前景、燈的右下方（離鏡頭近一點，地面低一點），抬頭看燈；火苗在燈底，牠的頭碰不到。 */
+const YY_X = 800, YY_DY = 60;
 /** 翻成背影之後兩人站的地方：燈的左下方（燈在他們的右上方，孟庭往右上指）。 */
 const WATCH_X = LX - 240;
 const INVITE = '掃描右下角 QR code，把祝福寫上大螢幕';
-const SPRITES = ['mt_lantern_write', 'mt_lantern_hold', 'xw_lantern_hold', 'mt_lantern_release', 'xw_lantern_release', 'cp_lantern_watch', 'pp_sit', 'qq_sit', 'pp_jump', 'qq_jump'];
+const SPRITES = ['mt_lantern_write', 'mt_lantern_hold', 'xw_lantern_hold', 'mt_lantern_release', 'xw_lantern_release', 'cp_lantern_watch', 'pp_sit', 'qq_sit', 'pp_jump', 'qq_jump', 'yy_tilt', 'yy_stand', 'yy_howl', 'yy_sit'];
 
 /** 夜空：上面深、往山谷越暖（遠處一整片天燈與老街的光），加上很淡的雲層；camY = 鏡頭往上搖了多少（天空跟著降一點點）。 */
 const SKY = () => new FSPass(/* glsl */ `
@@ -342,7 +346,7 @@ export default class Lantern extends Scene {
     }
   }
 
-  /** 兩個人和兩隻狗：扶燈（孟庭先寫字）→ 放手 → 翻成背影一起抬頭看。 */
+  /** 兩個人和三隻狗：扶燈（孟庭先寫字）→ 放手 → 翻成背影一起抬頭看。 */
   private drawPeople(c: CanvasRenderingContext2D, t: number, cam: number) {
     const au = this.ctx.audio, s = this.ctx.start;
     const bp = au.beatPeriod(t);
@@ -393,6 +397,52 @@ export default class Lantern extends Scene {
       const o: PuppetOpts = { h: SZ, scale: DOG_S, flip, spin: en.spin, alpha: en.alpha, squash: sq, hide: ['ball'] };
       puppetShadow(c, d, x, G, { h: SZ * DOG_S, lift, alpha: 0.55 * en.alpha, color: '0,0,0' });
       drawPuppet(c, air ? `${d}_jump` : `${d}_sit`, x, G - lift, o);
+    }
+    this.drawYuan(c, t, G + YY_DY);
+  }
+
+  /**
+   * 元元（穩重、愛笑的大狗）：孟庭寫字的時候正面坐著歪頭看（好奇）→ 點火後站起來、轉向燈、尾巴跟著拍子搖 →
+   * 放手的小節線上仰頭對著升起的天燈長嚎（第 1、3 拍再嚎一次，嘴邊冒出幾道聲波）→ 之後坐下來陪著一起看。兩隻博美這時在小鼓上跳。
+   */
+  private drawYuan(c: CanvasRenderingContext2D, t: number, g: number) {
+    const au = this.ctx.audio, s = this.ctx.start;
+    const bp = au.beatPeriod(t);
+    const en = puppetIn(t, s + 0.22, 0.4);
+    if (en.alpha <= 0) return;
+    let pose = 'yy_tilt', flip = false, rot = 0;
+    let sq = breathe(t, 0.01, 2.2, 0.7) + 0.025 * beatKick(au, t, 0.3);
+    const howlEnd = this.tRel + bp * 4;
+    if (t >= howlEnd) pose = 'yy_sit', flip = true;
+    else if (t >= this.tRel) {
+      pose = 'yy_howl'; flip = true;
+      // 第 1、3 拍仰頭（往後仰一點）
+      for (const k of [0, 2]) {
+        const tb = au.timeOfBeat(Math.round(au.beatAt(this.tRel)) + k);
+        rot += 0.06 * Math.sin(Math.PI * prog(t, tb - 0.05, tb + bp * 1.4));
+      }
+    } else if (t >= this.tLight) { pose = 'yy_stand'; flip = true; sq += 0.02 * Math.sin(au.beatAt(t) * Math.PI * 2); }
+    const o: PuppetOpts = { h: SZ, scale: DOG_S, flip, rot, pivot: 0.2, spin: en.spin, alpha: en.alpha, squash: sq };
+    puppetShadow(c, 'yy', YY_X, g, { h: SZ * DOG_S, alpha: 0.6 * en.alpha, color: '0,0,0' });
+    drawPuppet(c, pose, YY_X, g, o);
+    // 長嚎的聲波：嘴邊往左上冒出三道短弧（很淡的紙白），每一聲 0.8 拍
+    if (pose === 'yy_howl') {
+      const b = puppetBox('yy_howl', YY_X, g, o);
+      const mx = b[0] + b[2] * 0.14, my = b[1] + b[3] * 0.1;
+      for (const k of [0, 2]) {
+        const tb = au.timeOfBeat(Math.round(au.beatAt(this.tRel)) + k);
+        const u = (t - tb) / (bp * 0.8);
+        if (u < 0 || u > 1) continue;
+        c.save();
+        c.strokeStyle = rgba('bone', 0.5 * (1 - u));
+        c.lineWidth = 2.5;
+        c.lineCap = 'round';
+        for (let i = 0; i < 3; i++) {
+          const r = 16 + i * 14 + u * 30;
+          c.beginPath(); c.arc(mx, my, r, Math.PI * 1.05, Math.PI * 1.45); c.stroke();
+        }
+        c.restore();
+      }
     }
   }
 
