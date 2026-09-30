@@ -1,0 +1,16 @@
+{
+  "group": "d2-daily",
+  "series": {
+    "xw_": {"ref":"xw_idle_front","refFrac":0.951171875,"groundFrac":0.9739583333333334,"target":600,"from":"base:xw_"},
+    "mt_": {"ref":"mt_idle_front","refFrac":0.96484375,"groundFrac":0.984375,"target":600,"from":"base:mt_"},
+    "cp_": {"ref":"cp_hug","refFrac":0.9760765550239234,"groundFrac":0.9864433811802232,"target":600,"from":"base:cp_"}
+  },
+  "sprites": {
+    "cp_kdrama_grab": {"kind":"couple","w":377,"h":437,"ax":163.9,"ay":433.6,"ref":600},
+    "cp_kdrama_watch": {"kind":"couple","w":382,"h":437,"ax":157.9,"ay":432.8,"ref":600},
+    "mt_kbbq_feed": {"kind":"person","w":315,"h":442,"ax":194.1,"ay":438.3,"ref":600},
+    "mt_kbbq_wrap": {"kind":"person","w":195,"h":441,"ax":89.3,"ay":437.4,"ref":600},
+    "xw_kbbq_cut": {"kind":"person","w":306,"h":448,"ax":113.1,"ay":445,"ref":600},
+    "xw_kbbq_open": {"kind":"person","w":260,"h":448,"ax":107.4,"ay":443.7,"ref":600}
+  }
+}

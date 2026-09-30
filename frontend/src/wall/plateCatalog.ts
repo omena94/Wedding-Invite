@@ -2243,6 +2243,15 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "bilingual": true
  },
  {
+  "name": "kbbq",
+  "title": "烤肉店",
+  "family": "kculture",
+  "light": false,
+  "couple": true,
+  "idea": "烤肉店，網子上的肉在拍點翻面（冒煙、滋滋），宣文用剪刀剪肉、孟庭包生菜餵他；牆上的木牌菜單是雙語歌詞；留言寫在點菜單。",
+  "bilingual": true
+ },
+ {
   "name": "hanbok",
   "title": "穿韓服",
   "family": "kculture",
