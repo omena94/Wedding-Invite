@@ -1,8 +1,8 @@
 // 四格漫畫（亮、cartoon）：一頁報紙的彩色四格，兩人的小劇情「求婚練習」。角色是 Codex 畫的漫畫線稿紙偶（*_comic_*）。
-//  - 起：宣文單膝跪地、對著芃芃和 QQ 練習求婚（兩隻狗歪頭）。
+//  - 起：宣文單膝跪地、對著三隻狗練習求婚（芃芃、QQ、元元坐成一排歪頭；元元是 2026-09-30 加入的白色柴犬，比較大、坐在後面）。
 //    承：孟庭從門邊出現，摀住嘴、臉紅（頭上冒驚嘆號）。
-//    轉：宣文嚇得跳起來，戒指盒飛上天，芃芃飛撲去咬（速度線、「嚇！」）。
-//    合：婚禮那天，孟庭秀戒指、宣文抓頭傻笑，兩隻狗坐在前面，愛心一拍冒一顆。
+//    轉：宣文嚇得跳起來，戒指盒飛上天，芃芃飛撲去咬、撲空，元元坐著不動、兩拍後盒子剛好落進牠嘴裡（速度線、「嚇！」）。
+//    合：婚禮那天，孟庭秀戒指、宣文抓頭傻笑，三隻狗坐在兩邊，愛心一拍冒一顆。
 //  - 一格一格出現：前兩格在第一小節裡（第一拍、第三拍，留言和歌詞才來得及），後兩格各在小節線上「啪」一下貼上去（放大一點點再落定）。
 //    每一格裡的角色都跟著拍子動（點頭、歪頭、在空中晃、愛心冒出來），像動態漫畫。
 //  - **焦點是主打留言**：第一格左上的旁白框（漫畫的方框旁白，細的雙線框），手寫字、署名；照「留言尺寸與版面比例標準 v2」：
@@ -16,8 +16,8 @@ import { F, font, loadText } from '../engine/type';
 import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, hash } from '../engine/util';
 import { lyricAt, layoutLyric, drawLyric, barAfter, beatAfter, msgChars } from './_motifs';
-import { inkFor, inkLine, inkPath, inkPoly, heartPop, drawNote, paperBG, type Pt, type Ink, type Note } from './_couple';
-import { loadPuppets, drawPuppet, puppetBox, puppetShadow, puppetIn, breathe, beatKick, noteV2, tightenNote, type PuppetOpts } from './_puppet';
+import { inkFor, inkLine, inkPath, inkPoly, heartPop, arcAt, drawNote, paperBG, type Pt, type Ink, type Note } from './_couple';
+import { loadPuppets, drawPuppet, puppetBox, puppetPoint, puppetShadow, puppetIn, breathe, beatKick, noteV2, tightenNote, type PuppetOpts } from './_puppet';
 import { lyricV2 } from './_v2';
 
 export const spec: PlateSpecDecl = { group: 'couple', family: 'cartoon', paper: true, energy: [0.3, 1], bars: [4, 8] };
@@ -38,7 +38,7 @@ const BUB = { x: 1052, y: 124, w: 520 };
 const INVITE = '掃描右下角 QR code，把祝福寫上大螢幕';
 const P = {
   kneel: 'xw_comic_kneel', jump: 'xw_comic_jump', surprise: 'mt_comic_surprise',
-  ppSit: 'pp_comic_sit', qqSit: 'qq_comic_sit', ppJump: 'pp_comic_jump', wedding: 'cp_comic_wedding',
+  ppSit: 'pp_comic_sit', qqSit: 'qq_comic_sit', ppJump: 'pp_comic_jump', yySit: 'yy_comic_sit', wedding: 'cp_comic_wedding',
 } as const;
 
 export default class Comic extends Scene {
@@ -155,9 +155,8 @@ export default class Comic extends Scene {
     c.restore();
     c.font = font(F.hei(500), 20);
     c.fillStyle = rgba('sepia', 0.6);
-    c.textAlign = 'right';
-    c.fillText('（完）', P4.x + P4.w - 16, P4.y + P4.h - 16);
-    c.textAlign = 'left';
+    // 放在左下角：右下角坐著元元（尾巴會蓋到字）
+    c.fillText('（完）', P4.x + 14, P4.y + P4.h - 16);
     // 框線（粗一點的墨線）
     c.strokeStyle = rgba('sepia', 0.92);
     c.lineWidth = 3;
@@ -223,7 +222,8 @@ export default class Comic extends Scene {
     const xa = p.x + 620;
     puppetShadow(c, 'xw', xa, floor, { h: SZ, alpha: 0.22 * en.alpha, color: '70,45,25' });
     drawPuppet(c, P.kneel, xa, floor, { h: SZ, spin: en.spin, alpha: en.alpha, squash: 0.02 * kick + breathe(t, 0.01, 1.6), rot: -0.02 * kick, pivot: 0.1 });
-    const dogs: [string, number][] = [[P.ppSit, p.x + 770], [P.qqSit, p.x + 845]];
+    // 三隻狗坐在他面前歪頭看：元元比較大、坐在後面（先畫），兩隻博美在前面；三隻同一個縮放
+    const dogs: [string, number][] = [[P.yySit, p.x + 812], [P.ppSit, p.x + 745], [P.qqSit, p.x + 842]];
     dogs.forEach(([n, x], k) => {
       const tilt = (beat + k) % 2 === 0 ? 0.08 : -0.02;
       puppetShadow(c, n, x, floor, { h: SZ * 1.2, alpha: 0.2 * en.alpha, color: '70,45,25' });
@@ -313,27 +313,36 @@ export default class Comic extends Scene {
     const xa = p.x + 250;
     puppetShadow(c, 'xw', xa, floor, { h: SZ, lift: 60 * up, alpha: 0.22 * en.alpha, color: '70,45,25' });
     drawPuppet(c, P.jump, xa, floor - 60 * up - bob, { h: SZ, spin: en.spin, alpha: en.alpha, rot: -0.06 * up, pivot: 0.5 });
-    // 戒指盒：從他手上飛出去，轉著往右上
+    // 戒指盒：從他手上飛出去、轉著畫一道弧線，兩拍後落進元元嘴裡（芃芃飛撲撲空，元元坐著不動就接到了）
+    const yx = p.x + 522, yo: PuppetOpts = { h: SZ, scale: 1.3, flip: true };
+    const mouth = puppetPoint(P.yySit, 'mouth', yx, floor, yo) ?? { x: yx - 60, y: floor - 120 };
     const k = clamp((t - t0) / (bp * 2));
-    const bxx = xa + 60 + 170 * k, byy = floor - 180 - 110 * Math.sin(Math.PI * 0.5 * k) + 4 * Math.sin(t * 7);
+    const from = { x: xa + 60, y: floor - 180 };
+    const q = k < 1 ? arcAt(from, mouth, Math.min(from.y, mouth.y) - 110, ease.inOutCubic(k)) : mouth;
+    const bxx = q.x, byy = q.y;
     c.save();
-    c.translate(bxx, byy); c.rotate(t * 5);
+    c.translate(bxx, byy); c.rotate(k < 1 ? t * 5 : 0.25);
     c.fillStyle = mixRgba('leash', 'sepia', 0.5);
     c.fillRect(-11, -9, 22, 18);
     c.strokeStyle = rgba('sepia', 0.9); c.lineWidth = 1.5; c.strokeRect(-11, -9, 22, 18);
     c.restore();
-    c.strokeStyle = rgba('sepia', 0.6); c.lineWidth = 1.5;
-    c.beginPath();
-    for (let i = 0; i < 4; i++) { const a = i * 1.57 + t * 3; c.moveTo(bxx + Math.cos(a) * 18, byy + Math.sin(a) * 18); c.lineTo(bxx + Math.cos(a) * 26, byy + Math.sin(a) * 26); }
-    c.stroke();
-    // 芃芃飛撲過去（在空中晃）、QQ 在地上
+    // 飛的時候盒子旁邊幾條閃光線；接到之後元元嘴邊冒一顆小愛心
+    if (k < 1) {
+      c.strokeStyle = rgba('sepia', 0.6); c.lineWidth = 1.5;
+      c.beginPath();
+      for (let i = 0; i < 4; i++) { const a = i * 1.57 + t * 3; c.moveTo(bxx + Math.cos(a) * 18, byy + Math.sin(a) * 18); c.lineTo(bxx + Math.cos(a) * 26, byy + Math.sin(a) * 26); }
+      c.stroke();
+    } else heartPop(c, mouth.x - 10, mouth.y - 40, 22, (t - t0 - bp * 2) / 1.1);
+    // 芃芃飛撲過去（在空中晃，撲空）、QQ 在地上嚇一跳；元元坐在右邊（先畫，盒子在牠嘴前）
+    puppetShadow(c, 'yy', yx, floor, { h: SZ * 1.3, alpha: 0.2 * en.alpha, color: '70,45,25' });
+    drawPuppet(c, P.yySit, yx, floor, { ...yo, spin: en.spin, alpha: en.alpha, squash: k >= 1 ? 0.03 * Math.exp(-(t - t0 - bp * 2) / 0.2) : 0 });
     const ep = puppetIn(t, t0 + bp, 0.3);
-    if (ep.alpha > 0) drawPuppet(c, P.ppJump, p.x + 470 - 40 * (1 - ep.k), floor - 150 + bob * 0.8, { h: SZ, scale: 1.3, flip: true, spin: ep.spin, alpha: ep.alpha, rot: 0.1, pivot: 0.5 });
-    puppetShadow(c, 'qq', p.x + 440, floor, { h: SZ * 1.3, alpha: 0.2 * en.alpha, color: '70,45,25' });
-    drawPuppet(c, P.qqSit, p.x + 440, floor - 10 * beatKick(au, t, 0.2), { h: SZ, scale: 1.3, flip: true, spin: en.spin, alpha: en.alpha });
+    if (ep.alpha > 0) drawPuppet(c, P.ppJump, p.x + 420 - 40 * (1 - ep.k), floor - 170 + bob * 0.8, { h: SZ, scale: 1.3, flip: true, spin: ep.spin, alpha: ep.alpha, rot: 0.1, pivot: 0.5 });
+    puppetShadow(c, 'qq', p.x + 400, floor, { h: SZ * 1.3, alpha: 0.2 * en.alpha, color: '70,45,25' });
+    drawPuppet(c, P.qqSit, p.x + 400, floor - 10 * beatKick(au, t, 0.2), { h: SZ, scale: 1.3, flip: true, spin: en.spin, alpha: en.alpha });
   }
 
-  /** 合：婚禮那天，兩個人（每拍點一下）、兩隻狗坐在前面、愛心一拍冒一顆。 */
+  /** 合：婚禮那天，兩個人（每拍點一下）、三隻狗坐在兩邊、愛心一拍冒一顆。 */
   private panel4(c: CanvasRenderingContext2D, t: number, p: Rect, bp: number) {
     const au = this.ctx.audio;
     const floor = p.y + 356, SZ = 300;
@@ -344,8 +353,10 @@ export default class Comic extends Scene {
     puppetShadow(c, 'cp', x, floor, { h: SZ, alpha: 0.22 * en.alpha, color: '70,45,25' });
     drawPuppet(c, P.wedding, x, floor, { h: SZ, spin: en.spin, alpha: en.alpha, squash: 0.02 * kick + breathe(t, 0.01, 2.4), rot: 0.015 * Math.sin(au.beatAt(t) * Math.PI) });
     const o: PuppetOpts = { h: SZ, scale: 1.2, spin: en.spin, alpha: en.alpha };
+    // 三隻狗坐在兩邊：芃芃在左；元元（比較大）坐在右邊後面、QQ 在牠前面
     drawPuppet(c, P.ppSit, x - 150, floor, { ...o, rot: 0.04 * Math.sin(au.beatAt(t) * Math.PI), pivot: 0.2 });
-    drawPuppet(c, P.qqSit, x + 150, floor, { ...o, flip: true, rot: -0.04 * Math.sin(au.beatAt(t) * Math.PI), pivot: 0.2 });
+    drawPuppet(c, P.yySit, x + 225, floor - 6, { ...o, flip: true, rot: -0.03 * Math.sin(au.beatAt(t) * Math.PI + 1), pivot: 0.2 });
+    drawPuppet(c, P.qqSit, x + 140, floor, { ...o, flip: true, rot: -0.04 * Math.sin(au.beatAt(t) * Math.PI), pivot: 0.2 });
     const b = Math.floor(au.beatAt(t) + 1e-6);
     for (let k = 0; k < 3; k++) {
       const bb = b - k, tb = au.timeOfBeat(bb);
