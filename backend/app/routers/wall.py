@@ -243,7 +243,7 @@ def _song_out(s: WallSong) -> dict:
         "size": s.size, "content_type": s.content_type, "sort_order": s.sort_order, "enabled": s.enabled,
         "duration": s.duration, "bpm": s.bpm, "has_analysis": bool(s.analysis_json), "analysis_version": s.analysis_version,
         "lyrics_lrc": s.lyrics_lrc, "lyrics_source": s.lyrics_source, "lyrics_offset": s.lyrics_offset,
-        "instrumental": s.instrumental, "theme": s.theme, "start_at": s.start_at, "end_at": s.end_at,
+        "instrumental": s.instrumental, "lyrics_done": s.lyrics_done, "theme": s.theme, "start_at": s.start_at, "end_at": s.end_at,
         "created_at": _iso(s.created_at), "updated_at": _iso(s.updated_at),
     }
 
@@ -336,6 +336,7 @@ class SongPatch(BaseModel):
     lyrics_source: StrictStr | None = None
     lyrics_offset: StrictFloat | StrictInt | None = None
     instrumental: StrictBool | None = None
+    lyrics_done: StrictBool | None = None
     theme: StrictStr | None = None
     start_at: StrictFloat | StrictInt | None = None
     end_at: StrictFloat | StrictInt | None = None
@@ -371,6 +372,8 @@ def update_wall_song(song_id: int, payload: SongPatch, db: Session = Depends(get
         s.lyrics_offset = _finite(payload.lyrics_offset, "歌詞位移", -600, 600)
     if "instrumental" in fields and payload.instrumental is not None:
         s.instrumental = payload.instrumental
+    if "lyrics_done" in fields and payload.lyrics_done is not None:
+        s.lyrics_done = payload.lyrics_done
     if "theme" in fields and payload.theme is not None:
         if payload.theme not in ("", *THEMES):
             raise HTTPException(400, "沒有這個配色")

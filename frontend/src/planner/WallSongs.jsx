@@ -1,19 +1,20 @@
 // 大螢幕歌單（2026-09-28）：新人自己加歌、刪歌、排順序；每首歌上傳後在這台電腦上分析節拍、自動找歌詞（LRCLIB），
 // 找不到或時間不準的，在「編輯」裡貼 LRC、上傳 .lrc 檔，或邊聽邊按空白鍵逐句對時；某一句的字亮得跟歌聲對不上，
-// 在歌詞清單按那句的「對字」邊聽邊按（存成加強版 LRC 的 <mm:ss.xx>，沒修的句子照舊自動推算）。
+// 在歌詞清單按那句的「對字」邊聽邊按（存成加強版 LRC 的 <mm:ss.xx>，沒修的句子照舊自動推算）；
+// 某句出來太晚／太早就點它按「開頭提早／延後」，好幾句一起移用 Shift 選起來。整首對好了勾「歌詞對好了」，歌單上才分得出還要修哪幾首。
 // 大螢幕照這裡的順序播（停用的跳過），播到哪一首的配色、剪掉的前奏尾奏也在這裡設。
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowDown, ArrowUp, CloudUpload, FileText, Monitor, Music, Pause, Pencil, Play, RefreshCw, Search, Square, Trash2, Type, Wand2 } from "lucide-react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, CloudUpload, FileText, Monitor, Music, Pause, Pencil, Play, RefreshCw, Search, Square, Trash2, Type, Undo2, Wand2 } from "lucide-react";
 import {
   deleteWallSong, fetchWallSongAnalysis, fetchWallSongAudio, fetchWallSongs, reorderWallSongs, saveWallSongAnalysis, updateWallSong, uploadWallSong,
 } from "../api.js";
-import Toggle from "../components/Toggle.jsx";
+import Toggle, { Checkbox } from "../components/Toggle.jsx";
 import Select from "../components/Select.jsx";
 import { Empty, ErrorBox, Loading, Modal, NumberInput, confirmAsk, confirmDelete, toastErr, toastOk, useLoader } from "./ui.jsx";
 import { analyzeFile, ANALYSIS_VERSION } from "../wall/analysis/client";
 import { halveTempo, doubleTempo } from "../wall/analysis/tempo";
 import { searchLyrics } from "../wall/lyrics/lrclib";
-import { parseLrc, toLrc, shiftLrc, fmtTime, isSynced } from "../wall/lyrics/lrc";
+import { parseLrc, toLrc, fmtTime, isSynced, sourceRows } from "../wall/lyrics/lrc";
 import { buildLyrics, lyricUnits } from "../wall/lyrics/build";
 import { AudioData } from "../wall/engine/audio";
 import { Lyrics } from "../wall/engine/lyrics";
@@ -22,15 +23,21 @@ import { THEMES } from "../wall/themes";
 // .lrc 也可以一起選：跟音檔同名就自動當那首歌的歌詞
 const AUDIO_ACCEPT = "audio/*,video/mp4,.mp3,.m4a,.aac,.wav,.ogg,.flac,.opus,.mp4,.m4v,.mov,.lrc";
 const THEME_OPTIONS = [{ value: "", label: "自動（依歌的快慢挑）" }, ...THEMES.map((t) => ({ value: t.key, label: t.label }))];
+const clip = (s, n = 12) => (s.length > n ? `${s.slice(0, n)}…` : s);
 const mmss = (s) => (s > 0 ? `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, "0")}` : "—");
 
-/** 歌詞狀態：純音樂／已對時（第幾行）／有歌詞但沒時間／沒歌詞。 */
+/**
+ * 歌詞狀態：純音樂／新人標了「對好了」／已對時但還沒確認／有歌詞但沒時間／沒歌詞。
+ * 「對好了」是新人自己標的（2026-09-30）：有時間軸不代表對得準，歌單上要分得出哪幾首不用再修。
+ */
 function lyricsState(s) {
   if (s.instrumental) return { kind: "inst", label: "純音樂", pill: "pill-groom" };
   if (!s.lyrics_lrc) return { kind: "missing", label: "還沒有歌詞", pill: "pill-warn" };
   const doc = parseLrc(s.lyrics_lrc);
   if (!isSynced(doc)) return { kind: "missing", label: "歌詞還沒對時", pill: "pill-warn" };
-  return { kind: "ok", label: `歌詞 ${doc.lines.filter((l) => l.text).length} 行`, pill: "pill-yes" };
+  const n = doc.lines.filter((l) => l.text).length;
+  if (s.lyrics_done) return { kind: "done", label: `✓ 歌詞對好了（${n} 行）`, pill: "pill-yes" };
+  return { kind: "ok", label: `歌詞 ${n} 行・還沒確認`, pill: "pill-groom" };
 }
 
 /** LRCLIB 候選裡「可以直接套用」的：純音樂，或有時間軸、長度跟音檔差 3 秒內（版本不同時間會對不上）。 */
@@ -62,7 +69,7 @@ export default function WallSongs() {
   const [jobs, setJobs] = useState({}); // id 或暫時的 key → 進度文字
   const [editing, setEditing] = useState(null);
   const [playing, setPlaying] = useState(null); // 試聽中的歌 id
-  const [lyf, setLyf] = useState(""); // 歌詞篩選："" 全部／ok／missing／inst
+  const [lyf, setLyf] = useState(""); // 歌詞篩選："" 全部／done 對好了／ok 還沒確認／missing／inst
   const fileRef = useRef(null);
   const audioRef = useRef(null);
   const urlRef = useRef("");
@@ -146,7 +153,8 @@ export default function WallSongs() {
   const total = items.filter((s) => s.enabled).reduce((sum, s) => sum + Math.max(0, (s.end_at || s.duration) - (s.start_at || 0)), 0);
   // 歌詞狀態統計：一眼看出還有幾首要處理（2026-09-28 新人要求）
   const states = items.map((s) => lyricsState(s).kind);
-  const nOk = states.filter((k) => k === "ok").length, nMissing = states.filter((k) => k === "missing").length, nInst = states.filter((k) => k === "inst").length;
+  const count = (kind) => states.filter((k) => k === kind).length;
+  const nDone = count("done"), nOk = count("ok"), nMissing = count("missing"), nInst = count("inst");
   const shown = items.map((s, idx) => ({ s, idx })).filter(({ s }) => !lyf || lyricsState(s).kind === lyf);
   // 缺歌詞的歌全部再上 LRCLIB 找一次（歌名、歌手兩種順序都試；找到能用的才套用）
   const retryAll = async () => {
@@ -181,7 +189,7 @@ export default function WallSongs() {
       <audio ref={audioRef} onEnded={stopPreview} hidden />
       {items.length > 0 && (
         <div className="ws-summary">
-          {[["", `全部 ${items.length}`], ["ok", `有歌詞 ${nOk}`], ["missing", `缺歌詞 ${nMissing}`], ["inst", `純音樂 ${nInst}`]].map(([k, label]) => (
+          {[["", `全部 ${items.length}`], ["done", `對好了 ${nDone}`], ["ok", `還沒確認 ${nOk}`], ["missing", `缺歌詞 ${nMissing}`], ["inst", `純音樂 ${nInst}`]].map(([k, label]) => (
             <button key={k} type="button" className={`btn btn-sm ${lyf === k ? "btn-primary" : "btn-ghost"}`} onClick={() => setLyf(k)}>{label}</button>
           ))}
           {nMissing > 0 && <button type="button" className="btn btn-ghost btn-sm" onClick={retryAll}><Search size={13} /> 缺歌詞的全部再找一次</button>}
@@ -238,6 +246,7 @@ function SongEditor({ song, onClose, onSaved, onPatched }) {
     title: song.title, artist: song.artist, theme: song.theme || "", instrumental: !!song.instrumental,
     start_at: Math.round(song.start_at || 0), end_at: song.end_at ? Math.round(song.end_at) : "",
     lyrics_lrc: song.lyrics_lrc || "", lyrics_source: song.lyrics_source || "", lyrics_offset: song.lyrics_offset || 0,
+    lyrics_done: !!song.lyrics_done,
   });
   const [busy, setBusy] = useState("");
   const [cands, setCands] = useState(null);
@@ -248,17 +257,48 @@ function SongEditor({ song, onClose, onSaved, onPatched }) {
   // 還沒時間的，「開始逐句對時」的提示才會在打開視窗時就看得到（新人 2026-09-29 找不到下一步）
   const [showLrc, setShowLrc] = useState(() => !song.lyrics_lrc?.trim());
   const [saveNote, setSaveNote] = useState("");
-  // 對字、逐句對時、自動、復原改的歌詞直接存（新人不想每改一句就滑到最下面按儲存，按了視窗還會關掉）
+  // 對字、逐句對時、提早延後、自動、復原改的歌詞直接存（新人不想每改一句就滑到最下面按儲存，按了視窗還會關掉）。
+  // 一次只送一個：連按好幾下「延後」時，同時送出的請求可能後發先到，把舊的歌詞蓋回去；排隊、只送最新的那份。
+  const saveQ = useRef({ busy: false, next: null });
   const commitLrc = async (lrc) => {
     setForm((f) => ({ ...f, lyrics_lrc: lrc, lyrics_source: "manual", instrumental: false }));
+    const q = saveQ.current;
+    q.next = lrc;
+    if (q.busy) return;
+    q.busy = true;
     setSaveNote("儲存中…");
-    try {
-      const out = await updateWallSong(song.id, { lyrics_lrc: lrc, lyrics_source: "manual", instrumental: false });
-      onPatched?.(out);
-      setSaveNote(`已自動儲存（${new Date().toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}）`);
-    } catch (e) { setSaveNote(""); toastErr(e); }
+    let ok = false;
+    while (q.next !== null) {
+      const body = q.next;
+      q.next = null;
+      try {
+        onPatched?.(await updateWallSong(song.id, { lyrics_lrc: body, lyrics_source: "manual", instrumental: false }));
+        ok = true;
+      } catch (e) { ok = false; toastErr(e); }
+    }
+    q.busy = false;
+    setSaveNote(ok ? `已自動儲存（${new Date().toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}）` : "");
   };
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+  // 「歌詞對好了」也是按了就存，歌單上馬上分得出哪幾首不用再修（新人 2026-09-30）
+  const markDone = async (v) => {
+    set("lyrics_done", v);
+    try {
+      onPatched?.(await updateWallSong(song.id, { lyrics_done: v }));
+      toastOk(v ? "已標記：這首歌詞對好了" : "改回：這首還要再修");
+    } catch (e) { set("lyrics_done", !v); toastErr(e); }
+  };
+  const timedNow = useMemo(() => { try { return isSynced(parseLrc(form.lyrics_lrc)); } catch { return false; } }, [form.lyrics_lrc]);
+
+  // 歌詞清單選到的句子在 LRC 原文標亮；點一句時原文捲到那一行（新人 2026-09-30：選到歌詞時上面的原文也要跳到那行）
+  const [selLines, setSelLines] = useState([]);
+  const [jump, setJump] = useState(null); // { line }：每點一次換一個物件，同一句再點一次也會捲
+  const srcRows = useMemo(() => { try { return sourceRows(form.lyrics_lrc); } catch { return []; } }, [form.lyrics_lrc]);
+  const rowOf = (l) => {
+    const hits = srcRows.filter((x) => Math.abs(x.t - l.t) < 0.005);
+    return (hits.find((x) => x.text === l.text) || hits[0])?.row ?? -1;
+  };
+  const marks = [...new Set(selLines.map(rowOf).filter((r) => r >= 0))];
 
   // 分析（BPM、拍點）與音檔：對時、預覽都要用
   useEffect(() => {
@@ -344,12 +384,18 @@ function SongEditor({ song, onClose, onSaved, onPatched }) {
       </div>
 
       <div className="form-group">
-        <label className="ws-lyrics-head">
+        {/* 不用 <label>：label 裡面有按鈕時，點「歌詞（LRC）」這幾個字會按到第一個開關 */}
+        <div className="ws-lyrics-head">
           <span>歌詞（LRC）</span>
           <span className="ws-lyrics-tools">
+            {!form.instrumental && (
+              <span title={timedNow ? "標了之後歌單上會顯示「歌詞對好了」，下次就知道這首不用再修" : "歌詞要先有時間（對好時）才能標"}>
+                <Checkbox checked={form.lyrics_done} disabled={!timedNow} onChange={markDone}>歌詞對好了</Checkbox>
+              </span>
+            )}
             <label className="wall-msg-toggle"><Toggle checked={form.instrumental} onChange={(v) => set("instrumental", v)} label="純音樂" /> 純音樂（不顯示歌詞）</label>
           </span>
-        </label>
+        </div>
         {!form.instrumental && <>
           <div className="toolbar" style={{ marginBottom: 8 }}>
             <button type="button" className="btn btn-ghost btn-sm" disabled={!!busy} onClick={find}><Search size={13} /> {busy === "find" ? "找歌詞中…" : "自動找歌詞"}</button>
@@ -371,16 +417,57 @@ function SongEditor({ song, onClose, onSaved, onPatched }) {
               ))}
             </div>
           )}
-          {showLrc && <textarea rows={8} className="ws-lrc" value={form.lyrics_lrc} placeholder={"[00:12.50]第一句歌詞\n[00:16.20]第二句歌詞\n…\n（也可以先貼沒有時間的歌詞，再用下面的「逐句對時」）"}
-            onChange={(e) => setForm((f) => ({ ...f, lyrics_lrc: e.target.value, lyrics_source: "manual" }))} />}
+          {showLrc && <LrcText value={form.lyrics_lrc} marks={marks} jumpKey={jump} jumpRow={jump ? rowOf(jump.line) : -1}
+            onChange={(v) => setForm((f) => ({ ...f, lyrics_lrc: v, lyrics_source: "manual" }))} />}
           <LyricSync lrc={form.lyrics_lrc} offset={Number(form.lyrics_offset) || 0} blobUrl={blobUrl} analysis={analysis?.data}
             onLrc={(lrc) => setForm((f) => ({ ...f, lyrics_lrc: lrc, lyrics_source: "manual" }))} onCommit={commitLrc} saveNote={saveNote}
             onTapStart={() => setShowLrc(false)}
             onOffset={(o) => set("lyrics_offset", Math.round(o * 100) / 100)}
-            onShift={(dt) => setForm((f) => ({ ...f, lyrics_lrc: shiftLrc(f.lyrics_lrc, dt), lyrics_source: "manual" }))} />
+            onSelLines={setSelLines} onPick={(line) => setJump({ line })} />
         </>}
       </div>
     </Modal>
+  );
+}
+
+// ---------------------------------------------------------------- LRC 原文
+/**
+ * LRC 原文的輸入框。歌詞清單選到的句子在這裡標亮，點清單的一句時捲到那一行（marks、jumpRow 是原文的第幾行）。
+ * 不把游標移進來：移進來的話，之後按空白鍵或 ⌫ 會直接改到歌詞。
+ * 不自動換行（太長就左右捲），每一行一樣高，標亮的位置才算得準。
+ */
+function LrcText({ value, onChange, marks, jumpKey, jumpRow }) {
+  const box = useRef(null);
+  const [scroll, setScroll] = useState(0);
+  const [m, setM] = useState({ lh: 21, pad: 13, bw: 1.5, sbv: 0, sbh: 0 });
+  // 行高、內距、捲軸寬度從實際樣式量（字型、捲軸寬度每台電腦不一樣）
+  useLayoutEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    const cs = getComputedStyle(el);
+    const bw = parseFloat(cs.borderTopWidth) || 0;
+    const next = {
+      lh: parseFloat(cs.lineHeight) || 21, pad: parseFloat(cs.paddingTop) || 0, bw,
+      sbv: Math.max(0, el.offsetWidth - el.clientWidth - 2 * bw), sbh: Math.max(0, el.offsetHeight - el.clientHeight - 2 * bw),
+    };
+    if (Object.keys(next).some((k) => Math.abs(next[k] - m[k]) > 0.1)) setM(next);
+  });
+  const centerOn = (row) => {
+    const el = box.current;
+    if (el && row >= 0) el.scrollTo({ top: Math.max(0, m.pad + row * m.lh - el.clientHeight / 2 + m.lh / 2), behavior: "smooth" });
+  };
+  useEffect(() => { if (jumpKey) centerOn(jumpRow); }, [jumpKey]);
+  // 打開原文時，已經有選起來的句子就捲到第一句
+  useEffect(() => { if (marks.length) centerOn(Math.min(...marks)); }, []);
+  return (
+    <div className="ws-lrc-wrap">
+      <textarea ref={box} rows={8} className="ws-lrc" value={value} spellCheck={false}
+        placeholder={"[00:12.50]第一句歌詞\n[00:16.20]第二句歌詞\n…\n（也可以先貼沒有時間的歌詞，再用下面的「逐句對時」）"}
+        onScroll={(e) => setScroll(e.currentTarget.scrollTop)} onChange={(e) => onChange(e.target.value)} />
+      <div className="ws-lrc-marks" style={{ top: m.bw, left: m.bw, right: m.bw + m.sbv, bottom: m.bw + m.sbh }}>
+        {marks.map((row) => <div key={row} className="ws-lrc-mark" style={{ top: m.pad + row * m.lh - scroll, height: m.lh }} />)}
+      </div>
+    </div>
   );
 }
 
@@ -393,9 +480,10 @@ function SongEditor({ song, onClose, onSaved, onPatched }) {
  *   存成加強版 LRC（[時間]<時間>字<時間>字…<結束時間>），整句照樣一起顯示，只是每個字亮的時間照按的；其他句子照舊自動推算。
  *   套用後馬上從那句前面重播，不滿意可以「復原」。
  * - 逐句對時：整首還沒有時間時用，每句開始唱的那一刻按空白鍵。
+ * - 提早／延後（2026-09-30）：秒數自己填；可以整首移，也可以只移選起來的幾句（Shift 選一段、Ctrl 加選），字的逐字時間跟著移。
  * 人按鍵通常慢一點點，所以記的時間自動往前 0.12 秒（放慢播放時換算成音檔時間）。
  */
-function LyricSync({ lrc, offset, blobUrl, analysis, onLrc, onCommit, saveNote, onOffset, onShift, onTapStart }) {
+function LyricSync({ lrc, offset, blobUrl, analysis, onLrc, onCommit, saveNote, onOffset, onTapStart, onSelLines, onPick }) {
   const audio = useRef(null);
   const listRef = useRef(null);
   const syncRef = useRef(null);
@@ -408,7 +496,14 @@ function LyricSync({ lrc, offset, blobUrl, analysis, onLrc, onCommit, saveNote, 
   const [tap, setTap] = useState(null); // 逐句對時中：{ lines, cursor }
   const [wt, setWt] = useState(null); // 逐字對時中：{ idx, t, text, units:[{w,pos}], cuts:[bool], times:[], phase:'setup'|'tap'|'done' }
   const [rate, setRateState] = useState(1);
-  const [undo, setUndo] = useState(null); // 上一次「對字」之前的歌詞（復原用）
+  const [undo, setUndo] = useState([]); // 每次用工具改之前的歌詞，「復原上一步」一次退一步（連按好幾下延後也能一下一下退回去）
+  const pushUndo = () => setUndo((u) => [...u.slice(-29), lrc]);
+  const [sel, setSel] = useState(() => new Set()); // 選起來的句子（doc.lines 的位置）：一起提早／延後，LRC 原文也會標亮
+  const anchor = useRef(null); // Shift 選一段時的起點（上一次點的那句）
+  // 每次提早／延後幾秒：新人自己填（2026-09-30），記在這台電腦，下次打開還是一樣
+  const [stepText, setStepText] = useState(() => { try { return localStorage.getItem("ws-shift-step") || "0.1"; } catch { return "0.1"; } });
+  const step = Math.round(Math.min(30, Math.max(0.01, Number(stepText) || 0.1)) * 100) / 100;
+  useEffect(() => { try { localStorage.setItem("ws-shift-step", String(step)); } catch { /* 無痕視窗等存不了，下次就回到 0.1 */ } }, [step]);
   const REACT = 0.12;
 
   const au = useMemo(() => (analysis ? new AudioData(analysis) : AudioData.silent(600, 100)), [analysis]);
@@ -420,6 +515,9 @@ function LyricSync({ lrc, offset, blobUrl, analysis, onLrc, onCommit, saveNote, 
     const s0 = (l.words?.find((w) => w.w.trim())?.t ?? l.t) + offset;
     return { i, l, line: lyrics.lines.find((x) => Math.abs(x.start - s0) < 0.02) || null };
   }).filter(Boolean), [doc, lyrics, offset]);
+  // 選起來的句子（歌詞在 LRC 原文被改過、那句不見了的就不算）；告訴外面，LRC 原文才標得出來
+  const selRows = useMemo(() => rows.filter((r) => sel.has(r.i)), [rows, sel]);
+  useEffect(() => { onSelLines?.(selRows.map((r) => r.l)); }, [selRows]);
 
   useEffect(() => {
     let raf = 0;
@@ -546,6 +644,73 @@ function LyricSync({ lrc, offset, blobUrl, analysis, onLrc, onCommit, saveNote, 
   // 按完最後一句就自動完成、儲存（不用再找「完成」鍵）
   useEffect(() => { if (tap && tap.cursor >= tap.lines.length) finish(); }, [tap]);
 
+  // ------------------------------------------------ 選句子、提早／延後
+  // 用工具改完的整份歌詞存回去。還沒有時間的句子 parseLrc 會略過，要接在最後面，才不會一改就被弄丟
+  const commitLines = (lines) => commit(toLrc([...lines, ...(timed ? untimed.map((text) => ({ t: NaN, text })) : [])], doc.meta));
+  /**
+   * 整首（only 不給）或選起來的幾句提早／延後 dt 秒，逐字時間跟著移、不會移到 0 秒以前。
+   * 一句後面緊接的空白時間行（「這裡停止唱」）算那句的結尾，跟著一起移。
+   * 移完照時間重新排：移太多、超過隔壁句的話順序會跟著變，選取跟著原本那幾句走。
+   */
+  const shift = (dt, only) => {
+    if (!timed) return;
+    const moving = doc.lines.map(() => false);
+    doc.lines.forEach((l, i) => { moving[i] = !only || only.has(i) || (!l.text && i > 0 && moving[i - 1]); });
+    const moved = doc.lines.map((l, i) => {
+      if (!moving[i]) return { l, m: false, k: i };
+      const d = Math.max(dt, -l.t);
+      return { l: { ...l, t: l.t + d, ...(l.words ? { words: l.words.map((w) => ({ ...w, t: Math.max(0, w.t + d) })) } : {}) }, m: true, k: i };
+    }).sort((a, b) => a.l.t - b.l.t || a.k - b.k);
+    pushUndo();
+    commitLines(moved.map((x) => x.l));
+    if (!only) return;
+    setSel(new Set(moved.map((x, k) => (x.m && only.has(x.k) ? k : -1)).filter((k) => k >= 0)));
+    // 移完從選起來的第一句重播（播到它的下一句），馬上聽得出有沒有對上
+    const k = moved.findIndex((x) => x.m && only.has(x.k));
+    const st = moved[k].l.t + offset;
+    const nx = moved.slice(k + 1).find((x) => x.l.t > moved[k].l.t + 0.05);
+    playSpan(st, Math.min(nx ? nx.l.t + offset : st + 5, st + 15));
+  };
+  // 點清單的一句：選這句、播這句。Shift＋點：從上一次點的那句選到這句；Ctrl（Mac 是 ⌘）＋點：加選或取消這句。這兩種只選不播
+  const pickRow = (e, i) => {
+    onPick?.(doc.lines[i]);
+    if (e.shiftKey && anchor.current !== null) {
+      const a = Math.min(anchor.current, i), b = Math.max(anchor.current, i);
+      setSel(new Set(rows.filter((r) => r.i >= a && r.i <= b).map((r) => r.i)));
+      return;
+    }
+    anchor.current = i;
+    if (e.ctrlKey || e.metaKey) {
+      setSel((s) => { const n = new Set(s); if (n.has(i)) n.delete(i); else n.add(i); return n; });
+      return;
+    }
+    setSel(new Set([i]));
+    setFocus(i);
+    const sp = lineSpan(i);
+    playSpan(sp.start, sp.stop);
+  };
+  /**
+   * 只改這一句的開頭，改完馬上從新的開頭重播這句（新人 2026-09-30：點一句發現字亮得太慢，
+   * 按一下往前 0.1、聽一次，一直按到對）。結尾（下一句的開頭、後面的空白時間行）不動；
+   * 有逐字時間的句子，字跟著一起移。不會越過上一句或下一句（順序不會亂）。
+   */
+  const nudgeStart = (i, dt) => {
+    const l = doc.lines[i];
+    if (!l || !Number.isFinite(l.t)) return;
+    const prev = doc.lines[i - 1], next = doc.lines[i + 1];
+    // 本來就跟隔壁句貼太近（例如同一個時間）的，按「提早」不會反而往後跳
+    const lo = Math.min(l.t, prev ? prev.t + 0.05 : 0), hi = Math.max(l.t, next ? next.t - 0.05 : Infinity);
+    const nt = Math.min(hi, Math.max(lo, l.t + dt));
+    const d = Math.round((nt - l.t) * 100) / 100;
+    if (Math.abs(d) < 0.005) { toastErr(new Error(dt < 0 ? "再往前就碰到上一句了" : "再往後就碰到下一句了")); return; }
+    const lines = doc.lines.slice();
+    lines[i] = { ...l, t: l.t + d, ...(l.words ? { words: l.words.map((w) => ({ ...w, t: Math.max(0, w.t + d) })) } : {}) };
+    pushUndo();
+    commitLines(lines);
+    playSpan(l.t + d + offset, lineSpan(i).stop);
+  };
+  const selectOne = (i) => { anchor.current = i; setSel(new Set([i])); setFocus(i); onPick?.(doc.lines[i]); };
+
   // ------------------------------------------------ 逐字對時（只修一句）
   const openWord = (idx) => {
     const l = doc.lines[idx];
@@ -560,7 +725,7 @@ function LyricSync({ lrc, offset, blobUrl, analysis, onLrc, onCommit, saveNote, 
     }
     if (!units.length) return;
     audio.current?.pause();
-    setFocus(idx);
+    selectOne(idx);
     requestAnimationFrame(() => syncRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" }));
     const t0 = l.t; // 第一個字／第一段就是這句在 LRC 上的時間
     // 只有「自己分段」（新人拿掉了每個字按一下）：一開始整句一段，點字切段
@@ -620,9 +785,9 @@ function LyricSync({ lrc, offset, blobUrl, analysis, onLrc, onCommit, saveNote, 
     const words = [...segs.map((sg, k) => ({ t: starts[k], w: sg.text })), ...(end !== undefined ? [{ t: end, w: "" }] : [])];
     const lines = doc.lines.slice();
     lines[wt.idx] = { t: wt.t, text: l.text, words };
-    setUndo(lrc);
-    commit(toLrc(lines, doc.meta));
-    setFocus(wt.idx);
+    pushUndo();
+    commitLines(lines);
+    selectOne(wt.idx);
     const sp = lineSpan(wt.idx, end !== undefined ? end + offset : undefined);
     setWt(null);
     // 馬上用正常速度重播這一句（只播這句），看字有沒有跟上
@@ -639,10 +804,23 @@ function LyricSync({ lrc, offset, blobUrl, analysis, onLrc, onCommit, saveNote, 
     if (!ok) return;
     const lines = doc.lines.slice();
     lines[idx] = { t: lines[idx].t, text: lines[idx].text };
-    setUndo(lrc);
-    setFocus(idx);
-    commit(toLrc(lines, doc.meta));
+    pushUndo();
+    selectOne(idx);
+    commitLines(lines);
   };
+
+  // 選了一句（沒有在對時）時，鍵盤 ← → 就是這句的「開頭提早／延後」；在輸入框、下拉選單、確認框裡按的不算
+  useEffect(() => {
+    if (tap || wt || selRows.length !== 1) return;
+    const onKey = (e) => {
+      if ((e.key !== "ArrowLeft" && e.key !== "ArrowRight") || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+      if (e.target?.closest?.("input, textarea, [contenteditable], [role=combobox], [role=listbox], .swal2-container")) return;
+      e.preventDefault();
+      nudgeStart(selRows[0].i, e.key === "ArrowLeft" ? -step : step);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }); // 每次重畫都重新綁，拿得到最新的歌詞
 
   useEffect(() => {
     const active = tap || wt?.phase === "tap" || wt?.phase === "done";
@@ -758,16 +936,24 @@ function LyricSync({ lrc, offset, blobUrl, analysis, onLrc, onCommit, saveNote, 
           {rows.length > 0 && (
             <>
               <div className="helper-text" style={{ margin: "2px 0 6px" }}>
-                下面每一句都照大螢幕的時間亮。點一句只播那一句（按上面的播放鍵才會整首一直播）；哪一句的字亮得跟歌聲對不上，按那句的「對字」邊聽邊按空白鍵就好（其他句子不受影響，改完自動儲存）。
+                下面每一句都照大螢幕的時間亮，點一句只播那一句（按上面的播放鍵才會整首一直播）。
+                這句出來得太晚或太早：點它之後按「開頭提早／延後」（或鍵盤 ← →），會從新的開頭重播，一直按到對；字跟歌聲對不上就按「對字」邊聽邊按空白鍵。
+                按住 Shift 點另一句可以選起一整段（Ctrl 點是加選），用下面的「選起來的句子」一起移。改完都會自動儲存。
                 {saveNote && <span className="ws-save-note">{saveNote}</span>}
               </div>
               <div className="ws-lines" ref={listRef}>
                 {rows.map((r) => (
-                  <div key={r.i} data-row={r.i} className={`ws-line${r.i === curRow ? " now" : ""}${r.i === focus ? " sel" : ""}`} onClick={() => { setFocus(r.i); const sp = lineSpan(r.i); playSpan(sp.start, sp.stop); }}>
+                  // Shift＋點時擋掉瀏覽器預設的反白選字
+                  <div key={r.i} data-row={r.i} className={`ws-line${r.i === curRow ? " now" : ""}${sel.has(r.i) ? " sel" : ""}`}
+                    onMouseDown={(e) => { if (e.shiftKey) e.preventDefault(); }} onClick={(e) => pickRow(e, r.i)}>
                     <span className="ws-tap-t">{fmtTime(r.l.t)}</span>
                     <span className="ws-line-text">{r.line ? <KaraokeLine line={r.line} t={t} small /> : r.l.text}</span>
                     {r.l.words?.length > 0 && <span className="pill pill-yes ws-line-pill" title="這句的字照你按的時間亮">逐字</span>}
                     <span className="ws-line-btns">
+                      {selRows.length === 1 && selRows[0].i === r.i && <>
+                        <button type="button" className="btn btn-ghost btn-sm" title={`這句開頭提早 ${step} 秒，然後重播這句（鍵盤 ←）`} onClick={(e) => { e.stopPropagation(); nudgeStart(r.i, -step); }}><ChevronLeft size={12} /> 開頭提早 {step}</button>
+                        <button type="button" className="btn btn-ghost btn-sm" title={`這句開頭延後 ${step} 秒，然後重播這句（鍵盤 →）`} onClick={(e) => { e.stopPropagation(); nudgeStart(r.i, step); }}>開頭延後 {step} <ChevronRight size={12} /></button>
+                      </>}
                       <button type="button" className="btn btn-ghost btn-sm" disabled={!blobUrl} onClick={(e) => { e.stopPropagation(); openWord(r.i); }}><Type size={12} /> 對字</button>
                       {r.l.words?.length > 0 && <button type="button" className="btn btn-ghost btn-sm" title="拿掉這句的逐字時間，改回自動推算" onClick={(e) => { e.stopPropagation(); wordClear(r.i); }}>自動</button>}
                     </span>
@@ -776,17 +962,49 @@ function LyricSync({ lrc, offset, blobUrl, analysis, onLrc, onCommit, saveNote, 
               </div>
             </>
           )}
-          {/* 還沒有時間時，整首提早／延後沒有意義，先不顯示 */}
-          {(timed || undo !== null) && (
+          {/* 還沒有時間時，提早／延後沒有意義，先不顯示 */}
+          {timed && rows.length > 0 && (
+            <div className="ws-shift">
+              <div className="ws-shift-row">
+                <span className="ws-shift-label">時間微調</span>
+                <span>每次移</span>
+                <input type="text" inputMode="decimal" className="ws-step" value={stepText} aria-label="每次提早／延後幾秒"
+                  onChange={(e) => setStepText(e.target.value.replace(/[^\d.]/g, ""))} onBlur={() => setStepText(String(step))} />
+                <span>秒</span>
+                <span className="helper-text" style={{ margin: 0 }}>（可以填 0.01～30，例如 0.05、0.5、2；改完自動儲存）</span>
+              </div>
+              <div className="ws-shift-row">
+                <span className="ws-shift-label">整首</span>
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => shift(-step)}>提早 {step} 秒</button>
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => shift(step)}>延後 {step} 秒</button>
+              </div>
+              <div className="ws-shift-row">
+                <span className="ws-shift-label">{selRows.length ? `選起來的 ${selRows.length} 句` : "選起來的句子"}</span>
+                <button type="button" className="btn btn-ghost btn-sm" disabled={!selRows.length} onClick={() => shift(-step, new Set(selRows.map((r) => r.i)))}>提早 {step} 秒</button>
+                <button type="button" className="btn btn-ghost btn-sm" disabled={!selRows.length} onClick={() => shift(step, new Set(selRows.map((r) => r.i)))}>延後 {step} 秒</button>
+                <span className="ws-shift-sel">
+                  <button type="button" className="btn btn-ghost btn-sm" disabled={!selRows.length} title="從選起來的第一句一直選到最後一句"
+                    onClick={() => setSel(new Set(rows.filter((r) => r.i >= selRows[0].i).map((r) => r.i)))}>一直選到最後</button>
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={() => setSel(new Set(rows.map((r) => r.i)))}>全選</button>
+                  <button type="button" className="btn btn-ghost btn-sm" disabled={!selRows.length} onClick={() => setSel(new Set())}>取消選取</button>
+                </span>
+              </div>
+              <div className="helper-text" style={{ margin: 0 }}>
+                {!selRows.length ? "在上面的清單點一句就會選起來；按住 Shift 再點另一句，會選起中間整段。"
+                  : selRows.length === 1 ? `選了 ${fmtTime(selRows[0].l.t)}「${clip(selRows[0].l.text)}」`
+                  : `選了 ${fmtTime(selRows[0].l.t)}「${clip(selRows[0].l.text)}」到 ${fmtTime(selRows[selRows.length - 1].l.t)}「${clip(selRows[selRows.length - 1].l.text)}」，共 ${selRows.length} 句`}
+              </div>
+            </div>
+          )}
+          {(timed || undo.length > 0) && (
             <div className="toolbar" style={{ marginTop: 8 }}>
-              {timed && <>
-                <button type="button" className="btn btn-ghost btn-sm" disabled={!blobUrl || !lrc.trim()} onClick={() => startTap(false)}><Wand2 size={13} /> 整首重新逐句對時</button>
-                <span className="helper-text" style={{ margin: 0 }}>整首歌詞時間：</span>
-                <button type="button" className="btn btn-ghost btn-sm" onClick={() => onShift(-0.1)}>提早 0.1 秒</button>
-                <button type="button" className="btn btn-ghost btn-sm" onClick={() => onShift(0.1)}>延後 0.1 秒</button>
-                {offset !== 0 && <button type="button" className="btn btn-ghost btn-sm" onClick={() => onOffset(0)}>清除偏移 {offset > 0 ? "+" : ""}{offset}s</button>}
-              </>}
-              {undo !== null && <button type="button" className="btn btn-ghost btn-sm" onClick={() => { commit(undo); setUndo(null); }}>復原剛剛的修改</button>}
+              {timed && <button type="button" className="btn btn-ghost btn-sm" disabled={!blobUrl || !lrc.trim()} onClick={() => startTap(false)}><Wand2 size={13} /> 整首重新逐句對時</button>}
+              {timed && offset !== 0 && <button type="button" className="btn btn-ghost btn-sm" onClick={() => onOffset(0)}>清除偏移 {offset > 0 ? "+" : ""}{offset}s</button>}
+              {undo.length > 0 && (
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => { commit(undo[undo.length - 1]); setUndo((u) => u.slice(0, -1)); }}>
+                  <Undo2 size={13} /> 復原上一步{undo.length > 1 ? `（還可以退 ${undo.length} 步）` : ""}
+                </button>
+              )}
             </div>
           )}
         </>

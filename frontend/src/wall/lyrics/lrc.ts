@@ -74,6 +74,19 @@ export function toLrc(lines: LrcLine[], meta: Record<string, string> = {}): stri
   return [...head, ...body].join('\n');
 }
 
+/**
+ * 原文的每一行各是哪幾句：[{ row（第幾行，從 0 算）, t, text }]，t 跟 parseLrc 一樣已經扣掉 [offset:]。
+ * 後台點歌詞清單的一句時，用來找出它在 LRC 原文的哪一行（parseLrc 會排序、略過資訊標籤，行號對不上原文）。
+ */
+export function sourceRows(src: string): { row: number; t: number; text: string }[] {
+  const off = parseLrc(src).offset;
+  const out: { row: number; t: number; text: string }[] = [];
+  (src || '').replace(/\r/g, '').split('\n').forEach((raw, row) => {
+    for (const l of parseLrc(raw).lines) if (!Number.isNaN(l.t)) out.push({ row, t: l.t - off, text: l.text });
+  });
+  return out;
+}
+
 /** 整份歌詞平移 dt 秒（後台「整首提早／延後」用）。 */
 export function shiftLrc(src: string, dt: number): string {
   const doc = parseLrc(src);

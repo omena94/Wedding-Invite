@@ -586,6 +586,8 @@ class WallSong(Base):
     lyrics_source: Mapped[str] = mapped_column(String(20), default="")  # lrclib / manual / none
     lyrics_offset: Mapped[float] = mapped_column(Float, default=0)      # 整首歌詞往前後挪幾秒
     instrumental: Mapped[bool] = mapped_column(Boolean, default=False)
+    # 新人自己標「這首歌詞對好了」（2026-09-30）：歌單上才分得出哪些還要修；只是標記，不影響大螢幕播放
+    lyrics_done: Mapped[bool] = mapped_column(Boolean, default=False)
     theme: Mapped[str] = mapped_column(String(20), default="")          # 大螢幕配色；空 = 自動挑（gold / rose / champagne / coral / lilac / sage）
     # 只播中間一段（秒）：前奏、尾奏太長時剪掉；0 = 從頭／播到完
     start_at: Mapped[float] = mapped_column(Float, default=0)

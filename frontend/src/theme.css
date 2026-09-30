@@ -1444,13 +1444,19 @@ tbody tr:last-child td { border-bottom: none; }
 .ws-range input { width: 100px; }
 .ws-tempo { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .ws-bpm { font: 600 15px/1 "IBM Plex Mono", ui-monospace, monospace; color: var(--milk-tea-900); margin-right: 6px; }
-.ws-lyrics-head { display: flex !important; justify-content: space-between; align-items: center; gap: 12px; }
-.ws-lyrics-tools { font-weight: 400; }
+.ws-lyrics-head { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px 12px; margin-bottom: 8px; font-size: 13.5px; font-weight: 600; color: var(--milk-tea-900); letter-spacing: 0.5px; }
+.ws-lyrics-tools { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 8px 18px; font-weight: 400; }
+.ws-lyrics-tools .ui-check-label { font-weight: 600; color: var(--milk-tea-900); }
 .ws-cands { border: 1px solid var(--border-soft); border-radius: 12px; padding: 4px 12px; margin-bottom: 10px; max-height: 260px; overflow-y: auto; background: var(--bg-card-subtle); }
 .ws-cand { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--milk-tea-100); }
 .ws-cand:last-child { border-bottom: none; }
 .ws-cand-title { font-size: 13.5px; font-weight: 600; color: var(--milk-tea-900); }
-.ws-lrc { font: 13px/1.6 "IBM Plex Mono", ui-monospace, monospace; }
+.ws-lrc { font: 13px/1.6 "IBM Plex Mono", ui-monospace, monospace; white-space: pre; overflow-wrap: normal; overflow-x: auto; }
+/* LRC 原文：歌詞清單選到的那幾行標亮（蓋在輸入框上面的半透明色塊，不擋滑鼠） */
+.ws-lrc-wrap { position: relative; }
+.ws-lrc-wrap .ws-lrc { display: block; }
+.ws-lrc-marks { position: absolute; overflow: hidden; pointer-events: none; border-radius: var(--radius-input); }
+.ws-lrc-mark { position: absolute; left: 0; right: 0; background: rgba(226, 178, 92, 0.24); box-shadow: inset 3px 0 0 var(--milk-tea-700); }
 .ws-sync { margin-top: 10px; border: 1px solid var(--border-soft); border-radius: 14px; padding: 12px; background: var(--bg-card-subtle); }
 .ws-player { display: flex; align-items: center; gap: 8px; }
 .ws-bar { flex: 1; height: 8px; border-radius: 4px; background: var(--milk-tea-100); cursor: pointer; overflow: hidden; }
@@ -1486,6 +1492,12 @@ tbody tr:last-child td { border-bottom: none; }
 .ws-line.sel { box-shadow: inset 3px 0 0 var(--milk-tea-700); background: var(--bg-card-subtle); }
 .ws-line.now.sel { background: #fbf1dc; }
 .ws-save-note { margin-left: 6px; color: var(--milk-tea-700); font-weight: 600; }
+/* 時間微調：每次移幾秒自己填；整首或選起來的句子一起提早／延後 */
+.ws-shift { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; padding: 10px 12px; border-radius: 10px; background: var(--bg-card); border: 1px solid var(--border-soft); }
+.ws-shift-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; font-size: 13px; color: var(--text-body); }
+.ws-shift-label { min-width: 110px; font-weight: 600; color: var(--milk-tea-900); }
+.ws-shift input.ws-step { width: 76px; padding: 5px 10px; text-align: center; font: 13px/1.4 "IBM Plex Mono", ui-monospace, monospace; }
+.ws-shift-sel { display: inline-flex; flex-wrap: wrap; gap: 4px; margin-left: auto; }
 /* 歌曲編輯視窗：比一般編輯視窗寬；「儲存」固定在視窗底部，不用捲到最下面 */
 .modal-card.ws-editor { max-width: 860px; }
 .modal-card.ws-editor .edit-modal-actions {

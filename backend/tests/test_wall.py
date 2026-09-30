@@ -206,6 +206,12 @@ def test_songs(setup, monkeypatch):
     p = r.json()
     assert p["title"] == "新歌名" and p["enabled"] is False and p["lyrics_lrc"] == lrc and p["lyrics_source"] == "manual" and p["lyrics_offset"] == -0.5 and p["instrumental"] is True
     assert p["artist"] == ""  # 沒送的欄位不動
+    # 「歌詞對好了」標記：預設沒標，可以標、可以取消，改其他欄位不會動到它
+    assert p["lyrics_done"] is False
+    assert c.patch(f"/api/planner/wall/songs/{a['id']}", json={"lyrics_done": True}, headers=COUPLE).json()["lyrics_done"] is True
+    assert c.patch(f"/api/planner/wall/songs/{a['id']}", json={"lyrics_lrc": lrc}, headers=COUPLE).json()["lyrics_done"] is True
+    assert c.patch(f"/api/planner/wall/songs/{a['id']}", json={"lyrics_done": "yes"}, headers=COUPLE).status_code == 422
+    assert c.patch(f"/api/planner/wall/songs/{a['id']}", json={"lyrics_done": False}, headers=COUPLE).json()["lyrics_done"] is False
     # 配色、只播中間一段
     r = c.patch(f"/api/planner/wall/songs/{a['id']}", json={"theme": "rose", "start_at": 12.5, "end_at": 200}, headers=COUPLE)
     assert r.status_code == 200 and (r.json()["theme"], r.json()["start_at"], r.json()["end_at"]) == ("rose", 12.5, 200)
