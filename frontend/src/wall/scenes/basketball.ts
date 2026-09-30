@@ -554,12 +554,24 @@ export default class Basketball extends Scene {
     let off = 0;
     if (sub) {
       const ms = two ? 40 : this.lyricSize, ss = subSizeFor(ms);
-      off = subGap(ms, ss) + (lyricRows(c, sub.text, family, ss, Math.min(ss, 26), len) - 1) * ss * 1.1;
+      // 原文照 lyricOnPath 副行的算法（縮字往下取）判斷要不要折：lyricRows 是四捨五入，剛好放得下的原文會被算成兩排、
+      // 整段多抬一排，撞到在球員腳邊的元元（2026-09-30 合併元元之後）
+      off = subGap(ms, ss) + (subRows(c, sub.text, family, ss, Math.min(ss, 26), len) - 1) * ss * 1.1;
     }
     lyricOnPath(c, ly.line, t, path, {
       family, size: this.lyricSize, minSize: 40, alpha: ly.k * rv, unsung: rgba('sepia', 0.22), sung: rgba('sepia', 0.85), active: rgba('signal'), rowGap: 1.1, offset: off,
     });
   }
+}
+
+/** 原文副行在長 len 的地上排幾排：跟 lyricOnPath 的副行一樣先縮到 minSize（往下取到 0.5 px），還放不下才折兩排。 */
+function subRows(c: CanvasRenderingContext2D, text: string, family: string, size: number, minSize: number, len: number): 1 | 2 {
+  const chars = Array.from(text);
+  const sumAt = (s: number) => { c.font = font(family, s); return chars.reduce((a, ch) => a + c.measureText(ch).width, 0); };
+  const avail = len * 0.94, sum = sumAt(size);
+  if (sum <= avail) return 1;
+  const s2 = Math.floor(Math.max(minSize, (size * avail) / sum) * 2) / 2;
+  return sumAt(s2) > avail ? 2 : 1;
 }
 
 /** 元元叼球：叼到的拍點前多久球開始往嘴裡吸（秒）。 */

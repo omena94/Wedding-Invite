@@ -3556,6 +3556,11 @@ export interface PathLyricStyle {
   /** 放不下時第二排往下（曲線法線方向）移多少（字級的倍數），預設 1.2。 */
   rowGap?: number;
   tracking?: number;
+  /**
+   * 縮字級時往下取到 0.5 px（預設四捨五入）。四捨五入偶爾會多出半 px，剛好放得下的句子就被折成兩排；
+   * 原文副行用往下取（2026-09-30），主行維持原本的算法（沒有翻譯的歌畫面不變）。
+   */
+  floor?: boolean;
 }
 
 const widthCache = new Map<string, number[]>();
@@ -3615,7 +3620,7 @@ export function lyricOnPath(c: Ctx, line: Line, t: number, path: readonly Pt[], 
   let size = st.size;
   let ws = widths(size);
   let sum = ws.reduce((a, b) => a + b, 0);
-  if (sum > avail) { size = Math.max(st.minSize ?? 48, (size * avail) / sum); size = Math.round(size * 2) / 2; ws = widths(size); sum = ws.reduce((a, b) => a + b, 0); }
+  if (sum > avail) { size = Math.max(st.minSize ?? 48, (size * avail) / sum); size = (st.floor ? Math.floor(size * 2) : Math.round(size * 2)) / 2; ws = widths(size); sum = ws.reduce((a, b) => a + b, 0); }
   // 折兩排：在最接近一半的字（Word 邊界）斷
   let rows: [number, number][] = [[0, chars.length]];
   if (sum > avail && line.words.length > 1) {
@@ -3703,7 +3708,7 @@ export function lyricOnPath(c: Ctx, line: Line, t: number, path: readonly Pt[], 
     const sung = st.sung ?? rgba('bone', 0.96);
     const r = lyricOnPath(c, sub, t, path, {
       ...st, size: ss, minSize: Math.min(ss, 26), tracking: (st.tracking ?? 0) * 0.5,
-      offset: off - (rows.length - 1) * size * gap - subGap(size, ss), active: sung, sung, alpha: (st.alpha ?? 1) * 0.85,
+      offset: off - (rows.length - 1) * size * gap - subGap(size, ss), active: sung, sung, alpha: (st.alpha ?? 1) * 0.85, floor: true,
     });
     const [bx, by, bw, bh] = r.box;
     if (bw > 0) { x0 = Math.min(x0, bx); y0 = Math.min(y0, by); x1 = Math.max(x1, bx + bw); y1 = Math.max(y1, by + bh); }
