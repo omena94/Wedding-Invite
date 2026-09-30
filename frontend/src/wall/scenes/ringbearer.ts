@@ -1,5 +1,6 @@
 // 狗狗戒童（暗、dog、婚禮服）：婚禮的走道側面，宣文（西裝）和孟庭（白紗）站在花拱門下等，QQ 叼著戒枕從左邊走紅毯過來，一拍一步；
-// 芃芃跟在後面。角色是 Codex 畫的紙偶（_puppet.ts）。
+// 芃芃跟在後面。元元是「花童」：叼著花籃走在 QQ 前面開路，**每一步（拍點）從籃子撒下幾片花瓣、落在紅毯上鋪成一條花路**；
+// 走到一半把花籃放下、坐到旁邊看 QQ 送戒指，戒指閃光那一拍仰頭歡呼。角色是 Codex 畫的紙偶（_puppet.ts）。
 //  - QQ 小跑步兩張圖一拍換一張，**每一步落在拍點上**（拍點上往前一跨、一彈），走幾小節由窗格長短決定，**到的那一下在小節線**：
 //    坐下（叼著戒枕、抬頭挺胸）→ 下一拍宣文單膝跪下伸手接 → 再下一拍戒指閃一下、兩人頭上冒一顆愛心。芃芃晚一拍到、在旁邊坐好。
 //  - 兩人等的時候跟著拍子輕輕晃；拱門上的小燈泡照 hi-hat 閃、花瓣慢慢飄下來。
@@ -31,12 +32,17 @@ const COUPLE = { x: 1090 };
 const ARCH = { x: 1075, r: 282, base: AISLE - 6 };
 /** QQ 最後坐下的地方、芃芃坐的地方。 */
 const QQ_END = 880, PP_END = 715;
+/** 元元（花童）走在 QQ 前面多遠、走到哪裡坐下（往後排一點，QQ 和芃芃從牠前面走過去）。三隻用同一個場景尺度。 */
+const YY_LEAD = 300, YY_END = 470, YY_BACK = 16;
 /** 賓客舉的牌子：最大範圍（標準 v2）、寫字內距。 */
 const SIGN = { x: 128, y: 150, w: 640, h: 360 };
 const PAD = { x: 40, top: 40, bottom: 30 };
 /** 歌詞：紅毯前緣下面一排（中心 x、基線、最寬）。 */
 const LYR = { x: 690, y: 972, w: 1080 };
-const POSES = ['qq_ringbearer_walk_1', 'qq_ringbearer_walk_2', 'qq_ringbearer_sit', 'cp_ringbearer_wait', 'cp_ringbearer_kneel', 'pp_walk', 'pp_sit'];
+const POSES = ['qq_ringbearer_walk_1', 'qq_ringbearer_walk_2', 'qq_ringbearer_sit', 'cp_ringbearer_wait', 'cp_ringbearer_kneel', 'pp_walk', 'pp_sit',
+  'yy_c3_flower_walk_1', 'yy_c3_flower_walk_2', 'yy_sit', 'yy_howl'];
+/** 花瓣：什麼時候從哪裡掉（籃子）、落在紅毯的哪裡、轉幾度、什麼顏色（0 白、1 淡粉）。 */
+interface Petal { t0: number; x0: number; y0: number; x1: number; y1: number; rot: number; pink: boolean }
 
 /** 會場：很暗的暖色，拱門那裡有一團光（新人站的地方），地板往前越來越暗。 */
 const VENUE = () => new FSPass(/* glsl */ `
@@ -70,6 +76,9 @@ export default class RingBearer extends Scene {
   cpKeys: [number, string][] = [];
   /** 拱門上的小燈泡。 */
   bulbs: { x: number; y: number }[] = [];
+  /** 元元坐下的時間（走到 YY_END）；撒在紅毯上的花瓣。 */
+  tYSit = 0;
+  petals: Petal[] = [];
 
   override async init() {
     const { audio: au } = this.ctx;
@@ -83,6 +92,29 @@ export default class RingBearer extends Scene {
     this.bA = Math.round(au.beatAt(this.tA));
     if (this.bA - this.b0 < 3) this.bA = this.b0 + 3;
     this.tA = au.timeOfBeat(this.bA);
+    // 元元：走在 QQ 前面 YY_LEAD，走到 YY_END 坐下（找第一個到的時間：一拍一拍往後找，再在那一拍裡細找）
+    this.tYSit = this.tA;
+    for (let b = this.b0 - 1; b <= this.bA; b++) {
+      if (this.qqX(au.timeOfBeat(b + 1)) + YY_LEAD < YY_END) continue;
+      let lo = au.timeOfBeat(b), hi = au.timeOfBeat(b + 1);
+      for (let i = 0; i < 20; i++) { const m = (lo + hi) / 2; if (this.qqX(m) + YY_LEAD >= YY_END) hi = m; else lo = m; }
+      this.tYSit = hi;
+      break;
+    }
+    // 花瓣：元元走路時每一拍（腳落地）從籃子撒下三片，飄到紅毯上鋪著（位置用種子挑，確定性）
+    for (let b = this.b0 - 1; b <= this.bA; b++) {
+      const tb = au.timeOfBeat(b);
+      if (tb >= this.tYSit || tb < this.ctx.start) continue;
+      const x = this.yyX(tb), name = b % 2 === 0 ? 'yy_c3_flower_walk_1' : 'yy_c3_flower_walk_2';
+      const bk = puppetPoint(name, 'basket', x, AISLE - YY_BACK, { h: SZ, scale: DOG_S }) ?? { x: x + 120, y: AISLE - 120 };
+      for (let j = 0; j < 3; j++) {
+        this.petals.push({
+          t0: tb + j * 0.05, x0: bk.x + (hash(b, j, 1) - 0.5) * 30, y0: bk.y,
+          x1: bk.x - 40 + hash(b, j, 2) * 110, y1: RUG.top + 6 + hash(b, j, 3) * (RUG.bottom - RUG.top - 12),
+          rot: hash(b, j, 4) * Math.PI, pink: hash(b, j, 5) > 0.5,
+        });
+      }
+    }
     // 兩人：等 → QQ 坐下後一拍，宣文單膝跪下接戒枕
     this.cpKeys = [[-1e9, 'cp_ringbearer_wait'], [au.timeOfBeat(this.bA + 1), 'cp_ringbearer_kneel']];
     // 牌子上的留言：標準 v2 的字級；牌子的寬高跟著留言
@@ -247,7 +279,11 @@ export default class RingBearer extends Scene {
       this.lit.draw(c, [box[0] - 60, box[1] - 30, box[2] + 120, box[3] + 40], rgba('ink', 0.06), rgba('ink', 0.5), (sc) => { drawPick(sc, this.cpKeys, t, COUPLE.x, AISLE, o); });
     }
 
-    // ---- 芃芃（跟在後面，晚一拍到、坐下）
+    // ---- 紅毯上的花瓣（已經落地的鋪在地上，在狗的腳下）
+    this.drawPetals(c, t, false);
+    // ---- 元元（花童，後排）→ 芃芃（跟在後面，晚一拍到、坐下）
+    this.drawYuanyuan(c, t);
+    this.drawPetals(c, t, true);
     this.drawPenpen(c, t, bp);
     // ---- QQ
     this.drawQQ(c, t, bp);
@@ -308,6 +344,85 @@ export default class RingBearer extends Scene {
     const box = puppetBox('qq_ringbearer_walk_1', x, AISLE - lift, o);
     this.lit.draw(c, [box[0] - 40, box[1] - 40, box[2] + 80, box[3] + 60], rgba('ink', 0.02), rgba('ink', 0.45), (sc) => { drawPuppet(sc, name, x, AISLE - lift, o); });
     void bp;
+  }
+
+  /** 元元的位置：走在 QQ 前面 YY_LEAD（跟 QQ 同一個節奏：拍點上跨一步），到了 YY_END 就停。 */
+  private yyX(t: number) {
+    return Math.min(this.qqX(t) + YY_LEAD, YY_END);
+  }
+
+  /**
+   * 元元（花童）：叼著花籃一拍一步（兩張圖一拍換一張、拍點上落地一彈），走到 YY_END 坐下（正面坐），
+   * 花籃放在腳邊；戒指閃光那一拍（QQ 坐下後兩拍）仰頭歡呼一拍半，再坐回來。
+   */
+  private drawYuanyuan(c: CanvasRenderingContext2D, t: number) {
+    const au = this.ctx.audio;
+    const en = puppetIn(t, this.ctx.start + 0.02, 0.45);
+    if (en.alpha <= 0) return;
+    const y0 = AISLE - YY_BACK;
+    const x = this.yyX(t);
+    const sat = t >= this.tYSit;
+    let lift = 0, squash = 0, name: string;
+    if (!sat) {
+      const b = au.beatAt(t), u = b - Math.floor(b);
+      lift = 9 * Math.sin(Math.PI * u);
+      squash = 0.05 * Math.exp(-u / 0.12) - 0.025 * Math.sin(Math.PI * u);
+      name = Math.floor(b) % 2 === 0 ? 'yy_c3_flower_walk_1' : 'yy_c3_flower_walk_2';
+    } else {
+      const tH = au.timeOfBeat(this.bA + 2), bp = au.beatPeriod(tH);
+      const howl = t >= tH && t < tH + bp * 1.5;
+      name = howl ? 'yy_howl' : 'yy_sit';
+      squash = landSquash(t, this.tYSit, 0.12, 0.3) + breathe(t, 0.01, 2.2, 0.2) + (howl ? 0 : 0.02 * beatKick(au, t, 0.25));
+    }
+    const o: PuppetOpts = { h: SZ, scale: DOG_S, squash, rot: sat ? 0 : -0.02, spin: en.spin, alpha: en.alpha };
+    puppetShadow(c, 'yy', x, y0, { h: SZ * DOG_S, lift, alpha: 0.6 * en.alpha, color: '0,0,0' });
+    const box = puppetBox('yy_c3_flower_walk_1', x, y0 - lift, { ...o, spin: 0 });
+    this.lit.draw(c, [box[0] - 160, box[1] - 60, box[2] + 200, box[3] + 80], rgba('ink', 0.03), rgba('ink', 0.46), (sc) => {
+      drawPuppet(sc, name, x, y0 - lift, o);
+      // 坐下之後花籃放在左邊腳旁（右邊要留給芃芃走過去坐；程式畫的小籐籃，顏色照 Codex 圖上的籃子）
+      if (sat) this.basket(sc, x - 100, y0 + 4, prog(t, this.tYSit, this.tYSit + 0.2));
+    });
+  }
+
+  /** 放在地上的小籐籃：籃身（交叉的淡線）、提把、上面滿滿的花瓣。k：放下的動畫（0..1，從上面落下來）。 */
+  private basket(c: CanvasRenderingContext2D, x: number, y: number, k: number) {
+    if (k <= 0) return;
+    const yy = y - (1 - ease.outCubic(k)) * 60;
+    c.save();
+    c.translate(x, yy);
+    c.fillStyle = mixRgba('fur', 'sepia', 0.35);
+    c.beginPath(); c.moveTo(-34, -40); c.lineTo(34, -40); c.lineTo(26, 0); c.lineTo(-26, 0); c.closePath(); c.fill();
+    c.strokeStyle = mixRgba('fur', 'sepia', 0.6);
+    c.lineWidth = 1.4;
+    c.beginPath();
+    for (let i = -3; i <= 3; i++) { c.moveTo(i * 10 - 6, -40); c.lineTo(i * 8 + 6, 0); c.moveTo(i * 10 + 6, -40); c.lineTo(i * 8 - 6, 0); }
+    c.stroke();
+    c.lineWidth = 4;
+    c.strokeStyle = mixRgba('fur', 'sepia', 0.45);
+    c.beginPath(); c.ellipse(0, -40, 30, 36, 0, Math.PI, Math.PI * 2); c.stroke();
+    for (let i = 0; i < 9; i++) {
+      c.fillStyle = i % 3 === 0 ? mixRgba('rose', 'bone', 0.45) : mixRgba('bone', 'rose', 0.12);
+      c.beginPath(); c.ellipse(-26 + i * 6.5, -42 - (i % 2) * 5, 8, 5, i, 0, Math.PI * 2); c.fill();
+    }
+    c.restore();
+  }
+
+  /** 花瓣：falling = true 畫還在空中飄的（從籃子掉到紅毯），false 畫已經落地的（鋪在紅毯上）。 */
+  private drawPetals(c: CanvasRenderingContext2D, t: number, falling: boolean) {
+    const FALL = 0.55;
+    for (const p of this.petals) {
+      const u = (t - p.t0) / FALL;
+      if (u < 0 || (u < 1) !== falling) continue;
+      const k = clamp(u);
+      const x = lerp(p.x0, p.x1, k) + (falling ? Math.sin(k * 7 + p.rot) * 10 : 0);
+      const y = lerp(p.y0, p.y1, ease.inQuad(k));
+      c.save();
+      c.translate(x, y);
+      c.rotate(p.rot + (falling ? k * 4 : 0));
+      c.fillStyle = p.pink ? mixRgba('rose', 'bone', 0.4, falling ? 0.9 : 0.75) : mixRgba('bone', 'ink', 0.1, falling ? 0.9 : 0.7);
+      c.beginPath(); c.ellipse(0, 0, 7, falling ? 4 : 3, 0, 0, Math.PI * 2); c.fill();
+      c.restore();
+    }
   }
 
   /** 芃芃：跟在 QQ 後面（一拍一步、慢一拍），QQ 坐下的下一拍在旁邊坐好。 */
