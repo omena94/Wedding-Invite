@@ -17,7 +17,7 @@
 //  - 多補的動畫：流星從第二小節起幾乎每小節一顆、銀河亮一點、地平線上方有薄雲慢慢飄過（遮住後面的星）、
 //    近山稜線上的草在風裡晃、山腳有幾隻螢火蟲一明一滅地飄。
 import * as THREE from 'three';
-import { Scene, shared, type Frame, type Msg, type PostOverrides } from '../engine/scene';
+import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
 import { Layer2D, W, H } from '../engine/gl';
 import { LineBatch } from '../engine/lines';
 import { F, font, layout, loadText, measure, type TextLayout } from '../engine/type';
@@ -29,6 +29,9 @@ import { sparkHead, sparkParticles, drawHeart, lyricAt, layoutLyric, beatAfter, 
 import { msgMaxFor, lyricV2, sigV2, V2 } from './_v2';
 import { Sky, makeSkyPass, eclY, type P2 } from './stars-sky';
 import { units, unitOfChar, buildConstellation, type Unit, type StarPt, type Zone } from './stars-chart';
+// 最早的版面：排程參數在 director.ts 的 PLATES；這裡只宣告雙語（2026-09-30 雙語普查通過：有翻譯＋主打留言時中文、原文、留言三樣都清楚）
+export const spec: PlateSpecDecl = { bilingual: true };
+
 
 // 座標彩蛋：婚禮日期 2027-03-13 → 赤經 03h13m（月、日）、赤緯 +20°27′（年份拆兩半）
 const [DY, DM, DD] = String(WEDDING_DATE).split('-').map(Number) as [number, number, number];

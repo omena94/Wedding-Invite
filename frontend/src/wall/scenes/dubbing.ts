@@ -18,7 +18,7 @@ import { rgba, mixRgba, LIN } from '../engine/palette';
 import { clamp, ease, prog, hash, TAU } from '../engine/util';
 import type { Line } from '../engine/lyrics';
 import { lyricAt, beatAfter, signature, fillWithHearts, lyricSubOf, type LyricStyle } from './_motifs';
-import { V2, lyricV2 } from './_v2';
+import { V2, lyricV2, msgLen } from './_v2';
 import { biLayout, drawBi, fitMsgV2, type BiLay, type MsgFit } from './_b1';
 
 export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'screen', paper: false, energy: [0.2, 0.85], bars: [4, 8] };
@@ -130,7 +130,9 @@ export default class Dubbing extends Scene {
     this.title = song.title ? `♪  配樂：${song.title}` : '';
     await loadText(`${m?.text ?? ''}${sig}配音稿第場（深情地）這一句等你來配${INVITE}錄音中原文中文人聲配樂${this.title}${lines.map((l) => l.text + (l.sub?.text ?? '')).join('')}FROM THE COUPLE·新人0123456789:`);
     if (m) {
-      this.fit = fitMsgV2(this.page.ctx, m.text, MSG_FAM, PAGE.w - 70, PAGE.h - 120, { lineHeight: 1.32 });
+      // 超過 40 字的長留言（例如好幾句、夾著愛心）字級封頂 40：稿子窄，44 px 時只能在句子中間斷（「後盾♥ 要／一直…」），
+      // 40 px 才放得下「一句一行」
+      this.fit = fitMsgV2(this.page.ctx, m.text, MSG_FAM, PAGE.w - 70, PAGE.h - 120, { lineHeight: 1.32, max: msgLen(m.text) > 40 ? 40 : 99 });
       this.msgSize = this.fit.fit.size;
     }
     this.lyr = { ...this.lyr, size: lyricV2(this.msgSize) };

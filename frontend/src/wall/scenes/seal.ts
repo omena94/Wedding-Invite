@@ -23,7 +23,7 @@ import { subRect, rasterPieces } from './_t13';
 import { msgMaxFor, lyricV2, sigV2, V2, fitClauses } from './_v2';
 import { fitText } from '../engine/text';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'craft', paper: true, energy: [0.2, 0.8], bars: [4, 8] };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'craft', paper: true, energy: [0.2, 0.8], bars: [4, 8] };
 
 // ---------------------------------------------------------------- 版面（邏輯像素）
 /** 印面特寫（正方形）與它下面露出來的一截石身。 */

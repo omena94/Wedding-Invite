@@ -27,7 +27,7 @@ import { layoutLyric, type LyricLayout, type LyricStyle, drawHeart, signature, b
 import { blit, winBars, label, INVITE, T8_TEXT, Stage, camMove, type StageCam } from './_t8';
 import { V2, msgMaxFor, lyricV2, sigV2, fitClauses } from './_v2';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'machine', paper: true, energy: [0.25, 1], bars: [4, 8], weight: 1 };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'machine', paper: true, energy: [0.25, 1], bars: [4, 8], weight: 1 };
 
 // ---------------------------------------------------------------- 版面（邏輯像素，y 向下）
 /** 記錄紙（左右邊界）。 */

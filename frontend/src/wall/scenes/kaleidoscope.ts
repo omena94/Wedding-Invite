@@ -19,7 +19,7 @@ import { lyricAt, drawLyric, layoutLyric, beatAfter, signature, type LyricStyle 
 import { subRect } from './_t13';
 import { msgMaxFor, lyricV2, sigV2, V2, fitClauses } from './_v2';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'craft', paper: false, energy: [0.4, 1], bars: [4, 8], variants: 2 };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'craft', paper: false, energy: [0.4, 1], bars: [4, 8], variants: 2 };
 
 /** 萬花筒的中心與筒口半徑：偏左，右邊的暗處留給留言。 */
 const O = { x: 690, y: 468 };

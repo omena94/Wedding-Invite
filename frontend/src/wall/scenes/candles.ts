@@ -21,7 +21,7 @@ import { no3, INVITE_SMALL, preloadText, fitWithSig } from './_t19';
 import { V2, msgMaxFor, lyricV2, sigV2, fitClauses } from './_v2';
 import { makeRig, U, N, EDGE_Z, CANDLE_Z, candleX, wickTop, waxTop, HOLDER_H } from './candles-rig';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'light', paper: false, energy: [0, 0.6], bars: [4, 12], lyricsOnly: true };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'light', paper: false, energy: [0, 0.6], bars: [4, 12], lyricsOnly: true };
 
 /** 鏡頭：在桌子正前方略高，往下看一點點；x 偏右，蠟燭那一排落在畫面左邊三分之二（右側留給即時小卡）。 */
 // v2：即時小卡停用了，整排蠟燭放回畫面正中（不再偏左、右邊空一大片暗牆）

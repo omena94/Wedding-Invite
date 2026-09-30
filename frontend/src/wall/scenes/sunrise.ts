@@ -24,7 +24,7 @@ import { paperSignal, no3, INVITE_SMALL, preloadText, fitWithSig, type MsgBlock 
 import { V2, msgMaxFor, lyricV2, sigV2, fitClauses } from './_v2';
 import { FRAG_SUNRISE, N_RAYS, N_CIRC, WAVE_A } from './sunrise-glsl';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'light', paper: true, energy: [0.25, 0.9], bars: [4, 8] };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'light', paper: true, energy: [0.25, 0.9], bars: [4, 8] };
 
 const DEG = Math.PI / 180;
 /** 太陽：x、半徑、升起前後的圓心高度（海平線在 y = 800）。 */

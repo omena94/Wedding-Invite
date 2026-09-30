@@ -21,7 +21,7 @@ import { loadPuppets, drawPuppet, drawPick, puppetShadow, puppetIn, puppetBox, p
 import { lyricV2 } from './_v2';
 import { Lit, INVITE } from './_c3';
 
-export const spec: PlateSpecDecl = { group: 'couple', family: 'dog', paper: false, energy: [0.2, 0.85], bars: [4, 8] };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'couple', family: 'dog', paper: false, energy: [0.2, 0.85], bars: [4, 8] };
 
 const SZ = 430, DOG_S = 1.3;
 /** 走道（紅毯上走的那條線）與紅毯的上下緣。 */

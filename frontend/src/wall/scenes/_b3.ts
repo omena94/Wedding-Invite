@@ -11,7 +11,7 @@ import { rgba } from '../engine/palette';
 import { clamp } from '../engine/util';
 import { Lyrics, type Line } from '../engine/lyrics';
 import { layoutLyric, lyricSubOf, signature, fillWithHearts, COUPLE_ZH, DATE_DOTS, type LyricLayout, type LyricStyle } from './_motifs';
-import { V2, msgMaxFor, sigV2, fitClauses } from './_v2';
+import { V2, msgMaxFor, msgLen, sigV2, fitClauses } from './_v2';
 
 export type Rect = [number, number, number, number];
 
@@ -142,7 +142,13 @@ export function msgBlock(c: CanvasRenderingContext2D, m: Msg, family: string, w:
   const sig0 = V2.sigMax / k;
   const fitAt = (hh: number) => {
     const opt = { min, max, lineHeight: lh, maxLines: o.maxLines ?? 5 };
-    return fitClauses(c, m.text, family, w, hh, opt) ?? fitText(c, m.text, family, w, hh, opt);
+    const f = fitClauses(c, m.text, family, w, hh, opt) ?? fitText(c, m.text, family, w, hh, opt);
+    // 短句一行放得下（字只小一點點）就排一行：「新婚快樂！！！」不要拆成「新婚／快樂！！！」
+    if (f.lines.length > 1 && msgLen(m.text) <= 12) {
+      const one = fitClauses(c, m.text, family, w, hh, { ...opt, maxLines: 1, min: Math.max(min, f.size * 0.82) });
+      if (one) return one;
+    }
+    return f;
   };
   let fit = fitAt(h - sig0 * 1.8);
   const sigSize = sigV2(fit.size * k) / k;

@@ -22,7 +22,7 @@ import { lyricAt, lyricSubOf, subGap, subSizeFor, signature, sparkHead, sparkPar
 import { grid, drawFit, layoutRows, drawRows, Stage, docRT, camDist, FOIL_GLSL, type Grid, type RowsStyle, type V3, type P2 } from './_t4';
 import { msgMaxFor, lyricV2, sigV2, V2, fitClauses } from './_v2';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'doc', paper: false, energy: [0.25, 0.9], bars: [4, 8] };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'doc', paper: false, energy: [0.25, 0.9], bars: [4, 8] };
 
 // ---------------------------------------------------------------- 尺寸（像素）
 const EW = 600, EH = 980, FH = 230; // 袋身、舌蓋的高

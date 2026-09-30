@@ -22,7 +22,7 @@ import { lyricAt, drawLyric, layoutLyric, beatAfter, signature, type LyricStyle 
 import { subRect, paperLyric } from './_t13';
 import { msgMaxFor, lyricV2, sigV2, V2, fitClauses } from './_v2';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'craft', paper: true, energy: [0.2, 0.85], bars: [4, 8] };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'craft', paper: true, energy: [0.2, 0.85], bars: [4, 8] };
 
 // ---------------------------------------------------------------- 器材（邏輯像素）
 /** 齒環的圓心（花心）。偏右：左邊留一欄給歌詞；齒環上下出格一點點，像貼近拍的照片。 */

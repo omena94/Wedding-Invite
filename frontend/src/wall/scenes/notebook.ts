@@ -25,7 +25,7 @@ import { layoutLyric, fillWithHearts, signature, lyricSubOf, subSizeFor, subGap,
 import { grid, windowLines, tiltRT, tiltPass, tiltProject, setV3, mixV, fitMsgV2, type Grid } from './_t5';
 import { V2, lyricV2, sigV2, msgMaxFor } from './_v2';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'doc', paper: true, energy: [0.05, 0.7], bars: [4, 8] };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'doc', paper: true, energy: [0.05, 0.7], bars: [4, 8] };
 
 // ---------------------------------------------------------------- 頁面座標（旋轉、捲動之前）
 const ROT = -0.021; // 本子斜放的角度

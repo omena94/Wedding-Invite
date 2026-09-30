@@ -22,7 +22,7 @@ import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 } from './_v2';
 import { LineBatch } from '../engine/lines';
 import { LIN } from '../engine/palette';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'city', paper: false, energy: [0.3, 1], bars: [4, 8] };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'city', paper: false, energy: [0.3, 1], bars: [4, 8] };
 
 /** 鏡頭：焦距（px）、地平線、消失點的 x、鏡頭離路面高度（m）、落定時離門架的距離（m）。 */
 const FL = 1400, H0 = 620, CX = 960, CAMH = 6.5, D0 = 13.6;

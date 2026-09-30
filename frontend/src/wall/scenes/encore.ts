@@ -20,7 +20,7 @@ import { loadPuppets, hasPuppet, drawCycle, puppetPoint, puppetShadow, puppetLig
 import { lyricV2 } from './_v2';
 import { glow, drawWalker, roundRect, type Pt } from './_c9';
 
-export const spec: PlateSpecDecl = { group: 'couple', family: 'live', paper: false, energy: [0.2, 0.8], bars: [4, 8] };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'couple', family: 'live', paper: false, energy: [0.2, 0.8], bars: [4, 8] };
 
 const GROUND = 968;
 const SZ = 500;

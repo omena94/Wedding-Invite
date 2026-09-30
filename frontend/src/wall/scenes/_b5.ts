@@ -187,3 +187,25 @@ export function wrapSlots(slots: BSlot[], cap: number, rows: number): BSlot[][] 
   if (a.length > cap || b.length > cap) return null;
   return [a, b];
 }
+
+/** 拉丁字（英文、數字、標點）：這種字一個詞放一個東西（一盞燈、一支燈管），不要一個字母一個。 */
+export const LATIN_RE = /[\p{Script=Latin}\d'’,.!?:;&\-"“”()]/u;
+
+/**
+ * 一串格子分成「一個東西一組」：中文、韓文一個字一組，英文一個詞一組；空白是 null（東西之間多空一點）。
+ * 河燈、燈泡這種「一個字一個東西」的版面用。
+ */
+export function groupSlots(slots: BSlot[]): (BSlot[] | null)[] {
+  const out: (BSlot[] | null)[] = [];
+  let cur: BSlot[] | null = null;
+  for (const sl of slots) {
+    if (!sl.ch) { cur = null; out.push(null); continue; }
+    if (LATIN_RE.test(sl.ch) && sl.ch !== '♥') {
+      if (cur && cur[cur.length - 1]!.word === sl.word) { cur.push(sl); continue; }
+      cur = [sl]; out.push(cur); continue;
+    }
+    cur = null;
+    out.push([sl]);
+  }
+  return out;
+}

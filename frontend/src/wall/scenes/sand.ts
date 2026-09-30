@@ -21,7 +21,7 @@ import { grid, stagger, layoutRows, drawRows, type KaraokeInk } from './_t4';
 import { PlaneCam, camUniforms, CAM_GLSL, orderMask, lineItems, msgBlockV2, INVITE, type OrderMask, type MsgBlock, type MaskItem, type Rect } from './_t14';
 import { lyricV2 } from './_v2';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'craft', paper: false, energy: [0.05, 0.7], bars: [4, 8], weight: 1 };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'craft', paper: false, energy: [0.05, 0.7], bars: [4, 8], weight: 1 };
 
 /** 燈箱的發光範圍（燈箱座標）。 */
 const BOX = { x0: 110, y0: 80, x1: 1810, y1: 1000 };

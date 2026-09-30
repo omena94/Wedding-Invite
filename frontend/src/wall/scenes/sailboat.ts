@@ -21,7 +21,7 @@ import { lyricAt, beatAfter, signature, drawMessage, COUPLE_ZH, lyricSubOf, subS
 import { paperSignal, singColor, glyphProgress, fitLine, fitV2, slowPush, no3, INVITE_SMALL, type Rect, SYMBOLS } from './_t20';
 import { lyricV2, sigV2, msgMaxFor, V2 } from './_v2';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'water', paper: true, energy: [0.3, 0.9], bars: [4, 8] };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'water', paper: true, energy: [0.3, 0.9], bars: [4, 8] };
 
 /** 船的原點：桅杆腳（甲板上）。船身、帆、桅杆都在這個座標系裡，整艘船一起晃。 */
 const BOAT = { x: 1110, y: 738 };

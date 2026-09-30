@@ -30,7 +30,7 @@ import {
 } from './_t1';
 
 // v2：桌面是暗的木頭，右下角 HUD 用淺色字 → 當暗的版面排
-export const spec: PlateSpecDecl = { group: 'type', family: 'doc', paper: false, energy: [0.15, 0.8], bars: [4, 8], weight: 1 };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'doc', paper: false, energy: [0.15, 0.8], bars: [4, 8], weight: 1 };
 
 type Ctx2 = CanvasRenderingContext2D;
 

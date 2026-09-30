@@ -22,7 +22,7 @@ import { fitText } from '../engine/text';
 import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 } from './_v2';
 import { beatsIn, inOut, ScreenRig, mipRT, blitToRT, loadPlateText } from './_t6';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'screen', paper: true, energy: [0.25, 0.8], bars: [4, 8], weight: 1 };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'screen', paper: true, energy: [0.25, 0.8], bars: [4, 8], weight: 1 };
 
 // ---------------------------------------------------------------- 螢幕（貼圖座標，y 向下）
 const SW = 1600, SH = 1000;

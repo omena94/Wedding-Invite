@@ -20,7 +20,7 @@ import { FAST_GLSL, phraseSchedule, charsAt, fitChars, windowLines, type Rect } 
 import { bbox } from './_t11';
 import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 } from './_v2';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'machine', paper: false, energy: [0.2, 1], bars: [4, 8], weight: 1 };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'machine', paper: false, energy: [0.2, 1], bars: [4, 8], weight: 1 };
 
 // ---------------------------------------------------------------- 版面（邏輯像素，y 向下）
 /** 木頭機殼。 */

@@ -22,7 +22,7 @@ import { stagger, pad3, mono, tag, type Rect } from './_t11';
 import { lyricLine, lyricRows, subLift } from './_t12';
 import { V2, msgMaxFor, lyricV2, sigV2, fitClauses } from './_v2';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'science', paper: false, energy: [0.3, 1], bars: [4, 10], weight: 1 };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'science', paper: false, energy: [0.3, 1], bars: [4, 10], weight: 1 };
 
 // ---------------------------------------------------------------- 版面
 /** 稜鏡（正三角形）的重心與邊長；白光從畫面左緣射進來。 */

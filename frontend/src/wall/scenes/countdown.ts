@@ -25,7 +25,7 @@ import { type MsgBlock } from './_t14';
 import { loadWindow, revealAt, beatsBetween, v2Block } from './_t18';
 import { lyricV2, V2 } from './_v2';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'game', paper: false, energy: [0.4, 1], bars: [4, 8], weight: 1 };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'game', paper: false, energy: [0.4, 1], bars: [4, 8], weight: 1 };
 
 // ---------------------------------------------------------------- 世界（單位 ≈ 字形的 px：數字高約 720）
 const FOV = 35;

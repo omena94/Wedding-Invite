@@ -20,7 +20,7 @@ import { loadPuppets, drawCycle, drawPick, puppetShadow, breathe, beatKick, note
 import { lyricV2 } from './_v2';
 import { INVITE, enter, writeNote, barsIn, at } from './_c7';
 
-export const spec: PlateSpecDecl = { group: 'couple', family: 'work', paper: true, energy: [0.35, 1], bars: [4, 8] };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'couple', family: 'work', paper: true, energy: [0.35, 1], bars: [4, 8] };
 
 const FLOOR = 940;
 const SZ = 440;

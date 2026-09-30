@@ -21,7 +21,7 @@ import { loadPuppets, drawPuppet, drawPick, puppetBox, puppetLight, breathe, bea
 import { lyricV2 } from './_v2';
 import { INVITE } from './_c5';
 
-export const spec: PlateSpecDecl = { group: 'couple', family: 'home', paper: false, energy: [0, 0.8], bars: [4, 8] };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'couple', family: 'home', paper: false, energy: [0, 0.8], bars: [4, 8] };
 
 /** 銀幕（畫面座標，y 向下）。 */
 const SCR = { x: 300, y: 72, w: 1320, h: 540 };

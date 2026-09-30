@@ -21,7 +21,7 @@ import { inkFor, inkLine, inkPoly, drawNote, type Pt, type Note, type Ink } from
 import { loadPuppets, drawPick, puppetPoint, puppetShadow, puppetIn, puppetLight, breathe, beatKick, noteV2, tightenNote, type PuppetOpts } from './_puppet';
 import { lyricV2 } from './_v2';
 
-export const spec: PlateSpecDecl = { group: 'couple', family: 'sport', paper: false, energy: [0.3, 1], bars: [4, 8] };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'couple', family: 'sport', paper: false, energy: [0.3, 1], bars: [4, 8] };
 
 const FLOOR = 1000;
 const SZ = 440;

@@ -17,7 +17,7 @@
 //  - 空出來的右半邊：正在唱的那個詞變成巨大的空心字（很細的描邊、很淡），每個詞在唱到的那一刻「砸」下來再淡掉，
 //    跟著拍子一直在動——保留「重擊」的感覺，但只是背景的紋理，不搶留言（純音樂時砸的是新人的名字）。
 import * as THREE from 'three';
-import { Scene, shared, type Frame, type Msg, type PostOverrides } from '../engine/scene';
+import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
 import { FSPass, Layer2D, W, H } from '../engine/gl';
 import { LineBatch } from '../engine/lines';
 import { F, font, loadText } from '../engine/type';
@@ -29,6 +29,9 @@ import { sparkHead, sparkParticles, drawLyric, layoutLyric, lyricAt, signature, 
 import { V2, msgMaxFor, msgLen, lyricV2, sigV2 } from './_v2';
 // （標點、符號不算字：「新婚快樂！！！」是四個字的短句，可以重擊）
 import { layoutSlab, linePieces, textPieces, drawCells, headAt, isEastern, type Piece, type Slab, type Tone } from './slam-type';
+// 最早的版面：排程參數在 director.ts 的 PLATES；這裡只宣告雙語（2026-09-30 雙語普查通過：有翻譯＋主打留言時中文、原文、留言三樣都清楚）
+export const spec: PlateSpecDecl = { bilingual: true };
+
 
 /** 舞台左右（離邊 120：規定 96，投影機裁邊再多留一點）。 */
 const X0 = 120, X1 = 1800, SW = X1 - X0;

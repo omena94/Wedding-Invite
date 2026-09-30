@@ -21,7 +21,7 @@
 // 多補的動畫是鈔票自己的防偽特徵：每幾個小節一道驗鈔燈（紫外線）的光帶從左掃到右，照出紙裡的螢光纖維與隱藏的愛心浮水印；
 // 鈔票底下斜斜壓著一張舊的鈔票（整疊的感覺）。
 import * as THREE from 'three';
-import { Scene, shared, type Frame, type Msg, type PostOverrides } from '../engine/scene';
+import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
 import { Layer2D, makeRT, W, H } from '../engine/gl';
 import { LineBatch } from '../engine/lines';
 import { F, font, layout, loadText } from '../engine/type';
@@ -31,6 +31,9 @@ import { fitText, type FitResult } from '../engine/text';
 import { sparkHead, sparkParticles, lyricAt, drawLyric, layoutLyric, beatAfter, COUPLE_EN, COUPLE_ZH, DATE_DOTS } from './_motifs';
 import { V2, msgMaxFor, lyricV2, sigV2, fitClauses } from './_v2';
 import { INNER, MED, ARC_R, rosettePoint, makeBakePass, makeMainPass } from './banknote-art';
+// 最早的版面：排程參數在 director.ts 的 PLATES；這裡只宣告雙語（2026-09-30 雙語普查通過：有翻譯＋主打留言時中文、原文、留言三樣都清楚）
+export const spec: PlateSpecDecl = { bilingual: true };
+
 
 type P2 = { x: number; y: number };
 /** 主打留言的框（雕版大字，平面座標）。右邊留給安全線與徽章。上面的抬頭縮小了，框往上長。 */

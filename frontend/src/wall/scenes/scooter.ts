@@ -25,7 +25,7 @@ import { loadPuppets, drawPick, puppetShadow, puppetIn, breathe, beatKick, noteV
 import { lyricV2 } from './_v2';
 import { mixC, LitStage } from './_c4';
 
-export const spec: PlateSpecDecl = { group: 'couple', family: 'date', paper: false, energy: [0.35, 1], bars: [4, 8] };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'couple', family: 'date', paper: false, energy: [0.35, 1], bars: [4, 8] };
 
 /** 路面（輪子著地的 y）、人行道邊、騎樓地面。 */
 const ROAD = 905, CURB = 812, ARCADE = 772;

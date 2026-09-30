@@ -22,7 +22,7 @@ import { no3, INVITE_SMALL, preloadText, fitWithSig } from './_t19';
 import { V2, msgMaxFor, lyricV2, sigV2, fitClauses } from './_v2';
 import { FRAG_LIGHTHOUSE, beamDir, beamAt, facing, CAM, LAMP } from './lighthouse-glsl';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'light', paper: false, energy: [0.2, 0.8], bars: [4, 8] };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'light', paper: false, energy: [0.2, 0.8], bars: [4, 8] };
 
 /** 霧裡的留言：左上的天空（右邊是燈塔，右上角留給即時小卡）。 */
 const BOX = { x: 150, y: 220, w: 800, h: 300 };

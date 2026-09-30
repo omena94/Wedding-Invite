@@ -23,7 +23,7 @@ import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 } from './_v2';
 import { fillWithHearts } from '../engine/motifs';
 import { layoutWordRows } from './_t7';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'machine', paper: false, energy: [0, 0.75], bars: [4, 8] };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'machine', paper: false, energy: [0, 0.75], bars: [4, 8] };
 
 // ---------------------------------------------------------------- 版面
 /** 錄音帶的本地座標 0..CW × 0..CH（畫的時候放大 sc 倍、轉一點點）。 */

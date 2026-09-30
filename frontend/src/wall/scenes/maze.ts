@@ -26,7 +26,7 @@ import { paperInk } from './_t4';
 import { sigInk } from './_t1';
 import { sigOf, T17_INVITE, T17_TEXT } from './_t17';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'game', paper: true, energy: [0.2, 0.85], bars: [4, 8], weight: 1 };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'game', paper: true, energy: [0.2, 0.85], bars: [4, 8], weight: 1 };
 
 /** 一格的大小（地圖像素）與地圖左上角（整張比畫面大一圈，鏡頭拉遠、轉動時邊緣也有迷宮）。 */
 const CS = 72;

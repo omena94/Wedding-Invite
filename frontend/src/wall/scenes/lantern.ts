@@ -24,7 +24,7 @@ import { loadPuppets, drawPuppet, puppetPoint, puppetBox, puppetShadow, puppetIn
 import { lyricV2 } from './_v2';
 import { mixC } from './_c4';
 
-export const spec: PlateSpecDecl = { group: 'couple', family: 'date', paper: false, energy: [0, 0.8], bars: [4, 8] };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'couple', family: 'date', paper: false, energy: [0, 0.8], bars: [4, 8] };
 
 const GROUND = 900;
 const SZ = 410;

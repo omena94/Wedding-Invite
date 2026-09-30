@@ -27,7 +27,7 @@ import { fillWithHearts } from '../engine/motifs';
 import { layoutWordRows } from './_t7';
 import { FRAG_RADIO } from './radio-glsl';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'machine', paper: true, energy: [0, 0.75], bars: [4, 8] };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'machine', paper: true, energy: [0, 0.75], bars: [4, 8] };
 
 // ---------------------------------------------------------------- 版面（px，y 往下）
 /** v2：收音機整台往下移一點，上面留空間給天線與電波。 */

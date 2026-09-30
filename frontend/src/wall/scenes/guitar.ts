@@ -22,7 +22,7 @@ import { loadPuppets, drawPuppet, drawPick, puppetPoint, puppetShadow, jumpArc, 
 import { lyricV2 } from './_v2';
 import { INVITE, enterPuppet, writeNote } from './_c5';
 
-export const spec: PlateSpecDecl = { group: 'couple', family: 'music', paper: true, energy: [0.2, 0.9], bars: [4, 8] };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'couple', family: 'music', paper: true, energy: [0.2, 0.9], bars: [4, 8] };
 
 const FLOOR = 930;
 const SZ = 560;

@@ -24,7 +24,7 @@ import { makeCanvas, freeCanvas, barsIn, beatsIn } from './_t1';
 import { lyricV2, V2 } from './_v2';
 import { placeBlock, drawBlock, sigOf, fitV2, T22_TEXT, type DrawnBlock, type Rect, type P2 } from './_t22';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'keepsake', paper: false, energy: [0, 0.7], bars: [4, 12], weight: 1 };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'keepsake', paper: false, energy: [0, 0.7], bars: [4, 12], weight: 1 };
 
 /** 牆與桌面的交界（螢幕 y）。 */
 const LEDGE = 925;

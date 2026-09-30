@@ -22,7 +22,7 @@ import { grid, stagger, layoutRows, drawRows, darkInk } from './_t4';
 import { PlaneCam, camUniforms, CAM_GLSL, orderMask, lineItems, msgBlockV2, INVITE, type OrderMask, type MsgBlock, type Rect } from './_t14';
 import { lyricV2 } from './_v2';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'craft', paper: false, energy: [0.3, 1], bars: [4, 8], weight: 1 };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'craft', paper: false, energy: [0.3, 1], bars: [4, 8], weight: 1 };
 
 /** 有留言：留言＋署名織在左邊這一塊（螢幕上寬 ≤ 860、高 ≤ 430，init 依鏡頭縮放換算）；右邊是花紋。 */
 const MSG_BOX = { x: 200, y: 200, w: 820, h: 420 };

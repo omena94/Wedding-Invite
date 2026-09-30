@@ -20,7 +20,7 @@ import { inkFor, paperBG, inkLine, inkPoly, inkEllipse, type Pt, type Note, type
 import { loadPuppets, drawPuppet, puppetPoint, puppetShadow, puppetIn, breathe, beatKick, noteV2, type PuppetOpts } from './_puppet';
 import { lyricV2 } from './_v2';
 
-export const spec: PlateSpecDecl = { group: 'couple', family: 'dog', paper: true, energy: [0.3, 1], bars: [4, 8] };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'couple', family: 'dog', paper: true, energy: [0.3, 1], bars: [4, 8] };
 
 const FLOOR = 920;
 const SZ = 440;

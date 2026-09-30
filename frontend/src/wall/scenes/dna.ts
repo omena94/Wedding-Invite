@@ -25,7 +25,7 @@ import { stagger, mono, tag } from './_t11';
 /** 右下角 HUD（QR、留言數）那一塊的背景要乾淨：線畫到那裡就淡掉。 */
 const hudFade = (x: number, y: number) => clamp(Math.max((1330 - x) / 150, (800 - y) / 150));
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'science', paper: false, energy: [0.3, 0.9], bars: [4, 12], weight: 1 };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'science', paper: false, energy: [0.3, 0.9], bars: [4, 12], weight: 1 };
 
 /** 字排在這個範圍（有留言／沒有留言）。左緣 184：鏡頭斜看時左邊比較近、會放大，投影後仍離邊 96 px 以上。 */
 /** v2：留言區寬 ≤ 860、在畫面左側；右邊整片是一直在扭的螺旋（場景是主角）。 */

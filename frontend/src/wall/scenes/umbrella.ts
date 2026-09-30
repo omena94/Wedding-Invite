@@ -21,7 +21,7 @@ import { lyricV2 } from './_v2';
 import { Lit, layoutChars, drawChars, INVITE } from './_c3';
 import type { Lyrics } from '../engine/lyrics';
 
-export const spec: PlateSpecDecl = { group: 'couple', family: 'date', paper: false, energy: [0, 0.7], bars: [4, 8] };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'couple', family: 'date', paper: false, energy: [0, 0.7], bars: [4, 8] };
 
 const SZ = 480;
 /** 撐傘的圖連傘一起量（傘頂到腳底 656、宣文 600，見 c3-date 的 sprites.json）：放大回來，宣文才是 SZ 高。 */

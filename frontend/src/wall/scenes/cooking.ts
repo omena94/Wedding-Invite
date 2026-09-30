@@ -21,7 +21,7 @@ import { inkFor, inkLine, inkPath, inkShape, inkPoly, inkRect, inkEllipse, hatch
 import { loadPuppets, drawPuppet, drawPick, puppetPoint, puppetShadow, puppetIn, jumpArc, breathe, beatKick, noteV2, tightenNote, type PuppetOpts } from './_puppet';
 import { lyricV2 } from './_v2';
 
-export const spec: PlateSpecDecl = { group: 'couple', family: 'home', paper: true, energy: [0.3, 1], bars: [4, 8] };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'couple', family: 'home', paper: true, energy: [0.3, 1], bars: [4, 8] };
 
 const FLOOR = 880;
 const SZ = 420;

@@ -26,7 +26,7 @@ import { fitText } from '../engine/text';
 import { LIN } from '../engine/palette';
 import { hash } from '../engine/util';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'craft', paper: true, energy: [0.1, 0.75], bars: [4, 8] };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'craft', paper: true, energy: [0.1, 0.75], bars: [4, 8] };
 
 // ---------------------------------------------------------------- 版面
 /** 紙的中心在畫面上的位置、紙的半邊長（世界座標 1 單位 = 桌面上 1 px）。 */

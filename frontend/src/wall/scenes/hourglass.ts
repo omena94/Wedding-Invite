@@ -22,7 +22,7 @@ import { lyricLine, lyricRows, glyphPoints, type GlyphPts } from './_t12';
 import { V2, msgMaxFor, lyricV2, sigV2, fitClauses } from './_v2';
 import { fitText } from '../engine/text';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'science', paper: false, energy: [0, 0.6], bars: [6, 16], weight: 1 };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'science', paper: false, energy: [0, 0.6], bars: [6, 16], weight: 1 };
 
 // ---------------------------------------------------------------- 版面
 /** 沙漏：中心、半高、最寬的半徑、瓶頸、俯視的傾角。 */

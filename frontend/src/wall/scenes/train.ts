@@ -27,7 +27,7 @@ import {
   type GlyphMask, type MsgLay, type Rect, type MaskGlyph,
 } from './_t25';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'journey', paper: false, energy: [0.2, 1], bars: [4, 8] };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'journey', paper: false, energy: [0.2, 1], bars: [4, 8] };
 
 /** 車窗（玻璃）範圍與圓角。 */
 const WIN = { x0: 118, y0: 80, x1: 1802, y1: 806, r: 64 };

@@ -20,7 +20,7 @@ import { grid, stagger, windowLines, mono, pad3, paperLyric, DocCam, withMips, d
 import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 } from './_v2';
 import { fitText } from '../engine/text';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'doc', paper: true, energy: [0.05, 0.8], bars: [4, 8], weight: 1 };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'doc', paper: true, energy: [0.05, 0.8], bars: [4, 8], weight: 1 };
 
 // ---------------------------------------------------------------- 文件（譜）座標，y 向下
 const DW = 1800, DH = 1120;

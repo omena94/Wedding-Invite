@@ -23,7 +23,7 @@ import { winBeats, winBars } from './_t8';
 import { Paper } from './_t11';
 import { msgBlockV2, loadAll, INVITE, type MsgBlock, type P2, type Rect } from './_t15';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'nature', paper: true, energy: [0.15, 0.85], bars: [4, 8], weight: 1 };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'nature', paper: true, energy: [0.15, 0.85], bars: [4, 8], weight: 1 };
 
 const GROUND = 986;
 /** 樹幹與橫枝的中心線（手擺的骨架，之後用 Catmull-Rom 取樣）與寬度。 */

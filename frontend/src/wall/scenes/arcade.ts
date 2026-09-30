@@ -22,7 +22,7 @@ import { lyricAt, layoutLyric, type LyricStyle, beatAfter, COUPLE_ZH, lyricSubOf
 import { DEC_GLSL, winBeats, INVITE, T8_TEXT, Stage, camMove, type StageCam } from './_t8';
 import { V2, msgMaxFor, lyricV2, sigV2, fitClauses } from './_v2';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'machine', paper: false, energy: [0.4, 1], bars: [4, 8], weight: 1 };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'machine', paper: false, energy: [0.4, 1], bars: [4, 8], weight: 1 };
 
 // ---------------------------------------------------------------- 版面（邏輯像素；位置對齊點距）
 const P = 3; // 點距（3 px：中文字約 16～20 顆點高，筆畫才不會糊在一起）

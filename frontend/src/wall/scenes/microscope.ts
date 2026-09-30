@@ -21,7 +21,7 @@ import { V2, msgMaxFor, lyricV2, sigV2, fitClauses } from './_v2';
 import { fitText } from '../engine/text';
 import type { FitResult } from '../engine/text';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'science', paper: true, energy: [0, 0.75], bars: [4, 12], weight: 1 };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'science', paper: true, energy: [0, 0.75], bars: [4, 12], weight: 1 };
 
 // ---------------------------------------------------------------- 版面
 /** 視野：圓心與半徑。 */

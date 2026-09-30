@@ -24,7 +24,7 @@ import { grid, windowLines, pad, renderStage, bodyMaterial, screenMaterial, tabl
 import { V2, lyricV2, sigV2 } from './_v2';
 import { LineBatch } from '../engine/lines';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'screen', paper: false, energy: [0.25, 1], bars: [4, 8] };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'screen', paper: false, energy: [0.25, 1], bars: [4, 8] };
 
 type Rect = { x: number; y: number; w: number; h: number };
 // ---------------------------------------------------------------- 電腦（公分）與螢幕畫布（像素）

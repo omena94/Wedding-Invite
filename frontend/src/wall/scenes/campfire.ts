@@ -25,7 +25,7 @@ import { no3, INVITE_SMALL, preloadText, fitWithSig } from './_t19';
 import { V2, msgMaxFor, lyricV2, sigV2, fitClauses } from './_v2';
 import { FRAG_CAMPFIRE, FIRE, BENCH, TONGUES } from './campfire-glsl';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'light', paper: false, energy: [0.3, 0.95], bars: [4, 8] };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'light', paper: false, energy: [0.3, 0.95], bars: [4, 8] };
 
 /** 留言：左邊的半空（火在右邊），整個畫面最大最亮的東西。 */
 const BOX = { x: 150, y: 250, w: 820, h: 430 };

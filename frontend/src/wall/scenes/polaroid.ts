@@ -23,7 +23,7 @@ import { grid, layoutRows, Stage, camDist, type Grid, type V3 } from './_t4';
 import { loadAll, t21Grain, GRAIN_GLSL, block, glyphPath, type Block, type Rect } from './_t21';
 import { V2, lyricV2 } from './_v2';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'print', paper: true, energy: [0.1, 0.8], bars: [4, 8], weight: 1 };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'print', paper: true, energy: [0.1, 0.8], bars: [4, 8], weight: 1 };
 
 /** 相片（紙面 px）：影像 520×520 在 (40, 40)，下面是寬寬的白邊（寫字的地方）。右上那一堆的解析度低一點（在焦外）。 */
 const PW = 600, PH = 880, IMG = { x: 40, y: 40, s: 520 }, RES = 1.5, RES_X = 0.6;

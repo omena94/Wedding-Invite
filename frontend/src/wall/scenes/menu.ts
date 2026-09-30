@@ -30,7 +30,7 @@ import { grid, stagger, paperLyric, mono, FAST_TEX_GLSL, type Grid } from './_t2
 import { V2, msgMaxFor, lyricV2, sigV2, fitClauses } from './_v2';
 import { vFit, vColumn, vPlace, vDrawUnit, BR, type VLayout, type VPlaced } from './menu-vert';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'doc', paper: true, energy: [0.1, 0.85], bars: [4, 8] };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'doc', paper: true, energy: [0.1, 0.85], bars: [4, 8] };
 
 type P2 = { x: number; y: number };
 type RGB = [number, number, number];

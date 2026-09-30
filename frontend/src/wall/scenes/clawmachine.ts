@@ -24,7 +24,7 @@ import { stagger, pad3, mono, tag } from './_t11';
 import { ClawRig, HOME, HOLD, CAP_R, CHUTE, BOX } from './clawmachine-rig';
 import { fillGlyph, type Rect } from './_t9';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'machine', paper: false, energy: [0.35, 1], bars: [4, 8], weight: 1 };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'machine', paper: false, energy: [0.35, 1], bars: [4, 8], weight: 1 };
 
 // ---------------------------------------------------------------- 版面
 const CAB = { x0: 128, x1: 1192 };

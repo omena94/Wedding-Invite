@@ -22,7 +22,7 @@ import { lyricAt, layoutLyric, drawLyric, drawMessage, beatAfter, type LyricStyl
 import { T16_TEXT, sigOf, winBeats, winBars, no3 } from './_t16';
 import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 } from './_v2';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'nature', paper: false, energy: [0.15, 0.9], bars: [4, 8] };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'nature', paper: false, energy: [0.15, 0.9], bars: [4, 8] };
 
 /** 解說牌（燈箱）的左下角錨點、邊距與字的最大範圍（v2：燈箱 ≤ 760 × 380，只比字多一點邊）。 */
 const PANEL_AT = { x0: 120, y1: 936 };

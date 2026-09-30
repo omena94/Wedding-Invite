@@ -25,7 +25,7 @@ import { loadPuppets, drawPuppet, drawPick, drawCycle, puppetShadow, puppetIn, b
 import { lyricV2 } from './_v2';
 import { INVITE } from './_c3';
 
-export const spec: PlateSpecDecl = { group: 'couple', family: 'date', paper: true, energy: [0.25, 0.9], bars: [4, 8] };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'couple', family: 'date', paper: true, energy: [0.25, 0.9], bars: [4, 8] };
 
 const SZ = 460, DOG_S = 1.3;
 /** 坐著的人：Codex 畫的坐姿比站姿的比例大一點（坐著快跟站著一樣高），縮回來才不會比狗大太多。 */

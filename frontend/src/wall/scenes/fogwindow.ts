@@ -26,7 +26,7 @@ import { lyricAt, layoutLyric, drawLyric, beatAfter, heartPoints, COUPLE_ZH, lyr
 import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 } from './_v2';
 import { T16_INVITE, T16_TEXT, sigOf, winBeats, winBars, rowsOf, glyphCount, charClock, rowFront, type Row } from './_t16';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'nature', paper: false, energy: [0, 0.75], bars: [4, 8] };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'nature', paper: false, energy: [0, 0.75], bars: [4, 8] };
 
 /**
  * 留言寫在左下這一塊（留言標準 v2：字 40～60 px、這一塊 ≤ 860 × 430、放在畫面一側或下方三分之一）；下面留署名。

@@ -20,7 +20,7 @@ import { Paper, stagger, pad3, mono, tag, type Rect } from './_t11';
 import { paperLyric, lyricLine, lyricRows, subLift } from './_t12';
 import { V2, msgMaxFor, lyricV2, sigV2 } from './_v2';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'science', paper: true, energy: [0.15, 0.8], bars: [4, 12], weight: 1 };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'science', paper: true, energy: [0.15, 0.8], bars: [4, 12], weight: 1 };
 
 // ---------------------------------------------------------------- 版面
 /** 兩個圓的中線、半徑；圓心距離從 D0（分開）→ D1（重疊）→ D2（窗格結束時，又貼近一點）。 */

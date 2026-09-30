@@ -20,7 +20,7 @@ import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 } from './_v2';
 import { lyricAt, drawLyric, layoutLyric, beatAfter, signature, fillWithHearts } from './_motifs';
 import { stagger, mono, tag } from './_t11';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'science', paper: false, energy: [0.2, 0.85], bars: [4, 12], weight: 1 };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'science', paper: false, energy: [0.2, 0.85], bars: [4, 12], weight: 1 };
 
 // ---------------------------------------------------------------- 軌道參數
 /** 質心在螢幕上的位置；軌道面傾角（鏡頭）從 INC0 慢慢變到 INC1。 */

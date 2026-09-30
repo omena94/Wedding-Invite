@@ -26,7 +26,7 @@ import {
   type GlyphMask, type MsgLay, type Rect,
 } from './_t25';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'journey', paper: true, energy: [0.1, 0.8], bars: [4, 8] };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'journey', paper: true, energy: [0.1, 0.8], bars: [4, 8] };
 
 /**
  * 山頂、註記（留言）的範圍、地名（歌詞）的位置。

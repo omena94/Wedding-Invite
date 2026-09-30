@@ -21,7 +21,7 @@ import { loadPuppets, drawPick, puppetPoint, puppetShadow, puppetLight, breathe,
 import { lyricV2 } from './_v2';
 import { INVITE, enter, writeNote, sideLight, barsIn, at } from './_c7';
 
-export const spec: PlateSpecDecl = { group: 'couple', family: 'work', paper: false, energy: [0.45, 1], bars: [4, 8] };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'couple', family: 'work', paper: false, energy: [0.45, 1], bars: [4, 8] };
 
 const FLOOR = 900;
 const SZ = 480;

@@ -24,7 +24,7 @@ import { stagger } from './_t11';
 import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 } from './_v2';
 import type { Rect } from './_t9';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'machine', paper: false, energy: [0.15, 0.8], bars: [4, 8], weight: 1 };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'machine', paper: false, energy: [0.15, 0.8], bars: [4, 8], weight: 1 };
 
 // ---------------------------------------------------------------- 版面
 /** 歌詞：左上一排（有留言時）；沒有留言時改掛在留言的位置。 */

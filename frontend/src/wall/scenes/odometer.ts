@@ -20,7 +20,7 @@ import { fillWithHearts } from '../engine/motifs';
 import { GlyphAtlas, cuePages, windowLines, COL, type GlyphReq, type CuePage } from './_t7';
 import { FRAG_ODO, NB } from './odometer-glsl';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'machine', paper: false, energy: [0.3, 0.9], bars: [4, 8] };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'machine', paper: false, energy: [0.3, 0.9], bars: [4, 8] };
 
 // ---------------------------------------------------------------- 版面（板子上的座標，px，y 往下；預設鏡頭下就是螢幕像素）
 const PANEL = { x0: 96, y0: 96, x1: 1824, y1: 984 };

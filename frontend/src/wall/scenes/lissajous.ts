@@ -21,7 +21,7 @@ import { sparkHead, sparkParticles, lyricAt, layoutLyric, drawLyric, signature, 
 import { blit, winBars, label, INVITE, T8_TEXT, Stage, camMove, type StageCam } from './_t8';
 import { V2, msgMaxFor, lyricV2, sigV2, fitClauses } from './_v2';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'machine', paper: false, energy: [0.2, 0.9], bars: [4, 8], weight: 1 };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'machine', paper: false, energy: [0.2, 0.9], bars: [4, 8], weight: 1 };
 
 // ---------------------------------------------------------------- 玻璃上的版面（內容座標，px）
 /** 圖形的中心與振幅（主視覺：刻度格是以中心為準的 6×6 大格，一格 110 px）。 */

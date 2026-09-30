@@ -22,7 +22,7 @@ import { lyricAt, layoutLyric, beatAfter, signature, COUPLE_ZH, lyricSubOf, type
 import { paperSignal, no3, fitV2, slowPush, INVITE_SMALL, type Rect, SYMBOLS } from './_t20';
 import { lyricV2, sigV2, msgMaxFor, V2 } from './_v2';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'water', paper: true, energy: [0.35, 1], bars: [4, 8] };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'water', paper: true, energy: [0.35, 1], bars: [4, 8] };
 
 /** 海平線（y 向下）。歌詞坐在這條線上。 */
 const HZ = 336;

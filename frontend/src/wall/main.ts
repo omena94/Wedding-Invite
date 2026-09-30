@@ -812,7 +812,7 @@ function setupExport() {
      * message = 主打第幾則假留言（1 起算）；theme = 配色；analysis = 之前算好的分析（腳本會快取，省時間）。
      * 回傳這首歌的分析（腳本存起來下次用）與時間軸。
      */
-    async setup(o: { song?: string; scene?: string; params?: Record<string, any>; message?: number; theme?: string; analysis?: any; lrc?: string; trans?: string; ko?: boolean; from?: number; to?: number } = {}) {
+    async setup(o: { song?: string; scene?: string; params?: Record<string, any>; message?: number; theme?: string; analysis?: any; lrc?: string; trans?: string; ko?: boolean; koAlt?: boolean; from?: number; to?: number } = {}) {
       const d = (o.song ? devSongs.find((s) => s.file === o.song) : devSongs[0]);
       let audio: AudioData, lyrics: Lyrics, json: any = null;
       if (d) {
@@ -822,6 +822,9 @@ function setupExport() {
         audio = new AudioData(json);
         // ko：韓文佔位歌詞＋中文翻譯（測原文副行）
         const ko = o.ko ? dummyKoLrc(audio) : null;
+        // koAlt（wall-render.mjs 的 bi 模式量原文字級用）：韓文字換成初聲往後一個的字（字數、字寬都一樣、排版不動），
+        // 跟原本的畫面一比，只有原文裡的韓文字形不一樣 → 量得到原文在畫面上實際多大
+        if (ko && o.koAlt) ko.lrc = ko.lrc.replace(/[\uAC00-\uD7A3]/g, (ch) => { const i = ch.charCodeAt(0) - 0xac00; return String.fromCharCode(0xac00 + ((i + 588) % 11172)); });
         lyrics = ko ? buildLyrics(ko.lrc, audio, 0, ko.trans) : buildLyrics(o.lrc ?? (d.lrc || dummyLrc(audio)), audio, 0, o.trans ?? d.trans ?? '');
         // 截圖要確定性：歌詞（連韓文副行）的字型先載好再畫
         await loadText(lyrics.lines.map((l) => l.text + (l.sub?.text ?? '')).join(''));

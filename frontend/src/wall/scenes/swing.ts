@@ -21,7 +21,7 @@ import { drawNote, type Note } from './_couple';
 import { loadPuppets, drawPick, puppetShadow, puppetIn, puppetLight, jumpArc, landSquash, noteV2, tightenNote, type PuppetOpts } from './_puppet';
 import { lyricV2 } from './_v2';
 
-export const spec: PlateSpecDecl = { group: 'couple', family: 'dance', paper: false, energy: [0.5, 1], bars: [4, 8] };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'couple', family: 'dance', paper: false, energy: [0.5, 1], bars: [4, 8] };
 
 const CX = 780, FLOOR = 830;
 const SZ = 450;

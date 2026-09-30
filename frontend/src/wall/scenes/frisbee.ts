@@ -25,7 +25,7 @@ import { inkFor, paperBG, inkLine, inkPath, inkPoly, inkEllipse, lyricOnPath, dr
 import { loadPuppets, drawPuppet, drawCycle, drawPick, puppetPoint, puppetShadow, puppetIn, jumpArc, landSquash, breathe, beatKick, hop, noteV2, tightenNote, type PuppetOpts } from './_puppet';
 import { lyricV2 } from './_v2';
 
-export const spec: PlateSpecDecl = { group: 'couple', family: 'sport', paper: true, energy: [0.3, 1], bars: [4, 8] };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'couple', family: 'sport', paper: true, energy: [0.3, 1], bars: [4, 8] };
 
 const GROUND = 900;
 const SZ = 400;

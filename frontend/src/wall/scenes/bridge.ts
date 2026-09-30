@@ -17,7 +17,7 @@ import { lyricAt, layoutLyric, drawLyric, beatAfter, barAfter, signature, sparkH
 import { no3, fitV2, slowPush, INVITE_SMALL, type Rect, SYMBOLS } from './_t20';
 import { lyricV2, sigV2, msgMaxFor, V2 } from './_v2';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'water', paper: false, energy: [0.2, 0.85], bars: [4, 8] };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'water', paper: false, energy: [0.2, 0.85], bars: [4, 8] };
 
 /** 橋拱：一段大圓弧（圓心在畫面下方很遠），兩端落在兩顆星上。 */
 const ARC = { cx: 760, apex: 452, R: 2100, half: 560 };

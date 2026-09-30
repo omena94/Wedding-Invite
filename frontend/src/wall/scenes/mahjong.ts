@@ -22,7 +22,7 @@ import { msgMaxFor, lyricV2, sigV2 } from './_v2';
 import { sigInk, makeCanvas, freeCanvas, shadowSprite } from './_t1';
 import { bestCellRows, onGrid, sigOf, T17_INVITE, T17_TEXT } from './_t17';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'game', paper: true, energy: [0.3, 1], bars: [4, 8], weight: 1 };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'game', paper: true, energy: [0.3, 1], bars: [4, 8], weight: 1 };
 
 const FAM_TILE = F.ming(900);
 const FAM_CHIP = F.hei(700);

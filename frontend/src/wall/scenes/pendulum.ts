@@ -20,7 +20,7 @@ import { Lyrics } from '../engine/lyrics';
 import { lyricAt, layoutLyric, beatAfter, signature, fillWithHearts, DATE_DOTS, lyricSubOf, drawLyricSub } from './_motifs';
 import { Paper, stagger, mono, tag } from './_t11';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'science', paper: true, energy: [0, 0.65], bars: [6, 16], weight: 1 };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'science', paper: true, energy: [0, 0.65], bars: [6, 16], weight: 1 };
 
 // ---------------------------------------------------------------- 版面
 /** 左頁（方格紙）與畫圖的中心、最大振幅。 */

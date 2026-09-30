@@ -15,7 +15,7 @@
 //    右邊一個玻璃罐插著一把仙女棒——從第一個小節線起，每個小節點燃一支（那一下閃亮），點著的慢慢往下燒、噴火星，
 //    照亮罐子四周；寫字的那支仙女棒冒出一縷煙往上飄。
 import * as THREE from 'three';
-import { Scene, shared, type Frame, type PostOverrides, type Msg } from '../engine/scene';
+import { Scene, shared, type Frame, type PostOverrides, type Msg, type PlateSpecDecl } from '../engine/scene';
 import { FSPass, Layer2D, W, H } from '../engine/gl';
 import { LineBatch } from '../engine/lines';
 import { F, font, layout, loadText, type TextLayout } from '../engine/type';
@@ -26,6 +26,9 @@ import { fitText, type FitResult } from '../engine/text';
 import { Lyrics, type Line } from '../engine/lyrics';
 import { sparkHead, sparkParticles, lyricAt, drawLyric, layoutLyric, lyricSubOf, drawLyricSub, beatAfter, barAfter, signature, drawHeart } from './_motifs';
 import { V2, msgMaxFor, lyricV2, sigV2, fitClauses } from './_v2';
+// 最早的版面：排程參數在 director.ts 的 PLATES；這裡只宣告雙語（2026-09-30 雙語普查通過：有翻譯＋主打留言時中文、原文、留言三樣都清楚）
+export const spec: PlateSpecDecl = { bilingual: true };
+
 
 /** 信紙（860×430，v2 的留言區上限）與紙上寫字的框（下面留 80 給簽名）。 */
 const SHEET = { x0: 120, y0: 330, x1: 980, y1: 760 };

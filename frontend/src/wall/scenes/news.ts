@@ -22,7 +22,7 @@ import { TAIWAN, VENUE, beatsIn, inOut, ScreenRig, loadPlateText } from './_t6';
 import { fitText } from '../engine/text';
 import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 } from './_v2';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'screen', paper: false, energy: [0.35, 1], bars: [4, 8], weight: 1 };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'screen', paper: false, energy: [0.35, 1], bars: [4, 8], weight: 1 };
 
 // ---------------------------------------------------------------- 版面
 // 這些是「電視訊號」的座標（1920×1080）：整個畫面會放在電視上、縮小約八成，所以字都比直接上螢幕大一號

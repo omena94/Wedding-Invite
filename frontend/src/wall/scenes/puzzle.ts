@@ -25,7 +25,7 @@ import { msgMaxFor, lyricV2, sigV2, fitClauses } from './_v2';
 import { darkInk } from './_t4';
 import { onGrid, sigOf, applyOrbit, lerpOrbit, toScreen, T17_INVITE, T17_TEXT, type OrbitCam, type V3 } from './_t17';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'game', paper: false, energy: [0.3, 1], bars: [4, 8], weight: 1 };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'game', paper: false, energy: [0.3, 1], bars: [4, 8], weight: 1 };
 
 const COLS = 10, ROWS = 5;
 /** 拼圖（海報）的大小（世界單位 ≈ 落定時的螢幕像素）。 */

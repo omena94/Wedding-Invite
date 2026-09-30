@@ -26,7 +26,7 @@ import {
   type GlyphMask, type MsgLay, type Rect,
 } from './_t25';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'journey', paper: true, energy: [0.15, 0.85], bars: [4, 8] };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'journey', paper: true, energy: [0.15, 0.85], bars: [4, 8] };
 
 /** 郵票（含齒孔的外緣）、邊紙、郵票裡的版畫與字的範圍（頁面座標）。 */
 const ST = { x: 236, y: 112, w: 1180, h: 704 };

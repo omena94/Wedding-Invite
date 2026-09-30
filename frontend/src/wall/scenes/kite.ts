@@ -21,7 +21,7 @@ import { loadPuppets, drawPuppet, drawPick, drawCycle, puppetShadow, puppetIn, p
 import { lyricV2 } from './_v2';
 import { INVITE } from './_c3';
 
-export const spec: PlateSpecDecl = { group: 'couple', family: 'date', paper: true, energy: [0.2, 0.85], bars: [4, 8] };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'couple', family: 'date', paper: true, energy: [0.2, 0.85], bars: [4, 8] };
 
 const SZ = 400, DOG_S = 1.2;
 /** 兩人站在左邊的坡頂，風箏在右上方高高的地方：線要夠長、斜斜往上，看起來才是在「放」風箏。 */

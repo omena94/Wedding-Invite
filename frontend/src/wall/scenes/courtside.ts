@@ -22,7 +22,7 @@ import { loadPuppets, drawPick, pick, puppetPoint, puppetShadow, puppetIn, puppe
 import { lyricV2 } from './_v2';
 import { drawPlayer, playerPose, makeCrowd, CrowdLayer, basketball, drawHoop, popcorn, seats, sine01, crowdShade, lyricRows, teamRgba, TEAM_TAG, jumbotronShell, ledBand, scanPattern, type Hoop, type Pt, type PlayerPose } from './_c8';
 
-export const spec: PlateSpecDecl = { group: 'couple', family: 'hoops', paper: false, energy: [0.45, 1], bars: [4, 8] };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'couple', family: 'hoops', paper: false, energy: [0.45, 1], bars: [4, 8] };
 
 /** 兩個人：左下角的場邊座位（腳踩的地面 y、場景尺度 = 宣文站直的身高）。 */
 const CX = 380, GROUND = 992, SZ = 470;

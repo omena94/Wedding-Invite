@@ -15,7 +15,7 @@
 // 補的動畫是唱盤自己的東西：轉盤邊緣一圈頻閃點（真的唱盤校轉速用的），旁邊一盞小頻閃燈每一拍閃一下，
 // 點在頻閃下看起來幾乎不動、照拍子一格一格往前爬。
 import * as THREE from 'three';
-import { Scene, shared, type Frame, type Msg, type PostOverrides } from '../engine/scene';
+import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
 import { FSPass, Layer2D, makeRT, W, H, SCALE } from '../engine/gl';
 import { LineBatch } from '../engine/lines';
 import { F, font, layout, loadText } from '../engine/type';
@@ -26,6 +26,9 @@ import { sparkHead, sparkParticles, beatAfter, signature, drawHeart, lyricSubOf,
 import { Lyrics, type Line, type Word } from '../engine/lyrics';
 import { V2, msgMaxFor, lyricV2, sigV2, fitClauses as fitClausesV2 } from './_v2';
 import { FRAG_VINYL, FRAG_DOF } from './vinyl-glsl';
+// 最早的版面：排程參數在 director.ts 的 PLATES；這裡只宣告雙語（2026-09-30 雙語普查通過：有翻譯＋主打留言時中文、原文、留言三樣都清楚）
+export const spec: PlateSpecDecl = { bilingual: true };
+
 
 type P2 = { x: number; y: number };
 

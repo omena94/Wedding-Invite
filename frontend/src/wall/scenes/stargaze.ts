@@ -20,7 +20,7 @@ import { lyricOnPath, drawNote, type Pt, type Note } from './_couple';
 import { loadPuppets, drawPuppet, puppetPoint, puppetBox, puppetShadow, puppetIn, puppetLight, breathe, beatKick, noteV2, tightenNote } from './_puppet';
 import { lyricV2 } from './_v2';
 
-export const spec: PlateSpecDecl = { group: 'couple', family: 'date', paper: false, energy: [0, 0.55], bars: [4, 8] };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'couple', family: 'date', paper: false, energy: [0, 0.55], bars: [4, 8] };
 
 /** 兩人躺的位置（腳底錨點）與場景尺度。 */
 const CX = 640, GROUND = 925, SZ = 420;

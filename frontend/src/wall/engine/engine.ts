@@ -166,8 +166,10 @@ export class Engine {
         const ctx: SceneCtx = {
           // 有主打留言的窗格不畫原文副行（韓文歌）：給它拿掉副行的歌詞，版面照常用 lyricSubOf 就會拿到 null。
           // 雙語版面（spec.bilingual）是照「留言＋中文＋原文」三樣都放得下設計的，有留言也照樣給原文。
+          // params.keepSub：**只給檢查用**（wall-render.mjs 的 --keep-sub 與 bi 模式）：還沒標 bilingual 的版面，看它有留言時畫原文會不會擠。
+          // 現場的窗格不會帶這個參數（導演不排），所以正式播放的行為不變。
           renderer: this.renderer, audio: this.song.audio,
-          lyrics: e.params?.message && !this.specs.get(e.scene)?.bilingual ? this.song.lyrics.withoutSub() : this.song.lyrics, comp: this.comp, W, H,
+          lyrics: e.params?.message && !this.specs.get(e.scene)?.bilingual && !e.params?.keepSub ? this.song.lyrics.withoutSub() : this.song.lyrics, comp: this.comp, W, H,
           id: e.id, params: e.params, start: e.start, end: e.end, song: this.song.info, live: this.live,
         };
         const s = new cls(ctx);

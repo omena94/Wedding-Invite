@@ -20,7 +20,7 @@ import { PlaneCam, camUniforms, CAM_GLSL, type MsgBlock } from './_t14';
 import { loadWindow, revealAt, beatsBetween, v2Block } from './_t18';
 import { lyricV2, V2 } from './_v2';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'game', paper: false, energy: [0.45, 1], bars: [4, 8], weight: 1 };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'game', paper: false, energy: [0.45, 1], bars: [4, 8], weight: 1 };
 
 // ---------------------------------------------------------------- 版面（牆面座標 = 鏡頭在正前方時的螢幕座標）
 // v2（2026-09-29）：匾縮到畫面右上（連框 ≤ 845×420 螢幕 px，寫字的那塊約 730×320），左半邊是三串鞭炮（主視覺）；

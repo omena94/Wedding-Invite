@@ -27,7 +27,7 @@ import {
 } from './_t25';
 import { BowlingRig, BACK, BACK_PX, PINS, BALL_R, MAXG } from './bowling-rig';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'journey', paper: false, energy: [0.4, 1], bars: [4, 8] };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'journey', paper: false, energy: [0.4, 1], bars: [4, 8] };
 
 /**
  * 布幕上字的範圍（布幕的畫布座標，每公尺 500 px）。最下面停在畫布 y = 370（布幕上離地 0.46 m）：

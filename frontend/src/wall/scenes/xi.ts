@@ -23,7 +23,7 @@ import { subRect, rasterPieces, pieceCanvas, contourAt, type Pieces } from './_t
 import { msgMaxFor, lyricV2, sigV2, V2, fitClauses } from './_v2';
 import { fitText } from '../engine/text';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'craft', paper: false, energy: [0.3, 0.9], bars: [4, 8] };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'craft', paper: false, energy: [0.3, 0.9], bars: [4, 8] };
 
 // ---------------------------------------------------------------- 版面（邏輯像素）
 /** 紙的遮罩圖層範圍。 */

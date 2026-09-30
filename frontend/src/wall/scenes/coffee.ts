@@ -23,7 +23,7 @@ import { loadPuppets, drawPuppet, drawPick, puppetPoint, breathe, beatKick, note
 import { lyricV2 } from './_v2';
 import { INVITE, enterPuppet, writeNote } from './_c5';
 
-export const spec: PlateSpecDecl = { group: 'couple', family: 'home', paper: true, energy: [0.2, 0.9], bars: [4, 8] };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'couple', family: 'home', paper: true, energy: [0.2, 0.9], bars: [4, 8] };
 
 /** 場景尺度（宣文的身高 px）：人站在吧台後面，只看得到腰以上。 */
 const SZ = 700;

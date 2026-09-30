@@ -19,7 +19,7 @@ import { lyricAt, signature, lyricSubOf, layoutLyric, subStyleFor, subGap, drawL
 import { grid, drawFit, layoutRows, drawRows, paperInk, lastIdx, Stage, docRT, camDist, type Grid, type RowsStyle, type V3 } from './_t4';
 import { msgMaxFor, lyricV2, sigV2, V2, fitClauses } from './_v2';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'doc', paper: true, energy: [0.2, 0.85], bars: [4, 8] };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'doc', paper: true, energy: [0.2, 0.85], bars: [4, 8] };
 
 // ---------------------------------------------------------------- 紙面（像素，左上原點、y 向下）
 const DW = 1500, DH = 1000;

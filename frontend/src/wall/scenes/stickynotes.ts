@@ -21,7 +21,7 @@ import { layoutLyric, drawLyric, drawHeart, fillWithHearts, signature, DATE_DOTS
 import { grid, windowLines, renderStage, projScale, fitMsgV2, type Grid } from './_t5';
 import { V2, lyricV2, sigV2 } from './_v2';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'doc', paper: true, energy: [0.35, 1], bars: [4, 8], minMessages: 4 };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'doc', paper: true, energy: [0.35, 1], bars: [4, 8], minMessages: 4 };
 
 // ---------------------------------------------------------------- 牆上的位置（鏡頭歸位時 = 螢幕像素，y 向下）
 const ROW = { x: 190, y: 190, w: 680, n: 4 }; // 歌詞那一排（一張 170）：只在主打那張上面，跟主打同一個焦點

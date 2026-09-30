@@ -21,7 +21,7 @@ import { barsIn } from './_t1';
 import { placeBlock, drawBlock, sigOf, fitV2, T22_TEXT, type Rect } from './_t22';
 import { lyricV2, V2 } from './_v2';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'keepsake', paper: false, energy: [0.1, 0.75], bars: [4, 12], weight: 1 };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'keepsake', paper: false, energy: [0.1, 0.75], bars: [4, 12], weight: 1 };
 
 /** 戒指的外半徑、內半徑、半個寬度（世界單位）。 */
 const RO = 1.0, RI = 0.9, HH = 0.24;

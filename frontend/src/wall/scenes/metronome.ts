@@ -22,7 +22,7 @@ import { Paper, stagger, mono, tag } from './_t11';
 import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 } from './_v2';
 import { fillGlyph, type Rect } from './_t9';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'machine', paper: true, energy: [0.05, 0.7], bars: [4, 8], weight: 1 };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'machine', paper: true, energy: [0.05, 0.7], bars: [4, 8], weight: 1 };
 
 // ---------------------------------------------------------------- 幾何（邏輯像素，y 向下）
 /** 擺的支點、擺桿長、擺幅（弧度）。 */

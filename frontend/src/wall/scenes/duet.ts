@@ -23,7 +23,7 @@ import { lyricV2 } from './_v2';
 import { INVITE, enterPuppet, writeNote } from './_c5';
 import type { Line } from '../engine/lyrics';
 
-export const spec: PlateSpecDecl = { group: 'couple', family: 'music', paper: false, energy: [0.35, 1], bars: [4, 8] };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'couple', family: 'music', paper: false, energy: [0.35, 1], bars: [4, 8] };
 
 const FLOOR = 985;
 const SZ = 610;

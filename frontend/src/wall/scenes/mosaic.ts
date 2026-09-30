@@ -13,7 +13,7 @@
 // v2（2026-09-29「留言尺寸與版面比例標準 v2」）：主打停住時在畫面左邊一塊 ≤ 830×430（留言 40～60 px、署名 26～32），
 // 歌詞 40～52（不比主打大）；背景牆上的留言跟著主打縮小（上限是主打的 0.42 倍，停住時畫面上約 18 px）——是紋理，不是第二個焦點。
 import * as THREE from 'three';
-import { Scene, shared, type Frame, type Msg, type PostOverrides } from '../engine/scene';
+import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
 import { FSPass, Layer2D, W, H, SCALE } from '../engine/gl';
 import { LineBatch } from '../engine/lines';
 import { F, font, layout, loadText, type TextLayout } from '../engine/type';
@@ -24,6 +24,9 @@ import { sparkHead, sparkParticles, lyricAt, drawLyric, layoutLyric, drawHeart, 
 import { V2, msgMaxFor, lyricV2, sigV2, fitClauses } from './_v2';
 import { layoutWall, drawWall, heroHeader, heroLabel, HERO_PAD, HERO_LABEL, HERO_SIG, HERO_RULE_Y, HERO_LABEL_SIZE, type HeroSpec, type WallLayout } from './mosaic-wall';
 import { CamPath, constrain, worldToScreen, zoomOf, type View } from './mosaic-path';
+// 最早的版面：排程參數在 director.ts 的 PLATES；這裡只宣告雙語（2026-09-30 雙語普查通過：有翻譯＋主打留言時中文、原文、留言三樣都清楚）
+export const spec: PlateSpecDecl = { bilingual: true };
+
 
 /** 歌詞：畫面下緣（電影字幕的位置），左邊對齊 150；右下角 QR 在 x ≥ 1360，歌詞寬度到 1330 為止。base 是最後一行的基線。 */
 const LYR = { x: 150, base: 950, maxW: 1180 };

@@ -27,7 +27,7 @@ import { inkFor, inkLine, inkPath, inkPoly, inkEllipse, tennisBall, drawNote, ty
 import { loadPuppets, drawPuppet, drawPick, drawCycle, puppetPoint, puppetShadow, puppetIn, breathe, beatKick, hop, landSquash, jumpArc, noteV2, tightenNote, type PuppetOpts } from './_puppet';
 import { lyricV2 } from './_v2';
 
-export const spec: PlateSpecDecl = { group: 'couple', family: 'sport', paper: true, energy: [0.35, 1], bars: [4, 8] };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'couple', family: 'sport', paper: true, energy: [0.35, 1], bars: [4, 8] };
 
 // ---- 場地（斜俯視）：v = 深度（0 = 遠的邊線、1 = 近的邊線），u = 沿著球場長邊（0 = 左底線、1 = 右底線）
 const Y0 = 575, Y1 = 1010;

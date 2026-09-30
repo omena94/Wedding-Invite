@@ -19,7 +19,7 @@ import { msgMaxFor, lyricV2, sigV2, V2 } from './_v2';
 import { CardBatch, boxMaterial, decalMaterial, WALL_FRAG } from './flipclock-gl';
 import type { Line } from '../engine/lyrics';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'machine', paper: false, energy: [0.2, 0.85], bars: [4, 8] };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'machine', paper: false, energy: [0.2, 0.85], bars: [4, 8] };
 
 // ---------------------------------------------------------------- 版面（預設鏡頭下的螢幕像素，y 往下；3D 裡 1 單位 = 1 px）
 /** 機身（正面）。 */

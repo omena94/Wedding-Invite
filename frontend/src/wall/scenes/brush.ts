@@ -21,7 +21,7 @@ import { lyricAt, drawLyric, layoutLyric, beatAfter, drawHeart, type LyricStyle 
 import { subRect, paperLyric, cjkRatio } from './_t13';
 import { msgMaxFor, lyricV2, sigV2, V2 } from './_v2';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'craft', paper: true, energy: [0, 0.65], bars: [4, 8] };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'craft', paper: true, energy: [0, 0.65], bars: [4, 8] };
 
 // ---------------------------------------------------------------- 紙與版面（邏輯像素）
 /** 宣紙的範圍（外面是毛氈）。 */

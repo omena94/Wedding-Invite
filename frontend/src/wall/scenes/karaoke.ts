@@ -12,7 +12,7 @@
 //    天花板上一顆看不到的鏡面球在轉，一顆顆小光點慢慢掃過幕與地板（KTV 的招牌），大鼓時一起亮一下；
 //    地板是亮面的，映著燈與麥克風；大鼓一打，麥克風的網罩閃一下。
 import * as THREE from 'three';
-import { Scene, shared, type Frame, type PostOverrides, type Msg } from '../engine/scene';
+import { Scene, shared, type Frame, type PostOverrides, type Msg, type PlateSpecDecl } from '../engine/scene';
 import { FSPass, Layer2D, W, H } from '../engine/gl';
 import { LineBatch } from '../engine/lines';
 import { F, font, loadText } from '../engine/type';
@@ -21,6 +21,9 @@ import { ease, hash, prog, pulse, clamp } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
 import { sparkHead, sparkParticles, lyricAt, drawLyric, layoutLyric, drawMessage, signature, beatAfter, msgChars, type LyricStyle } from './_motifs';
 import { V2, msgMaxFor, lyricV2, sigV2, fitClauses } from './_v2';
+// 最早的版面：排程參數在 director.ts 的 PLATES；這裡只宣告雙語（2026-09-30 雙語普查通過：有翻譯＋主打留言時中文、原文、留言三樣都清楚）
+export const spec: PlateSpecDecl = { bilingual: true };
+
 
 /** 麥克風站在哪裡（螢幕 px）：支架底座在地板上的中心、麥克風頭的中心。右下角 HUD（x ≥ 1360、y ≥ 830）在它右下方。 */
 const MIC = { x: 1190, floor: 918, head: 420 };

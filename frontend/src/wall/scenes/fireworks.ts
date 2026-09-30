@@ -15,7 +15,7 @@
 // 署名 26～32；水面上的歌詞 40～52（不比留言大）。空出來的右半邊夜空一直有煙火：留言停在天上的時候，
 // 每個小節在右邊放一發中型的（落在小節線），不再只有遠方低空的小煙火。沒有留言時天上的歌詞煙火也收小（≤ 80 px）。
 import * as THREE from 'three';
-import { Scene, shared, type Frame, type Msg, type PostOverrides } from '../engine/scene';
+import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
 import { Layer2D, W, H, SCALE, makeRT, clearRT } from '../engine/gl';
 import { LineBatch } from '../engine/lines';
 import { F, font, layout, loadText, type TextLayout } from '../engine/type';
@@ -27,6 +27,9 @@ import { sparkHead, sparkParticles, lyricAt, drawLyric, layoutLyric, lyricSubOf,
 import { V2, msgMaxFor, lyricV2, sigV2, fitClauses } from './_v2';
 import { HZ, SKY_PASS, drawSkyline, type Light } from './fireworks-sky';
 import { type Shell, type SkyGlyph, type Kind, sampleStars, planGlyphs, rocketAt, drawRocket, drawCrown, drawComets, drawStars, drawEmbers, expand, drawGlyphHeart } from './fireworks-shells';
+// 最早的版面：排程參數在 director.ts 的 PLATES；這裡只宣告雙語（2026-09-30 雙語普查通過：有翻譯＋主打留言時中文、原文、留言三樣都清楚）
+export const spec: PlateSpecDecl = { bilingual: true };
+
 
 /**
  * 天上排字的範圍：下面留給城市輪廓。即時小卡停用、高度尺也拿掉了（MV 融合原則：介面元素砍掉），

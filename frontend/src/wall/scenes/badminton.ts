@@ -20,7 +20,7 @@ import { inkFor, inkLine, shuttle, arcAt, arcPts, lyricOnPath, drawNote, type Pt
 import { loadPuppets, drawPick, puppetPoint, puppetShadow, puppetIn, puppetLight, jumpArc, breathe, beatKick, noteV2, tightenNote, type PuppetOpts } from './_puppet';
 import { lyricV2 } from './_v2';
 
-export const spec: PlateSpecDecl = { group: 'couple', family: 'sport', paper: false, energy: [0.4, 1], bars: [4, 8] };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'couple', family: 'sport', paper: false, energy: [0.4, 1], bars: [4, 8] };
 
 const FLOOR = 880;
 const SZ = 380; // 場景尺度：宣文的身高（px）

@@ -18,7 +18,7 @@ import { lyricAt, layoutLyric, drawLyric, beatAfter, signature, COUPLE_ZH, type 
 import { paperSignal, fitV2, no3, slowPush, INVITE_SMALL, type Rect, SYMBOLS } from './_t20';
 import { lyricV2, sigV2, msgMaxFor, V2 } from './_v2';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'water', paper: true, energy: [0.3, 1], bars: [4, 8] };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'water', paper: true, energy: [0.3, 1], bars: [4, 8] };
 
 /** shader 裡最多幾顆泡泡。 */
 const NB = 40;

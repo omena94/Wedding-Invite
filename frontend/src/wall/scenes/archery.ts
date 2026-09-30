@@ -25,7 +25,7 @@ import { inkFor, inkLine, inkPoly, inkEllipse, arcAt, drawNote, type Pt, type No
 import { loadPuppets, drawPuppet, drawPick, puppetPoint, puppetShadow, puppetIn, puppetLight, jumpArc, breathe, beatKick, noteV2, tightenNote, type PuppetOpts } from './_puppet';
 import { lyricV2 } from './_v2';
 
-export const spec: PlateSpecDecl = { group: 'couple', family: 'sport', paper: false, energy: [0.3, 1], bars: [4, 8] };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'couple', family: 'sport', paper: false, energy: [0.3, 1], bars: [4, 8] };
 
 /** 人站的地面、靶架站的地面（遠一點，所以比較高）。 */
 const GROUND = 872, FAR = 792;

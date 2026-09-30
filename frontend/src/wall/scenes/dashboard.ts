@@ -22,7 +22,7 @@ import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 } from './_v2';
 import { stagger, mono } from './_t11';
 import { fillGlyph, type Rect } from './_t9';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'machine', paper: false, energy: [0.4, 1], bars: [4, 8], weight: 1 };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'machine', paper: false, energy: [0.4, 1], bars: [4, 8], weight: 1 };
 
 // ---------------------------------------------------------------- 版面
 /** 消失點、相機焦距（px）、相機高度（m）。 */

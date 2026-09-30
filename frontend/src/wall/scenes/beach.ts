@@ -22,7 +22,7 @@ import { paperBG, lyricOnPath, drawNote, type Pt, type Note } from './_couple';
 import { loadPuppets, drawPuppet, drawCycle, puppetPoint, puppetShadow, puppetIn, jumpArc, breathe, hop, beatKick, noteV2, tightenNote } from './_puppet';
 import { lyricV2 } from './_v2';
 
-export const spec: PlateSpecDecl = { group: 'couple', family: 'date', paper: true, energy: [0.2, 0.9], bars: [4, 8] };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'couple', family: 'date', paper: true, energy: [0.2, 0.9], bars: [4, 8] };
 
 /** 海平線、平常的水邊（浪沒上來時）、兩人跑的地面。 */
 const HORIZON = 300, SHORE = 560, GROUND = 748;

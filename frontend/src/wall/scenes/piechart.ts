@@ -23,7 +23,7 @@ import { paperLyric, lyricLine, subLift } from './_t12';
 import { V2, msgMaxFor, lyricV2, sigV2, fitClauses } from './_v2';
 import { fitText } from '../engine/text';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'science', paper: true, energy: [0.3, 0.9], bars: [4, 10], weight: 1 };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'science', paper: true, energy: [0.3, 0.9], bars: [4, 10], weight: 1 };
 
 // ---------------------------------------------------------------- 版面
 /** 甜甜圈（配角：縮小、放左邊）：圓心、外半徑、內半徑。 */

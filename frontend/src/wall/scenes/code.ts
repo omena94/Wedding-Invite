@@ -27,7 +27,7 @@ import { fitText } from '../engine/text';
 import { msgMaxFor, lyricV2, fitClauses, V2 } from './_v2';
 import { typedLayout, drawTyped, inOut, ScreenRig, mipRT, blitToRT, loadPlateText } from './_t6';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'screen', paper: false, energy: [0.3, 0.95], bars: [4, 8], weight: 1 };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'screen', paper: false, energy: [0.3, 0.95], bars: [4, 8], weight: 1 };
 
 // ---------------------------------------------------------------- 螢幕（貼圖座標，像素，y 向下）
 const TW = 1720; // 螢幕寬（比畫面大：鏡頭很近，只拍到一部分）

@@ -25,7 +25,7 @@ import { glyphStates, glyphColor, alongPath, no3, INVITE_SMALL, preloadText, fit
 import { V2 as STD, msgMaxFor, lyricV2, sigV2, fitClauses } from './_v2';
 import { FRAG_MOON } from './moon-glsl';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'light', paper: false, energy: [0, 0.7], bars: [4, 8] };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'light', paper: false, energy: [0, 0.7], bars: [4, 8] };
 
 /** 大月亮的圓心（左半邊；右緣不超過 x = 1060，右邊是月相表與即時小卡）。 */
 const C = { x: 700, y: 440 };

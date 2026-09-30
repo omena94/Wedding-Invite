@@ -21,7 +21,7 @@ import { lyricAt, layoutLyric, drawLyric, beatAfter, drawHeart, COUPLE_ZH, type 
 import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 } from './_v2';
 import { T16_INVITE, T16_TEXT, sigOf, winBars } from './_t16';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'city', paper: false, energy: [0.2, 1], bars: [4, 8] };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'city', paper: false, energy: [0.2, 1], bars: [4, 8] };
 
 /** 窗格的間距（px）：一扇窗一格。 */
 const P = 3;

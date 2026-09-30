@@ -21,7 +21,7 @@ import { lyricAt, drawLyric, layoutLyric, beatAfter, drawMessage, COUPLE_ZH, COU
 import { inOut, subRect, type Rect, loadPlateText } from './_t6';
 import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 } from './_v2';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'screen', paper: false, energy: [0, 0.7], bars: [6, 12], weight: 1 };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'screen', paper: false, energy: [0, 0.7], bars: [6, 12], weight: 1 };
 
 // ---------------------------------------------------------------- 版面
 const SPINE = 720; // 脊線在畫面上的 x

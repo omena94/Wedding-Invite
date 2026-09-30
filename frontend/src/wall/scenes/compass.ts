@@ -22,7 +22,7 @@ import { PlaneCam, camUniforms, CAM_GLSL, type MsgBlock } from './_t14';
 import { loadWindow, revealAt, beatsBetween, v2Block } from './_t18';
 import { lyricV2, V2 } from './_v2';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'science', paper: true, energy: [0.2, 0.85], bars: [4, 8], weight: 1 };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'science', paper: true, energy: [0.2, 0.85], bars: [4, 8], weight: 1 };
 
 // ---------------------------------------------------------------- 版面（航海圖座標 = 鏡頭在正前方時的螢幕座標）
 /** 錶身（下）的中心、半徑；鉸鏈；打開後蓋子的中心。 */

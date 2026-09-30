@@ -30,7 +30,7 @@ import { Paper, homography } from './_t11';
 import { paperLyric, stagger, pad3, grid, windowLines, type Grid, type Rect } from './_t2';
 import { V2, msgMaxFor, lyricV2, sigV2, fitClauses } from './_v2';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'doc', paper: true, energy: [0.15, 0.85], bars: [4, 8] };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'doc', paper: true, energy: [0.15, 0.85], bars: [4, 8] };
 
 type P = { x: number; y: number };
 

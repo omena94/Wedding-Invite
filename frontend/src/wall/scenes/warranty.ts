@@ -19,7 +19,7 @@ import { drawLyric, drawMessage, lyricAt, signature, type LyricStyle } from './_
 import { grid, stagger, windowLines, boxLyric, mono, tag, pad3, paperLyric, DocCam, withMips, inkStamp, HUD, EDGE, type Grid, type Pose } from './_t3';
 import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 } from './_v2';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'doc', paper: true, energy: [0.3, 0.9], bars: [4, 8], weight: 1 };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'doc', paper: true, energy: [0.3, 0.9], bars: [4, 8], weight: 1 };
 
 // ---------------------------------------------------------------- 文件（卡片）座標，y 向下
 const DW = 1600, DH = 1000;

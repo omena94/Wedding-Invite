@@ -22,7 +22,7 @@ import { grid, windowLines, rrect, pad, pop, renderStage, bodyMaterial, screenMa
 import { V2, lyricV2, sigV2 } from './_v2';
 import { LineBatch } from '../engine/lines';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'screen', paper: false, energy: [0.15, 0.85], bars: [4, 8] };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'screen', paper: false, energy: [0.15, 0.85], bars: [4, 8] };
 
 // ---------------------------------------------------------------- 手機（公分）與螢幕畫布（像素）
 const PHONE = { w: 7.4, h: 15.9, d: 0.8, r: 1.1 };

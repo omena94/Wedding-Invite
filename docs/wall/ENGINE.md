@@ -68,6 +68,10 @@
     - 沒翻譯的歌：只有一行，版面要一樣好看（原文那一格收起來或換成裝飾，不要留一個空框）。
     - 驗收：`node scripts/wall-render.mjs ko --scene <名字>`，**有主打留言那一格也要看到原文**；再看一般（沒翻譯）的五種情境。
     - 後台「大螢幕版面」有「雙語」篩選（wall-catalog.mjs 讀版面檔的 `bilingual: true`）。
+    - 既有版面的雙語普查（2026-09-30）：`node scripts/wall-render.mjs bi --scene a,b`，會拍兩格「有翻譯＋主打留言」
+      （版面還沒標 bilingual 也照樣畫原文，靠 `params.keepSub`，只有檢查工具會帶），並量原文在畫面上多大、有沒有壓到 HUD。
+      通過的已經加上 `bilingual: true`（最早的 9 個版面在自己的檔裡只宣告 `spec = { bilingual: true }`，排程參數仍在 PLATES）。
+      沒通過的（原文太小、被蓋住、有留言時自己不畫原文）名單在 wall-out/bi/_table.json，改好再標。
   - `drawLyric`／`layoutLyric`（`_motifs.ts`）與 `lyricOnPath`（`_couple.ts`）**自動**畫原文：`layoutLyric` 的 `height` 算到原文最後一排的基線，
     所以照 `height` 置中或貼底的版面，原文自動在框裡。`lay.rows`／`lay.words` 只有中文，原文在 `lay.sub = { lay, dy }`。
   - 自己畫歌詞的版面：`const sub = lyricSubOf(line)`，有的話 translate 到「主行最後一排基線 + `subGap(主行字級)`」，

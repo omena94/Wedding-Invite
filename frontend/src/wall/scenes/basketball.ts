@@ -26,7 +26,7 @@ import { loadPuppets, drawPuppet, drawPick, drawCycle, puppetPoint, puppetShadow
 import { lyricV2 } from './_v2';
 import { basketball, drawHoop, lyricRows, teamRgba, TEAM_TAG, type Hoop, type Pt } from './_c8';
 
-export const spec: PlateSpecDecl = { group: 'couple', family: 'hoops', paper: true, energy: [0.4, 1], bars: [4, 8] };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'couple', family: 'hoops', paper: true, energy: [0.4, 1], bars: [4, 8] };
 
 /** 球場：人的腳底（比一般高一點：籃框的柱子不能進右下角 HUD）。 */
 const GROUND = 818;

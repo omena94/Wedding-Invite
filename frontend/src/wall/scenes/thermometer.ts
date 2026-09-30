@@ -23,7 +23,7 @@ import { Stage, camMove } from './_t8';
 import { loadWindow, revealAt, beatsBetween, v2Block } from './_t18';
 import { lyricV2, V2 } from './_v2';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'science', paper: true, energy: [0.3, 1], bars: [4, 8], weight: 1 };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'science', paper: true, energy: [0.3, 1], bars: [4, 8], weight: 1 };
 
 // ---------------------------------------------------------------- 木板上的位置（正面的圖 = 1920×1080）
 // v2（2026-09-29）：溫度計放大成主角（粗玻璃管、大球、寬刻度條），刻字那一塊縮到畫面右上 ≤ 860×430（螢幕 px），

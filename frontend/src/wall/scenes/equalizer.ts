@@ -22,7 +22,7 @@ import { layoutWordRows, windowLines } from './_t7';
 import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 } from './_v2';
 import { FRAG_EQ, NCOL, NSEG } from './equalizer-glsl';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'machine', paper: false, energy: [0.5, 1], bars: [4, 8] };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'machine', paper: false, energy: [0.5, 1], bars: [4, 8] };
 
 // ---------------------------------------------------------------- 版面
 /** 留言區：光柱右邊（寬 ≤ 860、高 ≤ 430；下面一列署名）。 */

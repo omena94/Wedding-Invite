@@ -19,7 +19,7 @@ import { GlyphAtlas, cuePages, windowLines, wrapCells, flipAt, settle, bestCellW
 import { msgMaxFor, lyricV2, sigV2, V2 } from './_v2';
 import { FRAG_BOARD, NG } from './departures-glsl';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'machine', paper: false, energy: [0.3, 1], bars: [4, 10] };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'machine', paper: false, energy: [0.3, 1], bars: [4, 10] };
 
 // ---------------------------------------------------------------- 版面（看板座標，px，y 往下；預設鏡頭下就是螢幕像素）
 const BOARD = { x0: 60, y0: 86, x1: 1860, y1: 1004 };

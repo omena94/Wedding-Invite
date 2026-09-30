@@ -17,7 +17,7 @@ import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 } from './_v2';
 import { lyricAt, drawLyric, layoutLyric, beatAfter, signature, fillWithHearts } from './_motifs';
 import { mono, tag, type Rect } from './_t11';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'science', paper: false, energy: [0.25, 0.85], bars: [4, 10], weight: 1 };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'science', paper: false, energy: [0.25, 0.85], bars: [4, 10], weight: 1 };
 
 /** 波源的 x、留言排的範圍（右下角 QR 上面）。 */
 const SRC_X = 214;

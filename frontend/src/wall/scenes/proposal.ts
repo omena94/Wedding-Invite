@@ -21,7 +21,7 @@ import { drawNote, type Note, type Pt } from './_couple';
 import { loadPuppets, drawPick, drawPuppet, FADE, puppetPoint, puppetBox, puppetShadow, puppetIn, puppetLight, jumpArc, breathe, beatKick, hop, noteV2, tightenNote, type PuppetOpts } from './_puppet';
 import { lyricV2 } from './_v2';
 
-export const spec: PlateSpecDecl = { group: 'couple', family: 'wedding', paper: false, energy: [0.2, 0.9], bars: [4, 8] };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'couple', family: 'wedding', paper: false, energy: [0.2, 0.9], bars: [4, 8] };
 
 /** 陽台地板（腳底）與場景尺度（宣文的身高 px）。 */
 const FLOOR = 884;

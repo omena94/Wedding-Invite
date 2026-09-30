@@ -23,7 +23,7 @@ import { loadPuppets, hasPuppet, drawCycle, puppetPoint, puppetShadow, puppetLig
 import { lyricV2 } from './_v2';
 import { glow, lightStick, phoneBack, makeCrowd, bakeCrowd, drawBakedCrowd, cloth, star, toward, type CrowdBake, type Pt } from './_c9';
 
-export const spec: PlateSpecDecl = { group: 'couple', family: 'live', paper: false, energy: [0.45, 1], bars: [4, 8] };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'couple', family: 'live', paper: false, energy: [0.45, 1], bars: [4, 8] };
 
 const GROUND = 1062;
 /** 場景尺度：宣文站直的身高（px）。 */

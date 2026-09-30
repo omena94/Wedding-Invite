@@ -22,7 +22,7 @@ import { lyricAt, lyricSubOf, layoutLyric, drawLyric, signature, beatAfter } fro
 import { blit, label, INVITE, T8_TEXT, Stage, camMove, type StageCam } from './_t8';
 import { V2, msgMaxFor, lyricV2, sigV2, fitClauses } from './_v2';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'machine', paper: false, energy: [0.25, 1], bars: [4, 8], weight: 1 };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'machine', paper: false, energy: [0.25, 1], bars: [4, 8], weight: 1 };
 
 // ---------------------------------------------------------------- 版面（螢幕座標，px）
 const C = { x: 700, y: 540 }, R = 440;

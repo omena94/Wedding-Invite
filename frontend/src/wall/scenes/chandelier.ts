@@ -26,7 +26,7 @@ import { glyphStates, glyphColor, no3, INVITE_SMALL, preloadText, fitFew, fitWit
 import { V2, msgMaxFor, lyricV2, sigV2, fitClauses } from './_v2';
 import { buildModel, CEIL, HOOP, LYRIC_ARC, type Model, type StrandDef } from './chandelier-model';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'light', paper: false, energy: [0.35, 1], bars: [4, 8] };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'light', paper: false, energy: [0.35, 1], bars: [4, 8] };
 
 /** 鏡頭：在吊燈前下方往上看；view offset 把吊燈中軸放在畫面 x = CX、整盞往上推（上半截出畫，下面留給留言）。 */
 const CAM = { y: -0.5, z: 6.9, lookY: 0.7, fov: 36, dy: 115 };

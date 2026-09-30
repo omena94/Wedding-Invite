@@ -22,7 +22,7 @@ import { T16_INVITE, T16_TEXT, sigOf, rowsOf, glyphCount, charClock, rowFront, t
 import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 } from './_v2';
 import { fitText } from '../engine/text';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'nature', paper: false, energy: [0.1, 0.85], bars: [4, 8] };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'nature', paper: false, energy: [0.1, 0.85], bars: [4, 8] };
 
 /** 玻璃球（畫面座標）。 */
 const C = { x: 760, y: 328 }, R = 272;

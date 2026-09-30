@@ -22,7 +22,7 @@ import { grid, layoutRows, drawRows, type KaraokeInk } from './_t4';
 import { PlaneCam, camUniforms, CAM_GLSL, msgBlockV2, INVITE, type MsgBlock, type Rect } from './_t14';
 import { lyricV2 } from './_v2';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'craft', paper: true, energy: [0.2, 0.9], bars: [4, 8], weight: 1 };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'craft', paper: true, energy: [0.2, 0.9], bars: [4, 8], weight: 1 };
 
 /** 版（鐵框）的左上角與卡片的中心 x（布面座標，左右大小依留言決定）。 */
 const FORME = { x: 170, y: 230 };

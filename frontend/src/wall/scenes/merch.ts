@@ -21,7 +21,7 @@ import { loadPuppets, hasPuppet, drawPick, drawPuppet, puppetPoint, puppetShadow
 import { lyricV2 } from './_v2';
 import { drawWalker, cloth, star } from './_c9';
 
-export const spec: PlateSpecDecl = { group: 'couple', family: 'live', paper: true, energy: [0.3, 1], bars: [4, 8] };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'couple', family: 'live', paper: true, energy: [0.3, 1], bars: [4, 8] };
 
 const GROUND = 1000;
 const SZ = 540;

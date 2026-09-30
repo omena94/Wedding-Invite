@@ -24,7 +24,7 @@ import { lyricAt, beatAfter, signature, fillWithHearts, COUPLE_ZH } from './_mot
 import { Paper, stagger, pad3, mono, tag, type Rect } from './_t11';
 import { paperLyric, lyricLine, lyricRows, subDepth, glyphPoints, type GlyphPts } from './_t12';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'science', paper: true, energy: [0.2, 0.85], bars: [4, 12], weight: 1 };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'science', paper: true, energy: [0.2, 0.85], bars: [4, 12], weight: 1 };
 
 // ---------------------------------------------------------------- 版面
 /** 留言（鐵粉字）的範圍：下方三分之一、QR 的左邊（標準 v2：寬 ≤ 860、高 ≤ 430）。 */

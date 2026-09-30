@@ -24,7 +24,7 @@ import { Stage, camDist, type V3 } from './_t4';
 import { placeBlock, drawBlock, sigOf, stripGeometry, setStrip, fitV2, T22_TEXT, type Rect } from './_t22';
 import { lyricV2, V2 } from './_v2';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'keepsake', paper: true, energy: [0.2, 0.9], bars: [4, 10], weight: 1 };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'keepsake', paper: true, energy: [0.2, 0.9], bars: [4, 10], weight: 1 };
 
 /** 盒子（世界單位 = px；桌面 z = 0，z 往上）：外寬、外深、高、壁厚。盒蓋比盒子大一圈。 */
 const BW = 900, BD = 620, BH = 240, WT = 8;

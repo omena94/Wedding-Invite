@@ -22,7 +22,7 @@ import { lyricAt, layoutLyric, type LyricLayout, type LyricStyle, signature, bea
 import { DEC_GLSL, INVITE, T8_TEXT, Stage, camMove, type StageCam } from './_t8';
 import { V2, msgMaxFor, lyricV2, sigV2, fitClauses } from './_v2';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'machine', paper: false, energy: [0.2, 0.95], bars: [4, 8], weight: 1 };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'machine', paper: false, energy: [0.2, 0.95], bars: [4, 8], weight: 1 };
 
 // ---------------------------------------------------------------- 版面（玻璃上的座標，px）
 const PROMPT = '$ ';

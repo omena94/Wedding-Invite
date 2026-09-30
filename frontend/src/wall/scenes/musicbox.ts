@@ -21,7 +21,7 @@ import { drawReveal, phraseSchedule, revealAt, fitCharsF, windowLines, type Rect
 import { pad3 } from './_t11';
 import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 } from './_v2';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'machine', paper: true, energy: [0, 0.7], bars: [4, 8], weight: 1 };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'machine', paper: true, energy: [0, 0.7], bars: [4, 8], weight: 1 };
 
 // ---------------------------------------------------------------- 版面（邏輯像素，y 向下）
 // 正在演奏（歌詞）：比曲目卡上的留言小一級（MV 原則：焦點是留言）

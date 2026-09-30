@@ -24,7 +24,7 @@ import { loadPuppets, drawPuppet, drawCycle, puppetPoint, puppetShadow, puppetLi
 import { lyricV2 } from './_v2';
 import { INVITE, enter, writeNote, sideLight, barsIn, at } from './_c7';
 
-export const spec: PlateSpecDecl = { group: 'couple', family: 'work', paper: false, energy: [0.25, 0.9], bars: [4, 8] };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'couple', family: 'work', paper: false, energy: [0.25, 0.9], bars: [4, 8] };
 
 const FLOOR = 905;
 /** 場景尺度：宣文站直的身高（px）。 */

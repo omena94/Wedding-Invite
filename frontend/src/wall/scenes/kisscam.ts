@@ -21,7 +21,7 @@ import { loadPuppets, drawPick, pick, puppetShadow, puppetIn, puppetLight, breat
 import { lyricV2 } from './_v2';
 import { makeCrowd, drawCrowd, CrowdLayer, crowdShade, jumbotronShell, ledBand, scanPattern, type Fan, type Box } from './_c8';
 
-export const spec: PlateSpecDecl = { group: 'couple', family: 'hoops', paper: false, energy: [0.3, 0.9], bars: [4, 8] };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'couple', family: 'hoops', paper: false, energy: [0.3, 0.9], bars: [4, 8] };
 
 /** 大螢幕的螢幕面（轉播畫面）。 */
 const SCREEN: Box = { x: 130, y: 196, w: 940, h: 416 };

@@ -19,7 +19,7 @@ import { loadPuppets, hasPuppet, drawPick, puppetPoint, puppetLight, breathe, no
 import { lyricV2 } from './_v2';
 import { glow, phoneBack, roundRect, type Pt } from './_c9';
 
-export const spec: PlateSpecDecl = { group: 'couple', family: 'live', paper: false, energy: [0, 0.62], bars: [4, 8] };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'couple', family: 'live', paper: false, energy: [0, 0.62], bars: [4, 8] };
 
 /** 中景紙偶：h = 圖的外框（從大腿到舉起來的拳頭）在畫面上的高度；腳底錨點（大腿的切口）在畫面下緣外面。 */
 const NH = 900, CX = 860, GROUND = 1130;

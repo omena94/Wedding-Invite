@@ -19,7 +19,7 @@ import { inkFor, inkPath, drawNote, paperBG, type Pt, type Ink, type Note } from
 import { loadPuppets, drawPuppet, puppetInfo, breathe, beatKick, noteV2, tightenNote } from './_puppet';
 import { lyricV2 } from './_v2';
 
-export const spec: PlateSpecDecl = { group: 'couple', family: 'cartoon', paper: true, energy: [0.3, 1], bars: [4, 8] };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'couple', family: 'cartoon', paper: true, energy: [0.3, 1], bars: [4, 8] };
 
 /** 拍貼：整張的範圍、四格照片、下面的白邊（寫留言）。 */
 const SHEET = { x: 150, y: 110, w: 1620, h: 690 };

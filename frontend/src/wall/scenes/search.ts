@@ -23,7 +23,7 @@ import { layoutLyric, drawLyric, lyricAt, drawHeart, fillWithHearts, signature, 
 import { grid, windowLines, rrect, lastOf, renderStage, bodyMaterial, screenMaterial, tableMaterial, backdropMaterial, slab, setV3, mixV, projScale, fitMsgV2, type Grid } from './_t5';
 import { V2, lyricV2, sigV2 } from './_v2';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'screen', paper: true, energy: [0.1, 0.75], bars: [4, 8] };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'screen', paper: true, energy: [0.1, 0.75], bars: [4, 8] };
 
 // ---------------------------------------------------------------- 筆電（公分）與螢幕畫布（像素）
 const BASE = { w: 32, d: 22, h: 1.4 };

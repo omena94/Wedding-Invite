@@ -20,7 +20,7 @@ import { loadPuppets, drawPick, puppetShadow, puppetIn, puppetLight, jumpArc, br
 import { lyricV2 } from './_v2';
 import { drawPlayer, playerPose, makeCrowd, CrowdLayer, crowdShade, basketball, drawHoop, seats, seg7, streamers, teamRgba, TEAM_TAG, type Hoop, type Pt, type PlayerPose } from './_c8';
 
-export const spec: PlateSpecDecl = { group: 'couple', family: 'hoops', paper: false, energy: [0.4, 1], bars: [4, 8] };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'couple', family: 'hoops', paper: false, energy: [0.4, 1], bars: [4, 8] };
 
 /** 球場：球員腳底、籃框（籃板在籃框右邊）。 */
 const FLOOR = 800;

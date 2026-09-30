@@ -15,7 +15,7 @@
 // 露出來的紙 ≤ 430 高）；監護儀的歌詞在畫面上 40～52 px（不比留言大）。監護儀才是畫面的主體：
 // 下半多了第三條波形「呼吸」——跟著這首歌的音量起伏的平滑曲線，同一條掃描線寫過去，每個小節線在曲線上亮一顆小點。
 import * as THREE from 'three';
-import { Scene, shared, type Frame, type Msg, type PostOverrides } from '../engine/scene';
+import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
 import { FSPass, Layer2D, W, H, makeRT } from '../engine/gl';
 import { LineBatch } from '../engine/lines';
 import { F, font, layout, fitSize, loadText } from '../engine/type';
@@ -27,6 +27,9 @@ import { V2, msgMaxFor, lyricV2 } from './_v2';
 import { pickPulses, ecgAt, Sweep, heartPaths, partial, scanRows, type Pulse, type HeartPaths, type Row } from './heartbeat-ecg';
 import { buildStrip, msgStrip, INVITE_STRIP, STRIP_TEXT, STRIP_FIXED, type Strip } from './heartbeat-strip';
 import { MONITOR, monitorPose, setPose } from './heartbeat-screen';
+// 最早的版面：排程參數在 director.ts 的 PLATES；這裡只宣告雙語（2026-09-30 雙語普查通過：有翻譯＋主打留言時中文、原文、留言三樣都清楚）
+export const spec: PlateSpecDecl = { bilingual: true };
+
 
 // ---------------------------------------------------------------- 螢幕上的版面（螢幕座標；四周留寬一點：映像管的玻璃是鼓的，邊緣會被推出去）
 const X0 = 150, X1 = 1770, WTR = X1 - X0; // 波形區：用整個寬度（右邊不再有數字欄）

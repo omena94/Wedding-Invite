@@ -22,7 +22,7 @@ import { loadPuppets, drawPuppet, drawPick, puppetShadow, puppetIn, puppetBox, b
 import { lyricV2 } from './_v2';
 import { INVITE } from './_c3';
 
-export const spec: PlateSpecDecl = { group: 'couple', family: 'dog', paper: true, energy: [0, 0.8], bars: [4, 8], variants: 3 };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'couple', family: 'dog', paper: true, energy: [0, 0.8], bars: [4, 8], variants: 3 };
 
 const SZ = 420, DOG_S = 1.62;
 /** 牆腳（牆與木地板的交界）。 */
