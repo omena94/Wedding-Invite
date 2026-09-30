@@ -22,7 +22,7 @@ import { inkFor, inkLine, inkPath, inkShape, inkPoly, inkEllipse, heartPop, arcA
 import { loadPuppets, drawPick, drawPuppet, puppetPoint, puppetBox, puppetShadow, puppetIn, jumpArc, breathe, beatKick, hop, noteV2, tightenNote, type PuppetOpts } from './_puppet';
 import { lyricV2 } from './_v2';
 
-export const spec: PlateSpecDecl = { group: 'couple', family: 'wedding', paper: true, energy: [0.35, 1], bars: [4, 8] };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'couple', family: 'wedding', paper: true, energy: [0.35, 1], bars: [4, 8] };
 
 const FLOOR = 890;
 const SZ = 440;
@@ -42,6 +42,8 @@ const PAD = { x: 36, top: 56, bottom: 30 };
 const ARC_UP = 300;
 /** 歌詞：草地前面，最後一排的基線。 */
 const LYR = { x: 150, base: 990, w: 1120 };
+/** 有原文的句子：原文最後一排的基線（雙語 2026-09-30：字腳離畫面下緣要留 ≥ 96 px，整組往上挪）。 */
+const SUB_BASE = 972;
 /** 出手那一格孟庭的樣子（往後仰、整張往上一送之前）：捧花的起點照這個姿勢算，跟 drawOmena 在出手那一刻的參數一樣。 */
 const THROW_O: PuppetOpts = { h: SZ, flip: true, rot: -0.08, pivot: 0.3, squash: -0.06 };
 const INVITE = '掃描右下角 QR code，把祝福寫上大螢幕';
@@ -235,7 +237,7 @@ export default class Bouquet extends Scene {
       const st = { family: F.archivo(100, big ? 800 : 700), size: this.lyricSize, minSize: 40, maxWidth: LYR.w, unsung: rgba('sepia', 0.26), sung: rgba('sepia', big ? 0.92 : 0.8), active: rgba('signal') };
       const lay = layoutLyric(c, ly.line, st);
       c.save();
-      c.translate(LYR.x, LYR.base - (lay.height - lay.size));
+      c.translate(LYR.x, (lay.sub ? SUB_BASE : LYR.base) - (lay.height - lay.size));
       drawLyric(c, ly.line, t, st, lay, ly.k * prog(t, s + 0.1, s + 0.5));
       c.restore();
     }

@@ -21,7 +21,7 @@ import { loadPuppets, drawPick, drawCycle, puppetPoint, puppetShadow, puppetIn, 
 import { lyricV2 } from './_v2';
 import { makeCrowd, CrowdLayer, crowdShade, lyricRows, teamRgba, TEAM_TAG, basketball, drawHoop, streamers, ledBand, type Hoop, type Pt } from './_c8';
 
-export const spec: PlateSpecDecl = { group: 'couple', family: 'hoops', paper: false, energy: [0.45, 1], bars: [4, 8] };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'couple', family: 'hoops', paper: false, energy: [0.45, 1], bars: [4, 8] };
 
 /** 球場：宣文的腳底、籃框（籃板在籃框右邊）。 */
 const FLOOR = 830;
@@ -133,7 +133,8 @@ export default class Halftime extends Scene {
     const cw = Math.min(CHECK.w, Math.max(760, tightenNote(c, this.note, 520) + PAD.x * 2));
     this.check = { x: CHECK.x, y: CHECK.y, w: cw, h: ch };
     this.lyricSize = lyricV2(this.msg ? this.note.fit.size : null);
-    if (!this.msg && this.ctx.lyrics.linesIn(s - 1, this.ctx.end + 1).some((l) => !!lyricSubOf(l))) this.face = { ...TABLE, y: TABLE.y - KO_UP, h: TABLE.h + KO_UP };
+    // 雙語（2026-09-30）：有主打留言的窗格也有原文，一樣把板子長高（原本只有沒留言才長，原文會掉到板子外、離下緣只剩 70 px）
+    if (this.ctx.lyrics.linesIn(s - 1, this.ctx.end + 1).some((l) => !!lyricSubOf(l))) this.face = { ...TABLE, y: TABLE.y - KO_UP, h: TABLE.h + KO_UP };
     this.msgT0 = beatAfter(au, s + 0.3);
     this.crowd = new CrowdLayer(makeCrowd(-20, W + 20, 500, 8, { r: 10, gap: 44, rowH: 40, shrink: 0.94, seed: 31 }), (cc) => crowdShade(cc, 200, 530), rgba('bone', 0.04), SCALE);
     this.makeStamp();

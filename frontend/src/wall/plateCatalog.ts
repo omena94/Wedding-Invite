@@ -215,7 +215,7 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": true,
   "idea": "紅磚步道、藍色牽繩，兩人各牽一隻狗散步（橫向捲動），狗狗在每棵樹停一下；留言寫在路邊的告示牌。",
-  "bilingual": false
+  "bilingual": true
  },
  {
   "name": "dogbath",
@@ -431,7 +431,7 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": true,
   "idea": "孟庭背對賓客往後丟捧花（預備一小節），捧花飛過畫面，接住的人舉起留言。",
-  "bilingual": false
+  "bilingual": true
  },
  {
   "name": "comic",
@@ -539,7 +539,7 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": true,
   "idea": "中場休息，宣文上場參加投籃挑戰，一拍投一球，最後一球空心進；孟庭在場邊揮加油棒。留言寫在大支票（獎品看板）上。",
-  "bilingual": false
+  "bilingual": true
  },
  {
   "name": "basketball",
@@ -1385,7 +1385,7 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "一排花在拍點綻放（版畫線條），每朵花心一個字，留言在花盆的標籤上。",
-  "bilingual": false
+  "bilingual": true
  },
  {
   "name": "dandelion",
@@ -1457,7 +1457,7 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "捷運路線圖：兩條線（兩人）在一站交會，列車點在拍點前進一站，站名是歌詞，轉乘站是留言。",
-  "bilingual": false
+  "bilingual": true
  },
  {
   "name": "domino",

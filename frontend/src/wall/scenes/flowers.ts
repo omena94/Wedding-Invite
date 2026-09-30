@@ -22,7 +22,7 @@ import { winBeats, winBars, no3, blit } from './_t8';
 import { Paper } from './_t11';
 import { msgBlockV2, loadAll, INVITE, type MsgBlock, type Rect } from './_t15';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'nature', paper: true, energy: [0.2, 1], bars: [4, 8], weight: 1 };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'nature', paper: true, energy: [0.2, 1], bars: [4, 8], weight: 1 };
 
 const MAXF = 40;
 /** 花箱：正面的上緣（土）、左右、下緣；標籤。 */
@@ -30,6 +30,8 @@ const BOX = { x0: 96, x1: 1320, top: 606, bot: 1000 };
 /** 標籤：左緣、寫字範圍的上限（v2：連標籤 ≤ 860×430）；實際大小照字排出來再定。 */
 const LABEL = { x: 160, y: 640, w: 780, h: 330 };
 const LABEL_TXT = { w: 660, h: 250 };
+/** 有留言的窗格：原文基線離花箱上緣多遠（比沒留言時高一點，下面的標籤才放得下）。 */
+const SUB_Y_MSG = 46;
 /** 花排在這一帶（一排或兩排），以花箱的中線置中。 */
 const ROW1 = 318, ROW2A = 226, ROW2B = 420;
 const ROW_CX = (BOX.x0 + BOX.x1) / 2, ROW_W = 1160;
@@ -278,6 +280,8 @@ export default class Flowers extends Scene {
       lb.w = 600; lb.h = 230;
     }
     lb.y = Math.round(top + (bot - top - lb.h) / 2);
+    // 雙語（2026-09-30）：有留言又有原文時，原文寫在花箱上緣（SUB_Y_MSG），標籤往下讓出那一排，不要貼著原文
+    if (m && this.hasSub) lb.y = Math.round(Math.min(Math.max(lb.y, top + SUB_Y_MSG + 26), bot - lb.h - 6));
     c.save();
     c.translate(lb.x + lb.w / 2, lb.y + lb.h / 2);
     c.rotate(-0.008);
@@ -403,7 +407,7 @@ export default class Flowers extends Scene {
       const k = ease.outExpo(prog(t, row.tIn, row.tIn + 0.34)) * (1 - ease.inCubic(prog(t, row.tOut, row.tOut + 0.32)));
       if (k <= 0.001) continue;
       const st: LyricStyle = { family: FAM, size: row.size, maxWidth: ROW_W, align: 'center', sung: rgba('sepia', 0.96), unsung: rgba('sepia', 0.3) };
-      cc.save(); cc.translate(ROW_CX, BOX.top + 58);
+      cc.save(); cc.translate(ROW_CX, BOX.top + (this.msg ? SUB_Y_MSG : 58));
       drawLyricSub(cc, row.sub, t, st, row.size, k);
       cc.restore();
     }

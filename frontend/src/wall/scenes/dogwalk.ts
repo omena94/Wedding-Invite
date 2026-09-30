@@ -23,7 +23,7 @@ import { inkFor, paperBG, inkLine, inkPoly, inkEllipse, leash, drawNote, type Pt
 import { loadPuppets, drawPuppet, drawCycle, puppetPoint, puppetBox, puppetInfo, puppetHeight, puppetShadow, puppetIn, hop, breathe, beatKick, noteV2, tightenNote, type PuppetOpts } from './_puppet';
 import { lyricV2 } from './_v2';
 
-export const spec: PlateSpecDecl = { group: 'couple', family: 'dog', paper: true, energy: [0.3, 1], bars: [4, 8] };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'couple', family: 'dog', paper: true, energy: [0.3, 1], bars: [4, 8] };
 
 /** 兩條走道：宣文與 QQ 走遠的那一邊（腳底高一點、小一點點），孟庭與芃芃走近的那一邊。 */
 const LANE_B = 850, LANE_F = 906;
@@ -76,6 +76,8 @@ export default class DogWalk extends Scene {
   msgT0 = 0;
   /** 韓文原文副行停的第三條電線（在歌詞那條正下方多遠；0 = 這一格沒有原文，不拉這條線）。 */
   subWire = 0;
+  /** 電線整組往上抬多少（有原文、告示牌又高的時候：原文那條線不能碰到告示牌的小屋頂）。 */
+  wireLift = 0;
 
   override async init() {
     const { audio: au, lyrics } = this.ctx;
@@ -128,7 +130,16 @@ export default class DogWalk extends Scene {
     const bw = Math.min(BOARD.w, tightenNote(c, this.note, 340) + PAD.x * 2);
     this.board = { x: BOARD.x, y: BOARD.bottom - bh, w: bw, h: bh };
     this.lyricSize = lyricV2(this.msg ? this.note.fit.size : null);
-    if (hasSub) this.subWire = Math.round(subGap(this.lyricSize));
+    if (hasSub) {
+      this.subWire = Math.round(subGap(this.lyricSize));
+      // 雙語（2026-09-30）：留言長、告示牌高的時候，小屋頂會頂到原文那條線（原文的字腳壓在屋頂上）。
+      // 告示牌停下來的位置（BOARD.x）量一遍：原文字腳（線下約 0.3 個原文字級）要在屋頂上面 10 px，不夠就整組電線往上抬
+      const B = this.board, ss = subSizeFor(this.lyricSize), apex = B.y - 16 - 46;
+      const roofY = (x: number) => { const half = B.w / 2 + 38, dx = Math.abs(x - (B.x + B.w / 2)); return dx > half ? Infinity : apex + 46 * (dx / half); };
+      let need = 0;
+      for (let x = B.x - 38; x <= B.x + B.w + 38; x += 8) need = Math.max(need, this.wireY(x) + this.subWire + ss * 0.3 + 10 - roofY(x));
+      this.wireLift = Math.ceil(need);
+    }
     this.msgT0 = Math.max(beatAfter(au, s + 0.4), this.stopT - bp0 * 2);
   }
 
@@ -212,7 +223,7 @@ export default class DogWalk extends Scene {
     for (let x = off; x < W + 200; x += gap) inkLine(c, [{ x, y: 120 }, { x: x + 3, y: PATH.top - 40 }], { ink, w: 1.4, color: rgba('sepia', 0.5), seed: 7 });
   }
 
-  private wireY(x: number) { const u = (x - WIRE.x0) / (WIRE.x1 - WIRE.x0); return lerp(WIRE.y0, WIRE.y1, u) + WIRE.sag * 4 * u * (1 - u); }
+  private wireY(x: number) { const u = (x - WIRE.x0) / (WIRE.x1 - WIRE.x0); return lerp(WIRE.y0, WIRE.y1, u) + WIRE.sag * 4 * u * (1 - u) - this.wireLift; }
 
   /** 一棵路樹（在步道遠邊）：樹幹、三團樹冠（拍點上被風推一下）；很淡。 */
   private tree(c: CanvasRenderingContext2D, ink: Ink, x: number, t: number, seed: number) {

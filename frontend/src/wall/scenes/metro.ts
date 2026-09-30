@@ -17,11 +17,11 @@ import { rgba, mixRgba, LIN } from '../engine/palette';
 import { clamp, ease, prog, pulse, polylineLengths, pointAtLength, TAU, type V2 } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
 import { Lyrics, type Line } from '../engine/lyrics';
-import { lyricAt, layoutLyric, drawLyric, beatAfter, drawHeart, COUPLE_ZH, type LyricStyle, type LyricLayout } from './_motifs';
+import { lyricAt, layoutLyric, drawLyric, beatAfter, drawHeart, COUPLE_ZH, lyricSubOf, subSizeFor, subStyleFor, subGap, type LyricStyle, type LyricLayout } from './_motifs';
 import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 as STD } from './_v2';
 import { T16_INVITE, T16_TEXT, sigOf, winBeats, winBars } from './_t16';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'city', paper: true, energy: [0.1, 0.85], bars: [4, 8] };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'city', paper: true, energy: [0.1, 0.85], bars: [4, 8] };
 
 // ---------------------------------------------------------------- 海報上的配置（海報座標 = 1920 × 1080）
 /** 轉乘站、兩條線（各有幾個站）、合併線、終點。 */
@@ -331,11 +331,13 @@ export default class Metro extends Scene {
       const ly = lyricAt(lyrics, t, 1.2, 0.45);
       if (ly) {
         const st = { ...this.lyrStyle, ...paperInk() };
-        const lay = layoutLyric(c, ly.line, st);
+        const lay = posterSub(c, ly.line, st, layoutLyric(c, ly.line, st));
         const big = this.lyrPos === LYR_BIG;
         let y0 = big ? this.lyrPos.y - (lay.rows.length - 1) * lay.size * 1.14 * 0.5 : this.lyrPos.y - (lay.rows.length - 1) * lay.size * (st.lineHeight ?? 1.18);
-        // 韓文原文副行在中文下面：下面那行邀請是畫好的（LYR_BIG.y + 90），原文最後一排的基線最低到它上面 36 px，放不下整組往上移
-        if (big && lay.sub) y0 = Math.min(y0, LYR_BIG.y + 54 - (lay.height - lay.size));
+        // 韓文原文副行在中文下面：下面那行邀請是畫好的（LYR_BIG.y + 90），原文最後一排的基線最低到它上面 44 px（原文放大到 38 之後要多留一點），放不下整組往上移
+        if (big && lay.sub) y0 = Math.min(y0, LYR_BIG.y + 46 - (lay.height - lay.size));
+        // 雙語（2026-09-30）：有留言時歌詞排在合併線上方，原文接在中文下面會壓到線與站點：整組往上，原文最後一排的基線放在原本中文的位置
+        if (!big && lay.sub) y0 = LYR.y - (lay.height - lay.size);
         c.save(); c.translate(this.lyrPos.x, y0);
         drawLyric(c, ly.line, t, st, lay, ly.k);
         c.restore();
@@ -454,13 +456,27 @@ export default class Metro extends Scene {
     const last = lyrics.lastLine(t);
     if (!last || t < this.tMeet) return T.x;
     const st = { ...this.lyrStyle, ...paperInk() };
-    const lay = layoutLyric(this.dyn.ctx, last, st);
+    const lay = posterSub(this.dyn.ctx, last, st, layoutLyric(this.dyn.ctx, last, st));
     const big = this.lyrPos === LYR_BIG;
     const x0 = this.lyrPos.x;
     const lw = lay.words[lay.words.length - 1]!;
     const x = x0 + lw.x + lw.w;
     return big ? MERGE.x0 + 40 + ((x - x0) / Math.max(1, this.lyrPos.w)) * (MERGE.x1 - MERGE.x0 - 80) : x;
   }
+}
+
+/**
+ * 原文副行（2026-09-30 雙語）：海報斜斜地貼在牆上、鏡頭又離得有點遠，照海報 px 排的 32 px 原文在畫面上只剩 26。
+ * 原文至少排 SUB_MIN 海報 px、不再縮（太長就折行）；中文不動。
+ */
+const SUB_MIN = 38;
+function posterSub(c: CanvasRenderingContext2D, line: Line, st: LyricStyle, lay: LyricLayout): LyricLayout {
+  const sub = lyricSubOf(line);
+  if (!sub || !lay.sub) return lay;
+  const size = Math.max(SUB_MIN, subSizeFor(lay.size));
+  const sl = layoutLyric(c, sub, { ...subStyleFor(st, lay.size), size, minSize: size });
+  const dy = lay.sub.dy - subGap(lay.size, lay.sub.lay.size) + subGap(lay.size, sl.size);
+  return { ...lay, sub: { lay: sl, dy }, height: dy + (sl.height - sl.size) + lay.size };
 }
 
 /** 亮版面的跟唱顏色：正在唱用訊號色的暗部（香檳、鼠尾草的訊號色在紙上太淡）、唱完墨色、還沒唱三成墨色。 */
