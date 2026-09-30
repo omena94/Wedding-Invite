@@ -120,6 +120,12 @@ export default function WallRemote() {
               用不到的請關掉；要改控制另一台，在那台的操作列按「改由這台接收遙控」。</span>}
         </div>
       )}
+      {/* 大螢幕那台瀏覽器沒開硬體加速（2026-10-01）：畫面用 CPU 模擬，會很卡，請現場的人去開 */}
+      {online && st.softGL && (
+        <div className="wr-conn off"><WifiOff size={16} />
+          <span>大螢幕那台電腦的瀏覽器沒有開「硬體加速」，畫面會卡、很吃電腦。請在那台的瀏覽器設定（Edge：edge://settings/system）打開「使用圖形加速」，重新啟動瀏覽器後再開大螢幕。</span>
+        </div>
+      )}
       {/* 鎖定遙控（2026-10-01）：新人怕婚禮當天遙控被別台大螢幕搶走 */}
       {locked ? (
         <div className="wr-conn ok wr-lock"><Lock size={16} />
