@@ -2234,6 +2234,15 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "bilingual": true
  },
  {
+  "name": "kdrama",
+  "title": "追劇",
+  "family": "kculture",
+  "light": false,
+  "couple": true,
+  "idea": "兩人和三隻狗窩在沙發上看劇，電視上是雙語字幕（歌詞），劇情高潮時孟庭抓著宣文、狗一起歪頭；留言是電視上的彈幕／來電字幕條。",
+  "bilingual": true
+ },
+ {
   "name": "kpopdance",
   "title": "練舞室",
   "family": "kculture",
