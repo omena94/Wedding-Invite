@@ -602,7 +602,7 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "「FLIGHT AO0313 → 永遠」登機證，乘客姓名 = 留言署名，登機門、座位、條碼；留言印在登機證上，歌詞像廣播字幕。票根在小節線撕下。",
-  "bilingual": true
+  "bilingual": false
  },
  {
   "name": "passport",
@@ -2024,6 +2024,15 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "街角的雙語路牌與指標柱（中文大、原文小），每小節一塊新的路牌翻下來；遠處車流與行道樹視差；留言是公車站的燈箱廣告。",
+  "bilingual": true
+ },
+ {
+  "name": "neonalley",
+  "title": "巷弄直式霓虹",
+  "family": "city",
+  "light": false,
+  "couple": false,
+  "idea": "夜晚小巷一整排直式霓虹招牌（中文招牌、旁邊原文小招牌），唱到的字點亮、閃一下；濕地面倒影；留言是最亮的那塊招牌。",
   "bilingual": true
  },
  {
