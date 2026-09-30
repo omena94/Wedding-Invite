@@ -1955,6 +1955,15 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "bilingual": true
  },
  {
+  "name": "dubbing",
+  "title": "配音室",
+  "family": "screen",
+  "light": false,
+  "couple": false,
+  "idea": "錄音室的配音螢幕：畫面上跑雙語字幕與提示條（倒數條在拍點滑到字），下面兩條聲音波形（原文一條、中文一條）；留言貼在麥克風旁的劇本上。",
+  "bilingual": true
+ },
+ {
   "name": "flashcards",
   "title": "單字卡",
   "family": "print",
