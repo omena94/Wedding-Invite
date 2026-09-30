@@ -602,7 +602,7 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "「FLIGHT AO0313 → 永遠」登機證，乘客姓名 = 留言署名，登機門、座位、條碼；留言印在登機證上，歌詞像廣播字幕。票根在小節線撕下。",
-  "bilingual": false
+  "bilingual": true
  },
  {
   "name": "passport",
@@ -1349,7 +1349,7 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "教室黑板，粉筆逐字寫出歌詞（粉筆質感），留言寫在角落「值日生」的位置，板擦在小節線擦掉。",
-  "bilingual": false
+  "bilingual": true
  },
  {
   "name": "darkroom",
@@ -1520,7 +1520,7 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "籤筒搖一搖（拍點），掉出一支籤，籤詩紙展開：「上上籤」、籤詩是留言、解曰是歌詞。",
-  "bilingual": false
+  "bilingual": true
  },
  {
   "name": "firecracker",
@@ -2015,6 +2015,24 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "CD 內頁的歌詞本攤在桌上，左頁原文、右頁中文，唱到的那行被燈照亮；留言寫在「Thanks to」那一頁。",
+  "bilingual": true
+ },
+ {
+  "name": "twoletters",
+  "title": "情書與譯本",
+  "family": "print",
+  "light": true,
+  "couple": false,
+  "idea": "兩封信並排：左邊原文信、右邊中文譯本，鋼筆同時在兩張紙上寫（一拍一字），譯本上有鉛筆的修改痕跡；留言是信封上的附言。",
+  "bilingual": true
+ },
+ {
+  "name": "couplets",
+  "title": "雙語對聯",
+  "family": "print",
+  "light": false,
+  "couple": false,
+  "idea": "紅紙對聯（燙金字）掛在門兩邊，上聯中文、下聯原文，橫批是留言；燈籠在拍點晃，墨一字一字寫上去。",
   "bilingual": true
  },
  {
