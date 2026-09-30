@@ -20,7 +20,7 @@ import { clamp, ease, hash, lerp, prog, pulse } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
 import type { Line } from '../engine/lyrics';
 import { drawLyric, signature, sparkHead, sparkParticles, drawHeart, DATE_DOTS, lyricSubOf, layoutLyric, subGap, type LyricStyle, type LyricLayout } from './_motifs';
-import { grid, stagger, windowLines, boxLyric, mono, tag, pad3, fiberTex, inOut, type Grid, type P2, type Rect } from './_t3';
+import { grid, stagger, windowLines, boxLyric, mono, tag, pad3, fiberBake, fiberTex, inOut, type Grid, type P2, type Rect } from './_t3';
 import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 } from './_v2';
 
 export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'doc', paper: false, energy: [0.2, 0.85], bars: [4, 8], weight: 1 };
@@ -228,6 +228,7 @@ function roomLyric(c: CanvasRenderingContext2D, line: Line, w: number, h: number
 
 export default class Blueprint extends Scene {
   paper = shared('blueprint.paper', PAPER);
+  fiber = fiberBake(); // 讓引擎上場前就編好紙纖維的著色器（見 _t3 的 fiberBake）
   // max：小段與小段接頭重疊的地方不會變亮（normal 疊兩次會出現一顆一顆的珠子）
   lines = this.track(new LineBatch(4096, { screen2D: true, blend: 'max' }));
   glow = this.track(new LineBatch(2048, { screen2D: true, blend: 'add' }));

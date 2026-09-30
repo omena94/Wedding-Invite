@@ -231,10 +231,17 @@ class FiberBake {
   }
 }
 let fiber: FiberBake | null = null;
+/**
+ * 紙纖維的烤爐（還沒烤）：用到紙纖維的版面把它存在自己的欄位裡，引擎在版面上場前就會找到它的著色器、在背景先編好
+ * （engine/warm.ts），第一次烤的時候才不會停一下（2026-10-01）。
+ */
+export function fiberBake(): FiberBake {
+  if (!fiber) fiber = new FiberBake();
+  return fiber;
+}
 /** 紙纖維貼圖（第一次呼叫時烤）。 */
 export function fiberTex(renderer: THREE.WebGLRenderer): THREE.Texture {
-  if (!fiber) fiber = new FiberBake();
-  return fiber.tex(renderer);
+  return fiberBake().tex(renderer);
 }
 
 // ---------------------------------------------------------------- 文件攝影機（透視＋景深）
@@ -333,6 +340,7 @@ void main() {
  */
 export class DocCam {
   pass: FSPass;
+  fiber = fiberBake(); // 只是讓引擎找得到它的著色器（見 fiberBake）
   toScreen: number[] = [1, 0, 0, 0, 1, 0, 0, 0, 1];
   toDoc: number[] = [1, 0, 0, 0, 1, 0, 0, 0, 1];
   constructor(paper: string) {

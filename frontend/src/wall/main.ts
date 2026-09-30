@@ -88,6 +88,8 @@ class Player {
   /** 音畫同步微調（毫秒，正數＝畫面晚一點）：會場音響若有延遲，在這裡補。 */
   offsetMs = readNum('wall_sync_ms', 0);
   private lastA = 0; private lastP = 0;
+  /** 平滑後的畫面時鐘（見 time()）；smP < 0 = 下一次直接對齊音樂 */
+  private sm = 0; private smP = -1;
 
   constructor() { this.el.preload = 'auto'; }
 
@@ -110,7 +112,7 @@ class Player {
     this.el.src = this.url;
     this.el.currentTime = s.startAt;
     this.applyGain(s);
-    this.lastA = s.startAt; this.lastP = performance.now();
+    this.lastA = s.startAt; this.lastP = performance.now(); this.smP = -1;
   }
 
   /** 套用音量：這首歌的響度補償 × 音量 × 講話模式；fade 秒數 > 0 就慢慢變過去（講話模式不要一下子沒聲音）。 */
@@ -128,13 +130,24 @@ class Player {
   pause() { this.el.pause(); }
   get paused() { return this.el.paused; }
 
-  /** 畫面該畫的歌曲時間：音樂時間（用 performance.now 補平）扣掉輸出延遲，加上手動微調。 */
+  /**
+   * 畫面該畫的歌曲時間：音樂時間（用 performance.now 補平）扣掉輸出延遲，加上手動微調。
+   * 2026-10-01 平滑：瀏覽器更新 currentTime 的時間點不規律，直接跟著它，畫面時間每隔一陣子就被拉一下
+   * （這格只走 2 毫秒、下一格補 11 毫秒），歌詞移動看起來一頓一頓的。改成畫面時鐘照實際經過的時間走，
+   * 每格只修正跟音樂差距的一成（十幾格內就追上，肉眼看不出快慢）；差超過 0.1 秒（拖進度、換歌、電腦卡住）才直接對齊。
+   */
   time(): number {
     const now = performance.now();
     if (this.el.currentTime !== this.lastA) { this.lastA = this.el.currentTime; this.lastP = now; }
     const a = this.lastA + (this.el.paused ? 0 : (now - this.lastP) / 1000);
+    if (this.el.paused || this.smP < 0) this.sm = a;
+    else {
+      const pred = this.sm + (now - this.smP) / 1000, err = a - pred;
+      this.sm = Math.abs(err) > 0.1 ? a : pred + err * 0.1;
+    }
+    this.smP = now;
     const lat = this.ctx ? (this.ctx.outputLatency || 0) + (this.ctx.baseLatency || 0) : 0;
-    return a - lat - this.offsetMs / 1000;
+    return this.sm - lat - this.offsetMs / 1000;
   }
 }
 const player = new Player();
@@ -431,8 +444,27 @@ let lastFrame = performance.now(), fpsAcc = 0, fpsN = 0, fps = 60;
   gain: player.gain?.gain.value ?? player.el.volume, ducked: player.ducked, volume: player.volume,
 });
 
+// 高更新率螢幕（120／144Hz…）每隔幾個畫面更新才畫一格，大約每秒 60 格（2026-10-01 省效能）：
+// 動畫本來就照每秒 60 格設計（engine.render 的 dt 固定 1/60），多畫的格數只是讓顯示卡多做一倍的工。
+// 用「每幾次更新畫一格」而不是計時器，格與格的間隔才平均；更新率是量最近幾十次 requestAnimationFrame 的間隔中位數。
+const vsyncGaps: number[] = [];
+let lastVsync = 0, vsyncN = 0, every = 1;
+function frameDue(now: number) {
+  if (lastVsync) {
+    vsyncGaps.push(now - lastVsync);
+    if (vsyncGaps.length > 60) vsyncGaps.shift();
+    if (vsyncGaps.length >= 30 && vsyncN % 30 === 0) {
+      const med = [...vsyncGaps].sort((a, b) => a - b)[vsyncGaps.length >> 1]!;
+      every = Math.max(1, Math.floor((1000 / med + 10) / 60)); // 60/75/90Hz → 每次都畫；120/144Hz → 隔一次；240Hz → 隔三次
+    }
+  }
+  lastVsync = now;
+  return vsyncN++ % every === 0;
+}
+
 function tick() {
   const now = performance.now();
+  if (!frameDue(now)) { requestAnimationFrame(tick); return; }
   fpsAcc += now - lastFrame; fpsN++; lastFrame = now;
   if (fpsAcc > 1000) { fps = (fpsN * 1000) / fpsAcc; fpsAcc = 0; fpsN = 0; }
   if (playing) {

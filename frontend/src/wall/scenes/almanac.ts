@@ -18,7 +18,7 @@ import { clamp, ease, hash, lerp, prog, pulse } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
 import type { Line } from '../engine/lyrics';
 import { drawLyric, drawMessage, drawHeart, lyricAt, lyricSubOf, signature, WEDDING_DATE } from './_motifs';
-import { grid, boxLyric, mono, tag, pad3, paperLyric, fiberTex, withMips, windowLines, type Grid } from './_t3';
+import { grid, boxLyric, mono, tag, pad3, paperLyric, fiberBake, fiberTex, withMips, windowLines, type Grid } from './_t3';
 import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 } from './_v2';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'doc', paper: true, energy: [0.2, 0.9], bars: [4, 8], weight: 1 };
@@ -158,6 +158,7 @@ interface Day { date: Date; offset: number }
 
 export default class Almanac extends Scene {
   wall = shared('almanac.wall', WALL);
+  fiber = fiberBake(); // 讓引擎上場前就編好紙纖維的著色器（見 _t3 的 fiberBake）
   scene3 = new THREE.Scene();
   cam = new THREE.PerspectiveCamera(22, W / H, 10, 20000);
   page = this.track(withMips(new Layer2D(PW, PH, TS, { fast: true })));

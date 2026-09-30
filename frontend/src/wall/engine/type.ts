@@ -171,6 +171,38 @@ export interface TextLayout {
 }
 
 let measureCtx: CanvasRenderingContext2D | null = null;
+// 量字寬的快取（2026-10-01 省效能）：版面建好時一次排所有的字，layout 每個字都要量一次前綴（字數平方次 measureText），
+// 同一句歌詞又會被好幾個窗格、好幾種字級反覆排，一個版面 init 光量字就要三、四十毫秒，換版面那格會卡一下。
+// 字型載好（字形子集一批批進來）量到的寬度會變，所以每載完一批就整個清掉；太多就從最舊的丟。
+type LayoutNums = { chars: string[]; xs: number[]; ws: number[]; width: number; ascent: number; descent: number };
+const measured = new Map<string, LayoutNums | number>();
+const MEASURED_MAX = 20000;
+function remember(key: string, v: LayoutNums | number) {
+  if (measured.size >= MEASURED_MAX) measured.delete(measured.keys().next().value!);
+  measured.set(key, v);
+}
+if (typeof document !== 'undefined' && document.fonts) document.fonts.addEventListener('loadingdone', () => { measured.clear(); metricsCache.clear(); });
+
+// 版面自己直接呼叫 ctx.measureText 排字（fitText 的二分搜尋、逐字量寬…）也一樣：同一句話、同一個字型，
+// 換一個窗格又量一次。在 measureText 本身加快取：key 包含所有會影響寬度的設定，量到的結果（TextMetrics 不會變）直接沿用，
+// 排出來跟原本一模一樣，只是第二次起不用再量。字型載好一批就清掉（同上）。
+const metricsCache = new Map<string, TextMetrics>();
+const METRICS_MAX = 50000;
+if (typeof CanvasRenderingContext2D !== 'undefined') {
+  const proto = CanvasRenderingContext2D.prototype;
+  const raw = proto.measureText;
+  proto.measureText = function (this: CanvasRenderingContext2D, text: string) {
+    const key = `${this.font}|${this.letterSpacing}|${this.wordSpacing}|${this.fontKerning}|${this.fontStretch}|${this.fontVariantCaps}|${this.textRendering}|${this.direction}|${this.textAlign}|${this.textBaseline}|${text}`;
+    let m = metricsCache.get(key);
+    if (!m) {
+      m = raw.call(this, text);
+      if (metricsCache.size >= METRICS_MAX) metricsCache.delete(metricsCache.keys().next().value!);
+      metricsCache.set(key, m);
+    }
+    return m;
+  };
+}
+
 function mctx() {
   if (!measureCtx) measureCtx = document.createElement('canvas').getContext('2d')!;
   return measureCtx;
@@ -184,25 +216,26 @@ function mctx() {
  * `tracking` is extra letter spacing in px.
  */
 export function layout(text: string, family: string, size: number, tracking = 0): TextLayout {
-  const c = mctx();
-  c.font = font(family, size);
-  const glyphs: Glyph[] = [];
-  const chars = Array.from(text);
-  let prefix = '';
-  for (let i = 0; i < chars.length; i++) {
-    const ch = chars[i]!;
-    prefix += ch;
-    const w = c.measureText(ch).width;
-    glyphs.push({ ch, i, x: c.measureText(prefix).width - w + i * tracking, w });
+  const key = `L|${family}|${size}|${tracking}|${text}`;
+  let m = measured.get(key) as LayoutNums | undefined;
+  if (!m) {
+    const c = mctx();
+    c.font = font(family, size);
+    const chars = Array.from(text), xs: number[] = [], ws: number[] = [];
+    let prefix = '';
+    for (let i = 0; i < chars.length; i++) {
+      const ch = chars[i]!;
+      prefix += ch;
+      const w = c.measureText(ch).width;
+      xs.push(c.measureText(prefix).width - w + i * tracking); ws.push(w);
+    }
+    const mm = c.measureText(text || 'M');
+    m = { chars, xs, ws, width: (text ? mm.width : 0) + Math.max(0, chars.length - 1) * tracking,
+      ascent: mm.fontBoundingBoxAscent ?? size * 0.8, descent: mm.fontBoundingBoxDescent ?? size * 0.2 };
+    remember(key, m);
   }
-  const m = c.measureText(text || 'M');
-  return {
-    text, family, size,
-    width: (text ? m.width : 0) + Math.max(0, chars.length - 1) * tracking,
-    ascent: m.fontBoundingBoxAscent ?? size * 0.8,
-    descent: m.fontBoundingBoxDescent ?? size * 0.2,
-    glyphs,
-  };
+  // 每次給新的物件（版面可能會改自己拿到的 glyph），快取裡只存數字
+  return { text, family, size, width: m.width, ascent: m.ascent, descent: m.descent, glyphs: m.chars.map((ch, i) => ({ ch, i, x: m!.xs[i]!, w: m!.ws[i]! })) };
 }
 
 /**
@@ -214,9 +247,14 @@ export function glyphX(text: string, index: number, family: string, size: number
   const chars = Array.from(text);
   if (index <= 0) return 0;
   if (index >= chars.length) return measure(text, family, size, tracking);
+  const key = `G|${family}|${size}|${tracking}|${index}|${text}`;
+  const hit = measured.get(key) as number | undefined;
+  if (hit !== undefined) return hit;
   const c = mctx();
   c.font = font(family, size);
-  return c.measureText(chars.slice(0, index + 1).join('')).width - c.measureText(chars[index]!).width + index * tracking;
+  const x = c.measureText(chars.slice(0, index + 1).join('')).width - c.measureText(chars[index]!).width + index * tracking;
+  remember(key, x);
+  return x;
 }
 
 /**
@@ -237,9 +275,14 @@ export function smart(s: string): string {
 export const plain = (s: string) => s.replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/…/g, '...');
 
 export function measure(text: string, family: string, size: number, tracking = 0) {
+  const key = `M|${family}|${size}|${tracking}|${text}`;
+  const hit = measured.get(key) as number | undefined;
+  if (hit !== undefined) return hit;
   const c = mctx();
   c.font = font(family, size);
-  return c.measureText(text).width + Math.max(0, Array.from(text).length - 1) * tracking;
+  const w = c.measureText(text).width + Math.max(0, Array.from(text).length - 1) * tracking;
+  remember(key, w);
+  return w;
 }
 
 /** Largest font size (<= max) at which text fits in maxWidth. */

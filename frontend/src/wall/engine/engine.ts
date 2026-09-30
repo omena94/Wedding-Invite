@@ -20,6 +20,7 @@ import { loadFonts, loadText } from './type';
 import { SHARED as GLYPHS_SHARED, SCENES as GLYPHS } from 'virtual:wall-glyphs';
 import { loadStrokeFonts } from './stroke';
 import { LIN } from './palette';
+import { warmShaders } from './warm';
 
 export interface TimelineEntry {
   /** 窗格的唯一代號（例如 `s3-w12-sparkler`）。 */
@@ -77,7 +78,10 @@ export class Engine {
 
   constructor(public canvas: HTMLCanvasElement, live: LiveInfo) {
     this.live = live;
-    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, alpha: false, preserveDrawingBuffer: true, powerPreference: 'high-performance' });
+    // preserveDrawingBuffer 只有截圖工具（?export，用 canvas.toDataURL 抓畫面）要；現場播放關掉，
+    // 瀏覽器每格不用多留一份畫面，顯示卡少一次整張複製（2026-10-01 省效能）
+    const keep = typeof location !== 'undefined' && new URLSearchParams(location.search).has('export');
+    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, alpha: false, preserveDrawingBuffer: keep, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(1);
     this.renderer.setSize(PW, PH, false);
     this.renderer.autoClear = false;
@@ -119,6 +123,8 @@ export class Engine {
     this.post = new Post();
     this.hud = new Hud(this.live);
     this.overlay = new Overlay(this.live);
+    // 後製、HUD、留言小卡、合成用的著色器也先編好（開機只做一次；不然第一首歌的第一格會停一下）
+    await warmShaders(this.renderer, [this.post, this.hud, this.overlay, this.blit, this.xfade], this.rts[0]!, [this.renderer]);
   }
 
   /** 換歌：前一首的場景全部釋放，時間軸清空（由導演重新排）。 */
@@ -173,7 +179,14 @@ export class Engine {
           id: e.id, params: e.params, start: e.start, end: e.end, song: this.song.info, live: this.live,
         };
         const s = new cls(ctx);
+        // 著色器先在背景編好才上場（見 warm.ts）；ctx 裡是引擎共用的東西，不用再找。
+        // init 前先編一次：多數版面的著色器在建構時（欄位）就建好了，有些版面 init 裡就會先畫（烤紙、烤貼圖），
+        // 那時候著色器已經編好就不會停；init 後再補編 init 裡才建的
+        const skip = [ctx, this.renderer, this.comp, this.song];
+        await warmShaders(this.renderer, s, this.rts[0]!, skip);
+        if (this.loaded.get(e.id) !== rec) { s.dispose(); return; }
         await s.init();
+        if (this.loaded.get(e.id) === rec) await warmShaders(this.renderer, s, this.rts[0]!, skip);
         // 等待期間已經換歌或被拿掉了：直接丟
         if (this.loaded.get(e.id) !== rec) { s.dispose(); return; }
         rec.scene = s;
