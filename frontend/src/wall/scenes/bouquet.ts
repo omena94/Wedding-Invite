@@ -1,9 +1,11 @@
 // 丟捧花（亮、wedding、婚禮服）：午後的草地婚禮。孟庭背對大家（面向左邊），預備一小節，在小節線上把捧花往後甩過頭頂，
-// 捧花沿著一道高高的弧線飛過畫面，芃芃在拍點上跳起來一口咬住（QQ 早一拍跳、撲空），然後叼著捧花得意地坐好，孟庭回頭大笑。
-// 角色是 Codex 畫的紙偶（mt_bouquet_*、pp_bouquet，跳起來借 pp_jump／qq_jump）。
+// 捧花沿著一道高高的弧線飛過畫面，三隻狗搶：QQ 早一拍跳、撲空；元元（白色柴犬，最高）下一拍跳起來用鼻子一頂，捧花彈高一點；
+// 再下一拍芃芃跳起來一口咬住，叼著捧花得意地坐好，孟庭回頭大笑。
+// 角色是 Codex 畫的紙偶（mt_bouquet_*、pp_bouquet，跳起來借 pp_jump／qq_jump／yy_jump）。三隻狗同一個場景尺度（大小照 dogs3-lineup.png）。
 //  - 預備：孟庭抱著捧花跟著拍子「一、二、三」往下盪（每拍壓一下），小節線前一拍往下蹲最低 → **小節線上甩出去**（throw，
-//    捧花從圖上她頭後面的位置接手給程式飛）→ 兩拍後落在芃芃嘴邊：芃芃起跳、最高點剛好在那一拍咬到；QQ 早一拍跳、撲空落地。
-//    咬到的下一個小節線孟庭回頭（turn）、芃芃換成叼著捧花坐好（pp_bouquet），每拍搖一下；QQ 在旁邊繞著跳。
+//    捧花從圖上她頭後面的位置接手給程式飛）→ 第 1 拍 QQ 跳、撲空 → 第 2 拍元元跳到最高、鼻子頂到捧花（一小圈火花），捧花往右彈一道小弧線
+//    → 第 3 拍芃芃起跳、最高點剛好咬到。下一個小節線孟庭回頭（turn）、芃芃換成叼著捧花坐好（pp_bouquet），每拍搖一下；
+//    QQ 在旁邊繞著跳，元元正面坐好張嘴笑（穩重，只跟著拍子搖尾巴一樣地晃）。
 //  - **焦點是主打留言**：寫在左邊草地上的木框迎賓板（白底、左上角一束手繪的花），深墨手寫字、署名；
 //    照「留言尺寸與版面比例標準 v2」：字 40～60、板子最大 500 × 420，高度跟著留言。沒有留言時板子寫邀請、字淡，歌詞變主角。
 //  - 歌詞在草地前面（下三分之一，比留言小一級 40～52），照跟唱規則逐字亮。孟庭身後一座花拱門。
@@ -16,7 +18,7 @@ import { F, font, loadText } from '../engine/type';
 import { LIN, rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, hash } from '../engine/util';
 import { lyricAt, layoutLyric, drawLyric, barAfter, msgChars } from './_motifs';
-import { inkFor, inkLine, inkPath, inkShape, inkPoly, inkEllipse, heartPop, arcAt, arcPts, drawNote, paperBG, type Pt, type Ink, type Note } from './_couple';
+import { inkFor, inkLine, inkPath, inkShape, inkPoly, inkEllipse, heartPop, arcAt, drawNote, paperBG, type Pt, type Ink, type Note } from './_couple';
 import { loadPuppets, drawPick, drawPuppet, puppetPoint, puppetBox, puppetShadow, puppetIn, jumpArc, breathe, beatKick, hop, noteV2, tightenNote, type PuppetOpts } from './_puppet';
 import { lyricV2 } from './_v2';
 
@@ -25,10 +27,14 @@ export const spec: PlateSpecDecl = { group: 'couple', family: 'wedding', paper: 
 const FLOOR = 890;
 const SZ = 440;
 /** 孟庭（翻過來面向左、背對右邊的「賓客」）、芃芃與 QQ（翻過來面向左，看著飛過來的捧花）。 */
-const OM_X = 870, PP_X = 1250, QQ_X = 1100;
-const DOG_S = 1.25;
+const OM_X = 870, PP_X = 1272, QQ_X = 1025, YY_X = 1140;
+/** 元元站在另外兩隻後面一點（地面往上 18 px），三隻擠在一起搶但看得出是三隻。 */
+const YY_BACK = 18;
+const DOG_S = 1.1;
 /** 芃芃、QQ 跳多高。 */
-const PJUMP = 150, QJUMP = 90;
+const PJUMP = 150, QJUMP = 90, YJUMP = 118;
+/** 元元頂完之後，捧花彈到芃芃嘴邊的小弧線有多高（px）。 */
+const BOUNCE_UP = 110;
 /** 迎賓板：最大的範圍（標準 v2）、寫字的內距；底邊固定在畫架上。 */
 const BOARD = { x: 120, bottom: 660, w: 500, h: 420 };
 const PAD = { x: 36, top: 56, bottom: 30 };
@@ -39,7 +45,10 @@ const LYR = { x: 150, base: 990, w: 1120 };
 /** 出手那一格孟庭的樣子（往後仰、整張往上一送之前）：捧花的起點照這個姿勢算，跟 drawOmena 在出手那一刻的參數一樣。 */
 const THROW_O: PuppetOpts = { h: SZ, flip: true, rot: -0.08, pivot: 0.3, squash: -0.06 };
 const INVITE = '掃描右下角 QR code，把祝福寫上大螢幕';
-const P = { ready: 'mt_bouquet_ready', throw: 'mt_bouquet_throw', turn: 'mt_bouquet_turn', ppHold: 'pp_bouquet', ppJump: 'pp_jump', ppStand: 'pp_stand', qqJump: 'qq_jump', qqStand: 'qq_stand' } as const;
+const P = {
+  ready: 'mt_bouquet_ready', throw: 'mt_bouquet_throw', turn: 'mt_bouquet_turn', ppHold: 'pp_bouquet', ppJump: 'pp_jump', ppStand: 'pp_stand',
+  qqJump: 'qq_jump', qqStand: 'qq_stand', yyStand: 'yy_stand', yyJump: 'yy_jump', yySit: 'yy_sit',
+} as const;
 
 export default class Bouquet extends Scene {
   paper = paperBG();
@@ -50,13 +59,14 @@ export default class Bouquet extends Scene {
   note: Note | null = null;
   board = { x: BOARD.x, y: BOARD.bottom - BOARD.h, w: BOARD.w, h: BOARD.h };
   /** 出手、咬到、回頭的時間；QQ 撲空的時間。 */
-  tThrow = 0; tCatch = 0; tTurn = 0; tMiss = 0;
+  tThrow = 0; tCatch = 0; tTurn = 0; tMiss = 0; tHead = 0;
   keys: [number, string][] = [];
   /** throw 那張圖上捧花與緞帶的位置（出手那一格的姿勢）：飛出去的就是這一束。 */
   from: Pt & { r?: number } = { x: 0, y: 0 };
   ribbon: Pt & { r: number } = { x: 0, y: 0, r: 0 };
+  /** 元元跳到最高時鼻子的位置（頂到捧花的那一點）、芃芃跳到最高時嘴的位置（咬到的那一點）。 */
+  head: Pt = { x: 0, y: 0 };
   to: Pt = { x: 0, y: 0 };
-  arc: Pt[] = [];
   lyricSize = 52;
   msgT0 = 0;
 
@@ -72,16 +82,18 @@ export default class Bouquet extends Scene {
     const nb = (this.ctx.end - s) / Math.max(0.3, au.timeOfBar(b0 + 1) - au.timeOfBar(b0));
     this.tThrow = barAfter(au, s + Math.max(1.2, bp * 3), nb >= 8 ? 1 : 0);
     const tb = Math.round(au.beatAt(this.tThrow));
-    this.tCatch = au.timeOfBeat(tb + 2);
     this.tMiss = au.timeOfBeat(tb + 1);
+    this.tHead = au.timeOfBeat(tb + 2);
+    this.tCatch = au.timeOfBeat(tb + 3);
     this.tTurn = au.timeOfBar(Math.round(au.barAt(this.tThrow)) + 1);
     this.keys = [[-1e9, P.ready], [this.tThrow, P.throw], [this.tTurn, P.turn]];
-    // ---- 捧花飛的弧線：從 throw 那張圖上捧花的位置，到芃芃跳到最高時嘴的位置
+    // ---- 捧花飛的路線：throw 那張圖上捧花的位置 → 元元跳到最高時的鼻子 → 芃芃跳到最高時的嘴
     this.from = this.pointOr(P.throw, 'bouquet', OM_X, FLOOR, THROW_O, 0.75, 0.05);
     this.ribbon = puppetPoint(P.throw, 'ribbon', OM_X, FLOOR, THROW_O) ?? { ...this.from, r: 0 };
     const m = puppetPoint(P.ppJump, 'mouth', PP_X, FLOOR - PJUMP, { h: SZ, scale: DOG_S, flip: true });
     this.to = m ?? { x: PP_X - 90, y: FLOOR - PJUMP - 60 };
-    this.arc = arcPts(this.from, this.to, Math.min(this.from.y, this.to.y) - ARC_UP, 72);
+    const nose = puppetPoint(P.yyJump, 'mouth', YY_X, FLOOR - YY_BACK - YJUMP, { h: SZ, scale: DOG_S, flip: true });
+    this.head = nose ? { x: nose.x - 6, y: nose.y - 14 } : { x: YY_X - 90, y: FLOOR - 300 };
     // ---- 迎賓板：標準 v2 的字級，板子的寬高跟著留言
     const c = this.fg.ctx;
     const w = BOARD.w - PAD.x * 2, hmax = BOARD.h - PAD.top - PAD.bottom;
@@ -230,8 +242,9 @@ export default class Bouquet extends Scene {
     // ---- 迎賓板上的留言
     this.drawBoard(c, t);
     // ---- 狗、孟庭、飛在空中的捧花
-    this.drawDogs(c, ink, t, bp);
+    // 孟庭在拱門下、狗在她前面搶捧花（狗後畫：QQ 靠近她的裙擺，不要被蓋住）
     this.drawOmena(c, t, bp);
+    this.drawDogs(c, ink, t, bp);
     this.flight(c, ink, t);
     this.petals(c, ink, t);
 
@@ -269,25 +282,62 @@ export default class Bouquet extends Scene {
     drawPick(c, this.keys, t, OM_X, FLOOR - lift, { h: SZ, flip: true, spin: en.spin, alpha: en.alpha, squash, rot, pivot: 0.3, hide: [`${P.throw}:bouquet`, `${P.throw}:ribbon`] });
   }
 
-  /** 捧花在空中：沿著弧線飛（一邊轉），兩拍後到芃芃嘴邊；咬到之後由 pp_bouquet 那張圖接手。 */
-  private flight(c: CanvasRenderingContext2D, ink: Ink, t: number) {
-    if (t < this.tThrow || t >= this.tCatch) return;
-    const u = (t - this.tThrow) / (this.tCatch - this.tThrow);
-    const q = arcAt(this.from, this.to, Math.min(this.from.y, this.to.y) - ARC_UP, u);
-    // 飛到最高的時候放大一點（像往鏡頭飛過來），遠處的桌子也看得到是一束捧花
-    this.flyingBouquet(c, q.x, q.y, this.spinAt(u), 1 + 0.5 * Math.sin(Math.PI * u));
-    // 飛過的地方留一道很淡的訊號色細線
-    const pts: Pt[] = [];
-    for (let k = 0; k <= 14; k++) { const v = Math.max(0, u - k * 0.02); pts.push(arcAt(this.from, this.to, Math.min(this.from.y, this.to.y) - ARC_UP, v)); }
-    const sg = LIN.signal;
-    this.glow.polyline(pts, 2, [sg[0] * 1.6, sg[1] * 1.6, sg[2] * 1.6], 0.5);
+  /** 捧花在空中的位置與飛行進度（0..1，給轉圈用）：第一段高高的弧線到元元的鼻子，第二段被頂起來的小弧線到芃芃嘴邊。 */
+  private bouquetAt(t: number): (Pt & { u: number }) | null {
+    if (t < this.tThrow || t >= this.tCatch) return null;
+    if (t < this.tHead) {
+      const u = (t - this.tThrow) / (this.tHead - this.tThrow);
+      return { ...arcAt(this.from, this.head, Math.min(this.from.y, this.head.y) - ARC_UP, u), u: u * 0.8 };
+    }
+    const u = (t - this.tHead) / (this.tCatch - this.tHead);
+    return { ...arcAt(this.head, this.to, Math.min(this.head.y, this.to.y) - BOUNCE_UP, u), u: 0.8 + 0.2 * u };
   }
 
-  /** 芃芃：坐著等（每拍歪一下）→ 起跳、最高點在咬到的那一拍 → 叼著捧花坐好、每拍搖一下（嘴邊冒愛心）。QQ：早一拍跳、撲空，之後繞著跳。 */
+  /** 捧花在空中：沿著兩段弧線飛（一邊轉），元元頂到的那一下鼻子前冒一小圈火花；咬到之後由 pp_bouquet 那張圖接手。 */
+  private flight(c: CanvasRenderingContext2D, ink: Ink, t: number) {
+    const q = this.bouquetAt(t);
+    if (!q) return;
+    // 第一段飛到最高的時候放大一點（像往鏡頭飛過來），遠處的桌子也看得到是一束捧花
+    const big = t < this.tHead ? 0.5 * Math.sin(Math.PI * (q.u / 0.8)) : 0;
+    this.flyingBouquet(c, q.x, q.y, this.spinAt(q.u), 1 + big);
+    // 飛過的地方留一道很淡的訊號色細線
+    const pts: Pt[] = [];
+    for (let k = 0; k <= 14; k++) { const p = this.bouquetAt(Math.max(this.tThrow, t - k * 0.02)); if (p) pts.push(p); }
+    const sg = LIN.signal;
+    if (pts.length > 1) this.glow.polyline(pts, 2, [sg[0] * 1.6, sg[1] * 1.6, sg[2] * 1.6], 0.5);
+    // 元元頂到：鼻子前一小圈往外的短線（訊號色，發光）
+    const d = t - this.tHead;
+    if (d >= 0 && d < 0.25) {
+      const k = d / 0.25, H0 = this.head;
+      for (let i = 0; i < 8; i++) {
+        const a = (i / 8) * Math.PI * 2, r0 = 10 + 30 * k, r1 = r0 + 14 * (1 - k);
+        this.glow.seg2(H0.x + Math.cos(a) * r0, H0.y + Math.sin(a) * r0, H0.x + Math.cos(a) * r1, H0.y + Math.sin(a) * r1, 1.6, [sg[0] * 2.5, sg[1] * 2.5, sg[2] * 2.5], 1 - k);
+      }
+    }
+  }
+
+  /**
+   * 三隻狗（元元站在後面一點，先畫）：
+   * 元元：站著看（每拍輕輕點頭）→ 第 2 拍跳到最高、鼻子頂到捧花 → 落地之後正面坐好、張嘴笑，跟著拍子左右晃。
+   * QQ：早一拍跳、撲空，之後繞著跳。芃芃：站著等 → 第 3 拍起跳、最高點咬到 → 叼著捧花坐好、每拍搖一下（嘴邊冒愛心）。
+   */
   private drawDogs(c: CanvasRenderingContext2D, ink: Ink, t: number, bp: number) {
     const au = this.ctx.audio;
     const air = Math.min(0.62, bp * 1.3);
     const shadowC = '60,70,40';
+    // 元元
+    const ey = puppetIn(t, this.ctx.start + 0.35, 0.45);
+    if (ey.alpha > 0) {
+      const oy: PuppetOpts = { h: SZ, scale: DOG_S, flip: true, spin: ey.spin, alpha: ey.alpha };
+      const airY = Math.min(0.6, bp * 1.25);
+      const j = jumpArc(t, this.tHead - airY / 2, this.tHead + airY / 2, YJUMP, { crouch: 0.1, land: 0.18 });
+      const gy = FLOOR - YY_BACK;
+      puppetShadow(c, 'yy', YY_X, gy, { h: SZ * DOG_S, lift: -j.y, alpha: 0.28 * ey.alpha, color: shadowC });
+      // 跳起來那張嘴前畫了球：這裡頂的是捧花，一律蓋掉
+      if (j.air) drawPuppet(c, P.yyJump, YY_X, gy + j.y, { ...oy, hide: ['ball'], squash: j.squash, rot: 0.1 - 0.2 * j.u, pivot: 0.5 });
+      else if (t >= this.tHead) drawPuppet(c, P.yySit, YY_X, gy, { ...oy, flip: false, squash: j.squash + 0.02 * beatKick(au, t, 0.3), rot: 0.035 * Math.sin(au.beatAt(t) * Math.PI), pivot: 0.1 });
+      else drawPuppet(c, P.yyStand, YY_X, gy, { ...oy, squash: j.squash + 0.02 * beatKick(au, t, 0.3) + breathe(t, 0.01, 2.6), rot: -0.02 * beatKick(au, t, 0.3), pivot: 0.3 });
+    }
     // QQ
     const eq = puppetIn(t, this.ctx.start + 0.3, 0.45);
     if (eq.alpha > 0) {
