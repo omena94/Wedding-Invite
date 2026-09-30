@@ -638,7 +638,7 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "報紙號外：頭條是留言、副標是歌詞，報紙旋轉飛進畫面停在小節線（老電影的手法）。",
-  "bilingual": false
+  "bilingual": true
  },
  {
   "name": "envelope",
@@ -764,7 +764,7 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "燙金（訊號色）喜帖打開，內頁的字一行一行浮現：新人名字、日期、留言是「賓客回函」。",
-  "bilingual": false
+  "bilingual": true
  },
  {
   "name": "guestbook",
@@ -890,7 +890,7 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "「正在安裝：婚姻 v1.0」進度條在拍點跳，99% 卡住再衝到 100%；安裝日誌是歌詞，完成畫面是留言。",
-  "bilingual": false
+  "bilingual": true
  },
  {
   "name": "news",
@@ -1727,7 +1727,7 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "典雅的誓詞排版（Cormorant／思源宋體），歌詞像誓詞逐句浮現，賓客留言是「見證人」欄。",
-  "bilingual": false
+  "bilingual": true
  },
  {
   "name": "gift",
@@ -1763,7 +1763,7 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "葡萄酒酒標：酒莊名、年份（婚禮年份）、產區，品飲筆記是留言，歌詞是酒標下緣的小字。",
-  "bilingual": false
+  "bilingual": true
  },
  {
   "name": "piano",

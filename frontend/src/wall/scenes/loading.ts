@@ -16,13 +16,13 @@ import { F, font } from '../engine/type';
 import { LIN, rgba } from '../engine/palette';
 import { clamp, ease, hash, lerp, prog, frameIdx } from '../engine/util';
 import type { FitResult } from '../engine/text';
-import type { Lyrics } from '../engine/lyrics';
-import { lyricAt, drawLyric, layoutLyric, sparkHead, sparkParticles, beatAfter, signature, drawMessage } from './_motifs';
+import type { Lyrics, Line } from '../engine/lyrics';
+import { lyricAt, drawLyric, layoutLyric, sparkHead, sparkParticles, beatAfter, signature, drawMessage, lyricSubOf, subSizeFor, subStyleFor, subGap, type LyricLayout, type LyricStyle } from './_motifs';
 import { fitText } from '../engine/text';
 import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 } from './_v2';
 import { beatsIn, lastBeatBefore, inOut, ScreenRig, mipRT, blitToRT, loadPlateText } from './_t6';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'screen', paper: false, energy: [0.35, 1], bars: [4, 8], weight: 1 };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'screen', paper: false, energy: [0.35, 1], bars: [4, 8], weight: 1 };
 
 // ---------------------------------------------------------------- 螢幕（貼圖座標，y 向下）
 const SW = 1600, SH = 900;
@@ -57,6 +57,19 @@ const BG = () => new FSPass(/* glsl */ `
   }`, { c: { value: new THREE.Vector2(900, 520) }, r: { value: new THREE.Vector2(900, 560) }, glow: { value: 1 }, k: { value: 1 } });
 
 interface Prog { v: number; shown: number; prev: number; u: number; tj: number }
+
+/**
+ * 原文副行照「螢幕」字級重排（2026-09-30 雙語）：subSizeFor 的 32～56 是螢幕 px，安裝畫面是貼圖（1 貼圖 px = 螢幕約 LS px），
+ * 照貼圖 px 排的原文上了螢幕只剩 23 px。中文不動，原文換成 max(34, subSizeFor(中文的螢幕字級)) ÷ LS，太長就折行、不再縮。
+ */
+function screenSub(c: CanvasRenderingContext2D, line: Line, st: LyricStyle, lay: LyricLayout): LyricLayout {
+  const sub = lyricSubOf(line);
+  if (!sub || !lay.sub) return lay;
+  const size = Math.max(34, subSizeFor(lay.size * LS)) / LS;
+  const sl = layoutLyric(c, sub, { ...subStyleFor(st, lay.size), size, minSize: size });
+  const dy = lay.sub.dy - subGap(lay.size, lay.sub.lay.size) + subGap(lay.size, sl.size);
+  return { ...lay, sub: { lay: sl, dy }, height: dy + (sl.height - sl.size) + lay.size };
+}
 
 export default class Loading extends Scene {
   bg = shared('loading.bg', BG);
@@ -255,10 +268,18 @@ export default class Loading extends Scene {
     const ly = lyricAt(lyrics, t);
     const size = lyricV2(this.msgScreen) / LS;
     if (ly) {
-      const st = { family: F.archivo(100, 800), size, minSize: V2.lyrMin / LS, maxWidth: SW - 2 * MX, lineHeight: 1.12 };
-      const lay = layoutLyric(c, ly.line, st);
+      let st: LyricStyle = { family: F.archivo(100, 800), size, minSize: V2.lyrMin / LS, maxWidth: SW - 2 * MX, lineHeight: 1.12 };
+      let lay = screenSub(c, ly.line, st, layoutLyric(c, ly.line, st));
       let y0 = LYR_Y - (lay.height - lay.size);
       if (lay.sub) {
+        // 雙語（2026-09-30）：原文放大之後，長句（中文折兩行）整塊放不下就把中文縮小一點（不小於 40 螢幕 px）
+        const room = (l: LyricLayout) => SUB_LOW - (BAR.y + BAR.h + 56 + l.size * 0.88) - (l.height - l.size);
+        for (let sz = st.size, minSize = st.minSize ?? st.size; room(lay) < 0 && sz > minSize;) {
+          sz = Math.max(minSize, sz * 0.95);
+          st = { ...st, size: sz };
+          lay = screenSub(c, ly.line, st, layoutLyric(c, ly.line, st));
+        }
+        y0 = LYR_Y - (lay.height - lay.size);
         // 韓文歌：原文在中文下面。照原本「最後一排貼 LYR_Y」往上推，長句的中文會撞到進度條下面右邊的「剩餘時間」小字；
         // 改成中文的頂端不高過那行小字（第一排短、碰不到小字時可以高一點），原文最低到 SUB_LOW
         const reach = MX + (lay.rows[0]?.width ?? 0) > BAR.x + BAR.w - 300;

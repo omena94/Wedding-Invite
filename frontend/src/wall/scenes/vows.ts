@@ -18,13 +18,13 @@ import { rgba } from '../engine/palette';
 import { clamp, ease, prog, lerp, noise1 } from '../engine/util';
 import { fitText } from '../engine/text';
 import type { Line } from '../engine/lyrics';
-import { drawLyric, layoutLyric, lyricAt, beatAfter, drawLyricSub, type LyricStyle, type LyricLayout } from './_motifs';
+import { drawLyric, layoutLyric, lyricAt, beatAfter, lyricSubOf, subSizeFor, subStyleFor, subGap, type LyricStyle, type LyricLayout } from './_motifs';
 import { preloadText, INVITE_SMALL, paperSignal } from './_t19';
 import { ensureBake, barsIn, sigInk } from './_t1';
 import { placeBlock, drawBlock, sigOf, fitV2, T22_TEXT, type Rect } from './_t22';
 import { lyricV2, V2 } from './_v2';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'keepsake', paper: true, energy: [0, 0.6], bars: [4, 12], weight: 1 };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'keepsake', paper: true, energy: [0, 0.6], bars: [4, 12], weight: 1 };
 
 /**
  * 左欄（誓詞＝歌詞）與右欄（見證人＝留言）。留言標準 v2：見證人那一塊 ≤ 740×380、字 40～60 px；
@@ -160,6 +160,19 @@ const PASS = () => new FSPass(/* glsl */ `
   revR: { value: Array.from({ length: NREV }, () => new THREE.Vector4()) }, revK: { value: new Array(NREV).fill(1) }, revN: { value: 0 },
 });
 
+/**
+ * 原文副行（2026-09-30 雙語）：誓詞欄窄（VOW.w），自動排的原文會一路縮到 26 px；襯線字的韓文（系統字）又比中文小一號。
+ * 改成至少 36 px、不再縮，太長就折成兩行（往下長，下面是空的紙）。
+ */
+function vowSub(c: CanvasRenderingContext2D, line: Line, st: LyricStyle, lay: LyricLayout): LyricLayout {
+  const sub = lyricSubOf(line);
+  if (!sub || !lay.sub) return lay;
+  const size = Math.max(36, subSizeFor(lay.size));
+  const sl = layoutLyric(c, sub, { ...subStyleFor(st, lay.size), size, minSize: size });
+  const dy = lay.sub.dy - subGap(lay.size, lay.sub.lay.size) + subGap(lay.size, sl.size);
+  return { ...lay, sub: { lay: sl, dy }, height: dy + (sl.height - sl.size) + lay.size };
+}
+
 export default class Vows extends Scene {
   pass = shared('vows.pass', PASS);
   page = this.track(new Layer2D(W, H, undefined, { fast: true }));
@@ -246,12 +259,13 @@ export default class Vows extends Scene {
    */
   private drawVow(c: CanvasRenderingContext2D, line: Line, t: number, y: number, alpha: number, dim: boolean, subK = 1) {
     const st = dim ? { ...this.st, active: rgba('sepia', 0.3), sung: rgba('sepia', 0.3), unsung: rgba('sepia', 0.18) } : this.st;
-    const lay = layoutLyric(c, line, st);
+    const lay = vowSub(c, line, st, layoutLyric(c, line, st));
     c.save();
     c.translate(this.vx, y - (lay.rows.length - 1) * lay.size * 1.12);
     if (lay.sub && subK < 1) {
       drawLyric(c, line, t, st, { ...lay, sub: undefined } as LyricLayout, alpha);
-      if (subK > 0) { c.save(); c.translate(0, lay.sub.dy); drawLyricSub(c, line.sub!, t, st, lay.size, alpha * subK); c.restore(); }
+      // 只畫原文（主行空著）：drawLyric 照 lay.sub 的排版畫在 dy 那裡
+      if (subK > 0) drawLyric(c, line, t, st, { ...lay, rows: [], words: [] }, alpha * subK);
     } else drawLyric(c, line, t, st, lay, alpha);
     // 條文編號（左邊界外、很小的羅馬數字）
     c.globalAlpha = alpha * (dim ? 0.5 : 1);

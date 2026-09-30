@@ -24,7 +24,7 @@ import { WEDDING_TIME_FROM } from '../../constants.js';
 import { grid, drawFit, layoutRows, drawRows, paperInk, lastIdx, Stage, docRT, camDist, FOIL_GLSL, type Grid, type RowsStyle, type V3, type P2 } from './_t4';
 import { msgMaxFor, lyricV2, sigV2, V2, fitClauses } from './_v2';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'doc', paper: true, energy: [0.15, 0.75], bars: [4, 8] };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'doc', paper: true, energy: [0.15, 0.75], bars: [4, 8] };
 
 // ---------------------------------------------------------------- 尺寸（像素）
 const CW = 640, CH = 900; // 一面
@@ -433,9 +433,10 @@ export default class Invitation extends Scene {
     if (ly) {
       const lay = layoutRows(c, ly.line, LY);
       // 原文副行（韓文歌）：同一頁、同樣置中，小一號印在中文正下方；兩組一起在兩條燙金線中間置中。
-      // 字級是照螢幕上的大小算的（頁面座標要除掉 sLyric）
-      const sub = lyricSubOf(ly.line), S = this.sLyric;
-      const sl = sub ? layoutRows(c, sub, { ...LY, size: subSizeFor(lay.size * S) / S, minSize: 26 / S, maxRows: 2 }) : null;
+      // 字級是照螢幕上的大小算的（頁面座標要除掉 sLyric）。雙語（2026-09-30）：內頁斜斜地躺在盒子裡，字在畫面上會被壓扁一點，
+      // 原文至少排 38 螢幕 px（斜放的內頁會把字壓扁一成）、不再縮（左頁窄，長句就折成三行）
+      const sub = lyricSubOf(ly.line), S = this.sLyric, subPx = Math.max(38, subSizeFor(lay.size * S)) / S;
+      const sl = sub ? layoutRows(c, sub, { ...LY, size: subPx, minSize: subPx, maxRows: 3 }) : null;
       const gap = sl ? subGap(lay.size * S, sl.size * S) / S : 0;
       const hAll = lay.height + (sl ? gap + (sl.rows.length - 1) * sl.lineHeight : 0);
       const top = 450 - hAll / 2 + lay.size * 0.84;

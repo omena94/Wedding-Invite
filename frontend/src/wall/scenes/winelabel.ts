@@ -18,13 +18,14 @@ import { F, font } from '../engine/type';
 import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, pulse, noise1, lerp } from '../engine/util';
 import { fitText } from '../engine/text';
-import { lyricAt, drawLyric, layoutLyric, beatAfter, COUPLE_EN, WEDDING_DATE, type LyricStyle } from './_motifs';
+import { lyricAt, drawLyric, layoutLyric, beatAfter, COUPLE_EN, WEDDING_DATE, lyricSubOf, subSizeFor, subStyleFor, subGap, type LyricStyle, type LyricLayout } from './_motifs';
+import type { Line } from '../engine/lyrics';
 import { preloadText, INVITE_SMALL, paperSignal } from './_t19';
 import { ensureBake, barsIn, sigInk } from './_t1';
 import { placeBlock, drawBlock, sigOf, fitV2, T22_TEXT, type Rect } from './_t22';
 import { lyricV2, V2 } from './_v2';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'keepsake', paper: true, energy: [0.15, 0.85], bars: [4, 10], weight: 1 };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'keepsake', paper: true, energy: [0.15, 0.85], bars: [4, 10], weight: 1 };
 
 /** 酒瓶的半徑（酒標座標的 px；鏡頭 k = 1 時正面 1 px = 螢幕 1 px）。 */
 const RW = 720;
@@ -36,6 +37,8 @@ const LW = 2400, LH = 960;
 const RES = 1.25;
 /** 瓶頸標（深色，歌詞）與主標（紙）的範圍（v，label px）。 */
 const STRIP = { v0: 0, v1: 150 };
+/** 有原文的窗格：瓶頸標的下緣（加寬，跟主標之間的玻璃縫從 28 剩 12），中文＋原文兩行才不會貼著燙金線。 */
+const STRIP_SUB_V1 = 166;
 const MAIN = { v0: 178, v1: LH };
 /** 品飲筆記（留言）那一塊（label px，置中在 LW / 2）。 */
 const NOTE = { v0: 392, v1: 742, w: 980 };
@@ -122,6 +125,19 @@ const PASS = () => new FSPass(/* glsl */ `
   cam: { value: new THREE.Vector4(960, 540, 1, 0.12) }, phi: { value: 0 }, sweep: { value: -9 }, sweepK: { value: 0 }, t: { value: 0 },
 });
 
+/**
+ * 原文副行照「螢幕」字級重排（2026-09-30 雙語）：subSizeFor 的 32～56 是螢幕 px，酒標推近之後 1 label px = 螢幕 K1 px，
+ * 照 label px 排的原文上了螢幕只剩 26 px。中文不動，原文換成 max(34, subSizeFor(中文的螢幕字級)) ÷ K1，太長就折行、不再縮。
+ */
+function labelSub(c: CanvasRenderingContext2D, line: Line, st: LyricStyle, lay: LyricLayout): LyricLayout {
+  const sub = lyricSubOf(line);
+  if (!sub || !lay.sub) return lay;
+  const size = Math.max(34, subSizeFor(lay.size * K1)) / K1;
+  const sl = layoutLyric(c, sub, { ...subStyleFor(st, lay.size), size, minSize: size });
+  const dy = lay.sub.dy - subGap(lay.size, lay.sub.lay.size) + subGap(lay.size, sl.size);
+  return { ...lay, sub: { lay: sl, dy }, height: dy + (sl.height - sl.size) + lay.size };
+}
+
 export default class WineLabel extends Scene {
   pass = shared('winelabel.pass', PASS);
   /** 酒標：紙、印刷、留言（init 畫一次，有 mipmap）。 */
@@ -136,12 +152,16 @@ export default class WineLabel extends Scene {
   stripLyr: LyricStyle = { family: F.archivo(100, 700), size: V2.lyrMax / K1, minSize: V2.lyrMin / K1, maxWidth: 1300, align: 'center', active: rgba('signal'), sung: rgba('bone', 0.96), unsung: rgba('bone', 0.3), lineHeight: 1.08 };
   noteLyr: LyricStyle = { family: F.archivo(100, 800), size: V2.lyrMax / K1, minSize: V2.lyrMin / K1, maxWidth: 1100, align: 'center', lineHeight: 1.14 };
   avoid: Rect[] = [];
+  /** 瓶頸標的下緣（有原文的窗格是 STRIP_SUB_V1）。 */
+  stripV1 = STRIP.v1;
   /** 手寫的署名（每格畫在 dyn 上，簽上去的進度用遮罩）：位置、字級、開始與結束時間。 */
   sig: { text: string; x: number; y: number; w: number; size: number; t0: number; t1: number } | null = null;
 
   override async init() {
     const { audio: au, start: s, end: e } = this.ctx;
     const m = this.msg;
+    // 有留言的窗格歌詞在瓶頸標上：這個窗格有原文就把瓶頸標加寬（在第一個 await 之前看：原文開關是引擎在 init 前設的）
+    if (m && this.ctx.lyrics.linesIn(s - 1, e + 1).some((l) => lyricSubOf(l))) this.stripV1 = STRIP_SUB_V1;
     await preloadText(this.ctx, `${m ? m.text + sigOf(m) : ''}${T22_TEXT}${INVITE_SMALL}${TOP1}${TOP2}${NOTE_T}${BOT1}${BOT2}`);
     for (const L of [this.lab, this.dyn]) { L.texture.generateMipmaps = true; L.texture.minFilter = THREE.LinearMipmapLinearFilter; }
     this.noteLyr = { ...this.noteLyr, active: paperSignal(), sung: rgba('sepia', 0.95), unsung: rgba('sepia', 0.26) };
@@ -169,9 +189,9 @@ export default class WineLabel extends Scene {
     const cx = LW / 2;
     // ---- 瓶頸標：深色的紙、上下兩條燙金細線
     c.fillStyle = mixRgba('sepia', 'ink', 0.2);
-    c.fillRect(0, STRIP.v0, LW, STRIP.v1 - STRIP.v0);
+    c.fillRect(0, STRIP.v0, LW, this.stripV1 - STRIP.v0);
     c.fillStyle = rgba('signal', 0.85);
-    c.fillRect(0, STRIP.v0 + 12, LW, 1.6); c.fillRect(0, STRIP.v1 - 14, LW, 1.6);
+    c.fillRect(0, STRIP.v0 + 12, LW, 1.6); c.fillRect(0, this.stripV1 - 14, LW, 1.6);
     // ---- 主標：紙（比牆亮一點）、雙細框
     c.fillStyle = mixRgba('paper', 'bone', 0.35);
     c.fillRect(0, MAIN.v0, LW, MAIN.v1 - MAIN.v0);
@@ -251,10 +271,22 @@ export default class WineLabel extends Scene {
     const ly = lyricAt(lyrics, t);
     if (this.msg || !ly) {
       if (ly) {
-        const lay = layoutLyric(c, ly.line, this.stripLyr);
-        const mid = (STRIP.v0 + STRIP.v1) / 2;
-        c.save(); c.translate(cx, mid + lay.size * 0.36 - (lay.rows.length - 1) * lay.size * 0.55);
-        drawLyric(c, ly.line, t, this.stripLyr, lay, ly.k);
+        let st = this.stripLyr, lay = labelSub(c, ly.line, st, layoutLyric(c, ly.line, st));
+        const mid = (STRIP.v0 + this.stripV1) / 2;
+        if (lay.sub) {
+          // 雙語（2026-09-30）：中文＋原文整塊（中文字頂到原文字腳）在兩條燙金線中間置中；放不下就把中文縮小一點（不小於 40 螢幕 px）
+          const room = this.stripV1 - STRIP.v0 - 34, minSize = st.minSize ?? st.size;
+          const depth = (l: LyricLayout) => 0.86 * l.size + l.height - l.size + 0.22 * (l.sub?.lay.size ?? 0);
+          for (let sz = st.size; depth(lay) > room && sz > minSize;) {
+            sz = Math.max(minSize, sz * 0.95);
+            st = { ...st, size: sz };
+            lay = labelSub(c, ly.line, st, layoutLyric(c, ly.line, st));
+          }
+          c.save(); c.translate(cx, mid - depth(lay) / 2 + 0.86 * lay.size);
+        } else {
+          c.save(); c.translate(cx, mid + lay.size * 0.36 - (lay.rows.length - 1) * lay.size * 0.55);
+        }
+        drawLyric(c, ly.line, t, st, lay, ly.k);
         c.restore();
       } else {
         // 間奏、純音樂：瓶頸標上是歌名（小字）
@@ -265,7 +297,7 @@ export default class WineLabel extends Scene {
     }
     if (!this.msg && ly) {
       // 沒有留言：品飲筆記印的是歌詞（主角）；瓶頸標寫歌名
-      const lay = layoutLyric(c, ly.line, this.noteLyr);
+      const lay = labelSub(c, ly.line, this.noteLyr, layoutLyric(c, ly.line, this.noteLyr));
       // 韓文歌（drawLyric 把原文畫在中文下面）：整組（到原文最後一排）一起置中，原文才不會壓到下面那行邀請
       const lift = lay.sub ? (lay.height - lay.size) / 2 : (lay.rows.length - 1) * lay.size * 0.57;
       c.save(); c.translate(cx, (NOTE.v0 + NOTE.v1) / 2 - 10 + lay.size * 0.35 - lift);

@@ -19,13 +19,14 @@ import { F, font, loadText } from '../engine/type';
 import { mixRgba, rgba } from '../engine/palette';
 import { clamp, ease, hash, lerp, prog, pulse, frameIdx } from '../engine/util';
 import { wrap } from '../engine/text';
-import { lyricAt, drawLyric, layoutLyric, beatAfter, fillWithHearts, COUPLE_ZH, DATE_DOTS } from './_motifs';
+import { lyricAt, drawLyric, layoutLyric, beatAfter, fillWithHearts, COUPLE_ZH, DATE_DOTS, lyricSubOf, subSizeFor, subStyleFor, subGap, type LyricLayout, type LyricStyle } from './_motifs';
+import type { Line } from '../engine/lyrics';
 import { sigInk, paperLyric, makeCanvas, freeCanvas, ensureBake, themeKey, yieldFrame, drawShadow, shadowSprite, barsIn, fitV2 } from './_t1';
 import { msgMaxFor, lyricV2, sigV2, V2 } from './_v2';
 import { makeCup, drawSteam, drawRipple, drawArt as drawProp, type Art } from './certificate-props';
 
 // 早晨的戶外座位、淺色的磁磚桌：右下角 HUD 用深色字 → 亮版面
-export const spec: PlateSpecDecl = { group: 'type', family: 'doc', paper: true, energy: [0.45, 1], bars: [4, 8], weight: 1 };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'doc', paper: true, energy: [0.45, 1], bars: [4, 8], weight: 1 };
 
 type Ctx2 = CanvasRenderingContext2D;
 
@@ -172,6 +173,19 @@ const PASS = () => new FSPass(NEWS_FRAG, {
   xf: { value: new THREE.Vector4() }, blur: { value: new THREE.Vector2() },
   ringA: { value: 0 }, ringB: { value: 0 }, dotK: { value: 1 }, shadowK: { value: 1 }, lamp: { value: new THREE.Vector3(760, 420, 1100) },
 });
+
+/**
+ * 原文副行照「螢幕」字級重排（2026-09-30 雙語）：subSizeFor 的 32～56 是螢幕 px，報紙在畫面上只有 PK 倍大，
+ * 照紙面座標排的原文上了螢幕只剩 24 px。中文不動，原文換成 max(34, subSizeFor(中文的螢幕字級)) ÷ PK，太長就折行、不再縮。
+ */
+function paperSub(c: Ctx2, line: Line, st: LyricStyle, lay: LyricLayout): LyricLayout {
+  const sub = lyricSubOf(line);
+  if (!sub || !lay.sub) return lay;
+  const size = Math.max(34, subSizeFor(lay.size * PK)) / PK;
+  const sl = layoutLyric(c, sub, { ...subStyleFor(st, lay.size), size, minSize: size });
+  const dy = lay.sub.dy - subGap(lay.size, lay.sub.lay.size) + subGap(lay.size, sl.size);
+  return { ...lay, sub: { lay: sl, dy }, height: dy + (sl.height - sl.size) + lay.size };
+}
 
 export default class Newspaper extends Scene {
   band = this.track(new Layer2D(PG.w, BAND.h, 1.25, { fast: true }));
@@ -448,8 +462,18 @@ export default class Newspaper extends Scene {
     c.letterSpacing = '0px';
     const ly = lyricAt(lyrics, t);
     if (ly) {
-      const st = paperLyric(F.archivo(100, 800), this.lyrPx, SUB.maxW, { sung: INKC(0.95), unsung: INKC(0.26), lineHeight: 1.12, minSize: V2.lyrMin / PK });
-      const lay = layoutLyric(c, ly.line, st);
+      // 有原文的句子用到頭條欄的全寬（HEAD.w，右邊照片欄的直線前面）：中文少折一行，兩段才放得進副標欄
+      const maxW = lyricSubOf(ly.line) ? HEAD.w - 30 : SUB.maxW;
+      let st = paperLyric(F.archivo(100, 800), this.lyrPx, maxW, { sung: INKC(0.95), unsung: INKC(0.26), lineHeight: 1.12, minSize: V2.lyrMin / PK });
+      let lay = paperSub(c, ly.line, st, layoutLyric(c, ly.line, st));
+      // 有原文：中文＋原文整塊要在副標欄（BAND）裡，放不下就把中文縮小一點（不小於 40 螢幕 px）；原文不縮
+      const minSize = st.minSize ?? st.size;
+      const bottom = (l: LyricLayout) => SUB.label + 16 + 0.9 * l.size + l.height - l.size + 0.25 * (l.sub?.lay.size ?? 0);
+      for (let sz = st.size; lay.sub && bottom(lay) > BAND.y + BAND.h - 20 && sz > minSize;) {
+        sz = Math.max(minSize, sz * 0.94);
+        st = { ...st, size: sz };
+        lay = paperSub(c, ly.line, st, layoutLyric(c, ly.line, st));
+      }
       const inK = ease.outExpo(prog(t, ly.line.start - 0.35, ly.line.start + 0.15));
       c.save();
       // 基線跟著字級走：字頂在「現場連線」標籤下面
