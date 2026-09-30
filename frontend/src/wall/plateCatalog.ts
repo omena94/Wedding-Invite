@@ -1955,6 +1955,15 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "bilingual": true
  },
  {
+  "name": "flashcards",
+  "title": "單字卡",
+  "family": "print",
+  "light": true,
+  "couple": false,
+  "idea": "一疊用鐵環串起來的單字卡：正面原文、在拍點翻面露出中文（兩面輪流），翻過的卡片疊在一旁；留言寫在最上面一張大卡。",
+  "bilingual": true
+ },
+ {
   "name": "interpreter",
   "title": "同步口譯廂",
   "family": "lingo",
