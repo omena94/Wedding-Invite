@@ -1,4 +1,4 @@
-// 街頭鬥牛（亮、hoops）：午後的公園籃球場，宣文和孟庭穿著 A&O 情侶球衣一對一；芃芃和 QQ 在場邊當裁判，元元當撿球的。
+// 街頭鬥牛（亮、hoops）：午後的公園籃球場，宣文和孟庭穿著 A&O 情侶球衣（寶藍配金黃，背號 420／87）一對一；芃芃和 QQ 在場邊當裁判，元元當撿球的。
 // 角色是 Codex 畫的紙偶（_puppet.ts、素材組 hoops；狗坐著的樣子借 base 的 pp_sit／qq_sit，元元用 yuanyuan 組的現成姿勢）。
 //  - 宣文運球：一拍拍一下（球在拍點落地、半拍回到手上），左右晃（每兩拍換一邊）；孟庭壓低身體跟著他左右移動防守。
 //  - 每兩小節一次（快歌三小節），小節線上宣文跳投（最高點出手）：
@@ -24,7 +24,7 @@ import { lyricAt, barAfter, beatAfter, msgChars } from './_motifs';
 import { inkFor, paperBG, inkLine, hatch, lyricOnPath, drawNote, arcAt, type Note } from './_couple';
 import { loadPuppets, drawPuppet, drawPick, drawCycle, puppetPoint, puppetShadow, puppetIn, jumpArc, breathe, beatKick, landSquash, hop, noteV2, tightenNote, type PuppetOpts } from './_puppet';
 import { lyricV2 } from './_v2';
-import { basketball, drawHoop, lyricRows, type Hoop, type Pt } from './_c8';
+import { basketball, drawHoop, lyricRows, teamRgba, TEAM_TAG, type Hoop, type Pt } from './_c8';
 
 export const spec: PlateSpecDecl = { group: 'couple', family: 'hoops', paper: true, energy: [0.4, 1], bars: [4, 8] };
 
@@ -182,10 +182,10 @@ export default class Basketball extends Scene {
       c.fillRect(x, P.y + P.h - 2, 4, len);
       c.beginPath(); c.arc(x + 2, P.y + P.h + len, 3, 0, Math.PI * 2); c.fill();
     }
-    // 底漆角落的小塗鴉簽名（訊號色，小）
+    // 底漆角落的小塗鴉簽名（隊色寶藍，小）
     c.font = font(F.archivo(110, 800), 18);
-    c.fillStyle = rgba('signal', 0.8);
-    c.fillText('A&O ♥', P.x + PAD.x, P.y + 38);
+    c.fillStyle = teamRgba('blue', 0.85);
+    c.fillText(`${TEAM_TAG.name} ♥`, P.x + PAD.x, P.y + 38);
     // 柏油球場：遠的邊（接牆）到畫面下緣，比紙深一點
     c.fillStyle = mixRgba('paper', 'sepia', 0.13);
     c.fillRect(0, WALL.bottom, W, H - WALL.bottom);
@@ -312,7 +312,7 @@ export default class Basketball extends Scene {
     const ent = puppetIn(t, this.ctx.start + 0.15, 0.45);
     if (ent.alpha <= 0) return;
     const p = this.playAt(t);
-    // 孟庭面向左（防守宣文）：用 Codex 另外畫的朝左版本（_left），不左右翻轉——翻過去球衣上的 A&O、03 會變成反的字
+    // 孟庭面向左（防守宣文）：用 Codex 另外畫的朝左版本（_left），不左右翻轉——翻過去球衣上的 A&O、87 會變成反的字
     const base: PuppetOpts = { h: SZ, spin: ent.spin, alpha: ent.alpha, pivot: 0.4 };
     const shadow = (x: number, lift: number) => puppetShadow(c, 'mt', x, GROUND, { h: SZ, lift, alpha: 0.3 * ent.alpha, color: '70,45,25', wide: 1.3 });
     if (!p) {

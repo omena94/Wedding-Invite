@@ -1,8 +1,8 @@
 // 中場投籃挑戰（暗、hoops）：中場休息，場館的燈打在罰球線上——宣文穿著 A&O 球衣上場挑戰「一拍投一球」，
-// 孟庭在場邊揮著兩支充氣加油棒。角色是 Codex 畫的紙偶（xw_hoops_shoot_1／2、mt_hoops_wave_1／2…，_puppet.ts、素材組 hoops）。
+// 孟庭在場邊揮著兩支充氣加油棒（隊色：一支寶藍、一支金黃；球衣寶藍配金黃，背號宣文 420、孟庭 87）。角色是 Codex 畫的紙偶（xw_hoops_shoot_1／2、mt_hoops_wave_1／2…，_puppet.ts、素材組 hoops）。
 //  - 投籃一定落在拍點：拍點前半拍拿球往下沉（shoot_1，身體往後帶）→ 拍點上出手（shoot_2，往前送）→ 球沿著拋物線飛、下一拍左右到籃框。
 //    大部分空心進（網子往下甩），每三球有一球打到籃框彈出去；窗格最後一個小節線是最後一球：一定空心進，
-//    宣文轉過來握拳大叫（cheer）、孟庭跳起來、觀眾剪影站起來、彩帶飄下來，支票上「碰」一聲蓋上「PAID ♥」的章。
+//    宣文轉過來握拳大叫（cheer）、孟庭跳起來、觀眾剪影站起來、隊色（寶藍、金黃、白）的彩帶飄下來，支票上「碰」一聲蓋上「PAID ♥」的章。
 //  - 旁邊的球架：一開始放滿，投一球少一顆。
 //  - **焦點是主打留言**：寫在左上方架子上那張大支票（獎品看板，紙的顏色、細框、「PAY TO THE ORDER OF 宣文 & 孟庭」）的附言欄，
 //    署名簽在右下的簽名線上；照「留言尺寸與版面比例標準 v2」：字 40～60、支票最大 800 × 370，寬高跟著留言。沒有留言時寫邀請。
@@ -19,7 +19,7 @@ import { lyricAt, beatAfter, msgChars, DATE_DOTS } from './_motifs';
 import { lyricOnPath, drawNote, arcAt, type Note } from './_couple';
 import { loadPuppets, drawPick, drawCycle, puppetPoint, puppetShadow, puppetIn, puppetLight, jumpArc, breathe, beatKick, hop, noteV2, tightenNote, type PuppetOpts } from './_puppet';
 import { lyricV2 } from './_v2';
-import { makeCrowd, CrowdLayer, crowdShade, lyricRows, basketball, drawHoop, streamers, ledBand, type Hoop, type Pt } from './_c8';
+import { makeCrowd, CrowdLayer, crowdShade, lyricRows, teamRgba, TEAM_TAG, basketball, drawHoop, streamers, ledBand, type Hoop, type Pt } from './_c8';
 
 export const spec: PlateSpecDecl = { group: 'couple', family: 'hoops', paper: false, energy: [0.45, 1], bars: [4, 8] };
 
@@ -90,7 +90,7 @@ export default class Halftime extends Scene {
   override async init() {
     const { audio: au } = this.ctx;
     const s = this.ctx.start, e = this.ctx.end;
-    await loadText('一位賓客新人留言PAY TO THE ORDER OF宣文 & 孟庭HALFTIME CHALLENGE中場投籃挑戰附言PAID ♥∞ 13 · 03' + INVITE + DATE_DOTS);
+    await loadText('一位賓客新人留言PAY TO THE ORDER OF宣文 & 孟庭HALFTIME CHALLENGE中場投籃挑戰附言PAID ♥∞ ' + `${TEAM_TAG.xw} · ${TEAM_TAG.mt}` + INVITE + DATE_DOTS);
     this.track(await loadPuppets(POSES));
     // 投籃表：第一拍起一拍一球（快歌兩拍一球）；最後一球放在窗格最後一個小節線（離結尾至少 1.3 秒）
     const step = au.beatPeriod(s) < 0.38 ? 2 : 1;
@@ -258,7 +258,7 @@ export default class Halftime extends Scene {
     this.drawLyric(c, t);
     this.drawBalls(c, t);
 
-    if (fin && t >= fin.arrive) streamers(c, fin.arrive + 0.05, t, { n: 50, x0: 500, x1: 1880, colors: [rgba('signal', 0.9), rgba('bone', 0.8), rgba('ember', 0.8)], floor: FLOOR + 30 });
+    if (fin && t >= fin.arrive) streamers(c, fin.arrive + 0.05, t, { n: 50, x0: 500, x1: 1880, colors: [teamRgba('blue', 0.95), teamRgba('gold', 0.85), teamRgba('white', 0.8)], floor: FLOOR + 30 });
 
     // ---- 看台的觀眾：畫在這一層所有東西後面（destination-over）；進球小小歡呼、最後一球整片站起來
     let cheer = 0;
@@ -398,15 +398,15 @@ export default class Halftime extends Scene {
   private drawLyric(c: CanvasRenderingContext2D, t: number) {
     const ly = lyricAt(this.ctx.lyrics, t);
     const rv = prog(t, this.ctx.start + 0.1, this.ctx.start + 0.6, ease.inOutCubic);
-    // 沒有歌詞（間奏、純音樂）：LED 板慢慢捲一排很淡的中場秀字樣，板子不會黑著
+    // 沒有歌詞（間奏、純音樂）：LED 板慢慢捲一排很淡的中場秀字樣與背號（隊色金黃），板子不會黑著
     const idle = 1 - (ly ? ly.k : 0);
     if (idle > 0.02) {
       c.save();
       c.beginPath(); c.rect(TABLE.x, TABLE.y, TABLE.w, TABLE.h); c.clip();
       c.font = font(F.mono(600), 26);
       c.letterSpacing = '10px';
-      c.fillStyle = rgba('signal', 0.28 * idle * rv);
-      const unit = 'HALFTIME · A&O ♥ 13 · 03   ';
+      c.fillStyle = teamRgba('gold', 0.3 * idle * rv);
+      const unit = `HALFTIME · ${TEAM_TAG.name} ♥ ${TEAM_TAG.xw} · ${TEAM_TAG.mt}   `;
       const uw = c.measureText(unit).width;
       for (let x = TABLE.x - ((t * 70) % uw); x < TABLE.x + TABLE.w; x += uw) c.fillText(unit, x, TABLE.base - 8);
       c.letterSpacing = '0px';

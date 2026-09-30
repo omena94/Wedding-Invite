@@ -3,7 +3,7 @@
 //    計時器從 3.0 慢慢倒數，球員剪影在空中慢慢往下飄。每一拍像心跳一樣「咚」一下（鏡頭輕推、兩個人緊張地縮一下）。
 //  - 兩個人在左下角場邊站著（tense）：手十指緊扣、孟庭摀著嘴（兩眼睜大）、一起抬頭看球。
 //  - **小節線上球進**（計時器剛好歸零）：籃板的燈亮起來、記分板 A&O +3 反超，畫面閃一下、震一下；兩個人跳起來擁抱（hug），
-//    落地後在拍點上一跳一跳；看台的觀眾剪影站起來，彩帶從上面飄下來。
+//    落地後在拍點上一跳一跳；看台的觀眾剪影站起來，隊色（寶藍、金黃、白）的彩帶從上面飄下來。
 //  - **焦點是主打留言**：寫在左上角吊著的記分板上（七段顯示器的比分與計時器在上面一排，留言在下面的面板）；
 //    照「留言尺寸與版面比例標準 v2」：字 40～60、板子最大 740 × 360（右邊留給球飛的路），寬高跟著留言。沒有留言時寫邀請。
 //  - 歌詞沿著球飛的那道拋物線排（lyricOnPath，逐字跟唱），比留言小一級；球從字的下面飛過去。
@@ -18,7 +18,7 @@ import { lyricAt, barAfter, beatAfter, msgChars } from './_motifs';
 import { lyricOnPath, drawNote, arcAt, type Note } from './_couple';
 import { loadPuppets, drawPick, puppetShadow, puppetIn, puppetLight, jumpArc, breathe, beatKick, noteV2, tightenNote } from './_puppet';
 import { lyricV2 } from './_v2';
-import { drawPlayer, playerPose, makeCrowd, CrowdLayer, crowdShade, basketball, drawHoop, seats, seg7, streamers, type Hoop, type Pt, type PlayerPose } from './_c8';
+import { drawPlayer, playerPose, makeCrowd, CrowdLayer, crowdShade, basketball, drawHoop, seats, seg7, streamers, teamRgba, TEAM_TAG, type Hoop, type Pt, type PlayerPose } from './_c8';
 
 export const spec: PlateSpecDecl = { group: 'couple', family: 'hoops', paper: false, energy: [0.4, 1], bars: [4, 8] };
 
@@ -166,7 +166,9 @@ export default class Buzzer extends Scene {
     c.fillStyle = rgba('ash', 0.6);
     // 隊名：各自那一格的左上角（小），比分在格子正中間的下半（板子窄的時候也不會疊在一起）
     c.font = font(F.mono(500), 13);
-    c.fillText('A&O', B.x + 26, B.y + 32);
+    c.fillStyle = teamRgba('gold', 0.7);
+    c.fillText(TEAM_TAG.name, B.x + 26, B.y + 32);
+    c.fillStyle = rgba('ash', 0.6);
     c.textAlign = 'right';
     c.fillText('GUEST', B.x + B.w - 26, B.y + 32);
     c.textAlign = 'center';
@@ -242,7 +244,7 @@ export default class Buzzer extends Scene {
 
     // ---- 彩帶（進球後從上面飄下來）
     // 彩帶只在記分板右邊飄（不蓋到留言）
-    if (t >= T) streamers(c, T + 0.05, t, { n: 40, x0: this.board.x + this.board.w + 60, x1: 1880, colors: [rgba('signal', 0.9), rgba('bone', 0.8), rgba('ember', 0.8)], floor: FLOOR + 40 });
+    if (t >= T) streamers(c, T + 0.05, t, { n: 40, x0: this.board.x + this.board.w + 60, x1: 1880, colors: [teamRgba('blue', 0.95), teamRgba('gold', 0.85), teamRgba('white', 0.8)], floor: FLOOR + 40 });
 
     // ---- 看台的觀眾：畫在這一層所有東西後面（destination-over）；慢動作時幾乎不動，進球時整片站起來
     const cheer = prog(t, T, T + 0.15) * (1 - prog(t, T + bp * 6, T + bp * 9)) * 0.9;
@@ -334,8 +336,9 @@ export default class Buzzer extends Scene {
     const clock = t < R ? 3 : t < T ? 3 * (1 - (t - R) / (T - R)) : 0;
     const off = rgba('bone', 0.04);
     const home = t >= T ? 100 : 97;
-    seg7(c, String(home), B.x + 7 + B.w * 0.15, B.y + ROW - 13, 30, rgba(t >= T ? 'ember' : 'signal', 0.95), off, 'center');
-    seg7(c, '99', B.x + B.w * 0.85 - 7, B.y + ROW - 13, 30, rgba('signal', 0.8), off, 'center');
+    // 主隊（我們這隊）的比分用隊色金黃，反超那一下亮一點；客隊用灰白
+    seg7(c, String(home), B.x + 7 + B.w * 0.15, B.y + ROW - 13, 30, teamRgba('gold', t >= T ? 0.88 : 0.75), off, 'center');
+    seg7(c, '99', B.x + B.w * 0.85 - 7, B.y + ROW - 13, 30, rgba('bone', 0.6), off, 'center');
     const tenths = Math.ceil(clock * 10 - 1e-6) / 10;
     seg7(c, `0:0${tenths.toFixed(1)}`, B.x + B.w / 2, B.y + ROW - 32, 30, rgba(t >= T ? 'ember' : 'signal', t >= T ? 0.6 + 0.4 * (Math.floor(t * 4) % 2) : 0.95), off, 'center');
     if (n) {

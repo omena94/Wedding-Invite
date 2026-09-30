@@ -11,6 +11,21 @@ import { font } from '../engine/type';
 type Ctx = CanvasRenderingContext2D;
 export type Pt = { x: number; y: number };
 
+// ---------------------------------------------------------------- 我們這隊（A&O）
+/**
+ * 兩人的情侶球衣（2026-09-30 新人改的）：寶藍為主、金黃為輔（滾邊、字、號碼），白色點綴；背號宣文 420、孟庭 87，胸前「A&O」。
+ * 只借配色，不畫任何真實球隊、聯盟的隊名與標誌。跟紙偶的球衣一樣是固定色（跟 fur、ball 一樣不隨每首歌的主題換），
+ * 版面裡代表「我們這隊」的東西（記分板主隊、LED 字、彩帶、塗鴉簽名）一律從這裡拿，不要在版面裡另外寫 hex。
+ */
+export const TEAM = { blue: '#1D428A', gold: '#FFC72C', white: '#F2EBDF' } as const;
+/** 背號與隊名（LED、跑馬燈用）。 */
+export const TEAM_TAG = { name: 'A&O', xw: '420', mt: '87' } as const;
+/**
+ * 我們這隊的顏色（Canvas2D）。金黃 R 通道接近 1：暗版面上整片不透明的金會超過發光門檻（只有訊號色可以發光），
+ * 所以 alpha 最多 0.88。
+ */
+export const teamRgba = (k: keyof typeof TEAM, a = 1) => rgba(TEAM[k], k === 'gold' ? Math.min(a, 0.88) : a);
+
 // ---------------------------------------------------------------- 球員剪影
 export type PlayerPose = 'run' | 'dribble' | 'jump' | 'defend' | 'stand' | 'cheer';
 export interface PlayerOpts {
