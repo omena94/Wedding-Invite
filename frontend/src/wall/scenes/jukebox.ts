@@ -5,6 +5,8 @@
 //  - 上方的弧形玻璃上印著「NOW PLAYING」＝歌詞（逐字跟唱）。
 //    韓文歌有中文翻譯時（2026-09-30）：中文照舊在鉻框上方；鉻框上方放不下第二排，原文小一號印在玻璃裡的上緣
 //    （機構整個往下挪 SUB_ROOM 讓出這一條，天車的橫樑才不會穿過原文）。
+//    雙語（2026-09-30）：原文改成緊接在中文正下方，印在一塊釘在鉻框上緣的深色小名牌上（點唱機的曲名牌），
+//    不再跟中文隔著鉻框；名牌底下的玻璃仍然空出 SUB_ROOM，橫樑不會碰到名牌。
 //  - 下方是選曲卡（title strip）：老點唱機那種白卡、中間一條色帶印歌手、上下是 A 面與 B 面。
 //    中間最大那張就是這則留言：A 面是留言（一個字一個字印上去）、色帶是署名、B 面「永遠」；
 //    左邊三張是冷面的假歌（遛狗進行曲／芃芃 & QQ…），右上那張是現在這首歌（選曲燈亮著）。
@@ -20,19 +22,19 @@ import { F, font, loadText } from '../engine/type';
 import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, hash, lerp, TAU } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
-import { lyricAt, drawLyric, layoutLyric, lyricSubOf, drawLyricSub, beatAfter, signature, fillWithHearts } from './_motifs';
+import { lyricAt, drawLyric, layoutLyric, lyricSubOf, subSizeFor, subStyleFor, subGap, beatAfter, signature, fillWithHearts } from './_motifs';
 import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 } from './_v2';
 import { stagger, pad3, mono, tag } from './_t11';
 import { fillGlyph, type Rect } from './_t9';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'machine', paper: false, energy: [0.3, 0.9], bars: [4, 8], weight: 1 };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'machine', paper: false, energy: [0.3, 0.9], bars: [4, 8], weight: 1 };
 
 // ---------------------------------------------------------------- 版面
 const LYR = { x: 460, y: 142, w: 1000 };
 /** 玻璃窗（機構）的範圍。 */
 const WIN = { x: 150, y: 180, w: 1620, h: 470 };
 /** 原文副行（韓文歌）：印在玻璃裡上緣的基線；有副行的窗格機構往下挪多少（橫樑讓出這一條，下面還有空，唱片不會被切到）。 */
-const SUB_Y = WIN.y + 44, SUB_ROOM = 52;
+const SUB_ROOM = 62;
 /** 留言那張選曲卡：左下，寬 800，高依留言（最多 310）；右邊是喇叭，右下角 QR 區（x ≥ 1360、y ≥ 830）空著。 */
 const CARD = { x: 190, y: 670, w: 800, maxH: 318 };
 /** 卡片裡：留言左右各留 40；下面是色帶（署名）與 B 面。 */
@@ -403,7 +405,23 @@ export default class Jukebox extends Scene {
       c.save(); c.translate(960, oy); drawLyric(c, ly.line, t, st, lay, ly.k); c.restore();
       hc.save(); hc.translate(960, oy); drawLyric(hc, ly.line, t, { ...st, sung: 'rgba(0,0,0,0)', unsung: 'rgba(0,0,0,0)', active: rgba('signal', 0.7) }, lay, ly.k); hc.restore();
       const orig = full.sub ? lyricSubOf(ly.line) : null;
-      if (orig) { c.save(); c.translate(960, SUB_Y + (1 - ease.outExpo(ly.k)) * 12); drawLyricSub(c, orig, t, st, lay.size, ly.k); c.restore(); }
+      if (orig) {
+        // 原文（≥ 34 px、不再縮，太長就折行）接在中文最後一排下面，底下墊一塊深色名牌（壓在鉻框上緣）
+        const ss = Math.max(34, subSizeFor(lay.size));
+        const sl = layoutLyric(c, orig, { ...subStyleFor(st, lay.size), size: ss, minSize: ss });
+        const sy = oy + (lay.rows.length - 1) * lay.size * 1.1 + subGap(lay.size, ss) + 10;
+        const pw = Math.max(...sl.rows.map((r) => r.width)) + 56, ph = sl.height + ss * 0.28 + 18;
+        c.save();
+        c.globalAlpha = ly.k;
+        c.fillStyle = mixRgba('ink', 'sepia', 0.25, 0.92);
+        c.beginPath(); c.roundRect(960 - pw / 2, sy - ss * 0.95 - 9, pw, ph, 10); c.fill();
+        c.strokeStyle = rgba('bone', 0.3); c.lineWidth = 1.5; c.stroke();
+        c.globalAlpha = 1;
+        c.translate(960, sy);
+        // 主行空著：drawLyric 只照 sub 的排版畫原文（顏色、淡化跟一般原文副行一樣）
+        drawLyric(c, ly.line, t, st, { size: lay.size, rows: [], words: [], height: 0, sub: { lay: sl, dy: 0 } }, ly.k);
+        c.restore();
+      }
     } else if (!lyrics.linesIn(this.ctx.start - 1, this.ctx.end + 1).length) {
       c.font = font(F.archivo(100, 800), this.lyrSize); c.fillStyle = rgba('bone', 0.9); c.textAlign = 'center';
       fillWithHearts(c, song.title, 960, LYR.y);

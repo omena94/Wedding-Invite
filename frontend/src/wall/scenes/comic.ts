@@ -15,12 +15,13 @@ import { Layer2D, W, H, SCALE } from '../engine/gl';
 import { F, font, loadText } from '../engine/type';
 import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, hash } from '../engine/util';
-import { lyricAt, layoutLyric, drawLyric, barAfter, beatAfter, msgChars } from './_motifs';
+import { lyricAt, layoutLyric, drawLyric, barAfter, beatAfter, msgChars, lyricSubOf, subSizeFor, subStyleFor, subGap, type LyricStyle, type LyricLayout } from './_motifs';
+import type { Line } from '../engine/lyrics';
 import { inkFor, inkLine, inkPath, inkPoly, heartPop, arcAt, drawNote, paperBG, type Pt, type Ink, type Note } from './_couple';
 import { loadPuppets, drawPuppet, puppetBox, puppetPoint, puppetShadow, puppetIn, breathe, beatKick, noteV2, tightenNote, type PuppetOpts } from './_puppet';
 import { lyricV2 } from './_v2';
 
-export const spec: PlateSpecDecl = { group: 'couple', family: 'cartoon', paper: true, energy: [0.3, 1], bars: [4, 8] };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'couple', family: 'cartoon', paper: true, energy: [0.3, 1], bars: [4, 8] };
 
 interface Rect { x: number; y: number; w: number; h: number }
 /** 四格（起承轉合）：上面兩格大、下面兩格小；右下角留給 QR（HUD_SAFE）。 */
@@ -40,6 +41,16 @@ const P = {
   kneel: 'xw_comic_kneel', jump: 'xw_comic_jump', surprise: 'mt_comic_surprise',
   ppSit: 'pp_comic_sit', qqSit: 'qq_comic_sit', ppJump: 'pp_comic_jump', yySit: 'yy_comic_sit', wedding: 'cp_comic_wedding',
 } as const;
+
+/** 原文副行換成至少 34 px、不再縮（太長就折行）；中文不動。 */
+function bubbleSub(c: CanvasRenderingContext2D, line: Line, st: LyricStyle, lay: LyricLayout): LyricLayout {
+  const sub = lyricSubOf(line);
+  if (!sub || !lay.sub) return lay;
+  const size = Math.max(34, subSizeFor(lay.size));
+  const sl = layoutLyric(c, sub, { ...subStyleFor(st, lay.size), size, minSize: size });
+  const dy = lay.sub.dy - subGap(lay.size, lay.sub.lay.size) + subGap(lay.size, sl.size);
+  return { ...lay, sub: { lay: sl, dy }, height: dy + (sl.height - sl.size) + lay.size };
+}
 
 export default class Comic extends Scene {
   paper = paperBG();
@@ -270,6 +281,12 @@ export default class Comic extends Scene {
     if (ly) {
       const st = { family: F.archivo(100, this.msg ? 700 : 800), size: this.lyricSize, minSize: 40, maxWidth: BUB.w - 60, align: 'center' as const, unsung: rgba('sepia', 0.26), sung: rgba('sepia', 0.9), active: rgba('signal') };
       const lay = layoutLyric(c, ly.line, st);
+      if (lyricSubOf(ly.line)) {
+        // 雙語（2026-09-30）：中文＋原文兩段，對話框（橢圓）照每一排的四個角算大小，框放得下兩段、原文不再縮
+        this.bilingualBubble(c, ink, ly.line, st, face, t, ly.k);
+        c.restore();
+        return;
+      }
       const bw2 = Math.max(...lay.rows.map((r) => r.width)) + 64, bh = lay.height + 50;
       // 框的右緣靠近孟庭的臉，尾巴短短地指到她嘴邊
       const x0 = clamp(face.x - 40 - bw2, BUB.x, BUB.x + BUB.w - bw2), y0 = BUB.y + 30;
@@ -285,6 +302,39 @@ export default class Comic extends Scene {
       c.fillText('！？', x0 + 70, y0 + 62);
     }
     c.restore();
+  }
+
+  /**
+   * 有原文的對話框：原文至少 34 px、不再縮（太長就折行）；橢圓的半軸照每一排（中文、原文）的四個角算：
+   * 每個角都要在橢圓裡面（留 18 px 邊）。寬度最多到孟庭臉的左邊，高度不超出這一格；框從上往下長。
+   */
+  private bilingualBubble(c: CanvasRenderingContext2D, ink: Ink, line: Line, st0: LyricStyle, face: Pt, t: number, k: number) {
+    const panel = PANELS[1]!;
+    const aMax = (face.x - 40 - (panel.x + 32)) / 2;
+    const st: LyricStyle = { ...st0, maxWidth: Math.min(st0.maxWidth, aMax * 2 * 0.78) };
+    const lay = bubbleSub(c, line, st, layoutLyric(c, line, st));
+    // 每一排的半寬、字頂、字腳（相對中文第一排基線）
+    const rows: [number, number, number][] = lay.rows.map((r) => [r.width / 2, r.y - lay.size * 0.86, r.y + lay.size * 0.2]);
+    if (lay.sub) for (const r of lay.sub.lay.rows) rows.push([r.width / 2, lay.sub.dy + r.y - lay.sub.lay.size * 0.86, lay.sub.dy + r.y + lay.sub.lay.size * 0.24]);
+    const top = Math.min(...rows.map((r) => r[1])), bot = Math.max(...rows.map((r) => r[2])), mid = (top + bot) / 2;
+    const half = Math.max(...rows.map((r) => r[0]));
+    let a = Math.min(aMax, half / 0.8 + 18), b = 0;
+    for (let i = 0; i < 6; i++) {
+      b = 0;
+      for (const [w, y0, y1] of rows) {
+        const u = Math.min(0.97, (w + 14) / a);
+        b = Math.max(b, (Math.max(Math.abs(y0 - mid), Math.abs(y1 - mid)) + 12) / Math.sqrt(1 - u * u));
+      }
+      if (b <= (panel.h - 28) / 2 || a >= aMax) break;
+      a = Math.min(aMax, a * 1.08);
+    }
+    b = Math.min(b, (panel.h - 28) / 2);
+    const bw2 = a * 2, bh = b * 2;
+    const x0 = clamp(face.x - 40 - bw2, panel.x + 32, BUB.x + BUB.w - bw2);
+    const y0 = clamp(BUB.y + 30, panel.y + 14, panel.y + panel.h - 14 - bh);
+    this.bubble(c, ink, x0, y0, bw2, bh, face, t);
+    c.translate(x0 + a, y0 + b - mid);
+    drawLyric(c, line, t, st, lay, k);
   }
 
   /** 漫畫的對話框：圓角框、一條尾巴指向說話的人（手繪線，白底）。 */

@@ -16,7 +16,7 @@ import { Scene, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } f
 import { Layer2D, W, H, SCALE } from '../engine/gl';
 import { LineBatch } from '../engine/lines';
 import { F, loadText } from '../engine/type';
-import type { Lyrics } from '../engine/lyrics';
+import { lyricSubOf, type Lyrics } from '../engine/lyrics';
 import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, hash } from '../engine/util';
 import { lyricAt, sparkHead, sparkParticles } from './_motifs';
@@ -24,7 +24,7 @@ import { inkFor, paperBG, inkLine, inkPath, inkEllipse, lyricOnPath, drawNote, t
 import { loadPuppets, drawPuppet, drawCycle, puppetPoint, puppetShadow, puppetIn, breathe, beatKick, hop, jumpArc, noteV2, tightenNote, type PuppetOpts } from './_puppet';
 import { lyricV2 } from './_v2';
 
-export const spec: PlateSpecDecl = { group: 'couple', family: 'sport', paper: true, energy: [0.3, 1], bars: [4, 8] };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'couple', family: 'sport', paper: true, energy: [0.3, 1], bars: [4, 8] };
 
 /** 路面：輪子著地的那條線；路的上緣、下緣、中間的虛線。 */
 const GROUND = 806;
@@ -489,25 +489,49 @@ export default class Tandem extends Scene {
     }
   }
 
+  /**
+   * 旗桿要拉高多少：這個窗格裡有原文的句子，每句用「波浪往下最深」的靜態路徑先排一次（alpha 0，不會畫出來），
+   * 量整塊歌詞的底，跟布條的上緣（布條最高、波浪往上最高的時候）比，取最多的那句。第一格算一次（跟時間無關，截圖也是確定的）。
+   */
+  private lift: number | null = null;
+  private flagLift(c: CanvasRenderingContext2D, topX: number): number {
+    if (this.lift !== null) return this.lift;
+    const y0 = clamp(this.rack.y - this.bh * 0.6, 110, 900 - this.bh) - 12 - 3;
+    let lift = 0;
+    for (const line of this.ctx.lyrics.linesIn(this.ctx.start - 1, this.ctx.end + 1)) {
+      if (!lyricSubOf(line)) continue;
+      const r = lyricOnPath(c, line, 0, flagPath({ x: topX, y: 300 }, null), { family: F.archivo(100, 700), size: this.lyricSize, minSize: 40, offset: -this.lyricSize * 0.3, alpha: 0 });
+      lift = Math.max(lift, Math.ceil(r.box[1] + r.box[3] + 16 - y0));
+    }
+    return (this.lift = lift);
+  }
+
   /** 旗桿與飄帶上的歌詞：車尾一根細長的旗桿（往後彎一點）、頂上一面小三角旗；歌詞沿著從旗桿頂往後飄的波浪線。 */
   private drawFlagLyric(c: CanvasRenderingContext2D, t: number, dy: number, rv: number, lyrics: Lyrics) {
     const ink = inkFor(true);
     const base = { x: this.rack.x + 6, y: this.rack.y + dy };
-    const top = { x: base.x - 26, y: 300 };
+    const ly = lyricAt(lyrics, t);
+    // 雙語（2026-09-30）：有原文的句子多一排（原文在中文下面），長留言的布條又高，原文會疊到布條上。
+    // 旗桿拉高 flagLift(…)：歌詞整塊（到原文最後一排）的底離布條上緣至少 16 px；整個窗格用同一個高度（換句時旗子不會跳）
+    const top = { x: base.x - 26, y: 300 - this.flagLift(c, base.x - 26) };
     inkPath(c, [base, { x: base.x - 6, y: (base.y + top.y) / 2 }, top], { ink, w: 0.6, seed: 91, color: rgba('sepia', 0.7), t });
     const fl = Math.sin(t * 9) * 4;
     c.fillStyle = rgba('signal', 0.85);
     c.beginPath(); c.moveTo(top.x, top.y); c.lineTo(top.x - 46, top.y + 10 + fl); c.lineTo(top.x, top.y + 24); c.closePath(); c.fill();
-    const ly = lyricAt(lyrics, t);
     if (!ly) return;
-    const path: Pt[] = [];
-    for (let i = 0; i <= 60; i++) {
-      const u = i / 60;
-      const x = top.x - 60 - u * (top.x - 60 - 120);
-      path.push({ x, y: top.y + 30 + (6 + 14 * u) * Math.sin(x / 110 + t * 5) + 26 * u });
-    }
-    path.reverse();
+    const path = flagPath(top, t);
     lyricOnPath(c, ly.line, t, path, { family: F.archivo(100, 700), size: this.lyricSize, minSize: 40, offset: -this.lyricSize * 0.3, alpha: ly.k * rv, unsung: rgba('sepia', 0.24), sung: rgba('sepia', 0.9), active: rgba('signal') });
   }
 }
 
+/** 飄帶的波浪線（從旗桿頂往後飄）：t = null 時是「每一點都往下到最深」的靜態版本（量高度用）。 */
+function flagPath(top: Pt, t: number | null): Pt[] {
+  const path: Pt[] = [];
+  for (let i = 0; i <= 60; i++) {
+    const u = i / 60;
+    const x = top.x - 60 - u * (top.x - 60 - 120);
+    const w = t === null ? 1 : Math.sin(x / 110 + t * 5);
+    path.push({ x, y: top.y + 30 + (6 + 14 * u) * w + 26 * u });
+  }
+  return path.reverse();
+}

@@ -25,7 +25,7 @@ import {
   type GlyphMask, type MsgLay, type Rect, type MaskGlyph,
 } from './_t25';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'journey', paper: false, energy: [0, 0.7], bars: [4, 8] };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'journey', paper: false, energy: [0, 0.7], bars: [4, 8] };
 
 /** 一句歌詞最多幾個字（韓文歌連原文副行一起算，所以留寬一點）。 */
 const MAXG = 128;
@@ -223,7 +223,7 @@ let mc: CanvasRenderingContext2D | null = null;
 const measure = (s: string, fam: string, size: number) => { mc ??= document.createElement('canvas').getContext('2d')!; mc.font = font(fam, size); return mc.measureText(s).width; };
 
 /** 一行歌詞（或一段字）在瓶子裡排成幾排：詞不拆開，每排置中；放不下就縮字級（最小 40，留言標準 v2 的歌詞下限）。 */
-function waxRows(units: { ch: string; gap: number }[][], fam: string, size0: number, cx: number, cy: number, maxW: number, maxRows = 4): { items: MaskGlyph[]; rect: Rect } {
+function waxRows(units: { ch: string; gap: number }[][], fam: string, size0: number, cx: number, cy: number, maxW: number, maxRows = 4, balance = false): { items: MaskGlyph[]; rect: Rect } {
   let size = size0;
   let rows: typeof units[] = [];
   // 沒有空白隔開的詞併成一段（中文歌詞一個字一個詞，不併的話會斷在「一句一句話」的中間）；一段放不下一排才拆成一個一個字
@@ -231,18 +231,30 @@ function waxRows(units: { ch: string; gap: number }[][], fam: string, size0: num
   let curP: typeof units[number] = [];
   for (const u of units) { curP.push(...u); if (u.at(-1)!.gap > 0.1) { phrases.push(curP); curP = []; } }
   if (curP.length) phrases.push(curP);
-  for (let tries = 0; tries < 8; tries++) {
-    rows = [];
+  const wrap = (limit: number) => {
+    const out: typeof units[] = [];
     let cur: typeof units = [], w = 0;
     const pieces = phrases.flatMap((ph) => (ph.reduce((s, x) => s + measure(x.ch, fam, size), 0) <= maxW ? [ph] : ph.map((x) => [x])));
     for (const u of pieces) {
       const uw = u.reduce((s, x) => s + measure(x.ch, fam, size), 0);
       const gap = cur.length ? (cur[cur.length - 1]!.at(-1)!.gap * size) : 0;
-      if (cur.length && w + gap + uw > maxW) { rows.push(cur); cur = [u]; w = uw; } else { cur.push(u); w += gap + uw; }
+      if (cur.length && w + gap + uw > limit) { out.push(cur); cur = [u]; w = uw; } else { cur.push(u); w += gap + uw; }
     }
-    if (cur.length) rows.push(cur);
+    if (cur.length) out.push(cur);
+    return out;
+  };
+  for (let tries = 0; tries < 8; tries++) {
+    rows = wrap(maxW);
     if (rows.length <= maxRows || size <= V2.lyrMin) break;
     size = Math.max(V2.lyrMin, size * 0.9);
+  }
+  // balance（雙語 2026-09-30）：排數不變、每排盡量一樣長——不要最後一排只剩一個字（「我們兩個人的／歌」）。
+  // 找「還是這麼多排」的最窄寬度（二分），用那個寬度重排
+  if (balance && rows.length > 1) {
+    const n = rows.length;
+    let lo = maxW * 0.3, hi = maxW;
+    for (let i = 0; i < 14; i++) { const mid = (lo + hi) / 2; if (wrap(mid).length <= n) hi = mid; else lo = mid; }
+    rows = wrap(hi);
   }
   const lh = size * 1.1;
   const items: MaskGlyph[] = [];
@@ -267,10 +279,10 @@ function waxRows(units: { ch: string; gap: number }[][], fam: string, size0: num
  * 原文的字接在中文後面編號、標上 SUB_TAG。
  */
 function withSub(main: { ch: string; gap: number }[][], sub: { ch: string; gap: number }[][], size0: number, cx: number, cy: number, maxW: number): { items: MaskGlyph[]; rect: Rect } {
-  const a = waxRows(main, FAM_LYR, size0, cx, cy, maxW, 4);
+  const a = waxRows(main, FAM_LYR, size0, cx, cy, maxW, 4, true);
   const size = a.items[0]?.size ?? size0, lhA = size * 1.1;
   const ss = subSizeFor(size);
-  const b = waxRows(sub, FAM_LYR, ss, cx, cy, maxW, 3);
+  const b = waxRows(sub, FAM_LYR, ss, cx, cy, maxW, 3, true);
   const lhB = (b.items[0]?.size ?? ss) * 1.1;
   const rowsOf = (it: MaskGlyph[]) => new Set(it.map((g) => g.y)).size;
   const nA = rowsOf(a.items), nB = rowsOf(b.items);

@@ -15,12 +15,13 @@ import { LineBatch } from '../engine/lines';
 import { F, font, loadText } from '../engine/type';
 import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, lerp } from '../engine/util';
-import { lyricAt, layoutLyric, drawLyric, barAfter, beatAfter, sparkHead, sparkParticles, msgChars } from './_motifs';
+import { lyricAt, layoutLyric, drawLyric, barAfter, beatAfter, sparkHead, sparkParticles, msgChars, lyricSubOf, subSizeFor, subStyleFor, subGap, type LyricStyle, type LyricLayout } from './_motifs';
+import type { Line } from '../engine/lyrics';
 import { inkFor, paperBG, inkLine, inkPoly, inkShape, inkEllipse, drawNote, type Pt, type Note, type Ink } from './_couple';
 import { loadPuppets, drawPuppet, drawPick, puppetPoint, puppetShadow, puppetIn, noteV2, tightenNote, type PuppetOpts } from './_puppet';
 import { lyricV2 } from './_v2';
 
-export const spec: PlateSpecDecl = { group: 'couple', family: 'dog', paper: true, energy: [0, 0.6], bars: [4, 8] };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'couple', family: 'dog', paper: true, energy: [0, 0.6], bars: [4, 8] };
 
 const FLOOR = 930;
 const SZ = 600;
@@ -46,6 +47,16 @@ const LYR = { x: 730, y: 300 };
 const INVITE = '掃描右下角 QR code，把祝福寫上大螢幕';
 const SPRITES = ['cp_nap', 'cp_nap_peek', 'pp_nap', 'qq_nap', 'yy_sleep'];
 
+/** 原文副行換成至少 34 px、不再縮（太長就折行）；中文不動。 */
+function napSub(c: CanvasRenderingContext2D, line: Line, st: LyricStyle, lay: LyricLayout): LyricLayout {
+  const sub = lyricSubOf(line);
+  if (!sub || !lay.sub) return lay;
+  const size = Math.max(34, subSizeFor(lay.size));
+  const sl = layoutLyric(c, sub, { ...subStyleFor(st, lay.size), size, minSize: size });
+  const dy = lay.sub.dy - subGap(lay.size, lay.sub.lay.size) + subGap(lay.size, sl.size);
+  return { ...lay, sub: { lay: sl, dy }, height: dy + (sl.height - sl.size) + lay.size };
+}
+
 export default class DogNap extends Scene {
   paper = paperBG();
   bg = this.track(new Layer2D(W, H, undefined, { fast: true }));
@@ -55,6 +66,10 @@ export default class DogNap extends Scene {
   keys: [number, string][] = [];
   note: Note | null = null;
   cloud = { x: 0, y: 0, w: CLOUD.w, h: CLOUD.h };
+  /** 歌詞的中心 x 與最寬（有原文的窗格往左挪、限寬，不讓夢泡泡蓋到）。 */
+  lyrX = LYR.x; lyrW = 700;
+  /** 有原文的窗格：歌詞往上挪多少、頭上的 z 飄多高（兩段歌詞比較高，z 飄短一點才不會穿過原文）。 */
+  lyrUp = 0; zRise = 130;
   /** 雲裡寫字的方框（置中）。 */
   textBox = { x: 0, y: 0, w: TEXT.w, h: TEXT.h };
   /** 三顆小泡泡冒出來的時間（拍點）與雲長出來的時間。 */
@@ -93,6 +108,13 @@ export default class DogNap extends Scene {
     this.cloud = { x: CLOUD.right - cw, y: CLOUD.top, w: cw, h: ch };
     this.textBox = { x: CLOUD.right - cw / 2 - tw / 2, y: CLOUD.top + ch / 2 - th / 2, w: tw, h: th };
     this.lyricSize = lyricV2(this.msg ? this.note.fit.size : null);
+    // 雙語（2026-09-30）：有原文的窗格歌詞兩段、比較寬，原本置中在 LYR.x 的話右半邊會被夢泡泡蓋住：
+    // 整組放在「窗簾右邊（x 380）到泡泡左緣前 40」之間置中（折成兩排也不碰窗戶），最寬就是那一段（整個窗格固定，換句不會跳）
+    if (this.ctx.lyrics.linesIn(s - 1, e + 1).some((l) => lyricSubOf(l))) {
+      const x1 = this.cloud.x - 40;
+      this.lyrW = Math.min(760, x1 - 380); this.lyrX = x1 - this.lyrW / 2;
+      this.lyrUp = 56; this.zRise = 70;
+    }
     this.drawBackground();
   }
 
@@ -169,11 +191,11 @@ export default class DogNap extends Scene {
     // ---- 歌詞：從宣文頭上飄出來的一行字（旁邊幾個小小的 z）
     const ly = lyricAt(lyrics, t);
     if (ly) {
-      const st = { family: F.hand(700), size: this.lyricSize, minSize: 40, maxWidth: 700, align: 'center' as const, unsung: rgba('sepia', 0.26), sung: rgba('sepia', this.msg ? 0.78 : 0.92), active: rgba('signal') };
-      const lay = layoutLyric(c, ly.line, st);
+      const st = { family: F.hand(700), size: this.lyricSize, minSize: 40, maxWidth: this.lyrW, align: 'center' as const, unsung: rgba('sepia', 0.26), sung: rgba('sepia', this.msg ? 0.78 : 0.92), active: rgba('signal') };
+      const lay = napSub(c, ly.line, st, layoutLyric(c, ly.line, st));
       const float = Math.sin(t * 0.9) * 6;
       c.save();
-      c.translate(LYR.x, LYR.y + float);
+      c.translate(this.lyrX, LYR.y - this.lyrUp + float);
       drawLyric(c, ly.line, t, st, lay, ly.k * rv);
       c.restore();
     }
@@ -229,7 +251,7 @@ export default class DogNap extends Scene {
       const u = ((b + k) / 3) % 1;
       c.globalAlpha = Math.sin(Math.PI * u) * 0.6;
       c.font = font(F.serif(500, true), 22 + 18 * u);
-      c.fillText('z', this.alHead.x - 30 - 40 * u, this.alHead.y - 30 - 130 * u);
+      c.fillText('z', this.alHead.x - 30 - 40 * u, this.alHead.y - 30 - this.zRise * u);
     }
     c.restore();
   }

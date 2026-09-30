@@ -179,7 +179,7 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": true,
   "idea": "側面，雙人腳踏車騎過街景（景往後捲），踏板一拍一圈，後面的籃子坐著兩隻狗；留言是車後拖的布條。",
-  "bilingual": false
+  "bilingual": true
  },
  {
   "name": "archery",
@@ -233,7 +233,7 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": true,
   "idea": "慢歌：沙發上兩人和兩隻狗睡成一團，呼吸起伏跟著節拍，夢泡泡裡是留言。",
-  "bilingual": false
+  "bilingual": true
  },
  {
   "name": "zoomies",
@@ -440,7 +440,7 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": true,
   "idea": "四格漫畫：兩人的小劇情，對話框裡是留言與歌詞，一格一格在小節線出現；網點與框線。",
-  "bilingual": false
+  "bilingual": true
  },
  {
   "name": "photobooth",
@@ -1034,7 +1034,7 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "點唱機的選曲卡片（這首歌的歌名在其中），機械手臂在拍點夾起唱片，選曲卡的空白是留言。",
-  "bilingual": false
+  "bilingual": true
  },
  {
   "name": "clawmachine",
@@ -1907,7 +1907,7 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "熔岩燈裡的蠟塊（metaball shader）跟著低音浮沉，融合時浮出字，底座貼著留言。",
-  "bilingual": false
+  "bilingual": true
  },
  {
   "name": "stamp",
