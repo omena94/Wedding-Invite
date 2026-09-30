@@ -27,14 +27,16 @@ const ORIGINAL = [
 
 const rows = [];
 for (const [name, title, family, light, idea] of ORIGINAL) rows.push({ name, title, family, light, couple: false, idea });
-let section = '';
+let section = '', sub = '';
 for (const line of md.split(/\r?\n/)) {
-  if (line.startsWith('## ')) section = line;
+  if (line.startsWith('## ')) { section = line; sub = ''; }
+  // 雙語那一段把「新人互動」放在第三層標題（### 雙語・新人互動）
+  if (line.startsWith('### ')) sub = line;
   const m = /^\| `([a-z0-9]+)` \| ([^|]+) \| ([a-z]+) \| (亮|暗) \| (.+) \|\s*$/.exec(line);
   if (!m) continue;
   const [, name, title, family, tone, idea] = m;
   if (rows.some((r) => r.name === name)) continue;
-  rows.push({ name, title: title.trim(), family, light: tone === '亮', couple: section.includes('新人互動'), idea: idea.trim() });
+  rows.push({ name, title: title.trim(), family, light: tone === '亮', couple: section.includes('新人互動') || sub.includes('新人互動'), idea: idea.trim() });
 }
 const scenes = path.join(ROOT, 'src', 'wall', 'scenes');
 // --tracked：只算已經加進 git 的版面（主導者 commit 時用）。很多同事同時在 scenes/ 寫版面，
@@ -43,8 +45,10 @@ const tracked = process.argv.includes('--tracked')
   ? new Set(execSync('git ls-files src/wall/scenes', { cwd: ROOT, encoding: 'utf8' }).split(/\r?\n/).map((f) => path.basename(f, '.ts')))
   : null;
 const built = rows.filter((r) => existsSync(path.join(scenes, `${r.name}.ts`)) && (!tracked || tracked.has(r.name)));
+// 雙語版面（有翻譯的歌只排這種）：看版面檔自己宣告的 spec.bilingual
+for (const r of built) r.bilingual = /bilingual\s*:\s*true/.test(readFileSync(path.join(scenes, `${r.name}.ts`), 'utf8'));
 const out = `// 自動產生（node scripts/wall-catalog.mjs），不要手改：大螢幕版面清單，後台「大螢幕版面」頁用。
-export interface PlateInfo { name: string; title: string; family: string; light: boolean; couple: boolean; idea: string }
+export interface PlateInfo { name: string; title: string; family: string; light: boolean; couple: boolean; bilingual: boolean; idea: string }
 export const PLATE_CATALOG: PlateInfo[] = ${JSON.stringify(built, null, 1)};
 `;
 writeFileSync(path.join(ROOT, 'src', 'wall', 'plateCatalog.ts'), out);

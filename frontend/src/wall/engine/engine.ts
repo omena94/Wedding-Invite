@@ -164,8 +164,10 @@ export class Engine {
         const cls = this.classes.get(e.scene);
         if (!cls) throw new Error(`scene module not found: scenes/${e.scene}.ts`);
         const ctx: SceneCtx = {
-          // 有主打留言的窗格不畫原文副行（韓文歌）：給它拿掉副行的歌詞，版面照常用 lyricSubOf 就會拿到 null
-          renderer: this.renderer, audio: this.song.audio, lyrics: e.params?.message ? this.song.lyrics.withoutSub() : this.song.lyrics, comp: this.comp, W, H,
+          // 有主打留言的窗格不畫原文副行（韓文歌）：給它拿掉副行的歌詞，版面照常用 lyricSubOf 就會拿到 null。
+          // 雙語版面（spec.bilingual）是照「留言＋中文＋原文」三樣都放得下設計的，有留言也照樣給原文。
+          renderer: this.renderer, audio: this.song.audio,
+          lyrics: e.params?.message && !this.specs.get(e.scene)?.bilingual ? this.song.lyrics.withoutSub() : this.song.lyrics, comp: this.comp, W, H,
           id: e.id, params: e.params, start: e.start, end: e.end, song: this.song.info, live: this.live,
         };
         const s = new cls(ctx);

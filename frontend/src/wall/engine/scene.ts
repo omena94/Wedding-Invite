@@ -166,4 +166,10 @@ export interface PlateSpecDecl {
   group?: 'couple' | 'type';
   /** 系列（sport、dog、doc、ins…）：同一系列不要連著出現。 */
   family?: string;
+  /**
+   * 雙語版面：有翻譯的歌（韓文歌）中文與原文兩行**一定都畫得清楚**，有主打留言的窗格也照樣畫原文副行
+   * （一般版面有留言時會收起原文，只剩中文）。新人 2026-09-30：「有翻譯的時候只用可以有翻譯的模板，不然有時候都只會有一種」，
+   * 所以有翻譯的歌導演只排 bilingual 的版面。
+   */
+  bilingual?: boolean;
 }

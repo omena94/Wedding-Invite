@@ -20,6 +20,8 @@ export interface PlateSpec {
   group?: 'couple' | 'type';
   /** 系列（同一系列不要連著出現）。 */
   family?: string;
+  /** 雙語版面（見 engine/scene.ts PlateSpecDecl.bilingual）：有翻譯的歌只排這種。 */
+  bilingual?: boolean;
   /** 適合的段落能量範圍（0..1）。 */
   energy: [number, number];
   /** 偏好的長度（小節數）。 */
@@ -200,6 +202,12 @@ export class Director {
       const base = PLATES.find((p) => p.name === name);
       const decl = this.engine.specs.get(name) ?? {};
       out.push({ energy: [0, 1], bars: [4, 8], lyricsOnly: true, weight: 1, group: 'type', ...base, ...decl, name });
+    }
+    // 有翻譯的歌（韓文歌）只排雙語版面：一般版面有主打留言時會收起原文，新人看到的就只剩一種文字（2026-09-30）。
+    // 雙語版面全被後台關掉（或還沒做）時退回全部，至少不會沒得播。
+    if (this.song.lyrics.lines.some((l) => l.sub)) {
+      const bi = out.filter((p) => p.bilingual);
+      if (bi.length >= 3) return bi;
     }
     return out;
   }

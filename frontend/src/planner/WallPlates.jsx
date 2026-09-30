@@ -12,7 +12,7 @@ import { PLATE_CATALOG } from "../wall/plateCatalog";
 const FAMILY = {
   title: "片頭", type: "文字", light: "燈光", doc: "紙本", machine: "機器", screen: "螢幕", science: "科學", craft: "手作", nature: "自然",
   city: "城市", game: "遊戲", water: "水與天空", print: "印刷", keepsake: "信物", instrument: "樂器與遊樂", local: "台灣味", journey: "旅途",
-  sport: "運動", dance: "跳舞", dog: "狗狗", date: "約會", home: "居家", music: "音樂", wedding: "婚禮", cartoon: "漫畫", work: "工程師×護理師", hoops: "籃球賽", live: "演唱會",
+  sport: "運動", dance: "跳舞", dog: "狗狗", date: "約會", home: "居家", music: "音樂", wedding: "婚禮", cartoon: "漫畫", work: "工程師×護理師", hoops: "籃球賽", live: "演唱會", lingo: "語言", trip: "旅行", kculture: "韓流",
 };
 const PACE = [
   ["fast", "快", "約 4～7 秒換一個版面（每 1～2 句歌詞）"],
@@ -42,7 +42,7 @@ export default function WallPlates() {
 
   if (loading) return <Loading />;
   if (error) return <ErrorBox error={error} />;
-  const shown = plates.filter((p) => !filter || (filter === "off" ? off.has(p.name) : filter === "couple" ? p.couple : p.family === filter));
+  const shown = plates.filter((p) => !filter || (filter === "off" ? off.has(p.name) : filter === "couple" ? p.couple : filter === "bilingual" ? p.bilingual : p.family === filter));
   const onCount = plates.filter((p) => !off.has(p.name)).length;
 
   return (
@@ -65,6 +65,7 @@ export default function WallPlates() {
       <div className="ws-summary" style={{ marginTop: 16 }}>
         <button type="button" className={`btn btn-sm ${!filter ? "btn-primary" : "btn-ghost"}`} onClick={() => setFilter("")}>全部 {plates.length}</button>
         <button type="button" className={`btn btn-sm ${filter === "couple" ? "btn-primary" : "btn-ghost"}`} onClick={() => setFilter("couple")}>有人物 {plates.filter((p) => p.couple).length}</button>
+        <button type="button" className={`btn btn-sm ${filter === "bilingual" ? "btn-primary" : "btn-ghost"}`} onClick={() => setFilter("bilingual")} title="有中文翻譯的歌（韓文歌）只會播這些版面">雙語 {plates.filter((p) => p.bilingual).length}</button>
         {families.map((f) => (
           <button key={f} type="button" className={`btn btn-sm ${filter === f ? "btn-primary" : "btn-ghost"}`} onClick={() => setFilter(f)}>{FAMILY[f] || f} {plates.filter((p) => p.family === f).length}</button>
         ))}
@@ -86,6 +87,7 @@ export default function WallPlates() {
                 <div className="wp-meta">
                   <span className="pill pill-groom">{FAMILY[p.family] || p.family}</span>
                   <span className="pill">{p.light ? "亮" : "暗"}</span>
+                  {p.bilingual && <span className="pill pill-yes" title="有翻譯的歌會播：中文與原文兩行都畫">雙語</span>}
                   <label className="wall-msg-toggle wp-toggle"><Toggle checked={on} disabled={saving} onChange={(v) => toggle(p.name, v)} label="要播" /> 要播</label>
                 </div>
               </div>
