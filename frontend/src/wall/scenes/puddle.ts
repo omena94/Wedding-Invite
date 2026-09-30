@@ -226,10 +226,16 @@ export default class Puddle extends Scene {
         // 字的雨滴提早 0.3 秒落下：漣漪一散開字就淡淡浮出來，唱到的那一刻再亮
         this.drops.push({ x: LYR.x + pw.x + pw.w / 2, y: y0 + pw.y - lay.size * 0.36, t: pw.word.start - 0.3, a: 0.5, v: 280 });
       }
+      // 韓文歌的原文（layoutLyric 排在中文正下方，lay.sub）：每個詞也是一滴雨，但小一點（比中文安靜）
+      if (lay.sub) {
+        const sl = lay.sub.lay;
+        for (const pw of sl.words) this.drops.push({ x: LYR.x + pw.x + pw.w / 2, y: y0 + lay.sub.dy + pw.y - sl.size * 0.36, t: pw.word.start - 0.3, a: 0.28, v: 260 });
+      }
     }
     this.drops.sort((a, b) => a.t - b.t);
 
-    this.avoid = [[LYR.x - 20, LYR.y - 150, LYR.maxW + 40, 190], [box[0] - 30, box[1] - 30, box[2] + 60, box[3] + 60]];
+    const koH = [...this.lays.values()].some((l) => l.sub) ? 70 : 0;
+    this.avoid = [[LYR.x - 20, LYR.y - 150, LYR.maxW + 40, 190 + koH], [box[0] - 30, box[1] - 30, box[2] + 60, box[3] + 60]];
   }
 
   /** 水窪裡隨機一點（拒絕取樣：在某個橢圓裡、離邊緣有一段距離）。 */
@@ -385,16 +391,25 @@ export default class Puddle extends Scene {
     if (!ly) return;
     const lay = this.lays.get(ly.line.i) ?? layoutLyric(c, ly.line, this.lyrSt);
     const y0 = this.lyrTop(lay);
+    this.floatWords(c, lay, y0, t, ly.k, false);
+    if (lay.sub) this.floatWords(c, lay.sub.lay, y0 + lay.sub.dy, t, ly.k, true);
+  }
+
+  /**
+   * 一段浮在水面上的字（y0 = 第一列基線）。`quiet` = 韓文歌的原文副行：唱到、唱完都是淡兩成的紙白（不用訊號色）、
+   * 唱到時只輕輕彈一半。
+   */
+  private floatWords(c: CanvasRenderingContext2D, lay: LyricLayout, y0: number, t: number, k: number, quiet: boolean) {
     c.save();
     c.font = font(this.lyrSt.family, lay.size);
     c.textBaseline = 'alphabetic';
     for (const pw of lay.words) {
       const w = pw.word, td = w.start - 0.3;
       // 漣漪散開之後浮出（還沒唱：三成；唱到：訊號色；唱完：紙白）
-      const a = prog(t, td + 0.05, td + 0.3) * ly.k;
+      const a = prog(t, td + 0.05, td + 0.3) * k;
       if (a <= 0) continue;
       const p = Lyrics.wordProgress(w, t);
-      const pop = t >= w.start ? 1 + 0.12 * (1 - ease.outCubic(clamp((t - w.start) / 0.3))) : 1;
+      const pop = t >= w.start ? 1 + (quiet ? 0.06 : 0.12) * (1 - ease.outCubic(clamp((t - w.start) / 0.3))) : 1;
       const x = LYR.x + pw.x, y = y0 + pw.y;
       c.save();
       c.translate(x + pw.w / 2, y - lay.size * 0.35);
@@ -407,7 +422,7 @@ export default class Puddle extends Scene {
         c.beginPath();
         c.rect(-lay.size * 0.1, -lay.size * 1.1, (pw.w + lay.size * 0.2) * p, lay.size * 1.5);
         c.clip();
-        c.fillStyle = p < 1 ? rgba('signal') : rgba('bone', 0.96);
+        c.fillStyle = quiet ? rgba('bone', 0.96 * 0.8) : p < 1 ? rgba('signal') : rgba('bone', 0.96);
         c.fillText(w.w, 0, 0);
       }
       c.restore();

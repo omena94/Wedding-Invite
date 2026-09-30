@@ -25,7 +25,7 @@ import { LIN, rgba, mixRgba, type PaletteKey } from '../engine/palette';
 import { clamp, ease, lerp, noise1, prog, pulse } from '../engine/util';
 import { readSeconds } from '../engine/text';
 import type { Line } from '../engine/lyrics';
-import { sparkHead, sparkParticles, drawLyric, layoutLyric, lyricAt, signature, beatAfter, COUPLE_EN, type LyricStyle } from './_motifs';
+import { sparkHead, sparkParticles, drawLyric, layoutLyric, lyricAt, signature, beatAfter, COUPLE_EN, lyricSubOf, subStyleFor, subGap, drawLyricSub, type LyricStyle } from './_motifs';
 import { V2, msgMaxFor, msgLen, lyricV2, sigV2 } from './_v2';
 // （標點、符號不算字：「新婚快樂！！！」是四個字的短句，可以重擊）
 import { layoutSlab, linePieces, textPieces, drawCells, headAt, isEastern, type Piece, type Slab, type Tone } from './slam-type';
@@ -156,6 +156,8 @@ interface Item {
   /** 一組一條細字（變化款 2）。 */
   rungs: Slab[];
   box: Box;
+  /** 整塊（slab）的舞台：韓文歌（有原文副行）時下緣往上收，留位置給大字下面的原文；沒有原文就是 box。 */
+  sbox: Box;
   align: 'left' | 'center';
   line: Line | null;
   /** 組成一整塊的時間（歌詞：最後一個字唱完的下一拍，來不及就不組）。 */
@@ -278,6 +280,7 @@ export default class Slam extends Scene {
     const top = lyric ? (v === 1 || v === 3 ? STRIP_TOP : TOP) : note ? (this.hasStrip ? NOTE_TOP_STRIP : NOTE_TOP) : TOP + 30;
     const bottom = lyric ? BOTTOM : note ? NOTE_BOTTOM : BOTTOM - 84;
     const box = { top, bottom };
+    let sbottom = bottom;
     // 留言一律靠左（右半邊給空心大字）；歌詞、邀請照原本的款式
     const align: 'left' | 'center' = v === 0 || note ? 'left' : 'center';
     const noteMax = note ? msgMaxFor(this.msg!.text) : 0;
@@ -288,14 +291,46 @@ export default class Slam extends Scene {
       slab = layoutSlab(c, pieces, { families: quiet, w: note ? NOTE_V2_W : LAD.w, h: Math.min(LADDER_NOTE.bottom - LADDER_NOTE.top, bottom - top), maxRows: note ? 5 : 4, maxSize: note ? noteMax : kind === 'invite' ? 88 : 96, minSize: note ? V2.msgMin : 44, align: 'left', pitch: 1.45 });
     } else {
       // 留言保留大小寫：小寫字有下伸部，行距不能用全大寫的 0.96
-      slab = layoutSlab(c, pieces, { families: fams, w: note ? NOTE_V2_W : v === 0 && lyric ? V0_LYRIC_W : SW, h: bottom - top, maxRows: note ? 5 : 4, maxSize: lyric ? 470 : note ? noteMax : 400, minSize: lyric ? 60 : note ? V2.msgMin : 44, align, pitch: note ? (eastern ? 1.3 : 1.25) : undefined });
+      const opts = { families: fams, w: note ? NOTE_V2_W : v === 0 && lyric ? V0_LYRIC_W : SW, h: bottom - top, maxRows: note ? 5 : 4, maxSize: lyric ? 470 : note ? noteMax : 400, minSize: lyric ? 60 : note ? V2.msgMin : 44, align, pitch: note ? (eastern ? 1.3 : 1.25) : undefined };
+      slab = layoutSlab(c, pieces, opts);
+      // 韓文歌：大字下面要放原文。先照整個舞台排一次看字級，扣掉原文要的高度再排一次（字小一點，整組還在舞台裡）
+      const sub = lyric ? lyricSubOf(line) : null;
+      if (sub) {
+        sbottom = bottom - this.subRoom(c, sub, slab);
+        slab = layoutSlab(c, pieces, { ...opts, h: sbottom - top });
+      }
     }
     // 一組撐滿畫面的重擊：歌詞、邀請，與很短的留言（長留言的詞組直接打在最後的位置上）
     const bigSingles = !note || msgLen(this.msg!.text.replace(/[\p{P}\p{S}]/gu, '')) <= SHORT_SLAM;
     const singles = (v === 1 || v === 3) && bigSingles ? pieces.map((p) => layoutSlab(c, [p], { families: fams, w: SW, h: bottom - top, maxRows: 1, maxSize: note ? 260 : 620, minSize: 60, align: 'center' })) : [];
     const rungFam = note ? [F.ming(400)] : [F.archivo(125, 300)];
     const rungs = v === 2 ? pieces.map((p) => layoutSlab(c, [p], { families: rungFam, w: LAD.w, h: 90, maxRows: 1, maxSize: note ? Math.min(noteMax, 56) : 64, minSize: note ? V2.msgMin : 48, track: 0.14, align: 'left' })) : [];
-    return { kind, tIn, tOut, pieces, slab, singles, rungs, box, align, line, tAll, tSig, hits: [] };
+    // 變化款 0 一組組打在整塊的位置上，整個舞台就用收過的；變化款 1、3 的滿版單組照舊用整個舞台（那時原文在上方的歌詞帶裡）
+    const sbox = { top, bottom: sbottom };
+    return { kind, tIn, tOut, pieces, slab, singles, rungs, box: v === 0 ? sbox : box, sbox, align, line, tAll, tSig, hits: [] };
+  }
+
+  // ---------------------------------------------------------------- 原文副行（韓文歌）
+  /** 原文的樣式：跟大字同一個字族（韓文自動接思源黑體），顏色照這一款的墨色；字級照大字的字級換算（最多 56）。 */
+  private subStyle(sl: Slab, align: 'left' | 'center', maxWidth: number): LyricStyle {
+    const tn = this.tone;
+    return { family: sl.family, size: sl.size, maxWidth, align, sung: rgba(tn.sung[0], tn.sung[1]), unsung: rgba(tn.un[0], tn.un[1]) };
+  }
+  /** 大字最後一行基線到原文最後一排下緣要的高度（舞台要扣掉這麼多）。 */
+  private subRoom(c: CanvasRenderingContext2D, sub: Line, sl: Slab) {
+    const lay = layoutLyric(c, sub, subStyleFor(this.subStyle(sl, 'left', V0_LYRIC_W), sl.size));
+    return Math.max(0, Math.max(...sl.pieces.map((p) => p.y)) + subGap(sl.size, lay.size) + (lay.height - lay.size) + lay.size * 0.3 - sl.bottom);
+  }
+  /** 畫在大字塊正下方（bx, by = 整塊第一行基線的左端）：左對齊的貼左緣、置中的對齊畫面中線。 */
+  private drawSub(c: CanvasRenderingContext2D, it: Item, sl: Slab, bx: number, by: number, t: number, alpha: number) {
+    const sub = lyricSubOf(it.line);
+    if (!sub || alpha <= 0.001) return;
+    const lastBase = Math.max(...sl.pieces.map((p) => p.y));
+    const x = it.align === 'left' ? bx : W / 2;
+    c.save();
+    c.translate(x, by + lastBase + subGap(sl.size, subStyleFor(this.subStyle(sl, it.align, V0_LYRIC_W), sl.size).size));
+    drawLyricSub(c, sub, t, this.subStyle(sl, it.align, it.align === 'left' ? V0_LYRIC_W : SW), sl.size, alpha);
+    c.restore();
   }
 
   /**
@@ -542,6 +577,8 @@ export default class Slam extends Scene {
         c.fillRect(px, py + sl.size * 0.1 - 1, h.x, 2);
       }
     });
+    // 原文（韓文歌）：第一組打上來時一起出現在整塊的正下方，逐字跟著原文自己的時間亮
+    if (it.kind === 'line') this.drawSub(c, it, sl, bx, by, t, prog(t, it.tIn - 0.12, it.tIn + 0.2, ease.outExpo));
     return head;
   }
 
@@ -571,7 +608,9 @@ export default class Slam extends Scene {
   /** 唱完（或打完）組成一整塊。`creep`：拿著的字慢慢往鏡頭靠（留言另外有鏡頭在推，這裡給 0）。 */
   private drawWhole(c: CanvasRenderingContext2D, it: Item, t: number, creep = 0.005): void {
     const sl = it.slab;
-    const { x: bx, y: by } = this.place(sl, it.box, it.align);
+    const { x: bx, y: by } = this.place(sl, it.sbox, it.align);
+    // 原文（韓文歌）：組成整塊時，上方歌詞帶（帶著原文）收掉，原文改到整塊正下方（不跟著大字放大，比較安靜）
+    if (it.kind === 'line') this.drawSub(c, it, sl, bx, by, t, prog(t, it.tAll, it.tAll + 0.3));
     this.guides(c, sl, bx, by, t, 1);
     const sc = this.punch(t, it.tAll, this.v === 2 ? 0 : 0.1, creep);
     const cx = bx + sl.width / 2, cyy = by + (sl.top + sl.bottom) / 2;
@@ -723,6 +762,20 @@ export default class Slam extends Scene {
         if (h) head = toScreen(c, { x: h.x, y: sl.size * 0.3 });
       }
       c.restore();
+    }
+    // 原文（韓文歌）：正在唱的這一句的原文，小一號放在地平線（正在唱的那一條）下面。新的一條是從下面 0.6 格升上來的，
+    // 原文放在它起跳的位置再下面一點，升上來的那一下才不會從原文身上穿過去
+    if (it && it.kind === 'line' && it.rungs.length) {
+      const sub = lyricSubOf(it.line);
+      const rs = it.rungs[0]!;
+      if (sub) {
+        const st: LyricStyle = { family: rs.family, size: rs.size, maxWidth: LAD.w, align: 'left', sung: rgba(this.tone.sung[0], this.tone.sung[1]), unsung: rgba(this.tone.un[0], this.tone.un[1]) };
+        const ss = subStyleFor(st, rs.size).size;
+        c.save();
+        c.translate(lx, cy + Math.max(subGap(rs.size, ss), gap * 0.6 + rs.size * 0.3 + ss * 0.85));
+        drawLyricSub(c, sub, t, st, rs.size, prog(t, it.tIn - 0.12, it.tIn + 0.2) * (1 - this.itemExit(it, t)));
+        c.restore();
+      }
     }
     // 留言、邀請打完之後：組成一小塊，安靜地放在梯子的位置（留言定住後鏡頭一樣慢慢推、小節線輕打）
     if (it && it.kind !== 'line' && t >= it.tAll) {

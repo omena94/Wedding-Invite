@@ -75,7 +75,7 @@ const layoutCache = new WeakMap<Line, Map<string, LyricLayout>>();
  */
 export function layoutLyric(c: CanvasRenderingContext2D, line: Line, st: LyricStyle): LyricLayout {
   const sub = lyricSubOf(line);
-  const key = `${st.family}|${st.size}|${st.minSize}|${st.maxWidth}|${st.align}|${st.tracking}|${st.lineHeight}|${sub ? 1 : 0}`;
+  const key = `${st.family}|${st.size}|${st.minSize}|${st.maxWidth}|${st.align}|${st.tracking}|${st.lineHeight}`;
   let m = layoutCache.get(line);
   if (!m) { m = new Map(); layoutCache.set(line, m); }
   const hit = m.get(key);
@@ -139,14 +139,14 @@ export function drawLyric(c: CanvasRenderingContext2D, line: Line, t: number, st
   if (lay.sub) {
     c.save();
     c.translate(0, lay.sub.dy);
-    drawSubWords(c, lay.sub.lay, t, st, alpha);
+    drawSubWords(c, lay.sub.lay, t, subStyleFor(st, lay.size), alpha);
     c.restore();
   }
   return head;
 }
 
 /**
- * 副行（原文）的畫法：比主行安靜——正在唱與唱完都用「唱完」的顏色（不用訊號色，不跟中文搶），整體再淡一點；
+ * 副行（原文）的畫法（st 是 subStyleFor 的副行樣式：字距要跟排版時一樣，不然字會疊在一起、唱完的字被 clip 切掉尾巴）：比主行安靜——正在唱與唱完都用「唱完」的顏色（不用訊號色，不跟中文搶），整體再淡一點；
  * 還沒唱的跟主行一樣三成。逐字時間是原文自己的，所以原文跟著真正的歌聲亮。
  */
 function drawSubWords(c: CanvasRenderingContext2D, lay: LyricLayout, t: number, st: LyricStyle, alpha: number) {
@@ -187,8 +187,9 @@ function paintWords(c: CanvasRenderingContext2D, lay: LyricLayout, t: number, st
  * 典型用法：`const sub = lyricSubOf(line); if (sub) { c.translate(x, 主行最後一排基線 + subGap(主行字級)); drawLyricSub(c, sub, t, st, 主行字級); }`
  */
 export function drawLyricSub(c: CanvasRenderingContext2D, sub: Line, t: number, st: LyricStyle, mainSize = st.size, alpha = 1): LyricLayout {
-  const lay = layoutLyric(c, sub, subStyleFor(st, mainSize));
-  drawSubWords(c, lay, t, st, alpha);
+  const sst = subStyleFor(st, mainSize);
+  const lay = layoutLyric(c, sub, sst);
+  drawSubWords(c, lay, t, sst, alpha);
   return lay;
 }
 

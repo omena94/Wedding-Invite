@@ -23,7 +23,7 @@ import { LIN, rgba } from '../engine/palette';
 import { clamp, ease, prog, hash, pulse } from '../engine/util';
 import { fitText } from '../engine/text';
 import type { Line } from '../engine/lyrics';
-import { drawHeart, fillWithHearts, COUPLE_ZH, COUPLE_EN, DATE_DOTS } from './_motifs';
+import { drawHeart, fillWithHearts, COUPLE_ZH, COUPLE_EN, DATE_DOTS, lyricSubOf, layoutLyric, subStyleFor, subGap, drawLyricSub, type LyricStyle } from './_motifs';
 import { grid, layoutRows, drawRows, paperInk, darkInk } from './_t4';
 import { msgBlock, INVITE, type MsgBlock } from './_t14';
 import { shownLyric, sigOf } from './_t24';
@@ -454,8 +454,10 @@ export default class Trivision extends Scene {
   private drawFace(k: number, it: Item, j: number, t: number) {
     let sig = `${j}:${it.kind}`;
     if (it.kind === 'line') {
-      const l = it.line;
-      sig += t < l.start ? ':pre' : t > l.end ? ':post' : `:${t.toFixed(3)}`;
+      // 韓文歌的原文有自己的逐字時間（頭尾可能比中文早、晚一點）：這段時間也逐幀重畫
+      const l = it.line, sub = lyricSubOf(l);
+      const a = Math.min(l.start, sub?.start ?? Infinity), b = Math.max(l.end, sub?.end ?? -Infinity);
+      sig += t < a ? ':pre' : t > b ? ':post' : `:${t.toFixed(3)}`;
     }
     if (this.faceSig[k] === sig) return;
     this.faceSig[k] = sig;
@@ -523,12 +525,25 @@ export default class Trivision extends Scene {
 
   /** 沒有留言：歌詞印在看板上（焦點，逐字跟唱；螢幕上 52 px）。 */
   private drawLyricFace(c: CanvasRenderingContext2D, line: Line, t: number) {
-    const st = { family: FAM_LYR, size: this.lyrSize, minSize: wpx(V2.lyrMin), maxW: BW - 240, maxRows: 3, align: 'left' as const, lineHeight: 1.14 };
+    // 有原文（韓文歌）：中文最多兩行，原文小一號印在正下方，整組在海報上置中
+    const sub = lyricSubOf(line);
+    const st = { family: FAM_LYR, size: this.lyrSize, minSize: wpx(V2.lyrMin), maxW: BW - 240, maxRows: sub ? 2 : 3, align: 'left' as const, lineHeight: 1.14 };
     const lay = layoutRows(c, line, st);
-    const y = (BH - lay.height) / 2 + lay.size * 0.8;
+    // 原文照螢幕 px 排（subSizeFor 的 32～56 是螢幕上的大小），印在看板上要換回世界單位
+    const ms = lay.size * S_BOARD;
+    const sst: LyricStyle = { family: FAM_LYR, size: ms, maxWidth: (BW - 240) * S_BOARD, align: 'left', ...paperInk() };
+    const sLay = sub ? layoutLyric(c, sub, subStyleFor(sst, ms)) : null;
+    const sGap = sLay ? wpx(subGap(ms, sLay.size)) : 0;
+    const hAll = sLay ? lay.height + sGap + wpx(sLay.height - sLay.size + sLay.size * 0.25) : lay.height;
+    const y = (BH - hAll) / 2 + lay.size * 0.8;
     c.save(); c.translate(120, y);
     drawRows(c, lay, FAM_LYR, t, paperInk());
     c.restore();
+    if (sub) {
+      c.save(); c.translate(120, y + (lay.rows.length - 1) * lay.lineHeight + sGap); c.scale(1 / S_BOARD, 1 / S_BOARD);
+      drawLyricSub(c, sub, t, sst, ms);
+      c.restore();
+    }
     c.fillStyle = rgba('blood', 0.85);
     c.fillRect(124, y - lay.size - 36, 110, 7);
   }

@@ -465,7 +465,8 @@ export default class Countdown extends Scene {
     if (ly) {
       const st: LyricStyle = { family: FAM_LYR, size: this.lyrSize, minSize: V2.lyrMin, maxWidth: LYR.w };
       const lay = layoutLyric(c, ly.line, st);
-      const y = LYR.y - (lay.rows.length > 1 ? lay.size * 1.18 : 0);
+      // 貼底：最後一排（有韓文原文時是原文最後一排）的基線在 LYR.y；沒有原文時 height - size 就是中文折出來的那一排
+      const y = LYR.y - (lay.height - lay.size);
       c.save(); c.translate(LYR.x, y);
       drawLyric(c, ly.line, t, st, lay, ly.k * prog(t, s, s + 0.4));
       c.restore();

@@ -3,7 +3,8 @@
 // （沒亮的燈珠也看得到），所以字有 LED 的顆粒，但字形完整、讀得清楚。板子外面是夜空、遠處照明燈的散景、前景看台的剪影。
 // MV 版（新人要一個焦點）：板子上只有三樣東西——
 //  - 中間最大：主打留言（本場最佳）。第一拍起 LED 一個字一個字打出來（訊號色游標），打完署名。新人的留言標「新人致詞」。
-//    沒有留言：中間改成歌詞（大字逐字跟唱），下排慢慢捲一行邀請。
+//    沒有留言：中間改成歌詞（大字逐字跟唱），下排慢慢捲一行邀請。韓文歌有中文翻譯時（2026-09-30）：中文下面小一號打原文
+//    （原文自己的逐字時間，唱到、唱完都是白色、淡一點、不發光），兩行一起在主畫面裡置中。
 //  - 上排小小的比分：宣文 13：13 孟庭（婚禮是 13 號）。每兩小節一方在小節線進球（名字變 GOAL! 閃一拍、數字往上捲），
 //    另一方兩拍後在小鼓上扳平——比分永遠平手，底下一行小字「平手（預計永遠如此）」。
 //  - 下排：歌詞跑馬燈（比留言小一級）。新的一句從右邊推進來、停住逐字跟唱；太長的句子跟著唱到的字捲。
@@ -16,7 +17,7 @@ import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, lerp, prog, pulse, hash } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
 import { Lyrics, type Line } from '../engine/lyrics';
-import { lyricAt, layoutLyric, beatAfter, signature, fillWithHearts, WEDDING_DATE, type LyricLayout } from './_motifs';
+import { lyricAt, layoutLyric, beatAfter, signature, fillWithHearts, WEDDING_DATE, lyricSubOf, drawLyricSub, subStyleFor, subGap, type LyricLayout, type LyricStyle } from './_motifs';
 import { stagger, homography, type P2 } from './_t11';
 import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 } from './_v2';
 import { LineBatch } from '../engine/lines';
@@ -432,8 +433,24 @@ export default class Scoreboard extends Scene {
     const st = { family: FAM_LYR, size: lyricV2(null) / this.sB, minSize: V2.lyrMin / this.sB, maxWidth: MAIN.w, align: 'center' as const, lineHeight: 1.12 };
     const lay = layoutLyric(c, ly.line, st);
     const inK = ease.outExpo(prog(t, ly.line.start - 0.35, ly.line.start + 0.1));
-    const oy = MAIN.y + (MAIN.h - lay.height) / 2 + lay.size * 0.86 + (1 - inK) * 24;
+    const sub = lyricSubOf(ly.line);
+    if (!sub) {
+      const oy = MAIN.y + (MAIN.h - lay.height) / 2 + lay.size * 0.86 + (1 - inK) * 24;
+      this.karaoke(c, hc, ly.line, lay, MAIN.cx, oy, t, ly.k);
+      return;
+    }
+    // 原文副行：字級與間距照螢幕 px 的規則（板面 px × sB = 螢幕 px），在板面上縮成螢幕 px 畫；主行＋原文整塊在主畫面置中
+    const sB = this.sB, main = lay.size * sB;
+    const sst: LyricStyle = { family: FAM_LYR, size: main, maxWidth: MAIN.w * sB, align: 'center', sung: rgba('bone'), unsung: rgba('bone', 0.3) };
+    const sl = layoutLyric(c, sub, subStyleFor(sst, main));
+    const last = lay.rows[lay.rows.length - 1]!.y, gap = subGap(main) / sB;
+    const h = lay.size + last + gap + sl.rows[sl.rows.length - 1]!.y / sB;
+    const oy = MAIN.y + (MAIN.h - h) / 2 + lay.size * 0.86 + (1 - inK) * 24;
     this.karaoke(c, hc, ly.line, lay, MAIN.cx, oy, t, ly.k);
+    c.save();
+    c.translate(MAIN.cx, oy + last + gap); c.scale(1 / sB, 1 / sB);
+    drawLyricSub(c, sub, t, sst, main, ly.k);
+    c.restore();
   }
 
   /** 逐字跟唱（還沒唱 3 成、正在唱訊號色＋發光、唱完紙白）。 */

@@ -22,7 +22,7 @@ import { F, font } from '../engine/type';
 import { LIN, rgba } from '../engine/palette';
 import { clamp, ease, hash, lerp, prog } from '../engine/util';
 import type { FitResult } from '../engine/text';
-import { lyricAt, sparkHead, sparkParticles, beatAfter, barAfter, drawMessage, COUPLE_ZH } from './_motifs';
+import { lyricAt, sparkHead, sparkParticles, beatAfter, barAfter, drawMessage, COUPLE_ZH, lyricSubOf, subSizeFor, subGap } from './_motifs';
 import { fitText } from '../engine/text';
 import { msgMaxFor, lyricV2, fitClauses, V2 } from './_v2';
 import { typedLayout, drawTyped, inOut, ScreenRig, mipRT, blitToRT, loadPlateText } from './_t6';
@@ -65,7 +65,7 @@ const BG = () => new FSPass(/* glsl */ `
 
 type Col = 'kw' | 'id' | 'str' | 'p' | 'cm';
 type Tok = [string, Col];
-interface Row { y: number; h: number; num: number; toks: Tok[]; kind: 'code' | 'lyric' | 'msg'; i: number }
+interface Row { y: number; h: number; num: number; toks: Tok[]; kind: 'code' | 'lyric' | 'sub' | 'msg'; i: number }
 
 export default class Code extends Scene {
   bg = shared('code.bg', BG);
@@ -83,6 +83,8 @@ export default class Code extends Scene {
   lyricY = 0; msgY = 0; msgTop = 0; msgBot = 0; loveRow = 0;
   /** 歌詞那一行的字級（貼圖上）與留言在螢幕上的字級。 */
   lyrSize = 70; msgScreen: number | null = null;
+  /** 原文副行（韓文歌）：貼圖上的字級、離歌詞最後一排基線多遠、這個窗格最多幾排（0 = 沒有原文）。 */
+  subSize = 46; subDy = 0; subRows = 0;
 
   override async init() {
     const { audio: au } = this.ctx;
@@ -101,6 +103,13 @@ export default class Code extends Scene {
     mc.font = font(F.mono(400), FS);
     const lyricW = TW - GUT - PAD_R - mc.measureText('  // ♪ ').width;
     for (const ln of this.ctx.lyrics.linesIn(s - 1, e + 1)) this.lyricRows = Math.max(this.lyricRows, typedLayout(mc, ln, F.mono(400), this.lyrSize, lyricW, { minSize: V2.lyrMin / LS, maxRows: 2 }).rows);
+    // 原文副行：歌詞註解下面再一行小一號的註解（字級照螢幕 px 算，再換回貼圖）；一樣先算好最多幾排，下面的程式才不會跳
+    this.subSize = subSizeFor(this.lyrSize * LS) / LS;
+    this.subDy = subGap(this.lyrSize * LS, this.subSize * LS) / LS;
+    for (const ln of this.ctx.lyrics.linesIn(s - 1, e + 1)) {
+      const sub = lyricSubOf(ln);
+      if (sub) this.subRows = Math.max(this.subRows, typedLayout(mc, sub, F.mono(400), this.subSize, lyricW, { minSize: this.subSize * 0.8, maxRows: 2 }).rows);
+    }
     this.buildRows();
     // 時間：第一拍開始打留言；拉焦（歌詞 → 留言）跟著打字開始，一小節內完成；打完的下一個小節線「全選」一下
     const b0 = beatAfter(au, s + 0.05), beat = au.beatPeriod(b0);
@@ -121,11 +130,14 @@ export default class Code extends Scene {
   private buildRows() {
     const rows: Row[] = [];
     let y = 70, num = 7;
-    const add = (toks: Tok[], kind: Row['kind'] = 'code', h = LH, i = 0) => { rows.push({ y, h, num: kind === 'msg' && i > 0 ? 0 : num++, toks, kind, i }); y += h; };
+    // 原文那一段是歌詞註解的自動換行，不佔行號
+    const add = (toks: Tok[], kind: Row['kind'] = 'code', h = LH, i = 0) => { rows.push({ y, h, num: (kind === 'msg' && i > 0) || kind === 'sub' ? 0 : num++, toks, kind, i }); y += h; };
     add([['import', 'kw'], [' { 你, 我 } ', 'id'], ['from', 'kw'], [' "今晚";', 'str']]);
     add([]);
     add([['while', 'kw'], [' (', 'p'], ['true', 'kw'], [') {', 'p']]);
     for (let i = 0; i < this.lyricRows; i++) add([], 'lyric', this.lyrSize * 1.3, i);
+    // 原文那一段（像編輯器的自動換行，不編行號）：高度留到副行最後一排的字底
+    if (this.subRows) add([], 'sub', this.subDy + (this.subRows - 1) * this.subSize * 1.3 + this.subSize * 0.1, 0);
     add([['  const', 'kw'], [' 祝福', 'id'], [' = ', 'p'], ['`', 'str']]);
     const fit = this.fit!;
     this.msgTop = y;
@@ -156,7 +168,8 @@ export default class Code extends Scene {
     // 螢幕放在畫面左邊一點，右下角 HUD 那一區只看得到暗暗的房間
     this.rig.pose({ fx: GUT + 360, fy, cx: lerp(630, 600, r), cy: lerp(430, 455, r), scale, rx: -0.3 + 0.04 * r, ry: lerp(0.4, 0.32, r) + 0.06 * (1 - inK), rz: -0.015 });
     // 對焦範圍：歌詞那一行到留言的最後一行，上面幾行與右邊糊掉；打字前只對焦在歌詞
-    const fy1 = lerp(this.lyricY + LH, this.msgBot + LH * 2, r);
+    const subH = this.rows.find((x) => x.kind === 'sub')?.h ?? 0;
+    const fy1 = lerp(this.lyricY + LH + subH, this.msgBot + LH * 2, r);
     // 左右整行都在焦點裡（長留言寫到最右邊也要清楚），上下離開就糊
     this.rig.focus(0, this.lyricY - LH * 0.7, TW, fy1, 70);
     return r;
@@ -210,6 +223,7 @@ export default class Code extends Scene {
     if (t >= this.tType1 && kick > 0.02) { c.fillStyle = rgba('signal', 0.035 * kick); c.fillRect(0, lr.y + 4, TW, lr.h - 8); }
     for (const r of this.rows) {
       const base = r.y + r.h * 0.5 + (r.kind === 'lyric' ? this.lyrSize : FS) * 0.36;
+      if (r.kind === 'sub') continue; // 原文由歌詞那一行一起畫（跟著歌詞實際排了幾排）
       if (r.kind !== 'msg' || r.i === 0) {
         c.font = font(F.mono(400), 26); c.textAlign = 'right'; c.fillStyle = rgba('graphite', 0.75);
         c.fillText(String(r.num), GUT - 34, r.kind === 'msg' ? r.y + r.h * 0.62 : base - 6);
@@ -276,6 +290,14 @@ export default class Code extends Scene {
     const lay = typedLayout(c, ly.line, F.mono(400), sz, TW - x0 - PAD_R, { minSize: V2.lyrMin / LS, maxRows: 2 });
     const cur = drawTyped(c, lay, F.mono(400), x0, base, lh, t, { active: rgba('signal'), sung: rgba('bone', 0.86), ghost: rgba('bone', 0.2) }, ly.k);
     for (let r = 1; r < lay.rows; r++) this.drawToks(c, [['  //   ', 'cm']], GUT, base + r * lh);
+    // 原文副行：中文正下方再「打」一行小一號的註解，逐字時間照原文自己的；比中文安靜（不用訊號色、淡兩成），游標只跟著中文
+    const sub = lyricSubOf(ly.line);
+    if (sub && this.subRows) {
+      const sl = typedLayout(c, sub, F.mono(400), this.subSize, TW - x0 - PAD_R, { minSize: this.subSize * 0.8, maxRows: 2 });
+      const sb = base + (lay.rows - 1) * lh + this.subDy, slh = this.subSize * 1.3;
+      drawTyped(c, sl, F.mono(400), x0, sb, slh, t, { active: rgba('bone', 0.86 * 0.8), sung: rgba('bone', 0.86 * 0.8), ghost: rgba('bone', 0.2) }, ly.k);
+      for (let r = 0; r < sl.rows; r++) this.drawToks(c, [['  //   ', 'cm']], GUT, sb + r * slh);
+    }
     return cur.typing ? { x: cur.x, y: cur.y - sz * 0.35 } : null;
   }
 

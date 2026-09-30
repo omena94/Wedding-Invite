@@ -14,6 +14,8 @@ uniform vec2 uAG;
 uniform sampler2D uLab;     // 絹印標籤（R）
 uniform vec4 uLabR;         // 標籤圖層在板子上的範圍
 uniform sampler2D uPlate;   // 銘牌上的字（G = 刻好的字，B = 還在燙的字）
+uniform sampler2D uSub;     // 韓文原文副行（絹印在歌詞滾輪下面）：R = 還沒唱、G = 唱到／唱完
+uniform vec4 uSubR;         // 副行圖層在板子上的範圍（沒有副行時寬度是 0）
 uniform vec4 uPlateR;       // 銘牌範圍
 uniform vec4 uBA[${NB}];    // 滾輪組：x0, 中心 y, 間距, 輪面寬
 uniform vec4 uBB[${NB}];    // 半徑, 每格的角度, 窗的半高, 滾輪數
@@ -76,6 +78,16 @@ void main() {
   if (lu.x > 0.0 && lu.x < 1.0 && lu.y > 0.0 && lu.y < 1.0) {
     float l = texture(uLab, vec2(lu.x, 1.0 - lu.y), dof * 0.8).r;
     col = mix(col, C_BONE * 0.62, l * mp);
+  }
+  // 韓文原文副行：跟標籤一樣是印在板子上的字（同樣的透視、景深），比滾輪上的中文安靜——
+  // 還沒唱的三成、唱到／唱完是淡兩成的紙白（G 畫的時候已經是八成），不用訊號色
+  if (uSubR.z > 1.0) {
+    vec2 su = (q - uSubR.xy) / uSubR.zw;
+    if (su.x > 0.0 && su.x < 1.0 && su.y > 0.0 && su.y < 1.0) {
+      vec4 sx = texture(uSub, vec2(su.x, 1.0 - su.y), dof * 0.8);
+      col = mix(col, C_BONE * 0.92, sx.r * 0.3 * mp);
+      col = mix(col, C_BONE * 0.92, sx.g * mp);
+    }
   }
 
   // 銘牌：主題色的金屬（訊號色的暗部），刻字填墨；剛刻好的字燒紅（沒有銘牌時寬度是 0）

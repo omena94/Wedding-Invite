@@ -17,7 +17,7 @@ import { FSPass, Layer2D, W, H } from '../engine/gl';
 import { F, font, loadText } from '../engine/type';
 import { rgba } from '../engine/palette';
 import { clamp, ease, prog, hash, lerp } from '../engine/util';
-import { lyricAt, COUPLE_ZH } from './_motifs';
+import { lyricAt, COUPLE_ZH, lyricSubOf, layoutLyric, subStyleFor, subGap, drawLyricSub, type LyricStyle } from './_motifs';
 import { grid, stagger, layoutRows, drawRows, darkInk } from './_t4';
 import { PlaneCam, camUniforms, CAM_GLSL, orderMask, lineItems, msgBlockV2, INVITE, type OrderMask, type MsgBlock, type Rect } from './_t14';
 import { lyricV2 } from './_v2';
@@ -379,9 +379,20 @@ export default class Loom extends Scene {
     if (ly) {
       const st = { family: FAM_LYR, size: this.lyr.size, minSize: 40, maxW: this.lyr.w, maxRows: this.msg ? 1 : 2, align: 'left' as const };
       const lay = layoutRows(c, ly.line, st);
-      c.save(); c.translate(this.lyr.x, this.lyr.y - (lay.rows.length - 1) * lay.lineHeight);
+      // 原文（韓文歌）：小一號放在中文正下方；整組往上長，原文最後一排停在邀請那行小字的上面
+      const sub = lyricSubOf(ly.line);
+      const sst: LyricStyle = { family: FAM_LYR, size: lay.size, maxWidth: this.lyr.w, align: 'left', ...darkInk() };
+      const sLay = sub ? layoutLyric(c, sub, subStyleFor(sst, lay.size)) : null;
+      const sGap = sLay ? subGap(lay.size, sLay.size) : 0;
+      const yLast = sLay ? Math.min(this.lyr.y, 946 - sGap - (sLay.height - sLay.size)) : this.lyr.y;
+      c.save(); c.translate(this.lyr.x, yLast - (lay.rows.length - 1) * lay.lineHeight);
       drawRows(c, lay, FAM_LYR, t, darkInk(), ly.k * k0);
       c.restore();
+      if (sub) {
+        c.save(); c.translate(this.lyr.x, yLast + sGap);
+        drawLyricSub(c, sub, t, sst, lay.size, ly.k * k0);
+        c.restore();
+      }
     }
     if (!this.msg) {
       c.font = font(F.hei(500), this.hasLyrics ? 22 : 30); c.letterSpacing = '3px';

@@ -15,7 +15,7 @@ import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, pulse, hash, lerp } from '../engine/util';
 import { Lyrics, type Line } from '../engine/lyrics';
 import type { FitResult } from '../engine/text';
-import { lyricAt, layoutLyric, layoutMessage, signature, beatAfter, drawHeart, DATE_DOTS, type LyricLayout } from './_motifs';
+import { lyricAt, layoutLyric, layoutMessage, signature, beatAfter, drawHeart, DATE_DOTS, lyricSubOf, drawLyricSub, type LyricLayout, type LyricStyle } from './_motifs';
 import { drawReveal, phraseSchedule, revealAt, fitCharsF, windowLines, type Rect } from './_t10';
 import { pad3 } from './_t11';
 import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 } from './_v2';
@@ -109,6 +109,7 @@ export default class Pianoroll extends Scene {
   card = { w: 860, h: 200 }; sigSize = 30; lyrSize = 52;
   tFirst = 0; beat = 0.5;
   hasLyrics = false;
+  lyrSt!: LyricStyle;
   avoid: Rect[] = [];
   private baseUp = false;
 
@@ -117,7 +118,7 @@ export default class Pianoroll extends Scene {
     const s = this.ctx.start, e = this.ctx.end, m = this.msg;
     this.body = m ? m.text : INVITE;
     const lines = windowLines(lyrics, s - 8, e + 12);
-    await loadText(`${TEXT}${this.body}${m ? m.name : ''}${song.title}${song.artist}${lines.map((l) => l.text).join('')}`);
+    await loadText(`${TEXT}${this.body}${m ? m.name : ''}${song.title}${song.artist}${lines.map((l) => l.text + (l.sub?.text ?? '')).join('')}`);
     this.beat = au.beatPeriod(s + 0.1);
     this.hasLyrics = windowLines(lyrics, s, e).length > 0;
     const c = this.dyn.ctx;
@@ -138,12 +139,14 @@ export default class Pianoroll extends Scene {
     this.sched = phraseSchedule(au, this.body, this.tFirst, Math.min(8 * this.beat, 0.45 * (e - s)), 4);
 
     // ---- 歌詞：排好每一行；紙速要讓相鄰兩行不疊在一起
-    const st = { family: F.archivo(100, 800), size: this.lyrSize, minSize: V2.lyrMin, maxWidth: LYR.w, lineHeight: 1.1 };
+    const st: LyricStyle = { family: F.archivo(100, 800), size: this.lyrSize, minSize: V2.lyrMin, maxWidth: LYR.w, lineHeight: 1.1 };
+    this.lyrSt = st;
     this.printed = lines.map((line) => ({ line, lay: layoutLyric(c, line, st) }));
     let v = 62;
     for (let i = 0; i + 1 < this.printed.length; i++) {
       const a = this.printed[i]!, b = this.printed[i + 1]!;
       const gap = Math.max(0.25, b.line.start - a.line.start);
+      // 有原文副行時 lay.height 算到原文的基線，紙速一起算進去，原文不會跟下一行疊在一起
       v = Math.max(v, (a.lay.height + this.lyrSize * 0.55 + 26) / gap);
     }
     this.v = clamp(v, 62, 190);
@@ -388,6 +391,13 @@ export default class Pianoroll extends Scene {
         c.fillText(pw.word.w, x, y);
         c.restore();
         // 亮版面不加光暈：加亮疊在紙上會把深色的字洗淡
+      }
+      // 原文副行（韓文歌）：一樣印在紙上、跟著紙捲，小一號、墨色，不上螢光筆（比中文安靜）；
+      // 紙速在 init 已經照含副行的高度算過，相鄰兩行不會疊在一起
+      const sub = lyricSubOf(line);
+      if (sub && lay.sub) {
+        c.translate(LYR.x, y0 + lay.sub.dy);
+        drawLyricSub(c, sub, t, { ...this.lyrSt, sung: rgba('sepia'), unsung: rgba('sepia', 0.3) }, lay.size, c.globalAlpha);
       }
       c.restore();
     }

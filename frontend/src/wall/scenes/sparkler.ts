@@ -24,7 +24,7 @@ import { clamp, ease, prog, pulse } from '../engine/util';
 import { LIN } from '../engine/palette';
 import { fitText, type FitResult } from '../engine/text';
 import { Lyrics, type Line } from '../engine/lyrics';
-import { sparkHead, sparkParticles, lyricAt, drawLyric, layoutLyric, beatAfter, barAfter, signature, drawHeart } from './_motifs';
+import { sparkHead, sparkParticles, lyricAt, drawLyric, layoutLyric, lyricSubOf, drawLyricSub, beatAfter, barAfter, signature, drawHeart } from './_motifs';
 import { V2, msgMaxFor, lyricV2, sigV2, fitClauses } from './_v2';
 
 /** 信紙（860×430，v2 的留言區上限）與紙上寫字的框（下面留 80 給簽名）。 */
@@ -492,6 +492,15 @@ export default class Sparkler extends Scene {
         c.fillText(g.ch, x, y);
         if (heat > 0.05) { hc.fillStyle = rgba('signal', heat * heat * 0.9); hc.fillText(g.ch, x, y); }
       }
+    }
+    // 韓文歌：原文小一號寫在中文下面那一條橫線上（同一張信紙、同一種手寫字）。仙女棒只寫中文——原文不燒紅、不發光：
+    // 還沒唱的淡淡先在紙上，唱到（照原文自己的逐字時間）就亮成紙白、淡一點，比中文安靜。三排中文加兩排原文也還在信紙裡。
+    const orig = lyricSubOf(line);
+    if (orig) {
+      c.save();
+      c.translate(BOX.x, top + fit.lines.length * fit.lineHeight);
+      drawLyricSub(c, orig, t, { family, size: fit.size, maxWidth: BOX.w, align: 'left', sung: rgba('bone', 0.96), unsung: rgba('bone', 0.14) }, fit.size, c.globalAlpha);
+      c.restore();
     }
     c.restore(); hc.restore();
     return pen;

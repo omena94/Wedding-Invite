@@ -18,7 +18,7 @@ import { rgba } from '../engine/palette';
 import { clamp, ease, prog, lerp, noise1 } from '../engine/util';
 import { fitText } from '../engine/text';
 import type { Line } from '../engine/lyrics';
-import { drawLyric, layoutLyric, lyricAt, beatAfter, type LyricStyle } from './_motifs';
+import { drawLyric, layoutLyric, lyricAt, beatAfter, drawLyricSub, type LyricStyle, type LyricLayout } from './_motifs';
 import { preloadText, INVITE_SMALL, paperSignal } from './_t19';
 import { ensureBake, barsIn, sigInk } from './_t1';
 import { placeBlock, drawBlock, sigOf, fitV2, T22_TEXT, type Rect } from './_t22';
@@ -239,13 +239,20 @@ export default class Vows extends Scene {
     this.page.upload();
   }
 
-  /** 一行歌詞的排版（誓詞的字）；上一句留在上面、淡一點。 */
-  private drawVow(c: CanvasRenderingContext2D, line: Line, t: number, y: number, alpha: number, dim: boolean) {
+  /**
+   * 一行歌詞的排版（誓詞的字）；上一句留在上面、淡一點。
+   * subK：原文副行（韓文歌，drawLyric 自動畫在中文下面）的淡出係數——上一句往上退的時候原文先淡掉，
+   * 不然它會壓到下面正在唱的那一句（一次顯示兩句：只有正在唱的那句留原文）。
+   */
+  private drawVow(c: CanvasRenderingContext2D, line: Line, t: number, y: number, alpha: number, dim: boolean, subK = 1) {
     const st = dim ? { ...this.st, active: rgba('sepia', 0.3), sung: rgba('sepia', 0.3), unsung: rgba('sepia', 0.18) } : this.st;
     const lay = layoutLyric(c, line, st);
     c.save();
     c.translate(this.vx, y - (lay.rows.length - 1) * lay.size * 1.12);
-    drawLyric(c, line, t, st, lay, alpha);
+    if (lay.sub && subK < 1) {
+      drawLyric(c, line, t, st, { ...lay, sub: undefined } as LyricLayout, alpha);
+      if (subK > 0) { c.save(); c.translate(0, lay.sub.dy); drawLyricSub(c, line.sub!, t, st, lay.size, alpha * subK); c.restore(); }
+    } else drawLyric(c, line, t, st, lay, alpha);
     // 條文編號（左邊界外、很小的羅馬數字）
     c.globalAlpha = alpha * (dim ? 0.5 : 1);
     c.textAlign = 'right'; c.font = font(F.serif(400, true), 24); c.fillStyle = rgba('sepia', 0.45);
@@ -273,7 +280,7 @@ export default class Vows extends Scene {
         const up = lerp(0, 1, kin);
         const pLay = layoutLyric(c, prev, this.st);
         const gap = pLay.size * 1.55 + rowsH;
-        this.drawVow(c, prev, t, this.vy - gap * up, lerp(1, 0.9, up), up > 0.5);
+        this.drawVow(c, prev, t, this.vy - gap * up, lerp(1, 0.9, up), up > 0.5, 1 - prog(up, 0, 0.45));
       }
       c.save(); c.globalAlpha = 1; this.drawVow(c, line, t, this.vy + (1 - kin) * 22, ly.k, false); c.restore();
     } else {

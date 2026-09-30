@@ -17,7 +17,7 @@ import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, pulse, lerp, TAU } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
 import { Lyrics, type Line } from '../engine/lyrics';
-import { lyricAt, layoutLyric, beatAfter, signature, fillWithHearts, type LyricLayout } from './_motifs';
+import { lyricAt, layoutLyric, beatAfter, signature, fillWithHearts, lyricSubOf, type LyricLayout } from './_motifs';
 import { Paper, stagger, mono, tag } from './_t11';
 import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 } from './_v2';
 import { fillGlyph, type Rect } from './_t9';
@@ -427,6 +427,17 @@ export default class Metronome extends Scene {
       // 進場：提早一點點從內圈浮上來
       const kin = ease.outCubic(ly.k);
       this.glyphOnArc(c, pw.word.w, xc, R - (1 - kin) * 14, pw.w, p, p < 1 ? active : sung, unsung, ly.k);
+    }
+    // 原文副行（韓文歌）：一樣立在弧上、往內一圈、小一號（layoutLyric 已經排好：lay.sub.dy 是離主行第一圈基線多遠）。
+    // 比中文安靜：唱到、唱完都是墨色淡兩成，還沒唱的三成
+    const sub = lyricSubOf(ly.line);
+    if (sub && lay.sub) {
+      const sl = lay.sub.lay, lit = rgba('sepia', 0.95 * 0.8), kin = ease.outCubic(ly.k);
+      c.font = font(FAM_LYR, sl.size);
+      for (const pw of sl.words) {
+        const p = Lyrics.wordProgress(pw.word, t);
+        this.glyphOnArc(c, pw.word.w, pw.x + pw.w / 2, ARC_R - lay.sub.dy - pw.y - (1 - kin) * 14, pw.w, p, lit, unsung, ly.k);
+      }
     }
   }
 

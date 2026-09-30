@@ -17,7 +17,7 @@ import { F, font, loadText } from '../engine/type';
 import { LIN, rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, hash } from '../engine/util';
 import { Lyrics } from '../engine/lyrics';
-import { lyricAt, layoutLyric, barAfter, beatAfter, sparkHead, sparkParticles, msgChars, type LyricStyle } from './_motifs';
+import { lyricAt, layoutLyric, barAfter, beatAfter, sparkHead, sparkParticles, msgChars, lyricSubOf, type LyricStyle } from './_motifs';
 import { drawNote, type Note } from './_couple';
 import { loadPuppets, drawPick, puppetShadow, puppetIn, breathe, beatKick, noteV2, tightenNote } from './_puppet';
 import { lyricV2 } from './_v2';
@@ -65,6 +65,8 @@ export default class Scooter extends Scene {
   note: Note | null = null;
   board = { x: BOARD.right - BOARD.w, y: BOARD.top, w: BOARD.w, h: BOARD.h };
   lyricSize = 48;
+  /** 韓文歌（這一格有原文副行）：招牌多一排小燈管，鋼架與下面那棟樓往下移這麼多（整格固定，換句時樓不會跳）。 */
+  subDrop = 0;
   bldgs: Bldg[] = [];
   keys: [number, string][] = [];
   stop: Stop | null = null;
@@ -108,6 +110,7 @@ export default class Scooter extends Scene {
     // 姿勢：平常 scooter_1；每一句歌詞開始時（對到最近的拍點）宣文往上指招牌一拍半；紅燈時放腳、兩人對看
     const ks: [number, string][] = [[-1e9, 'cp_scooter_1']];
     const { lyrics } = this.ctx;
+    if (lyrics.linesIn(s, e).some((l) => lyricSubOf(l))) this.subDrop = 92;
     const points: number[] = [];
     if (lyrics.has) {
       for (const ln of lyrics.linesIn(s + 0.6, e - bp * 2)) points.push(au.timeOfBeat(Math.round(au.beatAt(ln.start))));
@@ -249,7 +252,9 @@ export default class Scooter extends Scene {
     const ly = lyricAt(lyrics, t);
     const x0 = NEON.x + dx;
     // 招牌下面的那棟樓（遠景，跟招牌一起幾乎不動）：屋頂上兩支鋼架撐著招牌、零星亮著的窗
-    const roof = NEON.y + 74;
+    // （韓文歌：招牌下面多一排原文的小燈管，鋼架與樓整個往下移 subDrop）
+    const sd = this.subDrop;
+    const roof = NEON.y + 74 + sd;
     c.save();
     c.fillStyle = mixRgba('ink', 'ink2', 0.8);
     c.fillRect(x0 - 50, roof, NEON.w + 100, ARCADE - roof);
@@ -259,8 +264,8 @@ export default class Scooter extends Scene {
       c.fillRect(x0 - 20 + k * 64, roof + 26 + r * 38, 20, 18);
     }
     c.fillStyle = rgba('ink2');
-    for (const lx of [x0 + 60, x0 + NEON.w * 0.5, x0 + NEON.w - 60]) c.fillRect(lx - 4, NEON.y + 18, 8, roof - NEON.y - 18);
-    c.fillRect(x0 - 20, NEON.y + 16, NEON.w + 40, 6);
+    for (const lx of [x0 + 60, x0 + NEON.w * 0.5, x0 + NEON.w - 60]) c.fillRect(lx - 4, NEON.y + 18 + sd, 8, roof - NEON.y - 18 - sd);
+    c.fillRect(x0 - 20, NEON.y + 16 + sd, NEON.w + 40, 6);
     c.restore();
     if (!ly) return;
     const st: LyricStyle = { family: F.hei(700), size: this.lyricSize, minSize: 40, maxWidth: NEON.w, align: 'left' };
@@ -269,7 +274,8 @@ export default class Scooter extends Scene {
     const on = t - (ly.line.start - 0.35);
     const flick = on < 0.25 ? (Math.floor(on / 0.06) % 2 ? 0.3 : 1) : 1;
     const a = ly.k * flick;
-    const y0 = NEON.y - (lay.height - lay.size) * 0.5;
+    // （有原文時 lay.height 算到原文最後一排：整組一起置中，中心往下挪一點，第一排才不會太貼上緣）
+    const y0 = NEON.y + (sd ? 22 : 0) - (lay.height - lay.size) * 0.5;
     c.save();
     c.font = font(st.family, lay.size);
     g.save();
@@ -295,6 +301,31 @@ export default class Scooter extends Scene {
       g.beginPath(); g.rect(x - 4, y - lay.size * 1.1, (pw.w + 8) * p, lay.size * 1.5); g.clip();
       g.fillText(pw.word.w, x, y);
       g.restore();
+    }
+    // 原文（韓文歌）：中文正下方一排小一號的燈管，逐字時間是原文自己的；比中文安靜——唱到、唱完都是「亮著的燈管」色、淡兩成，光暈也淡
+    const sl = lay.sub;
+    if (sl) {
+      c.font = font(st.family, sl.lay.size); g.font = font(st.family, sl.lay.size);
+      for (const pw of sl.lay.words) {
+        const p = Lyrics.wordProgress(pw.word, t);
+        const x = x0 + pw.x, y = y0 + sl.dy + pw.y;
+        c.globalAlpha = a;
+        c.fillStyle = rgba('bone', 0.16);
+        if (p < 1) c.fillText(pw.word.w, x, y);
+        if (p <= 0) continue;
+        c.save();
+        c.beginPath(); c.rect(x - 4, y - sl.lay.size * 1.1, (pw.w + 8) * p, sl.lay.size * 1.5); c.clip();
+        c.globalAlpha = a * 0.8;
+        c.fillStyle = mixRgba('bone', 'signal', 0.25);
+        c.fillText(pw.word.w, x, y);
+        c.restore();
+        g.globalAlpha = a * 0.3;
+        g.fillStyle = rgba('signal', 0.7);
+        g.save();
+        g.beginPath(); g.rect(x - 4, y - sl.lay.size * 1.1, (pw.w + 8) * p, sl.lay.size * 1.5); g.clip();
+        g.fillText(pw.word.w, x, y);
+        g.restore();
+      }
     }
     g.restore();
     c.restore();

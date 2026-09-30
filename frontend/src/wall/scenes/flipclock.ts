@@ -4,6 +4,7 @@
 //    （翻牌是真的立體：上半片繞著轉軸往鏡頭倒下來、過了 90° 看到背面，落到底還會彈一下，倒下來的那片在下半片投影子）。
 //    大牌是暗的（深色的字），讓出焦點給留言；小節線那一拍的「1」是訊號色。
 //  - 大牌下面一排黑色小牌是歌詞（40～52，比留言小）：一句在唱之前翻上來（三成亮），唱到的字亮成訊號色、往前彈一下，唱完變紙白。
+//    韓文歌有中文翻譯時（2026-09-30）：歌詞那排是中文，下面再一排小一號的牌翻原文（跟著原文自己的逐字時間，唱到就變白、不用訊號色、不彈）。
 //  - 右邊一塊奶油色的牌（≤ 630 × 430）：主打留言（思源宋體、墨色的字），第一拍之後一個詞組一拍「啪、啪」翻上來；
 //    最後一列下面一排小一號的牌是署名。沒有留言：翻上邀請（小一點）。
 import * as THREE from 'three';
@@ -12,10 +13,11 @@ import { FSPass, Layer2D, W, H } from '../engine/gl';
 import { F, font, loadText } from '../engine/type';
 import { rgba } from '../engine/palette';
 import { ease, lerp, prog, pulse, hash } from '../engine/util';
-import { beatAfter, barAfter, signature, COUPLE_EN, DATE_DOTS } from './_motifs';
-import { GlyphAtlas, cuePages, windowLines, flipAt, settle, cueCol, bestCellWrap, COL, type Flip, type GlyphReq, type CuePage } from './_t7';
+import { beatAfter, barAfter, signature, lyricSubOf, subSizeFor, COUPLE_EN, DATE_DOTS } from './_motifs';
+import { GlyphAtlas, cuePages, windowLines, flipAt, settle, cueCol, cueState, bestCellWrap, COL, type Flip, type GlyphReq, type CuePage } from './_t7';
 import { msgMaxFor, lyricV2, sigV2, V2 } from './_v2';
 import { CardBatch, boxMaterial, decalMaterial, WALL_FRAG } from './flipclock-gl';
+import type { Line } from '../engine/lyrics';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'machine', paper: false, energy: [0.2, 0.85], bars: [4, 8] };
 
@@ -125,16 +127,19 @@ export default class Flipclock extends Scene {
     for (let k = 2; ; k += 2) { const tb = barAfter(au, s + 0.1, k); if (tb > e - 0.6) break; this.camTimes.push(tb); }
     const m = this.msg;
     const lines = windowLines(lyrics, s, e);
+    // 原文副行（韓文歌）：在第一個 await 之前拿（副行開關是引擎在 init 開始前替這個窗格設的）
+    const subs = lines.map((l) => lyricSubOf(l));
+    const subText = subs.map((l) => l?.text ?? '').join('');
     const sig = m ? signature(m.name).replace(/\s+/g, '') : '';
     const bigText = m ? m.text : INVITE;
     const bigFam = m ? F_BIG : F_INV;
     const title = song.title || '今晚的歌';
-    await loadText(lines.map((l) => l.text).join('') + bigText + sig + COUPLE_EN + title);
+    await loadText(lines.map((l) => l.text).join('') + subText + bigText + sig + COUPLE_EN + title);
 
     // ---- 字模：大牌的數字、小牌（歌詞）、奶油色的牌（留言）
     // 大牌是瘦長的（232 × 432）：圖集的格子照同樣的比例，數字才不會被拉長
     this.digits = this.track(new GlyphAtlas(Array.from('0123456789:').map((ch) => ({ ch, family: F_DIG })), 140, 260, { size: 214, fill: 0.86, mip: true }));
-    const reqA: GlyphReq[] = Array.from(lines.map((l) => l.text).join('') + title).map((ch) => ({ ch, family: F_LYR }));
+    const reqA: GlyphReq[] = Array.from(lines.map((l) => l.text).join('') + subText + title).map((ch) => ({ ch, family: F_LYR }));
     this.small = this.track(new GlyphAtlas(reqA, 96, 128, { size: 86, mip: true }));
     this.big = this.track(new GlyphAtlas(Array.from(bigText + sig).map((ch) => ({ ch, family: bigFam })), 168, 216, { size: 150, mip: true }));
     for (const a of [this.digits, this.small, this.big]) this.ctx.renderer.initTexture(a.tex);
@@ -177,6 +182,7 @@ export default class Flipclock extends Scene {
     const n = pages.length ? Math.max(6, ...pages.map((p) => p.rows[0]!.length)) : Math.min(cols, Array.from(title).length);
     for (let c = 0; c < Math.min(cols, n); c++) this.lyrUnits.push({ x: LYA.x + c * lk.px + lk.cw / 2, y: LYA.y + lk.ch / 2, w: lk.cw, h: lk.ch, evs: [], g0: -1, c0: COL.DIM, lights: [] });
     this.lyricRow(pages, title);
+    if (subs.some(Boolean)) this.subRow(lines, subs, lk);
 
     this.buildScene();
     this.drawLabels();
@@ -275,6 +281,55 @@ export default class Flipclock extends Scene {
       prevEnd = pg.t1;
     }
     for (const u of units) { u.evs = settle(u.evs); u.lights = u.evs.filter((x) => x.d === 0 && x.c === COL.SIGNAL).map((x) => x.tl); }
+  }
+
+  /**
+   * 原文副行（韓文歌）：歌詞那排下面再一排小一號的牌（字級 subSizeFor(歌詞字級)，一樣靠左、差不多一樣寬），
+   * 同一個凹窗、同一套翻牌。原文照自己的逐字時間：一句（太長就分頁）在唱之前翻上來（三成亮），唱到的字變白（不用訊號色、不彈，
+   * 比中文安靜）；沒有原文的句子（兩行一樣的句子）翻成空白，不留上一句的原文。副行的牌接在 lyrUnits 後面（同一批牌、同一個窗）。
+   * 放得下：歌詞 52 px 時兩排牌到 y ≈ 787，機身下緣的銘文在 y ≈ 806 以下。
+   */
+  private subRow(lines: Line[], subs: (Line | null)[], lk: ReturnType<typeof cellOf>) {
+    const s = this.ctx.start, e = this.ctx.end, A = this.small;
+    const sk = cellOf(Math.round(subSizeFor(lk.ch * GS) / GS));
+    const cols = Math.floor((LYA.maxW + sk.px - sk.cw) / sk.px);
+    // 每一句的頁：有原文就照原文分頁；沒有原文的句子一頁空白（在那一句要唱之前把副行清掉）
+    type SubPage = { t0: number; t1: number; pg: CuePage | null };
+    const spages: SubPage[] = [];
+    lines.forEach((line, i) => {
+      const sub = subs[i];
+      if (!sub) { spages.push({ t0: line.start, t1: line.end, pg: null }); return; }
+      for (const pg of cuePages([sub], cols, 1, true)) spages.push({ t0: pg.t0, t1: pg.t1, pg });
+    });
+    const shown = spages.filter((p) => p.t1 > s - 0.3 && p.t0 < e - 0.2).sort((a, b) => a.t0 - b.t0);
+    const n = Math.min(cols, Math.max(6, ...shown.map((p) => p.pg?.rows[0]!.length ?? 0)));
+    const y = LYA.y + lk.py + sk.ch / 2;
+    const units: Unit[] = [];
+    for (let c = 0; c < n; c++) units.push({ x: LYA.x + c * sk.px + sk.cw / 2, y, w: sk.cw, h: sk.ch, evs: [], g0: -1, c0: COL.DIM, lights: [] });
+    const d = 0.12;
+    const cur = new Array(units.length).fill(-1);
+    let prevEnd = -1e9;
+    shown.forEach(({ t0, t1, pg }, seg) => {
+      const want = units.map(() => ({ g: -1, cue: -1 }));
+      pg?.rows[0]!.forEach((ci, c) => { if (c < units.length) want[c] = { g: A.get(F_LYR, pg.cues[ci]!.ch), cue: ci }; });
+      const base = Math.max(t0 - 0.5, Math.min(prevEnd + 0.05, t0 - 0.15), s + 0.05);
+      let k = 0;
+      want.forEach((w, i) => {
+        if (w.g === cur[i] && w.g < 0) return;
+        const tl = base + d + 0.03 * k++;
+        const u = units[i]!;
+        if (!pg || w.cue < 0) { u.evs.push({ tl, g: -1, c: COL.DIM, k: 0, d, seg }); cur[i] = -1; return; }
+        const cue = pg.cues[w.cue]!;
+        // 副行比較安靜：唱到、唱完都是紙白（愛心照樣玫瑰色），不用訊號色
+        const col = (at: number) => (cue.ch === '♥' ? COL.ROSE : cueState(cue, at) === 0 ? COL.DIM : COL.BONE);
+        u.evs.push({ tl, g: w.g, c: col(tl), k: 0, d, seg });
+        cur[i] = w.g;
+        if (cue.ch !== '♥' && w.g >= 0 && cue.t0 > tl) u.evs.push({ tl: cue.t0, g: w.g, c: COL.BONE, d: 0, seg });
+      });
+      prevEnd = t1;
+    });
+    for (const u of units) { u.evs = settle(u.evs); u.lights = []; }
+    this.lyrUnits.push(...units);
   }
 
   // ---------------------------------------------------------------- 3D 場景

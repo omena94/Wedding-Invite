@@ -7,6 +7,8 @@
 //  - 留言印好的下一拍：掃描的光掃過票根上的條碼，再下一拍「已登機」章砸下去（畫面震一下）。
 //  - 之後的小節線：票根沿著齒孔撕下來、歪歪地落到桌上，這一下是整個窗格的重拍。
 // 歌詞：登機證下緣「登機廣播」那一行，照跟唱規則（感熱紙本來就是加熱才顯色：唱到的字才「印」深）。
+// 韓文歌有中文翻譯時（2026-09-30）：原文小一號印在中文下面；登機廣播那一段（小標、分隔線）整段往上挪 SUB_UP 讓出位置，
+// 中文＋原文在小標與登機證下緣之間置中，放不下就把中文縮小一點（不小於 40 螢幕 px）。
 // 沒有留言：乘客是「全體賓客」、祝福欄印邀請，章改蓋「候補」。新人的留言：乘客是新人。
 // v2（2026-09-29「留言尺寸與版面比例標準 v2」＋場景多元化）：機場候機室窗邊的長桌，午後的暖光從大片玻璃窗照進來。
 // 登機證大大地擺在桌上（它就是場景），但寫留言的那一塊照 v2：留言 40～60 px、署名印在留言下面、歌詞比留言小。
@@ -20,7 +22,7 @@ import { F, font, layout, loadText, measure, type TextLayout } from '../engine/t
 import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, hash, lerp, prog, pulse, frameIdx } from '../engine/util';
 import type { FitResult } from '../engine/text';
-import { lyricAt, drawLyric, layoutLyric, beatAfter, signature, COUPLE_ZH, DATE_DOTS } from './_motifs';
+import { lyricAt, drawLyric, layoutLyric, lyricSubOf, beatAfter, signature, COUPLE_ZH, DATE_DOTS } from './_motifs';
 import { msgMaxFor, lyricV2, sigV2, V2 } from './_v2';
 import {
   sigInk, ink, paper, heatInk, paperLyric, makeCanvas, freeCanvas, shadowSprite, drawShadow, drawBarcode, beatsIn, barsIn,
@@ -45,6 +47,8 @@ const EDGE_V = 330;
 const MSG = { x: 40, y: 176, w: 1060, h: 330 };
 const ROUTE = { y: 132, from: 40, to: 700 };
 const PA = { x: 76, base: 650, maxW: 1030 };
+/** 有韓文原文副行的窗格：登機廣播那一段往上挪多少（沒有留言時祝福欄的邀請在更上面，還有空）。 */
+const SUB_UP = 60;
 
 const PASS_TEXT = '登機證愛情航空旅客相遇永遠座位登機廣播已登機候補全體賓客一位賓客間奏中請旅客耐心等候本班機全程播放純音樂掃描右下角把祝福寫上大螢幕新人';
 
@@ -74,6 +78,8 @@ export default class Boarding extends Scene {
   S = 1;
   /** 歌詞字級（紙面 px）。 */
   lyrPx = 60;
+  /** 登機廣播（歌詞）的基線：有韓文原文的窗格往上挪 SUB_UP。 */
+  paBase = PA.base;
   /** 飛機起飛的時間（每兩小節一架，在小節線上）。 */
   planes: number[] = [];
   /** 寫留言那一塊的寬高（紙面 px；v2：螢幕上 ≤ 840 × 420）。 */
@@ -108,7 +114,10 @@ export default class Boarding extends Scene {
     const body = m ? m.text : '掃描右下角 QR code，把祝福寫上大螢幕。';
     const n = m?.n ?? 0;
     this.seat = m?.couple ? '1A' : `${((n * 7) % 38) + 2}${'ABCDEF'[n % 6]}`;
-    await loadText(PASS_TEXT + this.name + body + COUPLE_ZH + lyrics.linesIn(s - 2, e + 1).map((l) => l.text).join(''));
+    // 韓文歌的原文副行：在第一個 await 之前拿（副行開關是引擎在 init 開始前替這個窗格設的）
+    const subs = lyrics.linesIn(s - 2, e + 1).map((l) => lyricSubOf(l)?.text ?? '').join('');
+    if (subs) this.paBase = PA.base - SUB_UP;
+    await loadText(PASS_TEXT + this.name + body + COUPLE_ZH + lyrics.linesIn(s - 2, e + 1).map((l) => l.text).join('') + subs);
 
     await yieldFrame();
     const c = this.layer.ctx;
@@ -229,10 +238,10 @@ export default class Boarding extends Scene {
     label('永遠', ROUTE.to, ROUTE.y + 26);
     // 分隔線
     c.fillStyle = ink(0.28); c.fillRect(40, MSG.y - 12, PERF - 80, 1.2);
-    c.fillRect(40, PA.base - this.lyrPx * 0.95 - 34, PERF - 80, 1);
+    c.fillRect(40, this.paBase - this.lyrPx * 0.95 - 34, PERF - 80, 1);
     // 登機廣播（歌詞那一行）的小標
     c.fillStyle = ink(0.45);
-    c.font = font(F.hei(500), 15); c.letterSpacing = '4px'; c.fillText('♪ 登機廣播', 40, PA.base - this.lyrPx * 0.95 - 10);
+    c.font = font(F.hei(500), 15); c.letterSpacing = '4px'; c.fillText('♪ 登機廣播', 40, this.paBase - this.lyrPx * 0.95 - 10);
     c.letterSpacing = '0px';
 
     // 票根：座位（低對比的大字）、條碼
@@ -501,9 +510,24 @@ export default class Boarding extends Scene {
       const lay = layoutLyric(c, ly.line, stl);
       const inK = ease.outExpo(prog(t, ly.line.start - 0.35, ly.line.start + 0.15));
       c.save();
-      // 兩行的時候往上挪一點，才不會超出登機證下緣
-      c.translate(PA.x, PA.base + (1 - inK) * 12 - (lay.height - lay.size) * 0.55);
-      drawLyric(c, ly.line, t, stl, lay, ly.k);
+      if (lay.sub) {
+        // 原文副行：中文＋原文整塊在小標下面、登機證下緣上面那一條裡置中；放不下就把中文縮小一點（不小於 40 螢幕 px）
+        const ceil = this.paBase - this.lyrPx * 0.95 + 4, floor = PASS.h - 14, minSize = stl.minSize ?? stl.size;
+        // 字頂（主行 0.9 字高）到原文最後一排的字腳
+        const depth = (l: typeof lay) => l.height - 0.1 * l.size + 0.25 * (l.sub?.lay.size ?? 0);
+        let st2 = stl, l2 = lay;
+        for (let sz = stl.size; depth(l2) > floor - ceil && sz > minSize;) {
+          sz = Math.max(minSize, sz * 0.94);
+          st2 = { ...stl, size: sz };
+          l2 = layoutLyric(c, ly.line, st2);
+        }
+        c.translate(PA.x, ceil + Math.max(0, (floor - ceil - depth(l2)) / 2) + 0.9 * l2.size + (1 - inK) * 12);
+        drawLyric(c, ly.line, t, st2, l2, ly.k);
+      } else {
+        // 兩行的時候往上挪一點，才不會超出登機證下緣
+        c.translate(PA.x, this.paBase + (1 - inK) * 12 - (lay.height - lay.size) * 0.55);
+        drawLyric(c, ly.line, t, stl, lay, ly.k);
+      }
       c.restore();
       return;
     }
@@ -516,7 +540,7 @@ export default class Boarding extends Scene {
     c.globalAlpha = k;
     c.fillStyle = ink(0.6);
     c.font = font(F.hei(500), Math.round(this.lyrPx * 0.72)); c.letterSpacing = '4px';
-    c.fillText(lyrics.has ? '間奏中，請旅客耐心等候' : '本班機全程播放純音樂', PA.x, PA.base);
+    c.fillText(lyrics.has ? '間奏中，請旅客耐心等候' : '本班機全程播放純音樂', PA.x, this.paBase);
     c.restore();
   }
 }

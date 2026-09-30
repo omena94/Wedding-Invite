@@ -14,8 +14,8 @@ import { LineBatch } from '../engine/lines';
 import { F, font, loadText } from '../engine/type';
 import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, hash, lerp } from '../engine/util';
-import { Lyrics, type Line } from '../engine/lyrics';
-import { lyricAt, barAfter, beatAfter, sparkHead, sparkParticles, msgChars } from './_motifs';
+import { Lyrics, type Line, type Word } from '../engine/lyrics';
+import { lyricAt, barAfter, beatAfter, sparkHead, sparkParticles, msgChars, lyricSubOf, subSizeFor, subGap } from './_motifs';
 import { inkFor, paperBG, inkLine, inkPoly, inkEllipse, leash, drawNote, type Pt, type Note, type Ink } from './_couple';
 import { loadPuppets, drawPuppet, drawCycle, puppetPoint, puppetBox, puppetShadow, puppetIn, hop, breathe, beatKick, noteV2, tightenNote, type PuppetOpts } from './_puppet';
 import { lyricV2 } from './_v2';
@@ -65,9 +65,13 @@ export default class DogWalk extends Scene {
   board = { x: BOARD.x, y: BOARD.bottom - BOARD.h, w: BOARD.w, h: BOARD.h };
   lyricSize = 50;
   msgT0 = 0;
+  /** 韓文原文副行停的第三條電線（在歌詞那條正下方多遠；0 = 這一格沒有原文，不拉這條線）。 */
+  subWire = 0;
 
   override async init() {
-    const { audio: au } = this.ctx;
+    const { audio: au, lyrics } = this.ctx;
+    // 原文副行在 await 之前先看：引擎只在呼叫 init 前設好這一格的開關
+    const hasSub = lyrics.linesIn(this.ctx.start - 1, this.ctx.end).some((l) => lyricSubOf(l));
     await loadText('一位賓客' + INVITE + LABEL);
     this.track(await loadPuppets(SPRITES));
     const s = this.ctx.start, e = this.ctx.end, bp0 = au.beatPeriod(s);
@@ -115,6 +119,7 @@ export default class DogWalk extends Scene {
     const bw = Math.min(BOARD.w, tightenNote(c, this.note, 340) + PAD.x * 2);
     this.board = { x: BOARD.x, y: BOARD.bottom - bh, w: bw, h: bh };
     this.lyricSize = lyricV2(this.msg ? this.note.fit.size : null);
+    if (hasSub) this.subWire = Math.round(subGap(this.lyricSize));
     this.msgT0 = Math.max(beatAfter(au, s + 0.4), this.stopT - bp0 * 2);
   }
 
@@ -183,11 +188,11 @@ export default class DogWalk extends Scene {
     inkLine(c, [{ x: 0, y: PATH.top - 60 }, { x: W, y: PATH.top - 62 }], { ink, w: 0.5, color: rgba('sepia', 0.35), seed: 3 });
   }
 
-  /** 電線：兩條（上面那條是空的），電線桿跟著鏡頭經過。 */
+  /** 電線：兩條（上面那條是空的），電線桿跟著鏡頭經過；有韓文原文的窗格下面多拉一條給原文停。 */
   private drawWire(c: CanvasRenderingContext2D, ink: Ink, cam: number) {
     c.save();
     c.strokeStyle = rgba('sepia', 0.45); c.lineWidth = 1.6;
-    for (const dy of [0, -34]) {
+    for (const dy of this.subWire ? [0, -34, this.subWire] : [0, -34]) {
       c.beginPath();
       for (let x = WIRE.x0; x <= WIRE.x1; x += 40) { const y = this.wireY(x) + dy; x === WIRE.x0 ? c.moveTo(x, y) : c.lineTo(x, y); }
       c.stroke();
@@ -405,6 +410,40 @@ export default class DogWalk extends Scene {
       c.fillStyle = p >= 1 ? rgba('sepia', this.msg ? 0.82 : 0.94) : p > 0 ? rgba('signal') : rgba('sepia', 0.26);
       c.fillText(w.w.trim(), cx, this.wireY(cx) - 3 - jump);
     });
+    // 原文副行：小一號的字停在下面那條電線上，一個「詞」（原文裡空白隔開的一段）停一格——韓文一個音節一個時間，
+    // 一個音節一格的話詞跟詞分不出來，所以同一個詞的音節黏在一起、唱到的音節那一格跳一下（跳得小一點）；
+    // 唱到、唱完都是墨色淡兩成（不用訊號色，不跟中文搶），逐字時間是原文自己的
+    const sub = lyricSubOf(line);
+    if (sub && this.subWire) {
+      const groups: Word[][] = [];
+      let prev: Word | null = null;
+      for (const w of sub.words) {
+        if (!w.w.trim()) continue;
+        const gapTxt = prev ? sub.text.slice(prev.o + prev.w.length, w.o) : ' ';
+        if (!prev || /\s/.test(gapTxt)) groups.push([w]); else groups[groups.length - 1]!.push(w);
+        prev = w;
+      }
+      const gtext = (g: Word[]) => sub.text.slice(g[0]!.o, g[g.length - 1]!.o + g[g.length - 1]!.w.length).trim();
+      let ss = subSizeFor(size);
+      const gws = (sz: number) => { c.font = font(fam, sz); return groups.map((g) => c.measureText(gtext(g)).width + sz * 0.4); };
+      let wd = gws(ss), tot = wd.reduce((x, y) => x + y, 0);
+      if (tot > avail) { ss = Math.max(26, Math.floor((ss * avail) / tot)); wd = gws(ss); tot = wd.reduce((x, y) => x + y, 0); }
+      c.font = font(fam, ss);
+      c.textAlign = 'left';
+      let sx = W / 2 - Math.min(tot, avail) / 2;
+      groups.forEach((g, gi) => {
+        const x0 = sx + ss * 0.2, cx = sx + wd[gi]! / 2;
+        sx += wd[gi]!;
+        const y = this.wireY(cx) + this.subWire - 3;
+        for (const w of g) {
+          const p = Lyrics.wordProgress(w, t);
+          const jump = p > 0 ? Math.sin(Math.PI * clamp((t - w.start) / 0.22)) * ss * 0.2 : 0;
+          c.globalAlpha = alpha * (p > 0 ? 0.8 : 1);
+          c.fillStyle = p > 0 ? rgba('sepia', 0.94) : rgba('sepia', 0.26);
+          c.fillText(w.w, x0 + c.measureText(sub.text.slice(g[0]!.o, w.o)).width, y - jump);
+        }
+      });
+    }
     c.restore();
   }
 }

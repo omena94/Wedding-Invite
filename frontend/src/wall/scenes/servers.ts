@@ -15,7 +15,7 @@ import { LineBatch } from '../engine/lines';
 import { F, font, loadText } from '../engine/type';
 import { LIN, rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, hash } from '../engine/util';
-import { lyricAt, layoutLyric, drawLyric, sparkParticles } from './_motifs';
+import { lyricAt, layoutLyric, drawLyric, sparkParticles, lyricSubOf, type LyricStyle } from './_motifs';
 import { inkFor, inkPath, inkRect, heartPop, type Pt, type Note } from './_couple';
 import { loadPuppets, drawPick, puppetPoint, puppetShadow, puppetLight, breathe, noteV2, tightenNote, type PuppetOpts } from './_puppet';
 import { lyricV2 } from './_v2';
@@ -77,6 +77,12 @@ export default class Servers extends Scene {
   note: Note | null = null;
   sheet = { ...SHEET };
   lyricSize = 52;
+  /**
+   * LED 字幕板：有原文副行（韓文歌）的窗格，板子往右加寬到檢查表前面（中文盡量一排）、往下長高（最多到機櫃上面），
+   * 中文＋原文整塊放在板子正中間；沒有原文的窗格照原本的大小。
+   */
+  led = { ...LED };
+  subWin = false;
   /** 插頭（圖上手裡的水晶頭）與交換器上的網孔。 */
   plug: Pt = { x: 0, y: 0 };
   port: Pt = { x: 0, y: 0 };
@@ -115,10 +121,17 @@ export default class Servers extends Scene {
     this.sheet = { ...SHEET, x: SHEET.x + SHEET.w - sw, w: sw, h: sh };
     this.lyricSize = lyricV2(this.msg ? this.note.fit.size : null);
     this.msgT0 = Math.min(s + 0.9, bars[0]!);
+    const subLines = this.ctx.lyrics.linesIn(s - 1, this.ctx.end + 1).filter((l) => !!lyricSubOf(l));
+    if (subLines.length) {
+      this.subWin = true;
+      this.led.w = Math.min(1140, this.sheet.x - 40 - LED.x);
+      const need = Math.max(...subLines.map((l) => this.blockH(layoutLyric(c, l, this.lyrStyle()))));
+      this.led.h = clamp(Math.ceil(need + 22), LED.h, RACK.top - 16 - LED.y);
+    }
     this.drawBackground();
   }
 
-  /** 不會動的：機櫃的外框與一格一格的機器、交換器、LED 字幕板、檢查表（畫一次）。 */
+  /** 不會動的：機櫃的外框與一格一格的機器、交換器、this.led 字幕板、檢查表（畫一次）。 */
   private drawBackground() {
     const L = this.bg, c = L.ctx;
     L.clear();
@@ -146,12 +159,12 @@ export default class Servers extends Scene {
     c.fillRect(x3 + 12, P.y - 14, RACK.w - 24, 28);
     c.fillStyle = rgba('ink');
     for (let i = 0; i < 7; i++) c.fillRect(x3 + 22 + i * 21, P.y - 6, 14, 12);
-    // LED 字幕板
+    // this.led 字幕板
     c.fillStyle = rgba('ink2');
-    c.fillRect(LED.x, LED.y, LED.w, LED.h);
-    c.strokeStyle = line(0.18); c.lineWidth = 1.5; c.strokeRect(LED.x, LED.y, LED.w, LED.h);
+    c.fillRect(this.led.x, this.led.y, this.led.w, this.led.h);
+    c.strokeStyle = line(0.18); c.lineWidth = 1.5; c.strokeRect(this.led.x, this.led.y, this.led.w, this.led.h);
     c.fillStyle = line(0.03);
-    for (let y = LED.y + 8; y < LED.y + LED.h - 4; y += 8) for (let x = LED.x + 8; x < LED.x + LED.w - 4; x += 8) c.fillRect(x, y, 2.5, 2.5);
+    for (let y = this.led.y + 8; y < this.led.y + this.led.h - 4; y += 8) for (let x = this.led.x + 8; x < this.led.x + this.led.w - 4; x += 8) c.fillRect(x, y, 2.5, 2.5);
     this.drawSheet(c);
     L.upload();
   }
@@ -309,21 +322,31 @@ export default class Servers extends Scene {
     });
   }
 
+  private lyrStyle(): LyricStyle {
+    const big = !this.msg;
+    return { family: F.archivo(100, big ? 800 : 700), size: this.lyricSize, minSize: 40, maxWidth: this.led.w - 60, unsung: rgba('bone', 0.2), sung: rgba('bone', big ? 0.9 : 0.8), active: rgba('signal') };
+  }
+
+  /** 一句歌詞（含原文副行）從字頂到最後一排字底的高度。 */
+  private blockH(lay: ReturnType<typeof layoutLyric>) {
+    return lay.height - lay.size * 0.2 + (lay.sub ? lay.sub.lay.size * 0.22 : lay.size * 0.2);
+  }
+
   /** LED 字幕：歌詞（訊號色的燈字、照跟唱規則），間奏時一行淡淡的「（部署中）」。 */
   private drawLyric(c: CanvasRenderingContext2D, t: number) {
     const ly = lyricAt(this.ctx.lyrics, t);
     c.save();
     c.globalAlpha = prog(t, this.ctx.start + 0.2, this.ctx.start + 0.7);
+    const R = this.led;
     if (ly) {
-      const big = !this.msg;
-      const st = { family: F.archivo(100, big ? 800 : 700), size: this.lyricSize, minSize: 40, maxWidth: LED.w - 60, unsung: rgba('bone', 0.2), sung: rgba('bone', big ? 0.9 : 0.8), active: rgba('signal') };
+      const st = this.lyrStyle();
       const lay = layoutLyric(c, ly.line, st);
-      c.translate(LED.x + 30, LED.y + (LED.h - lay.height) / 2 + lay.size * 0.86);
+      c.translate(R.x + 30, this.subWin ? R.y + (R.h - this.blockH(lay)) / 2 + lay.size * 0.8 : R.y + (R.h - lay.height) / 2 + lay.size * 0.86);
       drawLyric(c, ly.line, t, st, lay, ly.k);
     } else {
       c.font = font(F.hei(500), 34);
       c.fillStyle = rgba('bone', 0.3);
-      c.fillText('（部署中）', LED.x + 30, LED.y + LED.h / 2 + 12);
+      c.fillText('（部署中）', R.x + 30, R.y + R.h / 2 + 12);
     }
     c.restore();
   }

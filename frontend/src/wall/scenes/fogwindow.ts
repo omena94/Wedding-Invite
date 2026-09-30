@@ -22,7 +22,7 @@ import { rgba } from '../engine/palette';
 import { clamp, ease, prog, hash } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
 import { Lyrics, type Line } from '../engine/lyrics';
-import { lyricAt, layoutLyric, drawLyric, beatAfter, heartPoints, COUPLE_ZH, type LyricStyle } from './_motifs';
+import { lyricAt, layoutLyric, drawLyric, beatAfter, heartPoints, COUPLE_ZH, lyricSubOf, subSizeFor, subGap, type LyricStyle } from './_motifs';
 import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 } from './_v2';
 import { T16_INVITE, T16_TEXT, sigOf, winBeats, winBars, rowsOf, glyphCount, charClock, rowFront, type Row } from './_t16';
 
@@ -57,7 +57,7 @@ const BG = () => new FSPass(/* glsl */ `
   uniform vec4 mrow[8]; uniform vec2 mfr[8]; uniform float nrow;
   uniform vec2 piv; uniform float ang;
   uniform vec4 lposA; uniform vec4 lposB;
-  uniform vec4 lcur; uniform vec4 lprev; uniform vec3 lfr; uniform float nslot;
+  uniform vec4 lcur; uniform vec4 lprev; uniform vec3 lfr; uniform vec2 lfr2; uniform float nslot;
   uniform vec4 drops[${NDROP}]; uniform float ndrop;
   uniform vec4 car;
   uniform vec2 sweep; // 車燈掃過霧的光：x 位置、亮度
@@ -187,10 +187,13 @@ const BG = () => new FSPass(/* glsl */ `
       vec4 pc = lcur.y < 0.5 ? lposA : lposB;
       float a = smoothstep(0.2, 0.7, atlasAt(p, pc, lcur.x));
       float ly = p.y - pc.y;
-      float fr = ly < lfr.z ? lfr.x : lfr.y;
+      // 韓文歌：原文是第三排（lfr2.y 以下），有自己的前緣；比中文安靜：擦得淡兩成、不帶招牌光的熱度。
+      // 沒有原文時 lfr2.y 很大，isSub = 0，跟原本一樣
+      float isSub = step(lfr2.y, ly);
+      float fr = isSub > 0.5 ? lfr2.x : (ly < lfr.z ? lfr.x : lfr.y);
       float rv = 1.0 - smoothstep(fr - 16.0, fr + 16.0, p.x);
-      cl = a * max(rv, 0.3 * lcur.z);
-      lheat = lcur.w * exp(-max(0.0, fr - p.x) / 240.0) * rv * a;
+      cl = a * max(rv, 0.3 * lcur.z) * mix(1.0, 0.8, isSub);
+      lheat = lcur.w * exp(-max(0.0, fr - p.x) / 240.0) * rv * a * (1.0 - isSub);
     }
     if (lprev.x >= 0.0) {
       vec4 pp = lprev.y < 0.5 ? lposA : lposB;
@@ -263,7 +266,7 @@ const BG = () => new FSPass(/* glsl */ `
   mrow: { value: Array.from({ length: 8 }, () => new THREE.Vector4()) }, mfr: { value: Array.from({ length: 8 }, () => new THREE.Vector2()) }, nrow: { value: 0 },
   piv: { value: new THREE.Vector2(PIV.x, PIV.y) }, ang: { value: ANG },
   lposA: { value: new THREE.Vector4(POS[0]!.x, POS[0]!.y, POS[0]!.w, POS[0]!.h) }, lposB: { value: new THREE.Vector4(POS[1]!.x, POS[1]!.y, POS[1]!.w, POS[1]!.h) },
-  lcur: { value: new THREE.Vector4(-1, 0, 0, 0) }, lprev: { value: new THREE.Vector4(-1, 0, 0, 0) }, lfr: { value: new THREE.Vector3() }, nslot: { value: 1 },
+  lcur: { value: new THREE.Vector4(-1, 0, 0, 0) }, lprev: { value: new THREE.Vector4(-1, 0, 0, 0) }, lfr: { value: new THREE.Vector3() }, lfr2: { value: new THREE.Vector2(0, 1e6) }, nslot: { value: 1 },
   drops: { value: Array.from({ length: NDROP }, () => new THREE.Vector4()) }, ndrop: { value: 0 },
   car: { value: new THREE.Vector4() }, sweep: { value: new THREE.Vector2(-9999, 0) },
   sign: { value: new THREE.Vector4(560, 735, 520, 230) }, signK: { value: 0 },
@@ -272,7 +275,12 @@ const BG = () => new FSPass(/* glsl */ `
 /** 一顆水珠：出現的時間與位置，之後每一拍滑一段（或不動）。 */
 interface Drop { t0: number; x: number; y0: number; r: number; steps: { t: number; d: number }[]; old: boolean; ymax: number }
 /** 沒有留言時，寫在霧上的一句歌詞（每句排一次，指痕畫進圖集的第 slot 格）。 */
-interface FogLine { line: Line; slot: number; pos: number; fit: FitResult; glyphs: { x: number; w: number; row: number; off: number; len: number }[]; rowW: number[] }
+interface FogGlyph { x: number; w: number; row: number; off: number; len: number }
+/**
+ * 沒有留言時，寫在霧上的一句歌詞（每句排一次，指痕畫進圖集的第 slot 格）。`y0`：第一排基線（格子裡的座標）。
+ * `sub`：韓文歌的原文，寫在中文下面一排（自己的逐字時間、自己的前緣），`base` 是它的基線、`split` 是它跟中文的分界。
+ */
+interface FogLine { line: Line; slot: number; pos: number; fit: FitResult; glyphs: FogGlyph[]; rowW: number[]; y0: number; sub?: { line: Line; glyphs: FogGlyph[]; base: number; split: number } }
 
 export default class FogWindow extends Scene {
   bg = shared('fogwindow.bg', BG);
@@ -307,7 +315,9 @@ export default class FogWindow extends Scene {
     this.hasLyrics = lyrics.linesIn(s, e).length > 0;
     this.fogLyrics = !m && this.hasLyrics;
     const sig = m ? sigOf(m) : '';
-    await loadText(`${T16_TEXT}${m?.text ?? ''}${sig}${lines.map((l) => l.text).join('')}${song.title}${song.artist}${COUPLE_ZH}`);
+    // 每一句的原文（韓文歌才有）：字型要一起載
+    const subOf = new Map(lines.map((l) => [l, lyricSubOf(l)] as const));
+    await loadText(`${T16_TEXT}${m?.text ?? ''}${sig}${lines.map((l) => l.text + (subOf.get(l)?.text ?? '')).join('')}${song.title}${song.artist}${COUPLE_ZH}`);
     const beat = au.beatPeriod(s);
     this.tWrite = beatAfter(au, s + Math.min(0.2, beat * 0.4));
     this.bars = winBars(au, s, e);
@@ -381,9 +391,11 @@ export default class FogWindow extends Scene {
       const c = atlas.ctx;
       c.clearRect(0, 0, P.w, P.h * nslot);
       lines.forEach((line, k) => {
-        // 沒有留言時歌詞是焦點，但一樣照 v2（≤ 52 px）
-        const fit = fitText(c, line.text, FAM_MSG, P.w - 40, P.h - 20, { min: V2.lyrMin, max: lyricV2(null), lineHeight: 1.22, maxLines: 2 });
-        const glyphs: FogLine['glyphs'] = [];
+        // 沒有留言時歌詞是焦點，但一樣照 v2（≤ 52 px）；有原文時框高先扣掉原文那一排（中文縮一點，整組還是在一格裡）
+        const sub = subOf.get(line) ?? null;
+        const reserve = sub ? subGap(lyricV2(null)) + 12 : 0;
+        const fit = fitText(c, line.text, FAM_MSG, P.w - 40, P.h - 20 - reserve, { min: V2.lyrMin, max: lyricV2(null), lineHeight: 1.22, maxLines: 2 });
+        const glyphs: FogGlyph[] = [];
         const rowW: number[] = [];
         let cursor = 0;
         fit.lines.forEach((ln, row) => {
@@ -394,9 +406,20 @@ export default class FogWindow extends Scene {
           rowW.push(lay.width);
           for (const g of lay.glyphs) { glyphs.push({ x: g.x, w: g.w, row, off: o, len: g.ch.length }); o += g.ch.length; }
         });
-        const fl: FogLine = { line, slot: k, pos: line.i % 2, fit, glyphs, rowW };
+        // 原文：小一號、一排，寫在中文最後一排下面（同一個左緣）；整組在格子裡垂直置中
+        const sfit = sub ? fitText(c, sub.text, FAM_MSG, P.w - 40, subSizeFor(fit.size) * 1.3, { min: 26, max: subSizeFor(fit.size), maxLines: 1 }) : null;
+        const gap = sfit ? subGap(fit.size, sfit.size) : 0;
+        const ly0 = sfit ? (P.h - (fit.size * 0.9 + (fit.lines.length - 1) * fit.lineHeight + gap + sfit.size * 0.25)) / 2 + fit.size * 0.9 : (P.h - fit.height) / 2 + fit.size * 0.9;
+        const fl: FogLine = { line, slot: k, pos: line.i % 2, fit, glyphs, rowW, y0: ly0 };
+        if (sub && sfit) {
+          const lastBase = ly0 + (fit.lines.length - 1) * fit.lineHeight, base = lastBase + gap;
+          const sg: FogGlyph[] = [];
+          let o = 0;
+          for (const g of layout(sfit.lines.join(''), FAM_MSG, sfit.size).glyphs) { sg.push({ x: g.x, w: g.w, row: 2, off: o, len: g.ch.length }); o += g.ch.length; }
+          fl.sub = { line: sub, glyphs: sg, base, split: (lastBase + fit.size * 0.22 + base - sfit.size * 0.86) / 2 };
+        }
         this.fogLines.push(fl);
-        const y0 = k * P.h + (P.h - fit.height) / 2 + fit.size * 0.9;
+        const y0 = k * P.h + ly0;
         c.save();
         c.filter = 'blur(1px)';
         c.lineJoin = 'round';
@@ -404,6 +427,12 @@ export default class FogWindow extends Scene {
         c.fillStyle = c.strokeStyle = MASK_TEXT;
         c.lineWidth = fit.size * 0.03;
         fit.lines.forEach((ln, row) => { c.strokeText(ln, 16, y0 + row * fit.lineHeight); c.fillText(ln, 16, y0 + row * fit.lineHeight); });
+        if (fl.sub && sfit) {
+          c.font = font(FAM_MSG, sfit.size);
+          c.lineWidth = sfit.size * 0.03;
+          const ln = sfit.lines.join('');
+          c.strokeText(ln, 16, k * P.h + fl.sub.base); c.fillText(ln, 16, k * P.h + fl.sub.base);
+        }
         c.restore();
       });
       c.filter = 'none';
@@ -517,7 +546,10 @@ export default class FogWindow extends Scene {
 
     // ---- 沒有留言：霧上的歌詞
     const lc = u.lcur!.value as THREE.Vector4, lp = u.lprev!.value as THREE.Vector4, lf = u.lfr!.value as THREE.Vector3;
+    const lf2 = u.lfr2!.value as THREE.Vector2;
     lc.set(-1, 0, 0, 0); lp.set(-1, 0, 0, 0);
+    // 共用的 pass：原文那一排的分界每格都要設（預設很大 = 沒有原文）
+    lf2.set(0, 1e6);
     if (this.fogLyrics && this.atlas) {
       // 這一句：正在唱的，或 1.5 秒內要唱的（舊指痕先慢慢浮出來）；上一句：慢慢被霧蓋回去（句子之間的空檔蓋得比較慢）
       const next = lyrics.nextLine(t);
@@ -525,7 +557,7 @@ export default class FogWindow extends Scene {
       const cur = curLine ? this.fogLines.find((x) => x.line === curLine) : undefined;
       if (cur) {
         const P = POS[cur.pos]!;
-        const y0 = (P.h - cur.fit.height) / 2 + cur.fit.size * 0.9;
+        const y0 = cur.y0;
         const split = y0 + cur.fit.lineHeight * 0.5 - cur.fit.size * 0.3;
         const now = Lyrics.lineCharProgress(cur.line, t);
         const fr = [0, 1].map((row) => {
@@ -544,6 +576,18 @@ export default class FogWindow extends Scene {
         const singing = t >= cur.line.start && t < cur.line.end;
         lc.set(cur.slot, cur.pos, kIn, singing ? 1 : 0);
         lf.set(fr[0]!, fr[1]!, split);
+        // 原文：照原文自己的逐字時間，一個字一個字擦開
+        if (cur.sub) {
+          const sn = Lyrics.lineCharProgress(cur.sub.line, t);
+          let x = -40;
+          for (const g of cur.sub.glyphs) {
+            if (sn >= g.off + g.len) { x = g.x + g.w; continue; }
+            if (sn > g.off) x = g.x + (g.w * (sn - g.off)) / g.len;
+            break;
+          }
+          const done = cur.sub.glyphs.every((g) => sn >= g.off + g.len);
+          lf2.set(P.x + 16 + (done ? 4000 : x), cur.sub.split);
+        }
       }
       const lastLine = cur ? lyrics.lines[cur.line.i - 1] : lyrics.lastLine(t);
       const prev = lastLine ? this.fogLines.find((x) => x.line === lastLine) : undefined;

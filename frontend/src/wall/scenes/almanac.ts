@@ -17,7 +17,7 @@ import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, hash, lerp, prog, pulse } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
 import type { Line } from '../engine/lyrics';
-import { drawLyric, drawMessage, drawHeart, lyricAt, signature, WEDDING_DATE } from './_motifs';
+import { drawLyric, drawMessage, drawHeart, lyricAt, lyricSubOf, signature, WEDDING_DATE } from './_motifs';
 import { grid, boxLyric, mono, tag, pad3, paperLyric, fiberTex, withMips, windowLines, type Grid } from './_t3';
 import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 } from './_v2';
 
@@ -177,6 +177,8 @@ export default class Almanac extends Scene {
   fit: FitResult | null = null;
   sigSize = 30;
   lines: Line[] = [];
+  /** 韓文歌有原文副行時，「今日一句」多給的高度（今日運勢跟著往下挪）；沒有副行是 0，版面跟原本一樣。 */
+  subRoom = 0;
   private boardDrawn = false;
 
   constructor(ctx: ConstructorParameters<typeof Scene>[0]) {
@@ -215,6 +217,9 @@ export default class Almanac extends Scene {
     const g = this.g = grid(au, s, e);
     const m = this.msg;
     this.lines = windowLines(lyrics, s, e);
+    // 原文副行要多一排。
+    // 有副行一定沒有主打留言（留言的窗格副行收起來），今日運勢下面本來就空著，往下挪不會擠到東西
+    this.subRoom = this.lines.some((l) => lyricSubOf(l)) ? 64 : 0;
     await loadText(`${FIXED}${song.title}${m ? m.text + signature(m.name) : ''}${this.lines.map((l) => l.text).join('')}`);
     // 撕幾頁：窗格有四小節以上撕兩頁（3/11 → 3/12 → 3/13），短的撕一頁；第一撕在第一個小節線，第二撕在下一個小節線
     const bars = (e - g.bar0) / g.bar;
@@ -282,11 +287,12 @@ export default class Almanac extends Scene {
     tag(c, ji, rx + 46, 271, { size: 20, color: ink(0.75), tracking: 1 });
     c.fillStyle = ink(0.3); c.fillRect(30, 338, PW - 60, 1.2);
     // 今日一句（歌詞）
-    tag(c, '今日一句', LYR_BOX.x, LYR_BOX.y + 14, { size: 15, color: ink(0.5), tracking: 4 });
+    const LB = { ...LYR_BOX, h: LYR_BOX.h + this.subRoom }, FY = FORTUNE.y + this.subRoom;
+    tag(c, '今日一句', LB.x, LB.y + 14, { size: 15, color: ink(0.5), tracking: 4 });
     const ly = lyricAt(this.ctx.lyrics, t);
     if (ly) {
-      const lay = boxLyric(c, ly.line, LYR_FAM, LYR_BOX.w, LYR_BOX.h - 26, { min: V2.lyrMin / K, max: lyricV2(this.fit ? this.fit.size * K : null) / K, lineHeight: 1.12, maxLines: 2 });
-      const y0 = LYR_BOX.y + 26 + Math.max(0, (LYR_BOX.h - 26 - lay.height) / 2) + lay.size * 0.8;
+      const lay = boxLyric(c, ly.line, LYR_FAM, LB.w, LB.h - 26, { min: V2.lyrMin / K, max: lyricV2(this.fit ? this.fit.size * K : null) / K, lineHeight: 1.12, maxLines: 2 });
+      const y0 = LB.y + 26 + Math.max(0, (LB.h - 26 - lay.height) / 2) + lay.size * 0.8;
       c.save(); c.translate(LYR_BOX.x, y0);
       drawLyric(c, ly.line, t, { family: LYR_FAM, size: lay.size, maxWidth: LYR_BOX.w, ...paperLyric() }, lay, ly.k);
       c.restore();
@@ -294,10 +300,10 @@ export default class Almanac extends Scene {
       c.font = font(F.serif(400, true), 34); c.fillStyle = ink(0.6);
       c.fillText(`♪ ${this.ctx.song.title || '純音樂'}`, LYR_BOX.x, LYR_BOX.y + 84);
     }
-    c.fillStyle = ink(0.3); c.fillRect(30, FORTUNE.y - 14, PW - 60, 1.2);
+    c.fillStyle = ink(0.3); c.fillRect(30, FY - 14, PW - 60, 1.2);
     // 今日運勢
     const m = this.msg;
-    tag(c, wed && m?.couple ? '新人的話' : '今日運勢', FORTUNE.x, FORTUNE.y + 18, { size: 15, color: ink(0.5), tracking: 4 });
+    tag(c, wed && m?.couple ? '新人的話' : '今日運勢', FORTUNE.x, FY + 18, { size: 15, color: ink(0.5), tracking: 4 });
     if (wed && m && this.fit) {
       const fit = this.fit;
       const top = FORTUNE.y + 44 + fit.size * 0.88;
@@ -309,14 +315,14 @@ export default class Almanac extends Scene {
       mono(c, `NO.${pad3(m.n)}`, FORTUNE.x + FORTUNE.w, FORTUNE.y + 16, { size: 12, color: ink(0.4), align: 'right', tracking: 3 });
     } else if (wed) {
       c.font = font(MSG_FAM, 54); c.fillStyle = ink(0.9);
-      c.fillText('大吉。', FORTUNE.x, FORTUNE.y + 110);
+      c.fillText('大吉。', FORTUNE.x, FY + 110);
       c.font = font(MSG_FAM, 40); c.fillStyle = ink(0.8);
-      c.fillText('掃描右下角 QR code，', FORTUNE.x, FORTUNE.y + 176);
-      c.fillText('把你的祝福寫進今天。', FORTUNE.x, FORTUNE.y + 230);
+      c.fillText('掃描右下角 QR code，', FORTUNE.x, FY + 176);
+      c.fillText('把你的祝福寫進今天。', FORTUNE.x, FY + 230);
     } else {
       const f = BEFORE[day.offset]?.fortune ?? ['大吉。'];
       c.font = font(MSG_FAM, 48); c.fillStyle = ink(0.88);
-      f.forEach((s, j) => c.fillText(s, FORTUNE.x, FORTUNE.y + 100 + j * 62));
+      f.forEach((s, j) => c.fillText(s, FORTUNE.x, FY + 100 + j * 62));
     }
     // 婚禮那一頁：麥克筆圈日期、畫愛心
     if (wed) {

@@ -19,7 +19,7 @@ import { LineBatch } from '../engine/lines';
 import { F, font, layout, loadText, type TextLayout } from '../engine/type';
 import { LIN, rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, lerp, hash } from '../engine/util';
-import { lyricAt, COUPLE_ZH, WEDDING_DATE, drawHeart } from './_motifs';
+import { lyricAt, lyricSubOf, subGap, subSizeFor, COUPLE_ZH, WEDDING_DATE, drawHeart } from './_motifs';
 import { grid, stagger, layoutRows, drawRows, paperInk } from './_t4';
 import { PlaneCam, camUniforms, CAM_GLSL, msgBlockV2, INVITE, type MsgBlock, type Rect } from './_t14';
 import { lyricV2 } from './_v2';
@@ -406,9 +406,24 @@ export default class Stitch extends Scene {
       const big = !this.msg;
       const st = { family: FAM_LYR, size: this.lyrSize, minSize: 40 * this.lyrSize / 52, maxW: LYR.w, maxRows: big ? 2 : 1, align: 'left' as const };
       const lay = layoutRows(c, line, st);
-      c.save(); c.translate(LYR.x, big ? 480 - (lay.rows.length - 1) * lay.lineHeight * 0.5 : LYR.y);
-      drawRows(c, lay, FAM_LYR, t, paperInk(), ly ? ly.k : 1);
-      c.restore();
+      const sub = lyricSubOf(line);
+      if (sub) {
+        // 韓文歌（沒有留言才有）：原文小一號繡在中文正下方（同一塊布、同樣靠左），兩段一起在左邊垂直置中。
+        // 字級照螢幕 px 算（布在畫面上縮成約 k 倍）；原文比中文安靜：繡到、繡完都是淡兩成的咖啡線，不用 blood 線
+        const ss = subSizeFor(lay.size * this.k) / this.k;
+        const sl = layoutRows(c, sub, { family: FAM_LYR, size: ss, minSize: Math.min(ss, 26 / this.k), maxW: LYR.w, maxRows: 2, align: 'left' });
+        const gap = subGap(lay.size, sl.size), more = gap + (sl.rows.length - 1) * sl.lineHeight;
+        const ink = paperInk(), lit = rgba('sepia', 0.95 * 0.8);
+        c.save(); c.translate(LYR.x, 480 - ((lay.rows.length - 1) * lay.lineHeight + more) * 0.5);
+        drawRows(c, lay, FAM_LYR, t, ink, ly ? ly.k : 1);
+        c.translate(0, (lay.rows.length - 1) * lay.lineHeight + gap);
+        drawRows(c, sl, FAM_LYR, t, { active: lit, sung: lit, unsung: ink.unsung }, ly ? ly.k : 1);
+        c.restore();
+      } else {
+        c.save(); c.translate(LYR.x, big ? 480 - (lay.rows.length - 1) * lay.lineHeight * 0.5 : LYR.y);
+        drawRows(c, lay, FAM_LYR, t, paperInk(), ly ? ly.k : 1);
+        c.restore();
+      }
     }
     if (!this.msg) {
       c.font = font(F.hei(500), 24); c.letterSpacing = '3px'; c.fillStyle = rgba('sepia', 0.66 * prog(t, s + 0.3, s + 0.9));

@@ -19,9 +19,10 @@ import { F, font } from '../engine/type';
 import { rgba } from '../engine/palette';
 import { GLSL_COMMON, THEME_UNIFORMS } from '../engine/glsl/common';
 import { clamp, ease, hash, lerp, mulberry32, prog, pulse, TAU } from '../engine/util';
-import { lyricAt, fillWithHearts } from './_motifs';
-import { grid, layoutRows, drawRows, paperInk, Stage, docRT, type Grid, type V3 } from './_t4';
+import { lyricAt, lyricSubOf, subSizeFor, subGap, fillWithHearts } from './_motifs';
+import { grid, layoutRows, drawRows, paperInk, Stage, docRT, type Grid, type V3, type RowsLayout, type KaraokeInk } from './_t4';
 import { type MsgBlock } from './_t14';
+import type { Line } from '../engine/lyrics';
 import { sigInk } from './_t1';
 import { loadWindow, revealAt, beatsBetween, v2Block } from './_t18';
 import { lyricV2, V2 } from './_v2';
@@ -163,6 +164,9 @@ function makeRig() {
   return { st, rt, msaa, tube, sticks, flyer, jiao, geo, front, back, base };
 }
 
+/** 原文副行的墨色（跟唱規則「原文副行」）：唱到、唱完都是「唱完」的墨色再淡兩成（不用印泥紅），還沒唱的照中文。 */
+const subInk = (k: KaraokeInk): KaraokeInk => { const sung = rgba('sepia', 0.95 * 0.8); return { active: sung, sung, unsung: k.unsung }; };
+
 /** 筊杯一次擲出：開始時間、兩片落下的位置、轉幾圈、最後哪面朝上。 */
 interface Toss { t: number; to: [number, number][]; yaw: number[]; flip: number[] }
 
@@ -184,6 +188,12 @@ export default class Fortune extends Scene {
   /** 揭曉後的小節線（籤筒被震一下）。 */
   knocks: number[] = [];
   tosses: Toss[] = [];
+  /**
+   * 韓文歌（沒有留言、這一格有原文副行）：「解曰」那一欄要多放一行原文，分隔線與「解曰：」往上移一點騰出位置
+   * （詩那一塊是固定的七言籤詩，最後一句離分隔線還有空間）。
+   */
+  koJie = false;
+  jieCache = new Map<Line, { lay: RowsLayout; sl: RowsLayout; gap: number }>();
 
   override async init() {
     const { audio: au, start: s, end: e } = this.ctx;
@@ -198,6 +208,7 @@ export default class Fortune extends Scene {
     const bar = g.bars.find((x) => x > this.u2 + 0.45);
     this.tStamp = bar !== undefined && bar < e - 0.6 ? bar : Math.min(this.u2 + B * 1.5, e - 0.4);
     this.knocks = g.bars.filter((x) => x > this.tr + 0.8 && x < e - 0.2);
+    this.koJie = !this.msg && this.ctx.lyrics.linesIn(s - 1, e + 1).some((l) => !!lyricSubOf(l));
     // 擲筊：蓋完章之後，每兩小節一次（每次都是聖筊：一正一反）
     const tb = g.bars.filter((x) => x > this.tStamp + 0.3 && x < e - 0.9);
     for (let i = 0; i < tb.length; i += 2) {
@@ -228,14 +239,14 @@ export default class Fortune extends Scene {
     c.fillStyle = red;
     for (const [x, y] of [[44, 44], [PW - 44, 44], [44, PH - 44], [PW - 44, PH - 44]]) c.fillRect(x! - 8, y! - 8, 16, 16);
     c.fillRect(64, 150, PW - 128, 2);
-    c.fillRect(64, 690, PW - 128, 2);
+    c.fillRect(64, this.koJie ? 646 : 690, PW - 128, 2);
     // 籤號、解曰（小字：螢幕上 ≤ 22 px）
     c.textBaseline = 'alphabetic';
     c.font = font(F.ming(700), 26); c.letterSpacing = '8px';
     const no = this.msg ? this.msg.n : this.ctx.song.index;
     c.fillText(`第 ${String(Math.max(0, no)).padStart(3, '0')} 籤`, POEM.x, 112);
     c.font = font(F.hei(700), 26); c.letterSpacing = '4px';
-    c.fillText('解曰：', JIE.x, JIE.y);
+    c.fillText('解曰：', JIE.x, this.koJie ? 712 : JIE.y);
     c.letterSpacing = '0px';
     // 詩：主打留言（v2：螢幕上 40～60 px，紙上的字級要除以 PS；沒有留言：原創的七言籤詩）
     c.fillStyle = rgba('sepia', 0.96);
@@ -253,6 +264,28 @@ export default class Fortune extends Scene {
       this.lyrSize = lyricV2(null);
     }
     this.paper.upload();
+  }
+
+  /**
+   * 「解曰」一欄放中文＋原文（紙面 px）：從 lyrSize 開始一起縮（中文不小於 lyrMin），直到兩段都放進分隔線下面、紅框上面。
+   * 中文最多兩行、行距緊一點；原文最多兩行。回傳兩段的排版與原文第一行基線離中文第一行基線多遠。
+   */
+  private jie(c: CanvasRenderingContext2D, line: Line, sub: Line) {
+    const hit = this.jieCache.get(line);
+    if (hit) return hit;
+    const top = this.koJie ? 732 : 776, bottom = 936;
+    let out = { lay: null as unknown as RowsLayout, sl: null as unknown as RowsLayout, gap: 0 };
+    for (let k = 0; k < 10; k++) {
+      const size = Math.max(V2.lyrMin / PS, (this.lyrSize / PS) * Math.pow(0.95, k));
+      const lay = layoutRows(c, line, { family: FAM_LYR, size, minSize: V2.lyrMin / PS, maxW: JIE.w, maxRows: 2, lineHeight: 1.1 });
+      const ss = subSizeFor(lay.size * PS) / PS;
+      const sl = layoutRows(c, sub, { family: FAM_LYR, size: ss, minSize: Math.min(ss, 26 / PS), maxW: JIE.w, maxRows: 2, lineHeight: 1.1 });
+      const gap = (lay.rows.length - 1) * lay.lineHeight + subGap(lay.size, sl.size);
+      out = { lay, sl, gap };
+      if (top + lay.size * 0.8 + gap + (sl.rows.length - 1) * sl.lineHeight + sl.size * 0.25 <= bottom) break;
+    }
+    this.jieCache.set(line, out);
+    return out;
   }
 
   /** 籤詩的形狀：上下兩折的角度（π = 摺起來蓋在中間那折上、0 = 攤平）。 */
@@ -368,10 +401,20 @@ export default class Fortune extends Scene {
     const ly = lyricAt(lyrics, t);
     const ink = paperInk();
     ink.active = sigInk(1);
-    if (ly && openK > 0) {
+    const koSub = ly ? lyricSubOf(ly.line) : null;
+    if (ly && openK > 0 && koSub) {
+      // 韓文歌：中文與原文一起排進「解曰」那一欄（放不下就一起縮），原文在中文正下方
+      const j = this.jie(c, ly.line, koSub);
+      c.save(); c.translate(JIE.x, (this.koJie ? 732 : 776) + j.lay.size * 0.8);
+      drawRows(c, j.lay, FAM_LYR, t, ink, ly.k * openK);
+      c.translate(0, j.gap);
+      drawRows(c, j.sl, FAM_LYR, t, subInk(ink), ly.k * openK);
+      c.restore();
+    } else if (ly && openK > 0) {
       const st2 = { family: FAM_LYR, size: this.lyrSize / PS, minSize: V2.lyrMin / PS, maxW: JIE.w, maxRows: 2 };
       const lay = layoutRows(c, ly.line, st2);
-      c.save(); c.translate(JIE.x, JIE.ly);
+      // 韓文歌裡沒有原文的那幾行（例如兩行一樣的句子）：跟有原文的行從同一個高度開始，換句時字不會上下跳
+      c.save(); c.translate(JIE.x, this.koJie ? 732 + lay.size * 0.8 : JIE.ly);
       drawRows(c, lay, FAM_LYR, t, ink, ly.k * openK);
       c.restore();
     }
@@ -425,9 +468,21 @@ export default class Fortune extends Scene {
     if (ly && subK > 0) {
       const st3 = { family: FAM_LYR, size: this.lyrSize, minSize: V2.lyrMin, maxW: 1100, maxRows: 2 };
       const lay = layoutRows(sc2, ly.line, st3);
-      sc2.save(); sc2.translate(150, 950 - (lay.rows.length - 1) * lay.lineHeight);
-      drawRows(sc2, lay, FAM_LYR, t, ink, ly.k * subK * prog(t, s, s + 0.4));
-      sc2.restore();
+      if (koSub) {
+        // 韓文歌：原文小一號在字幕正下方；整塊往上移，原文最後一行落在原本字幕的基線上（離下緣一樣遠）
+        const ss = subSizeFor(lay.size);
+        const sl = layoutRows(sc2, koSub, { family: FAM_LYR, size: ss, minSize: Math.min(ss, 26), maxW: 1100, maxRows: 2 });
+        const gap = (lay.rows.length - 1) * lay.lineHeight + subGap(lay.size, sl.size);
+        sc2.save(); sc2.translate(150, 950 - (sl.rows.length - 1) * sl.lineHeight - gap);
+        drawRows(sc2, lay, FAM_LYR, t, ink, ly.k * subK * prog(t, s, s + 0.4));
+        sc2.translate(0, gap);
+        drawRows(sc2, sl, FAM_LYR, t, subInk(ink), ly.k * subK * prog(t, s, s + 0.4));
+        sc2.restore();
+      } else {
+        sc2.save(); sc2.translate(150, 950 - (lay.rows.length - 1) * lay.lineHeight);
+        drawRows(sc2, lay, FAM_LYR, t, ink, ly.k * subK * prog(t, s, s + 0.4));
+        sc2.restore();
+      }
       subUsed = true;
     }
     const lastToss = this.tosses.reduce((acc, ts, i) => (t >= ts.t + 0.7 ? i : acc), -1);

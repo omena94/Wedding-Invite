@@ -16,7 +16,7 @@ import { F, font } from '../engine/type';
 import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, hash, noise1, springStep, lerp } from '../engine/util';
 import { fitText } from '../engine/text';
-import { sparkHead, sparkParticles, lyricAt, drawLyric, layoutLyric, beatAfter, signature, drawMessage, type LyricStyle } from './_motifs';
+import { sparkHead, sparkParticles, lyricAt, drawLyric, layoutLyric, beatAfter, signature, drawMessage, lyricSubOf, type LyricStyle, type LyricLayout } from './_motifs';
 import { no3, INVITE_SMALL, preloadText, fitWithSig } from './_t19';
 import { V2, msgMaxFor, lyricV2, sigV2, fitClauses } from './_v2';
 import { makeRig, U, N, EDGE_Z, CANDLE_Z, candleX, wickTop, waxTop, HOLDER_H } from './candles-rig';
@@ -80,6 +80,11 @@ export default class Candles extends Scene {
   /** 歌詞：有留言時比留言小一級，沒有留言時歌詞就是焦點、大一點。 */
   lyr: LyricStyle = { ...LYR };
   label = '';
+  /**
+   * 原文副行（韓文歌）：歌詞多一行原文會碰到燭焰，所以整個 3D 場景（蠟燭、桌子）往下讓 shiftY px
+   * （鏡頭的 view offset，透視不變）；沒有原文的窗格是 0，畫面跟以前一樣。
+   */
+  shiftY = 0;
   private tmp = new THREE.Vector3();
 
   override async init() {
@@ -103,6 +108,19 @@ export default class Candles extends Scene {
     this.setCam(0.5);
     const a = this.toDrape(TEX.x, TEX.y), b = this.toDrape(TEX.x + TEX.w, TEX.y + TEX.h);
     this.rect.set(a.x, b.y, b.x, a.y);
+    // 原文副行：量每一句中文＋原文最低到哪，跟窗格最後（鏡頭推最近）的燭焰頂比，碰到就把場景往下讓
+    // （留言貼圖的位置上面已經用沒讓位的鏡頭算好：字跟著前擺一起往下）
+    this.setCam(1);
+    let tip = Infinity;
+    for (let k = 0; k < N; k++) tip = Math.min(tip, this.toScreen({ x: candleX(k), y: wickTop(k) + 0.11, z: CANDLE_Z }).y);
+    let low = -Infinity;
+    for (const l of this.ctx.lyrics.linesIn(s - 1, e + 1)) {
+      if (!lyricSubOf(l)) continue;
+      const lay = layoutLyric(this.text.ctx, l, this.lyr);
+      low = Math.max(low, this.lyrBase(lay) + lay.height - lay.size + (lay.sub?.lay.size ?? 0) * 0.2);
+    }
+    // 燭焰會被大鼓頂高、被 hi-hat 吹出煙：原文底下到燭焰頂至少留 64 px 的暗處
+    if (low > -Infinity) this.shiftY = clamp(Math.ceil(low + 64 - tip), 0, 120);
 
     // ---- 繡字（畫一次）
     const L = this.cloth, c = L.ctx;
@@ -171,7 +189,19 @@ export default class Candles extends Scene {
     const cam = this.rig.cam;
     cam.position.set(CAM.x, CAM.y, CAM.z * (1 - CAM.push * p));
     cam.lookAt(CAM.x, CAM.ty, 0);
+    // 鏡頭整晚共用：沒有原文的窗格要把上一個窗格的讓位清掉
+    if (this.shiftY > 0) cam.setViewOffset(W, H, 0, -this.shiftY, W, H);
+    else if (cam.view?.enabled) cam.clearViewOffset();
     cam.updateMatrixWorld();
+  }
+
+  /**
+   * 歌詞第一排的基線。有原文副行時整塊往上提、小標收起來（像歌詞折兩行時一樣）：
+   * 一行中文放在比平常高一點的地方；折兩行時第一排貼著上緣的安全邊（字頂 ≥ 96 px）。
+   */
+  private lyrBase(lay: LyricLayout) {
+    if (lay.sub) return lay.rows.length > 1 ? 96 + lay.size * 0.8 : LYR_Y - 24;
+    return lay.rows.length > 1 ? LYR_Y - lay.size * 1.18 + 14 : LYR_Y;
   }
 
   /** 畫面上的一點打到前擺平面（z = EDGE_Z）的世界座標。 */
@@ -269,8 +299,9 @@ export default class Candles extends Scene {
     let rows = 1;
     if (ly) {
       const lay = layoutLyric(c, ly.line, this.lyr);
-      rows = lay.rows.length;
-      c.save(); c.translate(LX, rows > 1 ? LYR_Y - lay.size * 1.18 + 14 : LYR_Y);
+      // 有原文（drawLyric 自動畫在中文下面）時小標也收起來：它的位置讓給往上提的歌詞
+      rows = lay.sub ? 2 : lay.rows.length;
+      c.save(); c.translate(LX, this.lyrBase(lay));
       drawLyric(c, ly.line, t, this.lyr, lay, ly.k);
       c.restore();
     } else if (!lyrics.has) {

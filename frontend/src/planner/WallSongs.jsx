@@ -3,8 +3,9 @@
 // 在歌詞清單按那句的「對字」邊聽邊按（存成加強版 LRC 的 <mm:ss.xx>，沒修的句子照舊自動推算）；
 // 某句出來太晚／太早就點它按「開頭提早／延後」，好幾句一起移用 Shift 選起來。整首對好了勾「歌詞對好了」，歌單上才分得出還要修哪幾首。
 // 大螢幕照這裡的順序播（停用的跳過），播到哪一首的配色、剪掉的前奏尾奏也在這裡設。
+// 韓文等外語歌可以另外貼「中文翻譯」LRC（2026-09-30）：大螢幕中文大字、原文小字放在下面，時間照原文走，不用另外對時。
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, CloudUpload, FileText, Lock, LockOpen, Monitor, Music, Pause, Pencil, Play, RefreshCw, Search, Square, Trash2, Type, Undo2, Wand2 } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, CloudUpload, FileText, Languages, Lock, LockOpen, Monitor, Music, Pause, Pencil, Play, RefreshCw, Search, Square, Trash2, Type, Undo2, Wand2 } from "lucide-react";
 import {
   deleteWallSong, fetchWallSongAnalysis, fetchWallSongAudio, fetchWallSongs, reorderWallSongs, saveWallSongAnalysis, updateWallSong, uploadWallSong,
 } from "../api.js";
@@ -246,7 +247,7 @@ function SongEditor({ song, onClose, onSaved, onPatched }) {
     title: song.title, artist: song.artist, theme: song.theme || "", instrumental: !!song.instrumental,
     start_at: Math.round(song.start_at || 0), end_at: song.end_at ? Math.round(song.end_at) : "",
     lyrics_lrc: song.lyrics_lrc || "", lyrics_source: song.lyrics_source || "", lyrics_offset: song.lyrics_offset || 0,
-    lyrics_done: !!song.lyrics_done,
+    lyrics_done: !!song.lyrics_done, lyrics_trans: song.lyrics_trans || "",
   });
   const [busy, setBusy] = useState("");
   const [cands, setCands] = useState(null);
@@ -284,7 +285,7 @@ function SongEditor({ song, onClose, onSaved, onPatched }) {
   // 勾了就鎖起來（新人 2026-09-30：對好的不能再改，要改先取消勾選）；勾的時候把畫面上的歌詞一起存，鎖住的就是看到的這份
   const markDone = async (v) => {
     set("lyrics_done", v);
-    const lyrics = v ? { lyrics_lrc: form.lyrics_lrc, lyrics_source: form.lyrics_source, lyrics_offset: Number(form.lyrics_offset) || 0, instrumental: form.instrumental } : {};
+    const lyrics = v ? { lyrics_lrc: form.lyrics_lrc, lyrics_trans: form.lyrics_trans, lyrics_source: form.lyrics_source, lyrics_offset: Number(form.lyrics_offset) || 0, instrumental: form.instrumental } : {};
     try {
       onPatched?.(await updateWallSong(song.id, { lyrics_done: v, ...lyrics }));
       toastOk(v ? "已標記對好了，歌詞鎖起來了" : "已解除鎖定，可以繼續修改");
@@ -316,7 +317,7 @@ function SongEditor({ song, onClose, onSaved, onPatched }) {
     try {
       const body = { ...form, start_at: Number(form.start_at) || 0, end_at: Number(form.end_at) || 0, lyrics_offset: Number(form.lyrics_offset) || 0 };
       // 歌詞鎖著：只存歌名、配色這些，歌詞相關的不送（伺服器也會擋）
-      if (locked) for (const k of ["lyrics_lrc", "lyrics_source", "lyrics_offset", "instrumental"]) delete body[k];
+      if (locked) for (const k of ["lyrics_lrc", "lyrics_trans", "lyrics_source", "lyrics_offset", "instrumental"]) delete body[k];
       const out = await updateWallSong(song.id, body);
       toastOk("已儲存");
       onSaved(out);
@@ -438,14 +439,85 @@ function SongEditor({ song, onClose, onSaved, onPatched }) {
           )}
           {showLrc && <LrcText value={form.lyrics_lrc} marks={marks} jumpKey={jump} jumpRow={jump ? rowOf(jump.line) : -1} readOnly={locked}
             onChange={(v) => setForm((f) => ({ ...f, lyrics_lrc: v, lyrics_source: "manual" }))} />}
-          <LyricSync lrc={form.lyrics_lrc} offset={Number(form.lyrics_offset) || 0} blobUrl={blobUrl} analysis={analysis?.data} locked={locked}
+          <LyricSync lrc={form.lyrics_lrc} trans={form.lyrics_trans} offset={Number(form.lyrics_offset) || 0} blobUrl={blobUrl} analysis={analysis?.data} locked={locked}
             onLrc={(lrc) => setForm((f) => ({ ...f, lyrics_lrc: lrc, lyrics_source: "manual" }))} onCommit={commitLrc} saveNote={saveNote}
             onTapStart={() => setShowLrc(false)}
             onOffset={(o) => set("lyrics_offset", Math.round(o * 100) / 100)}
             onSelLines={setSelLines} onPick={(line) => setJump({ line })} />
+          <TransPanel song={song} lrc={form.lyrics_lrc} trans={form.lyrics_trans} locked={locked}
+            onChange={(v) => set("lyrics_trans", v)} onPatched={onPatched} />
         </>}
       </div>
     </Modal>
+  );
+}
+
+// ---------------------------------------------------------------- 中文翻譯
+/**
+ * 中文翻譯（選填，韓文等外語歌用）：另一份 LRC，照順序一句對一句配到原文。大螢幕中文大字、原文小字在下面，
+ * 時間照原文走（原文改時間、對字，中文自動跟著），所以翻譯不用對時；中文也照原文分段標 <時間> 的話，兩行會一段一段一起亮。
+ * 上傳檔案、清除翻譯直接存；在框裡改的跟 LRC 原文一樣，按視窗下面的「儲存」。
+ */
+function TransPanel({ song, lrc, trans, locked, onChange, onPatched }) {
+  const file = useRef(null);
+  const [open, setOpen] = useState(false);
+  const has = !!trans.trim();
+  // 配對情形：原文有幾句、翻譯有幾句、實際配到幾句（兩行一樣的「Ah-ah」不算，大螢幕只顯示一行）
+  const stat = useMemo(() => {
+    try {
+      const count = (s) => parseLrc(s).lines.filter((l) => Number.isFinite(l.t) && /[\p{L}\p{N}]/u.test(l.words?.length ? l.words.map((w) => w.w).join("") : l.text)).length;
+      if (!has) return null;
+      const ly = buildLyrics(lrc, AudioData.silent(3600, 100), 0, trans);
+      return { orig: count(lrc), tr: count(trans), paired: ly.lines.filter((l) => l.sub).length };
+    } catch { return null; }
+  }, [lrc, trans, has]);
+  const save = async (v, msg) => {
+    onChange(v);
+    try { onPatched?.(await updateWallSong(song.id, { lyrics_trans: v })); toastOk(msg); } catch (e) { toastErr(e); }
+  };
+  const load = async (f) => {
+    if (!f) return;
+    const text = await f.text();
+    if (file.current) file.current.value = "";
+    await save(text, "翻譯已上傳並儲存");
+  };
+  const clear = async () => {
+    if (!(await confirmAsk({ title: "清除中文翻譯？", text: "大螢幕會改回只顯示原文。", confirmText: "清除" }))) return;
+    await save("", "已清除翻譯");
+  };
+  return (
+    <div className="ws-trans">
+      <div className="ws-lyrics-head">
+        <span><Languages size={14} /> 中文翻譯（選填）</span>
+        {stat && <span className={`pill ${stat.paired ? "pill-yes" : "pill-warn"}`}>配到 {stat.paired} 句</span>}
+      </div>
+      <div className="helper-text" style={{ marginTop: 0 }}>
+        韓文、日文這些外語歌用：上傳或貼上中文翻譯的 LRC（一句對一句，時間照原文的寫就好）。
+        大螢幕會用<b>中文大字、原文小字放在下面</b>，時間跟著上面的原文走，不用另外對時；中文也照原文分段標 &lt;時間&gt; 的話，兩行會一段一段一起亮。
+        上面的歌詞清單每句下面會顯示配到的中文，可以邊聽邊檢查。
+      </div>
+      {stat && stat.orig !== stat.tr && (
+        <div className="ws-empty ws-empty-inline" style={{ marginTop: 0, marginBottom: 8 }}>
+          <span>原文 {stat.orig} 句、翻譯 {stat.tr} 句，句數不一樣：改成照開始時間找最接近的句子配（1.5 秒內），配不到的句子只顯示原文。</span>
+        </div>
+      )}
+      <div className="toolbar" style={{ marginBottom: open ? 8 : 0 }}>
+        {!locked && <>
+          <input ref={file} type="file" accept=".lrc,.txt,text/plain" hidden onChange={(e) => load(e.target.files?.[0])} />
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => file.current?.click()}><FileText size={13} /> 上傳翻譯 .lrc 檔</button>
+        </>}
+        <button type="button" className={`btn btn-sm ${open ? "btn-primary" : "btn-ghost"}`} onClick={() => setOpen((v) => !v)}>
+          {locked ? <FileText size={13} /> : <Pencil size={13} />} {open ? "收起翻譯" : locked ? "看翻譯" : has ? "編輯翻譯" : "貼上翻譯"}
+        </button>
+        {has && !locked && <button type="button" className="btn btn-ghost btn-sm" onClick={clear}><Trash2 size={13} /> 清除翻譯</button>}
+      </div>
+      {open && <>
+        <textarea rows={8} className="ws-lrc" value={trans} spellCheck={false} readOnly={locked}
+          placeholder={"[00:12.50]第一句的中文翻譯\n[00:16.20]第二句的中文翻譯\n…"}
+          onChange={(e) => onChange(e.target.value)} />
+        {!locked && <div className="helper-text" style={{ marginBottom: 0 }}>在這裡改完，按視窗下面的「儲存」。</div>}
+      </>}
+    </div>
   );
 }
 
@@ -503,7 +575,7 @@ function LrcText({ value, onChange, marks, jumpKey, jumpRow, readOnly }) {
  * 人按鍵通常慢一點點，所以記的時間自動往前 0.12 秒（放慢播放時換算成音檔時間）。
  * locked：歌詞標了「對好了」、鎖起來了，只能播放、點句子聽，所有會改到歌詞的按鈕都收起來。
  */
-function LyricSync({ lrc, offset, blobUrl, analysis, onLrc, onCommit, saveNote, onOffset, onTapStart, onSelLines, onPick, locked }) {
+function LyricSync({ lrc, trans = "", offset, blobUrl, analysis, onLrc, onCommit, saveNote, onOffset, onTapStart, onSelLines, onPick, locked }) {
   const audio = useRef(null);
   const listRef = useRef(null);
   const syncRef = useRef(null);
@@ -529,6 +601,10 @@ function LyricSync({ lrc, offset, blobUrl, analysis, onLrc, onCommit, saveNote, 
 
   const au = useMemo(() => (analysis ? new AudioData(analysis) : AudioData.silent(600, 100)), [analysis]);
   const lyrics = useMemo(() => { try { return buildLyrics(lrc, au, offset); } catch { return Lyrics.empty(); } }, [lrc, au, offset]);
+  // 有中文翻譯時，同一份歌詞再算一次「掛上翻譯」的版本（行的順序跟 lyrics 一樣）：清單每句下面顯示配到的中文、
+  // 大字預覽跟大螢幕一樣中文大字、原文在下面。對時、對字等工具照舊只動原文。
+  const tlyrics = useMemo(() => { if (!trans.trim()) return null; try { return buildLyrics(lrc, au, offset, trans); } catch { return null; } }, [lrc, au, offset, trans]);
+  const zhOf = (line) => { const x = line && tlyrics?.lines[line.i]; return x?.sub ? x : null; };
   const doc = useMemo(() => { try { return parseLrc(lrc); } catch { return { lines: [], meta: {} }; } }, [lrc]);
   // 清單的每一句（LRC 的一行）對到算好時間的歌詞行：用開始時間對（空白行、沒有字的行不會出現在大螢幕上）
   const rows = useMemo(() => doc.lines.map((l, i) => {
@@ -969,7 +1045,8 @@ function LyricSync({ lrc, offset, blobUrl, analysis, onLrc, onCommit, saveNote, 
             </div>
           ) : (
             <div className="ws-preview">
-              {cur ? <KaraokeLine line={cur} t={t} /> : <span className="muted-cell">{lyrics.has ? "（間奏）" : "沒有對好時間的歌詞"}</span>}
+              {cur ? (zhOf(cur) ? <><KaraokeLine line={zhOf(cur)} t={t} /><KaraokeLine line={cur} t={t} sub /></> : <KaraokeLine line={cur} t={t} />)
+                : <span className="muted-cell">{lyrics.has ? "（間奏）" : "沒有對好時間的歌詞"}</span>}
               {next && <div className="ws-preview-next">{next.text}</div>}
             </div>
           )}
@@ -995,7 +1072,10 @@ function LyricSync({ lrc, offset, blobUrl, analysis, onLrc, onCommit, saveNote, 
                   <div key={r.i} data-row={r.i} className={`ws-line${r.i === curRow ? " now" : ""}${sel.has(r.i) ? " sel" : ""}`}
                     onMouseDown={(e) => { if (e.shiftKey) e.preventDefault(); }} onClick={(e) => pickRow(e, r.i)}>
                     <span className="ws-tap-t">{fmtTime(r.l.t)}</span>
-                    <span className="ws-line-text">{r.line ? <KaraokeLine line={r.line} t={t} small /> : r.l.text}</span>
+                    <span className="ws-line-text">
+                      {r.line ? <KaraokeLine line={r.line} t={t} small /> : r.l.text}
+                      {tlyrics && r.line && (zhOf(r.line) ? <KaraokeLine line={zhOf(r.line)} t={t} small zh /> : <span className="ws-line-zh muted-cell">（沒有翻譯，只顯示原文）</span>)}
+                    </span>
                     {r.l.words?.length > 0 && <span className="pill pill-yes ws-line-pill" title="這句的字照你按的時間亮">逐字</span>}
                     {!locked && <span className="ws-line-btns">
                       {selRows.length === 1 && selRows[0].i === r.i && <>
@@ -1138,9 +1218,10 @@ function WordTapPanel({ wt, segs, rate, ended, onRate, onCut, onStart, onHit, on
 }
 
 /** 一行歌詞，唱過的字變深、正在唱的字漸層（跟大螢幕同樣的時間規則）。 */
-function KaraokeLine({ line, t, small }) {
+/** small：清單裡的小字；sub：預覽裡中文下面的原文（小一號）；zh：清單裡原文下面配到的中文。 */
+function KaraokeLine({ line, t, small, sub, zh }) {
   return (
-    <div className={`ws-karaoke${small ? " sm" : ""}`}>
+    <div className={`ws-karaoke${small ? " sm" : ""}${sub ? " sub" : ""}${zh ? " zh" : ""}`}>
       {line.words.map((w, i) => {
         const p = Lyrics.wordProgress(w, t);
         const gap = i > 0 && line.text[w.o - 1] === " " ? " " : "";

@@ -16,7 +16,7 @@ import { rgba, mixRgba, LIN } from '../engine/palette';
 import { clamp, ease, prog, pulse, hash, lerp, TAU } from '../engine/util';
 import { wrap } from '../engine/text';
 import { Lyrics } from '../engine/lyrics';
-import { lyricAt, layoutLyric, signature, beatAfter, drawHeart, DATE_DOTS } from './_motifs';
+import { lyricAt, layoutLyric, signature, beatAfter, drawHeart, DATE_DOTS, lyricSubOf, drawLyricSub } from './_motifs';
 import { stagger, pad3 } from './_t11';
 import { windowLines, type Rect } from './_t10';
 import { msgMaxFor, lyricV2, sigV2, V2 } from './_v2';
@@ -34,6 +34,8 @@ const TOP_PAD = 50; // 第一行上面留的紙
 const PAPER_TOP_MIN = 262; // 紙的上緣最高到這裡（上面是歌詞）
 // 歌詞比留言小一級（MV 原則：焦點是打在紙上的留言）
 const LYR = { x: 132, y: 100, w: 1200, base: 200 }; // 字級照標準 v2（lyricV2）
+// 韓文歌（有原文副行）：歌詞用到整張桌面的寬（少折行），原文最後一排的基線放在信紙最高的上緣之上，整組往上長
+const LYR_SUB = { w: 1640, base: 236 };
 const PLATEN = { y0: 742, y1: 804 };
 const BASKET = { cy: 1300, r: 390, a0: Math.PI * 1.13, a1: Math.PI * 1.87, n: 40 }; // 字籃（扇形，中心 x 跟著打字點）
 const BELL = { dx: 430, y: 900 }; // 鈴（跟著機器走，在打字點右下；最右也不會進右下角 QR 的範圍）
@@ -418,17 +420,21 @@ export default class Typewriter extends Scene {
   /** 現場歌詞：這一行（逐字跟唱）。純音樂：歌名。 */
   private drawLyric(c: CanvasRenderingContext2D, hc: CanvasRenderingContext2D, t: number): boolean {
     const { lyrics, song } = this.ctx;
-    c.font = font(F.mono(500), 15); c.letterSpacing = '4px'; c.fillStyle = rgba('sepia', 0.65);
-    c.fillText(this.hasLyrics ? '♪  現場歌詞　LIVE' : '♪  本頁配樂', LYR.x, LYR.y + 22);
-    c.letterSpacing = '0px';
     const ly = lyricAt(lyrics, t, 1.4);
-    if (!ly) {
+    const sub = ly ? lyricSubOf(ly.line) : null;
+    const st = { family: F.archivo(100, 800), size: this.lyrSize, minSize: V2.lyrMin, maxWidth: sub ? LYR_SUB.w : LYR.w, lineHeight: 1.06 };
+    const lay = ly ? layoutLyric(c, ly.line, st) : null;
+    // 標籤：有原文、中文又折兩行時，第一行會長到標籤那裡，這時候不畫
+    if (!(lay?.sub && lay.rows.length > 1)) {
+      c.font = font(F.mono(500), 15); c.letterSpacing = '4px'; c.fillStyle = rgba('sepia', 0.65);
+      c.fillText(this.hasLyrics ? '♪  現場歌詞　LIVE' : '♪  本頁配樂', LYR.x, LYR.y + 22);
+      c.letterSpacing = '0px';
+    }
+    if (!ly || !lay) {
       if (!this.hasLyrics) { c.font = font(F.archivo(100, 800), this.lyrSize); c.fillStyle = rgba('sepia', 0.9); c.fillText(song.title || '今晚的歌', LYR.x, LYR.base); }
       return false;
     }
-    const st = { family: F.archivo(100, 800), size: this.lyrSize, minSize: V2.lyrMin, maxWidth: LYR.w, lineHeight: 1.06 };
-    const lay = layoutLyric(c, ly.line, st);
-    const y0 = LYR.base - (lay.rows.length - 1) * lay.size * 1.06 * 0.6;
+    const y0 = lay.sub ? LYR_SUB.base - (lay.height - lay.size) : LYR.base - (lay.rows.length - 1) * lay.size * 1.06 * 0.6;
     let glow = false;
     c.save(); c.globalAlpha *= ly.k;
     c.font = font(st.family, lay.size);
@@ -444,6 +450,11 @@ export default class Typewriter extends Scene {
       c.fillText(pw.word.w, x, y);
       c.restore();
       // 亮版面不加光暈：加亮疊在紙上會把深色的字洗淡
+    }
+    // 原文副行（韓文歌）：小一號、墨色、不上螢光筆（比中文安靜）
+    if (sub && lay.sub) {
+      c.translate(LYR.x, y0 + lay.sub.dy);
+      drawLyricSub(c, sub, t, { ...st, sung: rgba('sepia'), unsung: rgba('sepia', 0.3) }, lay.size, c.globalAlpha);
     }
     c.restore();
     return glow;

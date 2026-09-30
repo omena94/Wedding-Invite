@@ -239,7 +239,8 @@ export default class Sunrise extends Scene {
     };
     const lay = layoutLyric(this.layer.ctx, line, st);
     const lh = lay.size * (st.lineHeight ?? 1.18);
-    const top = -lay.size * 0.86, bot = (lay.rows.length - 1) * lh + lay.size * 0.2;
+    // 紙條的寬（下緣）：韓文歌的原文副行（drawLyric 畫在中文下面）也要在紙條上，所以算到原文最後一排的基線
+    const top = -lay.size * 0.86, bot = lay.sub ? lay.height - lay.size + lay.sub.lay.size * 0.2 : (lay.rows.length - 1) * lh + lay.size * 0.2;
     L = { lay, st, ang, top, bot };
     this.lyr.set(line.i, L);
     return L;
@@ -363,7 +364,7 @@ export default class Sunrise extends Scene {
       const Ly = this.lyrLayout(line);
       const hw = (Ly.bot - Ly.top) / 2 + Ly.lay.size * 0.34;
       // 縮回太陽後面：字先很快淡掉（新的一行馬上要射出來），紙條再從尾巴收
-      const full = D0 + Ly.lay.rows.reduce((a, r) => Math.max(a, r.width), 0) + 90;
+      const full = D0 + [...Ly.lay.rows, ...(Ly.lay.sub?.lay.rows ?? [])].reduce((a, r) => Math.max(a, r.width), 0) + 90;
       const len = kout > 0 ? lerp(Math.max(full, 1400), SUN.r * 0.5, kout) : SUN.r * 0.5 + RAY_LEN * kin;
       out.push({ ang: Ly.ang, len, hw, line, tShoot, alpha: 1 - prog(t, tGone, tGone + 0.12) });
     }

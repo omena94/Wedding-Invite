@@ -16,7 +16,7 @@ import { clamp, ease, lerp, prog, pulse, hash } from '../engine/util';
 import { tokens } from '../engine/text';
 import { msgMaxFor, lyricV2, sigV2, V2 } from './_v2';
 import { Lyrics } from '../engine/lyrics';
-import { lyricAt, layoutLyric, beatAfter, drawHeart, signature, fillWithHearts, COUPLE_ZH } from './_motifs';
+import { lyricAt, layoutLyric, beatAfter, drawHeart, signature, fillWithHearts, COUPLE_ZH, lyricSubOf, drawLyricSub } from './_motifs';
 import { Paper, stagger, mono, tag } from './_t11';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'science', paper: true, energy: [0.3, 0.9], bars: [4, 8], weight: 1 };
@@ -419,6 +419,13 @@ export default class Elements extends Scene {
       c.fillStyle = p < 1 ? rgba('blood') : rgba('sepia');
       c.fillText(pw.word.w, x, y);
       c.restore();
+    }
+    // 原文副行（韓文歌）：layoutLyric 的高度已經算到副行，上面的 oy 讓副行的基線落在原本歌詞的位置；
+    // 小一號、墨色、不上螢光筆（比中文安靜）
+    const sub = lyricSubOf(ly.line);
+    if (sub && lay.sub) {
+      c.translate(box.x, oy + lay.sub.dy);
+      drawLyricSub(c, sub, t, { ...st, sung: rgba('sepia'), unsung: rgba('sepia', 0.26) }, lay.size, c.globalAlpha);
     }
     c.restore();
   }

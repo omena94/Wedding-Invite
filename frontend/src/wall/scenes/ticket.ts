@@ -26,7 +26,7 @@ import { LIN } from '../engine/palette';
 import { F, font, layout, loadText, fitSize, measure } from '../engine/type';
 import { fitText, type FitResult } from '../engine/text';
 import { clamp, ease, prog, pulse, hash, lerp } from '../engine/util';
-import { lyricAt, layoutLyric, drawLyric, signature, heartPoints, COUPLE_EN, COUPLE_ZH, type LyricStyle } from './_motifs';
+import { lyricAt, lyricSubOf, layoutLyric, drawLyric, signature, heartPoints, COUPLE_EN, COUPLE_ZH, type LyricStyle, type LyricLayout } from './_motifs';
 import { grid, stagger, pad3, type Grid } from './_t2';
 import { homography, applyH, type P2 } from './_t11';
 import { TW, TH, PERF, MSG, STRIP, SLOT_W, slotAt, BAKE_FRAG, MAIN_FRAG } from './ticket-glsl';
@@ -42,6 +42,8 @@ export const spec: PlateSpecDecl = { group: 'type', family: 'doc', paper: true, 
 const CAM = { rz: -0.06, tilt: 0.4, yaw: 0.1, D: 2300, Z0: 0.74, Z1: 0.78, cx: 700, cy: 560 };
 /** 票根的中心（票面座標）：撕下來以後繞這裡轉。 */
 const STUB_C = { x: (PERF + TW) / 2, y: TH / 2 };
+/** 韓文歌時歌詞條往上長多少（票面 px）：邀請的最後一行約在 y 466，NOW PLAYING 那條線移到 491，中間還留一點空。 */
+const KO_UP = 72;
 const RECT: P2[] = [{ x: 0, y: 0 }, { x: TW, y: 0 }, { x: TW, y: TH }, { x: 0, y: TH }];
 
 // 資料圖層的「色版」：不是顏色，是 R = 壓痕深度、G = 墨、B = 訊號色的墨（畫在不透明的黑底上）
@@ -56,6 +58,7 @@ const SMALL = (a = 0.6) => `rgba(120,${Math.round(255 * a)},0,1)`;
 const bakeStore = () => ({ rt: makeRT(TW, TH, { depthBuffer: false }), pass: new FSPass(BAKE_FRAG), done: false });
 const mainPass = () => new FSPass(MAIN_FRAG, {
   baseTex: { value: null }, msgTex: { value: null }, stripTex: { value: null }, bakeTex: { value: null },
+  uRS: { value: new THREE.Vector4(STRIP.x, STRIP.y, STRIP.w, STRIP.h) },
   Hi: { value: new THREE.Matrix3() }, sA: { value: new THREE.Vector3() }, sB: { value: new THREE.Vector3() },
   sep: { value: 0 }, tearY: { value: 0 }, lightDir: { value: new THREE.Vector2(-0.7, -0.7) }, depth: { value: 2.4 }, sheen: { value: -1e4 },
   msgT: { value: 0 }, msgRamp: { value: 0.02 }, punchN: { value: 0 },
@@ -97,8 +100,10 @@ export default class Ticket extends Scene {
   base = this.track(new Layer2D(TW, TH, SCALE, { fast: true }));
   /** 主打留言（資料圖層，B/G = 每個字壓下去的時間碼）。 */
   msgL = this.track(new Layer2D(MSG.w, MSG.h, SCALE, { fast: true }));
-  /** 歌詞條（資料圖層，每格重畫）。 */
-  strip = this.track(new Layer2D(STRIP.w, STRIP.h, SCALE, { fast: true }));
+  /** 歌詞條（資料圖層，每格重畫）。高度要等 init 知道是不是韓文歌才定（sY／sH）。 */
+  strip!: Layer2D;
+  /** 歌詞條在票面上的上緣與高度：平常就是 STRIP；韓文歌（沒有留言、有原文）往上長 KO_UP，放中文＋原文兩段。 */
+  sY: number = STRIP.y; sH: number = STRIP.h;
   /** 彩紙（落在桌上的紙片與它們的影子）。 */
   conf = this.track(new LineBatch(1024, { screen2D: true, blend: 'normal' }));
   /** 票面 px → 螢幕 px 的縮放（留言、歌詞條那一帶）：v2 的字級是螢幕 px，畫在票面上要除以它。 */
@@ -128,6 +133,9 @@ export default class Ticket extends Scene {
     await loadText(`${song.title}${m ? m.text + m.name : ''}${this.instrText}本票可兌換一句祝福掃描右下角寫下你的祝福它會印在下一張票上喜宴場入場二位一位賓客${COUPLE_ZH}`);
     const g = this.g = grid(au, s, e);
     const P = this.P = g.beat;
+    // 韓文歌：邀請只用到留言區的上半，歌詞條可以往上長（NOW PLAYING 那條線跟著上移），中文下面才放得下原文
+    if (!m && lyrics.linesIn(s - 1, e + 1).some((l) => !!lyricSubOf(l))) { this.sY = STRIP.y - KO_UP; this.sH = STRIP.h + KO_UP; }
+    this.strip = this.track(new Layer2D(STRIP.w, this.sH, SCALE, { fast: true }));
     // ---- 時間表
     this.tLand = g.b0;
     const bLand = Math.round(au.beatAt(this.tLand));
@@ -205,9 +213,10 @@ export default class Ticket extends Scene {
     c.fillStyle = RULE(0.4); c.fillRect(x0, 144, x1 - x0, 1.1);
     // 歌詞條的標題：NOW PLAYING ♪ ＋一條線
     const np = 'NOW PLAYING ♪';
-    text(np, x0, 568, F.mono(500), 13, SMALL(0.5), { track: 4 });
+    const up = STRIP.y - this.sY;
+    text(np, x0, 568 - up, F.mono(500), 13, SMALL(0.5), { track: 4 });
     const nw = measure(np, F.mono(500), 13, 4);
-    c.fillStyle = RULE(0.4); c.fillRect(x0 + nw + 16, 563, x1 - x0 - nw - 16, 1.1);
+    c.fillStyle = RULE(0.4); c.fillRect(x0 + nw + 16, 563 - up, x1 - x0 - nw - 16, 1.1);
 
     // ---- 票根：一小群小字、座位號（= 留言編號）是盲壓，剪票處八個虛線愛心
     const cx = (PERF + TW) / 2;
@@ -313,11 +322,26 @@ export default class Ticket extends Scene {
     }
     const ly = lyricAt(this.ctx.lyrics, t);
     if (ly) {
-      const lay = layoutLyric(c, ly.line, this.ly);
+      let lay = layoutLyric(c, ly.line, this.ly), st = this.lyData;
+      let y0 = lay.rows.length > 1 ? lay.size * 0.92 + 2 : STRIP.h * 0.5 + lay.size * 0.36;
+      if (lay.sub) {
+        // 韓文歌：中文＋原文（drawLyric 自動畫原文：盲壓 → 上墨，比中文淡兩成、不上訊號色的墨）一起放進長高的歌詞條；
+        // 放不下就一起縮（中文不小於 lyrMin），兩段垂直置中
+        const tall = (l: LyricLayout) => l.height + (l.sub ? l.sub.lay.size * 0.25 : 0);
+        for (let k = 1; k < 10 && tall(lay) > this.sH - 8 && lay.size > (this.ly.minSize ?? 0) + 0.5; k++) {
+          const size = Math.max(this.ly.minSize ?? 0, (this.ly.size) * Math.pow(0.93, k));
+          st = { ...this.lyData, size };
+          lay = layoutLyric(c, ly.line, { ...this.ly, size });
+        }
+        y0 = Math.max(4, (this.sH - tall(lay)) / 2) + lay.size * 0.92;
+      } else if (this.sH > STRIP.h) {
+        // 韓文歌裡沒有原文的行（兩行一樣的句子）：在長高的歌詞條裡一樣垂直置中
+        y0 = (this.sH - lay.height) / 2 + lay.size * 0.92;
+      }
       c.save();
       // 基線照字級算：兩行時第一行貼上緣，一行時垂直置中
-      c.translate(8, lay.rows.length > 1 ? lay.size * 0.92 + 2 : STRIP.h * 0.5 + lay.size * 0.36);
-      drawLyric(c, ly.line, t, this.lyData, lay, ly.k);
+      c.translate(8, y0);
+      drawLyric(c, ly.line, t, st, lay, ly.k);
       c.restore();
     }
     L.upload();
@@ -388,6 +412,7 @@ export default class Ticket extends Scene {
     u.baseTex!.value = this.base.texture;
     u.msgTex!.value = this.msgL.texture;
     u.stripTex!.value = this.strip.texture;
+    (u.uRS!.value as THREE.Vector4).set(STRIP.x, this.sY, STRIP.w, this.sH);
     u.bakeTex!.value = this.bake.rt.texture;
     this.pass.render(renderer, out);
     this.confetti(t);

@@ -18,7 +18,7 @@ import { rgba, mixRgba, LIN } from '../engine/palette';
 import { clamp, ease, prog, pulse, hash, lerp, mulberry32 } from '../engine/util';
 import { Lyrics, type Line, type Word } from '../engine/lyrics';
 import type { FitResult } from '../engine/text';
-import { layoutMessage, signature, beatAfter } from './_motifs';
+import { layoutMessage, signature, beatAfter, lyricSubOf, drawLyricSub } from './_motifs';
 import { drawReveal, phraseSchedule, revealAt, fitCharsF, windowLines, type Rect } from './_t10';
 import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 } from './_v2';
 
@@ -35,6 +35,8 @@ const METER = { y0: 430, y1: 566, n: 12 }; // 電平表（上到下）
 const SLOT = { y0: 596, y1: 902 }; // 推桿槽
 const CAP = { h: 84, top: 638, bot: 860 }; // 推頭（中心 y：頂 = 0 dB、底 = -∞）
 const NAMES_Y = 940; // 名字膠帶的中線
+// 韓文歌（有原文副行）：名字膠帶加高，上半截寫軌名（小一點）、下半截寫這一句的原文（推頭上只放得下中文的一個字）
+const SUB_TAPE = { y: 906, h: 76, names: 928, base: 966 };
 const MASTER = { x0: 1392, x1: 1832 }; // 主控區
 const VU = [{ x: 1404, y: 112, w: 202, h: 168, band: 'low' }, { x: 1622, y: 112, w: 202, h: 168, band: 'high' },
   // 膠帶右邊的兩個小錶：宣文、孟庭兩軌人聲（標準 v2：膠帶變窄，空出來的地方要有東西在動）
@@ -95,6 +97,8 @@ export default class Mixer extends Scene {
   tFirst = 0; tTape = 0; beat = 0.5;
   seed = 1;
   avoid: Rect[] = [];
+  /** 這個窗格有原文副行（韓文歌、沒有主打留言）：名字膠帶加高、原文寫在下半截。 */
+  subTape = false;
   private baseUp = false;
 
   override async init() {
@@ -103,7 +107,9 @@ export default class Mixer extends Scene {
     this.seed = ((this.ctx.params.seed ?? 1) * 977 + (m?.id ?? 0) * 31) >>> 0;
     this.body = m ? m.text : INVITE;
     const lines = windowLines(lyrics, s, e);
-    await loadText(`${TEXT}${this.body}${m ? signature(m.name) : ''}${lines.map((l) => l.text).join('')}`);
+    // 這個窗格有沒有原文（有主打留言的窗格，引擎給的歌詞本來就沒有原文）
+    this.subTape = lines.some((l) => lyricSubOf(l));
+    await loadText(`${TEXT}${this.body}${m ? signature(m.name) : ''}${lines.map((l) => l.text + (this.subTape ? l.sub?.text ?? '' : '')).join('')}`);
     const c = this.dyn.ctx;
     this.beat = au.beatPeriod(s + 0.1);
     // ---- 留言膠帶：字排好，膠帶照字的大小裁
@@ -264,13 +270,13 @@ export default class Mixer extends Scene {
       }
     }
     c.textAlign = 'left';
-    // 名字膠帶（整排一條）
-    const tapeY = NAMES_Y - 22;
-    this.tapeStrip(c, X0 - 6, tapeY, N * PITCH + 12, 44, 7);
-    c.font = font(F.hand(700), 22); c.fillStyle = rgba('ink', 0.62); c.textAlign = 'center';
+    // 名字膠帶（整排一條）；有原文副行時加高，軌名縮小寫在上半截
+    const sub = this.subTape;
+    this.tapeStrip(c, X0 - 6, sub ? SUB_TAPE.y : NAMES_Y - 22, N * PITCH + 12, sub ? SUB_TAPE.h : 44, 7);
+    c.font = font(F.hand(700), sub ? 19 : 22); c.fillStyle = rgba('ink', 0.62); c.textAlign = 'center';
     CHANNELS.forEach((cd, i) => {
       const r = mulberry32(this.seed + i * 13);
-      c.save(); c.translate(chX(i) + PITCH / 2, NAMES_Y + 8); c.rotate((r() - 0.5) * 0.08);
+      c.save(); c.translate(chX(i) + PITCH / 2, sub ? SUB_TAPE.names : NAMES_Y + 8); c.rotate((r() - 0.5) * 0.08);
       c.fillText(cd.name, 0, 0);
       c.restore();
     });
@@ -401,6 +407,9 @@ export default class Mixer extends Scene {
       this.capBody(c, mf.x - 30, y, 60, false, 0);
     }
 
+    // ---- 原文副行（韓文歌）：寫在名字膠帶的下半截
+    if (this.subTape) this.drawSub(c, t, 1 - exit);
+
     // ---- 留言膠帶
     this.drawTape(c, t);
 
@@ -462,6 +471,25 @@ export default class Mixer extends Scene {
     hc.restore();
     void hash;
     return true;
+  }
+
+  /**
+   * 原文副行：這一頁的那一句原文，用歌詞的字寫在名字膠帶下半截、對齊整排推桿的中線。
+   * 膠帶是紙，字用墨色（唱到、唱完一樣深、淡兩成；沒唱的三成）；同一句分成好幾頁時中間不閃。
+   */
+  private drawSub(c: CanvasRenderingContext2D, t: number, k: number) {
+    const p = this.pageAt(t);
+    const sub = p && lyricSubOf(p.line);
+    if (!p || !sub) return;
+    const i = this.pages.indexOf(p), prev = this.pages[i - 1], next = this.pages[i + 1];
+    const kin = prev?.line === p.line && prev.tEnd >= p.tLoad ? 1 : prog(t, p.tLoad + 0.05, p.tLoad + 0.2);
+    const kout = next?.line === p.line && next.tLoad <= p.tEnd ? 0 : prog(t, p.tEnd - 0.2, p.tEnd - 0.05);
+    const a = kin * (1 - kout) * k;
+    if (a <= 0.01) return;
+    c.save();
+    c.translate(X0 + (N * PITCH) / 2, SUB_TAPE.base);
+    drawLyricSub(c, sub, t, { family: F_LYR, size: this.lyrSize, maxWidth: N * PITCH - 48, align: 'center', sung: rgba('ink', 0.92), unsung: rgba('ink', 0.3) }, this.lyrSize, a);
+    c.restore();
   }
 
   /** 留言膠帶：第一拍之前從左邊拉出來貼上，然後一個詞組一拍用麥克筆寫上去，最後署名。 */

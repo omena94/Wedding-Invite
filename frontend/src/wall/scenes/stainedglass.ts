@@ -20,7 +20,7 @@ import { F, font, loadText } from '../engine/type';
 import { LIN, rgba } from '../engine/palette';
 import { clamp, ease, prog, hash } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
-import { lyricAt, COUPLE_ZH, fillWithHearts } from './_motifs';
+import { lyricAt, lyricSubOf, subSizeFor, subGap, COUPLE_ZH, fillWithHearts } from './_motifs';
 import { grid, stagger, layoutRows, drawRows, type KaraokeInk } from './_t4';
 import { PlaneCam, camUniforms, CAM_GLSL, msgBlockV2, INVITE, type MsgBlock, type Rect } from './_t14';
 import { lyricV2 } from './_v2';
@@ -398,9 +398,25 @@ export default class StainedGlass extends Scene {
       if (line) {
         const st = { family: FAM_LYR, size: this.lyrSize, minSize: 40 / this.k, maxW: pr[2] - 120, maxRows: 2, align: 'center' as const, lineHeight: 1.18 };
         const lay = layoutRows(c, line, st);
-        c.save(); c.translate(pcx, pcy - lay.height / 2 + lay.size * 0.84);
-        drawRows(c, lay, FAM_LYR, t, ink, (ly ? ly.k : 1) * on);
-        c.restore();
+        const sub = lyricSubOf(line);
+        if (sub) {
+          // 韓文歌：原文小一號畫在中文正下方（同一片題字玻璃、一樣置中），兩段一起在玻璃上垂直置中；
+          // 原文比中文安靜：透光時是淡兩成的白玻璃（不透訊號色），還沒唱的一樣暗
+          const ss = subSizeFor(lay.size * this.k) / this.k;
+          const sl = layoutRows(c, sub, { ...st, size: ss, minSize: Math.min(ss, 26 / this.k) });
+          const gap = (lay.rows.length - 1) * lay.lineHeight + subGap(lay.size, sl.size);
+          const total = lay.size * 0.84 + gap + (sl.rows.length - 1) * sl.lineHeight + sl.size * 0.25;
+          const sung = rgba('bone', 0.9 * 0.8);
+          c.save(); c.translate(pcx, pcy - total / 2 + lay.size * 0.84);
+          drawRows(c, lay, FAM_LYR, t, ink, (ly ? ly.k : 1) * on);
+          c.translate(0, gap);
+          drawRows(c, sl, FAM_LYR, t, { ...ink, active: sung, sung }, (ly ? ly.k : 1) * on);
+          c.restore();
+        } else {
+          c.save(); c.translate(pcx, pcy - lay.height / 2 + lay.size * 0.84);
+          drawRows(c, lay, FAM_LYR, t, ink, (ly ? ly.k : 1) * on);
+          c.restore();
+        }
       } else if (this.names) {
         c.font = font(FAM_LYR, this.names.size);
         c.fillStyle = rgba('bone', 0.9 * on);

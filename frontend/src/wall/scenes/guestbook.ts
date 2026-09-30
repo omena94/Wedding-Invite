@@ -18,7 +18,8 @@ import { F, font, layout, loadText, type TextLayout } from '../engine/type';
 import { rgba, mixRgba, LIN } from '../engine/palette';
 import { clamp, ease, hash, lerp, prog, noise1 } from '../engine/util';
 import { wrap, fitText, type FitResult } from '../engine/text';
-import { lyricAt, signature, sparkHead, sparkParticles, fillWithHearts, heartPoints } from './_motifs';
+import { lyricAt, signature, sparkHead, sparkParticles, fillWithHearts, heartPoints, lyricSubOf, subSizeFor, subGap } from './_motifs';
+import type { Line } from '../engine/lyrics';
 import { grid, layoutRows, drawRows, paperInk, Stage, docRT, camDist, type Grid, type RowsStyle, type P2, type V3 } from './_t4';
 import { msgMaxFor, lyricV2, sigV2, V2, fitClauses } from './_v2';
 
@@ -222,6 +223,8 @@ export default class Guestbook extends Scene {
   private propsDrawn = false;
   /** 書頁、書眉在畫面上是跨頁的幾倍（鏡頭停好時量的），v2 的字級要換算。 */
   sEntry = 0.8; sHead = 0.8;
+  /** 書眉的高度：有原文副行（韓文歌）的窗格長高一點（下面別人的祝福跟著往下排），放得下中文＋原文。 */
+  headH = HEAD.h;
   msgScreen: number | null = null;
   /** 簽完名的下一個小節線：火花在署名旁邊畫一顆小愛心。 */
   tDoodle = Infinity;
@@ -235,7 +238,6 @@ export default class Guestbook extends Scene {
     const g = (this.g = grid(au, s, e));
     this.tTurn = g.b0;
     this.turnDur = Math.min(0.75, g.beat * 1.5);
-    this.drawStatic(others);
     // 寫字：翻完頁的下一拍開始，一個詞組（最多四個字、標點後斷開）落在一個格點上（一拍、半拍或四分之一拍，挑寫得完的最慢那種）
     const t0 = au.timeOfBeat(Math.ceil(au.beatAt(this.tTurn + this.turnDur) - 1e-6));
     const text = this.msg ? this.msg.text : '這一頁留給你';
@@ -246,6 +248,12 @@ export default class Guestbook extends Scene {
     const scaleAt = (u: number, v: number) => { const a = stg.toScreen(this.world(u, v)), b = stg.toScreen(this.world(u + 100, v)); return Math.hypot(b.x - a.x, b.y - a.y) / 100; };
     this.sEntry = scaleAt(ENTRY.x + ENTRY.w / 2 - 50, ENTRY.y + 220);
     this.sHead = scaleAt(HEAD.x + HEAD.w / 2 - 50, HEAD.y + HEAD.h / 2);
+    // 原文副行：書眉放不下中文＋原文就長高（最多到 290），別人的祝福照書眉的高度往下排（所以要等量完書眉的縮放才畫）
+    for (const l of lyrics.linesIn(s - 1, e + 1)) {
+      const d = this.headLay(this.live.ctx, l, this.headStyle());
+      if (d?.sub) this.headH = Math.max(this.headH, Math.min(290, Math.ceil(d.blockH + 24)));
+    }
+    this.drawStatic(others);
     // v2：留言字級照螢幕標準（依字數 40～60）換成書頁字級；可用高度先扣掉署名，照子句斷行
     const S = this.sEntry, maxS = msgMaxFor(text);
     const boxH = Math.min(ENTRY.h, 430 / S) - (this.msg ? (sigV2(maxS) / S) * SIG_K : 0);
@@ -425,9 +433,9 @@ export default class Guestbook extends Scene {
         y = this.entry(c, m, x0, y, y1, k) + 26;
       }
     };
-    fill(oc, MX, HEAD.y + HEAD.h + 40, PH - 90);
+    fill(oc, MX, HEAD.y + this.headH + 40, PH - 90);
     fill(oc, PW + MX, 150, PH - 90);
-    fill(nc, MX, HEAD.y + HEAD.h + 40, PH - 90);
+    fill(nc, MX, HEAD.y + this.headH + 40, PH - 90);
     // 新的一頁的頁首（小）
     nc.font = font(F.hei(700), 18); nc.fillStyle = rgba('sepia', 0.6); nc.letterSpacing = '4px';
     nc.fillText('芳名錄　GUEST BOOK', PW + MX, 100);
@@ -464,19 +472,44 @@ export default class Guestbook extends Scene {
     c.fillText('♪ 本頁背景音樂', HEAD.x, HEAD.y - 8);
     c.letterSpacing = '0px';
     const ly = lyricAt(lyrics, t);
-    // v2：書眉的歌詞比留言小一級
-    const LY: RowsStyle = { family: F.archivo(100, 800), size: lyricV2(this.msgScreen) / this.sHead, minSize: V2.lyrMin / this.sHead, maxW: HEAD.w, maxRows: 2, lineHeight: 1.06 };
+    const LY = this.headStyle();
     if (ly) {
-      const lay = layoutRows(c, ly.line, LY);
-      const top = HEAD.y + (HEAD.h - lay.height) / 2 + lay.size * 0.84;
+      const d = this.headLay(c, ly.line, LY)!;
+      const lay = d.lay;
+      const top = d.sub ? HEAD.y + (this.headH - d.blockH) / 2 + lay.size * 0.84 : HEAD.y + (this.headH - lay.height) / 2 + lay.size * 0.84;
       c.save(); c.translate(HEAD.x, top);
       drawRows(c, lay, LY.family, t, paperInk(), ly.k);
+      if (d.sub) {
+        // 原文副行：同一支筆寫在中文下面、小一號；比中文安靜——唱到、唱完都是墨色再淡兩成（不用紅墨）
+        c.translate(0, d.dy);
+        const q = rgba('sepia', 0.95 * 0.8);
+        drawRows(c, d.sub, LY.family, t, { active: q, sung: q, unsung: paperInk().unsung }, ly.k);
+      }
       c.restore();
       return;
     }
     c.font = font(F.archivo(100, 800), Math.round(V2.lyrMin / this.sHead)); c.fillStyle = rgba('sepia', lyrics.has ? 0.26 : 0.8);
     c.fillText(song.title || '芳名錄', HEAD.x, HEAD.y + 104);
     if (!lyrics.has) { c.font = font(F.hei(500), 18); c.fillStyle = rgba('sepia', 0.5); c.fillText('（純音樂）', HEAD.x, HEAD.y + 150); }
+  }
+
+  /** 書眉歌詞的樣式（v2：比留言小一級；字級是螢幕標準換成書頁上的）。 */
+  private headStyle(): RowsStyle {
+    return { family: F.archivo(100, 800), size: lyricV2(this.msgScreen) / this.sHead, minSize: V2.lyrMin / this.sHead, maxW: HEAD.w, maxRows: 2, lineHeight: 1.06 };
+  }
+
+  /**
+   * 書眉的排版：中文，加上原文副行（字級照螢幕標準 subSizeFor 換回書頁）。
+   * dy = 原文第一排基線離中文第一排基線多遠；blockH = 中文字頂到原文字底。
+   */
+  private headLay(c: CanvasRenderingContext2D, l: Line, st: RowsStyle) {
+    const lay = layoutRows(c, l, st);
+    const sl = lyricSubOf(l);
+    if (!sl) return { lay, sub: null, dy: 0, blockH: lay.height };
+    const S = this.sHead, ss = subSizeFor(lay.size * S) / S;
+    const sub = layoutRows(c, sl, { ...st, size: ss, minSize: Math.min(ss, 26 / S) });
+    const dy = (lay.rows.length - 1) * lay.lineHeight + subGap(lay.size * S, sub.size * S) / S;
+    return { lay, sub, dy, blockH: lay.size * 0.84 + dy + (sub.rows.length - 1) * sub.lineHeight + sub.size * 0.22 };
   }
 
   // ------------------------------------------------------------ 簽名旁的小愛心（小事件）

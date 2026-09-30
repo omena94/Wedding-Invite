@@ -3,6 +3,8 @@
 //    第三拍把唱片抽起來；第四拍載著唱片滑到轉盤上方、在空中翻平；下一拍落到轉盤上，唱臂擺進來，唱片開始轉。
 //    動作都落在拍點上，強烈緩動。唱片、天車、轉盤是真的 3D 座標投影出來再用 Canvas2D 畫（由遠到近，會互相遮住），不是貼圖。
 //  - 上方的弧形玻璃上印著「NOW PLAYING」＝歌詞（逐字跟唱）。
+//    韓文歌有中文翻譯時（2026-09-30）：中文照舊在鉻框上方；鉻框上方放不下第二排，原文小一號印在玻璃裡的上緣
+//    （機構整個往下挪 SUB_ROOM 讓出這一條，天車的橫樑才不會穿過原文）。
 //  - 下方是選曲卡（title strip）：老點唱機那種白卡、中間一條色帶印歌手、上下是 A 面與 B 面。
 //    中間最大那張就是這則留言：A 面是留言（一個字一個字印上去）、色帶是署名、B 面「永遠」；
 //    左邊三張是冷面的假歌（遛狗進行曲／芃芃 & QQ…），右上那張是現在這首歌（選曲燈亮著）。
@@ -18,7 +20,7 @@ import { F, font, loadText } from '../engine/type';
 import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, hash, lerp, TAU } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
-import { lyricAt, drawLyric, layoutLyric, beatAfter, signature, fillWithHearts } from './_motifs';
+import { lyricAt, drawLyric, layoutLyric, lyricSubOf, drawLyricSub, beatAfter, signature, fillWithHearts } from './_motifs';
 import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 } from './_v2';
 import { stagger, pad3, mono, tag } from './_t11';
 import { fillGlyph, type Rect } from './_t9';
@@ -29,6 +31,8 @@ export const spec: PlateSpecDecl = { group: 'type', family: 'machine', paper: fa
 const LYR = { x: 460, y: 142, w: 1000 };
 /** 玻璃窗（機構）的範圍。 */
 const WIN = { x: 150, y: 180, w: 1620, h: 470 };
+/** 原文副行（韓文歌）：印在玻璃裡上緣的基線；有副行的窗格機構往下挪多少（橫樑讓出這一條，下面還有空，唱片不會被切到）。 */
+const SUB_Y = WIN.y + 44, SUB_ROOM = 52;
 /** 留言那張選曲卡：左下，寬 800，高依留言（最多 310）；右邊是喇叭，右下角 QR 區（x ≥ 1360、y ≥ 830）空著。 */
 const CARD = { x: 190, y: 670, w: 800, maxH: 318 };
 /** 卡片裡：留言左右各留 40；下面是色帶（署名）與 B 面。 */
@@ -245,6 +249,9 @@ export default class Jukebox extends Scene {
     c.save(); hc.save();
     // 機構只畫在玻璃窗裡
     for (const cc of [c, hc]) { cc.beginPath(); cc.roundRect(WIN.x + 6, WIN.y + 6, WIN.w - 12, WIN.h - 12, 54); cc.clip(); }
+    // 這一格有韓文原文：機構往下挪，玻璃上緣空出一條印原文（整格固定，不跟著句子跳；沒有原文時是 0，畫面照舊）
+    const room = this.ctx.lyrics.linesIn(this.ctx.start - 1, this.ctx.end + 1).some((l) => lyricSubOf(l)) ? SUB_ROOM : 0;
+    if (room) for (const cc of [c, hc]) cc.translate(0, room);
     // 鏡頭：整個窗格慢慢往右平移；唱片落下的那一拍推近一點（強烈緩動）
     const pan = ease.inOutCubic(clamp((t - this.ctx.start) / Math.max(1, this.ctx.end - this.ctx.start)));
     const push = prog(t, land, land + 0.5, ease.outExpo);
@@ -389,10 +396,14 @@ export default class Jukebox extends Scene {
     const ly = lyricAt(lyrics, t);
     if (ly) {
       const st = { family: F.archivo(100, 800), size: this.lyrSize, minSize: V2.lyrMin, maxWidth: LYR.w, align: 'center' as const, lineHeight: 1.1 };
-      const lay = this.layLyric(ly.line);
+      const full = this.layLyric(ly.line);
+      // 原文不畫在預設的位置（中文正下方就是鉻框），另外印在玻璃上緣
+      const lay = full.sub ? { ...full, sub: undefined } : full;
       const oy = LYR.y - (lay.rows.length > 1 ? lay.size * 0.5 : 0) + (1 - ease.outExpo(ly.k)) * 12;
       c.save(); c.translate(960, oy); drawLyric(c, ly.line, t, st, lay, ly.k); c.restore();
       hc.save(); hc.translate(960, oy); drawLyric(hc, ly.line, t, { ...st, sung: 'rgba(0,0,0,0)', unsung: 'rgba(0,0,0,0)', active: rgba('signal', 0.7) }, lay, ly.k); hc.restore();
+      const orig = full.sub ? lyricSubOf(ly.line) : null;
+      if (orig) { c.save(); c.translate(960, SUB_Y + (1 - ease.outExpo(ly.k)) * 12); drawLyricSub(c, orig, t, st, lay.size, ly.k); c.restore(); }
     } else if (!lyrics.linesIn(this.ctx.start - 1, this.ctx.end + 1).length) {
       c.font = font(F.archivo(100, 800), this.lyrSize); c.fillStyle = rgba('bone', 0.9); c.textAlign = 'center';
       fillWithHearts(c, song.title, 960, LYR.y);

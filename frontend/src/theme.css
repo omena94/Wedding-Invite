@@ -1510,6 +1510,12 @@ tbody tr:last-child td { border-bottom: none; }
   background: #fff; border-top: 1px solid var(--border-soft);
 }
 .ws-karaoke.sm { font: 600 15px/1.45 "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans TC", "PingFang TC", sans-serif; }
+/* 中文翻譯（2026-09-30）：預覽跟大螢幕一樣中文大字、原文小一號在下面；清單裡原文下面一行小一點的中文 */
+.ws-karaoke.sub { font-size: 14px; font-weight: 600; opacity: 0.85; }
+.ws-karaoke.sm.zh { font-size: 13.5px; font-weight: 500; }
+.ws-line-zh { display: block; font-size: 12.5px; }
+.ws-trans { margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--border-soft); }
+.ws-trans .ws-lyrics-head > span:first-child { display: inline-flex; align-items: center; gap: 6px; }
 /* 逐字對時：一個字一格，段落開頭前面有分隔，按過的字變深、下一個要按的字框起來 */
 .ws-word-tap { margin-top: 10px; }
 .ws-chips { display: flex; flex-wrap: wrap; gap: 4px; padding: 12px; border-radius: 10px; background: var(--bg-card); border: 1px solid var(--border-soft); }

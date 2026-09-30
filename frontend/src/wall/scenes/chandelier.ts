@@ -21,7 +21,7 @@ import { LIN, rgba } from '../engine/palette';
 import { clamp, ease, prog, hash, pulse, TAU } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
 import type { Line } from '../engine/lyrics';
-import { lyricAt, beatAfter, signature, COUPLE_EN } from './_motifs';
+import { lyricAt, beatAfter, signature, COUPLE_EN, lyricSubOf, subSizeFor, subGap } from './_motifs';
 import { glyphStates, glyphColor, no3, INVITE_SMALL, preloadText, fitFew, fitWithSig, type GlyphState } from './_t19';
 import { V2, msgMaxFor, lyricV2, sigV2, fitClauses } from './_v2';
 import { buildModel, CEIL, HOOP, LYRIC_ARC, type Model, type StrandDef } from './chandelier-model';
@@ -139,6 +139,8 @@ export default class Chandelier extends Scene {
   coupleTag = false;
   inviteY = 0;
   tokCache = new Map<Line | string, TokLay>();
+  /** 原文副行的排版（每個字的寬、字級），同一行只排一次。 */
+  subCache = new Map<Line, { size: number; chars: string[]; adv: number[]; w: number }>();
   beatInfo = new Map<number, { s: number; kick: boolean }>();
   glints: Glint[] = [];
   avoid: [number, number, number, number][] = [[130, 575, 1210, 125], [130, 705, 1230, 280]];
@@ -543,6 +545,8 @@ export default class Chandelier extends Scene {
     const lay = this.tokLay(line, c);
     const len = 0.3, yTipRef = HOOP.y - 0.02 - len - 0.15;
     const kNow = Math.floor(this.ctx.audio.beatAt(t) + 1e-6);
+    const sub = line && !still ? lyricSubOf(line) : null;
+    const pts: { x: number; y: number }[] = [];
     c.save();
     c.font = font(lay.family, lay.size);
     c.textBaseline = 'alphabetic';
@@ -571,6 +575,7 @@ export default class Chandelier extends Scene {
       c.strokeStyle = rgba('bone', 0.35); c.lineWidth = 1;
       c.beginPath(); c.moveTo(tx, ty + 2); c.lineTo(tx, ty + 10); c.stroke();
       const base = ty + 14 + lay.size * 0.8;
+      if (sub) pts.push({ x: tx, y: base });
       let x = tx - tk.w / 2;
       for (let ci = tk.ci0; ci < tk.ci1; ci++) {
         const ch = lay.chars[ci]!;
@@ -583,7 +588,45 @@ export default class Chandelier extends Scene {
         x += w;
       }
     });
+    if (sub && pts.length) this.drawSub(c, sub, lay, pts, t, alpha);
     c.restore();
+  }
+
+  /**
+   * 原文副行（韓文歌）：小一號、一般字距，排在墜子字的正下方，跟著水晶環的弧線彎（不跟著每串各自晃，比中文安靜）。
+   * 顏色：唱到、唱完都是紙白淡兩成，沒唱的三成；不閃、不加光。
+   */
+  private drawSub(c: CanvasRenderingContext2D, sub: Line, lay: TokLay, pts: { x: number; y: number }[], t: number, alpha: number) {
+    let sl = this.subCache.get(sub);
+    if (!sl) {
+      const chars = Array.from(sub.text);
+      const measure = (sz: number) => { c.font = font(LYR_FAM, sz); return chars.map((ch) => c.measureText(ch).width); };
+      let size = subSizeFor(lay.size), adv = measure(size);
+      const tw = adv.reduce((a, b) => a + b, 0);
+      if (tw > LYR.maxW) { size = Math.max(26, (size * LYR.maxW) / tw); adv = measure(size); }
+      sl = { size, chars, adv, w: adv.reduce((a, b) => a + b, 0) };
+      this.subCache.set(sub, sl);
+    }
+    // 墜子尖端靜止時的弧線；實際位置（含擺盪）跟它的平均差加回去，副行才貼著這一排字
+    const yTip = HOOP.y - 0.02 - 0.3 - 0.15;
+    const rest = (x: number) => { const a = this.angleFor(x, yTip); return this.proj(Math.sin(a) * HOOP.r, yTip, Math.cos(a) * HOOP.r)[1]; };
+    let dy = 0;
+    for (const p of pts) dy += p.y - rest(p.x);
+    dy = dy / pts.length + subGap(lay.size, sl.size);
+    const t0 = lay.toks[0]!, t1 = lay.toks[lay.toks.length - 1]!;
+    const mid = (pts[0]!.x - t0.w / 2 + pts[pts.length - 1]!.x + t1.w / 2) / 2;
+    let x = clamp(mid - sl.w / 2, LYR.x0, LYR.x1 - sl.w);
+    const gs = glyphStates(sub, t);
+    c.font = font(LYR_FAM, sl.size);
+    c.globalAlpha = alpha;
+    sl.chars.forEach((ch, i) => {
+      const w = sl!.adv[i]!;
+      if (ch.trim()) {
+        c.fillStyle = (gs[i]?.p ?? 0) > 0 ? rgba('bone', 0.96 * 0.8) : rgba('bone', 0.3);
+        c.fillText(ch, Math.round(x), Math.round(rest(x + w / 2) + dy));
+      }
+      x += w;
+    });
   }
 
   /** 主打留言（或沒有留言時的邀請）：一個字一個字從上面滴下來就位，落地閃一下。 */

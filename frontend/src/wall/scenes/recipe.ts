@@ -23,7 +23,7 @@ import { rgba } from '../engine/palette';
 import { clamp, ease, lerp, prog, pulse, hash, mulberry32 } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
 import type { Line } from '../engine/lyrics';
-import { layoutLyric, drawLyric, fillWithHearts, signature, type LyricStyle } from './_motifs';
+import { layoutLyric, drawLyric, fillWithHearts, signature, lyricSubOf, subSizeFor, subGap, type LyricStyle, type LyricLayout } from './_motifs';
 import { grid, windowLines, stagger, paperLyric, FAST_TEX_GLSL, type Grid } from './_t2';
 import { V2, msgMaxFor, lyricV2, sigV2, fitClauses } from './_v2';
 import { homography, applyH } from './_t11';
@@ -709,11 +709,25 @@ export default class Recipe extends Scene {
     this.drawStep(c, lines[idx]!, idx + 1, t, slot, 18 * (1 - inn), inn);
   }
 
+  /**
+   * 原文副行（韓文歌）的排版（卡片 px）：卡片在畫面上縮了 k 倍，drawLyric 自動畫的原文（照卡片 px 算 32～56）
+   * 在畫面上會小到看不清楚，所以照「畫面上」的主行字級算原文字級，再換回卡片。dy = 原文第一排基線離中文第一排基線多遠。
+   */
+  private subLay(c: CanvasRenderingContext2D, line: Line, st: LyricStyle, lay: LyricLayout) {
+    const sub = lyricSubOf(line);
+    if (!sub) return null;
+    const k = this.k, ss = subSizeFor(lay.size * k) / k;
+    const sl = layoutLyric(c, sub, { ...st, size: ss, minSize: Math.min(ss, 26 / k), tracking: (st.tracking ?? 0) * 0.5 });
+    const dy = lay.rows[lay.rows.length - 1]!.y + subGap(lay.size * k, sl.size * k) / k;
+    return { sub, sl, dy, height: dy + sl.rows[sl.rows.length - 1]!.y + lay.size };
+  }
+
   /** 畫一步「N. 歌詞」（dy：往上下挪的量，alpha：透明度）。大字的位置依行數垂直置中。 */
   private drawStep(c: CanvasRenderingContext2D, line: Line, n: number, t: number, slot: Slot, dy: number, alpha: number) {
     if (alpha <= 0.01) return;
     const lay = layoutLyric(c, line, slot.st);
-    const base = this.big ? slot.base : BIG.y + (BIG.h - lay.height) / 2 + lay.size * 0.86;
+    const d = this.subLay(c, line, slot.st, lay);
+    const base = this.big ? slot.base : BIG.y + (BIG.h - (d ? d.height : lay.height)) / 2 + lay.size * 0.86;
     c.save();
     c.translate(slot.x, base + dy);
     c.globalAlpha = alpha;
@@ -721,7 +735,13 @@ export default class Recipe extends Scene {
     const num = `${n}.`;
     c.fillText(num, 0, 0);
     c.translate(c.measureText(num).width + lay.size * 0.22, 0);
-    drawLyric(c, line, t, slot.st, lay, alpha);
+    drawLyric(c, line, t, slot.st, d ? ({ ...lay, sub: undefined } as LyricLayout) : lay, alpha);
+    if (d) {
+      // 原文：同一支筆寫在中文下面、小一號；比中文安靜（唱到、唱完都是「唱完」的墨色再淡兩成）
+      c.translate(0, d.dy);
+      const q = rgba('sepia', 0.95 * 0.8);
+      drawLyric(c, d.sub, t, { ...slot.st, active: q, sung: q }, d.sl, alpha);
+    }
     c.restore();
   }
 

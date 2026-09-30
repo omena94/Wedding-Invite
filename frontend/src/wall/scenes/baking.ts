@@ -21,7 +21,7 @@ import { FSPass, Layer2D, W, H } from '../engine/gl';
 import { F, font, loadText } from '../engine/type';
 import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, lerp, hash } from '../engine/util';
-import { beatAfter } from './_motifs';
+import { beatAfter, lyricSubOf, layoutLyric, subStyleFor, subGap, drawLyricSub, type LyricStyle } from './_motifs';
 import { fitText } from '../engine/text';
 import type { Line } from '../engine/lyrics';
 import { grid, stagger, layoutRows, drawRows, paperInk } from './_t4';
@@ -267,6 +267,8 @@ const CAKE_FS = () => new FSPass(/* glsl */ `
 
 /** 一組要擠的字：字模、每個字的時間。 */
 interface PipeSet { mask: OrderMask; items: MaskItem[]; times: { s: number; d: number }[] }
+/** 韓文歌的原文：寫在擠好的中文正下方（頁面座標的置中點與第一排基線；ms = 主行在螢幕上的字級）。 */
+interface SubAt { sub: Line; x: number; y: number; ms: number }
 
 export default class Baking extends Scene {
   oven = shared('baking.oven', OVEN_FS);
@@ -277,6 +279,7 @@ export default class Baking extends Scene {
   block: MsgBlock | null = null;
   pipe: PipeSet | null = null;
   linePipes = new Map<Line, PipeSet>();
+  lineSubs = new Map<Line, SubAt>();
   tDing = 0; b0 = 0; beat = 0.5; nBeats = 4;
   lyrSize: number = V2.lyrMax;
   /** 蛋糕那一格：字框、食譜卡在畫面上的縮放（1 頁面 px = 幾螢幕 px，鏡頭落定之後）。 */
@@ -311,13 +314,24 @@ export default class Baking extends Scene {
     const c = this.layer.ctx;
     const t0 = beatAfter(au, this.tDing + 0.05);
     const dur = Math.min(gr.bar * 1.4, Math.max(gr.beat * 2, (e - t0) * 0.45));
-    /** 沒有留言時擠的字（歌詞或邀請）：v2 歌詞的字級（≤ 52），照子句斷行，在框裡置中。 */
-    const fitLyric = (text: string) => {
+    /** 沒有留言時擠的字（歌詞或邀請）：v2 歌詞的字級（≤ 52），照子句斷行，在框裡置中。
+     *  有原文（韓文歌）：中文只用框的上三分之二，原文排在中文正下方，整組一起在框裡置中。 */
+    const fitLyric = (text: string, sub: Line | null = null) => {
       const o = { min: V2.lyrMin / k, max: lyricV2(null) / k, lineHeight: 1.28, maxLines: 3 };
-      const ft = fitClauses(c, text, FAM, BOX.w, BOX.h, o) ?? fitText(c, text, FAM, BOX.w, BOX.h, o);
-      const top = BOX.y + (BOX.h - ft.height) / 2 + ft.size * 0.9;
+      const bh = sub ? BOX.h * 0.66 : BOX.h;
+      const ft = fitClauses(c, text, FAM, BOX.w, bh, o) ?? fitText(c, text, FAM, BOX.w, bh, o);
+      let blockH = ft.height, gap = 0, ms = 0;
+      if (sub) {
+        // 原文照螢幕字級排（subSizeFor 的 32～56 是螢幕 px），換回頁面座標要除以 k
+        ms = ft.size * k;
+        const lay = layoutLyric(c, sub, subStyleFor(this.subStyle(ms), ms));
+        gap = subGap(ms, lay.size) / k;
+        blockH = ft.size * 0.9 + (ft.lines.length - 1) * ft.lineHeight + gap + (lay.height - lay.size + lay.size * 0.25) / k;
+      }
+      const top = BOX.y + (BOX.h - blockH) / 2 + ft.size * 0.9;
       c.font = font(FAM, ft.size);
-      return { ft, rows: ft.lines.map((ln, i) => ({ text: ln, x: BOX.x + (BOX.w - c.measureText(ln).width) / 2, y: top + i * ft.lineHeight })) };
+      const subAt: SubAt | null = sub ? { sub, x: BOX.x + BOX.w / 2, y: top + (ft.lines.length - 1) * ft.lineHeight + gap, ms } : null;
+      return { ft, subAt, rows: ft.lines.map((ln, i) => ({ text: ln, x: BOX.x + (BOX.w - c.measureText(ln).width) / 2, y: top + i * ft.lineHeight })) };
     };
     if (m) {
       const b = (this.block = msgBlockV2(c, m, FAM, BOX, { align: 'center', sigFamily: FAM_SIG, scale: k, lineHeight: 1.3 }));
@@ -334,7 +348,8 @@ export default class Baking extends Scene {
     } else {
       // 沒有留言：每一句歌詞一組字模，每個字在它開始唱的時候擠出來
       for (const l of lines) {
-        const { ft, rows } = fitLyric(l.text);
+        const { ft, rows, subAt } = fitLyric(l.text, lyricSubOf(l));
+        if (subAt) this.lineSubs.set(l, subAt);
         const items = lineItems(rows, FAM, ft.size);
         // 每個字對到歌詞的 Word：照順序在原文裡找
         let cur = 0;
@@ -354,6 +369,11 @@ export default class Baking extends Scene {
     const toS = (x: number, y: number) => ({ x: zc.x + (x - zc.x) * z, y: zc.y + (y - zc.y) * z });
     const a = toS(CARD1.x - CARD1.hw, CARD1.y - CARD1.hh), b2 = toS(CARD1.x + CARD1.hw, CARD1.y + CARD1.hh);
     this.avoid1 = [[a.x, a.y, b2.x - a.x, b2.y - a.y]];
+  }
+
+  /** 原文的樣式（螢幕 px）：跟巧克力字同一支筆，但只是淡淡一層可可（唱完的顏色），還沒唱的是鉛筆草稿。 */
+  private subStyle(ms: number): LyricStyle {
+    return { family: FAM, size: ms, maxWidth: BOX.w * this.kBox, align: 'center', sung: rgba('sepia', 0.92), unsung: rgba('sepia', 0.26) };
   }
 
   private makePipe(items: MaskItem[], ts: number[], size: number): PipeSet {
@@ -543,6 +563,14 @@ export default class Baking extends Scene {
     const L = this.layer; L.clear();
     const c = L.ctx;
     this.drawCard(c, CARD2, t, this.kCard2);
+    // 原文（韓文歌）：寫在蛋糕上、擠好的中文正下方（頁面座標，跟著同一個鏡頭）；擠花袋蓋在它上面
+    const sa = line ? this.lineSubs.get(line) : undefined;
+    if (sa) {
+      c.save();
+      c.translate(sa.x, sa.y); c.scale(1 / this.kBox, 1 / this.kBox);
+      drawLyricSub(c, sa.sub, t, this.subStyle(sa.ms), sa.ms);
+      c.restore();
+    }
     const head = pipe ? this.headAt(pipe, t) : null;
     if (head) this.drawBag(c, head, t);
     u.page!.value = L.upload();

@@ -18,7 +18,7 @@ import { rgba } from '../engine/palette';
 import { clamp, ease, lerp, pulse, noise1, TAU } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
 import { Lyrics, type Line, type Word } from '../engine/lyrics';
-import { lyricAt, signature, sparkHead, sparkParticles, COUPLE_EN, DATE_DOTS } from './_motifs';
+import { lyricAt, lyricSubOf, subGap, subSizeFor, signature, sparkHead, sparkParticles, COUPLE_EN, DATE_DOTS } from './_motifs';
 import { grid, drawFit, layoutRows, drawRows, Stage, docRT, camDist, FOIL_GLSL, type Grid, type RowsStyle, type V3, type P2 } from './_t4';
 import { msgMaxFor, lyricV2, sigV2, V2, fitClauses } from './_v2';
 
@@ -135,8 +135,8 @@ interface VChar { ch: string; x: number; y: number; word: Word }
 interface VLayout { size: number; chars: VChar[] }
 const vCache = new WeakMap<Line, Map<string, VLayout>>();
 /** 中文歌詞直排：詞組（空白分開的）盡量一欄，太長就折；欄從右到左；放不下就縮字級（maxS → minS）。 */
-function layoutVertical(line: Line, maxS: number, minS: number): VLayout {
-  const key = `${maxS.toFixed(1)}|${minS.toFixed(1)}`;
+function layoutVertical(line: Line, maxS: number, minS: number, zh = ZONE.h): VLayout {
+  const key = `${maxS.toFixed(1)}|${minS.toFixed(1)}|${zh.toFixed(1)}`;
   let m = vCache.get(line);
   if (!m) { m = new Map(); vCache.set(line, m); }
   const hit = m.get(key);
@@ -150,7 +150,7 @@ function layoutVertical(line: Line, maxS: number, minS: number): VLayout {
   let out: VLayout = { size: minS, chars: [] };
   for (let size = maxS; size >= minS - 0.01; size -= 2) {
     const pitch = size * 1.08, colW = size * 1.3;
-    const per = Math.max(1, Math.floor(ZONE.h / pitch));
+    const per = Math.max(1, Math.floor(zh / pitch));
     const cols: (typeof units)[] = [[]];
     for (const u of units) {
       const cur = cols[cols.length - 1]!;
@@ -160,7 +160,7 @@ function layoutVertical(line: Line, maxS: number, minS: number): VLayout {
     if (cols.length * colW > ZONE.w + 1 && size > minS + 1.99) continue;
     const longest = Math.max(...cols.map((c) => c.length));
     const x0 = ZONE.x + ZONE.w / 2 + ((cols.length - 1) * colW) / 2;
-    const y0 = ZONE.y + ZONE.h / 2 - (longest * pitch) / 2 + size * 0.88;
+    const y0 = ZONE.y + zh / 2 - (longest * pitch) / 2 + size * 0.88;
     out = { size, chars: [] };
     cols.forEach((c, ci) => c.forEach((u, j) => out.chars.push({ ch: u.ch, word: u.word, x: x0 - ci * colW, y: y0 + j * pitch })));
     break;
@@ -385,7 +385,9 @@ export default class RedEnvelope extends Scene {
     const ly = lyricAt(lyrics, t);
     if (ly) {
       c.save(); c.globalAlpha = ly.k;
-      if (isLatin(ly.line.text)) {
+      const sub = lyricSubOf(ly.line);
+      if (sub) this.lyricWithSub(c, ly.line, sub, t);
+      else if (isLatin(ly.line.text)) {
         const LY_EN: RowsStyle = { family: F.archivo(100, 800), size: lyricV2(this.msgScreen) / this.sEnv, minSize: V2.lyrMin / this.sEnv, maxW: ZONE.w, maxRows: 4, align: 'center', lineHeight: 1.08 };
         const lay = layoutRows(c, ly.line, LY_EN);
         const top = ZONE.y + ZONE.h / 2 - lay.height / 2 + lay.size * 0.84;
@@ -412,6 +414,62 @@ export default class RedEnvelope extends Scene {
       c.restore();
     }
     return head;
+  }
+
+  /**
+   * 韓文歌：原文小一號燙在中文正下方（同一個框裡，同樣置中），整塊在框裡垂直置中。
+   * 中文直排時原文還是橫排（韓文直排不好讀），放在直排那一塊的下面；放不下就把中文縮一點、少排幾個字一欄。
+   * 原文比中文安靜：唱到、唱完都是八成的燙金（不燒紅），還沒唱的照中文三成的壓印。
+   */
+  private lyricWithSub(c: CanvasRenderingContext2D, line: Line, sub: Line, t: number) {
+    const S = this.sEnv, maxS = lyricV2(this.msgScreen) / S, minS = V2.lyrMin / S;
+    const latin = isLatin(line.text);
+    const fam = latin ? F.archivo(100, 800) : F.ming(900);
+    const subLay = (mainSize: number) => {
+      const ss = subSizeFor(mainSize * S) / S;
+      return layoutRows(c, sub, { family: fam, size: ss, minSize: Math.min(ss, 26 / S), maxW: ZONE.w, maxRows: 2, align: 'center', lineHeight: 1.12 });
+    };
+    const subH = (sl: ReturnType<typeof subLay>) => (sl.rows.length - 1) * sl.lineHeight + sl.size * 0.2;
+    const quiet = { active: 'rgba(255,255,255,0.8)', sung: 'rgba(255,255,255,0.8)', unsung: 'rgba(255,255,255,0.3)' };
+    if (latin) {
+      // 橫排：中文幾排＋原文幾排，太高就把中文縮一點
+      let size = maxS, lay = layoutRows(c, line, { family: fam, size, minSize: minS, maxW: ZONE.w, maxRows: 4, align: 'center', lineHeight: 1.08 });
+      let sl = subLay(lay.size), gap = subGap(lay.size, sl.size), total = lay.height + gap + subH(sl);
+      for (let k = 0; k < 8 && total > ZONE.h; k++) {
+        size = lay.size * 0.92;
+        lay = layoutRows(c, line, { family: fam, size, minSize: Math.min(minS, size), maxW: ZONE.w, maxRows: 4, align: 'center', lineHeight: 1.08 });
+        sl = subLay(lay.size); gap = subGap(lay.size, sl.size); total = lay.height + gap + subH(sl);
+      }
+      c.save();
+      c.translate(ZONE.x + ZONE.w / 2, ZONE.y + (ZONE.h - total) / 2 + lay.size * 0.84);
+      drawRows(c, lay, fam, t, { active: 'rgb(255,0,0)', sung: '#fff', unsung: 'rgba(255,255,255,0.3)' });
+      c.translate(0, (lay.rows.length - 1) * lay.lineHeight + gap);
+      drawRows(c, sl, fam, t, quiet);
+      c.restore();
+      return;
+    }
+    // 直排：先估原文要多高，框的上面一段給中文直排、下面給原文
+    let sl = subLay(maxS), zh = ZONE.h - subGap(maxS, sl.size) - subH(sl);
+    let lay = layoutVertical(line, maxS, minS, zh);
+    sl = subLay(lay.size);
+    const gap = lay.size * 0.37 + sl.size * 0.88;
+    zh = Math.min(zh, ZONE.h - gap - subH(sl));
+    lay = layoutVertical(line, lay.size, Math.min(minS, lay.size), zh);
+    const top = Math.min(...lay.chars.map((ch) => ch.y)) - lay.size * 0.88;
+    const bottom = Math.max(...lay.chars.map((ch) => ch.y)) + lay.size * 0.2;
+    const total = bottom - top + gap - lay.size * 0.2 + subH(sl);
+    const dy = ZONE.y + (ZONE.h - total) / 2 - top;
+    c.font = font(fam, lay.size); c.textAlign = 'center';
+    for (const ch of lay.chars) {
+      const p = Lyrics.wordProgress(ch.word, t);
+      c.fillStyle = p <= 0 ? 'rgba(255,255,255,0.3)' : p < 1 ? 'rgb(255,0,0)' : '#fff';
+      c.fillText(ch.ch, ch.x, ch.y + dy);
+    }
+    c.textAlign = 'left';
+    c.save();
+    c.translate(ZONE.x + ZONE.w / 2, bottom + dy - lay.size * 0.2 + gap);
+    drawRows(c, sl, fam, t, quiet);
+    c.restore();
   }
 
   // ------------------------------------------------------------ 紙條（畫一次）

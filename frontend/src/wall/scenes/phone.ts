@@ -17,7 +17,8 @@ import { F, font, loadText } from '../engine/type';
 import { LIN, rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, hash } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
-import { layoutLyric, drawLyric, fillWithHearts, signature, WEDDING_DATE, lyricAt, type LyricStyle } from './_motifs';
+import type { Line } from '../engine/lyrics';
+import { layoutLyric, drawLyric, fillWithHearts, signature, WEDDING_DATE, lyricAt, lyricSubOf, subSizeFor, subGap, type LyricStyle, type LyricLayout } from './_motifs';
 import { grid, windowLines, rrect, pad, settle, renderStage, bodyMaterial, screenMaterial, tableMaterial, slab, setV3, mixV, projScale, fitMsgV2, type Grid } from './_t5';
 import { V2, lyricV2, sigV2 } from './_v2';
 
@@ -69,6 +70,8 @@ export default class Phone extends Scene {
   lyr: LyricStyle = LYRIC_BASE;
   sigSize = 60;
   msgScreen = 0;
+  /** 音樂小卡的高度：有原文副行（韓文歌）的窗格往上長高，放得下中文＋原文。 */
+  widH = WID_H;
 
   override async init() {
     const { audio: au, lyrics, song } = this.ctx;
@@ -100,6 +103,10 @@ export default class Phone extends Scene {
     this.lyr = { ...LYRIC_BASE, size: lyricV2(m ? this.msgScreen : null) / k, minSize: V2.lyrMin / k };
     this.sigSize = sigV2(this.msgScreen) / k;
     this.cardH = HEAD_H + this.fit.height + this.fit.size * 0.3 + (m ? this.sigSize * 1.9 : 50);
+    // 原文副行：量這個窗格每一句中文＋原文要多高，音樂小卡不夠就往上長（下緣不動；上面只有邀請那一張小卡，讓得出位置）
+    let need = 0;
+    for (const l of lines) { const d = this.subLay(c, l); if (d) need = Math.max(need, 110 + d.blockH + 90); }
+    if (need > WID_H) { this.widH = Math.ceil(need); this.widY -= this.widH - WID_H; }
     c.font = font(F.archivo(62, 300), 130);
     this.digitW = Math.max(...'0123456789'.split('').map((d) => c.measureText(d).width));
     this.colonW = c.measureText(':').width + 8;
@@ -252,7 +259,7 @@ export default class Phone extends Scene {
 
     // 音樂小卡：歌詞（比留言小一級）；純音樂時是很淡的頻譜
     const wy = this.widY;
-    c.fillStyle = rgba('bone', 0.05); rrect(c, MX, wy, MW, WID_H, 48); c.fill();
+    c.fillStyle = rgba('bone', 0.05); rrect(c, MX, wy, MW, this.widH, 48); c.fill();
     c.font = font(F.hei(500), 30); c.fillStyle = rgba('bone', 0.4);
     const head = `♪ ${song.title || '今晚的歌'}`;
     c.fillText(head.length > 26 ? head.slice(0, 25) + '…' : head, MX + 40, wy + 70);
@@ -260,9 +267,18 @@ export default class Phone extends Scene {
     if (ly) {
       const st = this.lyr;
       const lay = layoutLyric(c, ly.line, st);
-      const top = wy + (lay.rows.length > 1 ? 185 : 245);
+      const d = this.subLay(c, ly.line);
+      // 有原文：中文＋原文整塊放在標題與進度條中間
+      const top = d ? wy + 110 + (this.widH - 200 - d.blockH) / 2 + lay.size * 0.8 : wy + (lay.rows.length > 1 ? 185 : 245);
+      const sung = rgba('bone', m ? 0.86 : 0.96);
       c.save(); c.translate(MX + 40, top);
-      drawLyric(c, ly.line, t, { ...st, active: rgba('signal'), sung: rgba('bone', m ? 0.86 : 0.96), unsung: rgba('bone', 0.3) }, lay, ly.k);
+      drawLyric(c, ly.line, t, { ...st, active: rgba('signal'), sung, unsung: rgba('bone', 0.3) }, d ? ({ ...lay, sub: undefined } as LyricLayout) : lay, ly.k);
+      if (d) {
+        // 原文：照畫面字級另外畫（drawLyric 自動畫的會照畫布 px，螢幕縮小後太小），比中文安靜：唱到、唱完都是紙白再淡兩成
+        c.translate(0, d.dy);
+        const q = rgba('bone', (m ? 0.86 : 0.96) * 0.8);
+        drawLyric(c, d.sub, t, { ...st, active: q, sung: q, unsung: rgba('bone', 0.3) }, d.sl, ly.k);
+      }
       c.restore();
     } else {
       const N = 36, bw = (MW - 80) / N;
@@ -275,8 +291,23 @@ export default class Phone extends Scene {
     }
     // 進度條（很細）
     const p = clamp(t / au.duration);
-    c.fillStyle = rgba('bone', 0.15); c.fillRect(MX + 40, wy + WID_H - 50, MW - 80, 5);
-    c.fillStyle = rgba('bone', 0.6); c.fillRect(MX + 40, wy + WID_H - 50, (MW - 80) * p, 5);
+    c.fillStyle = rgba('bone', 0.15); c.fillRect(MX + 40, wy + this.widH - 50, MW - 80, 5);
+    c.fillStyle = rgba('bone', 0.6); c.fillRect(MX + 40, wy + this.widH - 50, (MW - 80) * p, 5);
+  }
+
+  /**
+   * 原文副行的排版（畫布 px）：照「畫面上」的主行字級算原文字級（subSizeFor(主行 × sc) ÷ sc），
+   * 螢幕在畫面上縮很小，照畫布 px 算會小到看不清楚。blockH = 中文字頂到原文字底。
+   */
+  private subLay(c: CanvasRenderingContext2D, l: Line) {
+    const sub = lyricSubOf(l);
+    if (!sub) return null;
+    const k = this.sc, st = this.lyr, lay = layoutLyric(c, l, st);
+    const ss = subSizeFor(lay.size * k) / k;
+    const sl = layoutLyric(c, sub, { ...st, size: ss, minSize: Math.min(ss, 26 / k), tracking: (st.tracking ?? 0) * 0.5 });
+    const dy = lay.rows[lay.rows.length - 1]!.y + subGap(lay.size * k, sl.size * k) / k;
+    const blockH = lay.size * 0.8 + dy + sl.rows[sl.rows.length - 1]!.y + sl.size * 0.22;
+    return { lay, sub, sl, dy, blockH };
   }
 }
 

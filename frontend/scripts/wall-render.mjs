@@ -261,6 +261,8 @@ try {
     // 韓文歌驗收（2026-09-30）：中文主行＋韓文原文副行。每個版面 6 格（一格 960×540，副行的字才看得清楚）拼成
     // wall-out/ko/<版面>.jpg：快歌沒留言 3 格、慢歌沒留言 2 格、有主打留言 1 格（有留言時副行要收起來、只剩中文）。
     // 時間點挑「有副行的句子唱到一半」。--scene 可以給好幾個（逗號分隔），同一個瀏覽器一次跑完。
+    // --plain：同樣的時間點改用一般（沒有翻譯）的佔位歌詞，拿來跟改版前逐像素比，確認一般的歌畫面沒變。
+    const plain = argv.includes('--plain');
     const FAST = 'Test Band - Fast Pop.mp3', SLOW = 'Test Band - Slow Ballad.mp3';
     if (!songs.includes(FAST) || !songs.includes(SLOW)) throw new Error(`ko 需要標準測試音檔（${FAST}、${SLOW}）`);
     const outDir = path.resolve(opt('out', path.join(ROOT, '..', 'wall-out', 'ko')));
@@ -284,10 +286,10 @@ try {
       for (const cs of cases) {
         const cf = path.join(CACHE, `${cs.song.replace(/[^\w.-]+/g, '_')}.json`);
         analyses[cs.song] ??= existsSync(cf) ? JSON.parse(readFileSync(cf, 'utf8')) : null;
-        const inf = await page.evaluate((o) => window.__wall.setup(o), { song: cs.song, scene, message: cs.message, params: cs.params, theme: cs.theme, analysis: analyses[cs.song], from: cs.from, to: cs.to, ko: true });
+        const inf = await page.evaluate((o) => window.__wall.setup(o), { song: cs.song, scene, message: cs.message, params: cs.params, theme: cs.theme, analysis: analyses[cs.song], from: cs.from, to: cs.to, ko: !plain });
         analyses[cs.song] ??= inf.analysis;
         // 窗格裡有副行的句子，平均挑 pick 句，取唱到 55% 的時間點
-        const cand = inf.spans.filter(([a, b, s]) => s && a > cs.from + 1 && b < cs.to - 0.3);
+        const cand = inf.spans.filter(([a, b, s]) => (s || plain) && a > cs.from + 1 && b < cs.to - 0.3);
         const picks = cs.pick === 1 ? [cand[Math.floor(cand.length / 2)]] : Array.from({ length: cs.pick }, (_, i) => cand[Math.round((i * (cand.length - 1)) / Math.max(1, cs.pick - 1))]);
         for (const sp of picks.filter(Boolean)) {
           const t = sp[0] + (sp[1] - sp[0]) * 0.55;

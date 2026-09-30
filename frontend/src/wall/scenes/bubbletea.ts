@@ -21,7 +21,7 @@ import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, hash, mulberry32, lerp } from '../engine/util';
 import { fitText } from '../engine/text';
 import { Lyrics, type Line, type Word } from '../engine/lyrics';
-import { drawHeart } from './_motifs';
+import { drawHeart, lyricSubOf, layoutLyric, subStyleFor, subGap, drawLyricSub, type LyricStyle } from './_motifs';
 import { grid, stagger, layoutRows, drawRows, paperInk } from './_t4';
 import { msgBlockV2, INVITE, type MsgBlock } from './_t14';
 import { shownLyric, sigOf, type Rect } from './_t24';
@@ -267,7 +267,8 @@ export default class BubbleTea extends Scene {
   seed = ((this.ctx.params.seed ?? 1) * 57 + (this.msg?.id ?? 0) * 23) >>> 0;
   block: MsgBlock | null = null;
   glyphs: Glyph[] = [];
-  lineGlyphs = new Map<Line, { gl: Glyph[]; size: number }>();
+  /** 每一句歌詞落在牆上的字；sub = 韓文歌的原文（小一號寫在中文正下方：左緣、第一排基線、主行字級）。 */
+  lineGlyphs = new Map<Line, { gl: Glyph[]; size: number; sub?: { line: Line; x: number; y: number; size: number } }>();
   b0 = 0;
   /** 小節線（水珠滑下來）、窗外有人走過（每兩小節）的時間。 */
   bars: number[] = [];
@@ -308,13 +309,28 @@ export default class BubbleTea extends Scene {
     } else {
       // 沒有留言：每一句歌詞排一次；每個字（英文一個字）在它開始唱的那一刻落地
       for (const l of lines) {
-        const ft = fitLyric(l.text);
-        const top = BOX.y + (BOX.h - ft.height) / 2 + ft.size * 0.88;
+        // 有原文（韓文歌）：中文只用框的上三分之二，原文排在正下方，整組在框裡置中
+        const sub = lyricSubOf(l);
+        const ft = sub
+          ? fitClauses(c, l.text, FAM, BOX.w, BOX.h * 0.66, { min: V2.lyrMin, max: lyricV2(null), lineHeight: 1.3, maxLines: 3 }) ?? fitText(c, l.text, FAM, BOX.w, BOX.h * 0.66, { min: V2.lyrMin, max: lyricV2(null), lineHeight: 1.3, maxLines: 3 })
+          : fitLyric(l.text);
+        let hAll = ft.height, gap = 0;
+        if (sub) {
+          const sl = layoutLyric(c, sub, subStyleFor(this.subStyle(ft.size), ft.size));
+          gap = subGap(ft.size, sl.size);
+          hAll = ft.size + (ft.lines.length - 1) * ft.lineHeight + gap + sl.height - sl.size + sl.size * 0.25;
+        }
+        const top = BOX.y + (BOX.h - hAll) / 2 + ft.size * 0.88;
         const gl = this.glyphsOf(ft.lines.map((ln, i) => ({ text: ln, x: BOX.x, y: top + i * ft.lineHeight })), ft.size, l);
-        this.lineGlyphs.set(l, { gl, size: ft.size });
+        this.lineGlyphs.set(l, { gl, size: ft.size, sub: sub ? { line: sub, x: BOX.x, y: top + (ft.lines.length - 1) * ft.lineHeight + gap, size: ft.size } : undefined });
       }
       this.avoid = [[BOX.x, BOX.y, BOX.w, BOX.h]];
     }
+  }
+
+  /** 原文的樣式：跟落地的字同一支筆、同樣左對齊，唱到的字是墨色（不用 blood），還沒唱的淡淡的。 */
+  private subStyle(size: number): LyricStyle {
+    return { family: FAM, size, maxWidth: BOX.w, align: 'left', ...paperInk() };
   }
 
   /** 排好的行 → 一個個字（英文連著的字母算一個）；歌詞的話記下每個字屬於哪個 Word、落地時間 = 那個 Word 開始唱。 */
@@ -409,6 +425,13 @@ export default class BubbleTea extends Scene {
     const c = L.ctx;
     c.setTransform(zoom, 0, 0, zoom, zc.x * (1 - zoom), zc.y * (1 - zoom));
     this.drawGlyphs(c, gl, t, lineAlpha, line);
+    // 原文（韓文歌）：不是珍珠變的，直接淡淡地寫在牆上、中文正下方（跟著同一個鏡頭）
+    const sub = line ? this.lineGlyphs.get(line)?.sub : undefined;
+    if (sub) {
+      c.save(); c.translate(sub.x, sub.y);
+      drawLyricSub(c, sub.line, t, this.subStyle(sub.size), sub.size, lineAlpha);
+      c.restore();
+    }
     c.setTransform(1, 0, 0, 1, 0, 0);
 
     u.t!.value = t;

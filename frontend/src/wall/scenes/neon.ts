@@ -6,6 +6,7 @@
 //    （「啪、啪」閃兩下，剛亮是訊號色、半秒後變白色燈管），留言裡的愛心是一圈玫瑰色的愛心燈管；署名是下面小一號的一排。
 //  - 歌詞＝左上一排細細的黑體燈管（比留言小）：還沒唱的是沒通電的玻璃管，唱到的那一刻通電點亮成訊號色，唱完轉成白色燈管；
 //    偶爾有一個字「滋」地暗一下（每小節最多一次，確定性）。沒有留言：歌詞改掛在箭頭指的地方，下面一行漆在牆上的小字邀請。
+//    韓文歌有中文翻譯時（2026-09-30）：中文燈管下面再掛一排細一號的原文燈管（原文自己的逐字時間通電，只亮白色、暗兩成，不用訊號色）。
 //    純音樂：左上是歌名。
 // 手法：燈管用 Canvas2D 畫（玻璃管一層、通電發光的一層加亮疊上去才會發光）；另外把「亮著的燈管」畫在一張 1/4 大小的光圖上，
 // 磚牆的 shader 用不同的 mip 層取樣這張光圖，算出燈管旁邊的光暈、打在磚牆上的大片色光與被照亮的煙。鏡頭慢慢推近。
@@ -364,7 +365,10 @@ export default class Neon extends Scene {
     const buzzPick = hash(bar, this.seed + 5);
     if (ly) {
       const lay = this.layLyric(ly.line);
-      const oy = L.y - (lay.rows.length > 1 ? lay.size * 0.6 : 0);
+      let oy = L.y - (lay.rows.length > 1 ? lay.size * 0.6 : 0);
+      const sub = lay.sub;
+      // 原文副行：整排往上挪到原文最後一排基線不超過下面那行邀請的上方（主行一排時本來就放得下，不用挪）
+      if (sub && !this.msg) oy -= Math.max(0, oy + sub.dy + sub.lay.rows[sub.lay.rows.length - 1]!.y - (L.y + 52));
       c.font = hc.font = lc.font = font(FAM_LYR, lay.size);
       const sung = lay.words.filter((w) => Lyrics.wordProgress(w.word, t) >= 1);
       const buzzW = sung.length ? sung[Math.floor(buzzPick * sung.length)] : null;
@@ -382,6 +386,18 @@ export default class Neon extends Scene {
         k *= power;
         if (ly.k < 1 && t > ly.line.end) k *= ly.k;
         this.tube(c, hc, lc, pw.word.w, x, y, p < 1 ? 'hot' : 'white', k);
+      }
+      if (sub) {
+        // 原文燈管：還沒唱是沒通電的玻璃管；唱到就通電成白色燈管（比中文暗兩成、不閃不滋，安靜一點）
+        c.font = hc.font = lc.font = font(FAM_LYR, sub.lay.size);
+        for (const pw of sub.lay.words) {
+          const x = L.x + pw.x, y = oy + sub.dy + pw.y;
+          const p = Lyrics.wordProgress(pw.word, t);
+          if (p <= 0) { c.save(); c.globalAlpha = ly.k; this.tube(c, hc, lc, pw.word.w, x, y, 'off'); c.restore(); continue; }
+          let k = 0.8 * power;
+          if (ly.k < 1 && t > ly.line.end) k *= ly.k;
+          this.tube(c, hc, lc, pw.word.w, x, y, 'white', k);
+        }
       }
     } else {
       // 純音樂：歌名整排亮著（白色燈管）；句子之間的空檔：歌名是沒通電的玻璃管（招牌不會空著）

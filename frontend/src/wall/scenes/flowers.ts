@@ -16,7 +16,7 @@ import { LIN, rgba } from '../engine/palette';
 import { clamp, ease, prog, hash, lerp, TAU } from '../engine/util';
 import { Lyrics, type Line, type Word } from '../engine/lyrics';
 import { fillWithHearts } from '../engine/motifs';
-import { beatAfter, COUPLE_ZH, DATE_DOTS } from './_motifs';
+import { beatAfter, COUPLE_ZH, DATE_DOTS, lyricSubOf, drawLyricSub, type LyricStyle } from './_motifs';
 import { lyricV2 } from './_v2';
 import { winBeats, winBars, no3, blit } from './_t8';
 import { Paper } from './_t11';
@@ -40,7 +40,7 @@ const SUN = { x: 1600, y: 250, r: 105 };
 const FAM = F.archivo(100, 800);
 
 interface Fl { text: string; words: { start: number; end: number; w: string; syl?: [number, number][] }[]; x: number; y: number; disc: number; out: number; n: number; rot: number; bx: number; t0: number; line: number }
-interface Row { flowers: Fl[]; tIn: number; tOut: number; size: number }
+interface Row { flowers: Fl[]; tIn: number; tOut: number; size: number; sub?: Line | null }
 
 const SHADER = () => new FSPass(/* glsl */ `
   uniform vec4 fa[${MAXF}];   // x, y（px，y 向下）、花心半徑、花瓣外徑
@@ -125,7 +125,12 @@ export default class Flowers extends Scene {
   paper = shared('t15.paper', () => new Paper());
   pass = shared('flowers.pass', SHADER);
   box = this.track(new Layer2D(W, H, undefined, { fast: true }));
-  chars = this.track(new Layer2D(W, 620, undefined, { fast: true }));
+  /**
+   * 這一格有沒有韓文原文副行（建構時就看：引擎只在建立這一格之前設好開關）。有的話原文寫在花箱正面的上緣、
+   * 花排的正下方（花心裡已經是中文，花底下只剩莖，沒有東西可以寫），字的圖層往下多開一點。
+   */
+  hasSub = this.ctx.lyrics.linesIn(this.ctx.start - 0.6, this.ctx.end).some((l) => !!lyricSubOf(l));
+  chars = this.track(new Layer2D(W, this.hasSub ? 700 : 620, undefined, { fast: true }));
   stems = this.track(new LineBatch(6000, { screen2D: true, blend: 'normal' }));
   msg: Msg | null = this.ctx.params.message ?? null;
   seed = ((this.ctx.params.seed ?? 1) * 613 + (this.msg?.id ?? 0) * 71) >>> 0;
@@ -140,6 +145,7 @@ export default class Flowers extends Scene {
   override async init() {
     const { audio: au, lyrics, start: s, end: e } = this.ctx;
     const lines = lyrics.linesIn(s - 0.6, e);
+    const subOf = new Map(lines.map((l) => [l, lyricSubOf(l)] as const));
     await loadAll(this.msg, lines.map((l) => l.text).join(''), `${COUPLE_ZH}${DATE_DOTS}${no3(this.msg?.n ?? 0)}`);
     this.beats = winBeats(au, s, e);
     this.bars = winBars(au, s, e).filter((b) => b > s + 0.1);
@@ -151,7 +157,7 @@ export default class Flowers extends Scene {
         const next = lines[i + 1];
         const tIn = l.start - 0.5;
         const tOut = next ? next.start - 0.5 : Math.max(e + 1, l.end + 6);
-        this.rows.push(this.layoutLine(l, tIn, tOut, i));
+        this.rows.push({ ...this.layoutLine(l, tIn, tOut, i), sub: subOf.get(l) ?? null });
       });
     } else {
       // 純音樂：七朵沒有字的花，一拍開一朵
@@ -306,9 +312,9 @@ export default class Flowers extends Scene {
       c.fillText(INVITE, 60, 192);
     }
     c.restore();
-    // 花箱右邊的小字（編號）
+    // 花箱右邊的小字（編號）；上緣要寫韓文原文時移到下面那塊木板
     c.font = font(F.mono(500), 17); c.letterSpacing = '4px'; c.fillStyle = rgba('sepia', 0.45); c.textAlign = 'left';
-    c.fillText(`${m ? no3(m.n) : 'No.000'} · ${DATE_DOTS}`, lb.x + lb.w + 36, top + 44);
+    c.fillText(`${m ? no3(m.n) : 'No.000'} · ${DATE_DOTS}`, lb.x + lb.w + 36, this.hasSub ? mid + 44 : top + 44);
     c.letterSpacing = '0px';
     L.upload();
   }
@@ -390,6 +396,17 @@ export default class Flowers extends Scene {
       }
     }
     this.pass.u.nf!.value = n;
+    // 韓文原文副行：用同一支筆寫在花箱正面的上緣、花排的正中下方，跟著這排花長出來、縮回去；
+    // 唱到、唱完都是墨色淡兩成（不用訊號色，不跟花心的中文搶），逐字時間是原文自己的
+    for (const row of this.rows) {
+      if (!row.sub || t < row.tIn - 0.05 || t > row.tOut + 0.4) continue;
+      const k = ease.outExpo(prog(t, row.tIn, row.tIn + 0.34)) * (1 - ease.inCubic(prog(t, row.tOut, row.tOut + 0.32)));
+      if (k <= 0.001) continue;
+      const st: LyricStyle = { family: FAM, size: row.size, maxWidth: ROW_W, align: 'center', sung: rgba('sepia', 0.96), unsung: rgba('sepia', 0.3) };
+      cc.save(); cc.translate(ROW_CX, BOX.top + 58);
+      drawLyricSub(cc, row.sub, t, st, row.size, k);
+      cc.restore();
+    }
     // 土上的一叢矮葉子（跟著風晃）
     for (let i = 0; i < 26; i++) {
       const x = BOX.x0 + 40 + i * ((BOX.x1 - BOX.x0 - 80) / 25) + (hash(this.seed, i, 21) - 0.5) * 30;
@@ -411,7 +428,7 @@ export default class Flowers extends Scene {
     lb.render(renderer, out);
     this.pass.render(renderer, out);
     comp.draw(renderer, this.box.texture, out, { opacity: clamp((t - s) / 0.2) });
-    blit(this.ctx, C.upload(), 0, 0, W, 620, out);
+    blit(this.ctx, C.upload(), 0, 0, W, C.h, out);
     avoid.push([this.label.x - 10, this.label.y - 10, this.label.w + 20, this.label.h + 20]);
     return { paper: 1, bloom: 0.25, vignette: 0.35, zoom: 1 + 0.03 * ease.inOutCubic(f.p), popupAvoid: avoid };
   }

@@ -19,7 +19,7 @@ import { LIN, rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, pulse, hash } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
 import { Lyrics, type Line } from '../engine/lyrics';
-import { layoutLyric, drawLyric, lyricAt, drawHeart, fillWithHearts, signature, COUPLE_ZH, type LyricStyle, type LyricLayout } from './_motifs';
+import { layoutLyric, drawLyric, lyricAt, drawHeart, fillWithHearts, signature, COUPLE_ZH, lyricSubOf, subSizeFor, subGap, type LyricStyle, type LyricLayout } from './_motifs';
 import { grid, windowLines, rrect, lastOf, renderStage, bodyMaterial, screenMaterial, tableMaterial, backdropMaterial, slab, setV3, mixV, projScale, fitMsgV2, type Grid } from './_t5';
 import { V2, lyricV2, sigV2 } from './_v2';
 
@@ -254,6 +254,16 @@ export default class Search extends Scene {
     return R.cam.position.distanceTo(R.center);
   }
 
+  /** 原文副行的排版（畫布 px）：照「畫面上」的主行字級算原文字級（subSizeFor(主行 × sc) ÷ sc）。dy = 原文第一排基線離中文第一排基線多遠。 */
+  private subLay(c: CanvasRenderingContext2D, l: Line, lay: LyricLayout) {
+    const sub = lyricSubOf(l);
+    if (!sub) return null;
+    const k = this.sc, st = this.q();
+    const ss = subSizeFor(lay.size * k) / k;
+    const sl = layoutLyric(c, sub, { ...st, size: ss, minSize: Math.min(ss, 26 / k), tracking: (st.tracking ?? 0) * 0.5 });
+    return { sub, sl, dy: lay.rows[lay.rows.length - 1]!.y + subGap(lay.size * k, sl.size * k) / k };
+  }
+
   // ---------------------------------------------------------------- 螢幕內容
   private drawUi(t: number) {
     const c = this.ui.ctx;
@@ -272,14 +282,17 @@ export default class Search extends Scene {
     const lay = ly ? this.lays.get(ly.line) ?? layoutLyric(c, ly.line, this.q()) : null;
     const two = !!lay && lay.rows.length > 1;
     const qsz = this.qs.size;
-    const fh = two ? qsz * 2.4 : qsz * 1.6;
+    // 原文副行（韓文歌）：搜尋框裡中文下面再一行小一號的原文，框跟著長高（下面的建議一起往下）
+    const d = ly && lay ? this.subLay(c, ly.line, lay) : null;
+    const base0 = FY + (two ? qsz * 1.05 : qsz * 1.12);
+    const fh = d ? base0 + d.dy + d.sl.rows[d.sl.rows.length - 1]!.y - FY + qsz * 0.45 : two ? qsz * 2.4 : qsz * 1.6;
     c.fillStyle = rgba('bone', 1); rrect(c, FX, FY, FW, fh, 65); c.fill();
     c.strokeStyle = rgba('sepia', 0.14); c.lineWidth = 2; rrect(c, FX, FY, FW, fh, 65); c.stroke();
     // 放大鏡
     c.strokeStyle = rgba('sepia', 0.45); c.lineWidth = 5; c.lineCap = 'round';
     c.beginPath(); c.arc(FX + 70, FY + 60, 20, 0, Math.PI * 2); c.stroke();
     c.beginPath(); c.moveTo(FX + 85, FY + 75); c.lineTo(FX + 100, FY + 90); c.stroke();
-    const tx = FX + 140, base = FY + (two ? qsz * 1.05 : qsz * 1.12);
+    const tx = FX + 140, base = base0;
     const blink = t < g.b0 || ((t - g.b0) / g.beat) % 1 < 0.55;
     let caretX = tx, caretY = base, kw = '祝福';
     if (ly && lay) {
@@ -288,7 +301,13 @@ export default class Search extends Scene {
       const sel = next && t < next.start - 0.35 ? prog(t, next.start - 0.35 - 0.16, next.start - 0.35 - 0.1) : 0;
       if (sel > 0) for (const r of lay.rows) { c.fillStyle = rgba('signal', 0.3 * sel); c.fillRect(tx + r.x - 4, base + r.y - lay.size * 0.88, r.width + 8, lay.size * 1.14); }
       c.save(); c.translate(tx, base);
-      drawLyric(c, line, t, { ...this.q(), active: rgba('blood'), sung: rgba('sepia', 0.9), unsung: rgba('sepia', 0.28) }, lay, 1);
+      drawLyric(c, line, t, { ...this.q(), active: rgba('blood'), sung: rgba('sepia', 0.9), unsung: rgba('sepia', 0.28) }, d ? ({ ...lay, sub: undefined } as LyricLayout) : lay, 1);
+      if (d) {
+        // 原文：照畫面字級另外畫（drawLyric 自動畫的會照畫布 px，螢幕縮小後太小），比中文安靜：唱到、唱完都是墨色再淡兩成
+        c.translate(0, d.dy);
+        const q = rgba('sepia', 0.9 * 0.8);
+        drawLyric(c, d.sub, t, { ...this.q(), active: q, sung: q, unsung: rgba('sepia', 0.28) }, d.sl, 1);
+      }
       c.restore();
       for (const pw of lay.words) {
         const p = Lyrics.wordProgress(pw.word, t);

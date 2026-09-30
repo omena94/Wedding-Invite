@@ -25,7 +25,7 @@ import { LIN, rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, hash, pulse, polylineLengths, pointAtLength, TAU } from '../engine/util';
 import { fitText, badBreaks, wrap, type FitResult } from '../engine/text';
 import { Lyrics } from '../engine/lyrics';
-import { sparkHead, sparkParticles, drawHeart, lyricAt, layoutLyric, beatAfter, barAfter, signature, COUPLE_ZH, WEDDING_DATE, type LyricStyle } from './_motifs';
+import { sparkHead, sparkParticles, drawHeart, lyricAt, layoutLyric, beatAfter, barAfter, signature, COUPLE_ZH, WEDDING_DATE, lyricSubOf, subGap, type LyricStyle } from './_motifs';
 import { msgMaxFor, lyricV2, sigV2, V2 } from './_v2';
 import { Sky, makeSkyPass, eclY, type P2 } from './stars-sky';
 import { units, unitOfChar, buildConstellation, type Unit, type StarPt, type Zone } from './stars-chart';
@@ -103,6 +103,8 @@ export default class Stars extends Scene {
   /** 長窗格：每四小節一道光沿著星座的連線從頭跑到尾（重溫點亮的那一刻）。 */
   retrace: { t: number; dur: number }[] = [];
   lyricsInWindow = false;
+  /** 這個窗格有原文副行（韓文歌、沒有主打留言）：黃道下方寫原文，邀請往下讓一列。 */
+  subInWindow = false;
   glyphCache = new Map<string, TextLayout>();
 
   override async init() {
@@ -110,6 +112,8 @@ export default class Stars extends Scene {
     const s = this.ctx.start, e = this.ctx.end, m = this.msg;
     const c = this.layer.ctx;
     this.lyricsInWindow = lyrics.linesIn(s, e).length > 0;
+    // 這個窗格有沒有原文（有主打留言的窗格，引擎給的歌詞本來就沒有原文）
+    this.subInWindow = lyrics.linesIn(s, e).some((l) => lyricSubOf(l));
     if (m) {
       const cp = MSG_COMPS[this.flip ? 1 : 0]!;
       this.zone = cp.zone; this.mx = cp.mx; this.mw = cp.mw;
@@ -193,7 +197,7 @@ export default class Stars extends Scene {
       // 邀請：有歌詞時是黃道下方一行小字；純音樂時歌詞不在，邀請放大成兩行（寫在黃道上方）
       this.inviteBig = !this.lyricsInWindow;
       this.inviteSize = this.inviteBig ? 46 : 28;
-      this.inviteY = this.inviteBig ? eclY(LYR_X, this.eclOff) - 150 : eclY(LYR_X, this.eclOff) + 64;
+      this.inviteY = this.inviteBig ? eclY(LYR_X, this.eclOff) - 150 : eclY(LYR_X, this.eclOff) + 64 + (this.subInWindow ? 56 : 0);
     }
 
     // ---- 流星（v2：多補動畫）：第二小節起幾乎每小節一顆（落在小節線或第三拍），往留言的反方向、劃過星座上方；
@@ -638,6 +642,35 @@ export default class Stars extends Scene {
       }
       if (pr > 0) sungTo = Math.max(sungTo, row === 0 ? pw.x + wipe : row0.width);
       if (pr > 0 && pr < 1) { const p = at(pw.x + wipe); head = { x: p.x, y: p.y }; }
+    }
+    // 原文副行（韓文歌）：寫在黃道下方（中文在上、原文在下，黃道夾在中間）；中文折兩行時接在第二行下面。
+    // 比中文安靜：唱到、唱完都是紙白淡兩成，不帶仙女棒、不亮黃道
+    const sub = lyricSubOf(ly.line);
+    if (sub && lay.sub) {
+      const sl = lay.sub.lay, ss = sl.size;
+      c.font = font(FAM_LYRIC, ss);
+      for (const pw of sl.words) {
+        const pr = Lyrics.wordProgress(pw.word, t);
+        const below = lay.rows.length > 1 ? size + 16 + subGap(size, ss) : ss + 16;
+        const off = -(below + pw.y) + (1 - rise) * 26;
+        const gl = this.glyphLayout(`sub|${pw.word.w}|${ss}`, pw.word.w, FAM_LYRIC, ss);
+        const wipe = pr * pw.w;
+        for (const g of gl.glyphs) {
+          const p = at(pw.x + g.x + g.w / 2);
+          const nx = Math.sin(p.angle), ny = -Math.cos(p.angle);
+          const loc = clamp((wipe - g.x) / Math.max(1, g.w));
+          c.save();
+          c.translate(p.x + nx * off, p.y + ny * off);
+          c.rotate(p.angle);
+          if (loc < 1) { c.fillStyle = rgba('bone', 0.3); c.fillText(g.ch, -g.w / 2, 0); }
+          if (loc > 0) {
+            c.beginPath(); c.rect(-g.w / 2 - 3, -ss * 1.15, g.w * loc + (loc >= 1 ? 6 : 3), ss * 1.6); c.clip();
+            c.fillStyle = rgba('bone', 0.94 * 0.8);
+            c.fillText(g.ch, -g.w / 2, 0);
+          }
+          c.restore();
+        }
+      }
     }
     // 唱過的那段黃道：訊號色的細線（像進度條），筆尖那一小段是燙的
     if (sungTo > 2) {

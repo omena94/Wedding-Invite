@@ -23,7 +23,7 @@ import { LIN, rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, lerp, prog, pulse, noise1, hash } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
 import { Lyrics, type Line } from '../engine/lyrics';
-import { layoutLyric, type LyricLayout, type LyricStyle, drawHeart, signature, beatAfter, COUPLE_ZH } from './_motifs';
+import { layoutLyric, type LyricLayout, type LyricStyle, drawHeart, signature, beatAfter, COUPLE_ZH, lyricSubOf, drawLyricSub } from './_motifs';
 import { blit, winBars, label, INVITE, T8_TEXT, Stage, camMove, type StageCam } from './_t8';
 import { V2, msgMaxFor, lyricV2, sigV2, fitClauses } from './_v2';
 
@@ -318,15 +318,19 @@ export default class Seismograph extends Scene {
     c.translate(-PAP.x, -PAP.y);
     const s = this.ctx.start;
     const cardBot = CARD.y + this.cardH + 10;
+    // 排版在這裡再拿一次（有快取）：韓文原文副行的開關是引擎在畫這一格之前設的，init 等字型時可能被別的窗格改掉
+    const layOf = (nt: Note) => (nt.line && nt.st ? layoutLyric(c, nt.line, nt.st) : null);
     this.notes.forEach((nt, i) => {
       // 後面每出現一句就往上跳一格；唱完停 0.6 秒後跟著紙走
       let yb = PEN_Y - 16 - this.v * Math.max(0, t - (nt.t1 + 0.6));
       for (let j = i + 1; j < this.notes.length; j++) {
         const nj = this.notes[j]!, aj = nj.t0 - 0.35;
         if (t <= aj) break;
-        yb -= ((nj.lay ? nj.lay.height : 52) + GAP) * ease.outExpo(clamp((t - aj) / FEED));
+        const lj = layOf(nj);
+        yb -= ((lj ? lj.height : 52) + GAP) * ease.outExpo(clamp((t - aj) / FEED));
       }
-      const lay = nt.lay;
+      // yb 是這一句最下面那排的基線（有原文時是原文最後一排）
+      const lay = layOf(nt);
       const yTop = yb - (lay ? lay.height : 52);
       if (yb < 40) return;
       // 一句從它開始唱的前一點點淡入；還沒唱到的句子不出現。捲到報告卡底下之前淡掉（卡片是歪的，邊緣會露出來）
@@ -335,7 +339,7 @@ export default class Seismograph extends Scene {
       c.globalAlpha = a;
       // 引線：從標註左緣拉到開始唱的那一刻的波形上
       const tq = this.traceXY(nt.t0, t);
-      const firstRowY = yb - (lay ? lay.rows[lay.rows.length - 1]!.y : 0);
+      const firstRowY = yb - (lay ? (lay.sub ? lay.sub.dy + lay.sub.lay.rows[lay.sub.lay.rows.length - 1]!.y : lay.rows[lay.rows.length - 1]!.y) : 0);
       const ly = firstRowY - (lay ? lay.size : 50) * 0.36;
       c.strokeStyle = rgba('sepia', 0.4); c.lineWidth = 1;
       c.beginPath(); c.moveTo(LX - 14, ly); c.lineTo(LX - 40, ly); c.lineTo(tq.x + 9, tq.y); c.stroke();
@@ -371,6 +375,14 @@ export default class Seismograph extends Scene {
       c.restore();
     }
     c.restore();
+    // 韓文原文副行：同一支筆、小一號，寫在中文正下方（不畫螢光筆：唱到、唱完都是墨色淡兩成，不跟中文搶）
+    const sub = lyricSubOf(line);
+    if (sub && lay.sub) {
+      c.save();
+      c.translate(x, y + lay.sub.dy);
+      drawLyricSub(c, sub, t, st, lay.size);
+      c.restore();
+    }
   }
 
   // ---------------------------------------------------------------- 留言紙條

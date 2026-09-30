@@ -18,7 +18,7 @@ import { LIN, rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, lerp, prog, pulse, TAU } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
 import { Lyrics, type Line } from '../engine/lyrics';
-import { lyricAt, layoutLyric, type LyricLayout, type LyricStyle, signature, beatAfter } from './_motifs';
+import { lyricAt, layoutLyric, type LyricLayout, type LyricStyle, signature, beatAfter, lyricSubOf, subGap, drawLyricSub } from './_motifs';
 import { DEC_GLSL, INVITE, T8_TEXT, Stage, camMove, type StageCam } from './_t8';
 import { V2, msgMaxFor, lyricV2, sigV2, fitClauses } from './_v2';
 
@@ -91,6 +91,8 @@ export default class Terminal extends Scene {
   stage = new Stage();
   scr = this.track(new Layer2D(W, H, undefined, { fast: true }));
   msg: Msg | null = this.ctx.params.message ?? null;
+  /** 這一格有沒有韓文原文副行（建構時就看：引擎只在建立這一格之前設好開關）；有的話歌詞整段往上讓一行。 */
+  hasSub = this.ctx.lyrics.linesIn(this.ctx.start - 1, this.ctx.end + 1).some((l) => !!lyricSubOf(l));
   beat = 0.5;
   cmd = '';
   cmdT: number[] = [];
@@ -296,14 +298,24 @@ export default class Terminal extends Scene {
   /** 歌詞：tail -f 的最新一行。正在唱的字反白，唱完磷光白，還沒唱三成亮。 */
   private drawLyric(c: CanvasRenderingContext2D, t: number) {
     const { lyrics, song } = this.ctx;
-    label(c, '$ tail -f tonight.log', LX, LY_Y - this.st.size * 1.9, F.mono(500), 22, PH(0.4));
+    // 有韓文原文的窗格：原文印在中文下面一行（log 的下一行），整段（連 tail -f 那行）往上讓出一行
     const ly = lyricAt(lyrics, t);
-    if (ly) {
-      const lay = layoutLyric(c, ly.line, this.st);
-      const y0 = LY_Y - lay.rows[lay.rows.length - 1]!.y;
+    const lay = ly ? layoutLyric(c, ly.line, this.st) : null;
+    const sb = lay?.sub;
+    const up = sb ? sb.dy - (lay!.rows.length - 1) * lay!.size * (this.st.lineHeight ?? 1.18) + sb.lay.rows[sb.lay.rows.length - 1]!.y : this.hasSub ? subGap(this.st.size) : 0;
+    label(c, '$ tail -f tonight.log', LX, LY_Y - up - this.st.size * 1.9, F.mono(500), 22, PH(0.4));
+    if (ly && lay) {
+      const y0 = LY_Y - up - lay.rows[lay.rows.length - 1]!.y;
       c.save();
       c.globalAlpha = ly.k;
       this.lyric(c, ly.line, t, lay, LX, y0);
+      const sub = lyricSubOf(ly.line);
+      if (sub && sb) {
+        // 原文：同一個磷光、小一號，唱到不反白（唱到、唱完都是磷光白淡兩成），逐字時間是原文自己的
+        const dim = this.msg ? 0.8 : 1;
+        c.translate(LX, y0 + sb.dy);
+        drawLyricSub(c, sub, t, { ...this.st, sung: PH(0.95 * dim), unsung: PH(0.28) }, lay.size);
+      }
       c.restore();
     } else if (!lyrics.has) {
       label(c, `♪ ${song.title || '今晚的歌'}`, LX, LY_Y, F.mono(600), this.st.size, PH(0.8));

@@ -15,7 +15,7 @@ import { FSPass, Layer2D, W, H, SCALE } from '../engine/gl';
 import { F, font, loadText } from '../engine/type';
 import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, lerp, hash } from '../engine/util';
-import { lyricAt, barAfter, beatAfter, drawHeart, heartPoints, fillWithHearts, signature } from './_motifs';
+import { lyricAt, barAfter, beatAfter, drawHeart, heartPoints, fillWithHearts, signature, lyricSubOf } from './_motifs';
 import { lyricOnPath, type Note } from './_couple';
 import { loadPuppets, drawPick, pick, puppetShadow, puppetIn, puppetLight, breathe, beatKick, landSquash, noteV2, tightenNote } from './_puppet';
 import { lyricV2 } from './_v2';
@@ -30,6 +30,12 @@ const BOARD = { x: 130, y: 654, w: 860, h: 330 };
 const PAD = { x: 40, top: 46, bottom: 24 };
 /** 最上面的環場 LED 帶（歌詞）。 */
 const BAND = { y0: 92, y1: 160, base: 143, lx0: 230, lx1: 1690 };
+/**
+ * 有韓文原文的窗格：LED 帶往上、往下各加寬一點（下緣貼到大螢幕外框上緣 182），中文縮到 40、原文跑在中文下面；
+ * 中文的字頂還是離畫面上緣約 96 px，原文的字腳停在外框上面。
+ */
+const BAND_SUB = { ...BAND, y0: 86, y1: 182, base: 131 };
+const LYR_SUB = 40;
 /** 看台上真的兩個人：腳底、場景尺度（宣文站直的身高）。 */
 const RX = 1530, RG = 790, SZ = 330;
 /** 坐著的時候頭頂離腳底幾倍身高（Codex 的坐姿圖量的）：轉播畫面照這個取景。 */
@@ -74,6 +80,8 @@ export default class Kisscam extends Scene {
   /** 大螢幕的殼、LED 帶、字幕板的底（init 畫好，每格貼到 fg：觀眾在它們後面）。 */
   mid = this.track(new Layer2D(W, H, undefined, { fast: true }));
   msg: Msg | null = this.ctx.params.message ?? null;
+  /** 這一格有沒有韓文原文副行（建構時就看：引擎只在建立這一格之前設好開關）。 */
+  band = this.ctx.lyrics.linesIn(this.ctx.start - 1, this.ctx.end + 1).some((l) => !!lyricSubOf(l)) ? BAND_SUB : BAND;
   /** 找到兩個人的小節線（之前是在觀眾席裡找）。 */
   found = 0;
   keys: [number, string][] = [];
@@ -147,8 +155,8 @@ export default class Kisscam extends Scene {
   private drawMid() {
     const L = this.mid, c = L.ctx;
     L.clear();
-    ledBand(c, { x: -10, y: BAND.y0, w: W + 20, h: BAND.y1 - BAND.y0 });
-    jumbotronShell(c, SCREEN, { cables: BAND.y1 });
+    ledBand(c, { x: -10, y: this.band.y0, w: W + 20, h: this.band.y1 - this.band.y0 });
+    jumbotronShell(c, SCREEN, { cables: this.band.y1 });
     const B = this.board;
     ledBand(c, { x: B.x - 8, y: B.y, w: B.w + 16, h: B.h }, { dots: 0.035, edge: 0.18 });
     c.font = font(F.hei(500), 16);
@@ -312,8 +320,10 @@ export default class Kisscam extends Scene {
     const ly = lyricAt(this.ctx.lyrics, t);
     if (!ly) return;
     const rv = prog(t, this.ctx.start + 0.1, this.ctx.start + 0.6, ease.inOutCubic);
-    lyricOnPath(c, ly.line, t, [{ x: BAND.lx0, y: BAND.base }, { x: BAND.lx1, y: BAND.base }], {
-      family: F.archivo(100, 700), size: this.lyricSize, minSize: 40, alpha: ly.k * rv, unsung: rgba('bone', 0.24), sung: rgba('bone', 0.9),
+    // 有原文時中文縮一級、太長寧可再縮也不要折成兩排（LED 帶放不下三排字）
+    const sub = !!lyricSubOf(ly.line), Bd = this.band;
+    lyricOnPath(c, ly.line, t, [{ x: Bd.lx0, y: Bd.base }, { x: Bd.lx1, y: Bd.base }], {
+      family: F.archivo(100, 700), size: sub ? Math.min(this.lyricSize, LYR_SUB) : this.lyricSize, minSize: sub ? 30 : 40, alpha: ly.k * rv, unsung: rgba('bone', 0.24), sung: rgba('bone', 0.9),
     });
   }
 

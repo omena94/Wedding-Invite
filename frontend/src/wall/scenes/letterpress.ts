@@ -17,7 +17,7 @@ import { FSPass, Layer2D, W, H } from '../engine/gl';
 import { F, font, loadText, layout } from '../engine/type';
 import { rgba } from '../engine/palette';
 import { clamp, ease, prog, hash, pulse, lerp } from '../engine/util';
-import { lyricAt, COUPLE_ZH, DATE_DOTS, heartPoints } from './_motifs';
+import { lyricAt, COUPLE_ZH, DATE_DOTS, heartPoints, lyricSubOf, subSizeFor, subGap } from './_motifs';
 import { grid, layoutRows, drawRows, type KaraokeInk } from './_t4';
 import { PlaneCam, camUniforms, CAM_GLSL, msgBlockV2, INVITE, type MsgBlock, type Rect } from './_t14';
 import { lyricV2 } from './_v2';
@@ -205,6 +205,10 @@ export default class Letterpress extends Scene {
   lyrSize = 52;
   k = 1;
   hasLyrics = false;
+  /** 原文副行（韓文歌）：這個窗格有沒有原文、紙條要多高（紙面 px）、壓印後鏡頭在紙條上的縮放（換算副行字級用）。 */
+  subOn = false;
+  subX = 0;
+  kSub = 1;
   avoid: Rect[] = [];
 
   override async init() {
@@ -213,6 +217,7 @@ export default class Letterpress extends Scene {
     const c = this.lyr.ctx;
     const gr = grid(au, s, e);
     this.hasLyrics = lyrics.linesIn(s, e).length > 0;
+    this.subOn = lyrics.linesIn(s - 1, e + 1).some((l) => !!lyricSubOf(l));
     const names = COUPLE_ZH.replace(/\s*&\s*/, ' ♥ ');
     await loadText(`${m?.text ?? ''}${m ? (m.couple ? '—— 新郎新娘' : m.name) : ''}${names}${INVITE}${COLOPHON}FROM THE COUPLE${song.title}${song.artist}——一位賓客`);
 
@@ -232,6 +237,8 @@ export default class Letterpress extends Scene {
     let k = 1;
     for (let it = 0; it < 3; it++) {
       glyphs = this.typeset(c, m, names, k);
+      // 有原文時紙條加高一條副行的距離（螢幕上的標準換回紙面）
+      this.subX = this.subOn ? subGap(lyricV2(null)) / k : 0;
       this.place();
       this.cam.set(this.pose(e - 0.6));
       k = this.cam.toScreen(this.card[0] + this.card[2] / 2, this.card[1] + this.card[3] / 2).scale;
@@ -243,6 +250,8 @@ export default class Letterpress extends Scene {
     const sc = [(this.strip[0] + this.strip[2]) / 2, (this.strip[1] + this.strip[3]) / 2] as const;
     const kPost = this.cam.set(this.pose(e - 0.6)).toScreen(sc[0], sc[1]).scale;
     const kPre = this.cam.set(this.pose(Math.max(s, this.tImp - 0.3))).toScreen(sc[0], sc[1]).scale;
+    // 原文照壓印後（鏡頭拉遠、字最小）的縮放算字級：整個窗格大部分時間都是這個鏡位，原文在那時也要有 32 px
+    this.kSub = kPost;
     this.lyrSize = (lyricV2(m && this.block ? this.block.fit.size * k : null)) / Math.max(kPost, kPre);
     this.buildMasks(glyphs);
   }
@@ -284,7 +293,7 @@ export default class Letterpress extends Scene {
     this.card = [FORME.x + fw + GAP, FORME.y, cw, ch];
     const bottom = Math.max(FORME.y + fh, FORME.y + ch);
     const x0 = FORME.x + 60;
-    this.strip = [x0, bottom + 90, Math.max(x0 + 760, this.card[0] + cw * 0.35), bottom + 190];
+    this.strip = [x0, bottom + 90, Math.max(x0 + 760, this.card[0] + cw * 0.35), bottom + 190 + this.subX];
     this.disc = [FORME.x - 60, FORME.y - 150, 150];
     const X0 = FORME.x - 30, X1 = this.card[0] + cw + 30, Y0 = FORME.y - 70, Y1 = this.strip[3] + 30;
     // 畫面寬 1560、高 720 左右放得下（留邊給 HUD）；太近也不好（紙纖維會變粗），最近到 0.72 倍
@@ -425,7 +434,16 @@ export default class Letterpress extends Scene {
     if (ly) {
       const st = { family: FAM_LYR, size: this.lyrSize, minSize: 40 / this.k, maxW: this.strip[2] - this.strip[0] - 100, maxRows: 1, align: 'left' as const };
       const lay = layoutRows(c, ly.line, st);
-      c.save(); c.translate(this.strip[0] + 50, this.strip[3] - 32); drawRows(c, lay, FAM_LYR, t, ink, ly.k); c.restore();
+      // 原文副行：同一條紙條、中文正下方，小一號；唱到、唱完都是咖啡墨再淡兩成（不用紅墨），還沒唱的一樣只壓不上墨
+      const sub = lyricSubOf(ly.line);
+      const kS = this.kSub;
+      const sl = sub ? layoutRows(c, sub, { ...st, size: subSizeFor(lay.size * kS) / kS, minSize: 26 / kS }) : null;
+      const gap = sl ? subGap(lay.size * kS, sl.size * kS) / kS : 0;
+      // 這個窗格有原文但這一句沒有（兩行一樣的句子）：中文放在加高的紙條中間
+      const up = sl ? gap : this.subX / 2;
+      c.save(); c.translate(this.strip[0] + 50, this.strip[3] - 32 - up); drawRows(c, lay, FAM_LYR, t, ink, ly.k);
+      if (sl) { c.translate(0, gap); drawRows(c, sl, FAM_LYR, t, { active: rgba('sepia', 0.8), sung: rgba('sepia', 0.8), unsung: ink.unsung }, ly.k); }
+      c.restore();
     } else if (!this.hasLyrics) {
       c.font = font(F.mono(500), 18 / this.k); c.letterSpacing = '4px'; c.fillStyle = rgba('sepia', 0.7);
       c.fillText(`♪  ${song.title}${song.artist ? '  ·  ' + song.artist : ''}`.toUpperCase(), this.strip[0] + 50, this.strip[3] - 40);

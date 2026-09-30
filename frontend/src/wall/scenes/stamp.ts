@@ -17,7 +17,8 @@ import { FSPass, Layer2D, W, H } from '../engine/gl';
 import { F, font, loadText } from '../engine/type';
 import { rgba } from '../engine/palette';
 import { clamp, ease, prog, lerp, pulse } from '../engine/util';
-import { lyricAt, layoutLyric, drawLyric, COUPLE_ZH, DATE_DOTS, type LyricStyle } from './_motifs';
+import type { Line } from '../engine/lyrics';
+import { lyricAt, layoutLyric, drawLyric, COUPLE_ZH, DATE_DOTS, lyricSubOf, type LyricStyle } from './_motifs';
 import { V2, lyricV2 } from './_v2';
 import { PlaneCam, camUniforms, CAM_GLSL } from './_t14';
 import {
@@ -36,6 +37,8 @@ const IMG = { x: 980, y: 176, w: 380, h: 576 };
 const TXT = { x: 306, y: 262, w: 630, h: 420 };
 const HEAD_Y = 216;
 const LYR = { x: 306, y: 922, w: 1020 };
+/** 有韓文原文時中文只排一排、最寬到這裡（斜著看時右緣在畫面上不進右下角 HUD）。 */
+const LYR_SUB_W = 960;
 /** 郵戳：圓心與半徑；波浪線往右延伸。 */
 const PM = { x: 1330, y: 250, r: 132 };
 const PM_RECT: Rect = [PM.x - 170, PM.y - 170, 900, 340];
@@ -205,6 +208,8 @@ export default class Stamp extends Scene {
   bars: number[] = [];
   tFirst = 0;
   tStrike = 0;
+  /** 有韓文原文的句子：中文排成一排的字級（第一次用到時量好）。 */
+  subFit = new Map<Line, number>();
   lyrStyle: LyricStyle = { family: FAM_LYR, size: 52, minSize: V2.lyrMin, maxWidth: LYR.w, tracking: 2, ...paperLyric() };
 
   override async init() {
@@ -351,9 +356,22 @@ export default class Stamp extends Scene {
     const c = L.ctx;
     const ly = lyricAt(lyrics, t);
     if (ly) {
-      const lay = layoutLyric(c, ly.line, this.lyrStyle);
+      // 有韓文原文時：邊紙只有一排齒孔到下緣那麼高，中文寧可縮小也不要折成兩排（兩排＋原文會壓到齒孔、跑到郵票上）。
+      // 字級自己先找好（layoutLyric 照比例縮的時候沒算字距，剛好放得下的會被折行）；右緣再收一點，斜著看時才不會進右下角 HUD
+      let st = this.lyrStyle;
+      if (lyricSubOf(ly.line)) {
+        let sz = this.subFit.get(ly.line);
+        if (sz === undefined) {
+          c.letterSpacing = `${st.tracking ?? 0}px`;
+          for (sz = st.size; sz > 34; sz--) { c.font = font(st.family, sz); if (c.measureText(ly.line.text).width <= LYR_SUB_W) break; }
+          c.letterSpacing = '0px';
+          this.subFit.set(ly.line, sz);
+        }
+        st = { ...st, size: sz, minSize: sz, maxWidth: LYR_SUB_W };
+      }
+      const lay = layoutLyric(c, ly.line, st);
       c.save(); c.translate(LYR.x, LYR.y - (lay.height - lay.size));
-      drawLyric(c, ly.line, t, this.lyrStyle, lay, ly.k);
+      drawLyric(c, ly.line, t, st, lay, ly.k);
       c.restore();
     } else if (!lyrics.linesIn(s, e).length) {
       c.font = font(FAM_LYR, this.lyrStyle.size); c.letterSpacing = '4px'; c.fillStyle = rgba('sepia', 0.8 * prog(t, s, s + 0.5));

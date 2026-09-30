@@ -18,7 +18,7 @@ import { F, font, loadText } from '../engine/type';
 import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, hash, lerp, prog, pulse, noise1 } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
-import { lyricAt, signature } from './_motifs';
+import { lyricAt, lyricSubOf, subGap, subSizeFor, signature } from './_motifs';
 import { grid, stagger, drawFit, layoutRows, drawRows, paperInk, lastIdx, Stage, docRT, camDist, type Grid, type RowsStyle, type V3 } from './_t4';
 import { msgMaxFor, lyricV2, sigV2, V2, fitClauses } from './_v2';
 
@@ -181,11 +181,17 @@ export default class Nutrition extends Scene {
   sigSize = 36;
   /** 每兩個小節線「重新計算」一次：數字再轉一次。 */
   reroll: number[] = [];
+  /**
+   * 韓文歌有原文副行時「歌詞那一格」多出來的高度：粗線以下（營養素、成分欄）整塊往下挪這麼多。
+   * 有副行一定沒有主打留言（留言的窗格副行收起來），成分欄只有一句邀請，挪下去不會擠；沒有副行是 0，版面跟原本一樣。
+   */
+  subRoom = 0;
   private baseDrawn = false;
 
   override async init() {
     const { audio: au, song, lyrics } = this.ctx;
     const s = this.ctx.start, e = this.ctx.end;
+    this.subRoom = lyrics.linesIn(s, e).some((l) => lyricSubOf(l)) ? 72 : 0;
     await loadText(TEXT + song.title + (this.msg ? signature(this.msg.name) : '') + lyrics.linesIn(s, e).map((l) => l.text).join(''));
     const g = (this.g = grid(au, s, e));
     // 留言在第一拍（鏡頭轉到位的同時）印上去；營養素從同一拍起一拍一列（兩小節的窗格也一定填得完）
@@ -228,10 +234,13 @@ export default class Nutrition extends Scene {
     const L = this.live; L.clear();
     const c = L.ctx;
     this.drawLyric(c, t);
+    // 粗線以下（跟錶一起坐在粗線上）：有原文副行時整塊往下挪
+    c.save(); c.translate(0, this.subRoom);
     this.drawRows(c, t);
     this.drawMessage(c, t);
     this.drawCircle(c, t);
     this.drawGauge(c, t);
+    c.restore();
     this.drawBadge(c, t);
     comp.draw(renderer, L.upload(), R.doc);
     // ---- 2. 舞台
@@ -311,6 +320,8 @@ export default class Nutrition extends Scene {
     c.fillStyle = ink; c.fillRect(X0, RULE1, X1 - X0, 2);
     c.font = font(F.hei(500), 18); c.fillStyle = rgba('sepia', 0.65);
     c.fillText('每一份量：1 句歌詞', X0, SERV_Y);
+    // 粗線以下：有原文副行時整塊往下挪（歌詞那一格多一排）
+    c.save(); c.translate(0, this.subRoom);
     // 粗線
     c.fillStyle = ink;
     c.fillRect(X0, BAR1, X1 - X0, 12);
@@ -329,6 +340,7 @@ export default class Nutrition extends Scene {
     c.font = font(F.mono(500), 14); c.letterSpacing = '4px'; c.fillStyle = rgba('sepia', 0.6);
     c.fillText('INGREDIENTS', X0 + 52, ING_Y - 1);
     c.letterSpacing = '0px';
+    c.restore();
     // 右側面（鏡頭看得到的那一面）：直排的品名、淨重、條碼
     // （「心動」的長條會在 y ≈ 450 橫過側面：字排在它上面、條碼在它下面）
     c.save(); c.translate(LW + BT / 2, 60); c.rotate(Math.PI / 2);
@@ -353,6 +365,31 @@ export default class Nutrition extends Scene {
     // v2：歌詞比留言小一級（40～52 螢幕 px，換成盒面字級）
     const LY: RowsStyle = { family: F.archivo(100, 800), size: lyricV2(this.msgScreen) / this.sLyr, minSize: V2.lyrMin / this.sLyr, maxW: X1 - X0 - 250, maxRows: 2, lineHeight: 1.06 };
     if (ly) {
+      const sub = lyricSubOf(ly.line);
+      if (sub) {
+        // 韓文歌：原文小一號印在中文正下方（同一格、同樣靠左），兩段一起在歌詞那一格（多一排高）裡垂直置中。
+        // 格子的高度固定：放不下就把主行縮一點（最多縮幾次），不能印出粗線
+        const H = LYR.h + this.subRoom - 8;
+        let st = LY, lay = layoutRows(c, ly.line, st), sl = lay, gap = 0, total = 0;
+        for (let k = 0; k < 8; k++) {
+          const ss = subSizeFor(lay.size * this.sLyr) / this.sLyr;
+          sl = layoutRows(c, sub, { family: LY.family, size: ss, minSize: Math.min(ss, 26 / this.sLyr), maxW: LY.maxW, maxRows: 2, lineHeight: 1.06 });
+          gap = subGap(lay.size, sl.size);
+          total = lay.height + gap + (sl.rows.length - 1) * sl.lineHeight + sl.size * 0.22;
+          if (total <= H) break;
+          st = { ...st, size: lay.size * 0.94, minSize: Math.min(st.minSize, lay.size * 0.94) };
+          lay = layoutRows(c, ly.line, st);
+        }
+        const top = LYR.y + (H + 8 - total) / 2 + lay.size * 0.84;
+        c.save(); c.translate(X0, top);
+        drawRows(c, lay, LY.family, t, paperInk(), ly.k);
+        c.translate(0, (lay.rows.length - 1) * lay.lineHeight + gap);
+        // 原文比中文安靜：唱到、唱完都是淡兩成的墨色（不用 blood），還沒唱的照中文三成
+        const ink = paperInk(), sung = rgba('sepia', 0.95 * 0.8);
+        drawRows(c, sl, LY.family, t, { active: sung, sung, unsung: ink.unsung }, ly.k);
+        c.restore();
+        return;
+      }
       const lay = layoutRows(c, ly.line, LY);
       const top = LYR.y + (LYR.h - lay.height) / 2 + lay.size * 0.84;
       c.save(); c.translate(X0, top);

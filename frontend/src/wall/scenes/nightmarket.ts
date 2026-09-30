@@ -15,7 +15,7 @@ import { F, font, loadText } from '../engine/type';
 import { LIN, rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, hash, lerp } from '../engine/util';
 import { Lyrics } from '../engine/lyrics';
-import { lyricAt, layoutLyric, barAfter, beatAfter, sparkHead, sparkParticles, type LyricStyle } from './_motifs';
+import { lyricAt, layoutLyric, lyricSubOf, barAfter, beatAfter, sparkHead, sparkParticles, type LyricStyle, type LyricLayout } from './_motifs';
 import { drawNote, type Pt, type Note } from './_couple';
 import { loadPuppets, drawPuppet, drawPick, puppetPoint, puppetShadow, puppetIn, puppetLight, jumpArc, breathe, beatKick, noteV2, tightenNote, type PuppetOpts } from './_puppet';
 import { lyricV2 } from './_v2';
@@ -30,6 +30,8 @@ const COLS = 6, ROWS = 4;
 const PAD = 40;
 /** 攤位招牌（歌詞）：左上、雨棚下面。 */
 const SIGN = { x: 110, y: 132, w: 800, h: 92 };
+/** 韓文歌（沒有留言、這一格有原文）：燈箱往下長這麼多，中文下面放原文（燈箱下面到人頭之間本來就是空的）。 */
+const SIGN_KO = 76;
 const INVITE = '掃描右下角 QR code，把祝福寫上大螢幕';
 const SPRITES = ['xw2_balloon_aim', 'xw2_balloon_fire', 'xw2_balloon_win', 'mt2_market_clap', 'mt2_market_cheer', 'cp2_market_prize'];
 /** 氣球的顏色（固定色：夜市的氣球不跟著主題換）。 */
@@ -64,6 +66,8 @@ export default class Nightmarket extends Scene {
   tWin = Infinity; tPrize = Infinity;
   muzzle: Pt = { x: 0, y: 0 };
   lyricSize = 48;
+  /** 燈箱的高度（韓文歌多一段放原文）。 */
+  signH = SIGN.h;
 
   override async init() {
     const { audio: au } = this.ctx;
@@ -105,6 +109,7 @@ export default class Nightmarket extends Scene {
     // 寬度縮到實際的字寬（署名靠右對齊到字的右緣，整塊在木板上置中）
     tightenNote(c, this.note, 200);
     this.lyricSize = lyricV2(this.msg ? this.note.fit.size : null);
+    if (!this.msg && this.ctx.lyrics.linesIn(s - 1, e + 1).some((l) => !!lyricSubOf(l))) this.signH = SIGN.h + SIGN_KO;
     this.drawBokeh();
     this.drawStall();
   }
@@ -172,7 +177,7 @@ export default class Nightmarket extends Scene {
     c.fillStyle = rgba('ink', 0.35);
     c.fillRect(0, 0, W, 30);
     // 招牌的燈箱（歌詞寫在上面）
-    const S = SIGN;
+    const S = { ...SIGN, h: this.signH };
     c.fillStyle = rgba('ink', 0.85);
     c.fillRect(S.x - 6, S.y - 6, S.w + 12, S.h + 12);
     const sg = c.createLinearGradient(0, S.y, 0, S.y + S.h);
@@ -360,23 +365,43 @@ export default class Nightmarket extends Scene {
   private drawSign(c: CanvasRenderingContext2D, t: number) {
     const ly = lyricAt(this.ctx.lyrics, t);
     if (!ly) return;
-    const st: LyricStyle = { family: F.hei(700), size: this.lyricSize, minSize: 40, maxWidth: SIGN.w - 60, align: 'center' };
-    const lay = layoutLyric(c, ly.line, st);
-    // 招牌只有一行高：放不下會先縮字（最小 40），還是放不下就折兩行、整塊往上提一點
-    const cx = SIGN.x + SIGN.w / 2, base = SIGN.y + SIGN.h / 2 + lay.size * 0.36 - (lay.rows.length - 1) * lay.size * 0.55;
+    let st: LyricStyle = { family: F.hei(700), size: this.lyricSize, minSize: 40, maxWidth: SIGN.w - 60, align: 'center' };
+    let lay = layoutLyric(c, ly.line, st);
+    const cx = SIGN.x + SIGN.w / 2;
+    let base: number;
+    if (lay.sub) {
+      // 韓文歌：中文與原文（layoutLyric 已經排好，lay.sub）一起在長高的燈箱裡垂直置中；兩段太高就一起縮（中文不小於 40）
+      const tall = (l: LyricLayout) => l.height + (l.sub ? l.sub.lay.size * 0.25 : 0);
+      for (let k = 1; k < 8 && tall(lay) > this.signH - 16 && lay.size > 40; k++) {
+        st = { ...st, size: Math.max(40, Math.round(this.lyricSize * Math.pow(0.93, k))) };
+        lay = layoutLyric(c, ly.line, st);
+      }
+      base = SIGN.y + (this.signH - tall(lay)) / 2 + lay.size * 0.9;
+    } else {
+      // 招牌只有一行高：放不下會先縮字（最小 40），還是放不下就折兩行、整塊往上提一點
+      // （韓文歌裡沒有原文的那幾行：在長高的燈箱裡一樣置中）
+      base = SIGN.y + this.signH / 2 + lay.size * 0.36 - (lay.rows.length - 1) * lay.size * 0.55;
+    }
+    this.signWords(c, lay, st.family, cx, base, t, ly.k, false);
+    // 原文比中文安靜：唱到、唱完都是淡兩成的亮白（不用訊號色），還沒唱的一樣暗暗的
+    if (lay.sub) this.signWords(c, lay.sub.lay, st.family, cx, base + lay.sub.dy, t, ly.k, true);
+  }
+
+  /** 燈箱上一段字的逐字亮燈：還沒唱暗暗的，唱到的地方由左往右亮起來。 */
+  private signWords(c: CanvasRenderingContext2D, lay: LyricLayout, family: string, cx: number, base: number, t: number, k: number, quiet: boolean) {
     c.save();
-    c.font = font(st.family, lay.size);
+    c.font = font(family, lay.size);
     c.textBaseline = 'alphabetic';
     for (const pw of lay.words) {
       const p = Lyrics.wordProgress(pw.word, t);
       const x = cx + pw.x, y = base + pw.y;
-      c.globalAlpha = ly.k;
+      c.globalAlpha = k;
       c.fillStyle = rgba('bone', 0.22);
       if (p < 1) c.fillText(pw.word.w, x, y);
       if (p <= 0) continue;
       c.save();
       c.beginPath(); c.rect(x - 4, y - lay.size * 1.1, (pw.w + 8) * p, lay.size * 1.5); c.clip();
-      c.fillStyle = p < 1 ? rgba('signal') : rgba('bone', 0.95);
+      c.fillStyle = quiet ? rgba('bone', 0.95 * 0.8) : p < 1 ? rgba('signal') : rgba('bone', 0.95);
       c.fillText(pw.word.w, x, y);
       c.restore();
     }

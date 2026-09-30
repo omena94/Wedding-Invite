@@ -14,8 +14,8 @@ import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpec
 import { FSPass, Layer2D } from '../engine/gl';
 import { F, font, loadText } from '../engine/type';
 import { ease, lerp, prog, hash, fract } from '../engine/util';
-import { beatAfter, barAfter, signature, COUPLE_EN, DATE_DOTS } from './_motifs';
-import { GlyphAtlas, cuePages, windowLines, wrapCells, flipAt, settle, bestCellWrap, COL, cueCol, type Flip, type GlyphReq, type CuePage } from './_t7';
+import { beatAfter, barAfter, signature, COUPLE_EN, DATE_DOTS, lyricSubOf, subSizeFor } from './_motifs';
+import { GlyphAtlas, cuePages, windowLines, wrapCells, flipAt, settle, bestCellWrap, COL, cueCol, cueState, type Flip, type GlyphReq, type CuePage } from './_t7';
 import { msgMaxFor, lyricV2, sigV2, V2 } from './_v2';
 import { FRAG_BOARD, NG } from './departures-glsl';
 
@@ -30,12 +30,13 @@ interface Grid { x: number; y: number; px: number; py: number; w: number; h: num
 const FL: Grid = { x: X0, y: 176, px: 31, py: 44, w: 28, h: 37, cols: 26, rows: 10, r0: 0, atlas: 0, bright: 0.72, rail: true };
 /** 留言字牌可以用的範圍（右上；含署名那一排）。 */
 const MB = { x: 996, y: 176, w: 770, h: 430 };
-const MB_R0 = 10, LY_R0 = 16, SG_R0 = 18;
+const MB_R0 = 10, LY_R0 = 16, SG_R0 = 18, SUB_R0 = 20;
 /** 距離起飛（多補的動畫：每一拍翻一次的倒數大字牌），在留言下面、右下角 QR 區的上面。 */
 const CD: Grid = { x: 1560, y: 664, px: 82, py: 110, w: 76, h: 104, cols: 2, rows: 1, r0: 19, atlas: 0, bright: 1, rail: true };
 /** 歌詞：兩列中字牌（下面三分之一；牌的大小依 v2 的歌詞字級決定）。 */
 const LYA = { x: X0, y: 716, maxW: 1210 };
-const SW = 32, SH = 20;
+// 狀態貼圖：最後兩列給原文副行（韓文歌）用
+const SW = 32, SH = 22;
 /** 航班列的欄：起始格、格數。 */
 const FC = { time: [0, 5], flight: [6, 5], dest: [12, 4], name: [17, 5], status: [23, 3] } as const;
 /** 字模圖集裡字佔格高的比例（大圖集 150 / 216、小圖集 88 / 128）：牌的高度 = 字級 ÷ 這個比例。 */
@@ -116,6 +117,8 @@ export default class Departures extends Scene {
   mb!: Grid;
   lyg!: Grid;
   sg: Grid = { x: 0, y: 0, px: 1, py: 1, w: 1, h: 1, cols: 0, rows: 0, r0: SG_R0, atlas: 1, bright: 0.9 };
+  /** 原文副行（韓文歌）：歌詞字牌下面一兩列小一號的字牌；沒有原文就是 null。 */
+  subg: Grid | null = null;
   msgPx = 48;
   tBoot = 0;
   tDep = Infinity;
@@ -141,12 +144,13 @@ export default class Departures extends Scene {
     const flights = this.flights();
     const bigText = m ? m.text : INVITE;
     const bigFam = m ? F_MS : F_BD;
-    await loadText(LABELS + lines.map((l) => l.text).join('') + bigText + sig + title + flights.map((f) => f.name).join(''));
+    const subLines = lines.map((l) => lyricSubOf(l)).filter((x): x is NonNullable<typeof x> => !!x);
+    await loadText(LABELS + lines.map((l) => l.text).join('') + subLines.map((l) => l.text).join('') + bigText + sig + title + flights.map((f) => f.name).join(''));
 
     // 字模：A（小）＝航班、歌詞；B（大）＝留言字牌
     const reqA: GlyphReq[] = [];
     const addA = (family: string, str: string) => { for (const ch of Array.from(str)) reqA.push({ ch, family }); };
-    addA(F_LY, lines.map((l) => l.text).join('') + title + 'AO');
+    addA(F_LY, lines.map((l) => l.text).join('') + subLines.map((l) => l.text).join('') + title + 'AO');
     addA(F_NUM, '0123456789:');
     addA(F_BD, flights.map((f) => f.dest + f.name + f.status).join('') + '登機中已起飛');
     const reqB: GlyphReq[] = [];
@@ -177,11 +181,30 @@ export default class Departures extends Scene {
     const pages = cuePages(lines, cols, 2).filter((p) => p.t1 > s - 0.3 && p.t0 < e - 0.2);
     const used = pages.length ? Math.max(8, ...pages.flatMap((p) => p.rows.map((r) => r.length))) : Math.min(cols, Array.from(title).length);
     const nRows = pages.length ? Math.min(2, Math.max(1, ...pages.map((p) => p.rows.length))) : 1;
-    this.lyg = { x: LYA.x, y: LYA.y, px: lk.px, py: lk.py, w: lk.w, h: lk.h, cols: Math.min(cols, used), rows: nRows, r0: LY_R0, atlas: 0, bright: 0.9, rail: true };
-    this.buildLyrics(this.lyg, this.small, F_LY, pages, title);
+    // 原文副行：同一面看板上、歌詞字牌正下方再一兩列小一號的牌（字級照 subSizeFor）。只有沒有留言的窗格會有原文，
+    // 右上的字牌只翻邀請、很短，所以整塊歌詞往上挪一點，副行才不會掉到畫面底下
+    const sk = cellOf(Math.round(subSizeFor(lyricV2(m ? this.msgPx : null)) / GS));
+    const sCols = Math.min(SW, Math.floor((LYA.maxW + sk.px - sk.w) / sk.px));
+    // 沒有原文的句子（兩行一樣的句子）翻成一頁空白：原文那排不能還掛著上一句的原文
+    const subPages = subLines.length
+      ? lines.flatMap((l): CuePage[] => { const sl = lyricSubOf(l); return sl ? cuePages([sl], sCols, 2) : [{ line: l, cues: [], rows: [], t0: l.start, t1: l.start }]; })
+        .filter((p) => p.t1 > s - 0.3 && p.t0 < e - 0.2)
+      : [];
+    const hasSub = subPages.some((p) => p.rows.length);
+    const ly0 = hasSub ? LYA.y - 50 : LYA.y;
+    this.lyg = { x: LYA.x, y: ly0, px: lk.px, py: lk.py, w: lk.w, h: lk.h, cols: Math.min(cols, used), rows: nRows, r0: LY_R0, atlas: 0, bright: 0.9, rail: true };
+    // 有原文時中文貼著下排翻（只有一排字的句子不要跟原文中間隔一排空牌）
+    this.buildLyrics(this.lyg, this.small, F_LY, pages, title, false, hasSub);
+    if (hasSub) {
+      const sUsed = Math.max(8, ...subPages.flatMap((p) => p.rows.map((r) => r.length)));
+      const sRows = Math.min(2, Math.max(1, ...subPages.map((p) => p.rows.length)));
+      // 比中文安靜：整塊亮度打八折，唱到、唱完都是紙白（不翻訊號色）
+      this.subg = { x: LYA.x, y: ly0 + nRows * lk.py + 6, px: sk.px, py: sk.py, w: sk.w, h: sk.h, cols: Math.min(sCols, sUsed), rows: sRows, r0: SUB_R0, atlas: 0, bright: 0.9 * 0.8, rail: true };
+      this.buildLyrics(this.subg, this.small, F_LY, subPages, '', true);
+    }
     this.buildCountdown();
 
-    const grids = [FL, this.mb, this.lyg, this.sg, CD];
+    const grids = [FL, this.mb, this.lyg, this.sg, CD, ...(this.subg ? [this.subg] : [])];
     grids.forEach((g, i) => {
       (u.uG!.value as THREE.Vector4[])[i]!.set(g.x, g.y, g.px, g.py);
       (u.uGS!.value as THREE.Vector4[])[i]!.set(g.w, g.h, g.cols, g.rows);
@@ -298,7 +321,7 @@ export default class Departures extends Scene {
   }
 
   /** 歌詞：每一頁在第一個字要唱之前嘩啦啦翻上來（三成亮），唱到的字翻一下亮起來、唱完變紙白。沒有歌詞的時段先翻上歌名。 */
-  private buildLyrics(g: Grid, A: GlyphAtlas, fam: string, pages: CuePage[], title: string) {
+  private buildLyrics(g: Grid, A: GlyphAtlas, fam: string, pages: CuePage[], title: string, quiet = false, bottom = false) {
     const s = this.ctx.start;
     const fill = A.ofFamily(fam);
     const n = g.cols * g.rows;
@@ -318,7 +341,8 @@ export default class Departures extends Scene {
     let prevEnd = -1e9;
     for (const [seg, pg] of pages.entries()) {
       const want = new Array(n).fill(null).map(() => ({ g: -1, cue: -1 }));
-      pg.rows.forEach((row, r) => row.forEach((ci, c) => { if (r < g.rows && c < g.cols) want[r * g.cols + c] = { g: A.get(fam, pg.cues[ci]!.ch), cue: ci }; }));
+      const r0 = bottom ? Math.max(0, g.rows - pg.rows.length) : 0;
+      pg.rows.forEach((row, r) => row.forEach((ci, c) => { if (r + r0 < g.rows && c < g.cols) want[(r + r0) * g.cols + c] = { g: A.get(fam, pg.cues[ci]!.ch), cue: ci }; }));
       const base = Math.max(pg.t0 - 0.45, Math.min(prevEnd + 0.05, pg.t0 - 0.1), s + 0.1);
       let k = 0;
       for (let idx = 0; idx < n; idx++) {
@@ -327,11 +351,13 @@ export default class Departures extends Scene {
         const tl = base + 0.012 * k++;
         if (w.cue < 0) { put(idx, { tl, g: -1, c: COL.DIM, k: 2, d: 0.04, seg }); cur[idx] = -1; continue; }
         const cue = pg.cues[w.cue]!;
-        put(idx, { tl, g: w.g, c: cueCol(cue, tl), k: 3, d: 0.04, seg });
+        // quiet（原文副行）：正在唱不翻訊號色，唱到就是紙白
+        const c0 = quiet && cue.ch !== '♥' && cueState(cue, tl) > 0 ? COL.BONE : cueCol(cue, tl);
+        put(idx, { tl, g: w.g, c: c0, k: 3, d: 0.04, seg });
         cur[idx] = w.g;
         if (cue.ch === '♥' || w.g < 0) continue;
         let tA = tl;
-        if (cue.t0 > tl) { put(idx, { tl: cue.t0 + 0.07, g: w.g, c: COL.SIGNAL, k: 0, d: 0.07, seg }); tA = cue.t0 + 0.07; }
+        if (cue.t0 > tl) { put(idx, { tl: cue.t0 + 0.07, g: w.g, c: quiet ? COL.BONE : COL.SIGNAL, k: 0, d: 0.07, seg }); tA = cue.t0 + 0.07; }
         if (cue.w1 > tA) put(idx, { tl: cue.w1, g: w.g, c: COL.BONE, d: 0, seg });
       }
       prevEnd = pg.t1;

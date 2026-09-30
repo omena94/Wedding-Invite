@@ -16,7 +16,7 @@ import { Layer2D, W, H } from '../engine/gl';
 import { F, font, loadText } from '../engine/type';
 import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, hash, TAU } from '../engine/util';
-import { lyricAt, beatAfter, drawHeart, COUPLE_ZH, DATE_DOTS } from './_motifs';
+import { lyricAt, beatAfter, drawHeart, COUPLE_ZH, DATE_DOTS, lyricSubOf, layoutLyric, subStyleFor, subGap, drawLyricSub, type LyricStyle } from './_motifs';
 import { layoutRows, drawRows, darkInk } from './_t4';
 import { T23_INVITE, T23_TEXT, sigOf, layMsgV2, stagger, type MsgLay, type Rect } from './_t23';
 import { V2, lyricV2 } from './_v2';
@@ -437,8 +437,17 @@ export default class Carousel extends Scene {
       if (!ly && this.hasLyr) { const last = lyrics.lastLine(t); if (last && last.end > s - 4) ly = { line: last, k: 0.55 }; }
       if (ly) {
         const L2 = layoutRows(c, ly.line, { family: FAM_LYR, size: lyricV2(null), minSize: V2.lyrMin, maxW: MSG_BOX.w, maxRows: 2, align: 'center', lineHeight: 1.2 });
-        const y0 = MSG_BOX.y + MSG_BOX.h / 2 - 20 - L2.height / 2 + L2.size * 0.8;
-        c.save(); c.translate(MX, y0); drawRows(c, L2, FAM_LYR, t, ink, ly.k); c.restore();
+        // 原文副行（韓文歌）：一起寫在名牌上、中文正下方；整塊（中文＋原文）在名牌裡置中，所以中文往上讓一點
+        const sub = lyricSubOf(ly.line);
+        const sst: LyricStyle = { family: FAM_LYR, size: L2.size, maxWidth: MSG_BOX.w, align: 'center', sung: ink.sung, unsung: ink.unsung };
+        const lastY = (L2.rows.length - 1) * L2.lineHeight, gap = sub ? subGap(L2.size) : 0;
+        const sl = sub ? layoutLyric(c, sub, subStyleFor(sst, L2.size)) : null;
+        const extra = sl ? gap + sl.height - sl.size : 0;
+        const y0 = MSG_BOX.y + MSG_BOX.h / 2 - 20 - (L2.height + extra) / 2 + L2.size * 0.8;
+        c.save(); c.translate(MX, y0); drawRows(c, L2, FAM_LYR, t, ink, ly.k);
+        // drawLyricSub 的字位置是排好的左緣：這裡的 textAlign 還是上面名字用的 center，要先改回來
+        if (sub) { c.translate(0, lastY + gap); c.textAlign = 'left'; drawLyricSub(c, sub, t, sst, L2.size, c.globalAlpha * ly.k); }
+        c.restore();
       } else if (!this.hasLyr) {
         c.font = font(F.hand(700), 60); c.fillStyle = rgba('bone', 0.9);
         c.fillText(COUPLE_ZH, MX, MSG_BOX.y + 130);

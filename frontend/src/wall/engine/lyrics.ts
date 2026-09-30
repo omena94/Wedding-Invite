@@ -37,12 +37,11 @@ export interface LyricsJSON {
 }
 
 /**
- * 這一格要不要畫原文副行。有主打留言的窗格收起來：留言是焦點、歌詞已經縮小一級，副行再縮會小到看不清楚。
- * 引擎在每個窗格 render 之前設（engine.ts），版面不用自己管。
+ * 這一行要畫的原文副行（沒有就是 null）。自己畫歌詞的版面用這個判斷要不要畫第二行。
+ * 有主打留言的窗格收起原文（留言是焦點、歌詞已經縮小一級，原文再縮會小到看不清楚）：引擎給那種窗格的 ctx.lyrics
+ * 是 withoutSub() 的版本，行上本來就沒有 sub。不用全域開關——下一個窗格是在前一個還在播時預載的，init 裡 await 之後開關早就被改掉了。
  */
-export const lyricSub = { on: true };
-/** 這一行要畫的原文副行：有翻譯、而且這一格沒有收起來才有。自己畫歌詞的版面用這個判斷要不要畫第二行。 */
-export const lyricSubOf = (line: Line | null | undefined): Line | null => (lyricSub.on && line?.sub) || null;
+export const lyricSubOf = (line: Line | null | undefined): Line | null => line?.sub ?? null;
 
 export class Lyrics {
   lines: Line[];
@@ -73,6 +72,15 @@ export class Lyrics {
   }
 
   static empty() { return new Lyrics({ lines: [] }); }
+
+  private plain?: Lyrics;
+  /** 同一份歌詞拿掉原文副行（有主打留言的窗格用，見 engine.ts）。沒有翻譯就是自己；每首歌只算一次。 */
+  withoutSub(): Lyrics {
+    if (!this.lines.some((l) => l.sub)) return this;
+    return (this.plain ??= new Lyrics({
+      lines: this.lines.map((l) => ({ text: l.text, start: l.start, end: l.end, words: l.words.map((w) => ({ w: w.w, start: w.start, end: w.end, ...(w.syl ? { syl: w.syl } : {}) })) })),
+    }));
+  }
 
   get has() { return this.lines.length > 0; }
 

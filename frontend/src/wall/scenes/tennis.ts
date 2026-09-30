@@ -18,7 +18,7 @@ import { LineBatch } from '../engine/lines';
 import { F, font, loadText } from '../engine/type';
 import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, lerp } from '../engine/util';
-import { lyricAt, layoutLyric, drawLyric, barAfter, beatAfter, sparkHead, sparkParticles, msgChars } from './_motifs';
+import { lyricAt, layoutLyric, drawLyric, barAfter, beatAfter, sparkHead, sparkParticles, msgChars, lyricSubOf, type LyricStyle } from './_motifs';
 import { inkFor, inkLine, inkPath, inkPoly, inkEllipse, tennisBall, drawNote, type Pt, type Note, type Ink } from './_couple';
 import { loadPuppets, drawPuppet, drawPick, drawCycle, puppetPoint, puppetShadow, puppetIn, breathe, beatKick, hop, landSquash, noteV2, tightenNote, type PuppetOpts } from './_puppet';
 import { lyricV2 } from './_v2';
@@ -115,6 +115,12 @@ export default class Tennis extends Scene {
   note: Note | null = null;
   board = { ...BOARD };
   lyricSize = 52;
+  /**
+   * 擋風布：有原文副行（韓文歌）的窗格，布往上加高（下緣不動），中文＋原文整塊印在布的上半，
+   * 原文的底離網柱頂還有一段空（網子在布前面，不要切過原文）；沒有原文的窗格照原本的大小。
+   */
+  wind = { ...WIND };
+  subWin = false;
   step = 1;
 
   override async init() {
@@ -135,6 +141,12 @@ export default class Tennis extends Scene {
     this.board.w = Math.min(BOARD.w, tightenNote(c, this.note, 330) + PAD.x * 2);
     this.board.x = BOARD.x + BOARD.w - this.board.w;
     this.lyricSize = lyricV2(this.msg ? this.note.fit.size : null);
+    const subLines = this.ctx.lyrics.linesIn(this.ctx.start - 1, this.ctx.end + 1).filter((l) => !!lyricSubOf(l));
+    if (subLines.length) {
+      this.subWin = true;
+      const need = Math.max(...subLines.map((l) => this.blockH(layoutLyric(c, l, this.lyrStyle()))));
+      this.wind.y0 = Math.min(WIND.y0, Math.floor(WIND.y1 - need - 40));
+    }
     this.drawBackground();
   }
 
@@ -200,6 +212,15 @@ export default class Tennis extends Scene {
     });
   }
 
+  private lyrStyle(): LyricStyle {
+    return { family: F.archivo(100, 700), size: this.lyricSize, minSize: 40, maxWidth: LYRIC.w, tracking: 0.5, lineHeight: 1.08, active: rgba('signal'), sung: rgba('sepia', 0.86), unsung: rgba('sepia', 0.22) };
+  }
+
+  /** 一句歌詞（含原文副行）從字頂到最後一排字底的高度。 */
+  private blockH(lay: ReturnType<typeof layoutLyric>) {
+    return lay.height - lay.size * 0.2 + (lay.sub ? lay.sub.lay.size * 0.22 : lay.size * 0.2);
+  }
+
   /** 不會動的（畫一次）：鐵網、擋風布、場地線、網子、計分牌。樹和雲每格畫（會動）。 */
   private drawBackground() {
     const L = this.bg, c = L.ctx, ink = inkFor(true);
@@ -210,8 +231,8 @@ export default class Tennis extends Scene {
     c.lineWidth = 1;
     c.beginPath();
     for (let x = -300; x < W + 300; x += 26) {
-      c.moveTo(x, FENCE_TOP); c.lineTo(x + (WIND.y0 - FENCE_TOP), WIND.y0);
-      c.moveTo(x, FENCE_TOP); c.lineTo(x - (WIND.y0 - FENCE_TOP), WIND.y0);
+      c.moveTo(x, FENCE_TOP); c.lineTo(x + (this.wind.y0 - FENCE_TOP), this.wind.y0);
+      c.moveTo(x, FENCE_TOP); c.lineTo(x - (this.wind.y0 - FENCE_TOP), this.wind.y0);
     }
     c.stroke();
     c.restore();
@@ -219,12 +240,12 @@ export default class Tennis extends Scene {
     for (let x = 90; x < 1880; x += 300) inkLine(c, [{ x, y: FENCE_TOP - 8 }, { x, y: Y0 - 18 }], { ink, w: 0.6, seed: x, color: rgba('sepia', 0.55) });
     // 擋風布：一條比紙深一點的布，上下緣縫線
     c.fillStyle = rgba('sepia', 0.075);
-    c.fillRect(40, WIND.y0, 1840, WIND.y1 - WIND.y0);
+    c.fillRect(40, this.wind.y0, 1840, this.wind.y1 - this.wind.y0);
     c.strokeStyle = rgba('sepia', 0.18);
     c.setLineDash([6, 5]);
-    c.beginPath(); c.moveTo(40, WIND.y0 + 7); c.lineTo(1880, WIND.y0 + 7); c.moveTo(40, WIND.y1 - 7); c.lineTo(1880, WIND.y1 - 7); c.stroke();
+    c.beginPath(); c.moveTo(40, this.wind.y0 + 7); c.lineTo(1880, this.wind.y0 + 7); c.moveTo(40, this.wind.y1 - 7); c.lineTo(1880, this.wind.y1 - 7); c.stroke();
     c.setLineDash([]);
-    inkLine(c, [{ x: 40, y: WIND.y1 }, { x: 1880, y: WIND.y1 }], { ink, w: 0.5, seed: 4, color: rgba('sepia', 0.4) });
+    inkLine(c, [{ x: 40, y: this.wind.y1 }, { x: 1880, y: this.wind.y1 }], { ink, w: 0.5, seed: 4, color: rgba('sepia', 0.4) });
     // 場地線（白線、透視）：雙打邊線、單打邊線、底線、發球線、中線。場地比紙深一點，白線才看得出來
     const line = (pts: Pt[], w = 3) => {
       c.save();
@@ -365,10 +386,11 @@ export default class Tennis extends Scene {
     // 歌詞：印在擋風布上
     const ly = lyricAt(lyrics, t);
     if (ly) {
-      const st = { family: F.archivo(100, 700), size: this.lyricSize, minSize: 40, maxWidth: LYRIC.w, tracking: 0.5, lineHeight: 1.08, active: rgba('signal'), sung: rgba('sepia', 0.86), unsung: rgba('sepia', 0.22) };
+      const st = this.lyrStyle();
       const lay = layoutLyric(c, ly.line, st);
       c.save();
-      c.translate(LYRIC.x, LYRIC.y - (lay.height - lay.size) / 2 + 2);
+      // 有原文的窗格：整塊（中文＋原文）在加高的布上置中（布的下緣多留的 24 px 是網柱頂那一帶）
+      c.translate(LYRIC.x, this.subWin ? this.wind.y0 + (WIND.y1 - 24 - this.wind.y0 - this.blockH(lay)) / 2 + lay.size * 0.8 : LYRIC.y - (lay.height - lay.size) / 2 + 2);
       drawLyric(c, ly.line, t, st, lay, ly.k * rv);
       c.restore();
     }

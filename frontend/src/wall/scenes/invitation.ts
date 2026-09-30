@@ -19,7 +19,7 @@ import { F, font, loadText } from '../engine/type';
 import { rgba } from '../engine/palette';
 import { clamp, ease, lerp, prog, pulse, TAU } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
-import { lyricAt, signature, sparkHead, sparkParticles, COUPLE_EN, COUPLE_ZH, WEDDING_DATE } from './_motifs';
+import { lyricAt, signature, sparkHead, sparkParticles, COUPLE_EN, COUPLE_ZH, WEDDING_DATE, lyricSubOf, subSizeFor, subGap } from './_motifs';
 import { WEDDING_TIME_FROM } from '../../constants.js';
 import { grid, drawFit, layoutRows, drawRows, paperInk, lastIdx, Stage, docRT, camDist, FOIL_GLSL, type Grid, type RowsStyle, type V3, type P2 } from './_t4';
 import { msgMaxFor, lyricV2, sigV2, V2, fitClauses } from './_v2';
@@ -432,9 +432,21 @@ export default class Invitation extends Scene {
     const LY: RowsStyle = { family: F.archivo(100, 800), size: lyricV2(this.msgScreen) / this.sLyric, minSize: V2.lyrMin / this.sLyric, maxW: CW - 130, maxRows: 3, align: 'center', lineHeight: 1.06 };
     if (ly) {
       const lay = layoutRows(c, ly.line, LY);
-      const top = 450 - lay.height / 2 + lay.size * 0.84;
+      // 原文副行（韓文歌）：同一頁、同樣置中，小一號印在中文正下方；兩組一起在兩條燙金線中間置中。
+      // 字級是照螢幕上的大小算的（頁面座標要除掉 sLyric）
+      const sub = lyricSubOf(ly.line), S = this.sLyric;
+      const sl = sub ? layoutRows(c, sub, { ...LY, size: subSizeFor(lay.size * S) / S, minSize: 26 / S, maxRows: 2 }) : null;
+      const gap = sl ? subGap(lay.size * S, sl.size * S) / S : 0;
+      const hAll = lay.height + (sl ? gap + (sl.rows.length - 1) * sl.lineHeight : 0);
+      const top = 450 - hAll / 2 + lay.size * 0.84;
       c.save(); c.translate(CW / 2, top);
       drawRows(c, lay, LY.family, t, paperInk(), ly.k);
+      if (sl) {
+        // 比中文安靜：唱到、唱完都是墨色淡兩成（不用 blood），還沒唱的三成
+        const lit = rgba('sepia', 0.95 * 0.8);
+        c.translate(0, (lay.rows.length - 1) * lay.lineHeight + gap);
+        drawRows(c, sl, LY.family, t, { active: lit, sung: lit, unsung: paperInk().unsung }, ly.k);
+      }
       c.restore();
     } else {
       c.font = font(F.archivo(100, 800), Math.round(V2.lyrMin / this.sLyric)); c.fillStyle = rgba('sepia', lyrics.has ? 0.28 : 0.8);

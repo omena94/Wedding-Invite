@@ -16,7 +16,7 @@ import { F, font } from '../engine/type';
 import { rgba } from '../engine/palette';
 import { clamp, ease, hash, lerp, prog, springStep, TAU } from '../engine/util';
 import { Lyrics, type Line } from '../engine/lyrics';
-import { lyricAt, fillWithHearts, drawHeart, COUPLE_ZH, DATE_DOTS } from './_motifs';
+import { lyricAt, fillWithHearts, drawHeart, COUPLE_ZH, DATE_DOTS, lyricSubOf, subSizeFor } from './_motifs';
 import { grid, paperInk, type Grid } from './_t4';
 import { PlaneCam, camUniforms, CAM_GLSL, type MsgBlock } from './_t14';
 import { loadWindow, revealAt, beatsBetween, v2Block } from './_t18';
@@ -34,6 +34,8 @@ const LC = { x: 2 * HINGE - BC.x, y: BC.y };
 const R_FACE = 312, R_TICK0 = 290, R_TICK1 = 309, R_LYR = 252, R_LABEL = 216;
 /** 歌詞一圈最多用多大的角度（上半圈、下半圈各一段）。 */
 const ARC_SPAN = 2.45;
+/** 有韓文原文時：中文只用上半圈（放寬到將近半圈；還放不下才縮到 40 以下），原文用下半圈（最多約 680 px 長，兩邊跟中文留空）。 */
+const ARC_SPAN_SUB = 3.05, SUB_ARC_PX = 680;
 /** 蓋子內側寫字的範圍（打開後的位置）。 */
 const MBOX = { x: LC.x - 236, y: LC.y - 182, w: 472, h: 364 };
 const NORTH = -Math.PI / 2;
@@ -251,7 +253,31 @@ const BG = () => new FSPass(/* glsl */ `
 
 /** 外圈歌詞的一個字：在第幾段（0 = 上半圈、1 = 下半圈）、中心角度、屬於哪個 Word、是那個詞的第幾個字。 */
 interface RingChar { ch: string; row: number; ang: number; wi: number; k: number; n: number }
-interface RingLine { size: number; family: string; chars: RingChar[]; wordAng: number[] }
+interface RingLine { size: number; family: string; chars: RingChar[]; wordAng: number[]; sub?: { line: Line; size: number; chars: RingChar[] } }
+
+/**
+ * 把 line.text 的 [a, b) 一個字一個字排上圓弧（c.font 已經設好）：ri = 0 上半圈由左到右、字頭朝外；
+ * ri = 1 下半圈由左到右、字頭朝內（基線在外面）。每個字記住它是第幾個詞、詞裡第幾個字（逐字跟唱）。
+ */
+function arcChars(c: CanvasRenderingContext2D, line: Line, a: number, b: number, ri: number, r: number, out: RingChar[]) {
+  const text = line.text;
+  const seg = text.slice(a, b);
+  const lead = seg.length - seg.trimStart().length;
+  const s0 = a + lead, str = text.slice(s0, b).trimEnd();
+  const total = c.measureText(str).width;
+  for (let i = 0; i < str.length; i++) {
+    const ch = str[i]!;
+    if (!ch.trim()) continue;
+    const x0 = c.measureText(str.slice(0, i)).width, w = c.measureText(ch).width;
+    const xc = x0 + w / 2 - total / 2;
+    const ang = ri === 0 ? NORTH + xc / r : Math.PI / 2 - xc / r;
+    const off = s0 + i;
+    const wi = line.words.findIndex((wd) => off >= wd.o && off < wd.o + wd.w.length);
+    if (wi < 0) continue;
+    const wd = line.words[wi]!;
+    out.push({ ch, row: ri, ang, wi, k: off - wd.o, n: wd.w.length });
+  }
+}
 
 export default class Compass extends Scene {
   bg = shared('compass.bg', BG);
@@ -267,12 +293,15 @@ export default class Compass extends Scene {
   g!: Grid;
   tOpen = 0;
   rings = new Map<Line, RingLine>();
+  /** 這一格每一句的原文副行（init 一開始就拿：引擎只在呼叫 init 前設好這一格的開關）。 */
+  subOf = new Map<Line, Line | null>();
   /** 指針的目標：(時間, 角度)。指針的角度 = 每一步的彈簧響應疊起來（線性系統，純時間函數）。 */
   steps: { t: number; a: number }[] = [];
   beats: number[] = [];
 
   override async init() {
     const { audio: au, lyrics, start: s, end: e } = this.ctx;
+    for (const l of lyrics.linesIn(s - 1, e + 1)) this.subOf.set(l, lyricSubOf(l));
     await loadWindow(this.ctx, NORTH_LABEL + INVITE + COUPLE_ZH + DATE_DOTS + 'ESW');
     const g = (this.g = grid(au, s, e));
     this.tOpen = revealAt(au, g.b0, e, { minB: 2, maxB: 4 });
@@ -343,10 +372,13 @@ export default class Compass extends Scene {
     if (hit) return hit;
     const c = this.lyrL.ctx;
     const text = line.text;
-    const cap = ARC_SPAN * R_LYR;
+    // 韓文原文副行：中文只刻上半圈一段（放寬到快半圈），原文小一號刻在正下方的下半圈（像獎章上下兩圈的雙語刻字）；
+    // 錶面裡面一圈是方位字與玫瑰，沒有位置再刻一圈
+    const sub = this.subOf.has(line) ? this.subOf.get(line)! : lyricSubOf(line);
+    const cap = (sub ? ARC_SPAN_SUB : ARC_SPAN) * R_LYR;
     const widthOf = (fam: string, size: number, a: number, b: number) => { c.font = font(fam, size); return c.measureText(text.slice(a, b).trim()).width; };
     let fam = FAM_LYR, size = this.lyrSize, split = -1;
-    const nW = line.words.length;
+    const nW = sub ? 1 : line.words.length;
     const bestSplit = (fm: string, sz: number) => {
       let best = -1, bw = Infinity;
       for (let k = 1; k < nW; k++) {
@@ -363,29 +395,25 @@ export default class Compass extends Scene {
         fam = fm; size = sz; split = nW > 1 ? bestSplit(fm, sz).k : -1;
       }
     }
+    // 有原文時中文不能折到下半圈：縮到 40 還放不下就照比例再縮（很長的句子才會用到）
+    if (sub) { const w = widthOf(fam, size, 0, text.length); if (w > cap) size = Math.max(30, Math.floor((size * cap) / w)); }
     c.font = font(fam, size);
     const rows = split < 0 ? [[0, text.length]] : [[0, line.words[split]!.o], [line.words[split]!.o, text.length]];
     const chars: RingChar[] = [];
-    rows.forEach(([a, b], ri) => {
-      const seg = text.slice(a, b);
-      const lead = seg.length - seg.trimStart().length;
-      const s0 = a! + lead, str = text.slice(s0, b).trimEnd();
-      const total = c.measureText(str).width;
-      // 半徑：下半圈的字頭朝內，基線放在外面，兩段的字落在同一條環帶上
-      const r = ri === 0 ? R_LYR : R_LYR + size * 0.72;
-      for (let i = 0; i < str.length; i++) {
-        const ch = str[i]!;
-        if (!ch.trim()) continue;
-        const x0 = c.measureText(str.slice(0, i)).width, w = c.measureText(ch).width;
-        const xc = x0 + w / 2 - total / 2;
-        const ang = ri === 0 ? NORTH + xc / r : Math.PI / 2 - xc / r;
-        const off = s0 + i;
-        const wi = line.words.findIndex((wd) => off >= wd.o && off < wd.o + wd.w.length);
-        if (wi < 0) continue;
-        const wd = line.words[wi]!;
-        chars.push({ ch, row: ri, ang, wi, k: off - wd.o, n: wd.w.length });
-      }
-    });
+    // 半徑：下半圈的字頭朝內，基線放在外面，兩段的字落在同一條環帶上
+    rows.forEach(([a, b], ri) => arcChars(c, line, a!, b!, ri, ri === 0 ? R_LYR : R_LYR + size * 0.72, chars));
+    let subRing: RingLine['sub'];
+    if (sub) {
+      // 原文：小一號、同字族，刻在下半圈、落在中文那一段同一條環帶的中間；太長就再縮（最小 26）
+      let ss = subSizeFor(size);
+      c.font = font(fam, ss);
+      const full = c.measureText(sub.text.trim()).width, scap = SUB_ARC_PX;
+      if (full > scap) ss = Math.max(26, (ss * scap) / full);
+      c.font = font(fam, ss);
+      const sc: RingChar[] = [];
+      arcChars(c, sub, 0, sub.text.length, 1, R_LYR + (size + ss) * 0.36, sc);
+      subRing = { line: sub, size: ss, chars: sc };
+    }
     const wordAng = line.words.map((_, i) => {
       const cs = chars.filter((q) => q.wi === i);
       if (!cs.length) return NORTH;
@@ -394,7 +422,7 @@ export default class Compass extends Scene {
       for (const q of cs) { sx += Math.cos(q.ang); sy += Math.sin(q.ang); }
       return Math.atan2(sy, sx);
     });
-    const rl = { size, family: fam, chars, wordAng };
+    const rl: RingLine = { size, family: fam, chars, wordAng, sub: subRing };
     this.rings.set(line, rl);
     return rl;
   }
@@ -534,6 +562,21 @@ export default class Compass extends Scene {
         c.rotate(q.row === 0 ? q.ang + Math.PI / 2 : q.ang - Math.PI / 2);
         c.fillText(q.ch, 0, 0);
         c.restore();
+      }
+      if (rl.sub) {
+        // 原文（下半圈）：唱到、唱完都是刻好的墨色、淡兩成（不用正在唱的顏色，不跟中文搶）；逐字時間是原文自己的
+        const a = c.globalAlpha, sb = rl.sub, r = R_LYR + (rl.size + sb.size) * 0.36;
+        c.font = font(rl.family, sb.size);
+        for (const q of sb.chars) {
+          const p = Lyrics.wordProgress(sb.line.words[q.wi]!, t) * q.n - q.k;
+          c.globalAlpha = a * (p > 0 ? 0.8 : 1);
+          c.fillStyle = p > 0 ? ink.sung : ink.unsung;
+          c.save();
+          c.translate(BC.x + Math.cos(q.ang) * r, BC.y + Math.sin(q.ang) * r);
+          c.rotate(q.ang - Math.PI / 2);
+          c.fillText(q.ch, 0, 0);
+          c.restore();
+        }
       }
       c.globalAlpha = 1;
     }

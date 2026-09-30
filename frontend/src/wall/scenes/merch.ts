@@ -14,7 +14,8 @@ import { Layer2D, W, H } from '../engine/gl';
 import { F, font, loadText } from '../engine/type';
 import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, lerp, hash } from '../engine/util';
-import { lyricAt, barAfter, beatAfter, msgChars } from './_motifs';
+import { lyricAt, barAfter, beatAfter, msgChars, lyricSubOf, subSizeFor, subGap } from './_motifs';
+import type { Line } from '../engine/lyrics';
 import { inkFor, inkLine, inkPoly, paperBG, lyricOnPath, drawNote, type Pt, type Note } from './_couple';
 import { loadPuppets, hasPuppet, drawPick, drawPuppet, puppetPoint, puppetShadow, breathe, beatKick, jumpArc, noteV2, tightenNote, type PuppetOpts } from './_puppet';
 import { lyricV2 } from './_v2';
@@ -54,6 +55,11 @@ export default class Merch extends Scene {
   towel = { cx: 0, w: 0, h: 0 };
   xA = 0; xO = 0;
   rope: Pt[] = [];
+  /**
+   * 原文副行（韓文歌）：lyricOnPath 會把原文排在繩子下面，正好穿過一排三角旗。有原文的句子改成
+   * 「原文站在繩子上、中文在它上面」：中文多抬高 subLift（副行的距離），繩子整條往下放同樣的量，中文在畫面上的位置不變。
+   */
+  subLift = new Map<Line, number>();
   lyricSize = 52;
   ok = false;
 
@@ -96,6 +102,31 @@ export default class Merch extends Scene {
     this.lyricSize = lyricV2(this.msg ? this.note.fit.size : null);
     // 三角旗的繩子：一條往下垂的弧
     for (let i = 0; i <= 40; i++) { const u = i / 40; this.rope.push({ x: lerp(BUNTING.x0, BUNTING.x1, u), y: BUNTING.y + Math.sin(Math.PI * u) * BUNTING.sag }); }
+    // 原文副行：照 lyricOnPath 的縮字、折行（一個字一個字量、字級取到 0.5 px、跟平移過的曲線比）估每一句原文要抬多高；
+    // 繩子照最高的那句往下放（整個窗格一次，繩子不跳）
+    const fam = F.archivo(100, 700), c0 = this.fg.ctx;
+    const pathLen = (d: number) => {
+      const n = this.rope.length, q: Pt[] = [];
+      for (let i = 0; i < n; i++) {
+        const a = this.rope[Math.max(0, i - 1)]!, b = this.rope[Math.min(n - 1, i + 1)]!, ang = Math.atan2(b.y - a.y, b.x - a.x);
+        q.push({ x: this.rope[i]!.x + Math.sin(ang) * d, y: this.rope[i]!.y - Math.cos(ang) * d });
+      }
+      let L = 0;
+      for (let i = 1; i < n; i++) L += Math.hypot(q[i]!.x - q[i - 1]!.x, q[i]!.y - q[i - 1]!.y);
+      return L;
+    };
+    const sumAt = (text: string, sz: number) => { c0.font = font(fam, sz); let w = 0; for (const ch of Array.from(text)) w += c0.measureText(ch).width; return w; };
+    for (const l of this.ctx.lyrics.linesIn(this.ctx.start - 1, this.ctx.end + 1)) {
+      if (!lyricSubOf(l)) continue;
+      const lift1 = subGap(this.lyricSize, subSizeFor(this.lyricSize));
+      const avail = pathLen(14 + lift1) * 0.94;
+      let sz = this.lyricSize, w = sumAt(l.text, sz);
+      if (w > avail) { sz = Math.round(Math.max(40, (sz * avail) / w) * 2) / 2; w = sumAt(l.text, sz); }
+      const rows = w > avail && l.words.length > 1 ? 2 : 1;
+      this.subLift.set(l, subGap(sz, subSizeFor(sz)) + (rows - 1) * sz * 1.2);
+    }
+    const drop = Math.max(0, ...this.subLift.values());
+    if (drop > 0) this.rope = this.rope.map((p) => ({ x: p.x, y: p.y + drop }));
     this.drawBackground();
   }
 
@@ -179,7 +210,7 @@ export default class Merch extends Scene {
 
     // ---- 歌詞：三角旗的繩子上
     const ly = lyricAt(this.ctx.lyrics, t);
-    if (ly) lyricOnPath(c, ly.line, t, this.rope, { family: F.archivo(100, 700), size: this.lyricSize, minSize: 40, offset: 14, alpha: ly.k * prog(t, s, s + 0.5), unsung: rgba('sepia', 0.3), sung: rgba('sepia', 0.92) });
+    if (ly) lyricOnPath(c, ly.line, t, this.rope, { family: F.archivo(100, 700), size: this.lyricSize, minSize: 40, offset: 14 + (this.subLift.get(ly.line) ?? 0), alpha: ly.k * prog(t, s, s + 0.5), unsung: rgba('sepia', 0.3), sung: rgba('sepia', 0.92) });
 
     // ---- 攤位裡的店員（剪影，半身在櫃台後面）
     const fill = mixRgba('paper', 'sepia', 0.32);

@@ -14,7 +14,8 @@ export const LANE = { hw: 0.53, z0: 3.4, z1: -1.0, pit: -0.24 };
 export const BALL_R = 0.108;
 /** 瓶台兩側擋板的高度。 */
 export const KICK_H = 0.1;
-export const MAXG = 64;
+/** 布幕上一句歌詞最多幾個字（韓文歌中文＋原文一起算，所以留寬一點）。 */
+export const MAXG = 96;
 /** 十支球瓶的位置（x, z）。 */
 export const PINS: [number, number][] = [
   [0, 0], [-0.152, -0.264], [0.152, -0.264], [-0.305, -0.528], [0, -0.528], [0.305, -0.528],
@@ -139,6 +140,8 @@ const BACK_FRAG = frag(`
       vec2 g = uGs[ii];
       float on = smoothstep(m.b - 0.05, m.b + 0.05, g.x);
       tc = mix(C_BONE * 0.26, g.y > 0.5 ? C_BONE * 0.9 : C_SIGNAL * 1.5, on);
+      // 原文副行（韓文歌，字模標記 128）：比中文安靜——唱到、唱完都是紙白再淡兩成（不閃訊號色）
+      if (m.r > 0.4 && m.r < 0.6) tc = mix(C_BONE * 0.26, C_BONE * 0.72, on);
       if (m.r > 0.9) tc = mix(C_ROSE * 0.3, C_ROSE, on);
       tc *= uLyrA;
     }

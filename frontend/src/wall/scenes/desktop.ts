@@ -19,7 +19,7 @@ import { LIN, rgba } from '../engine/palette';
 import { clamp, ease, lerp, prog, hash } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
 import type { Line } from '../engine/lyrics';
-import { layoutLyric, drawLyric, lyricAt, drawHeart, fillWithHearts, signature, type LyricStyle } from './_motifs';
+import { layoutLyric, drawLyric, lyricAt, drawHeart, fillWithHearts, signature, lyricSubOf, subSizeFor, subGap, type LyricStyle, type LyricLayout } from './_motifs';
 import { grid, windowLines, pad, renderStage, bodyMaterial, screenMaterial, tableMaterial, backdropMaterial, slab, setV3, mixV, projScale, fitMsgV2, type Grid } from './_t5';
 import { V2, lyricV2, sigV2 } from './_v2';
 import { LineBatch } from '../engine/lines';
@@ -137,6 +137,8 @@ export default class Desktop extends Scene {
   lyr: LyricStyle = LYRIC_BASE;
   lyrBig: LyricStyle = LYRIC_BASE;
   sigSize = 48;
+  /** 留言視窗、歌詞視窗、對話框：有原文副行（韓文歌）的窗格歌詞視窗往上長高，另外兩個往上讓位。 */
+  msgw: Rect = MSGW; lyw: Rect = LYW; dlg: Rect = DLG;
 
   override async init() {
     const { audio: au, lyrics, song } = this.ctx;
@@ -156,12 +158,21 @@ export default class Desktop extends Scene {
     this.sigSize = sigV2(44) / k;
     this.fit = m
       // 高度預算＝視窗內高扣掉上邊距、署名那一行與下邊距：署名永遠在最後一行字的下面，不會被蓋住
-      ? fitMsgV2(c, text, F.hand(400), MSGW.w - 110, MSGW.h - TITLE - 30 - (V2.sigMax / k) * 1.6 - 24, k, 1.15, 7)
-      : fitText(c, text, F.hei(500), MSGW.w - 100, 200, { min: 30 / k, max: 34 / k, lineHeight: 1.3, maxLines: 2 });
+      ? fitMsgV2(c, text, F.hand(400), this.msgw.w - 110, this.msgw.h - TITLE - 30 - (V2.sigMax / k) * 1.6 - 24, k, 1.15, 7)
+      : fitText(c, text, F.hei(500), this.msgw.w - 100, 200, { min: 30 / k, max: 34 / k, lineHeight: 1.3, maxLines: 2 });
     const ms = m ? this.fit.size * k : null;
     if (m) this.sigSize = sigV2(ms!) / k;
     this.lyr = { ...LYRIC_BASE, size: lyricV2(ms) / k, minSize: V2.lyrMin / k };
     this.lyrBig = { ...LYRIC_BASE, size: lyricV2(null) / k, minSize: V2.lyrMin / k };
+    // 原文副行：量這個窗格每一句中文＋原文要多高，歌詞視窗不夠就往上長（下緣不動）；留言視窗縮短、對話框跟著往上
+    // （有主打留言的窗格引擎不給原文，所以這裡只有邀請那一小段字，縮短不會蓋到留言）
+    let need = 0;
+    for (const l of this.lines) { const d = this.subLay(c, l, m ? this.lyr : this.lyrBig); if (d) need = Math.max(need, TITLE + 60 + d.blockH); }
+    if (need > LYW.h) {
+      this.lyw = { ...LYW, y: LYW.y + LYW.h - need, h: need };
+      this.msgw = { ...MSGW, h: Math.min(MSGW.h, this.lyw.y - 50 - MSGW.y) };
+      this.dlg = { ...DLG, y: Math.min(DLG.y, this.msgw.y + this.msgw.h - DLG.h - 16) };
+    }
     this.tMsg = g.b0;
     // 對話框：留言讀完之後（沒有留言就從第二個小節線起）才彈，每兩小節一個；開、下一個小節線按、再一拍關
     // 有留言時不彈（對話框會蓋到留言與署名；每個小節線的小事件交給桌燈閃一下）；沒有留言才用它填畫面
@@ -360,10 +371,25 @@ export default class Desktop extends Scene {
     c.fillText('資源回收桶', x + 55, y + 126); c.textAlign = 'left';
   }
 
+  /**
+   * 原文副行的排版（畫布 px）：drawLyric 自動畫的原文字級是照畫布 px 算的，螢幕在畫面上縮小了會太小，
+   * 所以照「畫面上」的主行字級算原文字級（subSizeFor(主行 × sc) ÷ sc），自己排、自己畫。blockH = 中文字頂到原文字底。
+   */
+  private subLay(c: CanvasRenderingContext2D, l: Line, st: LyricStyle) {
+    const sub = lyricSubOf(l);
+    if (!sub) return null;
+    const k = this.sc, lay = layoutLyric(c, l, st);
+    const ss = subSizeFor(lay.size * k) / k;
+    const sl = layoutLyric(c, sub, { ...st, size: ss, minSize: Math.min(ss, 26 / k), tracking: (st.tracking ?? 0) * 0.5 });
+    const dy = lay.rows[lay.rows.length - 1]!.y + subGap(lay.size * k, sl.size * k) / k;
+    const blockH = lay.size * 0.8 + dy + sl.rows[sl.rows.length - 1]!.y + sl.size * 0.22;
+    return { lay, sub, sl, dy, blockH };
+  }
+
   /** 歌詞.txt：一句一句打進去，方塊游標停在唱到的地方；純音樂時是方塊頻譜。 */
   private lyricWindow(c: CanvasRenderingContext2D, t: number, ly: { line: Line; k: number } | null) {
     const { audio: au } = this.ctx;
-    const g = this.g, r = LYW, instr = !this.lines.length;
+    const g = this.g, r = this.lyw, instr = !this.lines.length;
     this.window(c, r, instr ? '播放中.wav' : '歌詞.txt', !this.msg);
     const x0 = r.x + 40, base = r.y + TITLE + 122;
     if (instr) {
@@ -378,11 +404,18 @@ export default class Desktop extends Scene {
     if (!ly) return;
     const st = this.msg ? this.lyr : this.lyrBig;
     const lay = layoutLyric(c, ly.line, st);
-    const b = lay.rows.length > 1 ? r.y + TITLE + 80 : base;
+    const d = this.subLay(c, ly.line, st);
+    // 有原文：中文＋原文整塊在視窗裡置中
+    const b = d ? r.y + TITLE + (r.h - TITLE - d.blockH) / 2 + lay.size * 0.8 : lay.rows.length > 1 ? r.y + TITLE + 80 : base;
     c.save();
     c.beginPath(); c.rect(r.x + 4, r.y + TITLE + 4, r.w - 8, r.h - TITLE - 8); c.clip();
     c.translate(x0, b);
-    drawLyric(c, ly.line, t, { ...st, active: rgba('signal'), sung: rgba('bone', 0.95), unsung: rgba('bone', 0.3) }, lay, ly.k);
+    drawLyric(c, ly.line, t, { ...st, active: rgba('signal'), sung: rgba('bone', 0.95), unsung: rgba('bone', 0.3) }, d ? ({ ...lay, sub: undefined } as LyricLayout) : lay, ly.k);
+    if (d) {
+      // 原文：照畫面字級另外畫，比中文安靜（唱到、唱完都是紙白再淡兩成）
+      c.translate(0, d.dy);
+      drawLyric(c, d.sub, t, { ...st, active: rgba('bone', 0.95 * 0.8), sung: rgba('bone', 0.95 * 0.8), unsung: rgba('bone', 0.3) }, d.sl, ly.k);
+    }
     c.restore();
     // 方塊游標：停在唱到的地方，跟著拍子閃
     let cx = x0, cy = b;
@@ -398,19 +431,19 @@ export default class Desktop extends Scene {
   private message(c: CanvasRenderingContext2D, t: number) {
     const u = prog(t, this.tMsg, this.tMsg + 0.24);
     const from: Rect = { x: FOLDER.x, y: FOLDER.y + 14, w: 110, h: 76 };
-    if (u < 1) { this.zoomRects(c, from, MSGW, u); return; }
+    if (u < 1) { this.zoomRects(c, from, this.msgw, u); return; }
     const m = this.msg, fit = this.fit!;
     const dlgOpen = this.dlgs.some((d) => t >= d.tOpen && t < d.tClose + 0.2);
-    this.window(c, MSGW, '新留言', !dlgOpen);
-    const x0 = MSGW.x + 50;
-    const top = MSGW.y + TITLE + (m ? 30 : 150);
+    this.window(c, this.msgw, '新留言', !dlgOpen);
+    const x0 = this.msgw.x + 50;
+    const top = this.msgw.y + TITLE + (m ? 30 : 150);
     c.font = font(m ? F.hand(400) : F.hei(500), fit.size); c.fillStyle = rgba('bone', m ? 0.97 : 0.75);
     fit.lines.forEach((ln, i) => fillWithHearts(c, ln, x0, top + fit.size * 0.95 + i * fit.lineHeight));
     if (m) {
       // 署名：緊接在最後一行字的下面（字的下緣＋一行），不會超出視窗；v2 的署名字級
       const textBot = top + fit.size * 0.95 + (fit.lines.length - 1) * fit.lineHeight + fit.size * 0.25;
       c.font = font(F.hand(400), this.sigSize); c.fillStyle = rgba('bone', 0.6); c.textAlign = 'right';
-      c.fillText(signature(m.name), MSGW.x + MSGW.w - 50, Math.min(MSGW.y + MSGW.h - 20, textBot + this.sigSize * 1.3));
+      c.fillText(signature(m.name), this.msgw.x + this.msgw.w - 50, Math.min(this.msgw.y + this.msgw.h - 20, textBot + this.sigSize * 1.3));
       c.textAlign = 'left';
     }
   }
@@ -428,23 +461,23 @@ export default class Desktop extends Scene {
   private dialogs(c: CanvasRenderingContext2D, t: number) {
     const g = this.g;
     const d = this.dlgs.find((x) => t >= x.tOpen && t < x.tClose + 0.25);
-    let cx = MSGW.x + MSGW.w + 50, cy = MSGW.y + 380;
+    let cx = this.msgw.x + this.msgw.w + 50, cy = this.msgw.y + 380;
     if (d) {
       const dl = DIALOGS[d.i]!;
-      const from: Rect = { x: DLG.x + DLG.w / 2 - 30, y: DLG.y + DLG.h / 2 - 20, w: 60, h: 40 };
+      const from: Rect = { x: this.dlg.x + this.dlg.w / 2 - 30, y: this.dlg.y + this.dlg.h / 2 - 20, w: 60, h: 40 };
       const open = prog(t, d.tOpen, d.tOpen + 0.22), close = prog(t, d.tClose, d.tClose + 0.2);
-      const bw = Math.max(120, 50 + dl.b.length * 34), bx = DLG.x + DLG.w - bw - 36, by = DLG.y + DLG.h - 92;
-      if (open < 1) this.zoomRects(c, from, DLG, open);
-      else if (close > 0) this.zoomRects(c, DLG, from, close);
+      const bw = Math.max(120, 50 + dl.b.length * 34), bx = this.dlg.x + this.dlg.w - bw - 36, by = this.dlg.y + this.dlg.h - 92;
+      if (open < 1) this.zoomRects(c, from, this.dlg, open);
+      else if (close > 0) this.zoomRects(c, this.dlg, from, close);
       else {
-        this.window(c, DLG, '', true);
+        this.window(c, this.dlg, '', true);
         c.strokeStyle = rgba('bone', 0.9); c.lineWidth = 4;
-        c.beginPath(); c.arc(DLG.x + 66, DLG.y + TITLE + 60, 30, 0, Math.PI * 2); c.stroke();
+        c.beginPath(); c.arc(this.dlg.x + 66, this.dlg.y + TITLE + 60, 30, 0, Math.PI * 2); c.stroke();
         c.font = font(F.hei(900), 38); c.fillStyle = rgba('signal', 1); c.textAlign = 'center';
-        c.fillText('?', DLG.x + 66, DLG.y + TITLE + 74); c.textAlign = 'left';
-        const fit = fitText(c, dl.q, F.hei(500), DLG.w - 150, 110, { min: 30, max: 38, lineHeight: 1.3, maxLines: 2 });
+        c.fillText('?', this.dlg.x + 66, this.dlg.y + TITLE + 74); c.textAlign = 'left';
+        const fit = fitText(c, dl.q, F.hei(500), this.dlg.w - 150, 110, { min: 30, max: 38, lineHeight: 1.3, maxLines: 2 });
         c.font = font(F.hei(500), fit.size); c.fillStyle = rgba('bone', 0.92);
-        fit.lines.forEach((ln, i) => c.fillText(ln, DLG.x + 120, DLG.y + TITLE + 54 + i * fit.lineHeight));
+        fit.lines.forEach((ln, i) => c.fillText(ln, this.dlg.x + 120, this.dlg.y + TITLE + 54 + i * fit.lineHeight));
         const aw = Math.max(100, 50 + dl.a.length * 34);
         this.button(c, bx - 40 - aw, by, aw, dl.a, false, false);
         this.button(c, bx, by, bw, dl.b, t >= d.tClick && t < d.tClick + 0.16, true);

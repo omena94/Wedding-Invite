@@ -338,7 +338,8 @@ export default class Duet extends Scene {
       const col = part === '女' ? rgba('ember') : rgba('signal');
       const st: LyricStyle = { family: F.hei(700), size: this.lyricSize, minSize: 40, maxWidth: maxW, unsung: rgba('bone', 0.4), sung: rgba('bone', 0.95), active: col };
       const lay = layoutLyric(c, ly.line, st);
-      const by = TV.y + TV.h * 0.56;
+      // 韓文歌（有原文副行）：中文＋原文整組在電視裡上下置中（不比原本低），原文才不會掉到螢幕外
+      const by = lay.sub ? Math.min(TV.y + TV.h * 0.56, TV.y + (TV.h - lay.height) / 2 + lay.size * 0.85) : TV.y + TV.h * 0.56;
       // 小標：男／女／合
       c.save();
       c.globalAlpha *= ly.k;
@@ -358,10 +359,14 @@ export default class Duet extends Scene {
       if (nx && nx.start - t < 6) {
         const st2: LyricStyle = { family: F.hei(700), size: 36, minSize: 30, maxWidth: TV.w - 96, align: 'right', unsung: rgba('bone', 0.18), sung: rgba('bone', 0.18), active: rgba('bone', 0.18) };
         const lay2 = layoutLyric(c, nx, st2);
-        c.save();
-        c.translate(TV.x + TV.w - 48, by + lay.height + 40 + (lay2.height - lay2.size));
-        drawLyric(c, nx, t, st2, lay2, prog(t, nx.start - 6, nx.start - 5));
-        c.restore();
+        const y2 = by + lay.height + 40 + (lay2.height - lay2.size);
+        // 有原文時這一行比較高：下一行的預告放不進電視就不放（不要被螢幕邊切一半）
+        if (!(lay.sub || lay2.sub) || y2 + (lay2.height - lay2.size) + lay2.size * 0.25 <= TV.y + TV.h - 12) {
+          c.save();
+          c.translate(TV.x + TV.w - 48, y2);
+          drawLyric(c, nx, t, st2, lay2, prog(t, nx.start - 6, nx.start - 5));
+          c.restore();
+        }
       }
     } else {
       c.font = font(F.hei(700), 44);

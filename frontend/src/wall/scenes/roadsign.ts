@@ -16,7 +16,7 @@ import { F, font, loadText } from '../engine/type';
 import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, hash, pulse } from '../engine/util';
 import { fitText } from '../engine/text';
-import { lyricAt, layoutLyric, drawLyric, drawHeart, COUPLE_ZH, type LyricStyle } from './_motifs';
+import { lyricAt, layoutLyric, drawLyric, drawHeart, COUPLE_ZH, lyricSubOf, type LyricStyle } from './_motifs';
 import { T16_INVITE, T16_TEXT, sigOf, winBars, winBeats } from './_t16';
 import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 } from './_v2';
 import { LineBatch } from '../engine/lines';
@@ -33,6 +33,8 @@ const FL = 1400, H0 = 620, CX = 960, CAMH = 6.5, D0 = 13.6;
  */
 const SIGN = { x: 150, y: 184, w: 860, h: 430 };
 const LEDR = { x: 1070, y: 184, w: 690, h: 132 };
+/** 韓文歌（有原文副行）的 LED 看板：往下加高，中文與原文兩組都放得下（下面是天空，不會碰到路牌或路）。 */
+const LEDR_SUB = { ...LEDR, h: 204 };
 /** LED 看板的燈距。 */
 const PITCH = 3;
 /** 門架鋼構（落定時的畫面 y）與兩根柱子（世界 x，m）。 */
@@ -264,8 +266,10 @@ export default class RoadSign extends Scene {
     const { audio: au, lyrics, song } = this.ctx;
     const s = this.ctx.start, e = this.ctx.end, m = this.msg;
     this.hasLyrics = lyrics.linesIn(s, e).length > 0;
+    // 這個窗格有原文副行（韓文歌；有主打留言的窗格，引擎給的歌詞本來就沒有原文）：LED 看板加高
+    if (lyrics.linesIn(s - 1, e).some((l) => lyricSubOf(l))) this.ledRect = LEDR_SUB;
     const sig = m ? sigOf(m) : '';
-    await loadText(`${T16_TEXT}${m?.text ?? ''}${sig}${song.title}${song.artist}${lyrics.linesIn(s - 1, e).map((l) => l.text).join('')}${SMALL_TEXT.flat().join('')}往幸福出口EXIT 0313↗→`);
+    await loadText(`${T16_TEXT}${m?.text ?? ''}${sig}${song.title}${song.artist}${lyrics.linesIn(s - 1, e).map((l) => l.text + (l.sub?.text ?? '')).join('')}${SMALL_TEXT.flat().join('')}往幸福出口EXIT 0313↗→`);
     const beat = au.beatPeriod(s);
     this.bp = beat;
     this.bars = winBars(au, s, e);
@@ -463,7 +467,20 @@ export default class RoadSign extends Scene {
     const c = this.ledCv.getContext('2d', { willReadFrequently: true })!;
     c.clearRect(0, 0, this.cols, this.rows);
     const ly = this.hasLyrics ? lyricAt(lyrics, t) : null;
-    if (ly) {
+    if (ly && lyricSubOf(ly.line)) {
+      // 原文副行：資料畫布一顆燈一個像素，副行的字級規則（subSizeFor 的 32～56）是螢幕 px，
+      // 所以這裡縮 1/燈距、用螢幕 px 排（直接用燈當單位，原文會變成三倍大）。
+      // 中文先照原本的字級，兩組加起來放不下看板就縮中文（副行跟著縮），最小到 v2 的 40 px
+      const P = this.pitch, hMax = this.rows * P - 10;
+      const base: LyricStyle = { family: FAM_LYR, size: this.lyrStyle.size * P, minSize: V2.lyrMin, maxWidth: this.lyrStyle.maxWidth * P, align: 'center', lineHeight: 1.1, active: LED_ON, sung: LED_DONE, unsung: LED_OFF };
+      let lay = layoutLyric(c, ly.line, base), st = base;
+      for (let sz = base.size - 2; lay.height + lay.size * 0.2 > hMax && sz >= V2.lyrMin; sz -= 2) { st = { ...base, size: sz }; lay = layoutLyric(c, ly.line, st); }
+      c.save();
+      c.scale(1 / P, 1 / P);
+      c.translate((this.cols * P) / 2, Math.round(((this.rows * P - lay.height - lay.size * 0.12) / 2 + lay.size * 0.88) / P) * P);
+      drawLyric(c, ly.line, t, st, lay, 1);
+      c.restore();
+    } else if (ly) {
       const st: LyricStyle = { ...this.lyrStyle, active: LED_ON, sung: LED_DONE, unsung: LED_OFF };
       const lay = layoutLyric(c, ly.line, st);
       c.save();

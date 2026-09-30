@@ -18,7 +18,7 @@ import { F, font, loadText } from '../engine/type';
 import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, pulse, hash, frameIdx } from '../engine/util';
 import { fitText } from '../engine/text';
-import { lyricAt, layoutLyric, drawLyric, beatAfter, drawHeart, fillWithHearts, COUPLE_ZH } from './_motifs';
+import { lyricAt, layoutLyric, drawLyric, beatAfter, drawHeart, fillWithHearts, COUPLE_ZH, lyricSubOf } from './_motifs';
 import { msgMaxFor, lyricV2, sigV2, fitClauses } from './_v2';
 import { darkInk } from './_t4';
 import { sigOf, applyOrbit, lerpOrbit, toScreen, T17_INVITE, T17_TEXT, type OrbitCam, type V3 } from './_t17';
@@ -34,6 +34,8 @@ const FAM_LYR = F.archivo(100, 800);
 const LIGHT: V3 = [-0.35, 0.55, 1];
 /** 弧線文字的畫布大小（世界單位 ≈ 螢幕像素）。 */
 const LW = 1700, LH = 150;
+/** 有韓文原文時，中文＋原文擠在展開的牌與 K、Q 之間：中文最上緣、原文最下緣在字帶上的範圍（再下去是 K、Q 的上緣）。 */
+const SUB_TOP = 4, SUB_BOT = 110;
 
 const PRE = /* glsl */ `precision highp float;\nprecision highp int;\n`;
 const VERT = /* glsl */ `${PRE}
@@ -194,6 +196,8 @@ export default class Cards extends Scene {
   rig = shared('cards.rig', () => new Rig());
   lyrL = this.track(new Layer2D(LW, LH, 1.4, { fast: true }));
   msg: Msg | null = this.ctx.params.message ?? null;
+  /** 這一格有沒有韓文原文副行（建構時就看：引擎只在建立這一格之前設好開關）。 */
+  hasSub = this.ctx.lyrics.linesIn(this.ctx.start - 1, this.ctx.end + 1).some((l) => !!lyricSubOf(l));
   seed = Number(this.ctx.params.seed ?? 1) * 7 + (this.msg?.id ?? 0);
   atlasCv: HTMLCanvasElement | null = null;
   atlasTex: THREE.CanvasTexture | null = null;
@@ -517,16 +521,29 @@ export default class Cards extends Scene {
       const ly = lyricAt(lyrics, t);
       if (ly) {
         const ink = darkInk();
-        const st = { family: FAM_LYR, size: this.lyrSize, minSize: Math.min(this.lyrSize, 40), maxWidth: LW - 200, align: 'center' as const, active: ink.active, sung: ink.sung, unsung: ink.unsung, lineHeight: 1.05 };
-        const lay = layoutLyric(c, ly.line, st);
-        c.save();
+        let st = { family: FAM_LYR, size: this.lyrSize, minSize: Math.min(this.lyrSize, 40), maxWidth: LW - 200, align: 'center' as const, active: ink.active, sung: ink.sung, unsung: ink.unsung, lineHeight: 1.05 };
+        let lay = layoutLyric(c, ly.line, st);
         // 折成兩行時往上長（基線固定在弧上）
-        c.translate(LW / 2, base - (lay.rows.length - 1) * lay.size * 1.05);
+        let y0 = base - (lay.rows.length - 1) * lay.size * 1.05;
+        if (lay.sub) {
+          // 韓文原文副行：展開的牌與 K、Q 之間只有一條窄窄的毛氈——原文貼著 K、Q 的上緣、中文往上讓（這一格不放邀請）；
+          // 中文折兩行放不下時整組縮小（最小 36）
+          for (let s = st.size; ; s -= 2) {
+            const s2 = { ...st, size: s, minSize: Math.min(s, st.minSize) };
+            const l2 = layoutLyric(c, ly.line, s2);
+            const y = SUB_BOT - l2.sub!.lay.size * 0.22 - (l2.height - l2.size);
+            st = s2; lay = l2; y0 = y;
+            if (y - l2.size * 0.9 >= SUB_TOP || s <= 36) break;
+          }
+        }
+        c.save();
+        c.translate(LW / 2, y0);
         drawLyric(c, ly.line, t, st, lay, ly.k);
         c.restore();
       }
     }
-    if (!this.msg) {
+    // 有韓文原文的窗格不放邀請：那條毛氈放不下三行字（右下角本來就有 QR）
+    if (!this.msg && !this.hasSub) {
       c.fillStyle = rgba('ash', 0.6);
       c.font = font(F.hei(500), 20);
       c.letterSpacing = '3px';

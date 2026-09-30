@@ -16,7 +16,7 @@ import { LineBatch } from '../engine/lines';
 import { F, font } from '../engine/type';
 import { LIN, rgba } from '../engine/palette';
 import { clamp, ease, hash, lerp, prog, pulse, springStep } from '../engine/util';
-import { lyricAt } from './_motifs';
+import { lyricAt, lyricSubOf, layoutLyric, subStyleFor, subGap, drawLyricSub, type LyricStyle } from './_motifs';
 import { grid, layoutRows, drawRows, paperInk, type Grid } from './_t4';
 import { orderMask, lineItems, type MsgBlock, type OrderMask, type MaskItem } from './_t14';
 import { Stage, camMove } from './_t8';
@@ -347,11 +347,23 @@ export default class Thermometer extends Scene {
     if (ly) {
       const st = { family: FAM_LYR, size: this.lyrSize, minSize: V2.lyrMin / CAM_S, maxW: LYR.w, maxRows: 2 };
       const lay = layoutRows(c, ly.line, st);
-      const y = LYR.y - (lay.rows.length - 1) * lay.lineHeight * 0.5;
+      // 原文（韓文歌）：同一支鉛筆小一號寫在中文正下方。字級照螢幕 px 算（木板座標要除以 CAM_S）；
+      // 整組往上挪，原文最後一排不碰到下面的「祝福溫度紀錄」
+      const sub = lyricSubOf(ly.line), ms = lay.size * CAM_S;
+      const sst: LyricStyle = { family: FAM_LYR, size: ms, maxWidth: LYR.w * CAM_S, align: 'left', ...paperInk() };
+      const sLay = sub ? layoutLyric(c, sub, subStyleFor(sst, ms)) : null;
+      const sGap = sLay ? subGap(ms, sLay.size) / CAM_S : 0;
+      const span = (lay.rows.length - 1) * lay.lineHeight, sExtra = sLay ? sGap + (sLay.height - sLay.size) / CAM_S : 0;
+      const y = sLay ? Math.min(LYR.y - (span + sExtra) * 0.5, GRAPH.y - 40 - span - sExtra) : LYR.y - span * 0.5;
       const k = ly.k * prog(t, s, s + 0.4);
       c.save(); c.translate(LYR.x, y);
       drawRows(c, lay, FAM_LYR, t, paperInk(), k);
       c.restore();
+      if (sub) {
+        c.save(); c.translate(LYR.x, y + span + sGap); c.scale(1 / CAM_S, 1 / CAM_S);
+        drawLyricSub(c, sub, t, sst, ms, k);
+        c.restore();
+      }
       // 引線：從歌詞左邊拉到刻度條外、再橫著指到液面
       c.strokeStyle = rgba('sepia', 0.5 * k); c.lineWidth = 1.6; c.lineCap = 'round';
       const ax = LYR.x - 22, ay = y - lay.size * 0.35;

@@ -22,7 +22,8 @@ import { F, font, layout, loadText } from '../engine/type';
 import { LIN, rgba } from '../engine/palette';
 import { clamp, ease, lerp, prog, pulse, noise1, TAU } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
-import { sparkHead, sparkParticles, beatAfter, signature, drawHeart, COUPLE_EN, COUPLE_ZH, DATE_DOTS } from './_motifs';
+import { sparkHead, sparkParticles, beatAfter, signature, drawHeart, lyricSubOf, subSizeFor, subGap, COUPLE_EN, COUPLE_ZH, DATE_DOTS } from './_motifs';
+import { Lyrics, type Line, type Word } from '../engine/lyrics';
 import { V2, msgMaxFor, lyricV2, sigV2, fitClauses as fitClausesV2 } from './_v2';
 import { FRAG_VINYL, FRAG_DOF } from './vinyl-glsl';
 
@@ -192,6 +193,15 @@ function cleanKnots(k: [number, number][], vMax: number): [number, number][] {
 interface RG { ch: string; fam: string; s: number; w: number; size: number; dim: number; ln: number }
 
 /**
+ * 韓文歌的原文（刻在中文下面、往圓心那一側的溝上）的一個字元。唱針讀的是中文；原文跟中文同一個起點（左對齊），
+ * 字距照自己的排版（照時間放的話，詞與詞之間會忽寬忽窄，讀不順），照原文自己的逐字時間亮。
+ * dx = 字元左緣離這一行開頭多遠（內圈的弧長）；ps = 字元中心的螺旋角度（init 最後算）；word／k／n = 屬於哪個 Word、是第幾個字元、共幾個。
+ */
+interface SubG { ch: string; dx: number; w: number; ps: number; ln: number; word: Word; k: number; n: number }
+/** 一行原文：base = 中文那一行開頭在螺旋上的弧長。 */
+interface SubGrp { base: number; gl: SubG[] }
+
+/**
  * 把一小段字（新人的名字、日期）一再重複排在弧長 from～to 之間，排不下的字不排。
  * 只排一次版再平移：layout() 逐字量前綴，長字串會很慢。
  */
@@ -247,6 +257,10 @@ export default class Vinyl extends Scene {
   k = 0;
   /** 唱臂長度（讓唱針在螺旋中段剛好在正上方）。 */
   armL = 900;
+  /** 原文副行：字級、基線往圓心移多少（桌面 px）、每個詞（init 排好位置）。 */
+  subSz = 34;
+  subDr = 50;
+  subGrps: SubGrp[] = [];
   /** 主要文字的每個字的時間（有沒有在唱：火花亮度用）。 */
   sung: [number, number][] = [];
   /** 卡片：'msg' 留言、'invite' 空白邀請、'credits' 製作名單（留言刻在溝紋上時）。 */
@@ -309,6 +323,7 @@ export default class Vinyl extends Scene {
     const rMid = R0 - dr / 2 + this.sty;
     this.armL = Math.hypot(PIVOT.x - C.x, PIVOT.y - (C.y - rMid));
     this.glyphs.sort((a, b) => a.s - b.s);
+    this.placeSubs();
     this.labelTex = this.buildLabel();
     this.cardTex = this.buildCard();
     this.drawInfo();
@@ -316,9 +331,12 @@ export default class Vinyl extends Scene {
 
   // ---------------------------------------------------------------- 溝紋上要刻什麼
   /** 歌詞：每行依序排在螺旋上，行與行之間空出間奏的長度（間奏越長、空白的溝越長，像唱片上曲與曲之間）。 */
-  private buildLyrics(lines: { text: string; start: number; end: number; words: { w: string; start: number; end: number; o: number }[] }[]): [number, number][] {
+  private buildLyrics(lines: Line[]): [number, number][] {
     const knots: [number, number][] = [];
     const size = this.sz;
+    // 原文副行的字級：畫面上照 subSizeFor（相機最遠時也不小於 32 px），基線往圓心移 subGap
+    this.subSz = Math.ceil(subSizeFor(size * this.magMin) / this.magMin);
+    this.subDr = subGap(size, this.subSz);
     let prevEndT = NaN, prevEndX = 0;
     for (const line of lines) {
       const lay = layout(line.text, FAM_LYRIC, size);
@@ -343,6 +361,8 @@ export default class Vinyl extends Scene {
       });
       const ln = this.lines.length;
       this.lines.push({ start: line.start, end: line.end });
+      const sub = lyricSubOf(line);
+      if (sub) this.subGroups(sub, ln, base + (lay.glyphs[0]?.x ?? 0));
       for (const g of lay.glyphs) if (g.ch.trim()) this.glyphs.push({ ch: g.ch, fam: FAM_LYRIC, s: base + g.x, w: g.w, size, dim: 1, ln });
       prevEndT = line.end;
       prevEndX = Math.max(right, base + lay.width);
@@ -397,6 +417,34 @@ export default class Vinyl extends Scene {
     this.glyphs.push(...tile(unit, FAM_LYRIC, size, 0, x1 + R0 * 2, second ? 0.45 : 1));
     this.sung.push([start, end]);
     return [[start, x0], [end, x1]];
+  }
+
+  /** 原文一行照排版放好每個字元（相對這一行的開頭），記下每個字元屬於哪個 Word（逐字亮用）。 */
+  private subGroups(sub: Line, ln: number, base: number) {
+    const lay = layout(sub.text, FAM_LYRIC, this.subSz);
+    const cps = Array.from(sub.text);
+    const grp: SubGrp = { base, gl: [] };
+    let u = 0;
+    const x0 = lay.glyphs[0]?.x ?? 0;
+    lay.glyphs.forEach((g, i) => {
+      const o = u;
+      u += cps[i]?.length ?? 1;
+      if (!g.ch.trim()) return;
+      const word = sub.words.find((w) => o >= w.o && o < w.o + w.w.length);
+      if (!word) return;
+      const n = Array.from(word.w).length, k = Array.from(sub.text.slice(word.o, o)).length;
+      grp.gl.push({ ch: g.ch, dx: g.x - x0, w: g.w, ps: 0, ln, word, k, n });
+    });
+    if (grp.gl.length) this.subGrps.push(grp);
+  }
+
+  /** 原文放到螺旋上（要等唱針的曲線與螺旋都定好）：開頭跟中文那一行的開頭同一個角度，照內圈的半徑把弧長換成角度。 */
+  private placeSubs() {
+    for (const g of this.subGrps) {
+      const ps0 = this.psi(g.base - this.P0);
+      const rs = Math.max(R_LAB + 40, this.rAt(ps0) - this.subDr);
+      for (const c of g.gl) c.ps = ps0 + (c.dx + c.w / 2) / rs;
+    }
   }
 
   // ---------------------------------------------------------------- 螺旋
@@ -826,6 +874,40 @@ export default class Vinyl extends Scene {
         c.restore();
       }
       c.restore();
+    }
+    // 原文副行：比中文安靜——唱到、唱完都是「唱完」的紙白再淡兩成（熱度 0，不亮訊號色），還沒唱三成
+    if (this.subGrps.length) {
+      c.font = font(FAM_LYRIC, this.subSz);
+      const size = this.subSz;
+      for (const grp of this.subGrps) for (const g of grp.gl) {
+        const ln = this.lines[g.ln]!;
+        const lk = prog(t, ln.start - 0.45, ln.start - 0.1) * (1 - prog(t, ln.end + 1.0, ln.end + 1.7));
+        if (lk <= 0.004) continue;
+        const a = g.ps + st.th, ad = a / DEG;
+        const vis = alpha * lk * prog(ad, -VIS.l1, -VIS.l0, ease.inOutQuad) * (1 - prog(ad, VIS.r0, VIS.r1, ease.inOutQuad));
+        if (vis <= 0.004) continue;
+        const r = Math.max(R_LAB + 40, this.rAt(g.ps) - this.subDr);
+        const lit = clamp(Lyrics.wordProgress(g.word, t) * g.n - g.k);
+        const x0 = -g.w / 2, split = x0 + lit * g.w;
+        c.save();
+        c.translate(C.x + Math.sin(a) * r, C.y - Math.cos(a) * r);
+        c.rotate(a);
+        if (lit < 1) {
+          c.save();
+          if (lit > 0) { c.beginPath(); c.rect(split, -size * 1.3, g.w + 8, size * 1.8); c.clip(); }
+          c.globalAlpha = 0.3 * vis; c.fillStyle = 'rgb(0,0,0)';
+          c.fillText(g.ch, x0, 0);
+          c.restore();
+        }
+        if (lit > 0) {
+          c.save();
+          if (lit < 1) { c.beginPath(); c.rect(x0 - 8, -size * 1.3, split - x0 + 8, size * 1.8); c.clip(); }
+          c.globalAlpha = 0.8 * vis; c.fillStyle = 'rgb(255,0,0)';
+          c.fillText(g.ch, x0, 0);
+          c.restore();
+        }
+        c.restore();
+      }
     }
     c.restore();
     return L.upload();

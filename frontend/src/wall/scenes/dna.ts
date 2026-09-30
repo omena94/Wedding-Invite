@@ -19,7 +19,7 @@ import { clamp, ease, lerp, prog, smoothstep, TAU } from '../engine/util';
 import { fitText } from '../engine/text';
 import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 } from './_v2';
 import { Lyrics } from '../engine/lyrics';
-import { sparkHead, sparkParticles, lyricAt, drawLyric, layoutLyric, beatAfter, signature, COUPLE_ZH } from './_motifs';
+import { sparkHead, sparkParticles, lyricAt, drawLyric, layoutLyric, lyricSubOf, beatAfter, signature, COUPLE_ZH } from './_motifs';
 import { stagger, mono, tag } from './_t11';
 
 /** 右下角 HUD（QR、留言數）那一塊的背景要乾淨：線畫到那裡就淡掉。 */
@@ -316,16 +316,24 @@ export default class Dna extends Scene {
     c.save(); c.translate(box.x, top);
     const head = drawLyric(c, ly.line, t, st, lay, ly.k * c.globalAlpha);
     c.restore();
-    // RNA：從行首長到唱到的地方（唱完的行整條），一個字一個波
-    const done = Lyrics.lineCharProgress(ly.line, t) >= ly.line.text.length;
-    const hr = head ? Math.round((head.y - lay.size * 0.12) / (lay.size * 1.18)) : done ? lay.rows.length : -1;
+    // RNA：從行首長到唱到的地方（唱完的行整條），一個字一個波。
+    // 韓文歌有原文副行時，RNA 改在最下面的原文底下、跟著原文唱到的地方長（畫在中文底下會穿過原文）
+    const subLine = lay.sub ? lyricSubOf(ly.line) : null;
+    const rl = lay.sub && subLine ? lay.sub.lay : lay, line = subLine ?? ly.line, dy = lay.sub && subLine ? lay.sub.dy : 0;
+    let hd = head;
+    if (rl !== lay) {
+      hd = null;
+      for (const pw of rl.words) { const p = Lyrics.wordProgress(pw.word, t); if (p > 0 && p < 1) hd = { x: pw.x + pw.w * p, y: pw.y + rl.size * 0.12 }; }
+    }
+    const done = Lyrics.lineCharProgress(line, t) >= line.text.length;
+    const hr = hd ? Math.round((hd.y - rl.size * 0.12) / (rl.size * 1.18)) : done ? rl.rows.length : -1;
     c.save();
     c.globalAlpha *= ly.k * 0.8;
     c.strokeStyle = rgba('signal', 0.6); c.lineWidth = 2;
-    lay.rows.forEach((row, ri) => {
-      const xe = ri < hr ? row.x + row.width : ri === hr && head ? head.x : -Infinity;
+    rl.rows.forEach((row, ri) => {
+      const xe = ri < hr ? row.x + row.width : ri === hr && hd ? hd.x : -Infinity;
       if (xe <= row.x + 4) return;
-      const yb = top + row.y + 24;
+      const yb = top + dy + row.y + (24 * rl.size) / lay.size;
       c.beginPath();
       for (let x = row.x; x <= xe; x += 4) {
         const y = yb + Math.sin(x / 11 - t * 6) * 4;

@@ -23,7 +23,7 @@ import { HEX, rgba } from '../engine/palette';
 import { clamp, ease, hash, lerp, mulberry32, prog, pulse } from '../engine/util';
 import { fitText, readSeconds } from '../engine/text';
 import type { Line, Word } from '../engine/lyrics';
-import { sparkHead, sparkParticles, lyricAt, drawLyric, layoutLyric, beatAfter, barAfter, signature, COUPLE_EN, COUPLE_ZH, DATE_DOTS, type LyricStyle } from './_motifs';
+import { sparkHead, sparkParticles, lyricAt, drawLyric, layoutLyric, lyricSubOf, subSizeFor, subGap, beatAfter, barAfter, signature, COUPLE_EN, COUPLE_ZH, DATE_DOTS, type LyricStyle } from './_motifs';
 import { V2, msgMaxFor, lyricV2, sigV2, fitClauses } from './_v2';
 import { HZ, SKY_PASS, drawSkyline, type Light } from './fireworks-sky';
 import { type Shell, type SkyGlyph, type Kind, sampleStars, planGlyphs, rocketAt, drawRocket, drawCrown, drawComets, drawStars, drawEmbers, expand, drawGlyphHeart } from './fireworks-shells';
@@ -86,6 +86,19 @@ function groupPhrases(line: Line, barDur: number): Phrase[] {
     const words = ws.slice(cuts[k]!, cuts[k + 1]!);
     out.push({ words, text: line.text.slice(a.o, b.o + b.w.length).trim(), start: a.start, end: b.end });
   }
+  return out;
+}
+
+/** 一行照空白分成詞：每個詞在 line.text 裡的起訖（UTF-16）與第一個字開始唱的時間。 */
+function spaceGroups(line: Line): { a: number; b: number; start: number }[] {
+  const out: { a: number; b: number; start: number }[] = [];
+  line.words.forEach((w, k) => {
+    const prev = line.words[k - 1];
+    const gap = prev ? line.text.slice(prev.o + prev.w.length, w.o) : ' ';
+    const last = out[out.length - 1];
+    if (!last || /\s/.test(gap) || /^\s/.test(w.w)) out.push({ a: w.o, b: w.o + w.w.length, start: w.start });
+    else last.b = w.o + w.w.length;
+  });
   return out;
 }
 
@@ -223,7 +236,10 @@ export default class Fireworks extends Scene {
       const fam = F.archivo(100, 700);
       for (const line of lyrics.linesIn(echoFrom, e)) {
         const ll = layoutLyric(c, line, this.lstyle);
-        for (const [pi, ph] of groupPhrases(line, 4 * beat).entries()) {
+        const sub = lyricSubOf(line);
+        const subWords = sub ? spaceGroups(sub) : [];
+        const phs = groupPhrases(line, 4 * beat);
+        for (const [pi, ph] of phs.entries()) {
           if (!ph.text || ph.end < echoFrom + 0.3 || (this.msg && ph.start < echoFrom)) continue;
           let tl = Math.max(ph.start, echoFrom + 0.1);
           const tb = beatAfter(au, Math.max(ph.end - 0.04, tl + 0.55));
@@ -234,19 +250,34 @@ export default class Fireworks extends Scene {
           const hx = LYR.x + (pw.length ? (pw[0]!.x + pw[pw.length - 1]!.x + pw[pw.length - 1]!.w) / 2 : 300);
           // 兩排輪流（上一段燒完前下一段已經開了）：一行詞的第一段在上排、第二段在下排，由上往下讀；
           // 字級壓在 150 以內，兩排才不會疊在一起
-          const fit = fitText(c, ph.text, fam, 1150, 170, { min: 56, max: 80, lineHeight: 1.12, maxLines: 2 });
+          // 韓文歌：這一段唱的原文小一號炸在中文正下方，同一發、同一種火藥。原文照空白分成詞（韓文一個音節是一個 Word，
+          // 照時間切會把一個詞切成兩半），詞的第一個音節落在這一段的時間裡，整個詞就歸這一段
+          const nx = phs[pi + 1];
+          const sw = sub ? subWords.filter((g) => (pi === 0 || g.start >= ph.start - 0.05) && (!nx || g.start < nx.start - 0.05)) : [];
+          const subText = sw.length ? sub!.text.slice(sw[0]!.a, sw[sw.length - 1]!.b).trim() : '';
+          // 有原文時中文少佔一點高（兩排之間還放得下原文，上下兩發不會疊在一起）
+          const fit = fitText(c, ph.text, fam, 1150, subText ? 120 : 170, { min: 56, max: 80, lineHeight: 1.12, maxLines: 2 });
+          const ss = subSizeFor(fit.size);
+          const sfit = subText ? fitText(c, subText, fam, 1150, ss * 1.3, { min: Math.min(ss, 28), max: ss, lineHeight: 1.12, maxLines: 1 }) : null;
+          const sGap = sfit ? subGap(fit.size, sfit.size) : 0;
+          const blockH = sfit ? fit.size * 0.84 + (fit.lines.length - 1) * fit.lineHeight + sGap + sfit.size * 0.2 : fit.height;
+          const blockW = Math.max(fit.width, sfit?.width ?? 0);
           const row = pi % 2;
           const cy = (row === 0 ? 292 : 530) + (rnd() - 0.5) * 30;
-          const cx = clamp(hx + (rnd() - 0.5) * 260, SKY.x0 + fit.width / 2 + 10, SKY.x1 - fit.width / 2 - 10);
-          const base0 = cy - fit.height / 2 + fit.size * 0.84;
+          const cx = clamp(hx + (rnd() - 0.5) * 260, SKY.x0 + blockW / 2 + 10, SKY.x1 - blockW / 2 - 10);
+          const base0 = cy - blockH / 2 + fit.size * 0.84;
           const glyphs: SkyGlyph[] = [];
           fit.lines.forEach((ln, i) => {
             const lay = layout(ln, fam, fit.size);
             for (const g of lay.glyphs) if (g.ch.trim()) glyphs.push({ ch: g.ch, x: cx - lay.width / 2 + g.x, y: base0 + i * fit.lineHeight, w: g.w, size: fit.size, fam, heart: g.ch === '♥', tg: Infinity, cx: 0, cy: 0, tb: 0 });
           });
+          if (sfit) {
+            const ln = sfit.lines[0] ?? subText, lay = layout(ln, fam, sfit.size), y = base0 + (fit.lines.length - 1) * fit.lineHeight + sGap;
+            for (const g of lay.glyphs) if (g.ch.trim()) glyphs.push({ ch: g.ch, x: cx - lay.width / 2 + g.x, y, w: g.w, size: sfit.size, fam, heart: false, tg: Infinity, cx: 0, cy: 0, tb: 0, dim: 0.8 });
+          }
           echo.push(shell('text', {
             tl, tb, cx, cy, lx: clamp(hx, 200, 1700), R: clamp(0.3 * Math.hypot(fit.width / 2, fit.size), 150, 280), glyphs, starBudget: 760, glow: 0.55,
-            box: { x0: cx - fit.width / 2, y0: cy - fit.height / 2 - 10, x1: cx + fit.width / 2, y1: cy + fit.height / 2 + 10 },
+            box: { x0: cx - blockW / 2, y0: cy - blockH / 2 - 10, x1: cx + blockW / 2, y1: cy + blockH / 2 + 10 },
           }));
         }
       }
@@ -537,9 +568,12 @@ export default class Fireworks extends Scene {
     if (t < sh.tb + T * 0.5) return;
     c.font = hc.font = font(g0.fam, g0.size);
     c.textBaseline = hc.textBaseline = 'alphabetic';
+    let fs = g0.size;
     for (const g of sh.glyphs) {
       const tau = t - g.tb;
       if (tau < T * 0.5) continue;
+      // 韓文歌的原文副行字小一號（同一發裡混兩種字級，字級變了才重設字型）
+      if (g.size !== fs) { fs = g.size; c.font = hc.font = font(g.fam, g.size); }
       // 字在星點快停好（放大到九成）時才浮出來：之前的形狀交給星點；浮出來時跟星點一起從字的中心放大
       const e = expand(tau, T);
       let a = prog(tau, T * 0.5, T * 1.2, ease.outCubic), dy = 0, re = 0;
@@ -553,7 +587,10 @@ export default class Fireworks extends Scene {
         dy = 8 * q * q;
         re = t < g.tg ? (t - g.tg + 0.06) / 0.06 : 1 - q;
       }
-      const h = Math.max(heat, re * 0.85);
+      // 原文副行比中文安靜：淡兩成、燒紅的光小一半
+      const dim = g.dim ?? 1;
+      a *= dim;
+      const h = Math.max(heat, re * 0.85) * (dim < 1 ? 0.5 : 1);
       if (a > 0.004 && g.heart) {
         const gg = dy ? { ...g, y: g.y + dy } : g;
         drawGlyphHeart(c, gg, rgba('rose', a * 0.97));

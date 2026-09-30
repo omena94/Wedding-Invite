@@ -18,7 +18,7 @@ import { F, font, loadText } from '../engine/type';
 import { LIN, rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, lerp, prog, pulse, hash, TAU } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
-import { lyricAt, layoutLyric, drawLyric, signature, beatAfter } from './_motifs';
+import { lyricAt, lyricSubOf, layoutLyric, drawLyric, signature, beatAfter } from './_motifs';
 import { blit, label, INVITE, T8_TEXT, Stage, camMove, type StageCam } from './_t8';
 import { V2, msgMaxFor, lyricV2, sigV2, fitClauses } from './_v2';
 
@@ -30,6 +30,12 @@ const C = { x: 700, y: 540 }, R = 440;
 const MS = { x: 1236, y: 250, w: 600, h: 400 };
 /** 歌詞（圓的下半部，弦比較短）。 */
 const LY = { x: 1236, y: 666, w: 580, h: 140 };
+/**
+ * 韓文歌有原文副行時歌詞用的範圍：往上多 SUB_UP（上面的邀請小字在 604 附近，還有空），下緣不動（再下面是右下角 QR 區）。
+ * 中文兩排＋原文會比 140 高，原本的圖層會把第一排的字頂切掉。
+ */
+const SUB_UP = 44;
+const LYS = { ...LY, y: LY.y - SUB_UP, h: LY.h + SUB_UP };
 const RANGE_KM = 5;
 /** 字後面要安靜的範圍（中心、半寬、半高）：留言＋歌詞。 */
 const CALM = { x: C.x, y: C.y, w: 1, h: 1 };
@@ -88,6 +94,8 @@ export default class Radar extends Scene {
   stage = new Stage();
   msL = this.track(new Layer2D(MS.w, MS.h, undefined, { fast: true }));
   lyL = this.track(new Layer2D(LY.w, LY.h, undefined, { fast: true }));
+  /** 有原文副行的窗格才建：比較高的歌詞圖層（LYS）。 */
+  lyS: Layer2D | null = null;
   capL = this.track(new Layer2D(900, 60, undefined, { fast: true }));
   L = this.track(new LineBatch(2400, { screen2D: true, blend: 'add' }));
   msg: Msg | null = this.ctx.params.message ?? null;
@@ -136,6 +144,7 @@ export default class Radar extends Scene {
       this.hero = { m, th: this.sweepAt(this.tLock) % TAU, r: 0.8 * R, dth: 0, dr: 0, hero: true };
       this.targets.push(this.hero);
     }
+    if (this.ctx.lyrics.linesIn(s, this.ctx.end).some((l) => lyricSubOf(l))) this.lyS = this.track(new Layer2D(LYS.w, LYS.h, undefined, { fast: true }));
     await loadText(TEXT + (song.title ?? '') + (m ? m.text + m.name : ''));
     // 每兩小節「偵測到新目標」：挑一個非主打的光點，在小節線上擴出一圈回波
     for (let b = Math.ceil(au.barAt(s + 0.3)), k = 0; au.timeOfBar(b) < this.ctx.end - 0.3 && k < 16; b += 2, k++) {
@@ -300,19 +309,22 @@ export default class Radar extends Scene {
   private drawLyrics(t: number, out: THREE.WebGLRenderTarget) {
     const { lyrics, song } = this.ctx;
     const ly = lyricAt(lyrics, t);
-    const L = this.lyL, c = L.ctx;
+    // 有原文副行的句子用比較高的圖層（往上長），兩行在「原本的範圍＋往上多出來的一半」裡置中
+    const tall = !!(ly && this.lyS && lyricSubOf(ly.line));
+    const B = tall ? LYS : LY;
+    const L = tall ? this.lyS! : this.lyL, c = L.ctx;
     L.clear();
     if (ly) {
       const st = { family: F.archivo(100, 700), size: this.lyrPx, minSize: this.lyrPx * 0.82, maxWidth: LY.w, lineHeight: 1.06, sung: rgba('bone', this.msg ? 0.75 : 0.92), unsung: rgba('bone', 0.24) };
       const lay = layoutLyric(c, ly.line, st);
-      c.save(); c.translate(0, (LY.h - lay.height) / 2 + lay.size * 0.8);
+      c.save(); c.translate(0, tall ? SUB_UP / 2 + (LY.h + SUB_UP / 2 - lay.height) / 2 + lay.size * 0.8 : (LY.h - lay.height) / 2 + lay.size * 0.8);
       drawLyric(c, ly.line, t, st, lay, ly.k);
       c.restore();
     } else if (!lyrics.has) {
       label(c, `♪ ${song.title || '今晚的歌'}`, 0, LY.h / 2 + this.lyrPx * 0.35, F.archivo(100, 700), this.lyrPx, rgba('bone', 0.6));
     }
     L.upload();
-    blit(this.ctx, L.texture, LY.x, LY.y, LY.w, LY.h, out);
+    blit(this.ctx, L.texture, B.x, B.y, B.w, B.h, out);
   }
 
   /** 兩小行配角：上緣的機器名、鎖定的讀數（沒有留言時是邀請）。 */

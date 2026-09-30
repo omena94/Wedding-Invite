@@ -15,7 +15,7 @@ import { LineBatch } from '../engine/lines';
 import { F, loadText } from '../engine/type';
 import { LIN, rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, hash, lerp } from '../engine/util';
-import { lyricAt, barAfter, beatAfter, sparkHead, msgChars } from './_motifs';
+import { lyricAt, lyricSubOf, subGap, barAfter, beatAfter, sparkHead, msgChars } from './_motifs';
 import { lyricOnPath, drawNote, type Pt, type Note } from './_couple';
 import { loadPuppets, drawPick, puppetShadow, puppetIn, puppetLight, breathe, beatKick, noteV2, tightenNote } from './_puppet';
 import { lyricV2 } from './_v2';
@@ -242,7 +242,9 @@ export default class Ferriswheel extends Scene {
     const ly = lyricAt(lyrics, t);
     if (ly) {
       const path = sw ? this.rimPath.map((p) => this.sway(p, sw)) : this.rimPath;
-      const r = lyricOnPath(c, ly.line, t, path, { family: F.archivo(100, this.msg ? 600 : 700), size: this.lyricSize, minSize: 40, offset: 0, alpha: ly.k * prog(t, s, s + 0.6), unsung: rgba('bone', 0.26) });
+      // 韓文歌：原文副行接在中文下面、沿同一條弧線；整行往外（上）推一個副行的距離，原文才坐在輪框上面、不壓在桁架與燈泡上
+      const off = lyricSubOf(ly.line) ? subGap(this.lyricSize) - 8 : 0;
+      const r = lyricOnPath(c, ly.line, t, path, { family: F.archivo(100, this.msg ? 600 : 700), size: this.lyricSize, minSize: 40, offset: off, alpha: ly.k * prog(t, s, s + 0.6), unsung: rgba('bone', 0.26) });
       if (r.head) sparkHead(this.glow, r.head.x, r.head.y - 4, t, 0.45, 0.8);
     }
     comp.draw(renderer, L.upload(), out);

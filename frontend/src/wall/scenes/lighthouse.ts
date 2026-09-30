@@ -17,7 +17,7 @@ import { LIN, rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, hash, smoothstep } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
 import { Lyrics, type Line } from '../engine/lyrics';
-import { lyricAt, drawLyric, layoutLyric, beatAfter, signature, COUPLE_ZH, type LyricStyle, type LyricLayout } from './_motifs';
+import { lyricAt, drawLyric, drawLyricSub, layoutLyric, lyricSubOf, subStyleFor, beatAfter, signature, COUPLE_ZH, type LyricStyle, type LyricLayout } from './_motifs';
 import { no3, INVITE_SMALL, preloadText, fitWithSig } from './_t19';
 import { V2, msgMaxFor, lyricV2, sigV2, fitClauses } from './_v2';
 import { FRAG_LIGHTHOUSE, beamDir, beamAt, facing, CAM, LAMP } from './lighthouse-glsl';
@@ -30,6 +30,8 @@ const BOX = { x: 150, y: 220, w: 800, h: 300 };
 const LYR = { x: 150, base: 704, maxW: 1060 };
 /** 船與船之間多拉開的水面、整行多出來的船頭與駕駛艙寬度、船頭伸出去的長度。 */
 const BOAT_GAP = 80, BOAT_EXTRA = 78, BOW = 32;
+/** 韓文原文（寫在船隊下面的水面上）最寬多少：右邊是岬角的岩石與浪花。 */
+const SUB_W = 900;
 const LYR_STYLE: LyricStyle = { family: F.archivo(100, 700), size: V2.lyrMax, minSize: V2.lyrMin, maxWidth: LYR.maxW, align: 'left' };
 const MSG_FAM = F.ming(700);
 const SIG_FAM = F.hand(400);
@@ -296,6 +298,16 @@ export default class Lighthouse extends Scene {
     const drift = -34 * clamp((t - line.start) / Math.max(1, line.end - line.start + 1.2));
     const ox = LYR.x + BOW + (1 - enter) * 60 + drift;
     const base = LYR.base - (lay.rows.length - 1) * size * 1.18 * 0.5;
+    // 韓文歌：原文小一號寫在船隊正下方的水面上（整句歌的倒影），船的碎光倒影往下讓出這一排。
+    // 船上的字是一艘一艘裁切的，原文的字對不到船，所以原文另外整句畫一次（drawLyric 的副行被船的裁切切掉了）
+    const sub = lyricSubOf(line);
+    const subSt: LyricStyle = { ...st, maxWidth: SUB_W };
+    const subLay = sub ? layoutLyric(c, sub, subStyleFor(subSt, size)) : null;
+    const wlLow = base + (lay.rows.length - 1) * size * 1.18 + 30;
+    const subBase = subLay ? wlLow + 8 + subLay.size * 0.88 : 0;
+    const drop = subLay ? subBase - wlLow + (subLay.height - subLay.size) + 12 : 0;
+    // 船上只畫中文（副行不要從裁切邊緣漏一條字腳出來壓在船身上）
+    const layMain: LyricLayout = lay.sub ? { ...lay, sub: undefined } : lay;
     boats.forEach((bt, bi) => {
       const bob = Math.sin(t * 1.4 + bi * 1.9 + line.i) * 2.2 + kick * 2.5 * Math.sin(bi * 2.3 + 1);
       const sx = ox + bt.n * BOAT_GAP;
@@ -314,7 +326,7 @@ export default class Lighthouse extends Scene {
       c.save();
       c.beginPath(); c.rect(sx + cl, y0 - size * 1.3, cr - cl, size * 1.7); c.clip();
       c.translate(sx, base + bob);
-      drawLyric(c, line, t, st, lay, k);
+      drawLyric(c, line, t, st, layMain, k);
       c.restore();
       // 唱到的字：發光層＋水面上一條條抖動的倒影
       for (let i = bt.i0; i <= bt.i1; i++) {
@@ -329,9 +341,17 @@ export default class Lighthouse extends Scene {
           hc.fillText(pw.word.w, sx + pw.x, y0 + (pw.y - bt.y));
           hc.restore();
         }
-        this.reflect(sx + pw.x + pw.w / 2, pw.w / 2, wl, t, i + line.i * 31, active ? LIN.signal : LIN.bone, active ? 1.7 : 0.2, k);
+        this.reflect(sx + pw.x + pw.w / 2, pw.w / 2, wl + drop, t, i + line.i * 31, active ? LIN.signal : LIN.bone, active ? 1.7 : 0.2, k);
       }
     });
+    if (sub && subLay) {
+      // 水面上的字跟著浪輕輕晃（比船小、比船慢），整行跟船隊一起漂
+      const sway = Math.sin(t * 1.1 + line.i) * 1.6;
+      c.save();
+      c.translate(ox, subBase + sway);
+      drawLyricSub(c, sub, t, subSt, size, k);
+      c.restore();
+    }
   }
 
   /** 水面上的倒影：幾條長短不一、左右抖動、有些斷成兩截的短橫線（碎光）。 */

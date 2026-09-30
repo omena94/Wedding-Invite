@@ -35,6 +35,8 @@ const CELL = 26;
 const LS = 0.72;
 const BAR = { x: MX, y: 640, w: SW - 2 * MX, h: 10 };
 const LYR_Y = 790; // 歌詞基線
+/** 韓文歌：原文最後一排的基線最低到這裡（螢幕貼圖的下緣還留一點邊，不會貼到外框）。 */
+const SUB_LOW = 862;
 /** 純音樂時「正在寫入」輪流寫這些（一小節換一個）。 */
 const LOG = ['解壓縮　默契.pkg', '安裝　早餐輪流做.dll', '設定　兩人份的鑰匙', '更新　芃芃與 QQ 驅動程式', '套用　吵架後先道歉.patch', '最佳化　一起散步的路線', '清除　單身暫存檔', '註冊　永久授權'];
 const TEXT = `正在安裝婚姻完成剩餘時間一輩子約拍還沒有留言掃描右下角把你的祝福加進下一版${LOG.join('')}`;
@@ -255,7 +257,15 @@ export default class Loading extends Scene {
     if (ly) {
       const st = { family: F.archivo(100, 800), size, minSize: V2.lyrMin / LS, maxWidth: SW - 2 * MX, lineHeight: 1.12 };
       const lay = layoutLyric(c, ly.line, st);
-      c.save(); c.translate(MX, LYR_Y - (lay.height - lay.size));
+      let y0 = LYR_Y - (lay.height - lay.size);
+      if (lay.sub) {
+        // 韓文歌：原文在中文下面。照原本「最後一排貼 LYR_Y」往上推，長句的中文會撞到進度條下面右邊的「剩餘時間」小字；
+        // 改成中文的頂端不高過那行小字（第一排短、碰不到小字時可以高一點），原文最低到 SUB_LOW
+        const reach = MX + (lay.rows[0]?.width ?? 0) > BAR.x + BAR.w - 300;
+        const topMin = BAR.y + BAR.h + (reach ? 56 : 28) + lay.size * 0.88;
+        y0 = Math.min(Math.max(y0, topMin), SUB_LOW - (lay.height - lay.size));
+      }
+      c.save(); c.translate(MX, y0);
       drawLyric(c, ly.line, t, st, lay, ly.k);
       c.restore();
     } else {

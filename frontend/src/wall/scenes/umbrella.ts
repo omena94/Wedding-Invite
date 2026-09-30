@@ -3,6 +3,7 @@
 //  - 雨：斜斜的細線（GPU 線），在 hi-hat 上一起亮一下；路燈的光錐裡特別亮。**雨打到傘就停**（傘下沒有雨），傘緣濺起小水花。
 //  - 地上是濕的：兩人的倒影（上下顛倒、淡、被細細的波紋切開）、路燈的倒影一條光；右邊咖啡店的遮雨棚在拍點上滴水。
 //  - **歌詞在水坑裡**：地上一窪水，歌詞一個字一個字浮在水面上跟唱（每個字輕輕晃），雨滴落下的漣漪在 hi-hat 上一圈一圈擴開。
+//    韓文歌有中文翻譯時（2026-09-30）：中文往上浮一點，原文小一號浮在它下面（原文自己的逐字時間，唱到、唱完都是白色、淡一點）。
 //  - **焦點是主打留言**：右邊咖啡店亮著暖光的大玻璃窗，留言像寫在玻璃上的手寫字（淺色），玻璃上有幾道往下流的雨痕；
 //    照「留言尺寸與版面比例標準 v2」：字 40～60、窗最大 700 × 380，高度跟著留言。沒有留言時窗上寫邀請、字淡，歌詞變主角。
 //  - 暗版面：紙偶打光（上面被路燈照到、腳底暗，_c3 的 Lit）。鏡頭跟著兩人往右搖一點，停下來之後慢慢推近。
@@ -13,7 +14,7 @@ import { LineBatch } from '../engine/lines';
 import { F, loadText } from '../engine/type';
 import { LIN, rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, lerp, hash } from '../engine/util';
-import { lyricAt, barAfter, msgChars } from './_motifs';
+import { lyricAt, barAfter, msgChars, lyricSubOf, subSizeFor, subGap } from './_motifs';
 import { drawNote, type Note, type Pt } from './_couple';
 import { loadPuppets, drawPuppet, puppetShadow, puppetIn, puppetBox, puppetPoint, breathe, beatKick, landSquash, noteV2, tightenNote, type PuppetOpts } from './_puppet';
 import { lyricV2 } from './_v2';
@@ -320,11 +321,26 @@ export default class Umbrella extends Scene {
     if (!ly) return;
     const fam = F.archivo(100, this.msg ? 600 : 700);
     const lay = layoutChars(c, ly.line, fam, this.lyricSize, PUDDLE.rx * 1.75, 40);
+    const sub = lyricSubOf(ly.line);
+    // 原文副行：歌詞基線離下緣只剩一百多 px，放不下第二排——中文往上浮一個副行的距離，原文浮在原本的基線上
+    const y = sub ? LYR_Y - subGap(lay.size) : LYR_Y;
+    const sung = rgba('bone', this.msg ? 0.8 : 0.94);
     c.save();
     c.globalAlpha = ly.k * rv;
-    drawChars(c, ly.line, lay, fam, PUDDLE.cx - lay.width / 2, LYR_Y, t, { unsung: rgba('bone', 0.26), sung: rgba('bone', this.msg ? 0.8 : 0.94), active: rgba('signal') },
+    drawChars(c, ly.line, lay, fam, PUDDLE.cx - lay.width / 2, y, t, { unsung: rgba('bone', 0.26), sung, active: rgba('signal') },
       (i) => ({ dy: Math.sin(t * 2.2 + i * 0.7) * 2.5, rot: Math.sin(t * 1.7 + i) * 0.03 }));
     c.restore();
+    if (sub) {
+      // 同一窪水、一樣輕輕晃（相位錯開）；比中文安靜：唱到、唱完都是唱完的白、淡兩成，不用訊號色
+      const ss = subSizeFor(lay.size);
+      const sl = layoutChars(c, sub, fam, ss, PUDDLE.rx * 1.75, Math.min(ss, 26));
+      const quiet = rgba('bone', (this.msg ? 0.8 : 0.94) * 0.8);
+      c.save();
+      c.globalAlpha = ly.k * rv;
+      drawChars(c, sub, sl, fam, PUDDLE.cx - sl.width / 2, LYR_Y, t, { unsung: rgba('bone', 0.26), sung: quiet, active: quiet },
+        (i) => ({ dy: Math.sin(t * 2.2 + i * 0.7 + 1.3) * 2, rot: Math.sin(t * 1.7 + i + 0.6) * 0.025 }));
+      c.restore();
+    }
   }
 
   /** 遮雨棚在拍點上滴水：棚的前緣掉下幾滴，落到地上濺開。 */

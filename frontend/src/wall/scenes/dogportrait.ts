@@ -15,7 +15,7 @@ import { LineBatch } from '../engine/lines';
 import { F, font, loadText } from '../engine/type';
 import { LIN, rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, lerp } from '../engine/util';
-import { lyricAt, layoutLyric, drawLyric, barAfter, sparkHead, sparkParticles, msgChars } from './_motifs';
+import { lyricAt, layoutLyric, drawLyric, barAfter, sparkHead, sparkParticles, msgChars, lyricSubOf } from './_motifs';
 import { drawNote, type Note } from './_couple';
 import { loadPuppets, drawPuppet, drawPick, puppetShadow, puppetIn, puppetBox, breathe, beatKick, landSquash, noteV2, tightenNote, type PuppetOpts } from './_puppet';
 import { lyricV2 } from './_v2';
@@ -33,6 +33,11 @@ const CARD = { x: 930, y: 346, w: 700, h: 410 };
 const PAD = { x: 44, top: 104, bottom: 64 };
 /** 牆上的引言（歌詞）：中心 x、基線、最寬。 */
 const QUOTE = { x: 960, y: 150, w: 1360 };
+/**
+ * 有韓文原文的窗格：引言上面已經貼著安全邊界、下面是畫框的上緣，原文沒地方放——整組引言移到畫框右邊、
+ * 說明卡的正上方（中文＋原文都在畫框右緣 820 的右邊，往下長到說明卡上緣之前都不會撞到東西）。
+ */
+const QUOTE_SUB = { x: 1300, y: 150, w: 940 };
 /** 兩隻狗坐的地方（腳底）。 */
 const SEAT = { pp: { x: 440, y: 992 }, qq: { x: 690, y: 980 } };
 /** 紅絨繩的兩根柱子（x）與柱子的腳。 */
@@ -80,6 +85,8 @@ export default class DogPortrait extends Scene {
   fg = this.track(new Layer2D(W, H, undefined, { fast: true }));
   glow = this.track(new LineBatch(1024, { screen2D: true, blend: 'add' }));
   msg: Msg | null = this.ctx.params.message ?? null;
+  /** 這一格有沒有韓文原文副行（建構時就看：引擎只在建立這一格之前設好開關）。 */
+  hasSub = this.ctx.lyrics.linesIn(this.ctx.start - 1, this.ctx.end + 1).some((l) => !!lyricSubOf(l));
   v = (this.ctx.params.variant ?? 0) % 2;
   art = { x: 0, y: 0, w: 0, h: ART.h, scale: 1 };
   note: Note | null = null;
@@ -263,9 +270,10 @@ export default class DogPortrait extends Scene {
     // 牆上的引言（歌詞）
     const ly = lyricAt(lyrics, t);
     if (ly) {
-      const st = { family: F.serif(500), size: this.lyricSize, minSize: 40, maxWidth: QUOTE.w, align: 'center' as const, unsung: rgba('sepia', 0.24), sung: rgba('sepia', this.msg ? 0.8 : 0.92), active: rgba('signal') };
+      const Q = this.hasSub ? QUOTE_SUB : QUOTE;
+      const st = { family: F.serif(500), size: this.lyricSize, minSize: 40, maxWidth: Q.w, align: 'center' as const, unsung: rgba('sepia', 0.24), sung: rgba('sepia', this.msg ? 0.8 : 0.92), active: rgba('signal') };
       c.save();
-      c.translate(QUOTE.x, QUOTE.y);
+      c.translate(Q.x, Q.y);
       drawLyric(c, ly.line, t, st, layoutLyric(c, ly.line, st), ly.k * prog(t, s, s + 0.6));
       c.restore();
     }

@@ -26,6 +26,8 @@ export interface SkyGlyph {
   tg: number;
   /** 這個字自己的中心與開花時間（主殼丟出的彗星飛到這裡的時候），planGlyphs() 算。 */
   cx: number; cy: number; tb: number;
+  /** 韓文歌的原文副行：比中文安靜（淡兩成、燒紅的光小一半）。沒設 = 1。 */
+  dim?: number;
 }
 
 export interface Shell {

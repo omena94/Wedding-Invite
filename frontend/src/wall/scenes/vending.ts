@@ -24,7 +24,7 @@ import { F, font, loadText } from '../engine/type';
 import { LIN, rgba } from '../engine/palette';
 import { clamp, ease, prog, lerp, pulse, hash, mulberry32 } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
-import { fillWithHearts, beatAfter, drawHeart } from './_motifs';
+import { fillWithHearts, beatAfter, drawHeart, lyricSubOf, layoutLyric, subStyleFor, subGap, drawLyricSub, type LyricStyle } from './_motifs';
 import { grid, layoutRows, drawRows, paperInk } from './_t4';
 import { INVITE } from './_t14';
 import { shownLyric, sigOf } from './_t24';
@@ -627,11 +627,26 @@ export default class Vending extends Scene {
     this.ledKey = key;
     L.clear();
     if (ly) {
-      const st = { family: FAM_MSG, size: dots(V2.lyrMax), minSize: dots(V2.lyrMin), maxW: DOTW - 16, maxRows: 3, align: 'left' as const, lineHeight: 1.18 };
+      // 有原文（韓文歌）：中文最多兩行，原文小一號打在正下方（同一塊 LED），整組上下置中
+      const sub = lyricSubOf(ly.line);
+      const st = { family: FAM_MSG, size: dots(V2.lyrMax), minSize: dots(V2.lyrMin), maxW: DOTW - 16, maxRows: sub ? 2 : 3, align: 'left' as const, lineHeight: 1.18 };
       const lay = layoutRows(c, ly.line, st);
-      c.save(); c.translate(8, DOTH / 2 - lay.height / 2 + lay.size * 0.84);
+      // 原文照螢幕 px 排，再縮回點數（1 點 = S_LED·DOT 螢幕 px）。唱到、唱完都是暗一點的白（色版的白 = 紙白，灰一點 = 淡一點），
+      // 還沒唱的跟中文一樣是暗暗的訊號色點
+      const px = S_LED * DOT, ms = lay.size * px;
+      const sst: LyricStyle = { family: FAM_MSG, size: ms, maxWidth: (DOTW - 16) * px, align: 'left', unsung: 'rgba(255,0,0,0.3)', sung: 'rgb(200,200,200)' };
+      const sLay = sub ? layoutLyric(c, sub, subStyleFor(sst, ms)) : null;
+      const sGap = sLay ? subGap(ms, sLay.size) / px : 0;
+      const hAll = sLay ? lay.height + sGap + (sLay.height - sLay.size + sLay.size * 0.2) / px : lay.height;
+      const y = DOTH / 2 - hAll / 2 + lay.size * 0.84;
+      c.save(); c.translate(8, y);
       drawRows(c, lay, FAM_MSG, t, { unsung: 'rgba(255,0,0,0.3)', active: 'rgb(0,0,255)', sung: 'rgb(255,255,255)' }, ly.k);
       c.restore();
+      if (sub) {
+        c.save(); c.translate(8, y + (lay.rows.length - 1) * lay.lineHeight + sGap); c.scale(1 / px, 1 / px);
+        drawLyricSub(c, sub, t, sst, ms, ly.k);
+        c.restore();
+      }
     }
     L.upload();
   }

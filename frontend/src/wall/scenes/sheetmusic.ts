@@ -15,7 +15,7 @@ import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, hash, lerp, prog, pulse } from '../engine/util';
 import type { FitResult } from '../engine/text';
 import type { Line, Word } from '../engine/lyrics';
-import { drawLyric, drawMessage, signature, COUPLE_ZH, type LyricLayout, type LyricStyle } from './_motifs';
+import { drawLyric, drawLyricSub, drawMessage, lyricSubOf, subGap, subSizeFor, signature, COUPLE_ZH, type LyricLayout, type LyricStyle } from './_motifs';
 import { grid, stagger, windowLines, mono, pad3, paperLyric, DocCam, withMips, drawPencil, HUD, EDGE, type Grid, type Pose } from './_t3';
 import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 } from './_v2';
 import { fitText } from '../engine/text';
@@ -121,6 +121,8 @@ export default class SheetMusic extends Scene {
   pen: { x: number; y: number } | null = null;
   penLift = 14; penAng = 0.5;
   shift = { x: 0, y: 0 };
+  /** 歌詞那一行在畫面上的縮放（文件 px → 螢幕 px，窗格中間的鏡頭量的）：原文副行的字級照螢幕上的大小算。 */
+  kLyr = K;
 
   override async init() {
     const { audio: au, lyrics, song } = this.ctx;
@@ -183,6 +185,9 @@ export default class SheetMusic extends Scene {
       if (bl.x > 1920 - EDGE) left = bl.x - (1920 - EDGE);
       this.shift.y -= up; this.shift.x -= left;
     }
+    this.cam.pose(this.pose((s + e) / 2, 900), DW, DH);
+    const a = this.cam.project(700, LYR_Y), b = this.cam.project(900, LYR_Y);
+    this.kLyr = Math.hypot(b.x - a.x, b.y - a.y) / 200 || K;
   }
 
   /** 一句歌詞要不要拆成兩行：最小字級（螢幕 40 px）、字間最少 10 px 還是放不下就拆。 */
@@ -366,6 +371,17 @@ export default class SheetMusic extends Scene {
       c.save(); c.translate(0, LYR_Y);
       drawLyric(c, sys.line, t, st, sys.lyr, prog(t, sys.t0, sys.t0 + 0.2));
       c.restore();
+      // 韓文歌：原文像譜上的第二段歌詞，小一號抄在中文下面；原文的字對不到這些音符，所以從第一個字的位置起一整句寫過去
+      // （一句拆成兩行譜時，兩行下面都是整句原文，照原文自己的時間亮）
+      const sub = lyricSubOf(sys.line);
+      if (sub && sys.lyr.words.length) {
+        // 譜斜斜地拍、鏡頭拉得比較遠：原文的字級照螢幕上的大小算（至少 32 px），再換回文件 px
+        const k = this.kLyr, ss = subSizeFor(sys.lyr.size * k) / k;
+        const x0 = sys.lyr.words[0]!.x;
+        c.save(); c.translate(x0, LYR_Y + subGap(sys.lyr.size, ss));
+        drawLyricSub(c, sub, t, { ...st, align: 'left', maxWidth: NX1 - x0 }, ss / 0.6, prog(t, sys.t0, sys.t0 + 0.2));
+        c.restore();
+      }
     }
     // 游標：跟著時間走，每一拍閃一下
     if (current && sys.map.length) {

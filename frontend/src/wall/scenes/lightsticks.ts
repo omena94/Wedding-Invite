@@ -14,7 +14,7 @@ import { FSPass, Layer2D, W, H } from '../engine/gl';
 import { F, loadText } from '../engine/type';
 import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog } from '../engine/util';
-import { lyricAt, barAfter, beatAfter, msgChars, layoutLyric, drawLyric, type LyricStyle } from './_motifs';
+import { lyricAt, barAfter, beatAfter, msgChars, layoutLyric, drawLyric, lyricSubOf, type LyricStyle } from './_motifs';
 import { drawNote, type Note } from './_couple';
 import { loadPuppets, hasPuppet, drawCycle, drawPuppet, puppetPoint, puppetShadow, puppetLight, jumpArc, breathe, beatKick, noteV2, tightenNote, type PuppetOpts } from './_puppet';
 import { lyricV2 } from './_v2';
@@ -108,6 +108,12 @@ export default class Lightsticks extends Scene {
   msgT0 = 0;
   lyricSize = 52;
   led: CanvasPattern | null = null;
+  /**
+   * LED 帶（有原文副行的窗格會改）：韓文歌的中文＋原文放不進 80 px 高的帶子，
+   * 所以字可以跑到整條帶子的寬（帶子本來就橫過整個看台），帶子往下長高到包住兩行字。
+   */
+  rib = { ...RIBBON };
+  subWin = false;
 
   override async init() {
     const { audio: au } = this.ctx;
@@ -136,6 +142,14 @@ export default class Lightsticks extends Scene {
     // 板子相對拳頭的位置：握把往上、板子的左下角在拳頭左邊一點
     this.board = { dx: -BOARD.left, dy: -BOARD.stick - bh, w: bw, h: bh };
     this.lyricSize = lyricV2(this.msg ? this.note.fit.size : null);
+    const subLines = this.ctx.lyrics.linesIn(s - 1, e + 1).filter((l) => !!lyricSubOf(l));
+    if (subLines.length) {
+      this.subWin = true;
+      this.rib.lw = 1180;
+      const st = this.lyrStyle();
+      const need = Math.max(...subLines.map((l) => this.blockH(layoutLyric(c, l, st))));
+      this.rib.y1 = Math.max(RIBBON.y1, Math.ceil(RIBBON.y0 + need + 28));
+    }
     // LED 帶的燈珠格
     const pc = document.createElement('canvas');
     pc.width = pc.height = 5;
@@ -297,9 +311,18 @@ export default class Lightsticks extends Scene {
     });
   }
 
+  private lyrStyle(): LyricStyle {
+    return { family: F.archivo(100, 700), size: this.lyricSize, minSize: 40, maxWidth: this.rib.lw, align: 'left', active: rgba('signal'), sung: rgba('bone', 0.95), unsung: rgba('bone', 0.28) };
+  }
+
+  /** 一句歌詞（含原文副行）從字頂到最後一排字底的高度。 */
+  private blockH(lay: ReturnType<typeof layoutLyric>) {
+    return lay.height - lay.size * 0.2 + (lay.sub ? lay.sub.lay.size * 0.22 : lay.size * 0.2);
+  }
+
   /** 環場 LED 帶：一條暗色的帶子橫過看台，左邊跑歌詞（逐字跟唱）；燈珠格蓋在上面。 */
   private drawRibbon(c: CanvasRenderingContext2D, t: number, on: number) {
-    const R = RIBBON;
+    const R = this.rib;
     c.save();
     c.fillStyle = rgba('ink', 0.92);
     c.fillRect(R.x0, R.y0, R.x1 - R.x0, R.y1 - R.y0);
@@ -308,11 +331,11 @@ export default class Lightsticks extends Scene {
     c.fillRect(R.x0, R.y1 - 1.5, R.x1 - R.x0, 1.5);
     const ly = lyricAt(this.ctx.lyrics, t);
     if (ly) {
-      const st: LyricStyle = { family: F.archivo(100, 700), size: this.lyricSize, minSize: 40, maxWidth: R.lw, align: 'left', active: rgba('signal'), sung: rgba('bone', 0.95), unsung: rgba('bone', 0.28) };
+      const st = this.lyrStyle();
       const lay = layoutLyric(c, ly.line, st);
-      // 兩行時整塊往上移，第二行還在帶子裡
+      // 兩行時整塊往上移，第二行還在帶子裡；有原文的窗格帶子長高了，整塊（中文＋原文）放在帶子正中間
       c.save();
-      c.translate(R.lx, R.base - (lay.height - lay.size) * 0.5);
+      c.translate(R.lx, this.subWin ? R.y0 + (R.y1 - R.y0 - this.blockH(lay)) / 2 + lay.size * 0.8 : R.base - (lay.height - lay.size) * 0.5);
       drawLyric(c, ly.line, t, st, lay, ly.k * on);
       c.restore();
     }

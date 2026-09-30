@@ -19,8 +19,8 @@ import { F, font } from '../engine/type';
 import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, hash, mulberry32, pulse, lerp } from '../engine/util';
 import type { Line } from '../engine/lyrics';
-import { lyricAt, drawHeart, COUPLE_ZH, DATE_DOTS, signature } from './_motifs';
-import { grid, layoutRows, drawRows, paperInk, Stage, camDist, type Grid, type V3 } from './_t4';
+import { lyricAt, drawHeart, COUPLE_ZH, DATE_DOTS, signature, lyricSubOf, layoutLyric, drawLyricSub, subStyleFor, subGap, type LyricStyle } from './_motifs';
+import { grid, layoutRows, drawRows, paperInk, Stage, camDist, type Grid, type V3, type RowsLayout, type KaraokeInk } from './_t4';
 import { drawBarcode } from './_t1';
 import { loadAll, sigOf, block, T21_INVITE, type Block, type Rect } from './_t21';
 import { V2, lyricV2, msgMaxFor } from './_v2';
@@ -342,6 +342,25 @@ export default class Magazine extends Scene {
     return { kind, line, tLand, seed, cv, tex, block: blk, x: at.x, y: at.y, rot: at.rot };
   }
 
+  /**
+   * 原文副行（韓文歌，2026-09-30）：已經 translate 到主行第一排基線的對齊點，在主行最後一排下面印原文——同一張封面、同字族、
+   * 同墨色（唱到、唱完都是唱完的墨色、淡一點）。字級與間距照螢幕 px 的規則（封面 px × K = 螢幕 px），所以先縮成螢幕 px 再畫。
+   * maxY：原文最後一排基線最多可以到哪（相對主行第一排基線，封面 px）；放不下就不印。
+   */
+  private subLine(c: Ctx, line: Line, t: number, lay: RowsLayout, family: string, maxW: number, ink: KaraokeInk, alpha: number, maxY: number) {
+    const sub = lyricSubOf(line);
+    if (!sub) return;
+    const K = this.K, main = lay.size * K;
+    const st: LyricStyle = { family, size: main, maxWidth: maxW * K, align: 'left', active: ink.active, sung: ink.sung, unsung: ink.unsung };
+    const sl = layoutLyric(c, sub, subStyleFor(st, main));
+    const y = lay.rows[lay.rows.length - 1]!.y + subGap(main, sl.size) / K;
+    if (y + sl.rows[sl.rows.length - 1]!.y / K > maxY) return;
+    c.save();
+    c.translate(0, y); c.scale(1 / K, 1 / K);
+    drawLyricSub(c, sub, t, st, main, alpha * c.globalAlpha);
+    c.restore();
+  }
+
   private small(c: Ctx, text: string, x: number, y: number, family: string, size: number, tracking: number, color: string) {
     c.font = font(family, size); c.letterSpacing = `${tracking}px`; c.fillStyle = color;
     c.fillText(text, x, y); c.letterSpacing = '0px';
@@ -424,14 +443,19 @@ export default class Magazine extends Scene {
       const lay = layoutRows(c, active.line, { family: FAM, size: lyricV2(null) / K, minSize: V2.lyrMin / K, maxW: STORY.w, maxRows: 3, align: 'left', lineHeight: 1.22 });
       c.save(); c.translate(STORY.x, STORY.y + 40 + lay.size * 0.9);
       drawRows(c, lay, FAM, t, ink, 1);
+      // 韓文歌：原文印在封面故事下面（三排主行加兩排原文也還在框裡，碰不到右下的條碼）
+      this.subLine(c, active.line, t, lay, FAM, STORY.w, ink, 1, Infinity);
       c.restore();
     } else if (active.kind !== 'names') {
       const ly = lyricAt(lyrics, t);
       if (ly) {
         const size = lyricV2(active.kind === 'main' ? this.msgScreen : msgMaxFor('今天，我們結婚了')) / K;
         const lay = layoutRows(c, ly.line, { family: FAM_SIDE, size, minSize: V2.lyrMin / K, maxW: SIDE.w, maxRows: 3, align: 'left', lineHeight: 1.16 });
-        c.save(); c.translate(SIDE.x, SIDE.y + lay.size * 0.62);
+        const y0 = SIDE.y + lay.size * 0.62;
+        c.save(); c.translate(SIDE.x, y0);
         drawRows(c, lay, FAM_SIDE, t, ink, ly.k);
+        // 「現場連線」欄很窄：原文放得下（不碰到下面封面故事的小標）才印
+        this.subLine(c, ly.line, t, lay, FAM_SIDE, SIDE.w, ink, ly.k, STORY.y - 40 - y0);
         c.restore();
       } else if (!this.hasLyrics) {
         this.small(c, `♪ ${this.ctx.song.title}`, SIDE.x, SIDE.y + 30, F.mono(500), 20, 3, rgba('sepia', 0.7));

@@ -17,8 +17,8 @@ import { LineBatch } from '../engine/lines';
 import { F, font, loadText } from '../engine/type';
 import { LIN, rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, lerp, hash } from '../engine/util';
-import { Lyrics, type Line } from '../engine/lyrics';
-import { lyricAt, barAfter, beatAfter, sparkHead, sparkParticles, msgChars, drawHeart } from './_motifs';
+import { Lyrics, type Line, type Word } from '../engine/lyrics';
+import { lyricAt, lyricSubOf, subSizeFor, barAfter, beatAfter, sparkHead, sparkParticles, msgChars, drawHeart } from './_motifs';
 import { inkFor, inkLine, inkPoly, inkEllipse, arcAt, drawNote, type Pt, type Note } from './_couple';
 import { loadPuppets, drawPuppet, drawPick, puppetPoint, puppetShadow, puppetIn, puppetLight, jumpArc, breathe, beatKick, noteV2, tightenNote, type PuppetOpts } from './_puppet';
 import { lyricV2 } from './_v2';
@@ -45,6 +45,33 @@ const SPRITES = [
   'mt_archery_ready', 'mt_archery_draw', 'mt_archery_release', 'xw_archery_quiver', 'xw_idle_front', 'xw_cheer',
   'pp_sit', 'pp_jump', 'qq_sit', 'qq_jump',
 ];
+
+/**
+ * 原文（韓文）照空白併成詞：韓文每個音節是一個 Word，併起來的詞用 syl 記每個音節的時間，wordProgress 一樣逐音節走。
+ * 每一行只算一次（快取）。
+ */
+const spaceCache = new WeakMap<Line, Word[]>();
+function spaceWords(line: Line): Word[] {
+  const hit = spaceCache.get(line);
+  if (hit) return hit;
+  const out: Word[] = [];
+  let grp: Word[] = [];
+  const flush = () => {
+    if (!grp.length) return;
+    const a = grp[0]!, b = grp[grp.length - 1]!;
+    const w = line.text.slice(a.o, b.o + b.w.length).trim();
+    if (w) out.push({ ...a, w, end: b.end, syl: grp.length > 1 ? grp.map((g): [number, number] => [g.start, g.end]) : a.syl });
+    grp = [];
+  };
+  line.words.forEach((w, k) => {
+    const prev = line.words[k - 1];
+    if (prev && (/\s/.test(line.text.slice(prev.o + prev.w.length, w.o)) || /^\s/.test(w.w))) flush();
+    grp.push(w);
+  });
+  flush();
+  spaceCache.set(line, out);
+  return out;
+}
 
 interface Shot { rel: number; hit: number; next: number; to: Pt; last: boolean }
 
@@ -457,12 +484,26 @@ export default class Archery extends Scene {
    */
   private pennants(c: CanvasRenderingContext2D, line: Line, t: number, alpha: number) {
     if (alpha <= 0.01) return;
-    const au = this.ctx.audio;
     const words = line.words.filter((w) => w.w.trim());
     if (!words.length) return;
-    const avail = (FLAG.x1 - FLAG.x0) * 0.94;
-    let size = this.lyricSize;
     const fam = F.archivo(100, this.msg ? 600 : 700);
+    const g = this.garland(c, words, fam, this.lyricSize, 40);
+    this.hangFlags(c, words, g, fam, 0, t, alpha, false);
+    // 韓文歌的原文：在中文那串下面再掛一串小一號的旗（同一種旗、同一陣風），跟著原文自己的逐字時間亮。
+    // 比中文安靜：唱到的旗不亮訊號色、風小一點、繩子淡一點（跟唱規則「原文副行」）。
+    // 韓文一個音節是一個 Word，一面旗一個音節會把詞拆散讀不出來，所以照空白併成一個詞一面旗
+    const sub = lyricSubOf(line);
+    const sw = sub ? spaceWords(sub) : null;
+    if (!sw?.length) return;
+    const ss = subSizeFor(g.size);
+    const gs = this.garland(c, sw, fam, ss, Math.min(ss, 26));
+    this.hangFlags(c, sw, gs, fam, (g.rows.length - 1) * g.size * 2.1 + g.size * 1.5 + ss * 0.55, t, alpha, true);
+  }
+
+  /** 一串旗怎麼掛：每面旗的寬（字寬＋一點邊），太長就縮字（不小於 minSize），再不行就從最接近一半的地方分成兩串。 */
+  private garland(c: CanvasRenderingContext2D, words: Word[], fam: string, size0: number, minSize: number) {
+    const avail = (FLAG.x1 - FLAG.x0) * 0.94;
+    let size = size0;
     const measure = (sz: number) => {
       c.font = font(fam, sz);
       return words.map((w) => Math.max(sz * 1.05, c.measureText(w.w.trim()).width + sz * 0.42));
@@ -470,48 +511,64 @@ export default class Archery extends Scene {
     let ws = measure(size);
     const gap = () => size * 0.14;
     let total = ws.reduce((a, b) => a + b, 0) + gap() * (ws.length - 1);
-    if (total > avail) { size = Math.max(40, Math.floor((size * avail) / total)); ws = measure(size); total = ws.reduce((a, b) => a + b, 0) + gap() * (ws.length - 1); }
-    // 一串放不下：從最接近一半的地方分成兩串
+    if (total > avail) { size = Math.max(minSize, Math.floor((size * avail) / total)); ws = measure(size); total = ws.reduce((a, b) => a + b, 0) + gap() * (ws.length - 1); }
     let rows: [number, number][] = [[0, words.length]];
     if (total > avail && words.length > 1) {
       let acc = 0, cut = 1;
       for (let i = 0; i < words.length; i++) { acc += ws[i]! + gap(); if (acc >= total / 2) { cut = Math.max(1, i + 1); break; } }
       rows = [[0, cut], [cut, words.length]];
     }
-    const kick = beatKick(au, t, 0.3);
+    return { size, ws, rows };
+  }
+
+  /**
+   * 把排好的一串（或兩串）旗掛上去：繩子往下垂 dy0。`quiet` = 原文那串：唱到、唱完都是淡一點的紙白（不用訊號色），
+   * 還沒唱三成；風與繩子都小一號。
+   */
+  private hangFlags(c: CanvasRenderingContext2D, words: Word[], g: { size: number; ws: number[]; rows: [number, number][] }, fam: string, dy0: number, t: number, alpha: number, quiet: boolean) {
+    const kick = beatKick(this.ctx.audio, t, 0.3);
+    const { size, ws, rows } = g, gap = size * 0.14, wind = quiet ? 0.6 : 1;
     c.save();
     c.globalAlpha = alpha;
     c.font = font(fam, size);
     c.textAlign = 'center';
     c.textBaseline = 'middle';
     rows.forEach(([a, b], ri) => {
-      const dy = ri * size * 2.1;
+      const dy = dy0 + ri * size * 2.1;
       const yAt = (x: number) => { const u = (x - FLAG.x0) / (FLAG.x1 - FLAG.x0); return lerp(FLAG.y0, FLAG.y1, u) + FLAG.sag * 4 * u * (1 - u) + dy; };
       // 繩子
-      c.strokeStyle = rgba('bone', 0.22); c.lineWidth = 1.5;
+      c.strokeStyle = rgba('bone', quiet ? 0.14 : 0.22); c.lineWidth = quiet ? 1.2 : 1.5;
       c.beginPath();
       for (let x = FLAG.x0; x <= FLAG.x1; x += 20) (x === FLAG.x0 ? c.moveTo(x, yAt(x)) : c.lineTo(x, yAt(x)));
       c.stroke();
-      const rowW = ws.slice(a, b).reduce((p, q) => p + q, 0) + gap() * (b - a - 1);
+      const rowW = ws.slice(a, b).reduce((p, q) => p + q, 0) + gap * (b - a - 1);
       let x = (FLAG.x0 + FLAG.x1) / 2 - rowW / 2;
       for (let i = a; i < b; i++) {
         const w = words[i]!, pw = ws[i]!;
         const cx = x + pw / 2;
-        x += pw + gap();
+        x += pw + gap;
         const y0 = yAt(cx), slope = Math.atan2(yAt(cx + 10) - yAt(cx - 10), 20);
         const p = Lyrics.wordProgress(w, t);
         // 風：每面旗自己的節奏，拍點上一晃；正在唱的那面甩得大一點
-        const sway = 0.05 * Math.sin(t * 1.6 + i * 0.9) + 0.07 * kick * (i % 2 ? 1 : -1) + (p > 0 && p < 1 ? 0.06 * Math.sin(t * 9) : 0);
+        const sway = wind * (0.05 * Math.sin(t * 1.6 + i * 0.9 + (quiet ? 0.7 : 0)) + 0.07 * kick * (i % 2 ? 1 : -1) + (p > 0 && p < 1 ? 0.06 * Math.sin(t * 9) : 0));
         c.save();
         c.translate(cx, y0);
         c.rotate(slope + sway);
         const hw = pw / 2 - 2, ph = size * 1.5;
         c.beginPath(); c.moveTo(-hw, 0); c.lineTo(hw, 0); c.lineTo(0, ph); c.closePath();
-        c.fillStyle = p >= 1 ? mixRgba('ink2', 'bone', 0.14) : p > 0 ? mixRgba('ink2', 'signal', 0.18) : rgba('ink2', 0.85);
-        c.fill();
-        c.strokeStyle = rgba('bone', p > 0 ? 0.4 : 0.18); c.lineWidth = 1.2;
-        c.stroke();
-        c.fillStyle = p >= 1 ? rgba('bone', this.msg ? 0.86 : 0.96) : p > 0 ? rgba('signal') : rgba('bone', 0.3);
+        if (quiet) {
+          c.fillStyle = p > 0 ? mixRgba('ink2', 'bone', 0.1) : rgba('ink2', 0.7);
+          c.fill();
+          c.strokeStyle = rgba('bone', p > 0 ? 0.26 : 0.13); c.lineWidth = 1;
+          c.stroke();
+          c.fillStyle = p > 0 ? rgba('bone', 0.96 * 0.8) : rgba('bone', 0.3);
+        } else {
+          c.fillStyle = p >= 1 ? mixRgba('ink2', 'bone', 0.14) : p > 0 ? mixRgba('ink2', 'signal', 0.18) : rgba('ink2', 0.85);
+          c.fill();
+          c.strokeStyle = rgba('bone', p > 0 ? 0.4 : 0.18); c.lineWidth = 1.2;
+          c.stroke();
+          c.fillStyle = p >= 1 ? rgba('bone', this.msg ? 0.86 : 0.96) : p > 0 ? rgba('signal') : rgba('bone', 0.3);
+        }
         c.fillText(w.w.trim(), 0, size * 0.52);
         c.restore();
       }

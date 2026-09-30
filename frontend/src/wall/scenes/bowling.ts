@@ -18,7 +18,8 @@ import { F, font, loadText } from '../engine/type';
 import { LIN, rgba } from '../engine/palette';
 import { clamp, ease, prog, hash, pulse } from '../engine/util';
 import { type Line } from '../engine/lyrics';
-import { lyricAt, layoutLyric, drawLyric, COUPLE_ZH, type LyricStyle } from './_motifs';
+import { lyricAt, layoutLyric, drawLyric, COUPLE_ZH, lyricSubOf, subSizeFor, subGap, type LyricStyle } from './_motifs';
+import { fitText } from '../engine/text';
 import { V2, lyricV2 } from './_v2';
 import {
   T25_TEXT, T25_INVITE, sigOf, winBars, winBeats, stagger, layMsgV2, msgGlyphs, glyphMask, glyphStates,
@@ -59,6 +60,8 @@ export default class Bowling extends Scene {
   seed = ((this.ctx.params.seed ?? 1) * 131 + (this.msg?.id ?? 0) * 7919) >>> 0;
   mask: GlyphMask | null = null;
   lyrMasks = new Map<Line, GlyphMask>();
+  /** 有原文副行（韓文歌）的句子：字模裡前幾個字是中文（後面接著原文）。 */
+  lyrMain = new Map<Line, number>();
   lay: MsgLay | null = null;
   times: number[] = [];
   throws: Throw[] = [];
@@ -111,10 +114,20 @@ export default class Bowling extends Scene {
     } else {
       // 沒有留言：每句歌詞各一張字模（布幕上的燈泡字，焦點；歌詞一樣照 v2 的上限 52）
       for (const ln of lines) {
+        const sub = lyricSubOf(ln);
+        if (sub) {
+          // 原文副行：同一塊布幕、同樣的燈泡字，中文正下方小一號；中文＋原文整塊在字的範圍裡置中（燈框跟著包住）
+          const r = this.subLayout(c, ln.text, sub.text, k);
+          boxes.push(r.box);
+          this.lyrMain.set(ln, r.nMain);
+          this.lyrMasks.set(ln, this.track(glyphMask(r.items.slice(0, MAXG), [0, 0, BACK_PX.w, BACK_PX.h], 1, 2)));
+          continue;
+        }
         const fit = layMsgV2(c, ln.text, '', FAM_LYR, BOX, { k, max: V2.lyrMax, lineHeight: 1.15, maxLines: 2, align: 'center' });
         boxes.push(fit.box);
         // 排版的字 → 每個字（跟 glyphStates 的順序一樣：只算非空白）
-        const items: MaskGlyph[] = msgGlyphs(fit).slice(0, MAXG);
+        // 沒有原文的句子照舊最多 64 個字（MAXG 為了原文放寬了，這裡不跟著變，畫面才跟以前一模一樣）
+        const items: MaskGlyph[] = msgGlyphs(fit).slice(0, 64);
         this.lyrMasks.set(ln, this.track(glyphMask(items, [0, 0, BACK_PX.w, BACK_PX.h], 1, 2)));
       }
       if (!lyrics.linesIn(s, e).length) {
@@ -146,6 +159,37 @@ export default class Bowling extends Scene {
         };
       }));
     });
+  }
+
+  /**
+   * 中文＋原文的燈泡字排版（布幕畫布 px；k = 畫布 px／螢幕 px）：先照螢幕字級排原文（subSizeFor），
+   * 扣掉原文要的高度再排中文，原文基線離中文最後一行 subGap；整塊在字的範圍裡垂直置中。
+   * 原文的字標記 128（shader 用它畫得比中文安靜），序號接在中文後面。
+   */
+  private subLayout(c: CanvasRenderingContext2D, main: string, sub: string, k: number) {
+    const sfit = fitText(c, sub, FAM_LYR, BOX.w, BOX.h, { min: 26 * k, max: subSizeFor(V2.lyrMax) * k, lineHeight: 1.15, maxLines: 2 });
+    const room = subGap(V2.lyrMax, sfit.size / k) * k + (sfit.lines.length - 1) * sfit.lineHeight + sfit.size * 0.25;
+    const fit = layMsgV2(c, main, '', FAM_LYR, { ...BOX, h: BOX.h - room }, { k, max: V2.lyrMax, lineHeight: 1.15, maxLines: 2, align: 'center', valign: 'top' });
+    const mainItems = msgGlyphs(fit);
+    const sBase = fit.lines[fit.lines.length - 1]!.y + subGap(fit.screen, sfit.size / k) * k;
+    const cx = BOX.x + BOX.w / 2;
+    const subItems: MaskGlyph[] = [];
+    c.font = font(FAM_LYR, sfit.size);
+    sfit.lines.forEach((ln, r) => {
+      const x0 = cx - c.measureText(ln).width / 2;
+      let pre = '';
+      for (const ch of Array.from(ln)) {
+        const x = x0 + (pre ? c.measureText(pre).width : 0);
+        pre += ch;
+        if (!ch.trim()) continue;
+        subItems.push({ ch, x, y: sBase + r * sfit.lineHeight, w: c.measureText(ch).width, size: sfit.size, family: FAM_LYR, idx: mainItems.length + subItems.length, tag: 128 });
+      }
+    });
+    const top = fit.lines[0]!.y - fit.fit.size * 0.88, bot = sBase + (sfit.lines.length - 1) * sfit.lineHeight + sfit.size * 0.25;
+    const dy = BOX.y + Math.max(0, (BOX.h - (bot - top)) / 2) - top;
+    const items = [...mainItems, ...subItems].map((g) => ({ ...g, y: g.y + dy }));
+    const x0 = Math.min(...items.map((g) => g.x)), x1 = Math.max(...items.map((g) => g.x + g.w));
+    return { items, nMain: mainItems.length, box: [x0, top + dy, x1 - x0, bot - top] as Rect };
   }
 
   /** 鏡頭：低低地貼著球道，整個窗格慢慢往前推；每次全倒震一下。 */
@@ -262,7 +306,14 @@ export default class Bowling extends Scene {
       bu.uLyrA!.value = ly.k;
       const st = glyphStates(ly.line, t);
       const gs = bu.uGs!.value as THREE.Vector2[];
-      for (let i = 0; i < MAXG; i++) { const g = st[i]; gs[i]!.set(g ? g.p : 0, g?.done ? 1 : 0); }
+      const sub = lyricSubOf(ly.line), nMain = this.lyrMain.get(ly.line);
+      if (sub && nMain !== undefined) {
+        // 中文照原本的跟唱；後面接著原文（逐字時間是原文自己的），一唱到就用「唱完」的顏色（shader 再淡兩成）
+        const ss = glyphStates(sub, t);
+        for (let i = 0; i < MAXG; i++) {
+          if (i < nMain) { const g = st[i]; gs[i]!.set(g ? g.p : 0, g?.done ? 1 : 0); } else { const g = ss[i - nMain]; gs[i]!.set(g ? g.p : 0, 1); }
+        }
+      } else for (let i = 0; i < MAXG; i++) { const g = st[i]; gs[i]!.set(g ? g.p : 0, g?.done ? 1 : 0); }
     } else {
       bu.uMode!.value = 0;
       bu.uMask!.value = this.mask?.tex ?? EMPTY();

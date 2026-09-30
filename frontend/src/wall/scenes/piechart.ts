@@ -19,7 +19,7 @@ import { clamp, ease, prog, lerp, TAU } from '../engine/util';
 import type { FitResult } from '../engine/text';
 import { lyricAt, beatAfter, signature, fillWithHearts } from './_motifs';
 import { Paper, stagger, tag, type Rect } from './_t11';
-import { paperLyric, lyricLine } from './_t12';
+import { paperLyric, lyricLine, subLift } from './_t12';
 import { V2, msgMaxFor, lyricV2, sigV2, fitClauses } from './_v2';
 import { fitText } from '../engine/text';
 
@@ -346,8 +346,11 @@ export default class PieChart extends Scene {
       return;
     }
     const inK = ease.outExpo(prog(t, ly.line.start - 0.35, ly.line.start + 0.1));
-    c.save(); c.textAlign = 'left'; c.translate(LYR.x, LYR.base + (1 - inK) * 14);
-    lyricLine(c, ly.line, t, paperLyric(this.lyrSize, LYR.w), ly.k * c.globalAlpha, true);
+    const st = paperLyric(this.lyrSize, LYR.w);
+    // 韓文歌主行折兩排又有原文副行時往上挪，不壓到下面的圓餅圖（沒有副行是 0）
+    const lift = subLift(c, lyrics.linesIn(this.ctx.start - 1.6, this.ctx.end + 0.4), st, LYR.base);
+    c.save(); c.textAlign = 'left'; c.translate(LYR.x, LYR.base - lift + (1 - inK) * 14);
+    lyricLine(c, ly.line, t, st, ly.k * c.globalAlpha, true);
     c.restore();
   }
 }

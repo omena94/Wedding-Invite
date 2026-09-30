@@ -16,7 +16,7 @@ import { LineBatch } from '../engine/lines';
 import { F, font, loadText } from '../engine/type';
 import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, lerp, hash } from '../engine/util';
-import { lyricAt, barAfter, sparkHead, sparkParticles, msgChars } from './_motifs';
+import { lyricAt, lyricSubOf, subGap, subSizeFor, barAfter, sparkHead, sparkParticles, msgChars } from './_motifs';
 import { inkFor, inkLine, drawNote, type Note } from './_couple';
 import { loadPuppets, drawPuppet, drawCycle, drawPick, puppetShadow, puppetIn, puppetBox, puppetPoint, jumpArc, breathe, beatKick, hop, noteV2, tightenNote, type PuppetOpts } from './_puppet';
 import { lyricV2 } from './_v2';
@@ -423,10 +423,22 @@ export default class Zoomies extends Scene {
       bumps[i] = best;
       return best > 0.5 ? { dy: -best, rot, s: 1 + best / 900 } : null;
     };
+    // 韓文歌：原文小一號擺在中文正下方的地毯上（同樣置中）。兩行一起往上挪一點，原文才不會壓到前面掉在地上的抱枕
+    const sub = lyricSubOf(ly.line);
+    const ss = subSizeFor(lay.size);
+    const sl = sub ? layoutChars(c, sub, fam, ss, LYR.w, Math.min(ss, 26)) : null;
+    const gap = sl ? subGap(lay.size, sl.size) : 0;
+    const y = sl ? Math.min(LYR.y, PILLOW.y - 44 - sl.size * 0.22 - gap) : LYR.y;
     c.save();
     c.globalAlpha = ly.k * rv;
     // 字躺在地毯上：底下一點點影子（字被撞起來時影子留在原地、變小）
-    drawChars(c, ly.line, lay, fam, x0, LYR.y, t, { unsung: rgba('bone', 0.28), sung: rgba('bone', this.msg ? 0.82 : 0.95), active: rgba('signal') }, bumpAt);
+    drawChars(c, ly.line, lay, fam, x0, y, t, { unsung: rgba('bone', 0.28), sung: rgba('bone', this.msg ? 0.82 : 0.95), active: rgba('signal') }, bumpAt);
+    if (sub && sl) {
+      // 狗跑過去一樣會撞到原文，但跳得矮一點（比中文安靜）；唱到、唱完都是淡兩成的紙白（不用訊號色），逐字時間照原文自己的
+      const lit = rgba('bone', (this.msg ? 0.82 : 0.95) * 0.8);
+      const subBump = (i: number, cx: number) => { const m = bumpAt(i + 500, cx); return m ? { ...m, dy: m.dy * 0.6, rot: m.rot * 0.6 } : null; };
+      drawChars(c, sub, sl, fam, LYR.x - sl.width / 2, y + gap, t, { unsung: rgba('bone', 0.28), sung: lit, active: lit }, subBump);
+    }
     c.restore();
   }
 

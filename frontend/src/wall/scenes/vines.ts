@@ -14,9 +14,9 @@ import { LineBatch } from '../engine/lines';
 import { F, font } from '../engine/type';
 import { LIN, rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, hash, lerp } from '../engine/util';
-import type { Word } from '../engine/lyrics';
+import type { Line, Word } from '../engine/lyrics';
 import { heartPoints, drawHeart } from '../engine/motifs';
-import { lyricAt, beatAfter, COUPLE_ZH } from './_motifs';
+import { lyricAt, beatAfter, COUPLE_ZH, lyricSubOf, layoutLyric, subStyleFor, subGap, drawLyricSub, type LyricStyle } from './_motifs';
 import { lyricV2, V2 } from './_v2';
 import { layoutRows, drawRows, paperInk } from './_t4';
 import { winBeats, winBars } from './_t8';
@@ -108,10 +108,14 @@ export default class Vines extends Scene {
   mainLeaves: Leaf[] = [];
   hangs: { s: number; len: number; t0: number; leaves: Leaf[]; ph: number }[] = [];
   blooms: { on: 'main' | number; s: number; t: number }[] = [];
+  /** 沒有留言時每一句的韓文原文副行（第一排基線 y、跟著那一句淡入淡出的時間）。 */
+  subs: { line: Line; st: LyricStyle; size: number; y: number; tIn: number; tOff: number }[] = [];
 
   override async init() {
     const { audio: au, lyrics, start: s, end: e } = this.ctx;
     const lines = lyrics.linesIn(s - 0.5, e);
+    // 原文副行在 await 之前先拿：引擎只在呼叫 init 前設好這一格的開關
+    const subOf = new Map(lines.map((l) => [l, lyricSubOf(l)] as const));
     await loadAll(this.msg, lines.map((l) => l.text).join(''), COUPLE_ZH);
     this.beats = winBeats(au, s, e + 4);
     this.bars = winBars(au, s, e).filter((b) => b > s + 0.1);
@@ -165,11 +169,21 @@ export default class Vines extends Scene {
       lines.forEach((l, li) => {
         const next = lines[li + 1];
         const lay = layoutRows(c, l, { family: FAM_V, size: lyricV2(null), minSize: V2.lyrMin, maxW: LYR.maxW, maxRows: 2, align: 'center', lineHeight: 1.3 });
-        const y0 = LYR.y - (lay.rows.length - 1) * lay.lineHeight * 0.5;
+        let y0 = LYR.y - (lay.rows.length - 1) * lay.lineHeight * 0.5;
+        const tOff = next ? next.start - 0.45 : Infinity, tIn = li === 0 ? -Infinity : l.start - 0.6;
+        // 韓文原文副行：寫在牆上、中文正下方（小一號，藤蔓不爬它），中文＋原文一起置中在這一帶
+        const sub = subOf.get(l);
+        if (sub) {
+          const st: LyricStyle = { family: FAM_V, size: lay.size, maxWidth: LYR.maxW, align: 'center' };
+          const sl = layoutLyric(c, sub, subStyleFor(st, lay.size));
+          const dy = (lay.rows.length - 1) * lay.lineHeight + subGap(lay.size, sl.size);
+          y0 -= (dy + sl.rows[sl.rows.length - 1]!.y - (lay.rows.length - 1) * lay.lineHeight) / 2;
+          this.subs.push({ line: sub, st, size: lay.size, y: y0 + dy, tIn, tOff });
+        }
         for (const pw of lay.words) {
           const txt = pw.word.w.trim();
           if (!txt) continue;
-          this.addText(c, txt, lay.size, LYR.cx + pw.x, y0 + pw.y, [pw.word], next ? next.start - 0.45 : Infinity, true, li === 0 ? -Infinity : l.start - 0.6);
+          this.addText(c, txt, lay.size, LYR.cx + pw.x, y0 + pw.y, [pw.word], tOff, true, tIn);
         }
       });
     } else {
@@ -388,6 +402,14 @@ export default class Vines extends Scene {
           qa = na; qb = nb;
         }
       }
+    }
+    // 韓文原文副行：牆上的字，唱到的跟長滿的中文同一個顏色（淡兩成）、還沒唱是淡淡的鉛筆色；跟著那一句淡入淡出
+    for (const sb of this.subs) {
+      const fade = (1 - clamp((t - sb.tOff) / 0.4)) * clamp((t - sb.tIn) / 0.3);
+      if (fade <= 0) continue;
+      c.save(); c.translate(LYR.cx, sb.y);
+      drawLyricSub(c, sb.line, t, { ...sb.st, sung: mixRgba('sepia', 'blood', 0.45, 0.92), unsung: rgba('sepia', 0.22) }, sb.size, fade);
+      c.restore();
     }
     for (const u of this.units) if (t >= u.t0 && t >= u.tIn && t < u.tOff) avoid.push([Math.round(u.x), Math.round(u.y - u.size), Math.round(u.size), Math.round(u.size * 1.25)]);
     // 署名（手寫，最後淡入）

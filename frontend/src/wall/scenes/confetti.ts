@@ -23,7 +23,7 @@ import { F, font, loadText } from '../engine/type';
 import { rgba } from '../engine/palette';
 import { clamp, ease, prog, hash, TAU } from '../engine/util';
 import type { Line } from '../engine/lyrics';
-import { lyricAt, beatAfter, drawHeart, COUPLE_ZH } from './_motifs';
+import { lyricAt, lyricSubOf, subSizeFor, subGap, beatAfter, drawHeart, COUPLE_ZH } from './_motifs';
 import { layoutRows, drawRows, darkInk, type RowsLayout } from './_t4';
 import { T23_INVITE, T23_TEXT, sigOf, layMsgV2, stagger, winBars, lastBefore, rawMat, type Glyph, type Rect } from './_t23';
 import { V2, lyricV2 } from './_v2';
@@ -337,7 +337,8 @@ interface Petal { x: number; z: number; rot: number; size: number; land: number;
 /** 一條彩帶（世界座標）：出發點與時間、帶頭落點、長寬、飛多高多久、捲的圈數與幅度、亂數與顏色。 */
 interface Ribbon { a: [number, number, number, number]; b: [number, number, number, number]; c: [number, number, number, number]; d: [number, number, number, number] }
 /** 沒有留言時，一句歌詞排成花瓣的位置（地上的光字也照這個畫）。 */
-interface SoloLine { line: Line; lay: RowsLayout; x0: number; y0: number; gust: number }
+/** 沒有留言時地上排著的一句。sub／sy：韓文歌的原文副行（只有光字、沒有花瓣）與它第一行基線離主行第一行基線多遠。 */
+interface SoloLine { line: Line; lay: RowsLayout; x0: number; y0: number; gust: number; sub?: RowsLayout; sy?: number }
 
 export default class Confetti extends Scene {
   stage = shared('confetti.stage', () => new Stage());
@@ -432,10 +433,22 @@ export default class Confetti extends Scene {
       // 沒有留言：每一句歌詞各自排成花瓣（提早 1 秒開始飄、在句子開始時落定），唱完一陣風吹走
       lines.forEach((ln, li) => {
         const lay = layoutRows(this.txt.ctx, ln, { family: FAM_SOLO, size: lyricV2(null), minSize: V2.lyrMin, maxW: MSG_BOX.w, maxRows: 2, align: 'left', lineHeight: 1.3 });
-        const x0 = MSG_BOX.x, y0 = MSG_BOX.y + MSG_BOX.h / 2 - lay.height / 2 + lay.size * 0.8;
+        const x0 = MSG_BOX.x;
+        let y0 = MSG_BOX.y + MSG_BOX.h / 2 - lay.height / 2 + lay.size * 0.8;
         const next = lines[li + 1];
         const gust = next ? Math.max(ln.end + 0.3, next.start - 1.2) : ln.end + 1.2;
-        this.solo.push({ line: ln, lay, x0, y0, gust });
+        // 韓文歌：原文小一號寫在花瓣字的正下方（地上的光字，不排花瓣：花瓣排的是主角，兩句都排會糊成一片），
+        // 兩段一起在留言區垂直置中
+        const sub = lyricSubOf(ln);
+        let sl: RowsLayout | undefined, sy: number | undefined;
+        if (sub) {
+          const ss = subSizeFor(lay.size);
+          sl = layoutRows(this.txt.ctx, sub, { family: FAM_LYR, size: ss, minSize: Math.min(ss, 26), maxW: MSG_BOX.w, maxRows: 2, align: 'left', lineHeight: 1.2 });
+          sy = (lay.rows.length - 1) * lay.lineHeight + subGap(lay.size, sl.size);
+          const total = lay.size * 0.8 + sy + (sl.rows.length - 1) * sl.lineHeight + sl.size * 0.2;
+          y0 = MSG_BOX.y + MSG_BOX.h / 2 - total / 2 + lay.size * 0.8;
+        }
+        this.solo.push({ line: ln, lay, x0, y0, gust, sub: sl, sy });
         const st = clamp(lay.size / 10.5, 3.8, 7);
         for (const pw of lay.words) {
           sample(() => { c.font = font(FAM_SOLO, lay.size); c.fillText(pw.word.w, x0 + pw.x, y0 + pw.y); },
@@ -586,7 +599,12 @@ export default class Confetti extends Scene {
       for (const x of this.solo) if (x.line.start - 0.4 <= t) sl = x;
       if (sl) {
         const k = Math.min(prog(t, sl.line.start - 0.4, sl.line.start - 0.05), 1 - prog(t, sl.gust, sl.gust + 0.35));
-        if (k > 0) { c.save(); c.translate(sl.x0, sl.y0); drawRows(c, sl.lay, FAM_SOLO, t, darkInk(), k); c.restore(); }
+        if (k > 0) {
+          c.save(); c.translate(sl.x0, sl.y0); drawRows(c, sl.lay, FAM_SOLO, t, darkInk(), k);
+          // 原文比中文安靜：唱到、唱完都是淡兩成的紙白（不用訊號色），還沒唱的三成
+          if (sl.sub) { const sung = rgba('bone', 0.96 * 0.8); c.translate(0, sl.sy!); drawRows(c, sl.sub, FAM_LYR, t, { ...darkInk(), active: sung, sung }, k); }
+          c.restore();
+        }
       }
       if (this.hasLyr) {
         c.font = font(F.ming(700), 34); c.fillStyle = rgba('bone', 0.8); c.letterSpacing = '4px';

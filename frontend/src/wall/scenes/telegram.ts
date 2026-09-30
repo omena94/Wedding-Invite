@@ -49,6 +49,8 @@ const BODY = { x: 40, top: 362, bottom: 690, maxW: 1080 };
 const SIGN = { rule: 716 };
 /** 附言（歌詞）欄（電報紙座標）。 */
 const NOTE = { x: 40, label: 120, base: 178, maxW: 900 };
+/** 附言欄最低的基線（原文副行的最後一排）：再下面是「收報人」欄。 */
+const NOTE_SUB_MAX = 274;
 
 const TEXT = '電報愛情電報局收報人發報人字數等級急電附言發報時播放之歌曲本曲為純音樂請自行哼唱間奏中收報時間全體賓客一位賓客大螢幕新郎新娘掃描右下角把祝福寫上大螢幕收已收到本電報以愛心計費每字零元字';
 
@@ -586,8 +588,14 @@ export default class Telegram extends Scene {
     const { lyrics } = this.ctx;
     const ly = lyricAt(lyrics, t);
     if (ly) {
-      const st = paperLyric(F.archivo(100, 800), this.lyrPx, NOTE.maxW, { lineHeight: 1.16, minSize: V2.lyrMin / this.S });
-      const lay = layoutLyric(c, ly.line, st);
+      let st = paperLyric(F.archivo(100, 800), this.lyrPx, NOTE.maxW, { lineHeight: 1.16, minSize: V2.lyrMin / this.S });
+      let lay = layoutLyric(c, ly.line, st);
+      // 韓文歌：原文副行接在中文下面，最後一排要跟下面的「收報人」欄（字頂約在 y 300）隔開一點：放不下就把中文縮一點
+      for (let k = 0; k < 10 && lay.sub && NOTE.base + lay.height - lay.size > NOTE_SUB_MAX; k++) {
+        const sz = lay.size * 0.93;
+        st = { ...st, size: sz, minSize: Math.min(st.minSize ?? sz, sz) };
+        lay = layoutLyric(c, ly.line, st);
+      }
       const inK = ease.outExpo(prog(t, ly.line.start - 0.35, ly.line.start + 0.15));
       c.save();
       c.translate(NOTE.x, NOTE.base + (1 - inK) * 12);

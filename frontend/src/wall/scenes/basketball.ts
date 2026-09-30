@@ -17,7 +17,7 @@ import { Layer2D, W, H } from '../engine/gl';
 import { F, font, loadText } from '../engine/type';
 import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, lerp, hash } from '../engine/util';
-import { lyricAt, barAfter, beatAfter, msgChars } from './_motifs';
+import { lyricAt, lyricSubOf, subSizeFor, subGap, barAfter, beatAfter, msgChars } from './_motifs';
 import { inkFor, paperBG, inkLine, hatch, lyricOnPath, drawNote, arcAt, type Note } from './_couple';
 import { loadPuppets, drawPuppet, drawPick, drawCycle, puppetPoint, puppetShadow, puppetIn, jumpArc, breathe, beatKick, landSquash, noteV2, tightenNote, type PuppetOpts } from './_puppet';
 import { lyricV2 } from './_v2';
@@ -378,9 +378,17 @@ export default class Basketball extends Scene {
     // 太長、最小字級也放不下一排的句子會折成兩排（第二排往下）：這時整段往上挪，兩排都離下緣 96 px 以上
     const family = F.archivo(100, 700);
     const len = Math.hypot(CHALK[1]!.x - CHALK[0]!.x, CHALK[1]!.y - CHALK[0]!.y) + Math.hypot(CHALK[2]!.x - CHALK[1]!.x, CHALK[2]!.y - CHALK[1]!.y);
-    const path = lyricRows(c, ly.line.text, family, this.lyricSize, 40, len) === 2 ? CHALK.map((q) => ({ x: q.x, y: q.y - 50 })) : CHALK;
+    const two = lyricRows(c, ly.line.text, family, this.lyricSize, 40, len) === 2;
+    const path = two ? CHALK.map((q) => ({ x: q.x, y: q.y - 50 })) : CHALK;
+    // 韓文歌：原文（lyricOnPath 自動畫在中文下面）也要離下緣 96 px 以上——整段再往上抬原文佔的高度
+    const sub = lyricSubOf(ly.line);
+    let off = 0;
+    if (sub) {
+      const ms = two ? 40 : this.lyricSize, ss = subSizeFor(ms);
+      off = subGap(ms, ss) + (lyricRows(c, sub.text, family, ss, Math.min(ss, 26), len) - 1) * ss * 1.1;
+    }
     lyricOnPath(c, ly.line, t, path, {
-      family, size: this.lyricSize, minSize: 40, alpha: ly.k * rv, unsung: rgba('sepia', 0.22), sung: rgba('sepia', 0.85), active: rgba('signal'), rowGap: 1.1,
+      family, size: this.lyricSize, minSize: 40, alpha: ly.k * rv, unsung: rgba('sepia', 0.22), sung: rgba('sepia', 0.85), active: rgba('signal'), rowGap: 1.1, offset: off,
     });
   }
 }

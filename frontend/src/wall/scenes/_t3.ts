@@ -10,7 +10,7 @@ import { F, font } from '../engine/type';
 import { rgba, mixRgba } from '../engine/palette';
 import { fitText, type FitResult } from '../engine/text';
 import { clamp, mulberry32 } from '../engine/util';
-import { beatAfter, barAfter, layoutMessage, type LyricLayout, type LyricStyle } from './_motifs';
+import { beatAfter, barAfter, layoutMessage, layoutLyric, lyricSubOf, subGap, subStyleFor, type LyricLayout, type LyricStyle } from './_motifs';
 
 export type Rect = [number, number, number, number];
 export type P2 = { x: number; y: number };
@@ -81,27 +81,46 @@ const boxCache = new WeakMap<Line, Map<string, LyricLayout>>();
  * 在 w × h 的框裡排一行歌詞（可以折成好幾行，字級在 min～max 之間找最大的），回傳 drawLyric 用的排版。
  * _motifs 的 layoutLyric 最多折兩行、放不下會縮到比 48 px 還小；房間、格子、日曆這種窄框要能折三四行、字不縮。
  * 座標：align = left 時 (0,0) 是框的左緣、第一行基線；center 時 x = 0 是框的中線。
+ * 韓文歌有原文副行時（lyricSubOf）：副行接在主行下面、也要在框裡，所以主行排在「框高扣掉副行」的高度裡；
+ * height 算到副行最後一排的基線，版面照舊用 height 置中就好。沒有副行時結果跟以前一模一樣。
  */
 export function boxLyric(c: CanvasRenderingContext2D, line: Line, family: string, w: number, h: number, o: { min?: number; max?: number; lineHeight?: number; align?: 'left' | 'center'; maxLines?: number } = {}): LyricLayout {
   const lh = o.lineHeight ?? 1.16;
-  const key = `${family}|${w}|${h}|${o.min}|${o.max}|${lh}|${o.align}|${o.maxLines}`;
+  const sub = lyricSubOf(line);
+  const key = `${family}|${w}|${h}|${o.min}|${o.max}|${lh}|${o.align}|${o.maxLines}|${sub ? 1 : 0}`;
   let m = boxCache.get(line);
   if (!m) { m = new Map(); boxCache.set(line, m); }
   const hit = m.get(key);
   if (hit) return hit;
   const min = o.min ?? 48, max = o.max ?? 96;
-  let fit: FitResult = fitText(c, line.text, family, w, h, { min, max, lineHeight: lh, maxLines: o.maxLines ?? 99 });
-  // 中文歌詞常用空白分詞組（「一首一首歌 一句一句話」）：照詞組分行比較好讀，
-  // 只要字級不會比「塞最大」小太多，就寧可在空白處分行（英文字之間的空白不算）
-  const parts = line.text.trim().split(/(?<=[㐀-鿿＀-￯、。])\s+|\s+(?=[㐀-鿿])/).filter(Boolean);
-  if (parts.length > 1 && parts.length <= (o.maxLines ?? 99)) {
-    c.font = font(family, 100);
-    const wide = Math.max(...parts.map((p) => c.measureText(p).width)) / 100;
-    const size = Math.floor(Math.min(max, w / Math.max(1e-3, wide), h / (1 + (parts.length - 1) * lh)));
-    if (size >= min && size >= fit.size * 0.72) {
-      c.font = font(family, size);
-      fit = { size, lines: parts, lineHeight: size * lh, width: Math.max(...parts.map((p) => c.measureText(p).width)), height: size * (1 + (parts.length - 1) * lh) };
+  const fitIn = (hh: number): FitResult => {
+    let fit: FitResult = fitText(c, line.text, family, w, hh, { min, max, lineHeight: lh, maxLines: o.maxLines ?? 99 });
+    // 中文歌詞常用空白分詞組（「一首一首歌 一句一句話」）：照詞組分行比較好讀，
+    // 只要字級不會比「塞最大」小太多，就寧可在空白處分行（英文字之間的空白不算）
+    const parts = line.text.trim().split(/(?<=[㐀-鿿＀-￯、。])\s+|\s+(?=[㐀-鿿])/).filter(Boolean);
+    if (parts.length > 1 && parts.length <= (o.maxLines ?? 99)) {
+      c.font = font(family, 100);
+      const wide = Math.max(...parts.map((p) => c.measureText(p).width)) / 100;
+      const size = Math.floor(Math.min(max, w / Math.max(1e-3, wide), hh / (1 + (parts.length - 1) * lh)));
+      if (size >= min && size >= fit.size * 0.72) {
+        c.font = font(family, size);
+        fit = { size, lines: parts, lineHeight: size * lh, width: Math.max(...parts.map((p) => c.measureText(p).width)), height: size * (1 + (parts.length - 1) * lh) };
+      }
     }
+    return fit;
+  };
+  // 副行的排版（字級跟著主行）與它佔的高度：主行最後一排基線往下 subGap，再加副行多出來的排
+  const subOf = (size: number) => {
+    if (!sub) return null;
+    const lay = layoutLyric(c, sub, subStyleFor({ family, size, maxWidth: w, align: o.align ?? 'left' }, size));
+    return { lay, extra: subGap(size, lay.size) + lay.height - lay.size };
+  };
+  let fit = fitIn(h);
+  let sl = subOf(fit.size);
+  // 副行越小主行能越大、主行越小副行也跟著小：來回收斂幾次，直到主行＋副行放得進框
+  for (let k = 0; k < 4 && sl && fit.height + sl.extra > h + 0.5; k++) {
+    fit = fitIn(Math.max(1, h - sl.extra));
+    sl = subOf(fit.size);
   }
   c.font = font(family, fit.size);
   c.letterSpacing = '0px';
@@ -115,6 +134,11 @@ export function boxLyric(c: CanvasRenderingContext2D, line: Line, family: string
     cur = at + r.length;
   }
   const out: LyricLayout = { size: fit.size, rows: [], words: [], height: fit.height };
+  if (sl) {
+    const dy = (fit.lines.length - 1) * fit.lineHeight + subGap(fit.size, sl.lay.size);
+    out.sub = { lay: sl.lay, dy };
+    out.height = fit.height + sl.extra;
+  }
   fit.lines.forEach((r, ri) => {
     const width = c.measureText(r).width;
     const x0 = o.align === 'center' ? -width / 2 : 0;

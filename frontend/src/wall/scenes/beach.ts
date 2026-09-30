@@ -15,7 +15,7 @@ import { LineBatch } from '../engine/lines';
 import { F, font, loadText } from '../engine/type';
 import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, hash, lerp } from '../engine/util';
-import { lyricAt, barAfter, sparkHead, sparkParticles, msgChars } from './_motifs';
+import { lyricAt, barAfter, sparkHead, sparkParticles, msgChars, lyricSubOf, subGap } from './_motifs';
 import { paperBG, lyricOnPath, drawNote, type Pt, type Note } from './_couple';
 import { loadPuppets, drawPuppet, drawCycle, puppetShadow, puppetIn, jumpArc, breathe, hop, beatKick, noteV2, tightenNote } from './_puppet';
 import { lyricV2 } from './_v2';
@@ -147,7 +147,10 @@ export default class Beach extends Scene {
     // 歌詞立在海平線上
     const ly = lyricAt(lyrics, t);
     if (ly) {
-      const r = lyricOnPath(c, ly.line, t, this.horizonPath, { family: F.archivo(100, this.msg ? 600 : 700), size: this.lyricSize, minSize: 40, offset: 6, alpha: ly.k * prog(t, s, s + 0.6), unsung: rgba('sepia', 0.26), sung: rgba('sepia', this.msg ? 0.78 : 0.92), active: rgba('signal') });
+      // 韓文歌：lyricOnPath 會把原文畫在中文下面；整組往上抬一個副行的高度（原文落在原本中文的位置），
+      // 不然中文折兩排時原文會掉到海上、碰到新人的頭
+      const lift = lyricSubOf(ly.line) ? subGap(this.lyricSize) : 0;
+      const r = lyricOnPath(c, ly.line, t, this.horizonPath, { family: F.archivo(100, this.msg ? 600 : 700), size: this.lyricSize, minSize: 40, offset: 6 + lift, alpha: ly.k * prog(t, s, s + 0.6), unsung: rgba('sepia', 0.26), sung: rgba('sepia', this.msg ? 0.78 : 0.92), active: rgba('signal') });
       if (r.head) sparkHead(this.glow, r.head.x, r.head.y - 4, t, 0.45, 0.8);
     }
     // 浪（在沙上）→ 沙上的字 → 人和狗（在最前面）

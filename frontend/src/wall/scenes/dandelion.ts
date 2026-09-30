@@ -16,7 +16,7 @@ import { LIN, rgba } from '../engine/palette';
 import { clamp, ease, prog, hash, lerp, TAU } from '../engine/util';
 import { Lyrics, type Word } from '../engine/lyrics';
 import { fillWithHearts } from '../engine/motifs';
-import { lyricAt, beatAfter, COUPLE_ZH } from './_motifs';
+import { lyricAt, beatAfter, COUPLE_ZH, lyricSubOf, subSizeFor, subGap } from './_motifs';
 import { lyricV2, V2 } from './_v2';
 import { layoutRows, drawRows, darkInk } from './_t4';
 import { winBars } from './_t8';
@@ -36,7 +36,8 @@ const SUB = { x: 560, base: 978, maxW: 760 };
 const HORIZON = 850;
 const NSEED = 170;
 
-interface Unit { text: string; x: number; y: number; w: number; size: number; family: string; seed: number; tl: number; dur: number; tOff: number; words: Word[]; color: string }
+/** `sub`：韓文歌的原文副行（小一號、比中文安靜：唱到、唱完都用紙白淡兩成）。 */
+interface Unit { text: string; x: number; y: number; w: number; size: number; family: string; seed: number; tl: number; dur: number; tOff: number; words: Word[]; color: string; sub?: boolean }
 
 const SKY = () => new FSPass(/* glsl */ `
   uniform float t; uniform float k;
@@ -86,6 +87,8 @@ export default class Dandelion extends Scene {
   override async init() {
     const { audio: au, lyrics, start: s, end: e } = this.ctx;
     const lines = lyrics.linesIn(s - 1.5, e);
+    // 每一句的原文（韓文歌才有；有主打留言的窗格，引擎給的歌詞本來就沒有原文）
+    const subs = lines.map((l) => lyricSubOf(l));
     await loadAll(this.msg, lines.map((l) => l.text).join(''), COUPLE_ZH);
     this.beat = au.beatPeriod(s);
     this.tG = beatAfter(au, s + 0.1);
@@ -110,17 +113,31 @@ export default class Dandelion extends Scene {
       lines.forEach((l, li) => {
         const next = lines[li + 1];
         const lay = layoutRows(c, l, { family: F.archivo(100, 800), size: lyricV2(null), minSize: V2.lyrMin, maxW: 860, maxRows: 2, align: 'left', lineHeight: 1.2 });
+        // 原文副行：一樣由種子送來（小一號、晚一點起飛），落在中文正下方、同一個左緣
+        const sub = subs[li];
+        const sl = sub ? layoutRows(c, sub, { family: F.archivo(100, 800), size: subSizeFor(lay.size), minSize: 26, maxW: 860, maxRows: 2, align: 'left', lineHeight: 1.2 }) : null;
         const n0 = this.units.length;
         // 一句在上、一句在下輪流：新的一句飛來的時候，上一句還在被吹走，不要疊在同一個地方
         const top = (li % 2 ? 560 : 320) - (lay.rows.length - 1) * lay.lineHeight * 0.5;
-        const x0 = Math.min(1760 - lay.width, 1300 - lay.width / 2 + (li % 2 ? 60 : -40));
+        const wMax = Math.max(lay.width, sl?.width ?? 0);
+        const x0 = Math.min(1760 - wMax, 1300 - wMax / 2 + (li % 2 ? 60 : -40));
+        const tOff = next ? next.start - 0.9 : Infinity;
         lay.words.forEach((pw) => {
           const txt = pw.word.w.trim();
           if (!txt) return;
-          this.units.push({ text: txt, x: x0 + pw.x, y: top + pw.y, w: pw.w, size: lay.size, family: F.archivo(100, 800), seed: 0, tl: 0, dur: 1, tOff: next ? next.start - 0.9 : Infinity, words: [pw.word], color: '' });
+          this.units.push({ text: txt, x: x0 + pw.x, y: top + pw.y, w: pw.w, size: lay.size, family: F.archivo(100, 800), seed: 0, tl: 0, dur: 1, tOff, words: [pw.word], color: '' });
         });
         const launch = Math.max(s - 3, l.start - 1.9);
         this.schedule(n0, launch, 1.3);
+        if (sl) {
+          const n1 = this.units.length, sTop = top + (lay.rows.length - 1) * lay.lineHeight + subGap(lay.size, sl.size);
+          sl.words.forEach((pw) => {
+            const txt = pw.word.w.trim();
+            if (!txt) return;
+            this.units.push({ text: txt, x: x0 + pw.x, y: sTop + pw.y, w: pw.w, size: sl.size, family: F.archivo(100, 800), seed: 0, tl: 0, dur: 1, tOff, words: [pw.word], color: '', sub: true });
+          });
+          this.schedule(n1, launch + 0.35, 1.0);
+        }
       });
     } else {
       this.placeRow(c, COUPLE_ZH.replace(/\s*&\s*/, ' ♥ '), 64, F.ming(900), MSG.x + 160, 400, [], 'left');
@@ -319,10 +336,11 @@ export default class Dandelion extends Scene {
         // 歌詞：還沒唱淡、正在唱訊號色、唱完紙白
         const w = un.words[0]!, pr = Lyrics.wordProgress(w, t);
         c.textAlign = 'center';
-        c.fillStyle = rgba('bone', 0.35); if (pr < 1) c.fillText(un.text, 0, 0);
+        c.fillStyle = rgba('bone', un.sub ? 0.3 : 0.35); if (pr < 1) c.fillText(un.text, 0, 0);
         if (pr > 0) {
           c.save(); c.beginPath(); c.rect(-un.w / 2 - 6, -un.size * 1.2, (un.w + 12) * pr, un.size * 1.6); c.clip();
-          c.fillStyle = pr < 1 ? rgba('signal') : rgba('bone', 0.96); c.fillText(un.text, 0, 0); c.restore();
+          // 原文副行不用訊號色（不跟中文搶）：唱到、唱完都是紙白淡兩成
+          c.fillStyle = un.sub ? rgba('bone', 0.96 * 0.8) : pr < 1 ? rgba('signal') : rgba('bone', 0.96); c.fillText(un.text, 0, 0); c.restore();
         }
       } else {
         c.fillStyle = rgba('bone', 0.96);

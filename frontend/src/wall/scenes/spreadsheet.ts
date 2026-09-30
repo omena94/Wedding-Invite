@@ -16,8 +16,8 @@ import { F, font } from '../engine/type';
 import { LIN, rgba } from '../engine/palette';
 import { clamp, ease, hash, lerp, prog } from '../engine/util';
 import type { FitResult } from '../engine/text';
-import type { Lyrics } from '../engine/lyrics';
-import { lyricAt, drawLyric, layoutLyric, drawMessage, signature, sparkHead, sparkParticles, beatAfter, COUPLE_ZH } from './_motifs';
+import type { Line, Lyrics } from '../engine/lyrics';
+import { lyricAt, drawLyric, layoutLyric, drawMessage, signature, sparkHead, sparkParticles, beatAfter, COUPLE_ZH, lyricSubOf, subSizeFor, subGap, type LyricStyle, type LyricLayout } from './_motifs';
 import { fitText } from '../engine/text';
 import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 } from './_v2';
 import { beatsIn, inOut, ScreenRig, mipRT, blitToRT, loadPlateText } from './_t6';
@@ -89,6 +89,11 @@ export default class Spreadsheet extends Scene {
   msgTop = 0;
   /** 合併儲存格附近「螢幕 px ÷ 貼圖 px」（v2 的字級是螢幕上的 px，畫在貼圖上要除以它）。 */
   ls = 0.8;
+  /**
+   * 公式列的高度：有原文副行（韓文歌）的窗格，公式列像真的試算表那樣「展開」往下蓋住欄名那一帶，
+   * 放得下中文＋原文（整個窗格同一個高度，換句時不會一伸一縮）；沒有原文就是原本的 FB.h。
+   */
+  fbH = FB.h;
   msgScreen: number | null = null;
   tPaste = 0; tTrace = 0; tTotal = 0;
 
@@ -130,6 +135,10 @@ export default class Spreadsheet extends Scene {
     this.msgScreen = this.msg ? this.fit.size * ls : null;
     const block = this.fit.height + sigH;
     this.msgTop = MERGE.y + Math.max(26, (MERGE.h - block) / 2) + this.fit.size * 0.9;
+    for (const l of this.ctx.lyrics.linesIn(s - 1, e + 1)) {
+      const d = this.subLay(c, l, this.fbStyle());
+      if (d) this.fbH = Math.max(this.fbH, Math.min(MERGE.y - 16 - FB.y, Math.ceil(d.blockH + 34)));
+    }
   }
 
   override dispose() { this.rig.dispose(); super.dispose(); }
@@ -151,7 +160,7 @@ export default class Spreadsheet extends Scene {
     });
     const fk = prog(t, this.tTrace, this.tPaste + 0.5, ease.inOutCubic);
     this.rig.focus(lerp(RH_X, MERGE.x - 20, fk), lerp(ROW0, MERGE.y - 20, fk), lerp(MERGE.x, SW, fk), lerp(rowY(8), MERGE.y + MERGE.h + 20, fk), 120,
-      [FB.x, FB.y - 10, FB.x + FB.w, FB.y + FB.h + 10]);
+      [FB.x, FB.y - 10, FB.x + FB.w, FB.y + this.fbH + 10]);
   }
 
   override render(f: Frame, out: THREE.WebGLRenderTarget): PostOverrides {
@@ -398,11 +407,38 @@ export default class Spreadsheet extends Scene {
     return head;
   }
 
+  private fbStyle(): LyricStyle {
+    const size = lyricV2(this.msgScreen) / this.ls;
+    return { family: F.archivo(100, 700), size, minSize: V2.lyrMin / this.ls, maxWidth: FB.x + FB.w - FB_TEXT_X - 24, active: rgba('blood'), sung: rgba('sepia', 0.92), unsung: rgba('sepia', 0.26), lineHeight: 1.1 };
+  }
+
+  /**
+   * 原文副行的排版（貼圖 px）：照「螢幕上」的主行字級算原文字級（subSizeFor(主行 × ls) ÷ ls），
+   * 螢幕在畫面上縮小了，照貼圖 px 算會太小。dy = 原文第一排基線離中文第一排基線；blockH = 中文字頂到原文字底。
+   */
+  private subLay(c: CanvasRenderingContext2D, l: Line, st: LyricStyle) {
+    const sub = lyricSubOf(l);
+    if (!sub) return null;
+    const k = this.ls, lay = layoutLyric(c, l, st);
+    const ss = subSizeFor(lay.size * k) / k;
+    const sl = layoutLyric(c, sub, { ...st, size: ss, minSize: Math.min(ss, 26 / k) });
+    const dy = lay.rows[lay.rows.length - 1]!.y + subGap(lay.size * k, sl.size * k) / k;
+    return { lay, sub, sl, dy, blockH: lay.size * 0.8 + dy + sl.rows[sl.rows.length - 1]!.y + sl.size * 0.22 };
+  }
+
   /** 公式列：fx 後面是歌詞；沒在唱時是選到那一格的公式。 */
   private drawFormulaBar(c: CanvasRenderingContext2D, t: number, sel: Sel, lyrics: Lyrics) {
+    if (this.fbH > FB.h) {
+      // 展開的公式列蓋在格子上面：紙色的底、下緣一道淡淡的影子（像浮起來的輸入框）
+      const x = FB.x + REF_W + 10, w = FB.w - REF_W - 10;
+      const g = c.createLinearGradient(0, FB.y + this.fbH, 0, FB.y + this.fbH + 18);
+      g.addColorStop(0, rgba('sepia', 0.12)); g.addColorStop(1, rgba('sepia', 0));
+      c.fillStyle = g; c.fillRect(x, FB.y + this.fbH, w, 18);
+      c.fillStyle = rgba('paper'); c.fillRect(x, FB.y, w, this.fbH);
+    }
     c.strokeStyle = rgba('sepia', 0.22); c.lineWidth = 1.5;
     c.strokeRect(FB.x + 0.5, FB.y + 0.5, REF_W, FB.h);
-    c.strokeRect(FB.x + REF_W + 10.5, FB.y + 0.5, FB.w - REF_W - 10, FB.h);
+    c.strokeRect(FB.x + REF_W + 10.5, FB.y + 0.5, FB.w - REF_W - 10, this.fbH);
     c.font = font(F.serif(600, true), 40); c.fillStyle = rgba('sepia', 0.45);
     c.fillText('fx', FX_X + 6, FB.y + FB.h / 2 + 13);
     const k = sel.key;
@@ -412,17 +448,28 @@ export default class Spreadsheet extends Scene {
     c.textAlign = 'left';
     const ly = lyricAt(lyrics, t);
     const maxW = FB.x + FB.w - FB_TEXT_X - 24;
+    void maxW;
     if (ly) {
-      const size = lyricV2(this.msgScreen) / this.ls;
-      const st = { family: F.archivo(100, 700), size, minSize: V2.lyrMin / this.ls, maxWidth: maxW, active: rgba('blood'), sung: rgba('sepia', 0.92), unsung: rgba('sepia', 0.26), lineHeight: 1.1 };
+      const st = this.fbStyle();
       const lay = layoutLyric(c, ly.line, st);
-      c.save(); c.translate(FB_TEXT_X, FB.y + (FB.h - lay.height) / 2 + lay.size * 0.8);
-      drawLyric(c, ly.line, t, st, lay, ly.k);
-      c.restore();
+      const d = this.subLay(c, ly.line, st);
+      if (d) {
+        // 中文＋原文整塊在展開的公式列裡置中；原文照螢幕字級另外畫，比中文安靜（唱到、唱完都是墨色再淡兩成）
+        c.save(); c.translate(FB_TEXT_X, FB.y + (this.fbH - d.blockH) / 2 + lay.size * 0.8);
+        drawLyric(c, ly.line, t, st, { ...lay, sub: undefined } as LyricLayout, ly.k);
+        c.translate(0, d.dy);
+        const q = rgba('sepia', 0.92 * 0.8);
+        drawLyric(c, d.sub, t, { ...st, active: q, sung: q }, d.sl, ly.k);
+        c.restore();
+      } else {
+        c.save(); c.translate(FB_TEXT_X, FB.y + (this.fbH - lay.height) / 2 + lay.size * 0.8);
+        drawLyric(c, ly.line, t, st, lay, ly.k);
+        c.restore();
+      }
     } else {
       const n = Math.ceil(k.formula.length * prog(sel.since, 0, 0.25));
       c.font = font(F.mono(500), 44); c.fillStyle = rgba('sepia', 0.5);
-      c.fillText(k.formula.slice(0, n), FB_TEXT_X, FB.y + FB.h / 2 + 15);
+      c.fillText(k.formula.slice(0, n), FB_TEXT_X, FB.y + this.fbH / 2 + 15);
     }
   }
 }

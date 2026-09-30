@@ -24,7 +24,7 @@ import { F, font, layout, loadText, measure, type TextLayout } from '../engine/t
 import { mixRgba, rgba } from '../engine/palette';
 import { clamp, ease, hash, lerp, mulberry32, prog, pulse, frameIdx, fbm2, TAU } from '../engine/util';
 import type { FitResult } from '../engine/text';
-import { lyricAt, drawLyric, layoutLyric, beatAfter, sparkHead, sparkParticles, heartPoints, COUPLE_ZH, DATE_DOTS } from './_motifs';
+import { lyricAt, drawLyric, layoutLyric, beatAfter, sparkHead, sparkParticles, heartPoints, COUPLE_ZH, DATE_DOTS, lyricSubOf } from './_motifs';
 import { msgMaxFor, lyricV2, sigV2, V2 } from './_v2';
 import {
   sigInk, ink, paper, paperLyric, makeCanvas, freeCanvas, inkStamp, arcText, writeGlyph, beatsIn, barsIn, ensureBake, themeKey, fitMsg, yieldFrame, heartGlyph,
@@ -192,7 +192,9 @@ export default class Passport extends Scene {
     for (const st of [...this.stamps, ...this.drops]) freeCanvas(st.cv);
     const rnd = mulberry32(this.seed * 7 + 13);
     // 原本就在頁上的章：散在左頁的邊邊與右頁（避開大簽證章與官員註記）
-    const pre: [number, number][] = [[770, 40], [40, 990], [1480, 560]];
+    // 韓文歌（有原文副行）：官員註記多一排原文、比較低，左下角那個舊章再往角落塞一點，才不會壓到原文
+    const subDrop = this.ctx.lyrics.linesIn(this.ctx.start, e).some((l) => lyricSubOf(l)) ? 60 : 0;
+    const pre: [number, number][] = [[770, 40], [40 - subDrop * 0.5, 990 + subDrop], [1480, 560]];
     this.stamps = [];
     for (const [i, [x, y]] of pre.entries()) {
       this.stamps.push({ cv: this.smallStamp(i, rnd), x: x + (rnd() - 0.5) * 30, y: y + (rnd() - 0.5) * 30, rot: (rnd() - 0.5) * 0.9, t: -Infinity, alpha: 0.38 + rnd() * 0.2 });

@@ -363,7 +363,10 @@ export default class Campfire extends Scene {
   private carveLyric(c: CanvasRenderingContext2D, hc: CanvasRenderingContext2D, line: Line, t: number, k: number) {
     const S = this.lyrStyle;
     const lay = layoutLyric(c, line, S);
-    const y = LYR.base - (lay.rows.length - 1) * lay.size * (S.lineHeight ?? 1.18) * 0.62;
+    const lh = lay.size * (S.lineHeight ?? 1.18);
+    // 韓文歌：原文副行（drawLyric 畫在中文下面）讓整塊高一截，往上挪一半，兩行一起刻在圓木中間、不貼到木頭下緣
+    const subUp = lay.sub ? (lay.height - lay.size - (lay.rows.length - 1) * lh) * 0.5 : 0;
+    const y = LYR.base - (lay.rows.length - 1) * lh * 0.62 - subUp;
     const groove = rgba('ink', 0.85);
     c.save();
     c.translate(LYR.x - 1.6, y - 1.6);

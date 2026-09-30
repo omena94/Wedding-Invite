@@ -17,7 +17,7 @@ import { LIN, rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, hash } from '../engine/util';
 import { type FitResult } from '../engine/text';
 import type { Line } from '../engine/lyrics';
-import { layoutLyric, drawLyric, fillWithHearts, COUPLE_ZH, type LyricStyle } from './_motifs';
+import { layoutLyric, drawLyric, fillWithHearts, COUPLE_ZH, lyricSubOf, subSizeFor, subGap, type LyricStyle, type LyricLayout } from './_motifs';
 import { grid, windowLines, rrect, pad, pop, renderStage, bodyMaterial, screenMaterial, tableMaterial, backdropMaterial, slab, setV3, mixV, projScale, fitMsgV2, flame, type Grid } from './_t5';
 import { V2, lyricV2, sigV2 } from './_v2';
 import { LineBatch } from '../engine/lines';
@@ -83,6 +83,8 @@ export default class Chat extends Scene {
   lyrBig: LyricStyle = LYRIC_BASE;
   nameSize = 46;
   oldSize = 58;
+  /** 輸入框與主打泡泡下緣（畫布 px）：有原文副行（韓文歌）的窗格輸入框往上長高，放得下中文＋原文。 */
+  inY = IN_Y; inH = IN_H; heroBot = HERO_BOT;
 
   override async init() {
     const { audio: au, lyrics, song, params } = this.ctx;
@@ -115,6 +117,16 @@ export default class Chat extends Scene {
     this.lyrBig = { ...LYRIC_BASE, size: lyricV2(null) / k, minSize: V2.lyrMin / k };
     this.nameSize = sigV2(ms ?? 44) / k;
     this.oldSize = 30 / k;
+    // 原文副行：量這個窗格每一句（大字或小字那一套）中文＋原文要多高，輸入框不夠就往上長（下緣不動）
+    let need = 0;
+    for (const l of this.lines) {
+      if (!lyricSubOf(l)) continue;
+      for (const st of [this.lyr, this.lyrBig]) {
+        const d = this.subLay(c, l, st);
+        if (d) need = Math.max(need, d.blockH + 120);
+      }
+    }
+    if (need > IN_H) { this.inH = Math.ceil(need); this.inY = IN_Y + IN_H - this.inH; this.heroBot = this.inY - 80; }
     if (!this.lines.length) {
       const N = 40;
       for (let k = 0; k < N; k++) this.voice.push(au.env('rms', s + (k / (N - 1)) * (e - s)));
@@ -223,19 +235,19 @@ export default class Chat extends Scene {
     c.fillStyle = rgba('bone', 0.08); c.fillRect(0, 310, CW, 2);
 
     // 主打泡泡（或打字中的三個點）；它的上緣決定舊訊息放哪裡
-    let top = HERO_BOT;
+    let top = this.heroBot;
     if (m && this.fit) {
       const fit = this.fit;
       const k = pop(t, this.tHero, 0.36, 1.6);
-      const y = HERO_BOT - this.heroH;
+      const y = this.heroBot - this.heroH;
       top = y - 40;
-      if (t >= g.b0 && t < this.tHero) this.dots(c, PX, HERO_BOT - 150, t, g.b0);
+      if (t >= g.b0 && t < this.tHero) this.dots(c, PX, this.heroBot - 150, t, g.b0);
       if (k > 0) {
         c.save();
-        c.translate(PX, HERO_BOT); c.scale(k, k); c.translate(-PX, -HERO_BOT);
+        c.translate(PX, this.heroBot); c.scale(k, k); c.translate(-PX, -this.heroBot);
         c.globalAlpha = clamp(k * 2);
         c.fillStyle = mixRgba('ink2', 'graphite', 0.55); rrect(c, PX, y, this.heroW, this.heroH, 56); c.fill();
-        c.beginPath(); c.moveTo(PX + 4, HERO_BOT - 50); c.quadraticCurveTo(PX - 8, HERO_BOT, PX - 26, HERO_BOT + 4); c.quadraticCurveTo(PX + 26, HERO_BOT + 4, PX + 56, HERO_BOT - 4); c.fill();
+        c.beginPath(); c.moveTo(PX + 4, this.heroBot - 50); c.quadraticCurveTo(PX - 8, this.heroBot, PX - 26, this.heroBot + 4); c.quadraticCurveTo(PX + 26, this.heroBot + 4, PX + 56, this.heroBot - 4); c.fill();
         c.font = font(F.hand(400), fit.size); c.fillStyle = rgba('bone', 0.97);
         fit.lines.forEach((ln, i) => fillWithHearts(c, ln, PX + 42, y + 30 + fit.size * 0.92 + i * fit.lineHeight));
         // 署名：泡泡裡、最後一行下面、靠右（v2 的署名字級）
@@ -243,14 +255,14 @@ export default class Chat extends Scene {
         c.fillText(sigText(m), PX + this.heroW - 40, y + 30 + fit.height + fit.size * 0.3 + this.nameSize * 1.1);
         c.textAlign = 'left';
         c.restore();
-      } else top = HERO_BOT - 220;
+      } else top = this.heroBot - 220;
     } else {
       // 沒有留言：中間一行很淡的邀請
       c.font = font(F.hei(500), 46); c.fillStyle = rgba('bone', 0.4); c.textAlign = 'center';
-      c.fillText('掃描右下角 QR code 加入聊天', CW / 2, HERO_BOT - 360);
-      c.fillText('你的話會出現在這裡', CW / 2, HERO_BOT - 290);
+      c.fillText('掃描右下角 QR code 加入聊天', CW / 2, this.heroBot - 360);
+      c.fillText('你的話會出現在這裡', CW / 2, this.heroBot - 290);
       c.textAlign = 'left';
-      top = HERO_BOT - 440;
+      top = this.heroBot - 440;
     }
     // 上面的舊訊息（很淡、小）
     c.save();
@@ -280,13 +292,28 @@ export default class Chat extends Scene {
     c.restore();
 
     // 輸入框：今晚的歌正在輸入（歌詞）
-    c.fillStyle = mixRgba('ink', 'ink2', 0.3); c.fillRect(0, IN_Y - 90, CW, CH - IN_Y + 90);
+    c.fillStyle = mixRgba('ink', 'ink2', 0.3); c.fillRect(0, this.inY - 90, CW, CH - this.inY + 90);
     c.font = font(F.hei(500), 40); c.fillStyle = rgba('bone', 0.4);
-    c.fillText(this.lines.length ? `♪ ${song.title || '今晚的歌'} 正在輸入…` : `♪ ${song.title || '今晚的歌'} 錄音中`, PX + 10, IN_Y - 30);
-    c.fillStyle = rgba('bone', 0.07); rrect(c, PX - 10, IN_Y, CW - 2 * PX + 20, IN_H, 60); c.fill();
+    c.fillText(this.lines.length ? `♪ ${song.title || '今晚的歌'} 正在輸入…` : `♪ ${song.title || '今晚的歌'} 錄音中`, PX + 10, this.inY - 30);
+    c.fillStyle = rgba('bone', 0.07); rrect(c, PX - 10, this.inY, CW - 2 * PX + 20, this.inH, 60); c.fill();
     if (this.lines.length) this.typed(c, t, !m);
     else this.recording(c, t);
     void lyrics; void pad; void hash;
+  }
+
+  /**
+   * 原文副行的排版（畫布 px）：drawLyric 自動畫的原文字級是照畫布 px 算的，手機螢幕在畫面上縮得很小，會小到看不清楚，
+   * 所以照「畫面上」的主行字級算原文字級（subSizeFor(主行 × sc) ÷ sc），自己排、自己畫。blockH = 中文字頂到原文字底。
+   */
+  private subLay(c: CanvasRenderingContext2D, l: Line, st: LyricStyle) {
+    const sub = lyricSubOf(l);
+    if (!sub) return null;
+    const k = this.sc, lay = layoutLyric(c, l, st);
+    const ss = subSizeFor(lay.size * k) / k;
+    const sl = layoutLyric(c, sub, { ...st, size: ss, minSize: Math.min(ss, 26 / k), tracking: (st.tracking ?? 0) * 0.5 });
+    const dy = lay.rows[lay.rows.length - 1]!.y + subGap(lay.size * k, sl.size * k) / k;
+    const blockH = lay.size * 0.8 + dy + sl.rows[sl.rows.length - 1]!.y + sl.size * 0.22;
+    return { lay, sub, sl, dy, blockH };
   }
 
   /** 輸入框裡的歌詞：唱到哪打到哪；換句時舊的往上飄走淡掉。 */
@@ -297,14 +324,25 @@ export default class Chat extends Scene {
     let cur = -1;
     this.lines.forEach((l, i) => { if (l.start - 0.35 <= t) cur = i; });
     const draw = (l: Line, dy: number, a: number) => {
+      const d = this.subLay(c, l, st);
+      if (d) {
+        // 有原文：中文＋原文整塊在輸入框裡置中；主行不讓 drawLyric 自動畫原文（字太小），原文另外照畫面字級畫、比中文安靜
+        const base = this.inY + (this.inH - d.blockH) / 2 + d.lay.size * 0.8;
+        c.save(); c.globalAlpha = a; c.translate(PX + 45, base + dy);
+        drawLyric(c, l, t, { ...st, ...colors }, { ...d.lay, sub: undefined } as LyricLayout, 1);
+        c.translate(0, d.dy);
+        drawLyric(c, d.sub, t, { ...st, active: rgba('bone', 0.95 * 0.8), sung: rgba('bone', 0.95 * 0.8), unsung: colors.unsung }, d.sl, 1);
+        c.restore();
+        return;
+      }
       const lay = layoutLyric(c, l, st);
-      const base = IN_Y + (lay.rows.length > 1 ? IN_H / 2 - lay.size * 0.2 : IN_H / 2 + lay.size * 0.36);
+      const base = this.inY + (lay.rows.length > 1 ? this.inH / 2 - lay.size * 0.2 : this.inH / 2 + lay.size * 0.36);
       c.save(); c.globalAlpha = a; c.translate(PX + 45, base + dy);
       drawLyric(c, l, t, { ...st, ...colors }, lay, 1);
       c.restore();
     };
     c.save();
-    c.beginPath(); c.rect(0, IN_Y - 60, CW, IN_H + 60); c.clip();
+    c.beginPath(); c.rect(0, this.inY - 60, CW, this.inH + 60); c.clip();
     if (cur >= 0) {
       const l = this.lines[cur]!;
       const tin = l.start - 0.35;
@@ -314,7 +352,7 @@ export default class Chat extends Scene {
       draw(l, (1 - prog(t, tin + 0.08, tin + 0.32, ease.outCubic)) * 50, prog(t, tin + 0.08, tin + 0.26));
     } else {
       c.font = font(F.hei(400), 60); c.fillStyle = rgba('bone', 0.25);
-      c.fillText('…', PX + 45, IN_Y + IN_H / 2 + 20);
+      c.fillText('…', PX + 45, this.inY + this.inH / 2 + 20);
     }
     c.restore();
   }
@@ -325,15 +363,15 @@ export default class Chat extends Scene {
     const p = prog(t, s, e);
     const on = ((t - g.b0) / g.beat) % 1 < 0.5;
     c.fillStyle = rgba('signal', on ? 0.95 : 0.35);
-    c.beginPath(); c.arc(PX + 80, IN_Y + IN_H / 2, 22, 0, Math.PI * 2); c.fill();
+    c.beginPath(); c.arc(PX + 80, this.inY + this.inH / 2, 22, 0, Math.PI * 2); c.fill();
     const N = this.voice.length, x0 = PX + 140, x1 = CW - PX - 180, step = (x1 - x0) / N;
     for (let i = 0; i < N; i++) {
       const hh = 16 + 160 * Math.pow(this.voice[i]!, 0.8);
       c.fillStyle = i / N < p ? rgba('bone', 0.85) : rgba('bone', 0.25);
-      rrect(c, x0 + i * step, IN_Y + IN_H / 2 - hh / 2, step * 0.5, hh, 6); c.fill();
+      rrect(c, x0 + i * step, this.inY + this.inH / 2 - hh / 2, step * 0.5, hh, 6); c.fill();
     }
     c.font = font(F.mono(500), 46); c.fillStyle = rgba('bone', 0.6);
-    c.fillText(`0:${pad(Math.max(0, t - s), 2)}`, x1 + 30, IN_Y + IN_H / 2 + 16);
+    c.fillText(`0:${pad(Math.max(0, t - s), 2)}`, x1 + 30, this.inY + this.inH / 2 + 16);
   }
 
   /** 打字中的三個點：每個八分音符輪到下一個點跳起來。 */

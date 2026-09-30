@@ -15,7 +15,7 @@ import { F, font } from '../engine/type';
 import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, hash, mulberry32, lerp, pulse } from '../engine/util';
 import { Lyrics, type Line, type Word } from '../engine/lyrics';
-import { lyricAt, COUPLE_ZH } from './_motifs';
+import { lyricAt, COUPLE_ZH, lyricSubOf, layoutLyric, subStyleFor, subGap, drawLyricSub } from './_motifs';
 import { grid, stagger, layoutRows, drawRows, type Grid, type KaraokeInk } from './_t4';
 import { PlaneCam, camUniforms, CAM_GLSL } from './_t14';
 import { loadAll, sigOf, t21Grain, GRAIN_GLSL, glyphMask, groupLine, block, T21_INVITE, type Block, type TGlyph, type TGroup, type GlyphMask, type Rect } from './_t21';
@@ -31,6 +31,8 @@ const FAM = F.hand(700);
 const FAM_PEN = F.hand(400);
 /** 沒有留言時兩行輪流刷歌詞（中心 y）。 */
 const BANDS = [470, 640];
+/** 有韓文原文副行的窗格：每句下面多一行鉛筆小字，兩行拉開（下面那行離邀請還有 60 px）。 */
+const BANDS_SUB = [440, 660];
 /** 花束綁起來的地方（花莖從這裡長上去）。 */
 const TIE = { x: 1330, y: 800 };
 /** 鏡頭整段的縮放在 0.97～1.0：頁面 px ≈ 螢幕 px。 */
@@ -197,7 +199,7 @@ const BG = () => new FSPass(/* glsl */ `
 /** 一道筆刷：起訖 x、中心 y、半寬；t0～t1 從起點刷到終點（留言）或跟著歌聲（歌詞）。 */
 interface Stroke { x0: number; x1: number; y: number; hw: number; t0: number; t1: number; seed: number }
 /** 沒有留言時一句歌詞：留白膠的字模、一道筆刷、每個字的位置（筆刷跟著歌聲走）。 */
-interface LineSet { line: Line; mask: GlyphMask; stroke: Stroke; words: { x: number; w: number; word: Word }[]; cy: number }
+interface LineSet { line: Line; mask: GlyphMask; stroke: Stroke; words: { x: number; w: number; word: Word }[]; cy: number; sub: { line: Line; y: number; size: number } | null }
 /** 一個暈開的色塊：中心、半徑、長寬比、角度、花瓣數（0 = 葉子、-1 = 顏料點）、顏色、時間。 */
 interface Blob { x: number; y: number; r: number; asp: number; rot: number; pet: number; kind: number; t: number }
 /** 一枝花莖：從綁口長到花（二次曲線），長到的時間。 */
@@ -229,6 +231,9 @@ export default class Watercolor extends Scene {
   override async init() {
     const { audio: au, lyrics } = this.ctx;
     const s = this.ctx.start, e = this.ctx.end, m = this.msg;
+    // 原文副行在 await 之前先拿：引擎只在呼叫 init 前設好這一格的開關，等字型的時候別的窗格可能改掉
+    const subOf = new Map(lyrics.linesIn(s - 1, e).map((l) => [l, lyricSubOf(l)] as const));
+    const hasSub = [...subOf.values()].some(Boolean);
     await loadAll(this.ctx, this.names);
     const g = (this.g = grid(au, s, e));
     this.hasLyrics = lyrics.linesIn(s, e).length > 0;
@@ -258,8 +263,20 @@ export default class Watercolor extends Scene {
       lyrics.linesIn(s - 1, e).forEach((line) => {
         const idx = all.indexOf(line);
         const lay = layoutRows(c, line, { family: FAM, size: V2.lyrMax / K, minSize: V2.lyrMin / K, maxW: MSG_BOX.w, maxRows: 2, align: 'left', lineHeight: 1.24 });
-        const cy = BANDS[idx % 2]!;
+        // 原文副行：鉛筆小字寫在這一道筆刷正下方的紙上；中文＋原文一起置中在這一行，筆刷只刷中文
+        const subLine = subOf.get(line) ?? null;
+        let sub: LineSet['sub'] = null, hh = lay.height;
+        if (subLine) {
+          const sl = layoutLyric(c, subLine, subStyleFor({ family: FAM_PEN, size: lay.size, maxWidth: MSG_BOX.w, align: 'left' }, lay.size));
+          // 筆刷比字多刷出去 0.2 個字高、邊緣又是毛的：原文再往下讓一點，才不會被顏料蓋到上緣
+          const gap = (lay.rows.length - 1) * lay.lineHeight + subGap(lay.size, sl.size) + lay.size * 0.25;
+          sub = { line: subLine, y: gap, size: lay.size };
+          hh = lay.size + gap + (sl.height - sl.size);
+        }
+        const band = (hasSub ? BANDS_SUB : BANDS)[idx % 2]!;
+        const cy = band - (hh - lay.height) / 2;
         const y0 = cy - lay.height / 2 + lay.size * 0.8;
+        if (sub) sub.y += y0;
         const glyphs: TGlyph[] = [];
         const words = lay.words.map((pw) => {
           glyphs.push({ ch: pw.word.w, x: MSG_BOX.x + pw.x, y: y0 + pw.y, w: pw.w, size: lay.size, family: FAM, g: 0 });
@@ -269,10 +286,10 @@ export default class Watercolor extends Scene {
         const mask = this.track(glyphMask(glyphs, [], 2, 6, 40, 0, Math.max(1, lay.size * 0.018), true));
         const x0 = Math.min(...words.map((w) => w.x)) - 40, x1 = Math.max(...words.map((w) => w.x + w.w)) + 46;
         const stroke = { x0, x1, y: cy, hw: Math.max(lay.height * 0.5 + lay.size * 0.2, lay.size * 0.66), t0: line.start - 0.3, t1: line.end, seed: 1 + 13.7 * hash(this.seed, idx, 3) };
-        this.lines.push({ line, mask, stroke, words, cy });
+        this.lines.push({ line, mask, stroke, words, cy, sub });
       });
       this.lyrY = 800;
-      this.avoid = [[MSG_BOX.x - 20, 380, MSG_BOX.w + 40, 360]];
+      this.avoid = [hasSub ? [MSG_BOX.x - 20, 340, MSG_BOX.w + 40, 410] : [MSG_BOX.x - 20, 380, MSG_BOX.w + 40, 360]];
     } else {
       // 純音樂又沒有留言：一筆刷出新人的名字（60 px）
       const size = V2.msgMax / K;
@@ -416,6 +433,8 @@ export default class Watercolor extends Scene {
       u[`m${S}`]!.value = m.tex;
       (u[`r${S}`]!.value as THREE.Vector4).set(...m.rect);
     };
+    /** 要寫原文副行的句子與它的淡入淡出（跟著中文那一句）。 */
+    let subs: [LineSet | null, number][] = [];
     if (this.lines.length) {
       // 兩行輪流：現在這一句 A、上一句 B；上一句在它那一行要換下一句之前 0.5 秒淡掉
       const k = this.curLine(t);
@@ -426,6 +445,8 @@ export default class Watercolor extends Scene {
       bindMask('B', prev?.mask ?? null, kb);
       if (k >= 0) put(cur.stroke, this.lyricFront(cur, t), cur.line.end + 0.35);
       if (prev) put(prev.stroke, this.lyricFront(prev, t), prev.line.end + 0.35, kb);
+      // 原文在筆刷刷過來的時候一起出現（筆刷提早 0.3 秒起筆）
+      subs = [[cur, clamp((t - (cur.line.start - 0.35)) / 0.35)], [prev, kb]];
     } else {
       bindMask('A', this.mask, 1);
       bindMask('B', null, 0);
@@ -461,6 +482,13 @@ export default class Watercolor extends Scene {
       }
       if (this.msg.couple) this.small(c, 'FROM THE COUPLE  ·  新人', MSG_BOX.x, b.box[1] - 30, F.mono(500), 17, 5, rgba('blood', 0.8));
     } else {
+      // 原文副行：鉛筆字（跟署名、邀請同一支筆），唱到的變深
+      for (const [ls, k] of subs) {
+        if (!ls?.sub || k <= 0) continue;
+        c.save(); c.translate(MSG_BOX.x, ls.sub.y);
+        drawLyricSub(c, ls.sub.line, t, { family: FAM_PEN, size: ls.sub.size, maxWidth: MSG_BOX.w, align: 'left', sung: graphite, unsung: rgba('graphite', 0.3) }, ls.sub.size, k);
+        c.restore();
+      }
       this.small(c, T21_INVITE, MSG_BOX.x, this.lyrY, F.hei(500), 22, 3, rgba('graphite', 0.75));
       if (!this.hasLyrics) this.small(c, `♪  ${song.title}${song.artist ? '  ·  ' + song.artist : ''}`, MSG_BOX.x, this.lyrY + 40, F.mono(500), 17, 4);
     }

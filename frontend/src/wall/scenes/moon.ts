@@ -20,7 +20,7 @@ import { HEX, LIN, rgba } from '../engine/palette';
 import { clamp, ease, prog, lerp, smoothstep, polylineLengths, pointAtLength, TAU, type V2 } from '../engine/util';
 import { fitText, charCount } from '../engine/text';
 import type { Line } from '../engine/lyrics';
-import { sparkHead, sparkParticles, lyricAt, beatAfter, signature, drawHeart, COUPLE_ZH, DATE_DOTS } from './_motifs';
+import { sparkHead, sparkParticles, lyricAt, beatAfter, signature, drawHeart, COUPLE_ZH, DATE_DOTS, lyricSubOf, subSizeFor, subGap } from './_motifs';
 import { glyphStates, glyphColor, alongPath, no3, INVITE_SMALL, preloadText, fitWithSig, type PathGlyph } from './_t19';
 import { V2 as STD, msgMaxFor, lyricV2, sigV2, fitClauses } from './_v2';
 import { FRAG_MOON } from './moon-glsl';
@@ -53,8 +53,8 @@ const BG = () => new FSPass(FRAG_MOON, {
 
 /** 月面上的一個字：位置、字族、字級、顏色、第幾個出現。 */
 interface MoonGlyph { ch: string; x: number; y: number; w: number; fam: string; size: number; col: 'sepia' | 'rose'; a: number; order: number; spacing?: number }
-/** 排在軌道上的一行字（可能折成兩列）。 */
-interface ArcLyric { size: number; rows: { glyphs: PathGlyph[]; off: number }[] }
+/** 排在軌道上的一行字（可能折成兩列）；sub 是原文副行（韓文歌），掛在軌道虛線下面。 */
+interface ArcLyric { size: number; rows: { glyphs: PathGlyph[]; off: number }[]; sub?: { line: Line; size: number; glyphs: PathGlyph[]; off: number } }
 
 /** 橢圓軌道（偏移 off px，正的往外）從左到右經過下緣的折線。 */
 function orbitPts(off: number, n = 280): V2[] {
@@ -421,7 +421,7 @@ export default class Moon extends Scene {
   private arcFor(c: CanvasRenderingContext2D, line: Line): ArcLyric {
     let a = this.arcCache.get(line.i);
     // 歌詞：有留言時比留言小一級，沒有留言時歌詞就是焦點、大一點
-    if (!a) { a = this.arcLayout(c, line.text, line, lyricV2(this.msgSize)); this.arcCache.set(line.i, a); }
+    if (!a) { a = this.arcLayout(c, line.text, line, lyricV2(this.msgSize), lyricSubOf(line)); this.arcCache.set(line.i, a); }
     return a;
   }
 
@@ -429,7 +429,7 @@ export default class Moon extends Scene {
    * 把一行字沿著軌道下緣排：先縮字級（到 48）讓它放得進 x 150～1300；還是放不下就在中間附近的字之間折兩列，
    * 第一列站在軌道上、第二列掛在軌道下面。每列以月亮正下方為中心，碰到邊界就推回來。
    */
-  private arcLayout(c: CanvasRenderingContext2D, text: string, line: Line | null, size0: number): ArcLyric {
+  private arcLayout(c: CanvasRenderingContext2D, text: string, line: Line | null, size0: number, sub: Line | null = null): ArcLyric {
     const width = (s: string, size: number) => { c.font = font(LYR_FAM, size); let w = 0; for (const ch of s) w += c.measureText(ch).width; return w; };
     const room = (off: number) => { const p = orbitPts(off), L = polylineLengths(p); return { p, L, lo: sAtX(p, L, LYR_X0), hi: sAtX(p, L, LYR_X1), mid: sAtX(p, L, C.x) }; };
     const r1 = room(-18);
@@ -442,7 +442,17 @@ export default class Moon extends Scene {
       const s0 = clamp(r.mid - w / 2, r.lo, Math.max(r.lo, r.hi - w));
       return alongPath(c, s, LYR_FAM, size, r.p, s0).map((g) => ({ ...g, i: g.i + from }));
     };
-    if (width(text, size) <= r1.hi - r1.lo + 1 || !line || line.words.length < 2) return { size, rows: [{ glyphs: place(text, -18, 0), off: -18 }] };
+    // 原文副行：中文站在軌道虛線上面、原文掛在虛線下面（小一號，基線離中文最後一列 subGap），同樣沿著軌道、以月亮正下方為中心
+    const withSub = (arc: ArcLyric): ArcLyric => {
+      if (!sub) return arc;
+      const ss = subSizeFor(size), off = arc.rows[arc.rows.length - 1]!.off + Math.round(subGap(size, ss));
+      const r = room(off), w = width(sub.text, ss);
+      let sz = ss;
+      if (w > r.hi - r.lo) sz = Math.max(26, (ss * (r.hi - r.lo)) / w);
+      const s0 = clamp(r.mid - width(sub.text, sz) / 2, r.lo, Math.max(r.lo, r.hi - width(sub.text, sz)));
+      return { ...arc, sub: { line: sub, size: sz, glyphs: alongPath(c, sub.text, LYR_FAM, sz, r.p, s0), off } };
+    };
+    if (width(text, size) <= r1.hi - r1.lo + 1 || !line || line.words.length < 2) return withSub({ size, rows: [{ glyphs: place(text, -18, 0), off: -18 }] });
     // 折兩列：挑讓兩列最長的那列最短的斷點（在字與字之間）
     let best = 1, bestW = Infinity;
     for (let k = 1; k < line.words.length; k++) {
@@ -453,6 +463,11 @@ export default class Moon extends Scene {
     const o = line.words[best]!.o;
     const a = text.slice(0, o).trimEnd(), b = text.slice(o);
     const off2 = Math.round(size * 1.02);
+    // 有原文時兩列中文都站在虛線上面（第一列往月亮那邊抬一行），原文才放得進虛線下面、不會掉到畫面底下
+    if (sub) {
+      const up = -18 - Math.round(size * 1.12);
+      return withSub({ size, rows: [{ glyphs: place(a, up, 0), off: up }, { glyphs: place(b, -18, Array.from(text.slice(0, o)).length), off: -18 }] });
+    }
     return { size, rows: [{ glyphs: place(a, -18, 0), off: -18 }, { glyphs: place(b, off2, Array.from(text.slice(0, o)).length), off: off2 }] };
   }
 
@@ -479,6 +494,19 @@ export default class Moon extends Scene {
           const ca = Math.cos(g.a), sa = Math.sin(g.a), along = (p - 0.5) * g.w;
           head = { x: g.x + ca * along + row.off * sa, y: g.y + sa * along - row.off * ca };
         }
+      }
+    }
+    // 原文副行：比中文安靜——唱到、唱完都是紙白再淡兩成（不用訊號色、不發光、沒有火花），還沒唱的一樣三成
+    if (arc.sub) {
+      const ss = glyphStates(arc.sub.line, t);
+      c.font = font(LYR_FAM, arc.sub.size);
+      for (const g of arc.sub.glyphs) {
+        if (g.ch === ' ') continue;
+        const p = ss[g.i]?.p ?? 0;
+        c.save(); c.translate(g.x, g.y); c.rotate(g.a);
+        c.fillStyle = p > 0 ? rgba('bone', 0.96 * 0.8 * alpha) : glyphColor(0, false, alpha);
+        c.fillText(g.ch, -g.w / 2, 0);
+        c.restore();
       }
     }
     if (head && alpha > 0.3) {

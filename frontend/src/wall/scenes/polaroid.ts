@@ -17,8 +17,8 @@ import { FSPass, Layer2D, makeRT } from '../engine/gl';
 import { F, font, layout } from '../engine/type';
 import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, hash, mulberry32, pulse, lerp } from '../engine/util';
-import { Lyrics } from '../engine/lyrics';
-import { lyricAt, drawHeart, COUPLE_ZH, DATE_DOTS } from './_motifs';
+import { Lyrics, type Line } from '../engine/lyrics';
+import { lyricAt, drawHeart, COUPLE_ZH, DATE_DOTS, lyricSubOf, subSizeFor } from './_motifs';
 import { grid, layoutRows, Stage, camDist, type Grid, type V3 } from './_t4';
 import { loadAll, t21Grain, GRAIN_GLSL, block, glyphPath, type Block, type Rect } from './_t21';
 import { V2, lyricV2 } from './_v2';
@@ -33,6 +33,8 @@ const MAIN = { x: -540, y: 30, rot: -0.03 };
 /** 標籤帶（紙面 px）：一條一行，長的歌詞用兩條；貼在相片右邊、靠上（開場的鏡頭與全景都看得到，也離 HUD 遠）。 */
 const TW = 560, TH = 84;
 const TAPE = [{ x: -200 + TW / 2, y: 330 }, { x: -172 + TW / 2, y: 236 }];
+/** 韓文原文副行的帶子（窄一點；長的原文一樣折成兩條）：貼在最後一條中文的正下方，跟上下兩條一樣錯開一點點。 */
+const TH_SUB = 62;
 /**
  * 散在桌上的其他拍立得：第一張開場就在（右上）；之後的一張一張丟上來——留言那張的右下（一角塞在它底下、下緣出血到畫面外）、
  * 右邊、最右邊。都不蓋到標籤帶；右下角 HUD 底下要是乾淨的桌布（init() 再用鏡頭檢查一次，壓到就往左上收）。
@@ -125,7 +127,15 @@ function makeRig() {
   // 相片（半透明的材質）會排在不透明的東西後面畫：相機也標成半透明、排在相片之後，才蓋得住還沒吐出來的那一段
   for (const m of [shell, plate, lens, glass, slot, flash, finder]) { m.frustumCulled = false; m.renderOrder = 10; (m.material as THREE.Material).transparent = true; }
   st.scene.add(body);
-  return { photo, st, photoM, photoMesh, pile, tapes, body };
+  // 韓文原文副行的標籤帶（窄一點的帶子、小一號的凸字）：只有這一格有原文時才看得到（整個舞台共用，平常藏著）
+  const subTapes = [0, 1].map(() => {
+    const rt = makeRT(TW * 1.5, TH_SUB * 1.5, { depthBuffer: false, generateMipmaps: true, minFilter: THREE.LinearMipmapLinearFilter });
+    const mat = st.docMaterial(rt.texture, [rt.width, rt.height], [TW, TH_SUB], { radius: 3, edge: 0.6 });
+    const mesh = st.docMesh(mat, TW, TH_SUB, 0, 0, 2.5);
+    mesh.visible = false;
+    return { rt, mat, mesh };
+  });
+  return { photo, st, photoM, photoMesh, pile, tapes, body, subTapes };
 }
 
 // ---------------------------------------------------------------- 手繪插畫（線條＋淡彩，不是照片）
@@ -227,6 +237,11 @@ export default class Polaroid extends Scene {
   /** 右上那一堆的白邊沒有字：一張空的圖層。 */
   blank = this.track(new Layer2D(8, 8, 1, { fast: true }));
   tapeL = [0, 1].map(() => this.track(new Layer2D(TW, TH, undefined, { fast: true })));
+  /** 這一格有韓文原文時，原文那一條標籤帶的圖層（建構時就看：引擎只在建立這一格之前設好開關）。 */
+  subL = this.ctx.lyrics.linesIn(this.ctx.start - 1, this.ctx.end + 1).some((l) => !!lyricSubOf(l)) ? [0, 1].map(() => this.track(new Layer2D(TW, TH_SUB, undefined, { fast: true }))) : null;
+  /** 標籤帶這一格印的是哪一句（原文那一條跟著它）。 */
+  private tapeLine: Line | null = null;
+  private tapeLaySize = 52;
   ill: THREE.CanvasTexture | null = null;
   illCv: HTMLCanvasElement | null = null;
   msg: Msg | null = this.ctx.params.message ?? null;
@@ -433,6 +448,16 @@ export default class Polaroid extends Scene {
       tp.mesh.position.set(TAPE[i]!.x, TAPE[i]!.y, 1.5 + i * 0.5);
       tp.mesh.rotation.set(0, 0, i ? -0.018 : 0.022);
     });
+    // 原文那一條：貼在最後一條中文的正下方（左緣再錯開一點點、角度跟上一條相反）
+    const subRows = this.subL && rows > 0 ? this.subTape(t) : 0;
+    R.subTapes.forEach((tp, i) => {
+      tp.mesh.visible = i < subRows;
+      if (i >= subRows) return;
+      comp.draw(renderer, this.subL![i]!.upload(), tp.rt, { mode: 'replace' });
+      const last = TAPE[rows - 1]!;
+      tp.mesh.position.set(last.x + 22 + i * 18, last.y - (TH + TH_SUB) / 2 - 10 - i * (TH_SUB + 8), 2.5 + i * 0.3);
+      tp.mesh.rotation.set(0, 0, (rows + i) % 2 ? 0.014 : -0.016);
+    });
 
     // ---- 舞台
     const p = this.photoPose(t);
@@ -470,6 +495,7 @@ export default class Polaroid extends Scene {
    */
   private tape(t: number): number {
     const { lyrics, song } = this.ctx;
+    this.tapeLine = null;
     // 標籤帶是實體的東西，兩句之間不會變空白：留著上一句（唱完的字），下一句提早 0.35 秒換上
     const shown = lyricAt(lyrics, t)?.line ?? lyrics.shownLine(t, 1e4, 0.35) ?? lyrics.nextLine(t);
     const ly = shown ? { line: shown, k: 1 } : null;
@@ -498,6 +524,7 @@ export default class Polaroid extends Scene {
       return 1;
     }
     const lay = layoutRows(this.tapeL[0]!.ctx, ly.line, { family: FAM_TAPE, size: this.tapeSize, minSize: V2.lyrMin / this.K, maxW: TW - 44, maxRows: 2, align: 'left' });
+    this.tapeLine = ly.line; this.tapeLaySize = lay.size;
     const rows = Math.max(1, lay.rows.length);
     for (let r = 0; r < rows; r++) {
       const L = this.tapeL[r]!; L.clear(); const c = L.ctx; paint(c);
@@ -515,6 +542,35 @@ export default class Polaroid extends Scene {
     return rows;
   }
 
+  /**
+   * 原文的標籤帶：同樣的深色帶子、同樣的凸字，字小一號（v2 的字級是螢幕 px，換成相片 px），長的原文一樣折成兩條；
+   * 唱到、唱完都是白字淡兩成（不用訊號色，不跟中文搶），還沒唱三成；逐字時間是原文自己的。
+   * 回傳用了幾條（這一句沒有原文是 0，帶子收起來）。
+   */
+  private subTape(t: number): number {
+    const sub = lyricSubOf(this.tapeLine);
+    if (!sub || !this.subL) return 0;
+    const size = subSizeFor(this.tapeLaySize * this.K) / this.K;
+    const lay = layoutRows(this.subL[0]!.ctx, sub, { family: FAM_TAPE, size, minSize: Math.min(size, 30 / this.K), maxW: TW - 44, maxRows: 2, align: 'left' });
+    const rows = Math.min(2, Math.max(1, lay.rows.length));
+    for (let r = 0; r < rows; r++) {
+      const L = this.subL[r]!; L.clear(); const c = L.ctx;
+      c.fillStyle = mixRgba('blood', 'ink', 0.35); c.fillRect(0, 0, TW, TH_SUB);
+      c.fillStyle = rgba('bone', 0.06); c.fillRect(0, 4, TW, 2); c.fillRect(0, TH_SUB - 6, TW, 2);
+      c.font = font(FAM_TAPE, lay.size); c.textBaseline = 'alphabetic';
+      const y = TH_SUB / 2 + lay.size * 0.36;
+      for (const pw of lay.words) {
+        if (Math.abs(pw.y - lay.rows[r]!.y) > 1) continue;
+        const k = Lyrics.wordProgress(pw.word, t);
+        c.globalAlpha = k > 0 ? 0.8 : 1;
+        c.fillStyle = rgba('ink', 0.5); c.fillText(pw.word.w, 22 + pw.x + 1, y + 2);
+        c.fillStyle = k > 0 ? rgba('bone', 0.95) : rgba('bone', 0.3); c.fillText(pw.word.w, 22 + pw.x, y);
+      }
+      c.globalAlpha = 1;
+    }
+    return rows;
+  }
+
   private docRect([x, y, w, h]: Rect, p: { x: number; y: number; z: number; rot: number }): Rect {
     const st = this.rig.st, cs = Math.cos(p.rot), sn = Math.sin(p.rot);
     const ps = [[x, y], [x + w, y], [x, y + h], [x + w, y + h]].map(([u, v]) => {
@@ -526,7 +582,9 @@ export default class Polaroid extends Scene {
   }
   private tapeRect(): Rect {
     const st = this.rig.st;
-    const a = st.toScreen([TAPE[0]!.x - TW / 2, TAPE[0]!.y + TH / 2, 1]), b = st.toScreen([TAPE[1]!.x + TW / 2, TAPE[1]!.y - TH / 2, 1]);
+    // 有韓文原文時下面多兩條窄帶子
+    const extra = this.subL ? 2 * (TH_SUB + 8) + 10 : 0;
+    const a = st.toScreen([TAPE[0]!.x - TW / 2, TAPE[0]!.y + TH / 2, 1]), b = st.toScreen([TAPE[1]!.x + TW / 2 + (this.subL ? 40 : 0), TAPE[1]!.y - TH / 2 - extra, 1]);
     return [Math.min(a.x, b.x), Math.min(a.y, b.y), Math.abs(b.x - a.x), Math.abs(b.y - a.y)];
   }
 

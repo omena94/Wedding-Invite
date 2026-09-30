@@ -17,7 +17,7 @@ import { LIN, rgba } from '../engine/palette';
 import { clamp, ease, lerp, prog, mulberry32 } from '../engine/util';
 import { Lyrics, type Line } from '../engine/lyrics';
 import type { FitResult } from '../engine/text';
-import { sparkHead, sparkParticles, beatAfter, barAfter, signature, drawMessage, COUPLE_ZH } from './_motifs';
+import { sparkHead, sparkParticles, beatAfter, barAfter, signature, drawMessage, COUPLE_ZH, lyricSubOf, subSizeFor, subGap } from './_motifs';
 import { TAIWAN, VENUE, beatsIn, inOut, ScreenRig, loadPlateText } from './_t6';
 import { fitText } from '../engine/text';
 import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 } from './_v2';
@@ -100,7 +100,8 @@ const dot = (a: V3, b: V3) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 
 interface Arc { from: V3; t0: number; ang: number }
 interface Globe { lonC: number; latC: number; r: number; cx: number; cy: number; push: number }
-interface Crawl { lines: { line: Line; x: number; w: number; words: { x: number; w: number }[] }[]; total: number }
+/** 跑馬燈的帶子；有韓文原文時多一條原文軌：sx 是這一句的原文在原文軌上的位置（原文軌有自己的讀頭，字小、跑得慢一點）。 */
+interface Crawl { lines: { line: Line; x: number; w: number; words: { x: number; w: number }[]; sx: number; sub?: { line: Line; w: number; words: { x: number; w: number }[] } }[]; total: number }
 
 export default class News extends Scene {
   bg = shared('news.bg', BG);
@@ -126,6 +127,8 @@ export default class News extends Scene {
   arcs: Arc[] = [];
   crawl: Crawl = { lines: [], total: 0 };
   idleW = 0;
+  /** 跑馬燈的高度；有韓文原文時多一條小一號的原文軌（字級、跟中文基線的距離，電視訊號座標）。 */
+  tkH = TK.h; subSize = 0; subDy = 0;
   /** 經緯線（經緯度點列，每格旋轉投影）。 */
   private grid: V3[][] = [];
   private fine: V3[][] = [];
@@ -135,6 +138,8 @@ export default class News extends Scene {
   override async init() {
     const { audio: au, lyrics, song } = this.ctx;
     const s = this.ctx.start, e = this.ctx.end;
+    // 原文副行在 await 之前先拿：引擎只在呼叫 init 前設好這一格的開關
+    const subOf = new Map(lyrics.linesIn(s - 30, e + 30).map((l) => [l, lyricSubOf(l)] as const));
     await loadPlateText(this.ctx, TEXT + TICKER_IDLE.join(''));
     const b0 = this.b0 = beatAfter(au, s + 0.05);
     const beat = au.beatPeriod(b0);
@@ -188,12 +193,30 @@ export default class News extends Scene {
     // 跑馬燈：把這個窗格附近的歌詞排成一條長帶子
     c.font = font(F.archivo(100, 700), this.tkSize);
     const sepW = c.measureText(SEP).width;
-    let x = 0;
+    // 韓文原文：跑馬燈下面多一條小一號的軌（v2 的字級是螢幕 px，換成電視訊號座標）。原文軌有自己的讀頭：
+    // 正在唱的原文也停在讀頭下面（跟中文上下對齊），不會因為字小跑在中文後面、被左邊裁掉
+    if ([...subOf.values()].some(Boolean)) {
+      const scr = this.tkSize * TV_MAX, ss = subSizeFor(scr);
+      this.subSize = ss / TV_MAX;
+      this.subDy = subGap(scr, ss) / TV_MAX;
+      this.tkH = TK.h + this.subSize * 1.35;
+    }
+    c.font = font(F.archivo(100, 700), this.subSize || 1);
+    const subSepW = c.measureText(SEP).width;
+    let x = 0, sx = 0;
     for (const ln of lyrics.linesIn(s - 30, e + 30)) {
+      c.font = font(F.archivo(100, 700), this.tkSize);
       const words = ln.words.map((w) => ({ x: c.measureText(ln.text.slice(0, w.o)).width, w: c.measureText(w.w).width }));
       const w = c.measureText(ln.text).width;
-      this.crawl.lines.push({ line: ln, x, w, words });
+      const sl = subOf.get(ln);
+      let sub: Crawl['lines'][number]['sub'];
+      if (sl) {
+        c.font = font(F.archivo(100, 700), this.subSize);
+        sub = { line: sl, w: c.measureText(sl.text).width, words: sl.words.map((sw) => ({ x: c.measureText(sl.text.slice(0, sw.o)).width, w: c.measureText(sw.w).width })) };
+      }
+      this.crawl.lines.push({ line: ln, x, w, words, sx, sub });
       x += w + sepW;
+      sx += (sub?.w ?? 0) + subSepW;
     }
     this.crawl.total = x;
     c.font = font(F.hei(700), this.tkSize * 0.9);
@@ -485,23 +508,25 @@ export default class News extends Scene {
     this.drawTicker(c, t);
   }
 
-  /** 讀頭位置（帶子座標）：正在唱的字的位置；兩句之間在最後 1.2 秒滑到下一句的開頭。 */
-  private headAt(t: number): number {
+  /** 讀頭位置（帶子座標）：正在唱的字的位置；兩句之間在最後 1.2 秒滑到下一句的開頭。sub：原文軌的讀頭（用原文自己的逐字時間）。 */
+  private headAt(t: number, sub = false): number {
     const Ls = this.crawl.lines;
     if (!Ls.length) return 0;
+    const X = (c: Crawl['lines'][number]) => (sub ? c.sx : c.x), Wd = (c: Crawl['lines'][number]) => (sub ? c.sub?.w ?? 0 : c.w);
     for (let i = 0; i < Ls.length; i++) {
       const c = Ls[i]!, ln = c.line;
       if (t < ln.start) {
         const prev = Ls[i - 1];
-        const from = prev ? prev.x + prev.w : c.x - 300;
+        const from = prev ? X(prev) + Wd(prev) : X(c) - 300;
         const t0 = Math.max(prev ? prev.line.end : ln.start - 1.2, ln.start - 1.2);
-        return lerp(from, c.x, prog(t, t0, ln.start - 0.05, ease.inOutCubic));
+        return lerp(from, X(c), prog(t, t0, ln.start - 0.05, ease.inOutCubic));
       }
       if (t < ln.end || i === Ls.length - 1) {
-        let x = c.x;
-        ln.words.forEach((w, j) => {
+        let x = X(c);
+        const [L, ws] = sub ? [c.sub?.line, c.sub?.words] : [ln, c.words];
+        L?.words.forEach((w, j) => {
           const p = Lyrics.wordProgress(w, t);
-          if (p > 0) x = c.x + c.words[j]!.x + c.words[j]!.w * p;
+          if (p > 0) x = X(c) + ws![j]!.x + ws![j]!.w * p;
         });
         return x;
       }
@@ -511,23 +536,42 @@ export default class News extends Scene {
 
   private drawTicker(c: CanvasRenderingContext2D, t: number) {
     const { lyrics } = this.ctx;
-    c.fillStyle = rgba('ink', 0.94); c.fillRect(X0, TK.y, XR - X0, TK.h);
+    const tkH = this.tkH;
+    c.fillStyle = rgba('ink', 0.94); c.fillRect(X0, TK.y, XR - X0, tkH);
     c.fillStyle = rgba('bone', 0.12); c.fillRect(X0, TK.y, XR - X0, 1.5);
-    c.fillStyle = rgba('bone', 0.92); c.fillRect(X0, TK.y, TK.labelW, TK.h);
+    c.fillStyle = rgba('bone', 0.92); c.fillRect(X0, TK.y, TK.labelW, tkH);
     c.font = font(F.hei(900), lyrics.has ? 44 : 32); c.fillStyle = rgba('ink'); c.textAlign = 'center';
     c.fillText(lyrics.has ? '♪' : '即時', X0 + TK.labelW / 2, TK.y + TK.h / 2 + (lyrics.has ? 16 : 11));
     c.textAlign = 'left';
     const x0 = X0 + TK.labelW + 12, base = TK.y + TK.h / 2 + this.tkSize * 0.36;
     c.save();
-    c.beginPath(); c.rect(x0, TK.y, XR - x0, TK.h); c.clip();
+    c.beginPath(); c.rect(x0, TK.y, XR - x0, tkH); c.clip();
     if (this.crawl.lines.length) {
       // 讀頭位置取最近 0.2 秒的平均：字一個一個唱出來時帶子是順的，不會一頓一頓
-      let hsum = 0;
-      for (let i = 0; i < 5; i++) hsum += this.headAt(t - i * 0.05);
-      const head = hsum / 5;
+      let hsum = 0, ssum = 0;
+      for (let i = 0; i < 5; i++) { hsum += this.headAt(t - i * 0.05); if (this.subSize) ssum += this.headAt(t - i * 0.05, true); }
+      const head = hsum / 5, subHead = ssum / 5;
       c.font = font(F.archivo(100, 700), this.tkSize);
       for (const cl of this.crawl.lines) {
         const lx = HEAD_X + cl.x - head;
+        if (cl.sub) {
+          // 原文軌：跟著自己的讀頭跑，唱到、唱完都是白字淡兩成（不用訊號色），逐字時間是原文自己的
+          const sb = cl.sub, slx = HEAD_X + cl.sx - subHead;
+          if (slx <= XR && slx + sb.w >= x0) {
+            c.font = font(F.archivo(100, 700), this.subSize);
+            sb.line.words.forEach((w, j) => {
+              const p = Lyrics.wordProgress(w, t);
+              const wx = slx + sb.words[j]!.x;
+              if (p < 1) { c.fillStyle = rgba('bone', 0.3); c.fillText(w.w, wx, base + this.subDy); }
+              if (p > 0) {
+                c.save(); c.beginPath(); c.rect(wx - 4, TK.y, sb.words[j]!.w * p + 4, tkH); c.clip();
+                c.fillStyle = rgba('bone', 0.95 * 0.8); c.fillText(w.w, wx, base + this.subDy);
+                c.restore();
+              }
+            });
+            c.font = font(F.archivo(100, 700), this.tkSize);
+          }
+        }
         if (lx > XR || lx + cl.w < x0) continue;
         cl.line.words.forEach((w, j) => {
           const p = Lyrics.wordProgress(w, t);

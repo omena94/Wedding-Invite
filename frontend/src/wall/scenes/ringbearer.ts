@@ -274,9 +274,11 @@ export default class RingBearer extends Scene {
     const ly = lyricAt(lyrics, t);
     if (ly) {
       const st = { family: F.archivo(100, this.msg ? 600 : 700), size: this.lyricSize, minSize: 40, maxWidth: LYR.w, align: 'center' as const, unsung: rgba('bone', 0.26), sung: rgba('bone', this.msg ? 0.82 : 0.95), active: rgba('signal') };
+      const lay = layoutLyric(c, ly.line, st);
       c.save();
-      c.translate(LYR.x, LYR.y);
-      drawLyric(c, ly.line, t, st, layoutLyric(c, ly.line, st), ly.k * rv);
+      // 韓文歌：原文在中文下面，整排往上移，讓原文的最後一排落在本來的基線上（再低就離下緣不到 96 px）
+      c.translate(LYR.x, lay.sub ? LYR.y - (lay.height - lay.size) : LYR.y);
+      drawLyric(c, ly.line, t, st, lay, ly.k * rv);
       c.restore();
     }
 

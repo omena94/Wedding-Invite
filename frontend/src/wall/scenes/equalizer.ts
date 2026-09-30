@@ -16,7 +16,7 @@ import { rgba } from '../engine/palette';
 import { clamp, ease, prog, noise1, fbm1 } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
 import { Lyrics, type Line } from '../engine/lyrics';
-import { beatAfter, barAfter, signature, lyricAt, COUPLE_ZH } from './_motifs';
+import { beatAfter, barAfter, signature, lyricAt, lyricSubOf, drawLyricSub, layoutLyric, subGap, subStyleFor, COUPLE_ZH, type LyricStyle } from './_motifs';
 import { fillWithHearts } from '../engine/motifs';
 import { layoutWordRows, windowLines } from './_t7';
 import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 } from './_v2';
@@ -214,6 +214,22 @@ export default class Equalizer extends Scene {
       c.fillText(b.word.w, wx0 - WL.x, y - WL.y);
     }
     c.globalAlpha = 1;
+    // 韓文歌：原文小一號排成一列，站在中文底下、跟中文一樣在光柱上方置中（中文跟著柱子浮動、跳起來，
+    // 原文比較安靜：整列不動）。基線放在中文浮到最低時的下面；原文底下的柱子也被它壓住，長不到字上面
+    const sub = lyricSubOf(ly.line);
+    if (sub) {
+      const st: LyricStyle = { family: F_LYR, size: lay.size, maxWidth: maxW, align: 'center', active: rgba('signal'), sung: rgba('bone', 0.95), unsung: rgba('bone', 0.3) };
+      const sl = layoutLyric(c, sub, subStyleFor(st, lay.size));
+      const ys = ROW_Y + RIDE * 0.9 + subGap(lay.size, sl.size), cx = x0 + maxW / 2;
+      const c2 = (EQ.bottom - (ys + sl.height - sl.size + sl.size * 0.25 + 12)) / EQH;
+      const hw = sl.rows.reduce((w, r) => Math.max(w, r.width), 0) / 2;
+      const i0 = clamp(Math.floor((cx - hw - EQ.x) / EQ.pitch), 0, NCOL - 1), i1 = clamp(Math.floor((cx + hw - EQ.x) / EQ.pitch), 0, NCOL - 1);
+      for (let i = i0; i <= i1; i++) cap[i] = Math.min(cap[i]!, c2);
+      c.save();
+      c.translate(cx - WL.x, ys - WL.y);
+      drawLyricSub(c, sub, t, st, lay.size, ly.k);
+      c.restore();
+    }
     L.upload();
   }
 

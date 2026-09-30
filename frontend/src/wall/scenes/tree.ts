@@ -17,7 +17,7 @@ import { LIN, rgba } from '../engine/palette';
 import { clamp, ease, prog, hash, lerp, mulberry32, TAU } from '../engine/util';
 import { Lyrics, type Line } from '../engine/lyrics';
 import { fillWithHearts } from '../engine/motifs';
-import { lyricAt, beatAfter, COUPLE_ZH, DATE_DOTS, drawHeart } from './_motifs';
+import { lyricAt, beatAfter, COUPLE_ZH, DATE_DOTS, drawHeart, lyricSubOf, subSizeFor, subGap } from './_motifs';
 import { lyricV2, V2 } from './_v2';
 import { winBeats, winBars } from './_t8';
 import { Paper } from './_t11';
@@ -103,6 +103,9 @@ export default class Tree extends Scene {
   small: { x: number; y: number; s: number; t: number; ph: number }[] = [];
   block: MsgBlock | null = null;
   lyrSize = 54;
+  /** 許願牌掛在橫枝的哪裡、繩子多放長多少。韓文歌（有原文副行）時原文寫在橫枝正下方：牌子往右掛到原文的尾巴之後、
+   *  繩子放長一點，繩子與牌子才不會壓到原文（整格固定，換句時牌子不會跳）。沒有原文時跟原本一樣。 */
+  tagAx = ANCHOR.x; ropeExtra = 0;
   falls: { t: number; x: number; y: number; seed: number; land: number }[] = [];
 
   override async init() {
@@ -110,6 +113,14 @@ export default class Tree extends Scene {
     const lines = lyrics.linesIn(s - 1, e + 1);
     await loadAll(this.msg, lines.map((l) => l.text).join(''), `${COUPLE_ZH}${DATE_DOTS}A♥O+`);
     this.beat = au.beatPeriod(s);
+    const subs = lines.map((l) => lyricSubOf(l)).filter((x): x is Line => !!x);
+    if (subs.length) {
+      const c = this.layer.ctx;
+      c.font = font(F.archivo(100, 700), subSizeFor(lyricV2(null)));
+      const half = Math.max(...subs.map((x) => c.measureText(x.text).width)) / 2;
+      this.tagAx = clamp((CARVE.x0 + CARVE.x1) / 2 + half + 40, ANCHOR.x, 1560);
+      this.ropeExtra = subSizeFor(lyricV2(null)) + 30;
+    }
     // ---- 節拍骨架：B[0] = 第一拍（至少開場後 0.25 秒），之後每拍
     const b0 = beatAfter(au, s + 0.25);
     const beats = winBeats(au, s, e + this.beat * 8).filter((b) => b >= b0 - 1e-3);
@@ -176,7 +187,7 @@ export default class Tree extends Scene {
     const smallAt = this.brs.filter((b) => b.depth === 2);
     for (let i = 0; i < smallAt.length && this.small.length < 5; i += 3) {
       const b = smallAt[i]!, p = at(b, b.len * 0.7);
-      if (Math.abs(p.x - ANCHOR.x) < TAG_W * 0.6 && p.y > 200) continue;
+      if (Math.abs(p.x - this.tagAx) < TAG_W * 0.6 && p.y > 200) continue;
       this.small.push({ x: p.x, y: p.y, s: 0.8 + 0.4 * hash(this.seed, i), t: B[5]! + i * 0.05, ph: hash(this.seed, i, 2) * TAU });
     }
 
@@ -430,10 +441,10 @@ export default class Tree extends Scene {
     let theta = 0;
     for (const p of this.pushes) if (t >= p.t) { const a = t - p.t; theta += p.a * Math.sin(a * 4.2) * Math.exp(-a * 1.6); }
     const drop = ease.outBack(clamp((t - this.tDrop) / 0.4), 1.4);
-    const strLen = 40;
+    const strLen = 40 + this.ropeExtra;
     let tagRect: Rect | null = null;
     if (t >= this.tDrop && this.tag) {
-      const ax = ANCHOR.x, ay = limbY(this.limb, ANCHOR.x) + 30;
+      const ax = this.tagAx, ay = limbY(this.limb, this.tagAx) + 30;
       const len = strLen * drop;
       const hx = ax + Math.sin(theta) * len, hy = ay + Math.cos(theta) * len;
       // 繩子（訊號色的暗部）
@@ -538,6 +549,32 @@ export default class Tree extends Scene {
         c.restore();
       }
     });
+    // 原文（韓文歌）：橫枝刻不下兩行，印在橫枝正下方的紙上（一樣跟著樹枝的弧度起伏、樹枝長到哪裡才印到哪裡）。
+    // 比刻字安靜：沒有刀痕亮邊，唱到、唱完都是唱完的墨色、淡兩成，還沒唱的跟刻痕一樣淡
+    const sub = lyricSubOf(ly.line);
+    if (sub) {
+      const ss = subSizeFor(lay.size), dy = 2 + subGap(lay.size, ss) + 6;
+      c.font = font(F.archivo(100, 700), ss);
+      const sw = c.measureText(sub.text).width, sx0 = (CARVE.x0 + CARVE.x1) / 2 - sw / 2;
+      sub.words.forEach((w) => {
+        const x = sx0 + c.measureText(sub.text.slice(0, w.o)).width, ww = c.measureText(w.w).width;
+        if (x + ww / 2 > reach) return;
+        const y = limbY(this.limb, x + ww / 2) + dy;
+        yMax = Math.max(yMax, y + (ss - lay.size) * 0.5 + (dy - 2));
+        const p = Lyrics.wordProgress(w, t);
+        c.globalAlpha = ly.k;
+        c.fillStyle = rgba('sepia', 0.2);
+        if (p < 1) c.fillText(w.w, x, y);
+        if (p > 0) {
+          c.save();
+          c.beginPath(); c.rect(x - 4, y - ss, (ww + 8) * p, ss * 2); c.clip();
+          c.globalAlpha = ly.k * 0.8;
+          c.fillStyle = rgba('sepia', 0.95);
+          c.fillText(w.w, x, y);
+          c.restore();
+        }
+      });
+    }
     c.restore();
     return yMin < 1e8 ? [Math.round(x0 - 10), Math.round(yMin - lay.size * 0.7), Math.round(lay.width + 20), Math.round(yMax - yMin + lay.size * 1.4)] : null;
   }

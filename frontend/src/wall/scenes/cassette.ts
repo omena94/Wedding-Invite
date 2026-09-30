@@ -17,8 +17,8 @@ import { F, font, loadText } from '../engine/type';
 import { LIN, rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, lerp, prog, hash, TAU } from '../engine/util';
 import { fitText, phrases, type FitResult } from '../engine/text';
-import { Lyrics } from '../engine/lyrics';
-import { beatAfter, barAfter, signature, lyricAt, sparkHead, COUPLE_ZH, DATE_DOTS } from './_motifs';
+import { Lyrics, type Word } from '../engine/lyrics';
+import { beatAfter, barAfter, signature, lyricAt, sparkHead, COUPLE_ZH, DATE_DOTS, lyricSubOf, layoutLyric, subStyleFor, subSizeFor, subGap } from './_motifs';
 import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 } from './_v2';
 import { fillWithHearts } from '../engine/motifs';
 import { layoutWordRows } from './_t7';
@@ -316,7 +316,9 @@ export default class Cassette extends Scene {
     const ly = lyricAt(lyrics, t);
     const counter = String(Math.floor((t * this.speed) / 60) % 10000).padStart(4, '0');
     let lyKey = 'idle';
-    if (ly) lyKey = `${ly.line.i}|${Math.round(ly.k * 16)}|${ly.line.words.map((w) => { const p = Lyrics.wordProgress(w, t); return p <= 0 ? 0 : p < 1 ? 1 : 2; }).join('')}`;
+    const sub = ly ? lyricSubOf(ly.line) : null;
+    const state = (w: Word) => { const p = Lyrics.wordProgress(w, t); return p <= 0 ? 0 : p < 1 ? 1 : 2; };
+    if (ly) lyKey = `${ly.line.i}|${Math.round(ly.k * 16)}|${ly.line.words.map(state).join('')}${sub ? '|' + sub.words.map(state).join('') : ''}`;
     const key = `${lyKey}|${counter}`;
     if (key === this.vfdKey) return;
     this.vfdKey = key;
@@ -332,9 +334,18 @@ export default class Cassette extends Scene {
     if (ly) {
       // 歌詞 40～52（有留言時比留言小）
       const top = lyricV2(this.msg ? this.msgPx : null);
-      const lay = layoutWordRows(c, ly.line, F_LYR, VT.w, VT.h, { min: V2.lyrMin, max: top, maxRows: 2, lh: 1.06 });
+      // 原文副行：顯示幕高度固定，有原文時中文讓出下面一排（基線距離 + 小一號的字高），中文＋原文一起置中
+      const reserve = sub ? top * 0.37 + subSizeFor(top) * 1.1 : 0;
+      const lay = layoutWordRows(c, ly.line, F_LYR, VT.w, VT.h - reserve, { min: V2.lyrMin, max: top, maxRows: 2, lh: 1.06 });
+      const sl = sub ? layoutLyric(c, sub, subStyleFor({ family: F_LYR, size: lay.size, maxWidth: VT.w, align: 'left' }, lay.size)) : null;
+      let dy = 0, sy = 0;
+      if (sl) {
+        const top0 = (VT.h - reserve - lay.height) / 2;
+        sy = top0 + lay.size * 0.86 + (lay.rows.length - 1) * lay.lineH + subGap(lay.size, sl.size);
+        dy = (VT.h - (sy + sl.height - sl.size * 0.78 - top0)) / 2 - top0;
+      }
       c.save();
-      c.translate(VT.x + ox, VT.y + oy);
+      c.translate(VT.x + ox, VT.y + oy + dy);
       c.font = font(F_LYR, lay.size);
       for (const b of lay.words) {
         const p = Lyrics.wordProgress(b.word, t);
@@ -342,6 +353,16 @@ export default class Cassette extends Scene {
         c.fillStyle = b.word.w === '♥' ? rgba('rose', p > 0 ? 1 : 0.3) : p <= 0 ? rgba('signal', 0.2) : p < 1 ? rgba('signal') : rgba('bone', 0.95);
         // 靠左對齊（layoutWordRows 是置中排的，減掉這一列左邊的空）
         c.fillText(b.word.w, b.x - (VT.w - lay.rows[b.row]!.w) / 2, b.y);
+      }
+      if (sl) {
+        // 同一片螢光管、同樣一個字一個字整個亮起來（不用訊號色、淡兩成：跟中文不搶）；逐字時間是原文自己的
+        c.font = font(F_LYR, sl.size);
+        for (const pw of sl.words) {
+          const p = Lyrics.wordProgress(pw.word, t);
+          c.globalAlpha = ly.k * (p > 0 ? 0.8 : 1);
+          c.fillStyle = p <= 0 ? rgba('signal', 0.2) : rgba('bone', 0.95);
+          c.fillText(pw.word.w, pw.x, sy + pw.y);
+        }
       }
       c.restore();
     } else {

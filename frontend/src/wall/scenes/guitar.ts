@@ -14,7 +14,7 @@ import { LineBatch } from '../engine/lines';
 import { F, font, loadText } from '../engine/type';
 import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, lerp, hash } from '../engine/util';
-import { lyricAt } from './_motifs';
+import { lyricAt, lyricSubOf } from './_motifs';
 import { inkFor, inkLine, inkPath, inkPoly, inkRect, inkEllipse, paperBG, lyricOnPath, type Pt, type Note, type Ink } from './_couple';
 import { loadPuppets, drawPuppet, drawPick, puppetPoint, puppetShadow, breathe, beatKick, noteV2, tightenNote, type PuppetOpts } from './_puppet';
 import { lyricV2 } from './_v2';
@@ -44,6 +44,11 @@ export default class Guitar extends Scene {
   fg = this.track(new Layer2D(W, H, undefined, { fast: true }));
   glow = this.track(new LineBatch(512, { screen2D: true, blend: 'add' }));
   msg: Msg | null = this.ctx.params.message ?? null;
+  /**
+   * 有韓文原文的窗格：原文沿著五線譜排在中文下面，中文折兩排時會碰到窗簾桿——整條五線譜（連歌詞）往上提一點
+   * （建構時就看：引擎只在建立這一格之前設好開關）。
+   */
+  staffY = STAFF.y - (this.ctx.lyrics.linesIn(this.ctx.start - 1, this.ctx.end + 1).some((l) => !!lyricSubOf(l)) ? 36 : 0);
   alanKeys: [number, string][] = [];
   omKeys: [number, string][] = [];
   flights: Flight[] = [];
@@ -95,7 +100,7 @@ export default class Guitar extends Scene {
     const pts: Pt[] = [];
     for (let k = 0; k <= 40; k++) {
       const u = k / 40, x = lerp(STAFF.x0, STAFF.x1, u);
-      pts.push({ x, y: STAFF.y + (i - 2) * STAFF.gap + 26 * Math.sin(u * 5.2 + 0.6) + 5 * Math.sin(u * 9 + t * 0.8) });
+      pts.push({ x, y: this.staffY + (i - 2) * STAFF.gap + 26 * Math.sin(u * 5.2 + 0.6) + 5 * Math.sin(u * 9 + t * 0.8) });
     }
     return pts;
   }

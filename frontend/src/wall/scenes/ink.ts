@@ -17,7 +17,7 @@ import { F, font } from '../engine/type';
 import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, hash, mulberry32, fbm1, lerp, pulse } from '../engine/util';
 import type { Line } from '../engine/lyrics';
-import { lyricAt, COUPLE_ZH } from './_motifs';
+import { lyricAt, COUPLE_ZH, lyricSubOf, layoutLyric, subStyleFor, subGap, drawLyricSub, type LyricStyle } from './_motifs';
 import { grid, stagger, layoutRows, drawRows, type Grid, type KaraokeInk } from './_t4';
 import { PlaneCam, camUniforms, CAM_GLSL } from './_t14';
 import { inkStamp, freeCanvas } from './_t1';
@@ -36,6 +36,8 @@ const FAM_SIG = F.hand(400);
 const FAM_LYR = F.hand(700);
 /** 沒有留言時兩句歌詞輪流寫的兩行（中心 y）。 */
 const BANDS = [300, 470];
+/** 有韓文原文副行的窗格：每句多一行小字，兩行拉開一點（下面那行離邀請還有 60 px 以上）。 */
+const BANDS_SUB = [285, 490];
 /** 稜線的取樣：64 點，x 從 -200 到 2120（鏡頭搖的時候邊緣也有山）。 */
 const RN = 64, RX0 = -200, RX1 = 2120;
 const SEAL = '百年好合';
@@ -265,7 +267,7 @@ function slotUniforms(S: string) {
 /** 一張字模＋每一組的資料（中心、大小、落下的時間、墨色）。 */
 interface InkSet { mask: GlyphMask; G: THREE.Vector4[]; Q: THREE.Vector4[]; n: number; rect: Rect }
 /** 沒有留言時一句歌詞的字模。 */
-interface LineSet extends InkSet { line: Line; idx: number }
+interface LineSet extends InkSet { line: Line; idx: number; sub: { line: Line; st: LyricStyle; y: number; size: number } | null }
 
 export default class Ink extends Scene {
   bg = shared('ink.bg', BG);
@@ -299,6 +301,9 @@ export default class Ink extends Scene {
     const { audio: au, lyrics } = this.ctx;
     const s = this.ctx.start, e = this.ctx.end, m = this.msg;
     const names = COUPLE_ZH.replace(/\s*&\s*/, ' ♥ ');
+    // 原文副行在 await 之前先拿：引擎只在呼叫 init 前設好這一格的開關，等字型的時候別的窗格可能改掉
+    const subOf = new Map(lyrics.linesIn(s - 1, e).map((l) => [l, lyricSubOf(l)] as const));
+    const hasSub = [...subOf.values()].some(Boolean);
     await loadAll(this.ctx, names + SEAL);
     const g = (this.g = grid(au, s, e));
     this.hasLyrics = lyrics.linesIn(s, e).length > 0;
@@ -329,8 +334,19 @@ export default class Ink extends Scene {
       for (const line of lyrics.linesIn(s - 1, e)) {
         const idx = all.indexOf(line);
         const lay = layoutRows(c, line, { family: FAM_LYR, size: V2.lyrMax / K, minSize: V2.lyrMin / K, maxW: MSG_BOX.w, maxRows: 2, align: 'left', lineHeight: 1.24 });
-        const cy = BANDS[idx % 2]!;
-        const y0 = cy - lay.height / 2 + lay.size * 0.82;
+        // 原文副行：淡墨小字寫在同一張紙上、中文最後一排的正下方（Canvas 層，字緣一樣有紙的暈）；中文＋原文一起置中在這一行
+        const subLine = subOf.get(line) ?? null;
+        let sub: LineSet['sub'] = null, hh = lay.height;
+        if (subLine) {
+          const st: LyricStyle = { family: FAM_LYR, size: lay.size, maxWidth: MSG_BOX.w, align: 'left' };
+          const sl = layoutLyric(c, subLine, subStyleFor(st, lay.size));
+          const gap = (lay.rows.length - 1) * lay.lineHeight + subGap(lay.size, sl.size);
+          sub = { line: subLine, st, y: gap, size: lay.size };
+          hh = lay.size + gap + (sl.height - sl.size);
+        }
+        const cy = (hasSub ? BANDS_SUB : BANDS)[idx % 2]!;
+        const y0 = cy - hh / 2 + lay.size * 0.82;
+        if (sub) sub.y += y0;
         const glyphs: TGlyph[] = [], groups: TGroup[] = [];
         const tw: [number, number][] = [];
         for (const pw of lay.words) {
@@ -341,9 +357,9 @@ export default class Ink extends Scene {
         }
         if (!groups.length) continue;
         const set = this.inkSet(glyphs, groups, tw, (i) => (groups[i]!.heart ? 2 : 0), false);
-        this.lines.push({ ...set, line, idx });
+        this.lines.push({ ...set, line, idx, sub });
       }
-      this.avoid = [[MSG_BOX.x - 20, 200, MSG_BOX.w + 40, 360]];
+      this.avoid = [[MSG_BOX.x - 20, 200, MSG_BOX.w + 40, hasSub ? 390 : 360]];
     } else {
       // 純音樂又沒有留言：一拍一滴寫新人的名字（60 px），蓋印
       const size = V2.msgMax / K;
@@ -500,6 +516,8 @@ export default class Ink extends Scene {
 
     const L = this.lyr; L.clear();
     const c = L.ctx;
+    /** 要畫原文副行的句子與它的淡入淡出（跟著中文那一句）。 */
+    let subs: [LineSet | undefined, number][] = [];
     if (this.main) {
       this.bind('A', this.main, 1, 1);
       this.bind('B', null, 0, 0);
@@ -518,6 +536,7 @@ export default class Ink extends Scene {
       // 上一句：新的一句開始唱之後淡到四成，同一行要換下一句之前消失
       const kb = la ? 1 - 0.6 * clamp((t - la.line.start) / 0.8) : 1;
       this.bind('B', lb ?? null, kb, 1);
+      subs = [[la, kin], [lb, kb]];
     }
 
     this.drawWater(c, t);
@@ -547,6 +566,13 @@ export default class Ink extends Scene {
       }
       if (this.msg.couple) this.small(c, 'FROM THE COUPLE  ·  新人', MSG_BOX.x, this.block.box[1] - 22, F.mono(500), 17, 5, rgba('blood', 0.75));
     } else {
+      // 原文副行（淡墨）：現在這一句與上一句各自跟著中文淡入、淡到四成
+      for (const [ls, k] of subs) {
+        if (!ls?.sub || k <= 0) continue;
+        c.save(); c.translate(MSG_BOX.x, ls.sub.y);
+        drawLyricSub(c, ls.sub.line, t, { ...ls.sub.st, sung: ink.sung, unsung: ink.unsung }, ls.sub.size, k);
+        c.restore();
+      }
       this.small(c, T21_INVITE, MSG_BOX.x, this.hasLyrics ? 640 : 470, F.hei(500), 22, 3, rgba('sepia', 0.55));
       if (!this.hasLyrics) this.small(c, `♪  ${song.title}${song.artist ? '  ·  ' + song.artist : ''}`, MSG_BOX.x, 510, F.mono(500), 17, 4);
     }

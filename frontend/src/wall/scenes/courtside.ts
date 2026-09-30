@@ -16,7 +16,7 @@ import { FSPass, Layer2D, W, H, SCALE } from '../engine/gl';
 import { F, font, loadText } from '../engine/type';
 import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, lerp, pulse } from '../engine/util';
-import { lyricAt, barAfter, beatAfter, msgChars } from './_motifs';
+import { lyricAt, lyricSubOf, subSizeFor, subGap, barAfter, beatAfter, msgChars } from './_motifs';
 import { lyricOnPath, drawNote, type Note } from './_couple';
 import { loadPuppets, drawPick, pick, puppetPoint, puppetShadow, puppetIn, puppetLight, jumpArc, breathe, beatKick, noteV2, tightenNote, type PuppetOpts } from './_puppet';
 import { lyricV2 } from './_v2';
@@ -36,6 +36,8 @@ const JUMBO = { cx: 1090, top: 58, w: 820, h: 360 };
 const PAD = { x: 46, top: 74, bottom: 34 };
 /** 環場 LED 帶（歌詞）：y 範圍與歌詞沿著的線（太長的句子折兩排時整段往上挪，兩排都在帶子裡）。 */
 const RIBBON = { x0: 640, x1: W + 20, y0: 466, y1: 580, lx0: 670, lx1: 1520, base: 538, base2: 514 };
+/** 韓文歌時 LED 帶往上長多少（px）。 */
+const KO_UP = 64;
 const INVITE = '掃描右下角 QR code，把祝福寫上大螢幕';
 const LABEL = 'FAN CAM · 場邊祝福';
 const POSES = ['cp_hoops_sit_1', 'cp_hoops_sit_2', 'cp_hoops_cheer'];
@@ -93,6 +95,8 @@ export default class Courtside extends Scene {
   note: Note | null = null;
   jumbo = { x: JUMBO.cx - JUMBO.w / 2, y: JUMBO.top, w: JUMBO.w, h: JUMBO.h };
   lyricSize = 52;
+  /** 環場 LED 帶：韓文歌（沒有留言、有原文）時往上長 KO_UP，中文與原文兩段都在帶子上（蓋住最前排的觀眾，像更高的廣告看板）。 */
+  rib: typeof RIBBON = RIBBON;
   msgT0 = 0;
   /** 灌籃：腳底離籃框中心多遠（x）、跳多高，手才剛好碰到籃框。 */
   dunk = { x: 0, lift: 0 };
@@ -136,6 +140,7 @@ export default class Courtside extends Scene {
     const jw = Math.min(JUMBO.w, tightenNote(c, this.note, 640) + PAD.x * 2);
     this.jumbo = { x: JUMBO.cx - jw / 2, y: JUMBO.top, w: jw, h: jh };
     this.lyricSize = lyricV2(this.msg ? this.note.fit.size : null);
+    if (!this.msg && this.ctx.lyrics.linesIn(s - 1, this.ctx.end + 1).some((l) => !!lyricSubOf(l))) this.rib = { ...RIBBON, y0: RIBBON.y0 - KO_UP };
     this.msgT0 = beatAfter(au, s + 0.35);
     this.scan = scanPattern(c);
     this.crowd = new CrowdLayer(makeCrowd(-20, W + 20, 440, 8, { r: 9, gap: 40, rowH: 38, shrink: 0.94, seed: 5, skip: (x, y) => x < 610 && y > 380 }), (cc) => crowdShade(cc, 150, 470), rgba('bone', 0.04), SCALE);
@@ -179,7 +184,8 @@ export default class Courtside extends Scene {
     const L = this.mid, c = L.ctx;
     L.clear();
     // 環場 LED 帶
-    ledBand(c, { x: RIBBON.x0, y: RIBBON.y0, w: RIBBON.x1 - RIBBON.x0, h: RIBBON.y1 - RIBBON.y0 });
+    const R = this.rib;
+    ledBand(c, { x: R.x0, y: R.y0, w: R.x1 - R.x0, h: R.y1 - R.y0 });
     // 籃板、柱子、籃框後半圈（網與前半圈每格畫：進球時會甩）
     drawHoop(c, HOOP, 'back', { line: rgba('bone', 0.5), glass: rgba('bone', 0.08), pole: mixRgba('ink2', 'bone', 0.06) });
     // 大螢幕：兩條吊纜、有厚度的殼、螢幕面
@@ -389,12 +395,24 @@ export default class Courtside extends Scene {
 
   /** 環場 LED 帶上的歌詞（逐字跟唱）；沒有歌詞時慢慢捲一排很淡的 A&O ♥。 */
   private drawRibbon(c: CanvasRenderingContext2D, t: number) {
-    const R = RIBBON, s = this.ctx.start;
+    const R = this.rib, s = this.ctx.start;
     const ly = lyricAt(this.ctx.lyrics, t);
     const rv = prog(t, s + 0.1, s + 0.6, ease.inOutCubic);
+    const tall = R.y0 < RIBBON.y0;
     if (ly) {
       const family = F.archivo(100, 700);
-      const y = lyricRows(c, ly.line.text, family, this.lyricSize, 40, R.lx1 - R.lx0) === 2 ? R.base2 : R.base;
+      const two = lyricRows(c, ly.line.text, family, this.lyricSize, 40, R.lx1 - R.lx0) === 2;
+      let y = two ? R.base2 : R.base;
+      if (tall) {
+        // 長高的帶子：中文（一或兩排）＋原文（lyricOnPath 自動畫在下面，一或兩排）整塊在帶子裡垂直置中
+        const sub = lyricSubOf(ly.line), ms = two ? 40 : this.lyricSize, ss = subSizeFor(ms);
+        let span = two ? ms * 1.1 : 0, bottom = ms * 0.2;
+        if (sub) {
+          span += subGap(ms, ss) + (lyricRows(c, sub.text, family, ss, Math.min(ss, 26), R.lx1 - R.lx0) - 1) * ss * 1.1;
+          bottom = ss * 0.2;
+        }
+        y = (R.y0 + R.y1) / 2 - (ms * 0.8 + span + bottom) / 2 + ms * 0.8;
+      }
       lyricOnPath(c, ly.line, t, [{ x: R.lx0, y }, { x: R.lx1, y }], {
         family, size: this.lyricSize, minSize: 40, alpha: ly.k * rv, unsung: rgba('bone', 0.24), sung: rgba('bone', 0.9), rowGap: 1.1,
       });
@@ -409,7 +427,7 @@ export default class Courtside extends Scene {
       const unit = 'A&O ♥ 13 · 03   ';
       const uw = c.measureText(unit).width;
       const off = -((t * 60) % uw);
-      for (let x = R.x0 + off; x < R.x1; x += uw) c.fillText(unit, x, R.base - 6);
+      for (let x = R.x0 + off; x < R.x1; x += uw) c.fillText(unit, x, tall ? (R.y0 + R.y1) / 2 + 8 : R.base - 6);
       c.letterSpacing = '0px';
       c.restore();
     }

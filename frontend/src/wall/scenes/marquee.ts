@@ -18,7 +18,7 @@ import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, pulse, hash, TAU } from '../engine/util';
 import { wrap, type FitResult } from '../engine/text';
 import { Lyrics, type Line } from '../engine/lyrics';
-import { layoutLyric, beatAfter, signature } from './_motifs';
+import { layoutLyric, lyricSubOf, subSizeFor, subGap, beatAfter, signature } from './_motifs';
 import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 } from './_v2';
 import { DotCanvas, windowLines, fillGlyph, type Rect } from './_t9';
 
@@ -34,6 +34,11 @@ const COLS_ALL = Math.max(LS.cols, MS.cols);
 /** 外殼比點陣大一圈。 */
 const PAD = 12;
 const LY_BASE = 16;
+/**
+ * 韓文歌（沒有留言、這一格有原文）：歌詞條往下多長 SUB_ROWS 列，原文小一號跑在中文下面。
+ * 原文的字至少 SUB_DOTS 點高：韓文一個字的筆畫多，點陣太小（subSizeFor 的 32 px ≈ 10 點）會糊成一團。
+ */
+const SUB_ROWS = 17, SUB_DOTS = 12;
 /** 歌詞可以用的寬度（左右各留 3 格）。 */
 const LY_W = LS.cols - 6;
 /** 留言：外框一圈跑燈＋一格留白之後的寬度。 */
@@ -58,7 +63,7 @@ const f1 = (x: number) => x.toFixed(1);
 const BG = () => new FSPass(/* glsl */ `
   uniform sampler2D content;
   uniform float power; uniform float flick; uniform float kick; uniform float spill; uniform float t;
-  uniform float msRows; uniform float sweep; uniform float rain; uniform float tube;
+  uniform float msRows; uniform float lsRows; uniform float sweep; uniform float rain; uniform float tube;
   vec3 lit(vec3 v) { return C_BONE * v.r + C_SIGNAL * 1.75 * v.g + C_ROSE * 1.25 * v.b; }
   vec3 cellAt(int x, int y, int off, int cols, int rows) {
     if (x < 0 || x >= cols || y < 0 || y >= rows) return vec3(0.0);
@@ -104,8 +109,8 @@ const BG = () => new FSPass(/* glsl */ `
     // 招牌的光打在牆上：離兩塊點陣越遠越暗
     vec2 msC = vec2(${f1(MS.x0 + (MS.cols * PITCH) / 2)}, ${f1(MS.y)} + msRows * ${f1(PITCH / 2)});
     vec2 msH = vec2(${f1((MS.cols * PITCH) / 2 + PAD)}, msRows * ${f1(PITCH / 2)} + ${PAD}.0);
-    vec2 lsC = vec2(${f1(LS.x0 + (LS.cols * PITCH) / 2)}, ${f1(LS.y + (LS.rows * PITCH) / 2)});
-    vec2 lsH = vec2(${f1((LS.cols * PITCH) / 2 + PAD)}, ${f1((LS.rows * PITCH) / 2 + PAD)});
+    vec2 lsC = vec2(${f1(LS.x0 + (LS.cols * PITCH) / 2)}, ${f1(LS.y)} + lsRows * ${f1(PITCH / 2)});
+    vec2 lsH = vec2(${f1((LS.cols * PITCH) / 2 + PAD)}, lsRows * ${f1(PITCH / 2)} + ${PAD}.0);
     float light = exp(-max(sdBox(p - msC, msH), 0.0) / 200.0) + 0.6 * exp(-max(sdBox(p - lsC, lsH), 0.0) / 160.0);
     light *= spill * power * flick;
     vec3 lamp = mix(C_SIGNAL, C_BONE, 0.45);
@@ -153,8 +158,8 @@ const BG = () => new FSPass(/* glsl */ `
     float dT = sdBox(p - vec2(620.0, ${f1(BEAM.y1 + 7)}), vec2(300.0, 4.0));
     col = mix(col, C_BONE * (0.25 + 0.9 * tube), aaFill(dT));
     col += C_BONE * tube * 0.08 * exp(-max(dT, 0.0) / 30.0);
-    strip(p, ${f1(LS.x0)}, ${f1(LS.y)}, ${LS.cols}, ${LS.rows}, 0, col);
-    strip(p, ${f1(MS.x0)}, ${f1(MS.y)}, ${MS.cols}, int(msRows), ${LS.rows}, col);
+    strip(p, ${f1(LS.x0)}, ${f1(LS.y)}, ${LS.cols}, int(lsRows), 0, col);
+    strip(p, ${f1(MS.x0)}, ${f1(MS.y)}, ${MS.cols}, int(msRows), int(lsRows), col);
     // 雨：斜斜的細線，一條一條以不同速度往下掉；被招牌和車燈照到的地方亮一點
     float u = p.x + p.y * 0.16;
     float cx = floor(u / 8.0);
@@ -169,7 +174,7 @@ const BG = () => new FSPass(/* glsl */ `
     fragColor = vec4(col, 1.0);
   }`, {
   content: { value: null }, power: { value: 1 }, flick: { value: 1 }, kick: { value: 0 }, spill: { value: 1 }, t: { value: 0 },
-  msRows: { value: 60 }, sweep: { value: -9999 }, rain: { value: 1 }, tube: { value: 1 },
+  msRows: { value: 60 }, lsRows: { value: LS.rows }, sweep: { value: -9999 }, rain: { value: 1 }, tube: { value: 1 },
 });
 
 /** R = 白燈、G = 訊號色燈、B = 愛心燈的亮度（0..1）→ 畫布的填色。 */
@@ -192,6 +197,8 @@ export default class Marquee extends Scene {
   idleW = 0;
   /** 留言：字級（點）、行距、排好的行、招牌有幾列。 */
   size = 16; lh = 18; rows = 60; base0 = 20;
+  /** 歌詞條有幾列（韓文歌多 SUB_ROWS 列放原文）。 */
+  lsRows = LS.rows;
   lyrDots = 16;
   mLines: string[] = [];
   sig = ''; sigSize = 30;
@@ -220,9 +227,10 @@ export default class Marquee extends Scene {
       this.size = 16; this.lh = 19; this.mLines = INVITE;
       this.lyrDots = Math.floor(lyricV2(null) / PITCH);
     }
+    if (!m && windowLines(lyrics, s, e).some((l) => !!lyricSubOf(l))) this.lsRows = LS.rows + SUB_ROWS;
     this.base0 = 5 + Math.round(this.size * 0.88);
     this.rows = Math.min(MS.maxRows, this.base0 + (this.mLines.length - 1) * this.lh + Math.round(this.size * 0.3) + 5);
-    this.dots = this.track(new DotCanvas(COLS_ALL, LS.rows + this.rows));
+    this.dots = this.track(new DotCanvas(COLS_ALL, this.lsRows + this.rows));
     const c = this.dots.ctx;
     c.font = font(FAM, this.lyrDots);
     this.idleW = c.measureText(this.idleText).width;
@@ -244,7 +252,7 @@ export default class Marquee extends Scene {
     this.tStop = this.tFirst + clamp(beat * 1.25, 0.45, 0.9);
     this.drawStill();
     const mh = this.rows * PITCH;
-    this.avoid = [[LS.x0 - PAD, LS.y - PAD, LS.cols * PITCH + 2 * PAD, LS.rows * PITCH + 2 * PAD], [MS.x0 - PAD, MS.y - PAD, MS.cols * PITCH + 2 * PAD, mh + 2 * PAD + 60]];
+    this.avoid = [[LS.x0 - PAD, LS.y - PAD, LS.cols * PITCH + 2 * PAD, this.lsRows * PITCH + 2 * PAD], [MS.x0 - PAD, MS.y - PAD, MS.cols * PITCH + 2 * PAD, mh + 2 * PAD + 60]];
   }
 
   /** 招牌的支架、電線、銘牌、鐵窗、冷氣機的殼（畫一次）。 */
@@ -302,6 +310,7 @@ export default class Marquee extends Scene {
     B.spill!.value = 0.8 + 0.25 * f.a.rms;
     B.t!.value = t;
     B.msRows!.value = this.rows;
+    B.lsRows!.value = this.lsRows;
     B.rain!.value = 0.75 + 0.6 * f.a.hat;
     const bar = au.barAt(t);
     // 騎樓的日光燈：老燈管，每兩小節有一半的機會在第三拍「滋」地閃兩下
@@ -410,12 +419,13 @@ export default class Marquee extends Scene {
     for (let i = 0; i < this.segs.length; i++) if (this.segs[i]!.t0 <= t) k = i;
     const cur = this.segs[k]!, prev = this.segs[k - 1];
     const u = prev ? clamp((t - cur.t0) / SHIFT) : 1;
-    const dy = Math.round(ease.inOutCubic(u) * LS.rows);
+    const R = this.lsRows;
+    const dy = Math.round(ease.inOutCubic(u) * R);
     c.save();
-    c.beginPath(); c.rect(0, 0, LS.cols, LS.rows); c.clip();
+    c.beginPath(); c.rect(0, 0, LS.cols, R); c.clip();
     c.font = font(FAM, this.lyrDots);
-    if (prev && dy < LS.rows) this.drawSeg(c, prev, t, -dy);
-    this.drawSeg(c, cur, t, LS.rows - dy);
+    if (prev && dy < R) this.drawSeg(c, prev, t, -dy);
+    this.drawSeg(c, cur, t, R - dy);
     c.restore();
   }
 
@@ -432,7 +442,24 @@ export default class Marquee extends Scene {
       return;
     }
     const line = sg.line!;
-    const lay = layoutLyric(c, line, { family: FAM, size: this.lyrDots, maxWidth: 1e5 });
+    this.ledLine(c, line, this.lyrDots, t, top, base, false);
+    // 韓文歌：原文小一號跑在中文下面（同一條點陣、自己的逐字時間、太長一樣跟著自己的歌聲往左跑）
+    const sub = lyricSubOf(line);
+    if (sub && this.lsRows > LS.rows) {
+      const sd = Math.max(SUB_DOTS, Math.round(subSizeFor(this.lyrDots * PITCH) / PITCH));
+      c.save(); c.font = font(FAM, sd);
+      this.ledLine(c, sub, sd, t, top, base + Math.round(subGap(this.lyrDots, sd)), true);
+      c.restore();
+    }
+  }
+
+  /**
+   * 一行歌詞打在點陣上：唱到的欄亮、其他的欄三成亮；太長就跟著唱到的地方往左跑，唱到的字停在六成的位置；放得下就置中。
+   * `quiet` = 原文副行：唱到、唱完都是白燈再暗兩成（不用訊號色的燈）。
+   */
+  private ledLine(c: CanvasRenderingContext2D, line: Line, dots: number, t: number, top: number, base: number, quiet: boolean) {
+    const R = this.lsRows;
+    const lay = layoutLyric(c, line, { family: FAM, size: dots, maxWidth: 1e5 });
     const width = lay.rows[0]?.width ?? 0;
     // 太長：跟著唱到的地方往左跑，唱到的字停在六成的位置；放得下就置中
     let head = 0;
@@ -446,13 +473,13 @@ export default class Marquee extends Scene {
       // 逐欄點亮：唱到的欄亮，其他的欄三成亮
       const cut = Math.round(x + (pw.w + 1) * p);
       if (p < 1) {
-        c.save(); c.beginPath(); c.rect(cut, top, LS.cols, LS.rows); c.clip();
+        c.save(); c.beginPath(); c.rect(cut, top, LS.cols, R); c.clip();
         c.fillStyle = led(0.3); c.fillText(pw.word.w, x, base);
         c.restore();
       }
       if (p > 0) {
-        c.save(); c.beginPath(); c.rect(x - 2, top, cut - x + 2, LS.rows); c.clip();
-        c.fillStyle = p < 1 ? led(0, 1) : led(1);
+        c.save(); c.beginPath(); c.rect(x - 2, top, cut - x + 2, R); c.clip();
+        c.fillStyle = quiet ? led(0.8) : p < 1 ? led(0, 1) : led(1);
         c.fillText(pw.word.w, x, base);
         c.restore();
       }
@@ -462,7 +489,7 @@ export default class Marquee extends Scene {
   // ------------------------------------------------------------ 留言條
   private msgStrip(c: CanvasRenderingContext2D, t: number, f: Frame) {
     const au = this.ctx.audio;
-    const top = LS.rows, R = this.rows, C = MS.cols;
+    const top = this.lsRows, R = this.rows, C = MS.cols;
     // 外框跑燈：一圈，三顆亮一顆，一個八分音符走一步（第一拍之前停著）
     const beat = au.beatPeriod(t);
     const step = t < this.tFirst ? 0 : Math.floor((t - this.tFirst) / (beat / 2) + 1e-4);

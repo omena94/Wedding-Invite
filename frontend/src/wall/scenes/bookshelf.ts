@@ -23,7 +23,7 @@ import { F, font } from '../engine/type';
 import { LIN, rgba } from '../engine/palette';
 import { clamp, ease, prog, hash, mulberry32, lerp, pulse } from '../engine/util';
 import { Lyrics, type Line } from '../engine/lyrics';
-import { lyricAt, COUPLE_ZH } from './_motifs';
+import { lyricAt, lyricSubOf, subSizeFor, COUPLE_ZH } from './_motifs';
 import { grid, layoutRows, drawRows, paperInk, type Grid, type RowsLayout } from './_t4';
 import { loadAll, block, glyphPath, T21_INVITE, type Block, type Rect } from './_t21';
 import { V2, lyricV2 } from './_v2';
@@ -614,6 +614,17 @@ export default class Bookshelf extends Scene {
   private spineText(c: CanvasRenderingContext2D, text: string, t: number, line: Line | null, top = 70) {
     const cjk = (text.match(/[㐀-鿿]/g)?.length ?? 0) >= Array.from(text.replace(/\s/g, '')).length * 0.5;
     const chars = Array.from(text);
+    // 韓文歌：原文小一號橫躺在同一本書背上、中文的「下一行」（直書的下一行在左邊；橫躺的字頂朝右，下一行也在左邊）。
+    // 兩行一起在書背上置中：cx = 主行的中線，sx = 原文的中線；沒有原文時 cx 就是書背正中間，跟原本一樣
+    const sub = line ? lyricSubOf(line) : null;
+    const ss = subSizeFor(V2.lyrMax) / SHELF_K;
+    let cx = DYN_W / 2, sx = 0;
+    const place = (mainW: number) => {
+      if (!sub) return;
+      const gap = ss * 0.35, subW = ss * 0.95;
+      cx = DYN_W / 2 + (subW + gap) / 2;
+      sx = cx - mainW / 2 - gap - subW / 2;
+    };
     const prog = line ? Lyrics.lineCharProgress(line, t) : Infinity;
     const colOf = (i: number, len: number) => {
       if (!line) return rgba('bone', 0.95);
@@ -629,15 +640,17 @@ export default class Bookshelf extends Scene {
       const size = clamp(Math.floor((DYN_H - 50 - top) / Math.max(1, vis.length) / 1.08), lo, hi);
       const perCol = Math.floor((DYN_H - 40 - top) / (size * 1.08));
       const cols = Math.ceil(vis.length / perCol);
-      const cw = Math.min(size * 1.05, (DYN_W - 16) / cols);
+      // 有原文時書背要多容一欄橫躺的原文：直書的欄寬從剩下的寬度分
+      const cw = Math.min(size * 1.05, (DYN_W - 16 - (sub ? ss * 1.3 : 0)) / cols);
       const sz = Math.min(size, cw * 0.95);
+      place(cols * cw);
       c.font = font(F.ming(900), sz); c.textAlign = 'center';
       let k = 0, off = 0;
       for (const ch of chars) {
         const at = off; off += ch.length;
         if (!ch.trim()) continue;
         const col = Math.floor(k / perCol), row = k % perCol;
-        const x = DYN_W / 2 + ((cols - 1) / 2 - col) * cw, y = top + (row + 1) * sz * 1.08;
+        const x = cx + ((cols - 1) / 2 - col) * cw, y = top + (row + 1) * sz * 1.08;
         c.fillStyle = colOf(at, ch.length);
         if (ch === '♥') glyphPath(c, { ch, x: x - sz / 2, y, w: sz, size: sz, family: F.ming(900) });
         else c.fillText(ch, x, y);
@@ -646,7 +659,6 @@ export default class Bookshelf extends Scene {
       c.textAlign = 'left';
     } else {
       // 橫躺：整行轉 90°，字頂朝書背右側
-      c.save(); c.translate(DYN_W / 2, 60); c.rotate(Math.PI / 2);
       // 窄一點的字寬：長的英文句子也躺得進書背（字級一樣照 v2）
       const fam = F.archivo(66, 700);
       let size = V2.lyrMax / SHELF_K;
@@ -654,6 +666,9 @@ export default class Bookshelf extends Scene {
       const full = c.measureText(text).width;
       if (full > DYN_H - 120) size = Math.max(V2.lyrMin / SHELF_K, (size * (DYN_H - 120)) / full);
       c.font = font(fam, size);
+      // 橫躺的字：基線在 0.35 字高，字身從中線往右約 0.37、往左約 0.55 字高
+      place(size * 0.92);
+      c.save(); c.translate(cx + (sub ? size * 0.09 : 0), 60); c.rotate(Math.PI / 2);
       let x = 0, off = 0;
       for (const w of text.split(/(\s+)/)) {
         const at = off; off += w.length;
@@ -664,6 +679,35 @@ export default class Bookshelf extends Scene {
       }
       c.restore();
     }
+    if (sub) this.spineSub(c, sub, t, sx, cjk ? top : 60, ss);
+  }
+
+  /**
+   * 書背上的原文副行：橫躺（字頂朝右、由上往下讀），比中文安靜——唱到、唱完都是淡兩成的紙白（不用燙金），還沒唱三成。
+   * 太長躺不進書背就沿著閱讀方向壓窄（字高不變，會場後排還認得出來）。
+   */
+  private spineSub(c: CanvasRenderingContext2D, sub: Line, t: number, x0: number, top: number, size: number) {
+    const fam = F.archivo(66, 700);
+    const text = sub.text;
+    const prog = Lyrics.lineCharProgress(sub, t);
+    c.save();
+    c.font = font(fam, size);
+    c.textBaseline = 'alphabetic';
+    const avail = DYN_H - 60 - top;
+    const full = c.measureText(text).width;
+    c.translate(x0, top); c.rotate(Math.PI / 2);
+    if (full > avail) c.scale(avail / full, 1);
+    const lit = rgba('bone', 0.95 * 0.8);
+    let x = 0, off = 0;
+    for (const w of text.split(/(\s+)/)) {
+      const at = off; off += w.length;
+      if (!w) continue;
+      const k = clamp((prog - at) / Math.max(1, w.length));
+      c.fillStyle = k > 0 ? lit : rgba('bone', 0.3);
+      c.fillText(w, x, size * 0.35);
+      x += c.measureText(w).width;
+    }
+    c.restore();
   }
 
   // ------------------------------------------------------------ 書桌

@@ -15,7 +15,7 @@ import { FSPass, Layer2D, W, H, SCALE } from '../engine/gl';
 import { F, font, loadText } from '../engine/type';
 import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, lerp, pulse } from '../engine/util';
-import { lyricAt, beatAfter, msgChars, DATE_DOTS } from './_motifs';
+import { lyricAt, lyricSubOf, subSizeFor, subGap, beatAfter, msgChars, DATE_DOTS } from './_motifs';
 import { lyricOnPath, drawNote, arcAt, type Note } from './_couple';
 import { loadPuppets, drawPick, drawCycle, puppetPoint, puppetShadow, puppetIn, puppetLight, jumpArc, breathe, beatKick, hop, noteV2, tightenNote, type PuppetOpts } from './_puppet';
 import { lyricV2 } from './_v2';
@@ -36,6 +36,13 @@ const CHECK = { x: 110, y: 96, w: 800, h: 370 };
 const PAD = { x: 44, top: 132, bottom: 30 };
 /** 場邊記錄台的 LED 板（歌詞）。 */
 const TABLE = { x: 560, y: 866, w: 780, h: 118, base: 936 };
+/**
+ * 韓文歌時 LED 板往上長多少：桌面剛好升到地板線（宣文的腳底），不會蓋到人；中文兩排＋原文才放得進板子，
+ * 原文最後一排離下緣還有 96 px（鏡頭推到最近時）。
+ */
+const KO_UP = 20;
+/** 原文最後一排基線最低到這裡（鏡頭最後推到 1.03 倍，放大後還離下緣 96 px）。 */
+const KO_LOW = 971;
 const BALL_R = 12;
 /** 投籃的弧線比出手點高多少（px）。 */
 const ARC = 150;
@@ -82,6 +89,8 @@ export default class Halftime extends Scene {
   note: Note | null = null;
   check = { ...CHECK };
   lyricSize = 52;
+  /** 記錄台的 LED 板（韓文歌時長高）。 */
+  face: typeof TABLE = TABLE;
   msgT0 = 0;
   /** 出手點（shoot_2 的手）與籃框中心：每一球都從這裡飛到那裡。 */
   release: Pt = { x: 0, y: 0 };
@@ -124,6 +133,7 @@ export default class Halftime extends Scene {
     const cw = Math.min(CHECK.w, Math.max(760, tightenNote(c, this.note, 520) + PAD.x * 2));
     this.check = { x: CHECK.x, y: CHECK.y, w: cw, h: ch };
     this.lyricSize = lyricV2(this.msg ? this.note.fit.size : null);
+    if (!this.msg && this.ctx.lyrics.linesIn(s - 1, this.ctx.end + 1).some((l) => !!lyricSubOf(l))) this.face = { ...TABLE, y: TABLE.y - KO_UP, h: TABLE.h + KO_UP };
     this.msgT0 = beatAfter(au, s + 0.3);
     this.crowd = new CrowdLayer(makeCrowd(-20, W + 20, 500, 8, { r: 10, gap: 44, rowH: 40, shrink: 0.94, seed: 31 }), (cc) => crowdShade(cc, 200, 530), rgba('bone', 0.04), SCALE);
     this.makeStamp();
@@ -176,8 +186,9 @@ export default class Halftime extends Scene {
     drawHoop(c, HOOP, 'back', { line: rgba('bone', 0.5), glass: rgba('bone', 0.07), pole: mixRgba('ink2', 'bone', 0.05) });
     // 記錄台：一張長桌的正面是 LED 板
     c.fillStyle = mixRgba('ink', 'ink2', 0.6);
-    c.fillRect(TABLE.x - 16, TABLE.y - 16, TABLE.w + 32, 16);
-    ledBand(c, { x: TABLE.x, y: TABLE.y, w: TABLE.w, h: TABLE.h });
+    const T = this.face;
+    c.fillRect(T.x - 16, T.y - 16, T.w + 32, 16);
+    ledBand(c, { x: T.x, y: T.y, w: T.w, h: T.h });
     // 支票的架子：兩隻腳往下到地板
     const K = this.check;
     c.strokeStyle = mixRgba('ink2', 'bone', 0.12);
@@ -400,22 +411,34 @@ export default class Halftime extends Scene {
     const rv = prog(t, this.ctx.start + 0.1, this.ctx.start + 0.6, ease.inOutCubic);
     // 沒有歌詞（間奏、純音樂）：LED 板慢慢捲一排很淡的中場秀字樣，板子不會黑著
     const idle = 1 - (ly ? ly.k : 0);
+    const T = this.face, tall = T.y < TABLE.y;
     if (idle > 0.02) {
       c.save();
-      c.beginPath(); c.rect(TABLE.x, TABLE.y, TABLE.w, TABLE.h); c.clip();
+      c.beginPath(); c.rect(T.x, T.y, T.w, T.h); c.clip();
       c.font = font(F.mono(600), 26);
       c.letterSpacing = '10px';
       c.fillStyle = rgba('signal', 0.28 * idle * rv);
       const unit = 'HALFTIME · A&O ♥ 13 · 03   ';
       const uw = c.measureText(unit).width;
-      for (let x = TABLE.x - ((t * 70) % uw); x < TABLE.x + TABLE.w; x += uw) c.fillText(unit, x, TABLE.base - 8);
+      for (let x = TABLE.x - ((t * 70) % uw); x < TABLE.x + TABLE.w; x += uw) c.fillText(unit, x, tall ? T.y + T.h / 2 + 9 : TABLE.base - 8);
       c.letterSpacing = '0px';
       c.restore();
     }
     if (!ly) return;
     // 太長、最小字級也放不下一排的句子會折成兩排（第二排往下）：這時整段往上挪，兩排都在板子裡
     const family = F.archivo(100, 700), len = TABLE.w - 60;
-    const y = lyricRows(c, ly.line.text, family, this.lyricSize, 40, len) === 2 ? TABLE.base - 26 : TABLE.base;
+    const two = lyricRows(c, ly.line.text, family, this.lyricSize, 40, len) === 2;
+    let y = two ? TABLE.base - 26 : TABLE.base;
+    if (tall) {
+      // 長高的板子：中文（一或兩排）＋原文（lyricOnPath 自動畫在下面）整塊垂直置中，原文最後一排不低於 KO_LOW
+      const sub = lyricSubOf(ly.line), ms = two ? 40 : this.lyricSize, ss = subSizeFor(ms);
+      let span = two ? ms * 1.05 : 0, bottom = ms * 0.16;
+      if (sub) {
+        span += subGap(ms, ss) + (lyricRows(c, sub.text, family, ss, Math.min(ss, 26), len) - 1) * ss * 1.05;
+        bottom = ss * 0.2;
+      }
+      y = Math.min(T.y + T.h / 2 - (ms * 0.88 + span + bottom) / 2 + ms * 0.88, KO_LOW - span);
+    }
     lyricOnPath(c, ly.line, t, [{ x: TABLE.x + 30, y }, { x: TABLE.x + TABLE.w - 30, y }], {
       family, size: this.lyricSize, minSize: 40, alpha: ly.k * rv, unsung: rgba('bone', 0.24), sung: rgba('bone', 0.9), rowGap: 1.05,
     });

@@ -19,7 +19,7 @@ import { LineBatch } from '../engine/lines';
 import { F, font, loadText } from '../engine/type';
 import { LIN, rgba } from '../engine/palette';
 import { clamp, ease, prog, hash, lerp } from '../engine/util';
-import { lyricAt, WEDDING_DATE, COUPLE_ZH } from './_motifs';
+import { lyricAt, WEDDING_DATE, COUPLE_ZH, lyricSubOf, layoutLyric, subStyleFor, subGap, drawLyricSub, type LyricStyle } from './_motifs';
 import { grid, stagger, layoutRows, drawRows, type KaraokeInk } from './_t4';
 import { PlaneCam, camUniforms, CAM_GLSL, orderMask, lineItems, msgBlockV2, INVITE, type OrderMask, type MsgBlock, type MaskItem, type Rect, type P2 } from './_t14';
 import { lyricV2 } from './_v2';
@@ -304,15 +304,27 @@ export default class Chalkboard extends Scene {
     if (line) {
       const st = { family: FAM, size: lz.size, minSize: 40 / this.k, maxW: lz.w, maxRows: lz.rows, align: 'left' as const };
       const lay = layoutRows(c, line, st);
-      const y = lz.rows > 1 ? lz.y - ((lay.rows.length - 1) * lay.lineHeight) / 2 : lz.y;
+      // 原文（韓文歌）：同一支白粉筆寫在中文正下方。字級照螢幕 px 算（黑板座標要除以 k），整組一起置中、一起被板擦擦掉
+      const sub = lyricSubOf(line), kk = this.k, ms = lay.size * kk;
+      const sst: LyricStyle = { family: FAM, size: ms, maxWidth: lz.w * kk, align: 'left', sung: ink.sung, unsung: ink.unsung };
+      const sLay = sub ? layoutLyric(c, sub, subStyleFor(sst, ms)) : null;
+      const sGap = sLay ? subGap(ms, sLay.size) / kk : 0;
+      const sExtra = sLay ? sGap + (sLay.height - sLay.size) / kk : 0;
+      const y = lz.rows > 1 ? lz.y - ((lay.rows.length - 1) * lay.lineHeight + sExtra) / 2 : lz.y;
       const w = this.eraseAt(t);
-      const fx = lz.x - 80 + (lay.width + 200) * Math.max(0, w);
+      const fx = lz.x - 80 + (Math.max(lay.width, sLay ? Math.max(...sLay.rows.map((r) => r.width)) / kk : 0) + 200) * Math.max(0, w);
       c.save();
       if (w >= 0) { c.beginPath(); c.rect(fx, 0, W, H); c.clip(); }
       c.translate(lz.x, y);
       drawRows(c, lay, FAM, t, ink, ly ? ly.k : 1);
+      if (sub) {
+        c.translate(0, (lay.rows.length - 1) * lay.lineHeight + sGap);
+        c.scale(1 / kk, 1 / kk);
+        drawLyricSub(c, sub, t, sst, ms, ly ? ly.k : 1);
+      }
       c.restore();
-      const top = y - lay.size * 1.05, bot = y + lay.size * 0.35 + (lay.rows.length - 1) * lay.lineHeight;
+      // 擦過的白霧帶：蓋到最後一排（有原文就到原文那一排）的下緣
+      const top = y - lay.size * 1.05, bot = y + (lay.rows.length - 1) * lay.lineHeight + (sLay ? sExtra + (sLay.size * 0.35) / kk : lay.size * 0.35);
       bandV.set(top, bot, w >= 0 ? fx : -1e4, 0);
       if (w >= 0) eraser = { x: fx, y: (top + bot) / 2 };
     } else bandV.set(0, 0, -1e4, 0);

@@ -18,7 +18,7 @@ import { rgba, mixRgba, LIN } from '../engine/palette';
 import { clamp, ease, prog, lerp, hash, TAU } from '../engine/util';
 import type { FitResult } from '../engine/text';
 import { Lyrics, type Line } from '../engine/lyrics';
-import { lyricAt, layoutLyric, beatAfter, signature, COUPLE_ZH, type LyricStyle } from './_motifs';
+import { lyricAt, layoutLyric, beatAfter, signature, COUPLE_ZH, lyricSubOf, type LyricStyle, type LyricLayout } from './_motifs';
 import { paperSignal, no3, fitV2, slowPush, INVITE_SMALL, type Rect, SYMBOLS } from './_t20';
 import { lyricV2, sigV2, msgMaxFor, V2 } from './_v2';
 
@@ -330,34 +330,47 @@ export default class Ocean extends Scene {
     if (!ly) return;
     const st = this.lyrStyle();
     const lay = layoutLyric(c, ly.line, st);
-    const lastRow = lay.rows.length - 1;
-    const y0 = base - lastRow * lay.size * (st.lineHeight ?? 1.18);
+    const lh = (l: LyricLayout) => l.size * (st.lineHeight ?? 1.18);
+    // 原文副行（韓文歌）：原文那一排貼著海平線（一樣沉在海裡、唱到才浮上來），中文往上讓出位置；
+    // 比中文安靜：唱到、唱完都是墨色淡兩成
+    const sub = lyricSubOf(ly.line) ? lay.sub ?? null : null;
+    const lastY = sub ? sub.dy + (sub.lay.rows.length - 1) * lh(sub.lay) : (lay.rows.length - 1) * lh(lay);
+    const y0 = base - lastY;
     c.save();
     // 最後一列在海平線下的部分看不到（字沉在海裡）
     c.beginPath(); c.rect(0, 0, W, HZ - 1); c.clip();
-    c.font = font(st.family, lay.size);
     c.textBaseline = 'alphabetic';
     c.globalAlpha = ly.k * inK;
+    this.risingWords(c, lay, t, y0, sub ? null : lastY, st.active!, st.sung!, st.unsung!);
+    if (sub) {
+      const lit = rgba('sepia', 0.94 * 0.8);
+      this.risingWords(c, sub.lay, t, y0 + sub.dy, lastY - sub.dy, lit, lit, st.unsung!);
+    }
+    c.restore();
+  }
+
+  /** 一組排好的字：逐字跟唱；`sinkY` 那一列（貼著海平線的）還沒唱的字沉一半，唱到的那一刻浮上來。 */
+  private risingWords(c: CanvasRenderingContext2D, lay: LyricLayout, t: number, y0: number, sinkY: number | null, active: string, sung: string, unsung: string) {
+    c.font = font(LYR_STYLE.family, lay.size);
     for (const pw of lay.words) {
       const w = pw.word;
       const p = Lyrics.wordProgress(w, t);
-      const onLast = Math.abs(pw.y - lastRow * lay.size * (st.lineHeight ?? 1.18)) < 1;
+      const onLast = sinkY !== null && Math.abs(pw.y - sinkY) < 1;
       // 浮上來：唱到的那一刻用 outBack 從海裡冒出來（只有貼著海平線的那一列會沉）
       const rise = t >= w.start ? ease.outBack(clamp((t - w.start) / 0.26)) : 0;
       const sink = onLast ? (1 - rise) * lay.size * 0.52 : 0;
       const x = LYR_X + pw.x, y = y0 + pw.y + sink;
-      c.fillStyle = st.unsung!;
+      c.fillStyle = unsung;
       if (p < 1) c.fillText(w.w, x, y);
       if (p <= 0) continue;
       c.save();
       c.beginPath();
       c.rect(x - lay.size * 0.1, y - lay.size * 1.1, (pw.w + lay.size * 0.2) * p, lay.size * 1.5);
       c.clip();
-      c.fillStyle = p < 1 ? st.active! : st.sung!;
+      c.fillStyle = p < 1 ? active : sung;
       c.fillText(w.w, x, y);
       c.restore();
     }
-    c.restore();
   }
 
   /** 刻在浪身上的留言（紙白）：字在泡沫排好之後實起來。 */

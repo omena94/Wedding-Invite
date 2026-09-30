@@ -333,7 +333,9 @@ export default class Metro extends Scene {
         const st = { ...this.lyrStyle, ...paperInk() };
         const lay = layoutLyric(c, ly.line, st);
         const big = this.lyrPos === LYR_BIG;
-        const y0 = big ? this.lyrPos.y - (lay.rows.length - 1) * lay.size * 1.14 * 0.5 : this.lyrPos.y - (lay.rows.length - 1) * lay.size * (st.lineHeight ?? 1.18);
+        let y0 = big ? this.lyrPos.y - (lay.rows.length - 1) * lay.size * 1.14 * 0.5 : this.lyrPos.y - (lay.rows.length - 1) * lay.size * (st.lineHeight ?? 1.18);
+        // 韓文原文副行在中文下面：下面那行邀請是畫好的（LYR_BIG.y + 90），原文最後一排的基線最低到它上面 36 px，放不下整組往上移
+        if (big && lay.sub) y0 = Math.min(y0, LYR_BIG.y + 54 - (lay.height - lay.size));
         c.save(); c.translate(this.lyrPos.x, y0);
         drawLyric(c, ly.line, t, st, lay, ly.k);
         c.restore();

@@ -122,7 +122,9 @@ float holeSD(vec2 q) {
 bool inR(vec2 q, vec4 r) { return q.x >= r.x && q.y >= r.y && q.x < r.x + r.z && q.y < r.y + r.w; }
 vec2 uvR(vec2 q, vec4 r) { return vec2((q.x - r.x) / r.z, 1.0 - (q.y - r.y) / r.w); }
 const vec4 RM = vec4(${MSG.x}.0, ${MSG.y}.0, ${MSG.w}.0, ${MSG.h}.0);
-const vec4 RS = vec4(${STRIP.x}.0, ${STRIP.y}.0, ${STRIP.w}.0, ${STRIP.h}.0);
+// 歌詞條的範圍是 uniform：韓文歌（中文＋原文兩段）時歌詞條往上長高（主檔的 KO_UP），平常就是 STRIP
+uniform vec4 uRS;
+#define RS uRS
 vec2 uvT(vec2 q) { return vec2(q.x / TSZ.x, 1.0 - q.y / TSZ.y); }
 
 // 留言的字：時間碼 = B / G（邊緣反鋸齒兩個通道等比例變淡，比例不變）；時間到了才壓下去、上墨

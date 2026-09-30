@@ -104,7 +104,11 @@ export default class LibraryCard extends Scene {
     shuffle(pool, rnd);
     const names = pool.slice(0, SLOTS - 1);
     if (names.length < SLOTS - 1 && all.some((x) => !(x.name ?? '').trim() && (!m || x.id !== m.id))) names.push('一位賓客');
-    for (const x of ['芃芃', 'QQ', '新郎', '新娘', '花童', '一位賓客']) if (names.length < SLOTS - 1) names.push(x);
+    // 留言很少時（婚禮剛開始只有新人那一則）備用名字也湊不滿 SLOTS - 1 格：重複用備用名字補滿，
+    // 不然空的那格 measure(undefined) 會讓整個窗格初始化失敗、畫面變黑（2026-09-30 本機預覽只有一則留言時踩到）
+    // 元元（第三隻狗）排最後：一般情況用不到它（畫面照舊），完全沒有其他賓客名字時剛好湊滿 7 格、不重複
+    const spare = ['芃芃', 'QQ', '新郎', '新娘', '花童', '一位賓客', '元元'];
+    for (let i = 0; names.length < SLOTS - 1; i++) names.push(spare[i % spare.length]!);
     shuffle(names, rnd);
     const mainName = m ? (m.couple ? '新人' : (m.name || '一位賓客')) : '下一位：你？';
 

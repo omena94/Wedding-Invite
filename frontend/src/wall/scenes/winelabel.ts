@@ -266,7 +266,9 @@ export default class WineLabel extends Scene {
     if (!this.msg && ly) {
       // 沒有留言：品飲筆記印的是歌詞（主角）；瓶頸標寫歌名
       const lay = layoutLyric(c, ly.line, this.noteLyr);
-      c.save(); c.translate(cx, (NOTE.v0 + NOTE.v1) / 2 - 10 + lay.size * 0.35 - (lay.rows.length - 1) * lay.size * 0.57);
+      // 韓文歌（drawLyric 把原文畫在中文下面）：整組（到原文最後一排）一起置中，原文才不會壓到下面那行邀請
+      const lift = lay.sub ? (lay.height - lay.size) / 2 : (lay.rows.length - 1) * lay.size * 0.57;
+      c.save(); c.translate(cx, (NOTE.v0 + NOTE.v1) / 2 - 10 + lay.size * 0.35 - lift);
       drawLyric(c, ly.line, t, this.noteLyr, lay, ly.k);
       c.restore();
     }

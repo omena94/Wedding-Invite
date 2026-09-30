@@ -22,7 +22,7 @@ import { fitText, type FitResult } from '../engine/text';
 import { V2, msgMaxFor, lyricV2, sigV2, fitClauses } from './_v2';
 import { lyricAt, beatAfter, signature, fillWithHearts, COUPLE_ZH } from './_motifs';
 import { Paper, stagger, pad3, mono, tag, type Rect } from './_t11';
-import { paperLyric, lyricLine, lyricRows, glyphPoints, type GlyphPts } from './_t12';
+import { paperLyric, lyricLine, lyricRows, subDepth, glyphPoints, type GlyphPts } from './_t12';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'science', paper: true, energy: [0.2, 0.85], bars: [4, 12], weight: 1 };
 
@@ -260,8 +260,10 @@ export default class Magnet extends Scene {
     const mr = this.avoid[0]!;
     (u.calm!.value as THREE.Vector4).set(mr[0] + 20, mr[1] + 10, mr[0] + mr[2] - 20, mr[1] + mr[3] - 10);
     const lr = this.lyrRect;
+    // 韓文歌的原文副行在歌詞下面：鐵粉連它一起讓出來（沒有副行是 0）
+    const sd = subDepth(this.layer.ctx, this.ctx.lyrics.linesIn(s - 1.6, e + 0.4), paperLyric(this.lyrSize, LYR.w));
     // 歌詞連同上面的圖號一起讓出來；左下的讀數與註腳也是
-    (u.calm2!.value as THREE.Vector4).set(lr[0], lr[1], lr[0] + lr[2], lr[1] + lr[3] - 6);
+    (u.calm2!.value as THREE.Vector4).set(lr[0], lr[1], lr[0] + lr[2], lr[1] + lr[3] - 6 + sd);
     (u.calm3!.value as THREE.Vector4).set(LYR.x - 10, 960, LYR.x + 620, 996);
     // 右下角 HUD（時間、則數、QR）底下保持乾淨
     (u.calm4!.value as THREE.Vector4).set(1330, 820, W, H);

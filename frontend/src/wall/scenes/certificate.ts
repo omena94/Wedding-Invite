@@ -25,7 +25,7 @@ import { wrap } from '../engine/text';
 import { LIN } from '../engine/palette';
 import type { Line } from '../engine/lyrics';
 import { clamp, ease, lerp, prog, hash, pulse, frameIdx, TAU } from '../engine/util';
-import { lyricAt, beatAfter, barAfter, COUPLE_ZH } from './_motifs';
+import { lyricAt, lyricSubOf, subSizeFor, beatAfter, barAfter, COUPLE_ZH } from './_motifs';
 import { msgMaxFor, lyricV2, sigV2, V2 } from './_v2';
 import { PAPER_FRAG, BAKE_FRAG, BAKE, FORM_BOX, FORM_RES } from './certificate-glsl';
 import { L, TYPE, PRINT, SIG, drawForm, makeCopy, FORM_TEXT, FS, CHECK_FONT, CHECK_TRACK, onPaper, Z_READ, type FormCopy } from './certificate-form';
@@ -94,7 +94,11 @@ interface TChar { ch: string; x: number; y: number; w: number; row: number; t: n
  * 每格只要把「已經寫好的那一段」drawImage 過去——逐字 fillText（還要逐字旋轉）太慢。
  */
 interface Sprite { cv: HTMLCanvasElement; x0: number; band: number; top: number }
-interface Block { chars: TChar[]; family: string; size: number; rows: number; hand: boolean; sprite?: Sprite | null }
+interface Block {
+  chars: TChar[]; family: string; size: number; rows: number; hand: boolean; sprite?: Sprite | null;
+  /** 韓文歌的原文副行（打在歌詞下面的線上）。 */
+  sub?: Block;
+}
 interface Shot { t0: number; t1: number; e: (x: number) => number; cam: (t: number) => Cam }
 /** 筆的一段動作（寫一塊字、勾、圈、簽名、底線）：t0～t1 之間筆尖在 at(t)。 */
 interface Act { t0: number; t1: number; at: (t: number) => P & { lift: number } }
@@ -145,6 +149,21 @@ function typeset(c: Ctx2, text: string, family: string, size: number, x0: number
     }
   });
   return { chars, family, size, rows: lines.length, hand };
+}
+
+/** 歌詞的字什麼時候打上去：字在它那個詞開始唱時打上去（英文一個詞裡的字母用自然的打字速度）；ws/we 換成那個詞的開始／結束。 */
+function timeChars(b: Block, line: Line) {
+  for (const ch of b.chars) {
+    const o = ch.ws;
+    const wi = line.words.findIndex((wd) => o >= wd.o && o < wd.o + wd.w.length);
+    const wd = wi >= 0 ? line.words[wi]! : line.words.find((x) => x.o > o) ?? line.words[line.words.length - 1];
+    if (!wd) { ch.t = line.start; ch.ws = line.start; ch.we = line.end; continue; }
+    const n = Array.from(wd.w).length;
+    const j = wi >= 0 ? Array.from(line.text.slice(wd.o, o)).length : 0;
+    const per = Math.min(0.07, (wd.end - wd.start) / Math.max(1, n));
+    ch.t = wd.start + j * per;
+    ch.ws = wd.start; ch.we = wd.end;
+  }
 }
 
 /** 底片的解析度（紙面 px 的倍數）：鏡頭最近約 0.7 倍，1 倍就夠銳利。 */
@@ -318,7 +337,8 @@ export default class Certificate extends Scene {
 
   /** 這個窗格所有寫字的塊（做底片、還畫布用）。 */
   private blocks(): Block[] {
-    return [this.body, this.title, this.blank, ...this.lyricCache.values()].filter((b): b is Block => !!b);
+    const ly = [...this.lyricCache.values()];
+    return [this.body, this.title, this.blank, ...ly, ...ly.map((b) => b.sub)].filter((b): b is Block => !!b);
   }
 
   /** 排時間：寫字落在節拍格上、勾選／簽名／方章依序各佔一拍，窗格太短就一項一項省掉。 */
@@ -618,16 +638,17 @@ export default class Certificate extends Scene {
     const size = this.mode === 'msg' ? fitRowsOr(c, line.text, fam, w, 2, top, onPaper(V2.lyrMin), onPaper(34))
       : fitRowsOr(c, line.text, fam, w, 3, top, onPaper(V2.lyrMin), onPaper(34));
     const b = typeset(c, line.text, fam, size, L.col.x0, rows, w, this.seed + 100 + line.i);
-    for (const ch of b.chars) {
-      const o = ch.ws;
-      const wi = line.words.findIndex((wd) => o >= wd.o && o < wd.o + wd.w.length);
-      const wd = wi >= 0 ? line.words[wi]! : line.words.find((x) => x.o > o) ?? line.words[line.words.length - 1];
-      if (!wd) { ch.t = line.start; ch.ws = line.start; ch.we = line.end; continue; }
-      const n = Array.from(wd.w).length;
-      const j = wi >= 0 ? Array.from(line.text.slice(wd.o, o)).length : 0;
-      const per = Math.min(0.07, (wd.end - wd.start) / Math.max(1, n));
-      ch.t = wd.start + j * per;
-      ch.ws = wd.start; ch.we = wd.end;
+    timeChars(b, line);
+    // 韓文歌（沒有留言、歌詞寫在內容欄時）：原文小一號打在中文下面的那幾條線上——表格的字只能寫在印好的線上，
+    // 所以基線是下一條線（比 subGap 鬆一點，但跟表格一致）。線不夠就縮到一行；中文佔滿了就不打原文
+    const sub = this.mode === 'lyric' ? lyricSubOf(line) : null;
+    const left = rows.slice(b.rows);
+    if (sub && left.length) {
+      const ss = subSizeFor(size * Z_READ);
+      const n = Math.min(2, left.length);
+      const sz = fitRowsOr(c, sub.text, fam, w, n, onPaper(ss), onPaper(Math.min(ss, 26)), onPaper(22));
+      b.sub = typeset(c, sub.text, fam, sz, L.col.x0, left.slice(0, n), w, this.seed + 300 + line.i);
+      timeChars(b.sub, sub);
     }
     this.lyricCache.set(line, b);
     return b;
@@ -888,8 +909,12 @@ export default class Certificate extends Scene {
       return;
     }
     const ly = lyricAt(this.ctx.lyrics, t, 1.6);
-    if (ly) this.drawTyped(c, hc, this.lyricBlock(ly.line), t, { alpha: ly.k, lyric: true, preview: 0.3 });
-    else this.drawGap(c, t, L.msg.rows[0], 1.6);
+    if (ly) {
+      const b = this.lyricBlock(ly.line);
+      this.drawTyped(c, hc, b, t, { alpha: ly.k, lyric: true, preview: 0.3 });
+      // 原文比中文安靜：不用訊號色的印泥（lyric: false），打上去的字淡兩成；還沒打的預告一樣三成（0.375 × 0.8）
+      if (b.sub) this.drawTyped(c, hc, b.sub, t, { alpha: ly.k * 0.8, preview: 0.375 });
+    } else this.drawGap(c, t, L.msg.rows[0], 1.6);
   }
 
   /** 「以上皆是」：筆在拍點上「刷」一勾（訊號色的墨），下一拍再圈起來。 */

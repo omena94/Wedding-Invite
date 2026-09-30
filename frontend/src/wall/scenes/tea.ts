@@ -19,7 +19,7 @@ import { F, font, loadText } from '../engine/type';
 import { rgba } from '../engine/palette';
 import { clamp, ease, prog, hash, lerp, pulse, TAU } from '../engine/util';
 import { fitText } from '../engine/text';
-import { heartPoints } from './_motifs';
+import { heartPoints, lyricSubOf, layoutLyric, subStyleFor, subGap, drawLyricSub, type LyricStyle } from './_motifs';
 import { grid, stagger, layoutRows, drawRows, paperInk } from './_t4';
 import { PlaneCam, camUniforms, CAM_GLSL, orderMask, lineItems, msgBlockV2, INVITE, type OrderMask, type MsgBlock, type MaskItem } from './_t14';
 import { shownLyric, type Rect } from './_t24';
@@ -440,7 +440,9 @@ export default class Tea extends Scene {
     const { lyrics, song } = this.ctx;
     const s = this.ctx.start, e = this.ctx.end;
     const ly = shownLyric(lyrics, t, s, e);
-    const live = ly && t >= ly.line.start - 0.05 && t <= ly.line.end + 0.05;
+    // 原文（韓文歌）的逐字時間是自己的：頭尾可能比中文早一點、晚一點，這段時間也要逐幀重畫
+    const lsub = !this.msg ? lyricSubOf(ly?.line) : null;
+    const live = ly && t >= Math.min(ly.line.start, lsub?.start ?? Infinity) - 0.05 && t <= Math.max(ly.line.end, lsub?.end ?? -Infinity) + 0.05;
     const fortune = t > this.tPour + 3.2;
     // 鏡頭還貼著杯子的時候，茶籤在畫面邊上：字等鏡頭拉開才淡入（不要在畫面邊緣被切一半）
     const open = clamp((t - this.ctx.start) / Math.max(0.3, this.b0 + 0.3 - this.ctx.start));
@@ -473,11 +475,25 @@ export default class Tea extends Scene {
     // 沒有留言：歌詞寫在小箋上（焦點，v2 歌詞的字級）
     if (!this.msg && this.hasLyrics && ly) {
       const k = this.kMat;
-      const st = { family: FAM, size: lyricV2(null) / k, minSize: V2.lyrMin / k, maxW: BOX.w, maxRows: 3, align: 'left' as const, lineHeight: 1.3 };
+      // 有原文（韓文歌）：中文最多兩行，原文用同一支筆小一號寫在正下方，整組在小箋上置中
+      const sub = lsub;
+      const st = { family: FAM, size: lyricV2(null) / k, minSize: V2.lyrMin / k, maxW: BOX.w, maxRows: sub ? 2 : 3, align: 'left' as const, lineHeight: 1.3 };
       const lay = layoutRows(c, ly.line, st);
-      c.save(); c.translate(BOX.x, BOX.y + (BOX.h - lay.height) / 2 + lay.size * 0.85);
+      // 原文照螢幕 px 排（subSizeFor 的 32～56 是螢幕上的大小），畫在小箋座標要除以 k
+      const ms = lay.size * k;
+      const sst: LyricStyle = { family: FAM, size: ms, maxWidth: BOX.w * k, align: 'left', ...ink };
+      const sLay = sub ? layoutLyric(c, sub, subStyleFor(sst, ms)) : null;
+      const sGap = sLay ? subGap(ms, sLay.size) / k : 0;
+      const hAll = sLay ? lay.height + sGap + (sLay.height - sLay.size + sLay.size * 0.25) / k : lay.height;
+      const y0 = BOX.y + (BOX.h - hAll) / 2 + lay.size * 0.85;
+      c.save(); c.translate(BOX.x, y0);
       drawRows(c, lay, FAM, t, ink, ly.k);
       c.restore();
+      if (sub) {
+        c.save(); c.translate(BOX.x, y0 + (lay.rows.length - 1) * lay.lineHeight + sGap); c.scale(1 / k, 1 / k);
+        drawLyricSub(c, sub, t, sst, ms, ly.k);
+        c.restore();
+      }
     }
     // 茶葉沉好之後：小箋左下角一行冷面的小字
     if (fortune) {

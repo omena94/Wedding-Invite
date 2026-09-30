@@ -15,7 +15,8 @@ import { LineBatch } from '../engine/lines';
 import { F, font, loadText } from '../engine/type';
 import { LIN, rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, lerp, keys } from '../engine/util';
-import { lyricAt, barAfter, sparkHead, sparkParticles, msgChars } from './_motifs';
+import type { Line } from '../engine/lyrics';
+import { lyricAt, barAfter, sparkHead, sparkParticles, msgChars, lyricSubOf } from './_motifs';
 import { inkFor, inkLine, inkPoly, lyricOnPath, drawNote, type Pt, type Note } from './_couple';
 import { loadPuppets, drawPick, puppetShadow, puppetIn, puppetLight, breathe, landSquash, noteV2, tightenNote } from './_puppet';
 import { lyricV2 } from './_v2';
@@ -62,6 +63,11 @@ export default class Waltz extends Scene {
   moves: Move[] = [];
   keys: [number, string][] = [];
   floorArc: Pt[] = [];
+  arcLen = 0;
+  /** 有韓文原文的句子用的弧（往上抬一點）。 */
+  floorArcSub: Pt[] = [];
+  /** 有韓文原文的句子：中文排成一排放得下的字級（第一次用到時量好）。 */
+  subFit = new Map<Line, number>();
   note: Note | null = null;
   card = { x: CARD.x, y: CARD.bottom - CARD.h, w: CARD.w, h: CARD.h };
   lyricSize = 52;
@@ -92,6 +98,8 @@ export default class Waltz extends Scene {
       const a = lerp(Math.PI * 0.84, Math.PI * 0.26, i / 60);
       this.floorArc.push({ x: CX - 60 + Math.cos(a) * 540, y: FLOOR + Math.sin(a) * 118 });
     }
+    this.floorArcSub = this.floorArc.map((p) => ({ x: p.x, y: p.y - 22 }));
+    for (let i = 1; i < this.floorArc.length; i++) this.arcLen += Math.hypot(this.floorArc[i]!.x - this.floorArc[i - 1]!.x, this.floorArc[i]!.y - this.floorArc[i - 1]!.y);
     // 畫架上的卡：標準 v2 的字級；卡的寬高跟著留言（在畫架上置中）
     const c = this.fg.ctx;
     const w = CARD.w - PAD.x * 2, hmax = CARD.h - PAD.top - PAD.bottom;
@@ -186,7 +194,28 @@ export default class Waltz extends Scene {
 
     // 歌詞在地板上
     const ly = lyricAt(lyrics, t);
-    if (ly) lyricOnPath(c, ly.line, t, this.floorArc, { family: F.archivo(100, 700), size: this.lyricSize, minSize: 40, offset: -8, alpha: ly.k * rv, unsung: rgba('bone', 0.24) });
+    if (ly) {
+      // 有韓文原文時：原文排在中文下面（更靠近鏡頭），中文折成兩排的話原文會掉到畫面下緣——寧可把中文縮小一點排成一排
+      // （字級自己先找好、留一點餘裕：lyricOnPath 照比例縮到剛好時會因為四捨五入被折行）；
+      // 縮到 34 還放不下才折，整條弧往上抬一排。原文在地板上更靠近鏡頭，整條弧再往上抬一點，原文才不會貼著畫面下緣
+      // （平移整條弧：用 offset 會改到弧長，剛好放得下的句子會被折成兩排）
+      const fam = F.archivo(100, 700);
+      let size = this.lyricSize, min = 40, off = -8, arc = this.floorArc;
+      if (lyricSubOf(ly.line)) {
+        let fit = this.subFit.get(ly.line);
+        if (fit === undefined) {
+          c.font = font(fam, 100);
+          const w100 = Array.from(ly.line.text).reduce((a, ch) => a + c.measureText(ch).width, 0);
+          fit = Math.floor((100 * this.arcLen * 0.94 * 0.97) / Math.max(1, w100));
+          this.subFit.set(ly.line, fit);
+        }
+        size = Math.min(size, Math.max(34, fit));
+        min = size;
+        if (fit < 34) off += size * 1.2;
+        arc = this.floorArcSub;
+      }
+      lyricOnPath(c, ly.line, t, arc, { family: fam, size, minSize: min, offset: off, alpha: ly.k * rv, unsung: rgba('bone', 0.24) });
+    }
 
     // 轉身的時候：地板上留一道訊號色的弧（腳步的軌跡），很快淡掉
     const av = Math.abs(vel) * Math.PI * 2;

@@ -16,7 +16,7 @@ import { FSPass, Layer2D, W, H } from '../engine/gl';
 import { F, font, loadText } from '../engine/type';
 import { rgba } from '../engine/palette';
 import { clamp, ease, prog, hash } from '../engine/util';
-import { lyricAt, COUPLE_ZH } from './_motifs';
+import { lyricAt, COUPLE_ZH, lyricSubOf, layoutLyric, subStyleFor, subGap, drawLyricSub, type LyricStyle } from './_motifs';
 import { grid, stagger, layoutRows, drawRows, type KaraokeInk } from './_t4';
 import { PlaneCam, camUniforms, CAM_GLSL, orderMask, lineItems, msgBlockV2, INVITE, type OrderMask, type MsgBlock, type MaskItem, type Rect } from './_t14';
 import { lyricV2 } from './_v2';
@@ -282,16 +282,27 @@ export default class Sand extends Scene {
     if (line) {
       const st = { family: FAM_LYR, size: lz.size, minSize: 40 / this.k, maxW: lz.w, maxRows: this.msg ? 1 : 2, align: 'left' as const };
       const lay = layoutRows(c, line, st);
-      const y = this.msg ? lz.y : lz.y + lay.size * 0.35 - ((lay.rows.length - 1) * lay.lineHeight) / 2;
+      // 原文（韓文歌）：同樣撥開沙、小一號寫在中文正下方；字級照螢幕 px 算（燈箱座標要除以 k），整組一起置中、一起被抹掉
+      const sub = lyricSubOf(line), kk = this.k, ms = lay.size * kk;
+      const sst: LyricStyle = { family: FAM_LYR, size: ms, maxWidth: lz.w * kk, align: 'left', ...ink };
+      const sLay = sub ? layoutLyric(c, sub, subStyleFor(sst, ms)) : null;
+      const sGap = sLay ? subGap(ms, sLay.size) / kk : 0;
+      const sExtra = sLay ? sGap + (sLay.height - sLay.size) / kk : 0;
+      const y = this.msg ? lz.y : lz.y + lay.size * 0.35 - ((lay.rows.length - 1) * lay.lineHeight + sExtra) / 2;
       // 換句前一刻：一隻看不見的手把這一句由左往右抹掉
       const w = this.wipeAt(t);
-      const fx = lz.x - 60 + (lay.width + 160) * Math.max(0, w);
+      const fx = lz.x - 60 + (Math.max(lay.width, sLay ? Math.max(...sLay.rows.map((r) => r.width)) / kk : 0) + 160) * Math.max(0, w);
       c.save();
       if (w >= 0) { c.beginPath(); c.rect(fx, 0, W, H); c.clip(); }
       c.translate(lz.x, y);
       drawRows(c, lay, FAM_LYR, t, ink, ly ? ly.k : 1);
+      if (sub) {
+        c.translate(0, (lay.rows.length - 1) * lay.lineHeight + sGap);
+        c.scale(1 / kk, 1 / kk);
+        drawLyricSub(c, sub, t, sst, ms, ly ? ly.k : 1);
+      }
       c.restore();
-      const top = y - lay.size - (this.msg ? 0 : 0), bot = y + lay.size * 0.4 + (lay.rows.length - 1) * lay.lineHeight;
+      const top = y - lay.size - (this.msg ? 0 : 0), bot = y + (lay.rows.length - 1) * lay.lineHeight + (sLay ? sExtra + (sLay.size * 0.4) / kk : lay.size * 0.4);
       (u.wipe!.value as THREE.Vector3).set(w >= 0 ? fx : -1e4, top - 20, bot + 20);
     } else (u.wipe!.value as THREE.Vector3).set(-1e4, 0, 0);
     if (!this.msg) {

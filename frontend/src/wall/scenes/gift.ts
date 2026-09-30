@@ -17,7 +17,7 @@ import { F, font } from '../engine/type';
 import { rgba } from '../engine/palette';
 import { clamp, ease, prog, pulse, hash, lerp, noise2, frameIdx } from '../engine/util';
 import { fitText } from '../engine/text';
-import { lyricAt, drawLyric, layoutLyric, beatAfter, COUPLE_ZH, type LyricStyle } from './_motifs';
+import { lyricAt, lyricSubOf, drawLyric, layoutLyric, beatAfter, COUPLE_ZH, type LyricStyle } from './_motifs';
 import { preloadText, INVITE_SMALL, paperSignal } from './_t19';
 import { barsIn, sigInk } from './_t1';
 import { Stage, camDist, type V3 } from './_t4';
@@ -51,6 +51,8 @@ const FNS = 30, FND = 6;
 /** 鏡頭推近之後的位置：看卡片右邊一點（盒子在畫面左邊）、從前方斜上方往下看。 */
 const T2: V3 = [CARD[0] + 280, CARD[1] + 120, CARD[2]];
 const TILT2 = 0.4, YAW2 = 0.03;
+/** 有原文副行時鏡頭看的點往桌子裡面挪多少（盒子在畫面上約往下 30 px）。 */
+const SUB_DY = 34;
 /** 緞帶寬。 */
 const RB = 66;
 /**
@@ -258,11 +260,17 @@ export default class Gift extends Scene {
   private ls: THREE.Vector3[] = Array.from({ length: LOOSE_N }, () => new THREE.Vector3());
   topSt: LyricStyle = { family: F.archivo(100, 700), size: V2.lyrMax, minSize: V2.lyrMin, maxWidth: 1400, align: 'center' };
   avoid: Rect[] = [];
+  /**
+   * 韓文歌有原文副行時，鏡頭看的點往桌子裡面挪多少（世界單位）：盒子在畫面上往下讓一點，
+   * 歌詞＋原文兩行才不會壓到盒緣。沒有副行是 0，鏡頭跟原本一樣。
+   */
+  subDy = 0;
   private v = new THREE.Vector3();
 
   override async init() {
     const { audio: au, start: s, end: e } = this.ctx;
     const m = this.msg;
+    this.subDy = this.ctx.lyrics.linesIn(s, e).some((l) => lyricSubOf(l)) ? SUB_DY : 0;
     await preloadText(this.ctx, `${m ? m.text + sigOf(m) : ''}${T22_TEXT}${INVITE_SMALL}給${COUPLE_ZH}：給大家：FROM THE COUPLE · 新人`);
     const B = au.beatPeriod(s + 0.1);
     const step = e - s < 8 * B ? B / 2 : B;
@@ -325,7 +333,7 @@ export default class Gift extends Scene {
   /** 推近之後的鏡頭（hold = 之後很慢地再推近、往左繞一點的進度 0..1）。 */
   private lookFinal(hold: number): { pos: V3; tgt: V3; dist: number; tilt: number; yaw: number } {
     const dist = D2 * (1 - 0.04 * hold), tilt = TILT2 - 0.03 * hold, yaw = YAW2 - 0.05 * hold;
-    return this.lookAt(T2, dist, tilt, yaw);
+    return this.lookAt([T2[0], T2[1] + this.subDy, T2[2]], dist, tilt, yaw);
   }
   private lookAt(tgt: V3, dist: number, tilt: number, yaw: number) {
     const pos: V3 = [tgt[0] + Math.sin(yaw) * Math.sin(tilt) * dist, tgt[1] - Math.cos(yaw) * Math.sin(tilt) * dist, tgt[2] + Math.cos(tilt) * dist];
@@ -432,7 +440,7 @@ export default class Gift extends Scene {
     const hold = ease.inOutQuad(prog(t, this.tLid + this.crane, e));
     const pre = prog(t, s, this.tLid, ease.inOutQuad);
     const T1: V3 = [150, 60, 160];
-    const tgt: V3 = [lerp(T1[0], T2[0], w2), lerp(T1[1], T2[1], w2), lerp(T1[2], T2[2], w2)];
+    const tgt: V3 = [lerp(T1[0], T2[0], w2), lerp(T1[1], T2[1], w2) + this.subDy, lerp(T1[2], T2[2], w2)];
     const d1 = D0 * (1.2 - 0.06 * pre), d2 = D2 * (1 - 0.04 * hold);
     const dist = Math.exp(lerp(Math.log(d1), Math.log(d2), w2));
     const tilt = lerp(0.9 - 0.05 * pre, TILT2 - 0.03 * hold, w2);
@@ -454,7 +462,9 @@ export default class Gift extends Scene {
     const ly = lyricAt(lyrics, t);
     if (ly) {
       const lay = layoutLyric(c, ly.line, this.topSt);
-      c.save(); c.translate(960, 150 - (lay.rows.length - 1) * lay.size * 0.3);
+      // 有原文副行：兩行一起往上靠（字頂離畫面上緣 96 px），原文才不會碰到盒緣
+      const y0 = lay.sub ? Math.max(96 + lay.size * 0.92, 150 - (lay.height - lay.size) * 0.5) : 150 - (lay.rows.length - 1) * lay.size * 0.3;
+      c.save(); c.translate(960, y0);
       drawLyric(c, ly.line, t, this.topSt, lay, ly.k);
       c.restore();
     } else if (!lyrics.has) {

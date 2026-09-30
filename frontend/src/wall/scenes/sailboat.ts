@@ -17,7 +17,7 @@ import { F, font, layout, loadText, measure } from '../engine/type';
 import { rgba, LIN } from '../engine/palette';
 import { clamp, ease, prog, lerp, hash, springStep, TAU } from '../engine/util';
 import type { Line } from '../engine/lyrics';
-import { lyricAt, beatAfter, signature, drawMessage, COUPLE_ZH } from './_motifs';
+import { lyricAt, beatAfter, signature, drawMessage, COUPLE_ZH, lyricSubOf, subSizeFor, subGap } from './_motifs';
 import { paperSignal, singColor, glyphProgress, fitLine, fitV2, slowPush, no3, INVITE_SMALL, type Rect, SYMBOLS } from './_t20';
 import { lyricV2, sigV2, msgMaxFor, V2 } from './_v2';
 
@@ -116,7 +116,8 @@ void main() {
 
 interface Mark { row: number; x0: number; w: number; h: number; a: number }
 /** 旗子上的一行歌詞：字級與（一或兩）列；i0 是這一列第一個字在整行裡是第幾個字（跟唱進度用）。 */
-interface Flag { size: number; rows: { text: string; i0: number; w: number }[] }
+/** 旗子上的字：一或兩列歌詞；sub 是原文副行（韓文歌），在中文下面小一號。 */
+interface Flag { size: number; rows: { text: string; i0: number; w: number }[]; sub?: { line: Line; size: number; w: number } }
 
 export default class Sailboat extends Scene {
   sky = shared('sailboat.sky', SKY);
@@ -248,6 +249,13 @@ export default class Sailboat extends Scene {
       const t1 = line.text.slice(0, o).trimEnd(), t2 = line.text.slice(o);
       const size = clamp(Math.floor((100 * maxW) / bestW), V2.lyrMin, this.lyrSize);
       f = { size, rows: [{ text: t1, i0: 0, w: layout(t1, LYR_FAM, size).width }, { text: t2, i0: Array.from(line.text.slice(0, o)).length, w: layout(t2, LYR_FAM, size).width }] };
+    }
+    const sub = lyricSubOf(line);
+    if (sub) {
+      // 原文副行：跟中文同一面旗子、小一號；放不下就再縮（不折行，旗子不要變成一大片）
+      const ss = subSizeFor(f.size), w = layout(sub.text, LYR_FAM, ss).width;
+      const sz = w > maxW ? Math.max(26, (ss * maxW) / w) : ss;
+      f.sub = { line: sub, size: sz, w: layout(sub.text, LYR_FAM, sz).width };
     }
     this.flagSize.set(line.i, f);
     return f;
@@ -505,15 +513,21 @@ export default class Sailboat extends Scene {
       else { line = ly.line; flag = this.flagFor(line); alpha = ly.k; }
     }
     const size = flag.size, nRows = flag.rows.length;
-    const tw = Math.max(0, ...flag.rows.map((r) => r.w));
+    const tw = Math.max(0, ...flag.rows.map((r) => r.w), flag.sub?.w ?? 0);
+    // 有原文時旗子加寬一條：中文與原文的中線距離（基線距離 subGap 換成 textBaseline middle 的距離：
+    // 中線在基線上面約 0.38 個字高，大字的中線比較高，所以中線距離比基線距離多 0.38 × 字級差）
+    const gapC = flag.sub ? subGap(size, flag.sub.size) + 0.38 * (size - flag.sub.size) : 0;
+    // 中文大、原文小：整塊（中文＋原文）的中心比兩條中線的中點低一點，往下挪一點上下才留一樣的邊
+    const shift = flag.sub ? (size - flag.sub.size) * 0.25 : 0;
     // 旗子掛在桅頂（跟著船晃）；長度依字的寬度，最短 420；兩列時旗子寬一點
     const cs = Math.cos(xf.r), sn = Math.sin(xf.r);
     const hx = xf.x + cs * FLAG.x0 - sn * FLAG.y0, hy = xf.y + sn * FLAG.x0 + cs * FLAG.y0;
     const len = clamp(Math.max(420, tw + 110), 420, FLAG.maxLen);
-    const hh = nRows > 1 ? size * 2.25 : Math.max(size * 0.95, 60);
+    // 旗子往尾巴收窄，原文在下緣：多給一點高度，尾巴那段的字才不會碰到旗邊
+    const hh = (nRows > 1 ? size * 2.25 : Math.max(size * 0.95, 60)) + gapC * 1.5;
     // 中線：越往尾巴擺得越大；波往尾巴傳（每拍 roll 加一）
     const cy = (d: number) => hy + hh * 0.55 + 7 * Math.min(1, d / 260) * Math.sin(d / 150 - roll * Math.PI) + d * 0.03;
-    const half = (d: number) => lerp(hh * 0.55, hh * (nRows > 1 ? 0.4 : 0.3), d / len);
+    const half = (d: number) => lerp(hh * 0.55, hh * (nRows > 1 || flag.sub ? 0.4 : 0.3), d / len);
     const N = 40;
     c.save();
     c.beginPath();
@@ -537,7 +551,7 @@ export default class Sailboat extends Scene {
     c.globalAlpha *= alpha;
     flag.rows.forEach((row, ri) => {
       const lay = layout(row.text, LYR_FAM, size);
-      const dy = (ri - (nRows - 1) / 2) * size * 1.08;
+      const dy = (ri - (nRows - 1) / 2) * size * 1.08 - gapC / 2 + shift;
       const startD = 40 + (len - 110 - lay.width) / 2 + lay.width; // 距離桅杆：第一個字在最左邊
       lay.glyphs.forEach((gl, k) => {
         if (gl.ch === ' ') return;
@@ -552,6 +566,27 @@ export default class Sailboat extends Scene {
         c.restore();
       });
     });
+    // 原文副行：中文最後一列正下方，沿著同一條中線、跟著旗子一起甩；比中文安靜（唱到唱完都是墨色再淡兩成，不用訊號色）
+    if (flag.sub) {
+      const sb = flag.sub, ss = sb.size;
+      const sp = glyphProgress(sb.line, t);
+      const lay = layout(sb.line.text, LYR_FAM, ss);
+      const dy = ((nRows - 1) / 2) * size * 1.08 + gapC / 2 + shift;
+      const startD = 40 + (len - 110 - lay.width) / 2 + lay.width;
+      c.font = font(LYR_FAM, ss);
+      lay.glyphs.forEach((gl, k) => {
+        if (gl.ch === ' ') return;
+        const d = startD - gl.x - gl.w / 2;
+        const ang = Math.atan2(cy(d - 2) - cy(d + 2), 4);
+        const p = sp[k]?.p ?? 0;
+        c.save();
+        c.translate(hx - d, cy(d) + dy);
+        c.rotate(ang);
+        c.fillStyle = p > 0 ? rgba('sepia', 0.94 * 0.8) : singColor(0, true);
+        c.fillText(gl.ch, -gl.w / 2, ss * 0.04);
+        c.restore();
+      });
+    }
     c.restore();
   }
 

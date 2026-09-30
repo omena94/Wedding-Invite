@@ -17,7 +17,7 @@ import { clamp, ease, prog, pulse, hash, TAU } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
 import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 } from './_v2';
 import { Lyrics } from '../engine/lyrics';
-import { lyricAt, layoutLyric, beatAfter, signature, fillWithHearts, DATE_DOTS } from './_motifs';
+import { lyricAt, layoutLyric, beatAfter, signature, fillWithHearts, DATE_DOTS, lyricSubOf, drawLyricSub } from './_motifs';
 import { Paper, stagger, mono, tag } from './_t11';
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'science', paper: true, energy: [0, 0.65], bars: [6, 16], weight: 1 };
@@ -284,6 +284,13 @@ export default class Pendulum extends Scene {
       c.fillStyle = p < 1 ? rgba('blood') : rgba('sepia');
       c.fillText(pw.word.w, x, y);
       c.restore();
+    }
+    // 原文副行（韓文歌）：layoutLyric 的 height 已經算到原文，所以中文往上讓了位置；原文寫在中文正下方，
+    // 比中文安靜——不畫螢光筆、唱到唱完都是咖啡墨再淡兩成，還沒唱的跟中文一樣淡
+    const sub = lyricSubOf(ly.line);
+    if (sub && lay.sub) {
+      c.translate(box.x, oy + lay.sub.dy); c.textAlign = 'left';
+      drawLyricSub(c, sub, t, { ...st, sung: rgba('sepia'), unsung: rgba('sepia', 0.26) }, lay.size, c.globalAlpha);
     }
     c.restore();
   }

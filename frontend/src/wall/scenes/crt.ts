@@ -14,7 +14,7 @@ import { FSPass, Layer2D, W, H } from '../engine/gl';
 import { F, font, loadText } from '../engine/type';
 import { rgba, mixRgba, LIN } from '../engine/palette';
 import { clamp, ease, prog, pulse, hash, frameIdx, TAU } from '../engine/util';
-import { lyricAt, layoutLyric, drawLyric, layoutMessage, drawMessage, signature, beatAfter, DATE_DOTS } from './_motifs';
+import { lyricAt, layoutLyric, drawLyric, layoutMessage, drawMessage, signature, beatAfter, DATE_DOTS, lyricSubOf } from './_motifs';
 import type { FitResult } from '../engine/text';
 import { FAST_GLSL, phraseSchedule, charsAt, fitChars, windowLines, type Rect } from './_t10';
 import { bbox } from './_t11';
@@ -216,6 +216,8 @@ export default class Crt extends Scene {
   switches: Switch[] = [];
   tOn = 0; tOff = 0; tFirst = 0; beat = 0.5; bar = 2;
   hasLyrics = false;
+  /** 這個窗格的字幕有原文副行（韓文歌、沒有主打留言）：字幕多一列，邀請縮小讓位。 */
+  subWin = false;
   /** 署名、字幕的字級（節目畫布上的 px；標準 v2 換算過）。 */
   sigSize = 28; lyrSize = 46;
   avoid: Rect[] = [];
@@ -225,13 +227,16 @@ export default class Crt extends Scene {
     const { audio: au, lyrics, song } = this.ctx;
     const s = this.ctx.start, e = this.ctx.end, m = this.msg;
     this.body = m ? m.text : INVITE;
+    // 這個窗格的字幕有沒有原文（有主打留言的窗格，引擎給的歌詞本來就沒有原文）
+    this.subWin = windowLines(lyrics, s, e).some((l) => lyricSubOf(l));
     await loadText(`${TEXT}${this.body}${m ? signature(m.name) : ''}${song.title}${song.artist}`);
     const c = this.prog.ctx;
     // 標準 v2（螢幕 px，除以節目畫面放大的倍數 KX 才是畫在節目畫布上的字級）：字級上限依字數、照子句斷行，
     // 框高先扣掉署名那一列（署名永遠在最後一行下面）
     const fam = F.hand(m ? 400 : 700);
     const sig0 = sigV2(msgMaxFor(this.body)) / KX;
-    const o = { min: Math.ceil(V2.msgMin / KX), max: msgMaxFor(this.body) / KX, lineHeight: 1.3, maxLines: 4 };
+    // 有原文副行時字幕會高一列（中文折兩行時一路長到留言框的下緣）：邀請縮到最小字級讓位（沒有留言時歌詞本來就是焦點）
+    const o = { min: Math.ceil(V2.msgMin / KX), max: this.subWin && !m ? Math.ceil(V2.msgMin / KX) : msgMaxFor(this.body) / KX, lineHeight: 1.3, maxLines: 4 };
     const boxH = MBOX.h - (m ? sig0 + 10 : 0);
     this.fit = fitClauses(c, this.body, fam, MBOX.w, boxH, o) ?? layoutMessage(c, this.body, fam, MBOX.w, boxH, o);
     this.sigSize = sigV2(this.fit.size * KX) / KX;
@@ -260,7 +265,7 @@ export default class Crt extends Scene {
     // 即時小卡避開：留言（含小標、署名）、字幕
     this.avoid = [
       this.toScreen([MBOX.x - 20, MBOX.y - 40, MBOX.w + 40, MBOX.h + 40], 12),
-      this.toScreen([(PW - SUB.w) / 2, SUB.y - this.lyrSize * 2.2, SUB.w, this.lyrSize * 2.6], 12),
+      this.toScreen([(PW - SUB.w) / 2, SUB.y - this.lyrSize * (this.subWin ? 3.2 : 2.2), SUB.w, this.lyrSize * (this.subWin ? 3.6 : 2.6)], 12),
     ];
     const all = bbox(this.avoid);
     this.avoid.push(all);
@@ -551,11 +556,12 @@ export default class Crt extends Scene {
     if (ly) {
       const lay = layoutLyric(c, ly.line, st);
       const rows = lay.rows.length;
-      const y = SUB.y - (rows - 1) * lay.size * 1.12;
+      // 原文副行（韓文歌，drawLyric 自動畫在中文下面）：改成副行最後一排的基線落在字幕線上，整組往上長，不會被映像管的邊裁掉
+      const y = SUB.y - (lay.sub ? lay.height - lay.size : (rows - 1) * lay.size * 1.12);
       if (kind !== 'movie') {
-        const w = Math.max(...lay.rows.map((r) => r.width)) + 48;
+        const w = Math.max(...lay.rows.map((r) => r.width), ...(lay.sub?.lay.rows.map((r) => r.width) ?? [])) + 48;
         c.fillStyle = rgba('ink', 0.62 * ly.k);
-        c.fillRect(PW / 2 - w / 2, y - lay.size * 0.98, w, lay.size * 1.32 + (rows - 1) * lay.size * 1.12);
+        c.fillRect(PW / 2 - w / 2, y - lay.size * 0.98, w, lay.size * 1.32 + (lay.sub ? lay.height - lay.size : (rows - 1) * lay.size * 1.12));
       }
       c.save(); c.translate(PW / 2, y);
       drawLyric(c, ly.line, t, st, lay, ly.k);

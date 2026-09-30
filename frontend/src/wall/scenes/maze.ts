@@ -19,7 +19,8 @@ import { F, font, loadText } from '../engine/type';
 import { rgba } from '../engine/palette';
 import { clamp, ease, prog, pulse, hash, mulberry32, frameIdx, lerp } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
-import { lyricAt, layoutLyric, drawLyric, beatAfter, drawHeart, fillWithHearts } from './_motifs';
+import { lyricAt, layoutLyric, drawLyric, beatAfter, drawHeart, fillWithHearts, lyricSubOf, subStyleFor, subGap } from './_motifs';
+import type { Line } from '../engine/lyrics';
 import { msgMaxFor, lyricV2, sigV2, fitClauses } from './_v2';
 import { paperInk } from './_t4';
 import { sigInk } from './_t1';
@@ -166,7 +167,9 @@ export default class Maze extends Scene {
     const s = this.ctx.start, e = this.ctx.end, m = this.msg;
     this.sig = sigOf(m);
     const hasLyr = lyrics.linesIn(s - 1, e + 1).length > 0;
-    await loadText(`${m?.text ?? ''}${this.sig}${T17_TEXT}${T17_INVITE}${song.title}${song.artist}♪間奏${lyrics.linesIn(s - 2, e + 1).map((l) => l.text).join('')}`);
+    // 韓文歌的原文副行：在第一個 await 之前拿（副行開關是引擎在 init 開始前替這個窗格設的）
+    const subs = lyrics.linesIn(s - 2, e + 1).map((l) => [l, lyricSubOf(l)] as const).filter((p): p is readonly [Line, Line] => !!p[1]);
+    await loadText(`${m?.text ?? ''}${this.sig}${T17_TEXT}${T17_INVITE}${song.title}${song.artist}♪間奏${lyrics.linesIn(s - 2, e + 1).map((l) => l.text).join('')}${subs.map((p) => p[1].text).join('')}`);
     const c = this.stat.ctx;
     const B = (this.B = au.beatPeriod(s + 0.1));
 
@@ -209,6 +212,17 @@ export default class Maze extends Scene {
       c.font = font(FAM_LYR, this.lyrSize);
       bw = clamp(natural, 520, 700) + 90;
       bh = this.lyrSize * 2.3 + 90;
+      // 原文副行讓歌詞變高：空地跟著長高，歌詞＋原文（在空地正中）才不會壓到下面那行邀請。沒有原文時照舊。
+      if (subs.length) {
+        const st = { family: FAM_LYR, size: this.lyrSize, minSize: 40, maxWidth: bw - 80, lineHeight: 1.14 };
+        let h = 0;
+        for (const [l, sl0] of subs) {
+          const ml = layoutLyric(c, l, st);
+          const sl = layoutLyric(c, sl0, subStyleFor(st, ml.size));
+          h = Math.max(h, ml.size + ml.rows[ml.rows.length - 1]!.y + subGap(ml.size, sl.size) + sl.rows[sl.rows.length - 1]!.y);
+        }
+        bh = Math.max(bh, h + 136 - 0.32 * this.lyrSize);
+      }
     }
     // 空地在左下角（畫面一側），迷宮佔其他地方
     const rx0 = Math.floor((150 - OX) / CS), rx1 = rx0 + Math.ceil(bw / CS);

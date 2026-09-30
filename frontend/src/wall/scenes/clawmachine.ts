@@ -18,7 +18,7 @@ import { F, font, loadText } from '../engine/type';
 import { LIN, rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, hash, lerp, pulse, TAU } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
-import { lyricAt, drawLyric, layoutLyric, beatAfter, signature, fillWithHearts } from './_motifs';
+import { lyricAt, drawLyric, layoutLyric, beatAfter, signature, fillWithHearts, lyricSubOf } from './_motifs';
 import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 } from './_v2';
 import { stagger, pad3, mono, tag } from './_t11';
 import { ClawRig, HOME, HOLD, CAP_R, CHUTE, BOX } from './clawmachine-rig';
@@ -134,8 +134,12 @@ export default class ClawMachine extends Scene {
     void lyrics;
   }
 
+  /** 燈箱的歌詞樣式。韓文歌（有原文副行）時中文小一點（最多 46），燈箱裡才塞得下兩行又不擠。 */
+  private lyrStyle(line: Parameters<typeof layoutLyric>[1]) {
+    return { family: F.archivo(100, 800), size: lyricSubOf(line) ? Math.min(this.lyrSize, 46) : this.lyrSize, minSize: V2.lyrMin, maxWidth: LYR.w, align: 'center' as const, lineHeight: 1.08 };
+  }
   private layLyric(line: Parameters<typeof layoutLyric>[1]) {
-    return layoutLyric(this.layer.ctx, line, { family: F.archivo(100, 800), size: this.lyrSize, minSize: V2.lyrMin, maxWidth: LYR.w, align: 'center', lineHeight: 1.08 });
+    return layoutLyric(this.layer.ctx, line, this.lyrStyle(line));
   }
 
   /** 機台外殼（玻璃窗挖空）、燈箱底、控制台、取物口、右邊「今日獎品」的小牌子：畫一次。 */
@@ -309,12 +313,22 @@ export default class ClawMachine extends Scene {
       c.beginPath(); c.arc(bx, by, 4.5, 0, TAU); c.fill();
       if (on) { hc.fillStyle = rgba('signal', 0.7); hc.beginPath(); hc.arc(bx, by, 6, 0, TAU); hc.fill(); }
     }
-    mono(c, 'LOVE CATCHER　·　祝福夾夾樂', cx, HEAD.y + 34, { size: 14, tracking: 5, color: rgba('signal', 0.6), align: 'center', weight: 600 });
     const ly = lyricAt(lyrics, t);
-    if (ly) {
-      const st = { family: F.archivo(100, 800), size: this.lyrSize, minSize: V2.lyrMin, maxWidth: LYR.w, align: 'center' as const, lineHeight: 1.08 };
-      const lay = this.layLyric(ly.line);
-      const base = lay.rows.length > 1 ? HEAD.y + 88 : HEAD.y + 112;
+    const lay = ly ? this.layLyric(ly.line) : null;
+    // 韓文歌（有原文副行）：燈箱高度固定，中文＋原文整組在燈箱裡置中；中文折成兩行還放不下時，機台名字那一行小字先收起來
+    let subBase = 0, title = true;
+    if (lay?.sub) {
+      const sl = lay.sub.lay, hTop = lay.size * 0.82;
+      const total = hTop + lay.sub.dy + (sl.height - sl.size) + sl.size * 0.22;
+      const bottom = HEAD.y + HEAD.h - 8;
+      if (total > bottom - (HEAD.y + 44)) title = false;
+      const top = title ? HEAD.y + 44 : HEAD.y + 12;
+      subBase = top + Math.max(0, bottom - top - total) / 2 + hTop;
+    }
+    if (title) mono(c, 'LOVE CATCHER　·　祝福夾夾樂', cx, HEAD.y + 34, { size: 14, tracking: 5, color: rgba('signal', 0.6), align: 'center', weight: 600 });
+    if (ly && lay) {
+      const st = this.lyrStyle(ly.line);
+      const base = lay.sub ? subBase : lay.rows.length > 1 ? HEAD.y + 88 : HEAD.y + 112;
       const dy = (1 - ease.outExpo(ly.k)) * 10;
       c.save(); c.translate(cx, base + dy); drawLyric(c, ly.line, t, st, lay, ly.k); c.restore();
       hc.save(); hc.translate(cx, base + dy); drawLyric(hc, ly.line, t, { ...st, sung: 'rgba(0,0,0,0)', unsung: 'rgba(0,0,0,0)', active: rgba('signal', 0.7) }, lay, ly.k); hc.restore();

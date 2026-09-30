@@ -20,7 +20,7 @@ import { rgba } from '../engine/palette';
 import { clamp, ease, prog, hash, lerp } from '../engine/util';
 import type { Line } from '../engine/lyrics';
 import { fillWithHearts } from '../engine/motifs';
-import { lyricAt, beatAfter, COUPLE_ZH, DATE_DOTS } from './_motifs';
+import { lyricAt, lyricSubOf, subGap, subSizeFor, beatAfter, COUPLE_ZH, DATE_DOTS } from './_motifs';
 import { lyricV2 } from './_v2';
 import { layoutRows, drawRows, darkInk, type RowsLayout, type KaraokeInk } from './_t4';
 import { winBeats, winBars, blit, no3 } from './_t8';
@@ -50,6 +50,9 @@ const CAM: PlaneCam = { pitch: 0.4, yaw: -0.07, roll: 0.026, scale: 0.76, cx: PW
 /** 歌詞（投影的光）：左緣、最後一行的基線、最寬（右端停在 HUD 左邊）。 */
 const LYR = { x: 164, base: 978, maxW: 1150 };
 const LYR_LAYER = { y: 800, h: 280 };
+
+/** 中文＋原文副行的排版（gap：中文最後一排基線到原文第一排基線；total：中文第一排頂到原文最後一排下緣）。 */
+type SubLay = { main: RowsLayout; sl: RowsLayout; gap: number; total: number };
 
 const BG = () => new FSPass(/* glsl */ `
   ${PLANE_GLSL}
@@ -375,12 +378,49 @@ export default class Darkroom extends Scene {
     if (!ly) return true;
     const lay = this.lyricLayout(ly.line);
     const ink: KaraokeInk = { active: rgba('blood'), sung: rgba('ink', 0.97), unsung: rgba('ink', 0.14) };
+    const sub = lyricSubOf(ly.line);
+    if (sub) {
+      // 韓文歌：原文小一號一起顯影在中文正下方（同一張相紙、同樣靠左），兩段一起在字的範圍裡垂直置中。
+      // 原文比中文安靜：唱到、唱完都是淡兩成的墨（不用訊號色的暗部），還沒唱的淡淡一層
+      const { main, sl, gap, total } = this.subLayout(ly.line, sub);
+      c.save();
+      c.translate(TXT.x, TXT.y + (TXT.h - total) / 2 + main.size * 0.9);
+      drawRows(c, main, FAM.lyric, t, ink, ly.k);
+      c.translate(0, (main.rows.length - 1) * main.lineHeight + gap);
+      const lit = rgba('ink', 0.97 * 0.8);
+      drawRows(c, sl, FAM.lyric, t, { active: lit, sung: lit, unsung: ink.unsung }, ly.k);
+      c.restore();
+      return true;
+    }
     c.save();
     c.translate(TXT.x, TXT.y + (TXT.h - lay.height) / 2 + lay.size * 0.9);
     drawRows(c, lay, FAM.lyric, t, ink, ly.k);
     c.restore();
     return true;
   }
+
+  /**
+   * 中文＋原文副行的排版：原文字級照螢幕 px 算（相紙在畫面上縮成約 k 倍），兩段加起來放不進字的範圍就把中文縮一點。
+   * total = 中文第一排頂到原文最後一排下緣。
+   */
+  private subLayout(line: Line, sub: Line): SubLay {
+    const hit = this.subLays.get(line);
+    if (hit) return hit;
+    const pair = (main: RowsLayout): SubLay => {
+      const ss = subSizeFor(main.size * this.k) / this.k;
+      const sl = layoutRows(this.print.ctx, sub, { family: FAM.lyric, size: ss, minSize: Math.min(ss, 26 / this.k), maxW: TXT.w, maxRows: 2, lineHeight: 1.16 });
+      const gap = subGap(main.size, sl.size);
+      return { main, sl, gap, total: main.height + gap + (sl.rows.length - 1) * sl.lineHeight + sl.size * 0.22 };
+    };
+    let r = pair(this.lyricLayout(line));
+    for (let i = 0; i < 8 && r.total > TXT.h; i++) {
+      const sz = r.main.size * 0.92;
+      r = pair(layoutRows(this.print.ctx, line, { family: FAM.lyric, size: sz, minSize: Math.min(sz, 40 / this.k), maxW: TXT.w, maxRows: 3, lineHeight: 1.16 }));
+    }
+    this.subLays.set(line, r);
+    return r;
+  }
+  private subLays = new Map<Line, SubLay>();
 
   private layouts = new Map<Line, RowsLayout>();
   private lyricLayout(line: Line): RowsLayout {

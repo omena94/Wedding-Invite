@@ -19,7 +19,7 @@ import { rgba } from '../engine/palette';
 import { clamp, ease, prog, lerp, pulse } from '../engine/util';
 import { type FitResult } from '../engine/text';
 import { fillWithHearts } from '../engine/motifs';
-import { lyricAt, drawLyric, layoutLyric, beatAfter, signature, type LyricStyle } from './_motifs';
+import { lyricAt, drawLyric, layoutLyric, beatAfter, signature, lyricSubOf, type LyricStyle } from './_motifs';
 import { subRect, paperLyric } from './_t13';
 import { msgMaxFor, lyricV2, sigV2, V2, fitClauses } from './_v2';
 import { fitText } from '../engine/text';
@@ -48,6 +48,12 @@ const FLOCK = [
   { x: 780, y: 290, s: 0.38, r: -2.1, c: 0 }, { x: 330, y: 800, s: 0.4, r: -1.2, c: 1 },
 ];
 const LYR_R = { x: 96, y: 92, w: 1270, h: 170 };
+/**
+ * 有韓文原文的窗格：原文在中文下面，整組往下多用一點（紙鶴在更下面），圖層上下各放寬一點；
+ * 原文最後一排的基線在 LYR.base + SUB_DROP，中文折兩行時第一行也還在圖層裡。
+ */
+const LYR_R_SUB = { x: 96, y: 84, w: 1270, h: 196 };
+const SUB_DROP = 40;
 const COL = { x: 128, w: 330 };
 const COL_R = { x: 96, y: 80, w: 420, h: 910 };
 const FAM_MSG = F.hand(400);
@@ -147,7 +153,9 @@ export default class Origami extends Scene {
   scene3 = new THREE.Scene();
   cam = new THREE.PerspectiveCamera(22, W / H, 10, 12000);
   inside = this.track(new Layer2D(TEX, TEX, 1, { fast: true }));
-  lyr = this.track(new Layer2D(LYR_R.w, LYR_R.h, undefined, { fast: true }));
+  /** 這一格有沒有韓文原文副行（建構時就看：引擎只在建立這一格之前設好開關）。 */
+  lyrBox = this.ctx.lyrics.linesIn(this.ctx.start - 1, this.ctx.end + 1).some((l) => !!lyricSubOf(l)) ? LYR_R_SUB : LYR_R;
+  lyr = this.track(new Layer2D(this.lyrBox.w, this.lyrBox.h, undefined, { fast: true }));
   col = this.track(new Layer2D(COL_R.w, COL_R.h, undefined, { fast: true }));
   paperMat: THREE.RawShaderMaterial;
   shadowMat: THREE.RawShaderMaterial;
@@ -371,7 +379,7 @@ export default class Origami extends Scene {
 
     // ---- 上緣的歌詞、左欄
     this.drawLyr(t, vis, lyricAt(lyrics, t));
-    comp.draw(renderer, this.lyr.upload(), out, subRect(LYR_R));
+    comp.draw(renderer, this.lyr.upload(), out, subRect(this.lyrBox));
     this.drawCol(t, st, vis);
     comp.draw(renderer, this.col.texture, out, subRect(COL_R));
 
@@ -430,13 +438,13 @@ export default class Origami extends Scene {
     const L = this.lyr, c = L.ctx;
     L.clear();
     c.save();
-    c.translate(-LYR_R.x, -LYR_R.y);
+    c.translate(-this.lyrBox.x, -this.lyrBox.y);
     c.globalAlpha = vis;
     if (ly) {
       const st: LyricStyle = { family: F.archivo(87.5, 800), size: lyricV2(this.fit ? this.fit.size / KT : null), minSize: V2.lyrMin, maxWidth: LYR.w, ...paperLyric() };
       const lay = layoutLyric(c, ly.line, st);
       const inK = ease.outExpo(prog(t, ly.line.start - 0.35, ly.line.start + 0.2));
-      c.translate(LYR.x, LYR.base - (lay.height - lay.size) + (1 - inK) * 16);
+      c.translate(LYR.x, LYR.base + (lay.sub ? SUB_DROP : 0) - (lay.height - lay.size) + (1 - inK) * 16);
       drawLyric(c, ly.line, t, st, lay, ly.k * vis);
     } else {
       const { song } = this.ctx;

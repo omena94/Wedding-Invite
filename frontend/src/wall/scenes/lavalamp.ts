@@ -18,7 +18,7 @@ import { F, font, loadText } from '../engine/type';
 import { rgba } from '../engine/palette';
 import { clamp, ease, prog, hash, pulse, lerp } from '../engine/util';
 import { type Line } from '../engine/lyrics';
-import { lyricAt, COUPLE_ZH } from './_motifs';
+import { lyricAt, lyricSubOf, subGap, subSizeFor, COUPLE_ZH } from './_motifs';
 import { V2, lyricV2 } from './_v2';
 import {
   T25_TEXT, T25_INVITE, sigOf, winBars, winBeats, stagger, layMsgV2, glyphMask, glyphStates, MASK_GLSL,
@@ -27,7 +27,10 @@ import {
 
 export const spec: PlateSpecDecl = { group: 'type', family: 'journey', paper: false, energy: [0, 0.7], bars: [4, 8] };
 
-const MAXG = 64;
+/** 一句歌詞最多幾個字（韓文歌連原文副行一起算，所以留寬一點）。 */
+const MAXG = 128;
+/** 原文副行的字在字模裡的標記（R 通道）：shader 認得出來、用比較安靜的顏色。 */
+const SUB_TAG = 100;
 const NB = 10;
 /**
  * 卡片（有留言）：中心、大小、角度；字的範圍（卡片座標，左上為 0）。
@@ -168,6 +171,8 @@ const BG = () => new FSPass(/* glsl */ `
           float on = smoothstep(m.b - 0.05, m.b + 0.05, gsv.x);
           vec3 unsung = C_BLOOD * 0.55 + C_SIGNAL * 0.08;
           vec3 lit = gsv.y > 0.5 ? mix(C_BONE, C_EMBER, 0.2) * 0.82 : C_SIGNAL * 1.6 + C_EMBER * 0.3;
+          // 原文副行（韓文歌）：比中文安靜，唱到、唱完都是淡兩成的奶白，不燒成訊號色
+          if (m.r > 0.3 && m.r < 0.5) lit = mix(C_BONE, C_EMBER, 0.2) * 0.66;
           vec3 tc = mix(unsung, lit, on);
           if (m.r > 0.9) tc = mix(C_ROSE * 0.35, C_ROSE * 0.9, on);
           float trim = 1.0 - smoothstep(1.0, 1.8, Tw);
@@ -257,6 +262,32 @@ function waxRows(units: { ch: string; gap: number }[][], fam: string, size0: num
   return { items, rect: [cx - maxW / 2 - 40, cy - h / 2 - 40, maxW + 80, h + 80] };
 }
 
+/**
+ * 韓文歌：中文照原本排（最多四排，留位置給原文），原文小一號排在下面（同樣每排置中），兩段一起在瓶子中間垂直置中。
+ * 原文的字接在中文後面編號、標上 SUB_TAG。
+ */
+function withSub(main: { ch: string; gap: number }[][], sub: { ch: string; gap: number }[][], size0: number, cx: number, cy: number, maxW: number): { items: MaskGlyph[]; rect: Rect } {
+  const a = waxRows(main, FAM_LYR, size0, cx, cy, maxW, 4);
+  const size = a.items[0]?.size ?? size0, lhA = size * 1.1;
+  const ss = subSizeFor(size);
+  const b = waxRows(sub, FAM_LYR, ss, cx, cy, maxW, 3);
+  const lhB = (b.items[0]?.size ?? ss) * 1.1;
+  const rowsOf = (it: MaskGlyph[]) => new Set(it.map((g) => g.y)).size;
+  const nA = rowsOf(a.items), nB = rowsOf(b.items);
+  const gap = subGap(size, ss);
+  // 中文第一排的中線到原文最後一排的中線
+  const span = (nA - 1) * lhA + size * 0.36 + gap - ss * 0.36 + (nB - 1) * lhB;
+  const top = cy - span / 2;
+  const dyA = top - (cy - ((nA - 1) * lhA) / 2);
+  const dyB = top + (nA - 1) * lhA + size * 0.36 + gap - ss * 0.36 - (cy - ((nB - 1) * lhB) / 2);
+  const items = [
+    ...a.items.map((g) => ({ ...g, y: g.y + dyA })),
+    ...b.items.map((g, i) => ({ ...g, y: g.y + dyB, idx: a.items.length + i, tag: SUB_TAG })),
+  ];
+  const y0 = Math.min(a.rect[1] + dyA, b.rect[1] + dyB), y1 = Math.max(a.rect[1] + a.rect[3] + dyA, b.rect[1] + b.rect[3] + dyB);
+  return { items, rect: [a.rect[0], y0, a.rect[2], y1 - y0] };
+}
+
 function lineUnits(line: Line): { ch: string; gap: number }[][] {
   return line.words.map((w, i) => {
     const chars = Array.from(w.w).filter((ch) => ch.trim());
@@ -274,7 +305,8 @@ export default class LavaLamp extends Scene {
   msg: Msg | null = this.ctx.params.message ?? null;
   seed = ((this.ctx.params.seed ?? 1) * 131 + (this.msg?.id ?? 0) * 7919) >>> 0;
   lamp: Lamp = this.msg ? LAMP_MSG : LAMP_SOLO;
-  masks = new Map<Line, { m: GlyphMask; rect: Rect }>();
+  /** 每句一張字模；n = 中文佔幾個字（原文副行的字接在後面編號）。 */
+  masks = new Map<Line, { m: GlyphMask; rect: Rect; n: number }>();
   names: { m: GlyphMask; rect: Rect } | null = null;
   mm: GlyphMask | null = null;
   lay: MsgLay | null = null;
@@ -288,6 +320,7 @@ export default class LavaLamp extends Scene {
     const { audio: au, lyrics, song } = this.ctx;
     const s = this.ctx.start, e = this.ctx.end, m = this.msg;
     const lines = lyrics.linesIn(s - 1, e + 0.5);
+    const subs = lines.map((l) => lyricSubOf(l));
     await loadText(`${T25_TEXT}${FOOT}${m?.text ?? ''}${m ? sigOf(m) : ''}${lines.map((l) => l.text).join('')}${song.title}`);
     const bar = au.timeOfBar(au.barAt(s) + 1) - au.timeOfBar(au.barAt(s));
     this.bars = winBars(au, s - bar * 2, e);
@@ -320,9 +353,10 @@ export default class LavaLamp extends Scene {
       this.times = stagger(au, this.tOn + au.beatPeriod(s) * 0.5, items.length, maxDur);
     }
     this.lyrSize = lyricV2(msgSize);
-    for (const ln of lines) {
-      const { items, rect } = waxRows(lineUnits(ln), FAM_LYR, this.lyrSize, L.cx, cy, maxW, 5);
-      this.masks.set(ln, { m: this.track(glyphMask(items.slice(0, MAXG), rect, 1, 2)), rect });
+    for (const [li, ln] of lines.entries()) {
+      const sub = subs[li];
+      const { items, rect } = sub ? withSub(lineUnits(ln), lineUnits(sub), this.lyrSize, L.cx, cy, maxW) : waxRows(lineUnits(ln), FAM_LYR, this.lyrSize, L.cx, cy, maxW, 5);
+      this.masks.set(ln, { m: this.track(glyphMask(items.slice(0, MAXG), rect, 1, 2)), rect, n: sub ? items.filter((g) => g.tag !== SUB_TAG).length : MAXG });
     }
     if (!lyrics.linesIn(s, e).length) {
       // 純音樂：蠟裡浮出新人的名字
@@ -428,6 +462,9 @@ export default class LavaLamp extends Scene {
       // 聚攏：提早 0.9 秒開始收，唱的時候全清楚；唱完停一下再化開
       u.lineK!.value = ease.inOutQuad(ly.k);
       const st = glyphStates(ly.line, t);
+      // 原文副行的字接在中文後面（照原文自己的逐字時間）
+      const sub = lyricSubOf(ly.line);
+      if (sub) { st.length = Math.min(st.length, mk.n); st.push(...glyphStates(sub, t)); }
       for (let i = 0; i < MAXG; i++) { const g = st[i]; gs[i]!.set(g ? g.p : 0, g?.done ? 1 : 0); }
     } else if (this.names) {
       u.tm!.value = this.names.m.tex;

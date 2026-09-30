@@ -19,7 +19,7 @@ import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, hash, lerp, prog, pulse } from '../engine/util';
 import { Lyrics, type Line } from '../engine/lyrics';
 import { wrap } from '../engine/text';
-import { signature, drawHeart } from './_motifs';
+import { signature, drawHeart, drawLyricSub, layoutLyric, lyricSubOf, subStyleFor, type LyricStyle } from './_motifs';
 import { grid, stagger, windowLines, mono, tag, pad3, DocCam, withMips, drawPencil, HUD, EDGE, type Grid, type Pose } from './_t3';
 import { msgMaxFor, lyricV2, sigV2, V2 } from './_v2';
 
@@ -39,6 +39,11 @@ const MSG_FAM = F.hand(700);
 const LYR_FAM = F.archivo(100, 800);
 const FIXED = '愛的日報週末益智版年月日星期六第期填字遊戲主題一起提示此刻正在唱的一句芃芃最愛的圓形物體本婚姻的保固期限兩人加兩隻狗搶棉被冠軍解答網球永久一家平手想對新人說的話格掃描右下角的寫下你的祝福本曲曲名純音樂新人';
 const INVITE = '掃描右下角的ＱＲ寫下你的祝福';
+/**
+ * 原文副行的基線在格子下緣往下幾個「副行字高」：中文寫在格子裡（基線離格子下緣約兩成格高），
+ * 照 subGap 算的話副行的字頂會貼在格子的粗框上，所以從格子下緣量、留三成字高的空。
+ */
+const SUB_DROP = 1.2;
 
 const PAPER_GLSL = /* glsl */ `
 vec3 paperCol(vec2 d, vec4 fb) {
@@ -138,6 +143,11 @@ export default class Crossword extends Scene {
   solves: { i: number; t: number }[] = [];
   /** 鏡頭的安全位移（格子投影後不能碰到邊、不能進右下角 HUD），init 算一次。 */
   shift = { x: 0, y: 0 };
+  /**
+   * 韓文歌的原文副行：鉛筆小一號抄在格子正下方的紙上（格子裡一格一個中文字，原文的字對不到格子）。
+   * subH = 副行佔的高度（格子下緣到副行最後一排基線再加一點下伸部），沒有副行是 0（鏡頭、景深跟原本一樣）。
+   */
+  subH = 0;
   private baseDrawn = false;
 
   override async init() {
@@ -147,6 +157,7 @@ export default class Crossword extends Scene {
     const m = this.msg;
     const wl = windowLines(lyrics, s, e);
     this.instr = wl.length === 0;
+    const subs = wl.map((l) => lyricSubOf(l));
     await loadText(`${FIXED}${INVITE}${song.title}${m ? m.text + signature(m.name) : ''}${wl.map((l) => l.text).join('')}`);
     const mw = msgWords(m ? m.text : INVITE);
     // 欄數：8～15 欄。v2：留言的字（格子 × 0.74）在螢幕上 40～60（依字數，msgMaxFor），留言那幾排 ≤ 820 × 400（螢幕 px）；
@@ -174,6 +185,13 @@ export default class Crossword extends Scene {
     this.msgTimes = stagger(au, g.b0, this.msgCells.length, maxDur);
     this.msgDone = this.msgTimes[this.msgTimes.length - 1] ?? g.b0;
     this.lyr = wl.map((l) => { const f = flow(lineWords(l), this.nc); return { line: l, cells: f.cells, rows: f.rows, tIn: l.start - 0.35, tOut: Infinity }; });
+    // 原文副行最多佔多高（窗格裡最長的那句；折兩排也算進去）：鏡頭的安全位移、景深都要把它算進來
+    const subSt = subStyleFor(this.lyrStyle(), this.lyrSize);
+    for (const sub of subs) {
+      if (!sub) continue;
+      const sl = layoutLyric(this.doc.ctx, sub, subSt);
+      this.subH = Math.max(this.subH, sl.size * SUB_DROP + sl.height - sl.size + sl.size * 0.3);
+    }
     this.lyr.forEach((x, i) => { const nx = this.lyr[i + 1]; x.tOut = nx ? nx.tIn : Math.max(x.line.end + 3, e + 1); });
     if (this.instr) {
       this.titleCells = flow(msgWords(song.title || '純音樂'), this.nc).cells.filter((c) => c.r < this.lyrRows);
@@ -185,8 +203,9 @@ export default class Crossword extends Scene {
       let left = 0, up = 0, right = 0;
       for (const tt of [e, this.msgDone + g.bar]) {
         this.cam.pose(this.pose(tt), DW, DH);
-        // 格子四角＋署名那一行
+        // 格子四角＋署名那一行（有原文副行時再加副行的下緣）
         const pts = [this.cam.project(GX, GY), this.cam.project(GX + gw, GY), this.cam.project(GX, GY + gh), this.cam.project(GX + gw, GY + gh), this.cam.project(GX + gw, GY + gh + this.sigSize * 1.6)];
+        if (this.subH) pts.push(this.cam.project(GX, GY + gh + this.subH), this.cam.project(GX + gw, GY + gh + this.subH));
         for (const p of pts) {
           if (p.y > HUD.y - 10 && p.x > HUD.x - 20) left = Math.max(left, p.x - (HUD.x - 20));
           if (p.y > 1080 - EDGE) up = Math.max(up, p.y - (1080 - EDGE));
@@ -208,7 +227,7 @@ export default class Crossword extends Scene {
   private pose(t: number): Pose {
     const g = this.g, cs = this.cs;
     const gw = this.nc * cs;
-    const msgC = GY + (this.msgRows * cs) / 2, allC = GY + ((this.msgRows + 1 + this.lyrRows) * cs) / 2;
+    const msgC = GY + (this.msgRows * cs) / 2, allC = GY + ((this.msgRows + 1 + this.lyrRows) * cs + this.subH) / 2;
     const settle = ease.outBack(prog(t, g.b0 - 0.02, g.b0 + 0.36), 1.3);
     const toAll = ease.inOutCubic(prog(t, this.msgDone + g.beat, this.msgDone + g.beat + g.bar));
     const slow = ease.inOutCubic(prog(t, this.ctx.start, this.ctx.end));
@@ -240,7 +259,7 @@ export default class Crossword extends Scene {
     for (const sv of this.solves) fs = Math.max(fs, prog(t, sv.t - 0.25, sv.t + 0.1, ease.inOutCubic) * (1 - prog(t, sv.t + this.g.beat * 1.2, sv.t + this.g.beat * 2.2, ease.inOutCubic)));
     this.cam.render(renderer, out, {
       tex: D.texture, docW: DW, docH: DH, texScale: TS, rect: PAGE, t,
-      focus: { x: GX + gw / 2 + fs * 260, y: GY + gh / 2 }, focusR: [gw * 0.54 + 60 + fs * 120, gh * 0.56 + 60], blur: 7, shadow: [16, 26],
+      focus: { x: GX + gw / 2 + fs * 260, y: GY + (gh + this.subH) / 2 }, focusR: [gw * 0.54 + 60 + fs * 120, (gh + this.subH) * 0.56 + 60], blur: 7, shadow: [16, 26],
     });
     return { paper: 1, bloom: 0.25, vignette: 0.34, grain: 0.05, halation: 0.08, zoom: 1 + 0.003 * pulse(t, this.g.b0 + 0.05, 0.1) };
   }
@@ -319,6 +338,11 @@ export default class Crossword extends Scene {
   }
 
   private cellXY(r: number, cc: number) { return { x: GX + cc * this.cs, y: GY + r * this.cs }; }
+
+  /** 歌詞（♪ 橫）的鉛筆字樣式：副行照它的字族、寬、顏色（正在唱是訊號色的暗部、唱完是鉛筆的墨色）。 */
+  private lyrStyle(): LyricStyle {
+    return { family: LYR_FAM, size: this.lyrSize, maxWidth: this.nc * this.cs, align: 'left', active: rgba('blood'), sung: rgba('sepia', 0.9), unsung: rgba('sepia', 0.24) };
+  }
 
   // ------------------------------------------------------------ 1 橫：留言（焦點）
   private drawMsg(c: CanvasRenderingContext2D, t: number) {
@@ -428,6 +452,17 @@ export default class Crossword extends Scene {
         if (singing) head = { x: cx, y: cy, t0: tOn };
       }
       c.restore();
+    }
+    // 韓文歌：原文用鉛筆小一號抄在格子正下方（靠左、跟格子同寬），照原文自己的時間描實；跟著中文一起淡入、一起被擦掉
+    const sub = lyricSubOf(ln);
+    if (sub) {
+      c.save();
+      c.textAlign = 'left';
+      const sl = layoutLyric(c, sub, subStyleFor(this.lyrStyle(), size));
+      c.translate(GX, GY + (R0 + nr) * cs + sl.size * SUB_DROP);
+      drawLyricSub(c, sub, t, this.lyrStyle(), size, erase * Math.max(0.3, inK));
+      c.restore();
+      c.textAlign = 'center';
     }
     // 擦掉：一層淡淡的橡皮擦痕
     if (erase < 1) {

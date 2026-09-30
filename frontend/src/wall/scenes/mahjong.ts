@@ -17,7 +17,7 @@ import { F, font, loadText } from '../engine/type';
 import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, pulse, hash, frameIdx } from '../engine/util';
 import { Lyrics, type Line, type Word } from '../engine/lyrics';
-import { beatAfter, drawHeart } from './_motifs';
+import { beatAfter, drawHeart, lyricSubOf, subSizeFor } from './_motifs';
 import { msgMaxFor, lyricV2, sigV2 } from './_v2';
 import { sigInk, makeCanvas, freeCanvas, shadowSprite } from './_t1';
 import { bestCellRows, onGrid, sigOf, T17_INVITE, T17_TEXT } from './_t17';
@@ -59,6 +59,30 @@ const FELT = () => new FSPass(/* glsl */ `
 
 interface Tile { ch: string; x: number; y: number; tf: number; sprite: number }
 interface Chip { word: Word; x: number; y: number; w: number; sprite: number }
+type Sprite = ReturnType<typeof makeCanvas>;
+/** 原文的一枚籌碼：原文裡空白隔開的一個詞（韓文一個音節一個時間，一個音節一枚的話詞跟詞分不出來）；每個音節在籌碼上的位置與寬。 */
+interface SubChip { words: Word[]; x: number; y: number; w: number; tx: number; offs: [number, number][] }
+interface ChipLine { chips: Chip[]; ink: Sprite[]; hot: Sprite[]; faded: Sprite[]; sub?: { chips: SubChip[]; lit: Sprite[]; faded: Sprite[] } }
+
+/** 一行籌碼的排法：先縮到一排放得下（最小 min），還是放不下就平均分成幾排（不要最後一排只剩一枚）。 */
+function chipRows(texts: string[], size0: number, min: number) {
+  let size = size0;
+  const mc = document.createElement('canvas').getContext('2d')!;
+  const widthOf = (sz: number) => texts.map((w) => { mc.font = font(FAM_CHIP, sz); return Math.max(sz * 1.5, mc.measureText(w).width + sz * 0.9); });
+  let ws = widthOf(size);
+  const gap = () => size * 0.14;
+  const total = () => ws.reduce((a, b) => a + b, 0) + gap() * (ws.length - 1);
+  while (total() > CHIPS.w && size > min) { size -= 2; ws = widthOf(size); }
+  const nRows = Math.ceil(total() / CHIPS.w);
+  const target = total() / nRows;
+  const rows: number[][] = [[]];
+  let acc = 0;
+  ws.forEach((w, i) => {
+    if (rows[rows.length - 1]!.length && rows.length < nRows && (acc + w / 2 > target || acc + w > CHIPS.w)) { rows.push([]); acc = 0; }
+    rows[rows.length - 1]!.push(i); acc += w + gap();
+  });
+  return { size, ws, gap: gap(), rows };
+}
 
 export default class Mahjong extends Scene {
   felt = shared('mahjong.felt', FELT);
@@ -75,7 +99,7 @@ export default class Mahjong extends Scene {
   tw = 80; th = 106; thick = 14;
   t1 = 0; tDone = 0; tHu = 0; B = 0.5;
   /** 每一行歌詞的籌碼（開場排好）。 */
-  chipLines = new Map<Line, { chips: Chip[]; ink: ReturnType<typeof makeCanvas>[]; hot: ReturnType<typeof makeCanvas>[]; faded: ReturnType<typeof makeCanvas>[] }>();
+  chipLines = new Map<Line, ChipLine>();
   chipSize = 50;
   blockR = { x0: 0, y0: 0, x1: 0, y1: 0 };
   sigPos = { x: 0, y: 0 };
@@ -93,7 +117,9 @@ export default class Mahjong extends Scene {
     const text = m ? m.text : NO_MSG_TEXT;
     this.sig = sigOf(m);
     const lines = lyrics.linesIn(s - 2, e + 1);
-    await loadText(`${text}${this.sig}${T17_TEXT}${T17_INVITE}${song.title}${song.artist}胡了♪${lines.map((l) => l.text).join('')}`);
+    // 原文副行在 await 之前先拿：引擎只在呼叫 init 前設好這一格的開關
+    const subOf = new Map(lines.map((l) => [l, lyricSubOf(l)] as const));
+    await loadText(`${text}${this.sig}${T17_TEXT}${T17_INVITE}${song.title}${song.artist}胡了♪${lines.map((l) => l.text + (subOf.get(l)?.text ?? '')).join('')}`);
     const B = (this.B = au.beatPeriod(s + 0.1));
 
     // ---- 排牌：每行幾張，挑牌最大的排法
@@ -206,7 +232,7 @@ export default class Mahjong extends Scene {
 
     // ---- 籌碼：每一行歌詞排好（中文一字一枚、英文一個單字一枚），畫好三種狀態的小圖
     this.chipSize = lyricV2(m ? tw * 0.74 : null);
-    for (const ln of lines.length ? lines : []) this.layoutChips(ln);
+    for (const ln of lines.length ? lines : []) this.layoutChips(ln, subOf.get(ln) ?? null);
 
     // ---- 牌牆與骰子：第一拍擲骰；之後每兩個小節擲一次，另外那個小節推出一墩牌
     const bars: number[] = [];
@@ -327,38 +353,58 @@ export default class Mahjong extends Scene {
   }
 
   /** 一行歌詞的籌碼：放不下一排就縮小，還放不下折兩排。 */
-  private layoutChips(ln: Line) {
-    let size = this.chipSize;
-    const mc = document.createElement('canvas').getContext('2d')!;
+  private layoutChips(ln: Line, sub: Line | null) {
     const words = ln.words.filter((w) => w.w.trim());
-    const widthOf = (sz: number) => words.map((w) => { mc.font = font(FAM_CHIP, sz); return Math.max(sz * 1.5, mc.measureText(w.w.trim()).width + sz * 0.9); });
-    let ws = widthOf(size);
-    const gap = () => size * 0.14;
-    const total = () => ws.reduce((a, b) => a + b, 0) + gap() * (ws.length - 1);
-    // 先縮到一排放得下（最小 48 px），還是放不下就平均分成兩排（不要第二排只剩一枚）
-    while (total() > CHIPS.w && size > 40) { size -= 2; ws = widthOf(size); }
-    const nRows = Math.ceil(total() / CHIPS.w);
-    const target = total() / nRows;
-    const rows: number[][] = [[]];
-    let acc = 0;
-    ws.forEach((w, i) => {
-      if (rows[rows.length - 1]!.length && rows.length < nRows && (acc + w / 2 > target || acc + w > CHIPS.w)) { rows.push([]); acc = 0; }
-      rows[rows.length - 1]!.push(i); acc += w + gap();
-    });
+    const { size, ws, gap, rows } = chipRows(words.map((w) => w.w.trim()), this.chipSize, 40);
+    // 韓文原文副行：一排小一號的籌碼放在中文那排的正下方（原本最下面那排的位置），中文整排往上讓。
+    // 原文一個詞一枚（同一個詞的音節黏在一起）
+    const groups: Word[][] = [];
+    if (sub) {
+      let prev: Word | null = null;
+      for (const w of sub.words) {
+        if (!w.w.trim()) continue;
+        if (!prev || /\s/.test(sub.text.slice(prev.o + prev.w.length, w.o))) groups.push([w]); else groups[groups.length - 1]!.push(w);
+        prev = w;
+      }
+    }
+    const gtext = (g: Word[]) => sub!.text.slice(g[0]!.o, g[g.length - 1]!.o + g[g.length - 1]!.w.length).trim();
+    const S = groups.length ? chipRows(groups.map(gtext), subSizeFor(size), 26) : null;
+    const lift = S ? (S.rows.length - 1) * S.size * 1.62 + (size + S.size) * 0.75 + size * 0.2 : 0;
     const chips: Chip[] = [];
     const ink: ReturnType<typeof makeCanvas>[] = [], hot: ReturnType<typeof makeCanvas>[] = [], faded: ReturnType<typeof makeCanvas>[] = [];
     const rowH = size * 1.62;
     rows.forEach((row, r) => {
       let x = CHIPS.x;
-      const y = CHIPS.y - (rows.length - 1 - r) * rowH;
+      const y = CHIPS.y - lift - (rows.length - 1 - r) * rowH;
       for (const i of row) {
         const w = ws[i]!;
         chips.push({ word: words[i]!, x, y, w, sprite: chips.length });
         for (const [arr, state] of [[ink, 0], [hot, 1], [faded, 2]] as const) arr.push(this.chipSprite(words[i]!.w.trim(), w, size, state));
-        x += w + gap();
+        x += w + gap;
       }
     });
-    this.chipLines.set(ln, { chips, ink, hot, faded });
+    let subSet: ChipLine['sub'];
+    if (S) {
+      // 原文的籌碼只有兩種：唱到、唱完都是「唱完」那一種（不用訊號色）、還沒唱是淡的
+      subSet = { chips: [], lit: [], faded: [] };
+      const mc = document.createElement('canvas').getContext('2d')!;
+      mc.font = font(FAM_CHIP, S.size);
+      S.rows.forEach((row, r) => {
+        let x = CHIPS.x;
+        const y = CHIPS.y - (S.rows.length - 1 - r) * S.size * 1.62;
+        for (const i of row) {
+          const w = S.ws[i]!, g = groups[i]!, text = gtext(g);
+          // 籌碼上的字置中（chipSprite 畫在 4 + w/2）：每個音節從哪裡開始、多寬（逐字亮用）
+          const tx = 4 + w / 2 - mc.measureText(text).width / 2;
+          const offs = g.map((sy) => [mc.measureText(sub!.text.slice(g[0]!.o, sy.o)).width, mc.measureText(sy.w).width] as [number, number]);
+          subSet!.chips.push({ words: g, x, y, w, tx, offs });
+          subSet!.lit.push(this.chipSprite(text, w, S.size, 0));
+          subSet!.faded.push(this.chipSprite(text, w, S.size, 2));
+          x += w + S.gap;
+        }
+      });
+    }
+    this.chipLines.set(ln, { chips, ink, hot, faded, sub: subSet });
   }
 
   /** 籌碼的圖：圓角（英文單字是長圓形）、外圈一圈點點的邊、中間的字。state 0 = 唱完（墨）、1 = 正在唱（訊號色）、2 = 還沒唱（淡）。 */
@@ -385,7 +431,7 @@ export default class Mahjong extends Scene {
   override dispose() {
     for (const f of this.faces) freeCanvas(f);
     for (const x of [this.back, this.shadow, this.marker, this.sigCv, this.wall, ...this.dFaces]) freeCanvas(x);
-    for (const v of this.chipLines.values()) for (const a of [v.ink, v.hot, v.faded]) a.forEach(freeCanvas);
+    for (const v of this.chipLines.values()) for (const a of [v.ink, v.hot, v.faded, v.sub?.lit ?? [], v.sub?.faded ?? []]) a.forEach(freeCanvas);
     super.dispose();
   }
 
@@ -543,6 +589,30 @@ export default class Mahjong extends Scene {
       const hop = p > 0 && p < 1 ? 7 * Math.sin(Math.PI * clamp((t - ch.word.start) / 0.22)) : 0;
       c.globalAlpha = k;
       c.drawImage(img.cv, ch.x - 4, ch.y - img.h / 2 - drop - hop, img.w, img.h);
+    });
+    // 原文那排：一樣一枚一枚放上桌；一枚是一個詞，唱到哪個音節就亮到哪（淡的籌碼上蓋一層亮的、切到唱到的位置），
+    // 唱到的那一下跳一點點；唱到、唱完都淡兩成（不用訊號色）；逐字時間是原文自己的
+    set.sub?.chips.forEach((ch, i) => {
+      const drop = (1 - ease.outCubic(clamp((t - (ln.start - 0.35) - 0.1 - i * 0.02) / 0.25))) * 12;
+      let lit = 0, hop = 0;
+      ch.words.forEach((w, j) => {
+        const p = Lyrics.wordProgress(w, t);
+        if (p <= 0) return;
+        const [o, ww] = ch.offs[j]!;
+        lit = j === ch.words.length - 1 && p >= 1 ? Infinity : ch.tx + o + ww * p;
+        if (p < 1) hop = 4 * Math.sin(Math.PI * clamp((t - w.start) / 0.22));
+      });
+      const fd = set.sub!.faded[i]!, lt = set.sub!.lit[i]!;
+      const x0 = ch.x - 4, y0 = ch.y - fd.h / 2 - drop - hop;
+      c.globalAlpha = k;
+      if (lit < Infinity) c.drawImage(fd.cv, x0, y0, fd.w, fd.h);
+      if (lit > 0) {
+        c.save();
+        if (lit < Infinity) { c.beginPath(); c.rect(x0, y0 - 4, lit, fd.h + 8); c.clip(); }
+        c.globalAlpha = k * 0.8;
+        c.drawImage(lt.cv, x0, y0, lt.w, lt.h);
+        c.restore();
+      }
     });
     c.globalAlpha = 1;
   }

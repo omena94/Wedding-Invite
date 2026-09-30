@@ -246,7 +246,7 @@ export default class SnowGlobe extends Scene {
     this.hasLyrics = lyrics.linesIn(s, e).length > 0;
     const sig = m ? sigOf(m) : '';
     const plateText = m ? m.text : COUPLE_ZH;
-    await loadText(`${T16_TEXT}${plateText}${sig}${DATE_DOTS}${song.title}${song.artist}${lyrics.linesIn(s - 1, e).map((l) => l.text).join('')}`);
+    await loadText(`${T16_TEXT}${plateText}${sig}${DATE_DOTS}${song.title}${song.artist}${lyrics.linesIn(s - 1, e).map((l) => l.text + (l.sub?.text ?? '')).join('')}`);
     const beat = au.beatPeriod(s);
     this.tFirst = beatAfter(au, s + Math.min(0.2, beat * 0.4));
 
@@ -557,8 +557,12 @@ export default class SnowGlobe extends Scene {
     if (this.hasLyrics) {
       const ly = lyricAt(lyrics, t);
       if (ly) {
-        c.save(); c.translate(this.lyrPos.x, this.lyrPos.y);
-        drawLyric(c, ly.line, t, this.lyrStyle, layoutLyric(c, ly.line, this.lyrStyle), ly.k);
+        const lay = layoutLyric(c, ly.line, this.lyrStyle);
+        // 韓文歌（drawLyric 會把原文畫在中文下面）：中文折兩行時整組會長到邀請那一行，往上挪，
+        // 原文最後一排的基線離邀請的字上緣留一行小字的空
+        const y = lay.sub ? Math.min(this.lyrPos.y, WIN.y0 - 34 - 24 - 36 - (lay.height - lay.size)) : this.lyrPos.y;
+        c.save(); c.translate(this.lyrPos.x, y);
+        drawLyric(c, ly.line, t, this.lyrStyle, lay, ly.k);
         c.restore();
       }
     } else {

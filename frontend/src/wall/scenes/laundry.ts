@@ -14,7 +14,7 @@ import { LineBatch } from '../engine/lines';
 import { loadText, F } from '../engine/type';
 import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, lerp, hash } from '../engine/util';
-import { lyricAt, beatAfter } from './_motifs';
+import { lyricAt, beatAfter, lyricSubOf, subGap } from './_motifs';
 import { inkFor, inkLine, inkPath, inkPoly, inkRect, inkEllipse, paperBG, lyricOnPath, type Pt, type Note, type Ink } from './_couple';
 import { loadPuppets, drawPuppet, drawPick, puppetPoint, puppetShadow, breathe, beatKick, noteV2, tightenNote, type PuppetOpts } from './_puppet';
 import { lyricV2 } from './_v2';
@@ -187,7 +187,10 @@ export default class Laundry extends Scene {
     for (let i = 0; i <= 40; i++) { const x = lerp(POLE_X, W + 40, i / 40); rope.push({ x, y: this.ropeAt(x) + gust * 5 * Math.sin(Math.PI * i / 40) }); }
     inkPath(c, rope, { ink, w: 0.7, seed: 9 });
     const ly = lyricAt(lyrics, t);
-    if (ly) lyricOnPath(c, ly.line, t, rope.slice(4, 37), { family: F.archivo(100, this.msg ? 600 : 700), size: this.lyricSize, minSize: 40, offset: 30, alpha: ly.k * prog(t, s, s + 0.5), unsung: rgba('sepia', 0.24), sung: rgba('sepia', this.msg ? 0.8 : 0.94), active: rgba('signal') });
+    // 韓文歌：lyricOnPath 把原文畫在中文下面；整組往上抬一個副行的高度（原文落在原本中文的位置），
+    // 不然原文會掉到繩子下面、被晾的衣服和孟庭的頭擋住
+    const lift = ly && lyricSubOf(ly.line) ? subGap(this.lyricSize) : 0;
+    if (ly) lyricOnPath(c, ly.line, t, rope.slice(4, 37), { family: F.archivo(100, this.msg ? 600 : 700), size: this.lyricSize, minSize: 40, offset: 30 + lift, alpha: ly.k * prog(t, s, s + 0.5), unsung: rgba('sepia', 0.24), sung: rgba('sepia', this.msg ? 0.8 : 0.94), active: rgba('signal') });
     // ---- 繩上的衣服（往右送）
     const shift = this.shiftAt(t);
     for (const it of [...this.pre, ...this.items]) {

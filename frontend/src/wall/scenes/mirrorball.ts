@@ -18,7 +18,7 @@ import { LineBatch } from '../engine/lines';
 import { F, font, loadText } from '../engine/type';
 import { LIN, rgba } from '../engine/palette';
 import { clamp, ease, prog, hash, lerp, TAU } from '../engine/util';
-import { lyricAt, beatAfter, drawHeart, heartPoints, COUPLE_ZH } from './_motifs';
+import { lyricAt, lyricSubOf, subGap, subSizeFor, beatAfter, drawHeart, heartPoints, COUPLE_ZH } from './_motifs';
 import { layoutRows, drawRows, darkInk } from './_t4';
 import { T23_INVITE, T23_TEXT, sigOf, layMsgV2, stagger, lastBefore, type MsgLay, type Rect } from './_t23';
 import { V2, lyricV2 } from './_v2';
@@ -130,6 +130,8 @@ export default class MirrorBall extends Scene {
   step = 8;
   bars: number[] = [];
   avoid: Rect[] = [];
+  /** 韓文歌（沒有留言時才有原文副行）：歌詞那一塊多出來的高度，光點、光束要多避開這麼多；沒有副行是 0。 */
+  subRoom = 0;
 
   override async init() {
     const { audio: au, lyrics, song } = this.ctx;
@@ -137,6 +139,7 @@ export default class MirrorBall extends Scene {
     const lines = lyrics.linesIn(s - 1, e + 1);
     this.hasLyr = lines.length > 0;
     const sig = m ? sigOf(m) : '';
+    const anySub = lines.some((l) => lyricSubOf(l));
     await loadText(`${T23_TEXT}${m?.text ?? ''}${sig}${song.title}${lines.map((l) => l.text).join('')}`);
     const beat = au.beatPeriod(s);
     this.tOn = beatAfter(au, s + Math.min(0.15, beat * 0.3));
@@ -190,7 +193,9 @@ export default class MirrorBall extends Scene {
     }
     // 小節線：每個小節線從鏡球放出一圈亮光掃過牆上的光點（窗格裡每小節一個小事件）
     for (let b = Math.floor(au.barAt(s - 2)); ; b++) { const tb = au.timeOfBar(b); if (tb > e + 1 || this.bars.length > 80) break; this.bars.push(tb); }
-    this.avoid = m ? [[MSG_BOX.x, MSG_BOX.y, MSG_BOX.w, MSG_BOX.h], [LYR.x, LYR.y - 60, LYR.w, 80]] : [[SOLO_LYR.x, SOLO_LYR.y - 70, SOLO_LYR.w, 180]];
+    // 韓文歌（沒有留言才有原文副行）：歌詞那一塊多一排原文，字後面要乾淨的範圍往下多留一點
+    this.subRoom = !m && anySub ? 70 : 0;
+    this.avoid = m ? [[MSG_BOX.x, MSG_BOX.y, MSG_BOX.w, MSG_BOX.h], [LYR.x, LYR.y - 60, LYR.w, 80]] : [[SOLO_LYR.x, SOLO_LYR.y - 70 - this.subRoom / 2, SOLO_LYR.w, 180 + this.subRoom]];
   }
 
   /** 加一個會落定的光點：落定之前它也是一個在掃的光點（選它的經度，讓它落定那一刻大約在目標旁邊幾百 px）。 */
@@ -248,7 +253,7 @@ export default class MirrorBall extends Scene {
     const E = LIN.ember, B = LIN.bone, S = LIN.signal, R = LIN.rose;
     const bright = (0.8 + 0.5 * kick) * on;
     const bx = X(BALL.x), by = Y(BALL.y);
-    const box = m ? MSG_BOX : { x: SOLO_LYR.x, y: SOLO_LYR.y - 70, w: SOLO_LYR.w, h: 180 };
+    const box = m ? MSG_BOX : { x: SOLO_LYR.x, y: SOLO_LYR.y - 70 - this.subRoom / 2, w: SOLO_LYR.w, h: 180 + this.subRoom };
     const inText = (x: number, y: number) => x > box.x - 30 && x < box.x + box.w + 30 && y > box.y - 30 && y < box.y + box.h + 30;
     const settled = prog(t, this.sigT, this.sigT + 0.6);
     // 小節線放出的那一圈亮光（從鏡球往外跑）
@@ -351,7 +356,22 @@ export default class MirrorBall extends Scene {
       const ly = this.hasLyr ? lyricAt(lyrics, t) : null;
       if (ly) {
         const lay = layoutRows(c, ly.line, { family: FAM_LYR, size: lyricV2(null), minSize: V2.lyrMin, maxW: SOLO_LYR.w, maxRows: 2, align: 'left', lineHeight: 1.2 });
-        c.save(); c.translate(SOLO_LYR.x, SOLO_LYR.y - (lay.rows.length - 1) * lay.lineHeight * 0.5); drawRows(c, lay, FAM_LYR, t, ink, ly.k); c.restore();
+        const sub = lyricSubOf(ly.line);
+        if (sub) {
+          // 韓文歌：原文小一號的光字寫在中文正下方（同樣靠左），兩段一起在牆上垂直置中；
+          // 原文比中文安靜：唱到、唱完都是淡兩成的紙白（不用訊號色），還沒唱的照中文三成
+          const ss = subSizeFor(lay.size);
+          const sl = layoutRows(c, sub, { family: FAM_LYR, size: ss, minSize: Math.min(ss, 26), maxW: SOLO_LYR.w, maxRows: 2, align: 'left', lineHeight: 1.2 });
+          const gap = subGap(lay.size, sl.size), more = gap + (sl.rows.length - 1) * sl.lineHeight;
+          const lit = rgba('bone', 0.96 * 0.8);
+          c.save(); c.translate(SOLO_LYR.x, SOLO_LYR.y - ((lay.rows.length - 1) * lay.lineHeight + more) * 0.5);
+          drawRows(c, lay, FAM_LYR, t, ink, ly.k);
+          c.translate(0, (lay.rows.length - 1) * lay.lineHeight + gap);
+          drawRows(c, sl, FAM_LYR, t, { active: lit, sung: lit, unsung: ink.unsung }, ly.k);
+          c.restore();
+        } else {
+          c.save(); c.translate(SOLO_LYR.x, SOLO_LYR.y - (lay.rows.length - 1) * lay.lineHeight * 0.5); drawRows(c, lay, FAM_LYR, t, ink, ly.k); c.restore();
+        }
       } else if (!this.hasLyr) {
         c.font = font(F.ming(700), 52); c.fillStyle = rgba('bone', 0.9 * prog(t, this.tOn, this.tOn + 0.6));
         c.fillText(COUPLE_ZH, SOLO_LYR.x, SOLO_LYR.y);

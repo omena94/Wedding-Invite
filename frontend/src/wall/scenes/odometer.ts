@@ -14,7 +14,7 @@ import { FSPass, Layer2D, W, H } from '../engine/gl';
 import { F, font, loadText } from '../engine/type';
 import { clamp, ease, lerp, prog, hash, springStep } from '../engine/util';
 import { fitText, phrases, type FitResult } from '../engine/text';
-import { beatAfter, barAfter, signature, COUPLE_ZH, DATE_DOTS } from './_motifs';
+import { beatAfter, barAfter, signature, lyricAt, lyricSubOf, drawLyricSub, layoutLyric, subStyleFor, COUPLE_ZH, DATE_DOTS, type LyricStyle } from './_motifs';
 import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 } from './_v2';
 import { fillWithHearts } from '../engine/motifs';
 import { GlyphAtlas, cuePages, windowLines, COL, type GlyphReq, type CuePage } from './_t7';
@@ -38,6 +38,8 @@ const LYR0: Bank = { x0: 150, cy: 262, pitch: 58, face: 54, R: 74, slot: 1.02, w
 const PLATE = { x: 820, y: 424, w: 860, h: 376 };
 /** 銘牌上：上下留白、左右留白、署名跟最後一行的間距。 */
 const P_PAD = 34, P_SIDE = 56, SIG_GAP = 12;
+/** 韓文歌有原文副行時，歌詞滾輪往上挪多少（讓出一排給原文）。 */
+const SUB_UP = 26;
 /** 心動指數的指針表（右上）。 */
 const GAUGE = { x: 1560, y: 292, r: 104 };
 /** state 貼圖的寬（每個滾輪一格）。 */
@@ -67,6 +69,7 @@ const CAMS: Cam[] = [
 const BG = () => new FSPass(FRAG_ODO, {
   uState: { value: null }, uAtlas: { value: null }, uAG: { value: new THREE.Vector2(1, 1) },
   uLab: { value: null }, uLabR: { value: new THREE.Vector4(LAB.x, LAB.y, LAB.w, LAB.h) },
+  uSub: { value: null }, uSubR: { value: new THREE.Vector4(0, 0, 0, 0) },
   uPlate: { value: null }, uPlateR: { value: new THREE.Vector4(PLATE.x, PLATE.y, PLATE.w, PLATE.h) },
   uBA: { value: Array.from({ length: NB }, () => new THREE.Vector4()) },
   uBB: { value: Array.from({ length: NB }, () => new THREE.Vector4()) },
@@ -126,6 +129,12 @@ export default class Odometer extends Scene {
   camTimes: number[] = [];
   sheens: number[] = [];
   private plateKey = '';
+  /**
+   * 韓文原文副行：一條印在歌詞滾輪下面的字（每格重畫，很小）。沒有副行的窗格是 null，畫面跟原本一樣。
+   * 有副行時歌詞滾輪整排往上挪 SUB_UP，讓出一排給原文（下面的計數器標籤不動）。
+   */
+  sub: Layer2D | null = null;
+  subR = { x: 0, y: 0, w: 0, h: 0 };
 
   override async init() {
     const { audio: au, lyrics, song } = this.ctx;
@@ -134,6 +143,7 @@ export default class Odometer extends Scene {
     this.tBoot = beatAfter(au, s + 0.25);
     const lines = windowLines(lyrics, s, e);
     const m = this.msg;
+    const anySub = lines.some((l) => lyricSubOf(l));
     const body = m ? m.text : INVITE;
     this.sigText = m ? signature(m.name) : '';
     await loadText(TEXT + lines.map((l) => l.text).join('') + body + this.sigText + COUPLE_ZH + (song.title ?? ''));
@@ -147,6 +157,13 @@ export default class Odometer extends Scene {
     this.layoutPlate(body);
     const gw = lyricV2(m ? this.msgPx : null) / 0.93;
     this.LYR = { ...LYR0, gw, face: gw + 4, pitch: gw + 8, R: gw * 1.42, winH: gw * 1.1 };
+    if (anySub) {
+      // 原文印在滾輪窗下緣與「今晚收到的祝福」標籤之間；滾輪往上挪一點，兩行之間才有空氣
+      this.LYR.cy -= SUB_UP;
+      const x = this.LYR.x0 - 16, y = this.LYR.cy + this.LYR.winH + 14;
+      this.subR = { x, y, w: GAUGE.x - GAUGE.r - 24 - x, h: WISH.cy - WISH.winH - 36 - y };
+      this.sub = this.track(new Layer2D(this.subR.w, this.subR.h, undefined, { fast: true }));
+    }
 
     const reqs: GlyphReq[] = [];
     for (const ch of Array.from(lines.map((l) => l.text).join('') + (song.title ?? '') + COUPLE_ZH)) reqs.push({ ch, family: F_LYR });
@@ -343,6 +360,32 @@ export default class Odometer extends Scene {
     L.upload();
   }
 
+  // ---------------------------------------------------------------- 韓文原文副行
+  /**
+   * 原文小一號印在歌詞滾輪下面（跟滾輪第一格靠左對齊），照原文自己的逐字時間：R 版 = 還沒唱、G 版 = 唱到／唱完。
+   * shader 當成印在板子上的字（跟著鏡頭的透視與景深）。
+   */
+  private drawSub(t: number) {
+    const u = this.bg.u;
+    const R = u.uSubR!.value as THREE.Vector4;
+    const ly = this.sub ? lyricAt(this.ctx.lyrics, t) : null;
+    const sub = ly ? lyricSubOf(ly.line) : null;
+    // 沒有副行：清掉貼圖（板子的 shader 是共用的，不能留著上一個窗格已經釋放的圖層）
+    if (!this.sub || !ly || !sub) { R.set(0, 0, 0, 0); u.uSub!.value = null; return; }
+    const L = this.sub, c = L.ctx, S = this.subR;
+    L.clear();
+    const main = this.LYR.gw * 0.93;
+    const st: LyricStyle = { family: F_LYR, size: main, maxWidth: S.w - 32, align: 'left', active: 'rgb(0,255,0)', sung: 'rgb(0,255,0)', unsung: 'rgb(255,0,0)' };
+    const sl = layoutLyric(c, sub, subStyleFor(st, main));
+    c.save();
+    // 字頂離滾輪窗的斜角約一個副行字高的七成（斜斜地看時窗框的影子會吃掉一點）
+    c.translate(16, sl.size * 0.84 + 10);
+    drawLyricSub(c, sub, t, st, main, ly.k);
+    c.restore();
+    u.uSub!.value = L.upload();
+    R.set(S.x, S.y, S.w, S.h);
+  }
+
   // ---------------------------------------------------------------- 標籤（畫一次，紅色版＝絹印白漆）：整個畫面只有兩小群小字
   private drawLabels() {
     const c = this.lab.ctx;
@@ -439,6 +482,7 @@ export default class Odometer extends Scene {
     });
     this.state.needsUpdate = true;
     if (this.hasPlate) this.drawPlate(t);
+    this.drawSub(t);
 
     const cam = this.camera(this.camAt(t));
     const u = this.bg.u;

@@ -407,7 +407,8 @@ export default class Bridge extends Scene {
     if (!ly) return;
     const lay = layoutLyric(c, ly.line, this.lyr);
     c.save();
-    c.translate(LYR.x, LYR.y - (lay.rows.length - 1) * lay.size * 1.18);
+    // 貼底：最後一排（有韓文原文時是原文最後一排）的基線在 LYR.y；沒有原文時 height - size 就是中文多出來的幾排
+    c.translate(LYR.x, LYR.y - (lay.height - lay.size));
     drawLyric(c, ly.line, t, this.lyr, lay, ly.k);
     c.restore();
   }

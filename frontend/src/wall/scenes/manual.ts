@@ -15,7 +15,7 @@ import { F, font, loadText } from '../engine/type';
 import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, lerp, prog, pulse, TAU } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
-import { lyricAt, signature } from './_motifs';
+import { lyricAt, signature, lyricSubOf, layoutLyric, subStyleFor, subGap, drawLyricSub, type LyricStyle } from './_motifs';
 import { grid, drawFit, layoutRows, drawRows, paperInk, lastIdx, Stage, docRT, camDist, type Grid, type RowsStyle, type V3 } from './_t4';
 import { msgMaxFor, lyricV2, sigV2, V2, fitClauses } from './_v2';
 
@@ -555,9 +555,24 @@ export default class Manual extends Scene {
     const LY: RowsStyle = { family: F.archivo(100, 800), size: lyricV2(this.msgScreen) / this.sCap, minSize: V2.lyrMin / this.sCap, maxW: CAP.w, maxRows: 2, lineHeight: 1.06 };
     if (ly) {
       const lay = layoutRows(c, ly.line, LY);
-      const top = CAP.y + (CAP.h - lay.height) / 2 + lay.size * 0.84;
+      // 原文（韓文歌）：同一段說明文字小一號印在中文正下方。字級照螢幕 px 算（說明書上要除以 sCap）；
+      // 整組放不進說明欄就往上長（步驟圖的零件標籤底下還有一點空，最多借 60）
+      const sub = lyricSubOf(ly.line), sc = this.sCap, ms = lay.size * sc;
+      const sst: LyricStyle = { family: LY.family, size: ms, maxWidth: CAP.w * sc, align: 'left', ...paperInk() };
+      const sLay = sub ? layoutLyric(c, sub, subStyleFor(sst, ms)) : null;
+      const sGap = sLay ? subGap(ms, sLay.size) / sc : 0;
+      let top = CAP.y + (CAP.h - lay.height) / 2 + lay.size * 0.84;
+      if (sLay) {
+        const total = lay.size * 0.84 + (lay.rows.length - 1) * lay.lineHeight + sGap + (sLay.height - sLay.size + sLay.size * 0.25) / sc;
+        const y0 = total <= CAP.h ? CAP.y + (CAP.h - total) / 2 : Math.max(CAP.y - 60, CAP.y + CAP.h - 4 - total);
+        top = y0 + lay.size * 0.84;
+      }
       c.save(); c.translate(CAP.x, top);
       drawRows(c, lay, LY.family, t, paperInk(), ly.k);
+      if (sub) {
+        c.translate(0, (lay.rows.length - 1) * lay.lineHeight + sGap); c.scale(1 / sc, 1 / sc);
+        drawLyricSub(c, sub, t, sst, ms, ly.k);
+      }
       c.restore();
       return;
     }

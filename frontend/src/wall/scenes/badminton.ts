@@ -15,7 +15,7 @@ import { LineBatch } from '../engine/lines';
 import { F, font, loadText } from '../engine/type';
 import { LIN, rgba } from '../engine/palette';
 import { clamp, ease, prog, hash } from '../engine/util';
-import { lyricAt, beatAfter, sparkHead, sparkParticles, msgChars } from './_motifs';
+import { lyricAt, lyricSubOf, beatAfter, sparkHead, sparkParticles, msgChars } from './_motifs';
 import { inkFor, inkLine, shuttle, arcAt, arcPts, lyricOnPath, drawNote, type Pt, type Note } from './_couple';
 import { loadPuppets, drawPick, puppetPoint, puppetShadow, puppetIn, puppetLight, jumpArc, breathe, beatKick, noteV2, tightenNote, type PuppetOpts } from './_puppet';
 import { lyricV2 } from './_v2';
@@ -266,7 +266,8 @@ export default class Badminton extends Scene {
     this.dust(c, t);
     // 歌詞：沿著高遠球的弧線，比留言小一級
     const ly = lyricAt(lyrics, t);
-    if (ly) lyricOnPath(c, ly.line, t, this.arc, { family: F.archivo(100, 700), size: this.lyricSize, minSize: 40, offset: 18, alpha: ly.k * rv, unsung: rgba('bone', 0.26) });
+    // 韓文歌：原文副行排在弧線更裡面一圈；弧頂很尖，越裡面的字擠得越厲害，整塊往外推一點（上緣仍離畫面頂 ≥ 96）
+    if (ly) lyricOnPath(c, ly.line, t, this.arc, { family: F.archivo(100, 700), size: this.lyricSize, minSize: 40, offset: lyricSubOf(ly.line) ? 40 : 18, alpha: ly.k * rv, unsung: rgba('bone', 0.26) });
 
     // 羽球與軌跡
     const i = this.lastHit(t);

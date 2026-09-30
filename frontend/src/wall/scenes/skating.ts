@@ -15,7 +15,7 @@ import { LineBatch } from '../engine/lines';
 import { F, font, loadText } from '../engine/type';
 import { LIN, rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, lerp, hash } from '../engine/util';
-import { lyricAt, sparkHead, sparkParticles, msgChars } from './_motifs';
+import { lyricAt, sparkHead, sparkParticles, msgChars, lyricSubOf } from './_motifs';
 import { inkFor, inkLine, inkPoly, lyricOnPath, drawNote, type Pt, type Note, type Ink } from './_couple';
 import { loadPuppets, drawPick, puppetShadow, puppetIn, puppetLight, breathe, beatKick, noteV2, tightenNote, type PuppetOpts } from './_puppet';
 import { lyricV2 } from './_v2';
@@ -69,6 +69,11 @@ export default class Skating extends Scene {
   fg = this.track(new Layer2D(W, H, undefined, { fast: true }));
   glow = this.track(new LineBatch(4096, { screen2D: true, blend: 'add' }));
   msg: Msg | null = this.ctx.params.message ?? null;
+  /**
+   * 有韓文原文的窗格（建構時就看：引擎只在建立這一格之前設好開關）：原文排在中文下面的冰面上，會太貼畫面下緣，
+   * 整條歌詞往上抬一點（還在溜冰的刀痕下面）。平移整條弧（不用 offset：offset 會改到弧長，剛好放得下的句子會被折成兩排）。
+   */
+  lyrLift = this.ctx.lyrics.linesIn(this.ctx.start - 1, this.ctx.end + 1).some((l) => !!lyricSubOf(l)) ? 30 : 0;
   legs: Leg[] = [];
   keys: [number, string][] = [];
   lyricPath: Pt[] = [];
@@ -111,7 +116,7 @@ export default class Skating extends Scene {
     // 歌詞刻在冰上：兩人滑的路下面一條淺淺的弧
     for (let i = 0; i <= 60; i++) {
       const u = i / 60;
-      this.lyricPath.push({ x: lerp(170, 1290, u), y: 962 - 22 * Math.sin(Math.PI * u) });
+      this.lyricPath.push({ x: lerp(170, 1290, u), y: 962 - this.lyrLift - 22 * Math.sin(Math.PI * u) });
     }
     // 黑板上的留言：標準 v2 的字級；黑板的寬高跟著留言（靠右、上緣固定）
     const c = this.fg.ctx;

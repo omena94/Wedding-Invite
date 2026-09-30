@@ -17,7 +17,7 @@ import { F, font, loadText } from '../engine/type';
 import { LIN, rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, lerp, prog, TAU, hash, frameIdx } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
-import { sparkHead, sparkParticles, lyricAt, layoutLyric, drawLyric, signature, beatAfter, COUPLE_ZH } from './_motifs';
+import { sparkHead, sparkParticles, lyricAt, layoutLyric, drawLyric, signature, beatAfter, COUPLE_ZH, lyricSubOf } from './_motifs';
 import { blit, winBars, label, INVITE, T8_TEXT, Stage, camMove, type StageCam } from './_t8';
 import { V2, msgMaxFor, lyricV2, sigV2, fitClauses } from './_v2';
 
@@ -94,6 +94,11 @@ export default class Lissajous extends Scene {
   readL = this.track(new Layer2D(520, 90, undefined, { fast: true }));
   L = this.track(new LineBatch(4000, { screen2D: true, blend: 'add' }));
   msg: Msg | null = this.ctx.params.message ?? null;
+  /**
+   * 歌詞那一塊貼到螢幕上的位置。有韓文原文的窗格（建構時就看：引擎只在建立這一格之前設好開關）中文＋原文會塞滿這一塊，
+   * 最下面那排比原本低，整塊往上提一點（上面是空的螢幕），原文才不會貼著螢幕下緣。
+   */
+  lyBox = this.ctx.lyrics.linesIn(this.ctx.start - 1, this.ctx.end + 1).some((l) => !!lyricSubOf(l)) ? { ...LY, y: LY.y - 32 } : LY;
   figs: Fig[] = [];
   beat = 0.5;
   fit: FitResult | null = null;
@@ -321,7 +326,7 @@ export default class Lissajous extends Scene {
       }
       L.upload();
     }
-    blit(this.ctx, this.lyrL.texture, LY.x, LY.y, LY.w, LY.h, out);
+    blit(this.ctx, this.lyrL.texture, this.lyBox.x, this.lyBox.y, LY.w, LY.h, out);
   }
 
   /** 角落唯一的一小行讀數（低對比）。 */

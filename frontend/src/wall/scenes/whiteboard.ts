@@ -14,7 +14,7 @@ import { LineBatch } from '../engine/lines';
 import { F, font, loadText } from '../engine/type';
 import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, lerp } from '../engine/util';
-import { lyricAt, layoutLyric, drawLyric, heartPoints } from './_motifs';
+import { lyricAt, layoutLyric, drawLyric, heartPoints, lyricSubOf } from './_motifs';
 import { inkFor, inkLine, inkPath, inkPoly, inkRect, inkEllipse, paperBG, heartPop, type Pt, type Note } from './_couple';
 import { loadPuppets, drawCycle, drawPick, puppetShadow, breathe, beatKick, noteV2, tightenNote, type PuppetOpts } from './_puppet';
 import { lyricV2 } from './_v2';
@@ -56,6 +56,8 @@ export default class Whiteboard extends Scene {
   /** 接回來之後的每個小節線（冒愛心、兩人一起彈一下）。 */
   after: number[] = [];
   msgT0 = 0;
+  /** 愛心架構圖的位置。韓文歌（標題多一排原文）時小一點、往下挪，最上面的方塊與勾勾才不會頂到原文；整格固定。 */
+  heart = HEART;
 
   override async init() {
     const { audio: au } = this.ctx;
@@ -64,8 +66,10 @@ export default class Whiteboard extends Scene {
     const s = this.ctx.start;
     const bars = barsIn(au, s, this.ctx.end, 0.5);
     const n = bars.length;
+    if (this.ctx.lyrics.linesIn(s, this.ctx.end).some((l) => lyricSubOf(l))) this.heart = { x: HEART.x, y: HEART.y + 22, s: HEART.s * 0.9 };
+    const HT = this.heart;
     // 愛心輪廓上八個方塊：從凹口開始順時針，最後一條箭頭回到第一個
-    this.outline = heartPoints(160).map((p) => ({ x: HEART.x + p.x * HEART.s, y: HEART.y + p.y * HEART.s }));
+    this.outline = heartPoints(160).map((p) => ({ x: HT.x + p.x * HT.s, y: HT.y + p.y * HT.s }));
     const N = LABELS.length;
     // 方塊照「沿著輪廓的長度」排（照參數排的話凹口附近會擠成一團）；凹口兩側各留一大段空（方塊才不會疊在一起）
     const acc = [0];
@@ -258,7 +262,7 @@ export default class Whiteboard extends Scene {
       const o: PuppetOpts = { h: SZ, flip: !done, spin: eo.spin, alpha: eo.alpha, pivot: 0.3, rot: -0.03 * tick, squash: breathe(t, 0.008, 3.3, 0.4) - (done ? 0.04 * Math.exp(-(t - this.lastBar(t)) / 0.15) : 0) };
       drawPick(c, [[-1e9, 'mt_work_tick'], [done ? this.tClose : 1e9, 'mt_work_thumb']], t, OM_X, FLOOR, o);
     }
-    for (const t0 of this.tClose > 0 ? [this.tClose, ...this.after] : []) for (let i = 0; i < 3; i++) heartPop(c, HEART.x - 60 + i * 60, HEART.y + HEART.s * 0.2 - i * 20, 40, (t - t0 - i * 0.15) / 1.3);
+    for (const t0 of this.tClose > 0 ? [this.tClose, ...this.after] : []) for (let i = 0; i < 3; i++) heartPop(c, this.heart.x - 60 + i * 60, this.heart.y + this.heart.s * 0.2 - i * 20, 40, (t - t0 - i * 0.15) / 1.3);
   }
 
   /** 收尾之後最近的一個小節線（兩人比讚時跟著彈一下）。 */

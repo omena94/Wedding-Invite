@@ -24,8 +24,8 @@ import { rgba, mixRgba, LIN } from '../engine/palette';
 import { clamp, ease, prog, hash, noise1, pulse } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
 import { Lyrics, type Line, type Word } from '../engine/lyrics';
-import { drawHeart } from './_motifs';
-import { grid, stagger, layoutRows, drawRows, paperInk } from './_t4';
+import { drawHeart, lyricSubOf, drawLyricSub, subSizeFor, type LyricStyle } from './_motifs';
+import { grid, stagger, layoutRows, drawRows, paperInk, darkInk } from './_t4';
 import { INVITE } from './_t14';
 import { shownLyric, sigOf, type Rect } from './_t24';
 import { V2, msgMaxFor, lyricV2, sigV2, fitClauses } from './_v2';
@@ -717,6 +717,16 @@ export default class Festival extends Scene {
         g.addColorStop(0, rgba('signal', 0.2 * on * (flick + flash))); g.addColorStop(0.6, rgba('signal', 0.05 * on)); g.addColorStop(1, rgba('signal', 0));
         gc.fillStyle = g; gc.beginPath(); gc.arc(l.x, cy, r, 0, Math.PI * 2); gc.fill();
       }
+    }
+    // 原文（韓文歌）：不做燈籠，小一號寫在最下面那串燈籠的流蘇底下（同一層、同樣靠左），像燈籠照亮的一行字
+    const sub = line ? lyricSubOf(line) : null;
+    if (sub && set.lanterns.length) {
+      const lastY = Math.max(...set.lanterns.map((l) => l.y));
+      const bottom = Math.max(...set.lanterns.filter((l) => l.y === lastY).map((l) => wireY({ y: l.y }, l.x) + l.h * 1.62));
+      const st: LyricStyle = { family: FAM, size: set.char, maxWidth: AREA.w, align: 'left', ...darkInk() };
+      c.save(); c.translate(AREA.x, bottom + subSizeFor(set.char) * 0.95);
+      drawLyricSub(c, sub, t, st, set.char, alpha * power);
+      c.restore();
     }
     if (set.sig) {
       const sg = set.sig, last = set.lanterns[set.lanterns.length - 1]!;

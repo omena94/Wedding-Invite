@@ -22,7 +22,7 @@ import { F, font, layout, fitSize, loadText } from '../engine/type';
 import { LIN, rgba } from '../engine/palette';
 import { clamp, ease, fract, lerp, prog, pulse, springStep, TAU } from '../engine/util';
 import { Lyrics } from '../engine/lyrics';
-import { sparkHead, sparkParticles, lyricAt, layoutLyric, beatAfter } from './_motifs';
+import { sparkHead, sparkParticles, lyricAt, layoutLyric, beatAfter, type LyricLayout } from './_motifs';
 import { V2, msgMaxFor, lyricV2 } from './_v2';
 import { pickPulses, ecgAt, Sweep, heartPaths, partial, scanRows, type Pulse, type HeartPaths, type Row } from './heartbeat-ecg';
 import { buildStrip, msgStrip, INVITE_STRIP, STRIP_TEXT, STRIP_FIXED, type Strip } from './heartbeat-strip';
@@ -478,15 +478,26 @@ export default class Heartbeat extends Scene {
    */
   private drawLyric(c: CanvasRenderingContext2D, gc: CanvasRenderingContext2D, t: number, ly: NonNullable<ReturnType<typeof lyricAt>>): boolean {
     const line = ly.line;
-    const st = { family: F.archivo(100, 800), size: this.lyricSize, minSize: V2.lyrMin / MON_S, maxWidth: X1 - LX - 20, lineHeight: 1.08 };
-    const lay = layoutLyric(c, line, st);
-    const oy = Y1 - 22 - lay.rows[lay.rows.length - 1]!.y;
+    let st = { family: F.archivo(100, 800), size: this.lyricSize, minSize: V2.lyrMin / MON_S, maxWidth: X1 - LX - 20, lineHeight: 1.08 };
+    let lay = layoutLyric(c, line, st);
+    let oy = Y1 - 22 - lay.rows[lay.rows.length - 1]!.y;
+    if (lay.sub) {
+      // 韓文歌：線的正上方只有一條字的位置（線下面是往下伸的心跳），所以原文坐在線上、中文坐在原文正上方；
+      // 兩段太高、碰到上面的規格列就一起縮（中文不小於 lyrMin）
+      const subLast = (l: LyricLayout) => l.sub!.dy + l.sub!.lay.rows[l.sub!.lay.rows.length - 1]!.y;
+      for (let k = 1; k < 8 && Y1 - 22 - subLast(lay) - lay.size * 0.92 < HEAD_Y + 16 && lay.size > st.minSize; k++) {
+        st = { ...st, size: Math.max(st.minSize, this.lyricSize * Math.pow(0.93, k)) };
+        lay = layoutLyric(c, line, st);
+      }
+      oy = Y1 - 22 - subLast(lay);
+    }
     const size = lay.size;
     let glow = false;
     c.save(); gc.save();
     c.font = gc.font = font(st.family, size);
     c.textBaseline = gc.textBaseline = 'alphabetic';
     const kout = 1 - clamp((t - line.end - 0.6) / 0.6);
+    if (lay.sub) this.drawSubOnLine(c, lay.sub.lay, st.family, oy + lay.sub.dy, t, ly.k, line.start, kout);
     lay.words.forEach((pw, i) => {
       const tIn = line.start - 0.35 + i * 0.028;
       const land = springStep(t - tIn, 2.4, 0.4);
@@ -522,6 +533,39 @@ export default class Heartbeat extends Scene {
     });
     c.restore(); gc.restore();
     return glow;
+  }
+
+  /**
+   * 原文副行坐在線上：跟中文一樣一個字一個字落下來、被心跳彈起來，但比中文安靜——
+   * 唱到、唱完都是淡兩成的紙白（不用訊號色、不進發光層），還沒唱三成。逐字時間是原文自己的。
+   */
+  private drawSubOnLine(c: CanvasRenderingContext2D, lay: LyricLayout, family: string, oy: number, t: number, k: number, start: number, kout: number) {
+    const size = lay.size;
+    c.save();
+    c.font = font(family, size);
+    lay.words.forEach((pw, i) => {
+      const tIn = start - 0.3 + i * 0.028;
+      const land = springStep(t - tIn, 2.4, 0.4);
+      const a = k * clamp((t - tIn) / 0.12);
+      if (a <= 0.003) return;
+      const cxw = LX + pw.x + pw.w / 2;
+      const b = this.bounce(cxw, pw.w, t);
+      const x = LX + pw.x, y = oy + pw.y - (1 - land) * 36 - (1 - kout) * 20 + b.dy;
+      const p = Lyrics.wordProgress(pw.word, t);
+      c.save();
+      c.translate(cxw, y); c.rotate(b.rot); c.translate(-cxw, -y);
+      c.globalAlpha = a;
+      if (p < 1) { c.fillStyle = rgba('bone', 0.3); c.fillText(pw.word.w, x, y); }
+      if (p > 0) {
+        c.beginPath();
+        c.rect(x - size * 0.1, y - size * 1.1, (pw.w + size * 0.2) * p, size * 1.5);
+        c.clip();
+        c.fillStyle = rgba('bone', 0.96 * 0.8);
+        c.fillText(pw.word.w, x, y);
+      }
+      c.restore();
+    });
+    c.restore();
   }
 
   /**

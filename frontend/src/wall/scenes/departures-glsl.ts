@@ -7,7 +7,8 @@
 import { H } from '../engine/gl';
 import { CODE_GLSL } from './_t7';
 
-export const NG = 5;
+// 格子區最多幾塊：航班、留言、歌詞、署名、倒數，韓文歌再多一塊原文副行（沒有原文時 uNG 還是 5，畫面不變）
+export const NG = 6;
 
 export const FRAG_BOARD = /* glsl */ `
 uniform sampler2D uState;

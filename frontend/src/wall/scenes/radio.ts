@@ -21,7 +21,7 @@ import { LIN, rgba } from '../engine/palette';
 import { clamp, ease, lerp, prog, hash, springStep, TAU } from '../engine/util';
 import { fitText, phrases, type FitResult } from '../engine/text';
 import { Lyrics } from '../engine/lyrics';
-import { beatAfter, barAfter, signature, lyricAt, COUPLE_EN, COUPLE_ZH } from './_motifs';
+import { beatAfter, barAfter, signature, lyricAt, COUPLE_EN, COUPLE_ZH, lyricSubOf, subSizeFor, subGap } from './_motifs';
 import { msgMaxFor, lyricV2, sigV2, V2 } from './_v2';
 import { fillWithHearts } from '../engine/motifs';
 import { layoutWordRows } from './_t7';
@@ -414,14 +414,28 @@ export default class Radio extends Scene {
     // 有留言時歌詞是第二順位（比留言小一級）；沒有留言時歌詞是焦點
     // v2：歌詞 40～52 px，有留言時不比留言大
     const top = lyricV2(this.msg && this.fit ? this.fit.size : null);
-    const lay = layoutWordRows(c, ly.line, F_LYR, GRILLE.w - PAD * 2, GRILLE.h - PAD * 2, big ? { min: 44, max: top, maxRows: 3, lh: 1.16 } : { min: V2.lyrMin, max: top, maxRows: 3, lh: 1.16 });
+    // 原文副行（韓文歌）：喇叭網裡替原文留兩列小字的高度，中文照舊找最大字級；兩組合起來在網子裡垂直置中
+    const sub = lyricSubOf(ly.line);
+    const iw = GRILLE.w - PAD * 2, ih = GRILLE.h - PAD * 2;
+    const reserve = sub ? subGap(top) + subSizeFor(top) * 1.16 : 0;
+    const lay = layoutWordRows(c, ly.line, F_LYR, iw, ih - reserve, big ? { min: 44, max: top, maxRows: 3, lh: 1.16 } : { min: V2.lyrMin, max: top, maxRows: 3, lh: 1.16 });
+    const sl = sub ? layoutWordRows(c, sub, F_LYR, iw, subSizeFor(top) * 2.4, { min: 26, max: subSizeFor(lay.size), maxRows: 2, lh: 1.16 }) : null;
+    let dyMain = 0, dySub = 0;
+    if (sl) {
+      const gap = subGap(lay.size, sl.size);
+      const total = lay.height + gap + (sl.rows.length - 1) * sl.lineH;
+      const y1 = (ih - total) / 2 + lay.size * 0.86; // 中文第一列的基線
+      dyMain = y1 - lay.rows[0]!.y;
+      dySub = y1 + (lay.rows.length - 1) * lay.lineH + gap - sl.rows[0]!.y;
+    }
     // 內容：每個字的狀態＋正在唱的字彈到哪（量化，一樣就不重畫）
     const pops = lay.words.map((b) => {
       const p = Lyrics.wordProgress(b.word, t);
       const pop = t >= b.word.start ? Math.exp(-(t - b.word.start) / 0.11) : 0;
       return `${p <= 0 ? 0 : p < 1 ? 1 : 2}${Math.round(pop * 10)}`;
     }).join('');
-    const key = `${ly.line.i}|${Math.round(ly.k * 20)}|${pops}`;
+    const subKey = sl ? sl.words.map((b) => (Lyrics.wordProgress(b.word, t) > 0 ? 1 : 0)).join('') : '';
+    const key = `${ly.line.i}|${Math.round(ly.k * 20)}|${pops}|${subKey}`;
     if (key === this.txtKey) return;
     this.txtKey = key;
     this.txt.clear();
@@ -435,12 +449,20 @@ export default class Radio extends Scene {
       const pop = t >= b.word.start ? Math.exp(-(t - b.word.start) / 0.11) : 0;
       c.save();
       const s = 1 + 0.16 * pop;
-      c.translate(b.x + b.w / 2, b.y - lay.size * 0.35);
+      c.translate(b.x + b.w / 2, b.y + dyMain - lay.size * 0.35);
       c.scale(s, s);
       c.translate(-b.w / 2, lay.size * 0.35);
       c.fillStyle = b.word.w === '♥' ? rgba('rose') : p <= 0 ? rgba('bone', 0.26) : p < 1 ? rgba('signal') : rgba('bone', 0.96);
       c.fillText(b.word.w, 0, 0);
       c.restore();
+    }
+    if (sl) {
+      // 原文比中文安靜：不彈、不用訊號色，唱到、唱完都是紙白淡兩成
+      c.font = font(F_LYR, sl.size);
+      for (const b of sl.words) {
+        c.fillStyle = Lyrics.wordProgress(b.word, t) > 0 ? rgba('bone', 0.96 * 0.8) : rgba('bone', 0.26);
+        c.fillText(b.word.w, b.x, b.y + dySub);
+      }
     }
     c.restore();
     this.txt.upload();

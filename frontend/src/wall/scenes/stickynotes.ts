@@ -17,7 +17,7 @@ import { LIN, rgba } from '../engine/palette';
 import { clamp, ease, lerp, prog, hash, pulse, mulberry32 } from '../engine/util';
 import { fitText } from '../engine/text';
 import type { Line } from '../engine/lyrics';
-import { layoutLyric, drawLyric, drawHeart, fillWithHearts, signature, DATE_DOTS, type LyricStyle } from './_motifs';
+import { layoutLyric, drawLyric, drawHeart, fillWithHearts, signature, DATE_DOTS, lyricSubOf, subSizeFor, subGap, type LyricStyle, type LyricLayout } from './_motifs';
 import { grid, windowLines, renderStage, projScale, fitMsgV2, type Grid } from './_t5';
 import { V2, lyricV2, sigV2 } from './_v2';
 
@@ -165,7 +165,10 @@ const mixLin = (a: [number, number, number], b: [number, number, number], k: num
 export default class StickyNotes extends Scene {
   rig = shared('stickynotes.rig', makeRig);
   atlas = this.track(new Layer2D(AT_W, AT_H, SCALE * AT_RES, { fast: true }));
-  strip = this.track(new Layer2D(ROW.w, BAND_H * 3, SCALE * AT_RES, { fast: true }));
+  /** 歌詞那一排便利貼的高度：平常跟寬一樣（正方形）；有原文副行（韓文歌）的窗格改成長方形的便利貼，放得下中文＋原文。 */
+  bandH = BAND_H;
+  /** 歌詞的畫布（三條：歌名、偶數句、奇數句）：高度跟著 bandH，所以在 init 裡量完才開。 */
+  strip!: Layer2D;
   msg: Msg | null = this.ctx.params.message ?? null;
   g!: Grid;
   notes: Note[] = [];
@@ -197,6 +200,11 @@ export default class StickyNotes extends Scene {
     const o = new THREE.Object3D();
     const k = this.sc = projScale(this.rig.cam, o, new THREE.Vector3(HERO.x - 150, -HERO.y, 0), new THREE.Vector3(HERO.x + 150, -HERO.y, 0), 300);
     this.ly = { ...LY, size: 52 / k, minSize: V2.lyrMin / k };
+    // 原文副行：量每一句中文＋原文要多高，正方形放不下就把這一排改成長方形的便利貼（上緣不動，往下長；最多到主打那張上面）
+    let need = 0;
+    for (const l of this.lines) { const d = this.subLay(c, l, this.ly); if (d) need = Math.max(need, d.blockH + 56); }
+    if (need > BAND_H) this.bandH = Math.min(Math.ceil(need), HERO.y - HERO.s / 2 - ROW.y - 60);
+    this.strip = this.track(new Layer2D(ROW.w, this.bandH * 3, SCALE * AT_RES, { fast: true }));
 
     // ---- 右邊的裝飾（窗格開始前就在了）
     DECOR.forEach(([x, y, sz, rot], i) => {
@@ -219,9 +227,9 @@ export default class StickyNotes extends Scene {
       for (let j = 0; j < ROW.n; j++) {
         const jitter = (k: number) => hash(li, j, k, params.seed ?? 1) - 0.5;
         this.notes.push({
-          x: ROW.x + NOTE_S * (j + 0.5) + jitter(1) * 3, y: ROW.y + BAND_H / 2 - 4 + jitter(2) * 4, w: NOTE_S + 4, h: NOTE_S, rot: jitter(3) * 0.03,
+          x: ROW.x + NOTE_S * (j + 0.5) + jitter(1) * 3, y: ROW.y + this.bandH / 2 - 4 + jitter(2) * 4, w: NOTE_S + 4, h: this.bandH, rot: jitter(3) * 0.03,
           t0: ly.t === -Infinity ? -Infinity : ly.t + j * 0.055, curl: 0.35 + jitter(4) * 0.3,
-          uv: [j / ROW.n, 1 - (ly.band + 1) * BAND_H / (3 * BAND_H), (j + 1) / ROW.n, 1 - ly.band * BAND_H / (3 * BAND_H)], tex: 1,
+          uv: [j / ROW.n, 1 - (ly.band + 1) / 3, (j + 1) / ROW.n, 1 - ly.band / 3], tex: 1,
           color: () => mixLin(paper(), sig(), 0.42), side: 1,
         });
       }
@@ -331,14 +339,28 @@ export default class StickyNotes extends Scene {
     c.restore();
   }
 
+  /**
+   * 原文副行的排版（牆上 px）：照「畫面上」的主行字級算原文字級（subSizeFor(主行 × sc) ÷ sc）。
+   * dy = 原文第一排基線離中文第一排基線多遠；blockH = 中文字頂到原文字底。
+   */
+  private subLay(c: CanvasRenderingContext2D, l: Line, st: LyricStyle) {
+    const sub = lyricSubOf(l);
+    if (!sub) return null;
+    const k = this.sc, lay = layoutLyric(c, l, st);
+    const ss = subSizeFor(lay.size * k) / k;
+    const sl = layoutLyric(c, sub, { ...st, size: ss, minSize: Math.min(ss, 26 / k), tracking: (st.tracking ?? 0) * 0.5 });
+    const dy = lay.rows[lay.rows.length - 1]!.y + subGap(lay.size * k, sl.size * k) / k;
+    return { sub, sl, dy, blockH: lay.size * 0.8 + dy + sl.rows[sl.rows.length - 1]!.y + sl.size * 0.22 };
+  }
+
   /** 歌名那一條（不會變，畫一次）。 */
   private drawTitleBand() {
     const c = this.strip.ctx, { song, lyrics } = this.ctx;
-    c.save(); c.beginPath(); c.rect(0, 0, ROW.w, BAND_H); c.clip();
+    c.save(); c.beginPath(); c.rect(0, 0, ROW.w, this.bandH); c.clip();
     const txt = `♪ ${song.title || '今晚的歌'}${!lyrics.has && song.artist ? ' · ' + song.artist : ''}`;
-    const fit = fitText(c, txt, F.archivo(100, 900), ROW.w - 60, BAND_H - 40, { min: 34 / this.sc, max: V2.lyrMin / this.sc, lineHeight: 1.05, maxLines: 2 }); // 歌名只是標籤：比留言小
+    const fit = fitText(c, txt, F.archivo(100, 900), ROW.w - 60, this.bandH - 40, { min: 34 / this.sc, max: V2.lyrMin / this.sc, lineHeight: 1.05, maxLines: 2 }); // 歌名只是標籤：比留言小
     c.font = font(F.archivo(100, 900), fit.size); c.fillStyle = rgba('sepia', 0.92); c.textAlign = 'center';
-    fit.lines.forEach((ln, i) => c.fillText(ln, ROW.w / 2, BAND_H / 2 + fit.size * 0.36 - (fit.lines.length - 1) * fit.lineHeight / 2 + i * fit.lineHeight));
+    fit.lines.forEach((ln, i) => c.fillText(ln, ROW.w / 2, this.bandH / 2 + fit.size * 0.36 - (fit.lines.length - 1) * fit.lineHeight / 2 + i * fit.lineHeight));
     c.textAlign = 'left';
     c.restore();
   }
@@ -348,17 +370,27 @@ export default class StickyNotes extends Scene {
     const c = this.strip.ctx;
     const st = { ...this.ly, active: rgba('blood'), sung: rgba('sepia', 0.94), unsung: rgba('sepia', 0.3) };
     for (let band = 1; band <= 2; band++) {
-      c.clearRect(0, band * BAND_H, ROW.w, BAND_H);
+      c.clearRect(0, band * this.bandH, ROW.w, this.bandH);
       // 這一條屬於哪一句：窗格裡第 i 句用 band 1 + (i % 2)，挑最近開始蓋的那一句
       let line: Line | null = null;
       this.lines.forEach((l, i) => { if (1 + (i % 2) === band && l.start - 0.35 - 0.4 <= t) line = l; });
       if (!line) continue;
       const ln = line as Line;
       const lay = layoutLyric(c, ln, st);
+      const d = this.subLay(c, ln, st);
       c.save();
-      c.beginPath(); c.rect(0, band * BAND_H, ROW.w, BAND_H); c.clip();
-      c.translate(ROW.w / 2, band * BAND_H + BAND_H / 2 + lay.size * 0.36 - (lay.rows.length - 1) * lay.size * 1.05 / 2);
-      drawLyric(c, ln, t, st, lay, 1);
+      c.beginPath(); c.rect(0, band * this.bandH, ROW.w, this.bandH); c.clip();
+      if (d) {
+        // 有原文：中文＋原文整塊在便利貼中間；原文照畫面字級另外畫（同一支麥克筆、小一號），比中文安靜：唱到、唱完都是墨色再淡兩成
+        c.translate(ROW.w / 2, band * this.bandH + (this.bandH - d.blockH) / 2 + lay.size * 0.8);
+        drawLyric(c, ln, t, st, { ...lay, sub: undefined } as LyricLayout, 1);
+        c.translate(0, d.dy);
+        const q = rgba('sepia', 0.94 * 0.8);
+        drawLyric(c, d.sub, t, { ...st, active: q, sung: q }, d.sl, 1);
+      } else {
+        c.translate(ROW.w / 2, band * this.bandH + this.bandH / 2 + lay.size * 0.36 - (lay.rows.length - 1) * lay.size * 1.05 / 2);
+        drawLyric(c, ln, t, st, lay, 1);
+      }
       c.restore();
     }
   }

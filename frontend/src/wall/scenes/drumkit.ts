@@ -17,7 +17,7 @@ import { FSPass, Layer2D, W, H } from '../engine/gl';
 import { F, font, loadText } from '../engine/type';
 import { rgba } from '../engine/palette';
 import { clamp, ease, prog } from '../engine/util';
-import { lyricAt, beatAfter, drawHeart, COUPLE_ZH, DATE_DOTS } from './_motifs';
+import { lyricAt, lyricSubOf, subSizeFor, subGap, beatAfter, drawHeart, COUPLE_ZH, DATE_DOTS } from './_motifs';
 import { layoutRows, drawRows, darkInk, type RowsLayout } from './_t4';
 import { T23_INVITE, T23_TEXT, sigOf, layMsgV2, lastBefore, winBeats, winBars, type MsgLay, type Rect } from './_t23';
 import { V2, lyricV2 } from './_v2';
@@ -416,9 +416,25 @@ export default class DrumKit extends Scene {
       c.letterSpacing = '0px'; c.textAlign = 'left';
       if (ly && this.hasLyr) {
         const lay = this.layLine(c, ly.line, true);
-        c.save(); c.translate(BD.x, BD.y - lay.height / 2 + lay.size * 0.72);
-        drawRows(c, lay, F.archivo(100, 700), t, { ...darkInk(), sung: rgba('bone', 0.9) }, ly.k);
-        c.restore();
+        const sub = lyricSubOf(ly.line);
+        if (sub) {
+          // 韓文歌：原文小一號印在中文正下方（同一面鼓皮、一樣置中），兩段一起在鼓皮中間垂直置中；
+          // 原文比中文安靜：唱到、唱完都是淡兩成的紙白（不用訊號色），還沒唱的三成
+          const ss = subSizeFor(lay.size);
+          const sl = layoutRows(c, sub, { family: F.archivo(100, 700), size: ss, minSize: Math.min(ss, 26), maxW: HEAD_BOX.w, maxRows: 2, align: 'center', lineHeight: 1.2 });
+          const gap = (lay.rows.length - 1) * lay.lineHeight + subGap(lay.size, sl.size);
+          const total = lay.size * 0.72 + gap + (sl.rows.length - 1) * sl.lineHeight + sl.size * 0.28;
+          c.save(); c.translate(BD.x, BD.y - total / 2 + lay.size * 0.72);
+          drawRows(c, lay, F.archivo(100, 700), t, { ...darkInk(), sung: rgba('bone', 0.9) }, ly.k);
+          const sung = rgba('bone', 0.9 * 0.8);
+          c.translate(0, gap);
+          drawRows(c, sl, F.archivo(100, 700), t, { ...darkInk(), active: sung, sung }, ly.k);
+          c.restore();
+        } else {
+          c.save(); c.translate(BD.x, BD.y - lay.height / 2 + lay.size * 0.72);
+          drawRows(c, lay, F.archivo(100, 700), t, { ...darkInk(), sung: rgba('bone', 0.9) }, ly.k);
+          c.restore();
+        }
       }
       L.upload();
     }

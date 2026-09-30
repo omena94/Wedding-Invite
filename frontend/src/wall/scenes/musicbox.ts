@@ -16,7 +16,7 @@ import { rgba, mixRgba, LIN } from '../engine/palette';
 import { clamp, ease, prog, lerp, TAU } from '../engine/util';
 import { wrap, type FitResult } from '../engine/text';
 import { Lyrics } from '../engine/lyrics';
-import { lyricAt, layoutLyric, layoutMessage, signature, beatAfter, drawHeart, COUPLE_ZH, DATE_DOTS } from './_motifs';
+import { lyricAt, layoutLyric, layoutMessage, signature, beatAfter, drawHeart, COUPLE_ZH, DATE_DOTS, lyricSubOf, drawLyricSub } from './_motifs';
 import { drawReveal, phraseSchedule, revealAt, fitCharsF, windowLines, type Rect } from './_t10';
 import { pad3 } from './_t11';
 import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 } from './_v2';
@@ -26,6 +26,8 @@ export const spec: PlateSpecDecl = { group: 'type', family: 'machine', paper: tr
 // ---------------------------------------------------------------- 版面（邏輯像素，y 向下）
 // 正在演奏（歌詞）：比曲目卡上的留言小一級（MV 原則：焦點是留言）
 const LYR = { x: 140, y: 100, w: 1200, base: 200 }; // 字級照標準 v2（lyricV2）
+// 韓文歌（有原文副行）：歌詞可以用到機芯的全寬（少折行），原文最後一排的基線貼在底板上緣之上，整組往上長
+const LYR_SUB = { w: 1640, base: 232 };
 // 機芯的底板：標準 v2 要場景當主角，機芯拉寬到畫面右邊（右下角 QR 上面）；曲目卡變小放左下
 const PLATE = { x0: 128, x1: 1800, y0: 244, y1: 704 };
 const COMB = { y0: 250, y1: 304 }; // 音梳的底座
@@ -155,6 +157,8 @@ export default class Musicbox extends Scene {
   /** 曲目卡的大小（照字裁）、署名與歌詞的字級。 */
   card = { w: 860, h: 200 }; sigSize = 30; lyrSize = 52;
   hasLyrics = false;
+  /** 這個窗格有原文副行（韓文歌、沒有主打留言）：「正在演奏」的標籤改成每格畫（中文折兩行時讓位）。 */
+  subWin = false;
   avoid: Rect[] = [];
   private baseUp = false;
 
@@ -163,6 +167,8 @@ export default class Musicbox extends Scene {
     const s = this.ctx.start, e = this.ctx.end, m = this.msg;
     this.body = m ? m.text : INVITE;
     const pinText = m ? m.text : COUPLE_ZH.replace(/\s*&\s*/, ' ♥ ');
+    // 這個窗格有沒有原文（有主打留言的窗格，引擎給的歌詞本來就沒有原文）
+    this.subWin = windowLines(lyrics, s, e).some((l) => lyricSubOf(l));
     await loadText(`${TEXT}${this.body}${pinText}${m ? m.name : ''}${song.title}${song.artist}`);
     this.beat = au.beatPeriod(s + 0.1);
     this.hasLyrics = windowLines(lyrics, s, e).length > 0;
@@ -253,9 +259,7 @@ export default class Musicbox extends Scene {
     L.clear();
     const m = this.msg;
     // 正在演奏的標籤
-    c.font = font(F.mono(500), 13); c.letterSpacing = '4px'; c.fillStyle = rgba('sepia', 0.5);
-    c.fillText(this.hasLyrics ? '♪  正在演奏' : '♪  本盒演奏', LYR.x, LYR.y + 20);
-    c.letterSpacing = '0px';
+    if (!this.subWin) this.playLabel(c);
     // 底板上的刻字與螺絲
     c.font = font(F.serif(600), 15); c.letterSpacing = '5px'; c.fillStyle = rgba('sepia', 0.45);
     c.fillText(`AO · ${DATE_DOTS} · 313 NOTES`, PLATE.x0 + 30, PLATE.y1 - 16);
@@ -351,11 +355,19 @@ export default class Musicbox extends Scene {
     return { paper: 1, bloom: 0.4, vignette: 0.3, grain: 0.04, halation: 0.06, zoom: 1 + 0.025 * ease.inOutCubic(f.p), popupAvoid: this.avoid };
   }
 
+  private playLabel(c: CanvasRenderingContext2D) {
+    c.font = font(F.mono(500), 13); c.letterSpacing = '4px'; c.fillStyle = rgba('sepia', 0.5);
+    c.fillText(this.hasLyrics ? '♪  正在演奏' : '♪  本盒演奏', LYR.x, LYR.y + 20);
+    c.letterSpacing = '0px';
+  }
+
   /** 正在演奏：這一行歌詞（逐字跟唱；亮版面：正在唱是訊號色的暗部＋螢光筆，唱完墨色）。 */
   private drawLyric(c: CanvasRenderingContext2D, hc: CanvasRenderingContext2D, t: number): boolean {
     const { lyrics, song } = this.ctx;
     const ly = lyricAt(lyrics, t, 1.4);
+    const sub = ly ? lyricSubOf(ly.line) : null;
     if (!ly) {
+      if (this.subWin) this.playLabel(c);
       if (!this.hasLyrics) {
         c.font = font(F.archivo(100, 800), 60); c.fillStyle = rgba('sepia', 0.9);
         c.fillText(song.title || '今晚的歌', LYR.x, LYR.base);
@@ -363,9 +375,11 @@ export default class Musicbox extends Scene {
       }
       return false;
     }
-    const st = { family: F.archivo(100, 800), size: this.lyrSize, minSize: V2.lyrMin, maxWidth: LYR.w, lineHeight: 1.08 };
+    const st = { family: F.archivo(100, 800), size: this.lyrSize, minSize: V2.lyrMin, maxWidth: sub ? LYR_SUB.w : LYR.w, lineHeight: 1.08 };
     const lay = layoutLyric(c, ly.line, st);
-    const y0 = LYR.base - (lay.rows.length - 1) * lay.size * 1.08;
+    const y0 = lay.sub ? LYR_SUB.base - (lay.height - lay.size) : LYR.base - (lay.rows.length - 1) * lay.size * 1.08;
+    // 標籤：中文折兩行時第一行會長到標籤那裡，這時候不畫
+    if (this.subWin && !(lay.sub && lay.rows.length > 1)) this.playLabel(c);
     let glow = false;
     c.save(); c.globalAlpha *= ly.k;
     c.font = font(st.family, lay.size);
@@ -385,6 +399,11 @@ export default class Musicbox extends Scene {
       c.fillText(pw.word.w, x, y);
       c.restore();
       // 亮版面不加光暈：加亮疊在紙上會把深色的字洗淡
+    }
+    // 原文副行（韓文歌）：小一號、墨色、不上螢光筆（比中文安靜）
+    if (sub && lay.sub) {
+      c.translate(LYR.x, y0 + lay.sub.dy);
+      drawLyricSub(c, sub, t, { ...st, sung: rgba('sepia'), unsung: rgba('sepia', 0.3) }, lay.size, c.globalAlpha);
     }
     c.restore();
     return glow;

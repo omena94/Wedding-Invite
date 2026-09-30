@@ -25,7 +25,7 @@ import { rgba, mixRgba, LIN } from '../engine/palette';
 import { clamp, ease, lerp, prog, pulse, mulberry32 } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
 import type { Lyrics } from '../engine/lyrics';
-import { lyricAt, drawLyric, layoutLyric, sparkHead, sparkParticles, COUPLE_ZH, WEDDING_DATE, type LyricStyle } from './_motifs';
+import { lyricAt, drawLyric, layoutLyric, lyricSubOf, subGap, subSizeFor, subStyleFor, sparkHead, sparkParticles, COUPLE_ZH, WEDDING_DATE, type LyricLayout, type LyricStyle } from './_motifs';
 import { grid, stagger, paperLyric, mono, FAST_TEX_GLSL, type Grid } from './_t2';
 import { V2, msgMaxFor, lyricV2, sigV2, fitClauses } from './_v2';
 import { vFit, vColumn, vPlace, vDrawUnit, BR, type VLayout, type VPlaced } from './menu-vert';
@@ -388,6 +388,11 @@ export default class Menu extends Scene {
   k = 0.7; kLy = 0.7;
   /** 署名那一欄的寬度（卡片座標）。 */
   sigW = 60;
+  /**
+   * 韓文歌有原文副行時，歌詞帶（連上面的細線與「伴宴歌曲」標籤）往上長多少：中文兩行＋原文才放得進內框。
+   * 有副行一定沒有主打留言（留言的窗格副行收起來），直排的邀請字排在少這麼多的高度裡；沒有副行是 0，版面跟原本一樣。
+   */
+  lyrUp = 0;
 
   constructor(ctx: ConstructorParameters<typeof Scene>[0]) {
     super(ctx);
@@ -422,13 +427,15 @@ export default class Menu extends Scene {
     this.sealText = m?.couple ? '新人推薦' : '主廚推薦';
     this.sigText = m ? (m.couple ? `—— ${m.name || COUPLE_ZH}` : `—— ${m.name || '一位賓客'} 特製`) : '—— 主廚';
     const lyr = lyrics.linesIn(s - 0.5, e + 0.5).map((l) => l.text).join('');
+    this.lyrUp = !m && lyrics.linesIn(s - 0.5, e + 0.5).some((l) => lyricSubOf(l)) ? 64 : 0;
     await loadText(`${FIXED}${COUPLE_ZH}${txt}${this.sigText}${song.title}${lyr}${cnDate()}`);
 
     // ---- 主打留言：直排大字（英文為主就橫排），在留言範圍裡找最大字級、置中
     const pre = this.pre.ctx;
     const latin = (txt.match(/[A-Za-z]/g) ?? []).length, cjk = (txt.match(/[㐀-鿿가-힯]/g) ?? []).length;
     const horiz = latin > 6 && latin > cjk * 2;
-    const colH = MSG.bot - MSG.top, areaW = MSG.x1 - MSG.x0;
+    const msgBot = MSG.bot - this.lyrUp;
+    const colH = msgBot - MSG.top, areaW = MSG.x1 - MSG.x0;
     // 署名先排好（它的空間先扣掉，留言才在剩下的地方找字級）：直排時是留言左邊獨立的一欄，要放得進留言的高度；
     // 橫排時是最後一行下面的一行，要放得進留言的寬度。名字太長縮到最小還放不下，就從尾巴截掉加「…」
     const SIG_F = F.hand(400);
@@ -472,7 +479,7 @@ export default class Menu extends Scene {
       // 署名：留言最後一欄（最左邊）的再左邊一欄，底部跟留言齊；永遠在留言範圍的上下界裡
       this.sig = vColumn(this.sigText, SIG_F, sigSize);
       const sx = xr - l.width - SIGW / 2 - 8;
-      const sigBot = clamp(Math.max(yTop + l.height, yTop + this.sig.height), MSG.top + this.sig.height, MSG.bot);
+      const sigBot = clamp(Math.max(yTop + l.height, yTop + this.sig.height), MSG.top + this.sig.height, msgBot);
       this.sigP = vPlace(this.sig, sx + this.sig.pitch / 2, 0, 'bottom', sigBot);
       this.seal = { x: xr - l.pitch / 2, y: yTop - 50 };
     }
@@ -574,8 +581,8 @@ export default class Menu extends Scene {
     // 印好的細線：標題欄左邊的直線、歌詞上面的線
     const ruleK = prog(t, s, s + 0.25);
     c.fillStyle = rgba('sepia', 0.2 * ruleK);
-    c.fillRect(TITLE.rule, 96, 1, 520);
-    c.fillRect(LYR.x, LYR.rule, CW - LYR.x * 2, 1);
+    c.fillRect(TITLE.rule, 96, 1, 520 - this.lyrUp);
+    c.fillRect(LYR.x, LYR.rule - this.lyrUp, CW - LYR.x * 2, 1);
 
     // 標題的「囍」：小小的燙金，第一拍壓上去
     if (t >= this.tTitle - 0.02) {
@@ -712,9 +719,9 @@ export default class Menu extends Scene {
     const beatNow = au.timeOfBeat(Math.floor(au.beatAt(t)));
     c.font = font(F.hei(500), 16); c.letterSpacing = '4px'; c.textBaseline = 'alphabetic';
     c.fillStyle = rgba('blood', 0.4 + 0.35 * pulse(t, beatNow, 0.15));
-    c.fillText('♪', LYR.x, LYR.label);
+    c.fillText('♪', LYR.x, LYR.label - this.lyrUp);
     c.fillStyle = rgba('sepia', 0.42);
-    c.fillText('伴宴歌曲', LYR.x + 24, LYR.label);
+    c.fillText('伴宴歌曲', LYR.x + 24, LYR.label - this.lyrUp);
     c.letterSpacing = '0px';
     if (this.instr) {
       // 純音樂：寫歌名（純音樂）
@@ -733,9 +740,31 @@ export default class Menu extends Scene {
         // v2：歌詞比留言小一級（lyricV2），螢幕 px 換成卡片座標
         const msgScr = this.vl ? this.vl.size * this.k : this.hfit ? this.hfit.size * this.k : null;
         const st: LyricStyle = { family: F.archivo(100, 500), size: lyricV2(this.msg ? msgScr : null) / this.kLy, minSize: V2.lyrMin / this.kLy, maxWidth: LYR.w, lineHeight: 1.12, ...paperLyric() };
-        const lay = layoutLyric(c, ly.line, st);
+        let lay = layoutLyric(c, ly.line, st);
+        let y0 = lay.rows.length > 1 ? LYR.top + lay.size * 0.9 : (LYR.top + LYR.bot) / 2 + lay.size * 0.35;
+        const sub = lyricSubOf(ly.line);
+        if (sub && lay.sub) {
+          // 韓文歌：原文副行（drawLyric 畫在中文正下方）。卡片斜著看、畫面上縮成約 kLy 倍，
+          // 原文的字級照螢幕 px 算（32～56 是螢幕上的大小），所以換掉 layoutLyric 用卡片座標排的那一份
+          const withSub = (l: LyricLayout): LyricLayout => {
+            const ss = subSizeFor(l.size * this.kLy) / this.kLy;
+            const sl = layoutLyric(c, sub, { ...subStyleFor(st, l.size), size: ss, minSize: Math.min(ss, 26 / this.kLy) });
+            const dy = (l.rows.length - 1) * l.size * (st.lineHeight ?? 1.18) + subGap(l.size, sl.size);
+            return { ...l, sub: { lay: sl, dy }, height: l.size + dy + sl.height - sl.size };
+          };
+          // 歌詞帶往上長了 lyrUp；還是放不下就把主行縮一點（先變回一行），整塊在歌詞帶裡垂直置中、不出內框
+          const top = LYR.top - this.lyrUp, band = LYR.bot - top - 6;
+          const need = (l: LyricLayout) => l.height + (l.sub ? l.sub.lay.size * 0.22 : 0);
+          lay = withSub(lay);
+          let s2 = st;
+          for (let i = 0; i < 8 && need(lay) > band; i++) {
+            s2 = { ...s2, size: lay.size * 0.94, minSize: Math.min(s2.minSize ?? s2.size, lay.size * 0.94) };
+            lay = withSub(layoutLyric(c, ly.line, s2));
+          }
+          y0 = top + (band - need(lay)) / 2 + lay.size;
+        }
         c.save();
-        c.translate(LYR.x, lay.rows.length > 1 ? LYR.top + lay.size * 0.9 : (LYR.top + LYR.bot) / 2 + lay.size * 0.35);
+        c.translate(LYR.x, y0);
         drawLyric(c, ly.line, t, st, lay, ly.k * k);
         c.restore();
       }

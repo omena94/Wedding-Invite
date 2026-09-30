@@ -107,7 +107,9 @@ const LS = 1102 / (PIC.x1 - PIC.x0);
 export const LAND = () => new FSPass(/* glsl */ `
   ${PAPER_GLSL}
   uniform float t; uniform float kick; uniform float bass; uniform float seed; uniform float boatX; uniform float bob;
-  const vec4 PIC = vec4(${PIC.x0}.0, ${PIC.y0}.0, ${PIC.x1}.0, ${PIC.y1}.0);
+  // picB：風景框的下緣。平常是 PIC.y1；韓文歌（圖說多一排原文）時往上收，底下的白邊變寬（風景照原本的座標，只是下面少一截湖面）
+  uniform float picB;
+  vec4 PIC = vec4(${PIC.x0}.0, ${PIC.y0}.0, ${PIC.x1}.0, ${PIC.y1}.0);
   const float HZ = 352.0;              // 地平線（風景座標，y 向下）
   const vec2 SUN = vec2(770.0, 250.0);
   const float R = 50.0;
@@ -214,13 +216,14 @@ export const LAND = () => new FSPass(/* glsl */ `
     ink = max(ink, boatInk * inWater);
     vec3 col = mix(wash, C_SEPIA, sat(ink) * 0.88);
     // 風景只在框裡；框外是白邊，框線一條細墨線
+    PIC.w = picB;
     float inPic = step(PIC.x, p.x) * step(p.x, PIC.z) * step(PIC.y, p.y) * step(p.y, PIC.w);
     col = mix(paper, col, inPic);
     float frame = sdBox(p - (PIC.xy + PIC.zw) * 0.5, (PIC.zw - PIC.xy) * 0.5);
     col = mix(col, C_SEPIA, pxLine(abs(frame), 0.5, 1.3) * 0.7);
     fragColor = vec4(col, 1.0);
   }`, {
-  t: { value: 0 }, kick: { value: 0 }, bass: { value: 0 }, seed: { value: 0 }, boatX: { value: 400 }, bob: { value: 0 },
+  t: { value: 0 }, kick: { value: 0 }, bass: { value: 0 }, seed: { value: 0 }, boatX: { value: 400 }, bob: { value: 0 }, picB: { value: PIC.y1 },
 });
 
 /** 背面的紙（字、郵票都在 Canvas2D 上，這裡只有紙本身）。 */

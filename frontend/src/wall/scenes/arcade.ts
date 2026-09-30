@@ -18,7 +18,7 @@ import { LIN, rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, lerp, prog, hash } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
 import { Lyrics } from '../engine/lyrics';
-import { lyricAt, layoutLyric, type LyricStyle, beatAfter, COUPLE_ZH } from './_motifs';
+import { lyricAt, layoutLyric, type LyricStyle, beatAfter, COUPLE_ZH, lyricSubOf, subStyleFor, subSizeFor, subGap } from './_motifs';
 import { DEC_GLSL, winBeats, INVITE, T8_TEXT, Stage, camMove, type StageCam } from './_t8';
 import { V2, msgMaxFor, lyricV2, sigV2, fitClauses } from './_v2';
 
@@ -110,6 +110,8 @@ export default class Arcade extends Scene {
   tMsg = 0;
   sigPx = 30;
   st: LyricStyle = { family: F.archivo(100, 800), size: 52, minSize: 46, maxWidth: LY_W, lineHeight: 1.1 };
+  /** 歌詞那裡舞台的縮放倍數（原文副行的字級規則是螢幕 px，要換算）。 */
+  zL = 1;
 
   override async init() {
     const { audio: au, song } = this.ctx;
@@ -136,7 +138,7 @@ export default class Arcade extends Scene {
     await loadText(TEXT + (song.title ?? '') + this.guests.join('') + this.heroName + (m ? m.text + m.name : ''));
     // v2 字級：標準是螢幕 px，除以舞台在那裡的縮放倍數
     const zM = this.stage.scaleAt(CAM, RX + RW / 2, (MSG_TOP + MSG_BOT) / 2);
-    const zL = this.stage.scaleAt(CAM, WELL.x + LY_W / 2, LY_BASE - 20);
+    const zL = this.zL = this.stage.scaleAt(CAM, WELL.x + LY_W / 2, LY_BASE - 20);
     if (m) {
       const c = this.scr.ctx;
       const o = { min: V2.msgMin / zM, max: msgMaxFor(m.text) / zM, lineHeight: 1.22, maxLines: 5 };
@@ -283,15 +285,30 @@ export default class Arcade extends Scene {
     const ly = lyricAt(lyrics, t);
     if (ly) {
       const lay = layoutLyric(c, ly.line, this.st);
+      // 原文副行（韓文歌）：自己排（字級照螢幕 px 換算），放在中文下面；整組往下多用一點螢幕下緣的空間（鏡頭拉遠，
+      // 畫到畫面上還離下緣 96 px 以上），中文折兩行時第一行才不會壓到上面井的底線
+      const sub = lyricSubOf(ly.line), z = this.zL;
+      const sl = sub ? layoutLyric(c, sub, { ...subStyleFor(this.st, lay.size), size: subSizeFor(lay.size * z) / z }) : null;
+      const gap = sl ? subGap(lay.size * z, sl.size * z) / z : 0;
       c.save();
       c.font = font(this.st.family, lay.size);
-      const y0 = LY_BASE - lay.rows[lay.rows.length - 1]!.y;
+      const y0 = sl ? LY_BASE + 72 - (lay.rows[lay.rows.length - 1]!.y + gap + sl.rows[sl.rows.length - 1]!.y) : LY_BASE - lay.rows[lay.rows.length - 1]!.y;
       for (const pw of lay.words) {
         const p = Lyrics.wordProgress(pw.word, t);
         const x = snap(WELL.x + pw.x), y = snap(y0 + pw.y);
         // 點陣字不做半個字的漸層：唱到的字整個字變訊號色（跟唱的時間照規則），唱完紙白；淡入淡出也用暗色（見 dim）
         c.fillStyle = p <= 0 ? dim('bone', 0.32 * ly.k) : p < 1 ? dim('signal', ly.k) : dim('bone', (this.msg ? 0.8 : 0.96) * ly.k);
         c.fillText(pw.word.w, x, y);
+      }
+      if (sl) {
+        // 比中文安靜：唱到、唱完都是紙白再暗兩成（不用訊號色），還沒唱的跟中文一樣
+        c.font = font(this.st.family, sl.size);
+        const ys = y0 + lay.rows[lay.rows.length - 1]!.y + gap;
+        for (const pw of sl.words) {
+          const p = Lyrics.wordProgress(pw.word, t);
+          c.fillStyle = p <= 0 ? dim('bone', 0.32 * ly.k) : dim('bone', 0.96 * 0.8 * ly.k);
+          c.fillText(pw.word.w, snap(WELL.x + pw.x), snap(ys + pw.y));
+        }
       }
       c.restore();
     } else if (!lyrics.has) {

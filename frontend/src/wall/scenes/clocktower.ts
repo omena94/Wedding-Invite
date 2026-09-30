@@ -14,7 +14,7 @@ import { FSPass, W, H } from '../engine/gl';
 import { F, font, loadText } from '../engine/type';
 import { clamp, ease, prog, hash, lerp, pulse } from '../engine/util';
 import { type Line } from '../engine/lyrics';
-import { lyricAt, COUPLE_ZH, DATE_DOTS } from './_motifs';
+import { lyricAt, lyricSubOf, subGap, subSizeFor, COUPLE_ZH, DATE_DOTS } from './_motifs';
 import { V2, lyricV2 } from './_v2';
 import {
   T25_TEXT, T25_INVITE, sigOf, winBars, winBeats, stagger, layMsg, layMsgV2, msgGlyphs, glyphMask, glyphStates, MASK_GLSL,
@@ -47,7 +47,12 @@ const RING_SCALE = 1.25;
 const PLQ_RECT: Rect = [PLQ.x, PLQ.y, PLQ.w, PLQ.h];
 /** 月亮（塔身外面、右上）。 */
 const MOON = { x: 1780, y: 206, r: 40 };
-const MAXG = 64;
+/** 一句歌詞最多幾個字（韓文歌連原文副行一起算，所以留寬一點）。 */
+const MAXG = 128;
+/** 原文副行的字在資料貼圖裡的標記（R 通道）：shader 認得出來、用比較安靜的顏色。 */
+const SUB_TAG = 100;
+/** 有原文副行時分針縮短：副行在字的那一圈裡面再一圈，分針照原本的長度會掃過副行。 */
+const L_MIN_SUB = 96;
 const FAM_LYR = F.archivo(75, 700);
 const FAM_MSG = F.ming(900);
 const FAM_SMALL = F.ming(700);
@@ -59,6 +64,7 @@ const EMPTY_HEAD = `本鐘為 ${COUPLE_ZH} 報時`;
 const BG = () => new FSPass(/* glsl */ `
   uniform float t; uniform vec2 camT; uniform float camZ;
   uniform float angM, angH;            // 分針、時針（弧度，順時針，從 12 點起）
+  uniform float lenM;                  // 分針長度（有原文副行時短一點）
   uniform vec3 bells;                  // 最近三次鐘響過了幾秒（沒有是 99）
   uniform float lamp;                  // 銅牌的燈 0..1
   uniform float sweep;                 // 街上開過去的車燈掃過塔身（0..1；沒有是 -1）
@@ -226,6 +232,8 @@ const BG = () => new FSPass(/* glsl */ `
           float on = smoothstep(sw - 0.04, sw + 0.04, g.x);
           vec3 unsung = C_BONE * 0.26;
           vec3 lit = g.y > 0.5 ? C_BONE * 0.9 : C_SIGNAL * 1.35;
+          // 原文副行（韓文歌）：比中文安靜，唱到、唱完都是淡兩成的紙白，不發光
+          if (rg.r > 0.3 && rg.r < 0.5) lit = C_BONE * 0.72;
           vec3 gc = mix(unsung, lit, on);
           if (rg.r > 0.9) gc = mix(C_ROSE * 0.4, C_ROSE, on); // 愛心
           dc = mix(dc, gc, rg.a * ringA);
@@ -233,10 +241,10 @@ const BG = () => new FSPass(/* glsl */ `
       }
       // 指針的影子（往右下偏一點）與指針本身（鎏金、中線亮）
       vec2 q = p - C;
-      float shM = handSD(q - vec2(5.0, 8.0), angM, ${L_MIN}.0, 4.2, 1.6, 0.0);
+      float shM = handSD(q - vec2(5.0, 8.0), angM, lenM, 4.2, 1.6, 0.0);
       float shH = handSD(q - vec2(5.0, 8.0), angH, ${L_HR}.0, 5.6, 2.6, 1.0);
       dc *= 1.0 - 0.55 * (1.0 - smoothstep(-2.0, 5.0, min(shM, shH)));
-      float hm = handSD(q, angM, ${L_MIN}.0, 4.2, 1.6, 0.0);
+      float hm = handSD(q, angM, lenM, 4.2, 1.6, 0.0);
       float hh = handSD(q, angH, ${L_HR}.0, 5.6, 2.6, 1.0);
       float hs = min(hm, hh);
       float boss = length(q) - 10.0;
@@ -313,7 +321,7 @@ const BG = () => new FSPass(/* glsl */ `
     fragColor = vec4(col, 1.0);
   }`, {
   t: { value: 0 }, camT: { value: new THREE.Vector2(960, 540) }, camZ: { value: 1 },
-  angM: { value: 0 }, angH: { value: 0 }, bells: { value: new THREE.Vector3(99, 99, 99) }, lamp: { value: 0 },
+  angM: { value: 0 }, angH: { value: 0 }, lenM: { value: L_MIN }, bells: { value: new THREE.Vector3(99, 99, 99) }, lamp: { value: 0 },
   ring: { value: null }, ringOn: { value: 0 }, ringA: { value: 0 }, gs: { value: Array.from({ length: MAXG }, () => new THREE.Vector2()) },
   nums: { value: null }, numA: { value: 1 },
   plq: { value: null }, shown: { value: 0 }, plqOn: { value: 0 }, sweep: { value: -1 },
@@ -326,9 +334,10 @@ const measure = (s: string, fam: string, size: number) => { mc ??= document.crea
 /**
  * 一圈的字：上半圈由左往右（字的上方朝外）、下半圈也由左往右（字的上方朝圓心），都讀得順。
  * 放得下上半圈就只用上半圈；不然在最接近一半的詞之間分兩段，字級縮到兩段都放得下（最小 minSize）。
+ * R：字的中心那一圈的半徑（原文副行用裡面一圈）。
  */
-function ringGlyphs(units: { ch: string; gap: number }[][], fam: string, size0: number, minSize: number, idx0 = 0, tag = 0): { items: MaskGlyph[]; size: number } {
-  const cap = Math.PI * R_RING * 0.92;
+function ringGlyphs(units: { ch: string; gap: number }[][], fam: string, size0: number, minSize: number, idx0 = 0, tag = 0, R = R_RING): { items: MaskGlyph[]; size: number } {
+  const cap = Math.PI * R * 0.92;
   const widthOf = (us: { ch: string; gap: number }[][], size: number) => us.flat().reduce((s, u) => s + measure(u.ch, fam, size) + u.gap * size, 0);
   let size = size0;
   let top = units, bot: typeof units = [];
@@ -351,16 +360,16 @@ function ringGlyphs(units: { ch: string; gap: number }[][], fam: string, size0: 
     let s = -L / 2;
     for (const u of flat) {
       const w = measure(u.ch, fam, size);
-      const a = (s + w / 2) / R_RING;
+      const a = (s + w / 2) / R;
       if (u.ch.trim()) {
         if (upper) {
           // 上半圈：從 12 點往兩邊，字的上方朝外；基線在字中心往圓心 0.35 字級
-          const rb = R_RING - size * 0.35;
+          const rb = R - size * 0.35;
           const px = CLK.x + rb * Math.sin(a), py = CLK.y - rb * Math.cos(a);
           items.push({ ch: u.ch, x: px - (w / 2) * Math.cos(a), y: py - (w / 2) * Math.sin(a), w, size, family: fam, rot: a, idx: idx++, tag });
         } else {
           // 下半圈：從 6 點往兩邊，由左往右讀，字的上方朝圓心
-          const rb = R_RING + size * 0.35;
+          const rb = R + size * 0.35;
           const px = CLK.x + rb * Math.sin(a), py = CLK.y + rb * Math.cos(a);
           items.push({ ch: u.ch, x: px - (w / 2) * Math.cos(-a), y: py - (w / 2) * Math.sin(-a), w, size, family: fam, rot: -a, idx: idx++, tag });
         }
@@ -388,6 +397,10 @@ export default class ClockTower extends Scene {
   msg: Msg | null = this.ctx.params.message ?? null;
   seed = ((this.ctx.params.seed ?? 1) * 131 + (this.msg?.id ?? 0) * 7919) >>> 0;
   rings = new Map<Line, GlyphMask>();
+  /** 每句中文佔幾個字（資料貼圖裡原文副行的字接在後面編號）。 */
+  ringN = new Map<Line, number>();
+  /** 窗格裡有沒有原文副行（有的話整個窗格分針都短一點，不要一句長一句短）。 */
+  subAny = false;
   nums: GlyphMask | null = null;
   plq: GlyphMask | null = null;
   lay: MsgLay | null = null;
@@ -405,6 +418,7 @@ export default class ClockTower extends Scene {
     const { audio: au, lyrics, song } = this.ctx;
     const s = this.ctx.start, e = this.ctx.end, m = this.msg;
     const lines = lyrics.linesIn(s - 0.5, e + 0.5);
+    const subs = lines.map((l) => lyricSubOf(l));
     await loadText(`${T25_TEXT}${HEAD}${EMPTY_HEAD}${m?.text ?? ''}${m ? sigOf(m) : ''}${lines.map((l) => l.text).join('')}${song.title}`);
     const beat = au.beatPeriod(s);
     this.bars = winBars(au, s, e);
@@ -459,10 +473,21 @@ export default class ClockTower extends Scene {
 
     // ---- 鐘面一圈的字（v2：比留言小 4 px，40～52）：每句歌詞一張資料貼圖
     this.lyrSize = lyricV2(this.msgSize);
-    for (const ln of lines) {
-      const { items: ri } = ringGlyphs(lineUnits(ln), FAM_LYR, this.lyrSize, V2.lyrMin);
-      this.rings.set(ln, this.track(glyphMask(ri.slice(0, MAXG), RING_RECT, RING_SCALE, 2)));
-    }
+    lines.forEach((ln, li) => {
+      const { items: ri, size } = ringGlyphs(lineUnits(ln), FAM_LYR, this.lyrSize, V2.lyrMin);
+      // 韓文歌：原文是字的那一圈裡面再一圈（同心、小一號；上半圈在中文正下方），中間隔著那條鎏金細線
+      const sub = subs[li];
+      let all = ri.slice(0, MAXG);
+      if (sub) {
+        const ss = subSizeFor(size);
+        const r = R_RING - size * 0.35 - subGap(size, ss) + ss * 0.35;
+        const { items: si } = ringGlyphs(lineUnits(sub), FAM_LYR, ss, Math.min(ss, 24), all.length, SUB_TAG, r);
+        all = all.concat(si).slice(0, MAXG);
+        this.subAny = true;
+      }
+      this.ringN.set(ln, ri.length);
+      this.rings.set(ln, this.track(glyphMask(all, RING_RECT, RING_SCALE, 2)));
+    });
     // 車燈：每兩個小節（從第二個小節線起）街上開過一台車
     this.sweeps = this.bars.filter((b, i) => b > this.tRev + 0.1 && i % 2 === 1);
   }
@@ -501,6 +526,7 @@ export default class ClockTower extends Scene {
     const jump = ph < 0 ? 0 : 1 - Math.exp(-ph * 26) * Math.cos(ph * 34);
     const turns = bi + (j - 1 + clamp(jump, 0, 1.12)) / nb;
     u.angM!.value = turns * Math.PI * 2;
+    u.lenM!.value = this.subAny ? L_MIN_SUB : L_MIN;
     u.angH!.value = ((this.hour0 + turns) / 12) * Math.PI * 2;
 
     // ---- 鐘響：窗格裡的小節線（第一聲是銅牌亮的那一下）
@@ -538,6 +564,9 @@ export default class ClockTower extends Scene {
       u.ringOn!.value = 1;
       u.ringA!.value = ly.k;
       const st = glyphStates(ly.line, t);
+      // 原文副行的字接在中文後面（照原文自己的逐字時間）
+      const sub = lyricSubOf(ly.line);
+      if (sub) { st.length = this.ringN.get(ly.line) ?? st.length; st.push(...glyphStates(sub, t)); }
       for (let i = 0; i < MAXG; i++) { const g = st[i]; gs[i]!.set(g ? g.p : 0, g?.done ? 1 : 0); }
       u.numA!.value = 1 - ly.k;
     } else {

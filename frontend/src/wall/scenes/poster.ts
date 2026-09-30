@@ -17,7 +17,7 @@ import { FSPass, Layer2D, makeRT } from '../engine/gl';
 import { F, font } from '../engine/type';
 import { clamp, ease, prog, hash, pulse, lerp } from '../engine/util';
 import { Lyrics } from '../engine/lyrics';
-import { lyricAt, COUPLE_ZH, DATE_DOTS } from './_motifs';
+import { lyricAt, COUPLE_ZH, DATE_DOTS, lyricSubOf, layoutLyric, subStyleFor, subGap, drawLyricSub, type LyricStyle } from './_motifs';
 import { grid, layoutRows, Stage, camDist, type Grid, type RowsLayout, type V3 } from './_t4';
 import { loadAll, t21Grain, GRAIN_GLSL, block, glyphPath, groupLine, T21_INVITE, type Block, type TGlyph, type TGroup, type Rect } from './_t21';
 import { V2, lyricV2 } from './_v2';
@@ -315,8 +315,15 @@ export default class Poster extends Scene {
       const line = lyrics.shownLine(t, 1e4, 0.35) ?? lyrics.nextLine(t);
       if (line) {
         const lay = layoutRows(c, line, { family: FAM, size: V2.lyrMax / K, minSize: V2.lyrMin / K, maxW: HEAD.w, maxRows: 3, align: 'left', lineHeight: 1.2 });
-        const y = HEAD.y + HEAD.h * 0.4 - (lay.height / 2) + lay.size * 0.85;
+        // 原文副行：同一版深墨、小一號，印在中文正下方（中文＋原文一起置中）；沒有原文時跟原本一樣
+        const sub = lyricSubOf(line);
+        const st: LyricStyle = { family: FAM, size: lay.size, maxWidth: HEAD.w, align: 'left', sung: 'rgb(0,0,255)', unsung: 'rgba(0,0,255,0.24)' };
+        const sl = sub ? layoutLyric(c, sub, subStyleFor(st, lay.size)) : null;
+        const gap = (lay.rows.length - 1) * lay.lineHeight + (sl ? subGap(lay.size, sl.size) : 0);
+        const hh = sl ? lay.size + gap + sl.height - sl.size : lay.height;
+        const y = HEAD.y + HEAD.h * 0.4 - (hh / 2) + lay.size * 0.85;
         this.karaoke(c, lay, t, HEAD.x, y, 1, false);
+        if (sub) { c.save(); c.translate(HEAD.x, y + gap); drawLyricSub(c, sub, t, st, lay.size); c.restore(); }
       }
       c.font = font(FAM_SMALL, 22); c.letterSpacing = '6px'; c.fillStyle = 'rgb(0,0,255)';
       c.fillText(T21_INVITE, LYR.x, 700); c.letterSpacing = '0px';

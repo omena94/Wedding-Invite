@@ -14,7 +14,7 @@ import { LineBatch } from '../engine/lines';
 import { F, font, loadText } from '../engine/type';
 import { LIN, rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, hash, lerp } from '../engine/util';
-import { lyricAt, beatAfter, barAfter, sparkHead, sparkParticles, heartPoints, msgChars } from './_motifs';
+import { lyricAt, lyricSubOf, subGap, beatAfter, barAfter, sparkHead, sparkParticles, heartPoints, msgChars } from './_motifs';
 import { lyricOnPath, drawNote, type Pt, type Note } from './_couple';
 import { loadPuppets, drawPuppet, puppetPoint, puppetShadow, puppetIn, puppetLight, breathe, beatKick, noteV2, tightenNote } from './_puppet';
 import { lyricV2 } from './_v2';
@@ -84,6 +84,8 @@ export default class Stargaze extends Scene {
   lyricSize = 52;
   ridge: Pt[] = [];
   lyricPath: Pt[] = [];
+  /** 稜線那條歌詞曲線的長度（韓文歌估計中文會不會折兩排用）。 */
+  pathLen = 0;
 
   override async init() {
     const { audio: au } = this.ctx;
@@ -146,6 +148,7 @@ export default class Stargaze extends Scene {
       const x = lerp(1030, 1810, i / 50);
       this.lyricPath.push({ x, y: 772 - 46 * Math.sin(x * 0.0042 + 0.9) - 34 });
     }
+    for (let i = 1; i < this.lyricPath.length; i++) this.pathLen += Math.hypot(this.lyricPath[i]!.x - this.lyricPath[i - 1]!.x, this.lyricPath[i]!.y - this.lyricPath[i - 1]!.y);
   }
 
   /** 遠山稜線的高度。 */
@@ -226,7 +229,16 @@ export default class Stargaze extends Scene {
     // ---- 歌詞沿著遠山稜線
     const ly = lyricAt(lyrics, t);
     if (ly) {
-      const r = lyricOnPath(c, ly.line, t, this.lyricPath, { family: F.archivo(100, this.msg ? 600 : 700), size: this.lyricSize, minSize: 40, offset: 0, alpha: ly.k * prog(t, s, s + 0.6), unsung: rgba('bone', 0.24) });
+      const fam = F.archivo(100, this.msg ? 600 : 700);
+      // 韓文歌：原文沿著同一條稜線畫在中文下面；整塊往上抬，原文落在本來中文那條線上，才不會沉進山坡與前景的草裡。
+      // 中文縮到 40 還放不下會折兩排（lyricOnPath 的規則），那就再多抬一排
+      let off = 0;
+      if (lyricSubOf(ly.line)) {
+        c.font = font(fam, 40);
+        const w40 = Array.from(ly.line.text).reduce((a, ch) => a + c.measureText(ch).width, 0);
+        off = w40 > this.pathLen * 0.94 ? 40 * 1.2 + subGap(40) : subGap(this.lyricSize);
+      }
+      const r = lyricOnPath(c, ly.line, t, this.lyricPath, { family: fam, size: this.lyricSize, minSize: 40, offset: off, alpha: ly.k * prog(t, s, s + 0.6), unsung: rgba('bone', 0.24) });
       if (r.head) sparkHead(this.glow, r.head.x, r.head.y - 4, t, 0.45, 0.7);
     }
     // ---- 前景：草在風裡晃、螢火蟲

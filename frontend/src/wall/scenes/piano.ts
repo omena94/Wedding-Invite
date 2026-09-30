@@ -7,6 +7,7 @@
 //  - 譜紙中間是一份大譜表（高音、低音兩行），鋼琴彈的每一個音都是一顆音符，一直往左捲，經過播放線時亮起來；小節線跟著捲
 //    （每小節一個小事件）；每兩小節譜紙右上角被琴聲震得掀一下。
 //  - 歌詞（比留言小 4 px）在譜紙下緣，逐字跟唱（亮紙上用 blood 色）。沒有留言：歌詞寫在題詞的位置（主角）、下面一行小小的邀請。
+//    韓文歌有中文翻譯時（2026-09-30）：中文下面小一號寫原文（同一張譜紙，唱到、唱完都是墨色、淡一點）。
 //    純音樂：右手跟著拍子彈，留言照樣寫。
 //  - 小字只有一群：譜紙左上角的速度記號「♩ = 歌的 BPM　con amore」（冷面的樂譜術語：帶著愛）與抬頭的「Op. 留言編號」。
 //  - 鏡頭：切進來時離得遠一點、第一拍推到定位（落定），之後整個窗格很慢地往前推、往右搖一點點。
@@ -19,7 +20,7 @@ import { F, font, loadText } from '../engine/type';
 import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, hash, lerp, frameIdx } from '../engine/util';
 import type { Line } from '../engine/lyrics';
-import { lyricAt, beatAfter, drawHeart, COUPLE_ZH } from './_motifs';
+import { lyricAt, beatAfter, drawHeart, COUPLE_ZH, lyricSubOf, layoutLyric, drawLyricSub, subStyleFor, subGap, type LyricStyle } from './_motifs';
 import { layoutRows, drawRows, paperInk, type RowsLayout } from './_t4';
 import { T23_INVITE, T23_TEXT, sigOf, stagger, layMsgV2, rawMat, type MsgLay, type Rect } from './_t23';
 import { V2, lyricV2 } from './_v2';
@@ -533,10 +534,34 @@ export default class Piano extends Scene {
       const ly = lyricAt(lyrics, t);
       if (ly) {
         const lay = this.layLine(c, ly.line);
+        // 原文副行（只有沒有留言的窗格會有：歌詞在題詞的位置，下面到大譜表之間放得下）
+        const sub = this.solo ? lyricSubOf(ly.line) : null;
         c.save();
-        if (this.solo) c.translate(MSG_BOX.x, MSG_BOX.y + 110 + lay.size * 0.8);
-        else c.translate(PG.w / 2, lay.rows.length > 1 ? LYR_Y - lay.lineHeight * 0.6 : LYR_Y);
-        drawRows(c, lay, FAM_LYR, t, ink, ly.k);
+        if (this.solo) {
+          let y0 = MSG_BOX.y + 110 + lay.size * 0.8;
+          if (sub) {
+            // 螢幕 px 的規則換成譜紙 px（譜紙上半 1 頁面 px ≈ 0.97 螢幕 px）
+            const main = lay.size / K_TOP;
+            const st: LyricStyle = { family: FAM_LYR, size: main, maxWidth: (MSG_BOX.w + 120) / K_TOP, align: 'left', active: ink.active, sung: ink.sung, unsung: ink.unsung };
+            const sl = layoutLyric(c, sub, subStyleFor(st, main));
+            const gap = subGap(main, sl.size) * K_TOP;
+            const dy = lay.rows[lay.rows.length - 1]!.y + gap + sl.rows[sl.rows.length - 1]!.y * K_TOP;
+            // 主行兩排時往上挪一點：原文最後一排基線不超過 372（再下面是大譜表上方的高音與符桿）
+            y0 -= Math.min(40, Math.max(0, y0 + dy - 372));
+            c.translate(MSG_BOX.x, y0);
+            drawRows(c, lay, FAM_LYR, t, ink, ly.k);
+            c.save();
+            c.translate(0, lay.rows[lay.rows.length - 1]!.y + gap); c.scale(K_TOP, K_TOP);
+            drawLyricSub(c, sub, t, st, main, ly.k * c.globalAlpha);
+            c.restore();
+          } else {
+            c.translate(MSG_BOX.x, y0);
+            drawRows(c, lay, FAM_LYR, t, ink, ly.k);
+          }
+        } else {
+          c.translate(PG.w / 2, lay.rows.length > 1 ? LYR_Y - lay.lineHeight * 0.6 : LYR_Y);
+          drawRows(c, lay, FAM_LYR, t, ink, ly.k);
+        }
         c.restore();
       }
     } else {

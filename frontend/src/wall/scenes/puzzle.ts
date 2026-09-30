@@ -19,7 +19,8 @@ import { F, font, loadText } from '../engine/type';
 import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, pulse, hash, frameIdx, TAU } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
-import { lyricAt, layoutLyric, drawLyric, beatAfter, drawHeart, fillWithHearts, COUPLE_ZH, COUPLE_EN, DATE_DOTS } from './_motifs';
+import { lyricAt, layoutLyric, drawLyric, beatAfter, drawHeart, fillWithHearts, lyricSubOf, subStyleFor, subGap, COUPLE_ZH, COUPLE_EN, DATE_DOTS } from './_motifs';
+import type { Line } from '../engine/lyrics';
 import { msgMaxFor, lyricV2, sigV2, fitClauses } from './_v2';
 import { darkInk } from './_t4';
 import { onGrid, sigOf, applyOrbit, lerpOrbit, toScreen, T17_INVITE, T17_TEXT, type OrbitCam, type V3 } from './_t17';
@@ -220,6 +221,8 @@ export default class Puzzle extends Scene {
   t1 = 0; tDone = 0; B = 0.5; FD = 0.5;
   camA!: OrbitCam; camB!: OrbitCam;
   lyrSize = 56;
+  /** 韓文歌的原文副行在主行下面佔多深（這一格最深的一句；0 = 沒有原文）：歌詞整塊往上長這麼多、拼圖讓出這麼多。 */
+  subRoom = 0;
   m4 = new THREE.Matrix4(); q = new THREE.Quaternion(); e = new THREE.Euler(); v = new THREE.Vector3(); s3 = new THREE.Vector3();
   order: number[] = [];
   /** 拼好之後每個小節被按一下的那一片（片的索引與時間）、光掃過的時間。 */
@@ -230,7 +233,9 @@ export default class Puzzle extends Scene {
     const { audio: au, lyrics, song } = this.ctx;
     const s = this.ctx.start, e = this.ctx.end, m = this.msg;
     this.sig = sigOf(m);
-    await loadText(`${m?.text ?? ''}${this.sig}${T17_TEXT}${T17_INVITE}${song.title}${song.artist}${COUPLE_ZH}${DATE_DOTS}♪${lyrics.linesIn(s - 2, e + 1).map((l) => l.text).join('')}`);
+    // 韓文歌的原文副行：在第一個 await 之前拿（副行開關是引擎在 init 開始前替這個窗格設的）
+    const subs = lyrics.linesIn(s - 2, e + 1).map((l) => [l, lyricSubOf(l)] as const).filter((p): p is readonly [Line, Line] => !!p[1]);
+    await loadText(`${m?.text ?? ''}${this.sig}${T17_TEXT}${T17_INVITE}${song.title}${song.artist}${COUPLE_ZH}${DATE_DOTS}♪${lyrics.linesIn(s - 2, e + 1).map((l) => l.text).join('')}${subs.map((p) => p[1].text).join('')}`);
     const B = (this.B = au.beatPeriod(s + 0.1));
 
     // ---- 海報（拼好的圖）：深色的底、藤蔓花紋框、正中間的留言與署名
@@ -281,6 +286,12 @@ export default class Puzzle extends Scene {
       c.letterSpacing = '0px';
       c.textAlign = 'left';
       this.lyrSize = lyricV2(null);
+    }
+    for (const [l, sl0] of subs) {
+      const st = { family: FAM_LYR, size: this.lyrSize, minSize: 40, maxWidth: LYR.w, lineHeight: 1.1 };
+      const ml = layoutLyric(c, l, st);
+      const sl = layoutLyric(c, sl0, subStyleFor(st, ml.size));
+      this.subRoom = Math.max(this.subRoom, subGap(ml.size, sl.size) + sl.rows[sl.rows.length - 1]!.y);
     }
     const tx = (this.posterTex = new THREE.CanvasTexture(cv));
     tx.colorSpace = THREE.SRGBColorSpace;
@@ -337,7 +348,7 @@ export default class Puzzle extends Scene {
       const ok = (d: number) => {
         applyOrbit(cam, { ...o, dist: d });
         const pts = ([[-BW / 2 - 20, -BH / 2 - 20, 0], [BW / 2 + 20, -BH / 2 - 20, 0], [-BW / 2 - 20, BH / 2 + 20, 0], [BW / 2 + 20, BH / 2 + 20, 0]] as V3[]).map((p) => toScreen(cam, p));
-        return pts.every((p) => p.x > 96 && p.x < W - 96 && p.y > 80 && p.y < LYR.y - this.lyrSize - 40);
+        return pts.every((p) => p.x > 96 && p.x < W - 96 && p.y > 80 && p.y < LYR.y - this.subRoom - this.lyrSize - 40);
       };
       for (let i = 0; i < 24; i++) { const mid = (lo + hi) / 2; if (ok(mid)) hi = mid; else lo = mid; }
       return { ...o, dist: hi };
@@ -539,8 +550,8 @@ export default class Puzzle extends Scene {
       const st = { family: FAM_LYR, size: this.lyrSize, minSize: 40, maxWidth: LYR.w, active: ink.active, sung: ink.sung, unsung: ink.unsung, lineHeight: 1.1 };
       const lay = layoutLyric(c, ly.line, st);
       c.save();
-      // 折成兩行時往上長（基線固定在 LYR.y）
-      c.translate(LYR.x, LYR.y - (lay.rows.length - 1) * lay.size * 1.1);
+      // 折成兩行時往上長（基線固定在 LYR.y）；有原文副行時整塊往上長（原文最後一排的基線在 LYR.y，下面那行邀請照舊）
+      c.translate(LYR.x, LYR.y - (lay.sub ? lay.height - lay.size : (lay.rows.length - 1) * lay.size * 1.1));
       drawLyric(c, ly.line, t, st, lay, ly.k);
       c.restore();
     }

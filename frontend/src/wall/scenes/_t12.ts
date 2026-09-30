@@ -55,6 +55,37 @@ export function lyricRows(c: CanvasRenderingContext2D, lines: Line[], st: LyricS
 /** 一行歌詞排出來的高度（第一行基線以上的字高＋其他行）。 */
 export const lyricHeight = (lay: LyricLayout) => lay.height;
 
+/**
+ * 韓文歌的原文副行（drawLyric 自動畫在主行下面）讓歌詞變深：窗格裡有副行的句子，副行最後一排基線在主行最後一排基線
+ * 以下最多多深（0 = 這一格沒有副行，版面照舊）。給「歌詞下面要讓出來的範圍」用（鐵粉的空白區等）。
+ * 要在 render 裡算：副行開關是引擎每個窗格設的（有主打留言的窗格收起來）。
+ */
+export function subDepth(c: CanvasRenderingContext2D, lines: Line[], st: LyricStyle): number {
+  let d = 0;
+  for (const line of lines) {
+    const lay = layoutLyric(c, line, st);
+    if (lay.sub) d = Math.max(d, lay.height - lay.size - lay.rows[lay.rows.length - 1]!.y);
+  }
+  return d;
+}
+
+/**
+ * 歌詞在上方、下面緊接著主視覺（圓餅圖、稜鏡、文氏圖）的版面：原來的設計替歌詞留了「兩排主行」的深度。
+ * 主行折兩排又有原文副行時會比這個深、壓到下面的圖——整段往上挪，最多挪到字頂離畫面上緣 96 px。
+ * 回傳往上挪幾 px；沒有翻譯的歌、或主行＋副行還在原本的深度內，都是 0（畫面跟原本一模一樣）。
+ * 用整個窗格最深的那一句算（同一格裡歌詞的位置不跳）。base = 主行第一排基線（畫面 px）。
+ */
+export function subLift(c: CanvasRenderingContext2D, lines: Line[], st: LyricStyle, base: number): number {
+  let d = 0;
+  for (const line of lines) {
+    const lay = layoutLyric(c, line, st);
+    if (lay.sub) d = Math.max(d, lay.height - lay.size);
+  }
+  if (d <= 0) return 0;
+  const room = st.size * (st.lineHeight ?? 1.18);
+  return Math.max(0, Math.min(d - room, base - st.size * 0.9 - 96));
+}
+
 export interface GlyphPts {
   /** 點的座標（畫面座標）與它屬於第幾個字。 */
   x: Float32Array;

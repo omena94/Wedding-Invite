@@ -407,6 +407,22 @@ export default class Pingpong extends Scene {
       c.fillStyle = p >= 1 ? rgba('bone', 0.94) : p > 0 ? rgba('signal') : rgba('bone', 0.28);
       c.fillText(pw.word.w, x, y);
     });
+    // 韓文歌的原文（layoutLyric 排在中文正下方，height 已經算進去，所以中文往上讓了位置）：
+    // 比中文安靜——唱到、唱完都是淡兩成的紙白（不用訊號色），被球彈起來的幅度也小一半
+    const sub = lay.sub;
+    if (sub) {
+      c.font = font(st.family, sub.lay.size);
+      let si = -1;
+      sub.lay.words.forEach((pw, i) => { if (si < 0 && Lyrics.wordProgress(pw.word, t) < 1 && pw.word.start - 0.25 <= t) si = i; });
+      sub.lay.words.forEach((pw, i) => {
+        const p = Lyrics.wordProgress(pw.word, t);
+        const dist = si < 0 ? 9 : Math.abs(i - si);
+        const hop = 0.5 * jump * (hb?.smash ? 30 : 20) * (dist === 0 ? 1 : Math.max(0, 0.28 - dist * 0.08));
+        c.globalAlpha = ly.k * rv;
+        c.fillStyle = p > 0 ? rgba('bone', 0.94 * 0.8) : rgba('bone', 0.28);
+        c.fillText(pw.word.w, LYR.x + pw.x, y0 + sub.dy + pw.y - hop);
+      });
+    }
     c.restore();
   }
 

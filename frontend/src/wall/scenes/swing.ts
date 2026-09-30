@@ -16,7 +16,7 @@ import { F, font, loadText } from '../engine/type';
 import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, keys, lerp } from '../engine/util';
 import { Lyrics, type Line } from '../engine/lyrics';
-import { lyricAt, beatAfter, sparkHead, sparkParticles, msgChars } from './_motifs';
+import { lyricAt, beatAfter, sparkHead, sparkParticles, msgChars, lyricSubOf, subSizeFor, subGap, drawLyricSub } from './_motifs';
 import { drawNote, type Note } from './_couple';
 import { loadPuppets, drawPick, puppetShadow, puppetIn, puppetLight, jumpArc, landSquash, noteV2, tightenNote, type PuppetOpts } from './_puppet';
 import { lyricV2 } from './_v2';
@@ -30,6 +30,8 @@ const POSTER = { right: 1800, top: 128, w: 560, h: 400 };
 const PAD = { x: 46, top: 70, bottom: 38 };
 /** 舞步路線（地板上）：從左到右、上下彎；鞋印左右交錯。 */
 const STEPS = { x0: 170, x1: 1320, y: 950, wave: 7 };
+/** 原文副行（韓文歌）的基線：寫在腳印下面的地板上（鏡頭推近 1.033 倍後離下緣還有 96 px 以上）。 */
+const SUB_BASE = 960;
 /** 天花板那串燈泡。 */
 const BULBS = { x0: -20, x1: 1940, y: 64, sag: 70, n: 22 };
 const INVITE = '掃描右下角 QR code，把祝福寫上大螢幕';
@@ -289,10 +291,14 @@ export default class Swing extends Scene {
     c.font = font(fam, size);
     c.textAlign = 'center';
     c.textBaseline = 'middle';
+    // 原文副行：像舞蹈教學圖腳印下面的說明，一行小字寫在地板上；有原文時腳印整排往上讓出位置（鞋跟不碰到原文）
+    const sub = lyricSubOf(line);
+    const ss = subSizeFor(size);
+    const yLast = sub ? SUB_BASE - subGap(size, ss) - size * 0.35 - 8 : STEPS.y;
     rows.forEach(([a, b], ri) => {
       const rowW = ws.slice(a, b).reduce((p, q) => p + q, 0);
       let x = (STEPS.x0 + STEPS.x1) / 2 - rowW / 2;
-      const y0 = STEPS.y - (rows.length - 1 - ri) * size * 1.5;
+      const y0 = yLast - (rows.length - 1 - ri) * size * 1.5;
       for (let i = a; i < b; i++) {
         const w = words[i]!, pw = ws[i]!;
         const cx = x + pw / 2;
@@ -321,6 +327,13 @@ export default class Swing extends Scene {
         c.restore();
       }
     });
+    if (sub) {
+      // 比腳印上的中文安靜：唱到、唱完都是紙白再淡兩成（drawLyricSub 的規則），不踩、不發光
+      c.globalAlpha = alpha;
+      c.textAlign = 'left'; c.textBaseline = 'alphabetic';
+      c.translate((STEPS.x0 + STEPS.x1) / 2, SUB_BASE);
+      drawLyricSub(c, sub, t, { family: fam, size, maxWidth: STEPS.x1 - STEPS.x0, align: 'center', sung: rgba('bone', this.msg ? 0.85 : 0.95), unsung: rgba('bone', 0.3) }, size, alpha);
+    }
     c.restore();
   }
 

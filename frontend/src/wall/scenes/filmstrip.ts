@@ -20,7 +20,7 @@ import { rgba } from '../engine/palette';
 import { clamp, ease, prog, hash, lerp, frameIdx, TAU } from '../engine/util';
 import type { Line, Word } from '../engine/lyrics';
 import { fillWithHearts } from '../engine/motifs';
-import { lyricAt, beatAfter, barAfter, COUPLE_ZH, DATE_DOTS } from './_motifs';
+import { lyricAt, beatAfter, barAfter, COUPLE_ZH, DATE_DOTS, lyricSubOf, subSizeFor, subGap } from './_motifs';
 import { lyricV2, V2 } from './_v2';
 import { layoutRows, drawRows, darkInk, type RowsLayout } from './_t4';
 import { winBeats, winBars, no3 } from './_t8';
@@ -44,7 +44,8 @@ const FAM_MSG = F.ming(700);
 const FAM_LYR = F.archivo(100, 800);
 
 type Kind = 'blank' | 'leader' | 'msg' | 'lyric' | 'title' | 'tail';
-interface FrameDef { kind: Kind; n?: number; line?: Line; text?: string; sub?: string; sub2?: string; t0?: number; t1?: number }
+/** subLine：這一格歌詞對應的原文（韓文歌；照時間切，跟這一格同一段唱的原文字）。 */
+interface FrameDef { kind: Kind; n?: number; line?: Line; text?: string; sub?: string; sub2?: string; t0?: number; t1?: number; subLine?: Line }
 interface Move { t: number; to: number; dur: number }
 
 const VERT = /* glsl */ `
@@ -208,7 +209,7 @@ export default class Filmstrip extends Scene {
     const { audio: au, lyrics, start: s, end: e } = this.ctx;
     this.beat = au.beatPeriod(s);
     const lines = lyrics.linesIn(s - 0.5, e);
-    await loadAll(this.msg, lines.map((l) => l.text).join(''), `${COUPLE_ZH}${DATE_DOTS}${INVITE}A&O▸新人留言`);
+    await loadAll(this.msg, lines.map((l) => l.text + (lyricSubOf(l)?.text ?? '')).join(''), `${COUPLE_ZH}${DATE_DOTS}${INVITE}A&O▸新人留言`);
     this.mode = this.msg ? 'msg' : lines.length ? 'lyric' : 'title';
     this.bars = winBars(au, s, e).filter((b) => b > s + 0.05);
     // 落定的機位下，主打格（原點）附近 100 單位在螢幕上多長
@@ -310,6 +311,17 @@ export default class Filmstrip extends Scene {
       out.push({ kind: 'lyric', line: sub, t0: sub.start, t1: sub.end });
       a = b;
     }
+    // 原文副行：照時間分給每一格（這一格開始唱到下一格開始唱之間的原文字），印在同一格的中文下面
+    const orig = lyricSubOf(line);
+    if (orig) {
+      out.forEach((fd, i) => {
+        const nx = out[i + 1]?.t0 ?? Infinity;
+        const ws = orig.words.filter((w) => (i === 0 || w.start >= fd.t0!) && w.start < nx);
+        if (!ws.length) return;
+        const base = ws[0]!.o, last = ws[ws.length - 1]!;
+        fd.subLine = { i: -(line.i * 100 + i + 1), text: orig.text.slice(base, last.o + last.w.length), start: ws[0]!.start, end: last.end, words: ws.map((w) => ({ ...w, o: w.o - base })) };
+      });
+    }
     return out;
   }
 
@@ -388,7 +400,9 @@ export default class Filmstrip extends Scene {
       if (mv && t >= mv.t && (!nx || t < nx.t)) dyn = true;
       else key += mv && t >= mv.t ? ':done' : ':pre';
     } else if (fd?.kind === 'lyric') {
-      if (t >= fd.t1!) key += ':sung'; else if (t < fd.t0!) key += ':pre'; else dyn = true;
+      // 有原文時，原文唱完才算這一格唱完（原文的逐字時間可能比中文晚一點結束）
+      const t0 = Math.min(fd.t0!, fd.subLine?.start ?? Infinity), t1 = Math.max(fd.t1!, fd.subLine?.end ?? -Infinity);
+      if (t >= t1) key += ':sung'; else if (t < t0) key += ':pre'; else dyn = true;
     } else if (fd?.kind === 'msg') {
       if (lyricAt(this.ctx.lyrics, t)) dyn = true; else key += ':nosub';
     }
@@ -412,8 +426,17 @@ export default class Filmstrip extends Scene {
         }
       } else if (fd.kind === 'lyric' && fd.line) {
         const lay = this.lyrLay(c, fd.line);
-        c.translate(IX + IW / 2, IY + (IH - lay.height) / 2 + lay.size * 0.86);
+        // 原文副行：同一格、中文正下方，小一號（字級照螢幕 px 算再換回格子）；整塊一起在格子裡置中
+        const sl = fd.subLine ? this.subLay(c, fd.subLine, lay.size) : null;
+        const gap = sl ? subGap(lay.size * this.k, sl.size * this.k) / this.k : 0;
+        const extra = sl ? gap + (sl.rows.length - 1) * sl.lineHeight : 0;
+        c.translate(IX + IW / 2, IY + (IH - lay.height - extra) / 2 + lay.size * 0.86);
         drawRows(c, lay, FAM_LYR, t, darkInk(), 1);
+        if (sl) {
+          // 比中文安靜：唱到、唱完都是紙白（不用訊號色）再淡兩成，還沒唱的一樣三成
+          c.translate(0, (lay.rows.length - 1) * lay.lineHeight + gap);
+          drawRows(c, sl, FAM_LYR, t, { active: rgba('bone', 0.96 * 0.8), sung: rgba('bone', 0.96 * 0.8), unsung: rgba('bone', 0.3) }, 1);
+        }
       } else if (fd.kind === 'title' && fd.text) {
         const big = !!fd.sub;
         c.textAlign = 'center'; c.fillStyle = rgba('bone', 0.95);
@@ -439,6 +462,11 @@ export default class Filmstrip extends Scene {
   }
 
   private lyrLays = new Map<Line, RowsLayout>();
+  private subLay(c: CanvasRenderingContext2D, line: Line, mainSize: number) {
+    let l = this.lyrLays.get(line);
+    if (!l) { const sz = subSizeFor(mainSize * this.k) / this.k; l = layoutRows(c, line, { family: FAM_LYR, size: sz, minSize: Math.min(sz, 26 / this.k), maxW: 1060, maxRows: 2, align: 'center', lineHeight: 1.12 }); this.lyrLays.set(line, l); }
+    return l;
+  }
   private lyrLay(c: CanvasRenderingContext2D, line: Line) {
     let l = this.lyrLays.get(line);
     if (!l) { l = layoutRows(c, line, { family: FAM_LYR, size: lyricV2(null) / this.k, minSize: V2.lyrMin / this.k, maxW: 1060, maxRows: 2, align: 'center', lineHeight: 1.12 }); this.lyrLays.set(line, l); }

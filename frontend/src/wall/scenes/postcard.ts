@@ -26,7 +26,7 @@ import { F, font, layout, loadText } from '../engine/type';
 import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, lerp, prog, pulse, hash, noise1 } from '../engine/util';
 import { fitText, readSeconds, type FitResult } from '../engine/text';
-import { lyricAt, drawLyric, layoutLyric, beatAfter, barAfter, signature, COUPLE_ZH, DATE_DOTS, type LyricStyle, type LyricLayout } from './_motifs';
+import { lyricAt, drawLyric, layoutLyric, beatAfter, barAfter, signature, COUPLE_ZH, DATE_DOTS, lyricSubOf, subStyleFor, subGap, drawLyricSub, type LyricStyle, type LyricLayout } from './_motifs';
 import { paperLyric, windowLines, pad3 } from './_t2';
 import { msgMaxFor, lyricV2, sigV2, V2, fitClauses } from './_v2';
 import {
@@ -96,12 +96,15 @@ export default class Postcard extends Scene {
   /** 短窗格：落下時就翻好身，背面朝上落定。 */
   tumble = false;
   instr = false;
+  /** 韓文歌（這一格有原文副行）：風景框下緣往上收這麼多（卡面 px），圖說的白邊才放得下中文＋原文兩排；整格固定，換句時不跳。 */
+  subRoom = 0;
 
   override async init() {
     const { audio: au, lyrics, song } = this.ctx;
     const s = this.ctx.start, e = this.ctx.end, m = this.msg;
     const lines = windowLines(lyrics, s, e);
     this.instr = !lyrics.has;
+    if (lines.some((l) => lyricSubOf(l))) this.subRoom = 84;
     await loadText(`POSTCARD明信片永久郵資喜宴郵局待寄幸福里永遠路號收寄件人全體賓客寫一張給新人掃描右下角寄自永遠這首沒有歌詞請自由發揮${COUPLE_ZH}${m ? m.text + signature(m.name) : ''}${song.title}${song.artist}${lines.map((l) => l.text).join('')}０１２３４５６７８９`);
 
     // ---- 時間表：第一拍落定；有留言才翻面（第一個小節線，太遠就第二拍後）；翻好的下一拍開始寫
@@ -304,6 +307,8 @@ export default class Postcard extends Scene {
       const u = this.land.u;
       u.t!.value = t; u.kick!.value = f.a.kick; u.bass!.value = f.a.bass;
       u.seed!.value = (this.seed % 97) * 0.37;
+      // 共用的 shader：每格都要設（別的明信片窗格可能留下別的值）
+      u.picB!.value = PIC.y1 - this.subRoom;
       // 小船整個窗格從右往左漂一段，每一拍輕輕上下（落在拍點上的一下，不是等速晃）
       u.boatX!.value = lerp(1010, 860, f.p);
       u.bob!.value = -3.5 * ease.outCubic(clamp(1 - f.beatPhase * 2.2)) + Math.sin(t * 1.3) * 1.2;
@@ -417,14 +422,31 @@ export default class Postcard extends Scene {
     // 小群二：右下角的印刷小字（沒有留言時是邀請）
     c.font = font(m ? F.mono(500) : F.hei(500), m ? 20 : 26); c.letterSpacing = m ? '4px' : '2px';
     c.fillStyle = rgba('sepia', m ? 0.4 : 0.55); c.textAlign = 'right';
-    c.fillText(m ? `No.${pad3(m.n)}  ·  ${DATE_DOTS}` : `寫一張給新人：掃描右下角 QR code  ·  ${DATE_DOTS}`, CW - 44, PIC.y1 + 30);
+    const picB = PIC.y1 - this.subRoom;
+    c.fillText(m ? `No.${pad3(m.n)}  ·  ${DATE_DOTS}` : `寫一張給新人：掃描右下角 QR code  ·  ${DATE_DOTS}`, CW - 44, picB + 30);
     c.textAlign = 'left'; c.letterSpacing = '0px';
     // 圖說：正在唱的歌詞（印刷字，大）
-    const band = { y0: PIC.y1 + 44, y1: CH - 34 };
-    // v2：歌詞在螢幕上 40～52 px（有留言時不比留言大）
-    const st: LyricStyle = { family: F.archivo(100, 700), size: cpx(lyricV2(this.msgScreen)), minSize: cpx(V2.lyrMin), maxWidth: 1200, align: 'center', lineHeight: 1.1, ...paperLyric() };
+    const band = { y0: picB + 44, y1: CH - 34 };
+    // v2：歌詞在螢幕上 40～52 px（有留言時不比留言大）；有原文時中文最多 44，白邊才放得下兩排
     const ly = lyricAt(lyrics, t);
-    if (ly) {
+    const sub = lyricSubOf(ly?.line);
+    const st: LyricStyle = { family: F.archivo(100, 700), size: cpx(sub ? Math.min(44, lyricV2(this.msgScreen)) : lyricV2(this.msgScreen)), minSize: cpx(V2.lyrMin), maxWidth: 1200, align: 'center', lineHeight: 1.1, ...paperLyric() };
+    if (ly && sub) {
+      // 原文（韓文歌）：中文一次一排（照 oneRow），原文整句小一號印在正下方。原文字級照螢幕 px 算（卡面上要乘回 1/CARD_S），
+      // 不然卡面 px 的 56 在螢幕上只剩 27
+      const full = layoutLyric(c, ly.line, st), lay = oneRow({ ...full, sub: undefined }, t);
+      const ms = lay.size * CARD_S;
+      const sst: LyricStyle = { ...st, size: ms, maxWidth: 1200 * CARD_S };
+      const sLay = layoutLyric(c, sub, subStyleFor(sst, ms));
+      const gap = cpx(subGap(ms, sLay.size));
+      const total = lay.size * 0.86 + gap + cpx(sLay.height - sLay.size + sLay.size * 0.22);
+      const y = band.y0 + (band.y1 - band.y0 - total) / 2 + lay.size * 0.86;
+      c.save(); c.translate(CW / 2, y);
+      drawLyric(c, ly.line, t, st, lay, ly.k);
+      c.translate(0, gap); c.scale(1 / CARD_S, 1 / CARD_S);
+      drawLyricSub(c, sub, t, sst, ms, ly.k);
+      c.restore();
+    } else if (ly) {
       const lay = oneRow(layoutLyric(c, ly.line, st), t);
       const y = band.y0 + (band.y1 - band.y0 - lay.height) / 2 + lay.size * 0.86;
       c.save(); c.translate(CW / 2, y);

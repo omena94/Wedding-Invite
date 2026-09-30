@@ -20,7 +20,7 @@ import { F, font, loadText } from '../engine/type';
 import { LIN, rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, hash, lerp, prog, pulse, TAU } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
-import { lyricAt, signature, drawHeart, sparkParticles, WEDDING_DATE } from './_motifs';
+import { lyricAt, signature, drawHeart, sparkParticles, WEDDING_DATE, lyricSubOf, layoutLyric, drawLyricSub, subStyleFor, subGap, type LyricStyle } from './_motifs';
 import { grid, stagger, drawFit, layoutRows, drawRows, paperInk, Stage, docRT, camDist, type Grid, type RowsStyle, type P2, type V3 } from './_t4';
 import { msgMaxFor, lyricV2, sigV2, V2, fitClauses } from './_v2';
 
@@ -433,6 +433,28 @@ export default class ScratchCard extends Scene {
     const size = lyricV2(this.msgScreen) / S;
     const st: RowsStyle = { family: F.archivo(100, 800), size, minSize: V2.lyrMin / S, maxW: LYR.w, maxRows: 3, lineHeight: 1.06 };
     const ly = lyricAt(lyrics, t);
+    const orig = ly ? lyricSubOf(ly.line) : null;
+    if (ly && orig) {
+      // 韓文歌：中文下面小一號印原文（同一張卡、同字族、墨色，唱到、唱完都是唱完的墨色、淡一點）。
+      // 字級與間距照螢幕 px 的規則（卡面 px × S = 螢幕 px）；框的高度固定：主行＋原文放不下就把主行縮小一點，不爆出框外
+      const ink = paperInk();
+      let lay = layoutRows(c, ly.line, st), gap = 0, deep = 0, sst: LyricStyle | null = null;
+      for (let sz = st.size; ; sz *= 0.95) {
+        lay = layoutRows(c, ly.line, { ...st, size: Math.max(sz, st.minSize) });
+        sst = { family: st.family, size: lay.size * S, maxWidth: LYR.w * S, align: 'left', active: ink.active, sung: ink.sung, unsung: ink.unsung };
+        const sl = layoutLyric(c, orig, subStyleFor(sst, lay.size * S));
+        gap = subGap(lay.size * S, sl.size) / S;
+        deep = gap + sl.rows[sl.rows.length - 1]!.y / S;
+        if (lay.height + deep <= LYR.h + 12 || sz <= st.minSize) break;
+      }
+      const top = LYR.y + (LYR.h - lay.height - deep) / 2 + lay.size * 0.82;
+      c.save(); c.translate(LYR.x, top);
+      drawRows(c, lay, st.family, t, ink, ly.k);
+      c.translate(0, lay.rows[lay.rows.length - 1]!.y + gap); c.scale(1 / S, 1 / S);
+      drawLyricSub(c, orig, t, sst!, lay.size * S, ly.k * c.globalAlpha);
+      c.restore();
+      return;
+    }
     if (ly) {
       const lay = layoutRows(c, ly.line, st);
       const top = LYR.y + (LYR.h - lay.height) / 2 + lay.size * 0.82;

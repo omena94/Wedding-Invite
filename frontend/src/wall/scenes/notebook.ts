@@ -21,7 +21,7 @@ import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, lerp, prog, pulse } from '../engine/util';
 import { fitText, wrap, type FitResult } from '../engine/text';
 import { Lyrics, type Line } from '../engine/lyrics';
-import { layoutLyric, fillWithHearts, signature, type LyricStyle, type PlacedWord } from './_motifs';
+import { layoutLyric, fillWithHearts, signature, lyricSubOf, subSizeFor, subGap, subStyleFor, type LyricStyle, type PlacedWord } from './_motifs';
 import { grid, windowLines, tiltRT, tiltPass, tiltProject, setV3, mixV, fitMsgV2, type Grid } from './_t5';
 import { V2, lyricV2, sigV2, msgMaxFor } from './_v2';
 
@@ -83,8 +83,12 @@ const PAGE_FS = () => new FSPass(/* glsl */ `
     fragColor = vec4(col, 1.0);
   }`, { t: { value: 0 }, scroll: { value: 0 }, k: { value: 1 } });
 
-/** 一行歌詞在本子上的位置：從第幾行開始、排版（每個字的位置已經改成行距對齊橫線）。 */
-interface Placed { line: Line; row: number; words: PlacedWord[]; size: number; rows: number; page: number; idx: number }
+/** 一行歌詞在本子上的位置：從第幾行開始、排版（每個字的位置已經改成行距對齊橫線）。
+ *  `span` 是這句佔掉幾條橫線（有原文副行時多佔一條）；`sub` 是原文副行（韓文歌）：dy = 副行基線離主行第一排基線多遠。 */
+interface Placed {
+  line: Line; row: number; words: PlacedWord[]; size: number; rows: number; span: number; page: number; idx: number;
+  sub?: { words: PlacedWord[]; size: number; dy: number };
+}
 
 export default class Notebook extends Scene {
   pageFs = shared('notebook.page', PAGE_FS);
@@ -110,6 +114,8 @@ export default class Notebook extends Scene {
   sc = 1;
   sigSize = 40;
   ly: LyricStyle = LY;
+  /** 歌詞那一帶紙上 px 換成畫面 px 的倍數（原文副行的 32～56 px 是畫面字級，要換回紙上）。 */
+  kL = 1;
 
   override async init() {
     const { audio: au, lyrics, song } = this.ctx;
@@ -135,7 +141,7 @@ export default class Notebook extends Scene {
     } else this.nr.h = 360;
     // 歌詞寫在本子上半部（離鏡頭比便條遠、看起來小一點）：用那裡的放大倍數換算，畫面上才夠 40 px
     const la = tiltProject(mid.cam, mid.look, mid.fov, mid.roll, TX + 150, ROW0 + 150), lb = tiltProject(mid.cam, mid.look, mid.fov, mid.roll, TX + 450, ROW0 + 150);
-    const kL = Math.hypot(lb.x - la.x, lb.y - la.y) / 300;
+    const kL = this.kL = Math.hypot(lb.x - la.x, lb.y - la.y) / 300;
     this.ly = { ...LY, size: lyricV2(m && !this.instr ? this.noteFit!.size * k : null) / kL, minSize: V2.lyrMin / kL };
     this.nr.y = NOTE_BOT - this.nr.h;
     // 歌詞排進橫線：便條旁邊的行窄一點；一句放不下一行就折兩行。
@@ -149,16 +155,41 @@ export default class Notebook extends Scene {
       const narrow = y + 15 > nr.y - 20 && y - 75 < nr.y + nr.h + 40 && !this.instr && this.showNote;
       return layoutLyric(c, l, { ...this.ly, maxWidth: (narrow ? nr.x - 26 : WIDE) - TX });
     };
+    // 原文那一排（基線在頁面 y）旁邊有沒有便條：有的話只寫到便條左邊（跟 place 同一個判斷）
+    const widthAt = (y: number) => {
+      const nr = this.nr;
+      const narrow = y + 15 > nr.y - 20 && y - 75 < nr.y + nr.h + 40 && !this.instr && this.showNote;
+      return (narrow ? nr.x - 26 : WIDE) - TX;
+    };
+    const subOf = (l: Line, r: number, lay: ReturnType<typeof layoutLyric>): Placed['sub'] => {
+      const sub = lyricSubOf(l);
+      if (!sub) return undefined;
+      // 原文小一號、寫在中文正下方（夾在兩條橫線中間，像在歌詞下面加註）；字級照畫面 px 算再換回紙上。
+      // 寬度看原文自己那一排旁邊有沒有便條（中文最後一排已經在便條下面時，原文就能寫長一點、不用折）
+      const size = subSizeFor(lay.size * kL) / kL;
+      const dy = (lay.rows.length - 1) * ROW_DY + subGap(lay.size, size);
+      const st = { ...this.ly, maxWidth: widthAt(ROW0 + r * ROW_DY + dy) };
+      const sl = layoutLyric(c, sub, { ...subStyleFor(st, lay.size), size, minSize: Math.min(size, 26 / kL) });
+      return { words: sl.words, size: sl.size, dy: (lay.rows.length - 1) * ROW_DY + subGap(lay.size, sl.size) };
+    };
+    // 這句佔幾條橫線：副行（含折行）底下要留到下一句的字頂不會碰到
+    const spanOf = (lay: ReturnType<typeof layoutLyric>, sub: Placed['sub']) => {
+      if (!sub) return lay.rows.length;
+      const bottom = sub.dy + (sub.words.length ? sub.words[sub.words.length - 1]!.y : 0) + sub.size * 0.3;
+      return Math.max(lay.rows.length, Math.ceil((bottom + lay.size * 0.95 + 10) / ROW_DY));
+    };
     lines.forEach((l, idx) => {
       let lay = place(l, row);
-      if (row > 0 && row + lay.rows.length - 1 > lastRow) {
-        page++; row = 0; lay = place(l, 0);
+      let sub = subOf(l, row, lay);
+      if (row > 0 && row + spanOf(lay, sub) - 1 > lastRow) {
+        page++; row = 0; lay = place(l, 0); sub = subOf(l, 0, lay);
         this.pageAt.push(l.start - 0.35 - 0.35);
       }
       const lh = lay.rows.length > 1 ? lay.rows[1]!.y : ROW_DY;
       const words = lay.words.map((pw) => ({ ...pw, y: Math.round(pw.y / Math.max(1, lh)) * ROW_DY }));
-      this.placed.push({ line: l, row, words, size: lay.size, rows: lay.rows.length, page, idx });
-      row += lay.rows.length;
+      const span = spanOf(lay, sub);
+      this.placed.push({ line: l, row, words, size: lay.size, rows: lay.rows.length, span, page, idx, sub });
+      row += span;
     });
     if (this.instr && m) {
       // 純音樂：原子筆把留言寫在橫線上（最多四行，字大一點），寫完簽名
@@ -285,7 +316,7 @@ export default class Notebook extends Scene {
       return w.lines.length;
     }
     let r = 0;
-    for (const pl of this.placed) if (pl.line.start - 0.35 <= t) r = pl.row + pl.rows - 1;
+    for (const pl of this.placed) if (pl.line.start - 0.35 <= t) r = pl.row + pl.span - 1;
     return r;
   }
 
@@ -307,7 +338,7 @@ export default class Notebook extends Scene {
     for (const pl of this.placed) {
       if (pl.page !== pg) continue;
       const tStart = pl.line.start - 0.35;
-      sc = lerp(sc, Math.min(this.scrollCap, need(pl.row + pl.rows - 1)), prog(t, tStart - 0.3, tStart, ease.inOutCubic));
+      sc = lerp(sc, Math.min(this.scrollCap, need(pl.row + pl.span - 1)), prog(t, tStart - 0.3, tStart, ease.inOutCubic));
     }
     return sc;
   }
@@ -351,12 +382,21 @@ export default class Notebook extends Scene {
     // 比上一句更早的行淡一點：畫面上只有正在寫的這一句（和剛寫完的上一句）是清楚的
     c.save(); c.globalAlpha *= alpha;
     const base = ROW0 + pl.row * ROW_DY - 8;
-    const size = pl.size;
+    const ghost = prog(t, lead, lead + 0.3);
+    const head = this.writeWords(c, pl.words, pl.size, base, t, ghost, rgba('blood', 1), rgba('sepia', 0.94));
+    // 原文副行（韓文歌）：同一支筆、小一號，寫在中文正下方；比中文安靜——唱到、唱完都是墨色再淡兩成（不用紅）。
+    // 逐字時間是原文自己的；筆尖只跟著中文走。
+    if (pl.sub) this.writeWords(c, pl.sub.words, pl.sub.size, base + pl.sub.dy, t, ghost, rgba('sepia', 0.94 * 0.8), rgba('sepia', 0.94 * 0.8));
+    c.restore();
+    return head;
+  }
+
+  /** 一排字：還沒唱的淡稿，唱到的用斜的掃描線寫過去（正在唱 `active`、唱完 `sung`）。回傳筆尖。 */
+  private writeWords(c: CanvasRenderingContext2D, words: PlacedWord[], size: number, base: number, t: number, ghost: number, active: string, sung: string) {
     c.font = font(HAND, size);
     c.textBaseline = 'alphabetic';
     let head: { x: number; y: number; writing: boolean } | null = null;
-    const ghost = prog(t, lead, lead + 0.3);
-    for (const pw of pl.words) {
+    for (const pw of words) {
       const x = TX + pw.x, y = base + pw.y;
       const p = Lyrics.wordProgress(pw.word, t);
       if (p < 1) { c.fillStyle = rgba('sepia', 0.3 * ghost); c.fillText(pw.word.w, x, y); }
@@ -366,13 +406,12 @@ export default class Notebook extends Scene {
       c.beginPath();
       c.moveTo(x - 8, top - 6); c.lineTo(x + S + 6 * SKEW, top - 6); c.lineTo(x + S - SKEW * (h + 6), top + h + 6); c.lineTo(x - 8, top + h + 6);
       c.closePath(); c.clip();
-      c.fillStyle = p < 1 ? rgba('blood', 1) : rgba('sepia', 0.94);
+      c.fillStyle = p < 1 ? active : sung;
       c.fillText(pw.word.w, x, y);
       c.restore();
       if (p < 1) head = { x: x + clamp(S - SKEW * h * 0.5, 0, pw.w), y: y - size * 0.3, writing: true };
       else head = { x: x + pw.w, y: y - size * 0.3, writing: false };
     }
-    c.restore();
     return head;
   }
 

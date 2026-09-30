@@ -14,7 +14,7 @@ import { FSPass, Layer2D, H } from '../engine/gl';
 import { F, font, loadText } from '../engine/type';
 import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, frameIdx } from '../engine/util';
-import { lyricAt, beatAfter, drawHeart, COUPLE_ZH, DATE_DOTS } from './_motifs';
+import { lyricAt, lyricSubOf, subSizeFor, subGap, beatAfter, drawHeart, COUPLE_ZH, DATE_DOTS } from './_motifs';
 import { layoutRows, drawRows, paperInk } from './_t4';
 import { T23_INVITE, T23_TEXT, sigOf, layMsgV2, stagger, winBars, lastBefore, type MsgLay, type Rect } from './_t23';
 import { V2, lyricV2 } from './_v2';
@@ -298,9 +298,26 @@ export default class Balloon extends Scene {
     const ly = this.hasLyr ? lyricAt(lyrics, t) : null;
     if (ly) {
       const lay = layoutRows(c, ly.line, { family: F.archivo(100, 700), size: lyricV2(null), minSize: V2.lyrMin, maxW: 640, maxRows: 3, align: 'center', lineHeight: 1.2 });
-      c.save(); c.translate(MW / 2, MH / 2 - lay.height / 2 + lay.size * 0.8);
-      drawRows(c, lay, F.archivo(100, 700), t, paperInk(), ly.k);
-      c.restore();
+      const sub = lyricSubOf(ly.line);
+      if (sub) {
+        // 韓文歌：原文小一號寫在中文正下方（同一塊球皮、同樣置中），兩段一起在球皮正面垂直置中；
+        // 原文比中文安靜：唱到、唱完都是淡兩成的墨色（不用 blood），還沒唱的照中文三成
+        const ss = subSizeFor(lay.size);
+        const sl = layoutRows(c, sub, { family: F.archivo(100, 700), size: ss, minSize: Math.min(ss, 26), maxW: 640, maxRows: 2, align: 'center', lineHeight: 1.2 });
+        const gap = subGap(lay.size, sl.size);
+        const total = lay.size * 0.8 + (lay.rows.length - 1) * lay.lineHeight + gap + (sl.rows.length - 1) * sl.lineHeight + sl.size * 0.2;
+        const y0 = MH / 2 - total / 2 + lay.size * 0.8;
+        c.save(); c.translate(MW / 2, y0);
+        drawRows(c, lay, F.archivo(100, 700), t, paperInk(), ly.k);
+        c.translate(0, (lay.rows.length - 1) * lay.lineHeight + gap);
+        const sung = rgba('sepia', 0.95 * 0.8);
+        drawRows(c, sl, F.archivo(100, 700), t, { active: sung, sung, unsung: paperInk().unsung }, ly.k);
+        c.restore();
+      } else {
+        c.save(); c.translate(MW / 2, MH / 2 - lay.height / 2 + lay.size * 0.8);
+        drawRows(c, lay, F.archivo(100, 700), t, paperInk(), ly.k);
+        c.restore();
+      }
     } else {
       c.font = font(F.hand(700), 60); c.fillStyle = rgba('sepia', 0.9); c.textAlign = 'center';
       c.fillText(COUPLE_ZH, MW / 2, MH / 2 + 30); c.textAlign = 'left';
