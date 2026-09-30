@@ -1,14 +1,17 @@
-// 狗狗暴衝（暗、dog）：晚上的客廳，芃芃和 QQ 繞著地毯暴衝（快歌用），宣文和孟庭坐在後面的沙發上看著笑。角色是 Codex 畫的紙偶（_puppet.ts）。
-//  - 開場兩隻狗在地毯左邊擺出「邀玩」的姿勢（前趴、屁股翹高），拍點上壓一下；第一個小節線 QQ 衝出去，芃芃晚一拍追上。
-//  - 一圈四拍：前面那一側往右跑、後面那一側往左跑（遠的小、近的大），跑到兩端像紙偶一樣翻面轉身、揚起一點灰。
-//    **跳躍都在拍點上**：跑到前面正中間越過掉在地上的抱枕（QQ 在第二拍＝小鼓），後面正中間小跳一下；芃芃晚一拍，所以每一拍都有狗在跳。
+// 狗狗暴衝（暗、dog）：晚上的客廳，元元、QQ、芃芃三隻繞著地毯暴衝（快歌用），宣文和孟庭坐在後面的沙發上看著笑。角色是 Codex 畫的紙偶（_puppet.ts）。
+//  - 開場三隻狗在地毯左邊：兩隻博美擺出「邀玩」的姿勢（前趴、屁股翹高），元元站著原地踏，拍點上壓一下。
+//    元元帶頭：小節線前一拍先衝出去，**小節線上剛好跑到前面正中間、一口叼起掉在地上的大抱枕**（博美叼不動的東西），
+//    叼著抱枕繼續繞圈；QQ 在小節線衝出去追、芃芃再晚一拍，三隻各差四分之一圈，排成一串追來追去。
+//  - 一圈四拍：前面那一側往右跑、後面那一側往左跑（遠的小、近的大），跑到兩端像紙偶一樣翻面轉身。
+//    **跳躍都在拍點上**：兩隻博美跑到前面正中間（剛才抱枕的地方）撲起來（QQ 在第二拍＝小鼓、芃芃第三拍），後面正中間小跳一下；
+//    元元是大狗，不亂跳，只在後面正中間輕輕一躍。
 //    跑步兩張圖半拍換一張、一步一彈；跑得快的時候拖著殘影和速度線。
 //  - **歌詞躺在地毯上**（一個字一個字擺），狗從前面跑過去時把字一個一個撞得跳起來再落回去（被撞的字轉一下），跟唱照規則。
 //  - **焦點是主打留言**：寫在牆上用紙膠帶貼著的一張紙上（落地燈照著它），上面一行小字「客廳公約　第一條：禁止暴衝」；
 //    照「留言尺寸與版面比例標準 v2」：字 40～60、紙最大 640 × 380，高度跟著留言長短，放在畫面左上。沒有留言時紙上寫邀請、字淡，歌詞變主角。
-//  - 兩個人坐在沙發上（跟沙發畫在同一張圖）：QQ 越過抱枕的時候換成大笑、指著狗的那張，每拍跟著輕輕壓一下。
+//  - 兩個人坐在沙發上（跟沙發畫在同一張圖）：隔一個小節線（元元叼著抱枕經過前面的那一下）換成大笑、指著狗的那張，每拍跟著輕輕壓一下。
 //  - 暗版面：紙偶先畫在暫存畫布上打光（上亮下暗，_c3 的 Lit），狗跟字可以前後交錯，字不會被一起染暗。
-//  - 鏡頭跟著 QQ 輕輕搖、小鼓時推一下。
+//  - 三隻狗用同一個場景尺度（_puppet 的 PUPPET_H 換算：元元比博美大一截）。鏡頭跟著 QQ 輕輕搖、小鼓時推一下。
 import * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
 import { FSPass, Layer2D, W, H } from '../engine/gl';
@@ -18,7 +21,7 @@ import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, lerp, hash } from '../engine/util';
 import { lyricAt, barAfter, sparkHead, sparkParticles, msgChars } from './_motifs';
 import { inkFor, inkLine, drawNote, type Note } from './_couple';
-import { loadPuppets, drawPuppet, drawCycle, drawPick, puppetShadow, puppetIn, puppetBox, puppetPoint, jumpArc, breathe, beatKick, hop, noteV2, tightenNote, type PuppetOpts } from './_puppet';
+import { loadPuppets, drawPuppet, drawCycle, drawPick, cycle, puppetShadow, puppetIn, puppetBox, puppetPoint, jumpArc, breathe, beatKick, hop, noteV2, tightenNote, type PuppetOpts } from './_puppet';
 import { lyricV2 } from './_v2';
 import { Lit, layoutChars, drawChars, INVITE } from './_c3';
 import type { Lyrics } from '../engine/lyrics';
@@ -42,12 +45,14 @@ const PAD = { x: 38, top: 66, bottom: 28 };
 const LYR = { x: 700, y: 900, w: 740 };
 /** 掉在地上的抱枕（前面那一側的正中間）。 */
 const PILLOW = { x: 700, y: 962 };
-/** 一圈幾拍；芃芃晚 QQ 幾圈（一拍）。 */
-const LAP = 4, LAG = 0.25;
+/** 一圈幾拍。 */
+const LAP = 4;
 const LABEL = '客廳公約　第一條：禁止暴衝';
 const DOGS = {
   qq: { run: ['qq_zoomies_1', 'qq_zoomies_2'], bow: 'qq_zoomies_bow' },
   pp: { run: ['pp_zoomies_1', 'pp_zoomies_2'], bow: 'pp_zoomies_bow' },
+  // 元元沒有邀玩的圖：站著等（原地踏的彈跳由程式做）
+  yy: { run: ['yy_run_1', 'yy_run_2'], bow: 'yy_stand' },
 } as const;
 const SOFA_POSES = ['cp_zoomies_sofa_1', 'cp_zoomies_sofa_2'];
 
@@ -69,7 +74,12 @@ const ROOM = () => new FSPass(/* glsl */ `
     fragColor = vec4(col, 1.0);
   }`);
 
-type Who = 'qq' | 'pp';
+type Who = 'qq' | 'pp' | 'yy';
+const WHO: Who[] = ['yy', 'qq', 'pp'];
+/** 每隻狗起跑的拍（相對 QQ 衝出去的小節線）：元元早一拍帶頭、芃芃晚一拍；三隻各差四分之一圈。 */
+const START: Record<Who, number> = { yy: -1, qq: 0, pp: 1 };
+/** 跑道內外圈：元元身體長，跑內圈（不然跑到兩端會出畫面、碰到右下角 HUD）。 */
+const LANE: Record<Who, number> = { yy: 0.84, qq: 1, pp: 1 };
 interface DogState { x: number; y: number; lift: number; squash: number; spin: number; rot: number; scale: number; speed: number; dir: number; name: string; bow: boolean; alpha: number }
 
 export default class Zoomies extends Scene {
@@ -81,7 +91,7 @@ export default class Zoomies extends Scene {
   msg: Msg | null = this.ctx.params.message ?? null;
   note: Note | null = null;
   sheet = { ...NOTE };
-  /** QQ 衝出去的拍（小節線）；芃芃晚一拍。 */
+  /** QQ 衝出去的拍（小節線）：元元早一拍、芃芃晚一拍（START）；元元在這一拍叼起抱枕。 */
   go = 0;
   sofaScale = 1;
   /** 沙發（兩人的鞋底）放在哪個 y：讓沙發腳剛好踩在牆腳前面的地板上。 */
@@ -94,7 +104,7 @@ export default class Zoomies extends Scene {
   override async init() {
     const { audio: au } = this.ctx;
     await loadText('一位賓客' + INVITE + LABEL);
-    this.track(await loadPuppets([...DOGS.qq.run, DOGS.qq.bow, ...DOGS.pp.run, DOGS.pp.bow, ...SOFA_POSES]));
+    this.track(await loadPuppets([...WHO.flatMap((w) => [...DOGS[w].run, DOGS[w].bow]), ...SOFA_POSES]));
     // 第一個小節線衝出去（窗格太短就下一拍）
     let t0 = barAfter(au, this.ctx.start + 0.35);
     if (this.ctx.end - t0 < au.beatPeriod(t0) * 3) t0 = au.nextBeat(this.ctx.start + 0.35);
@@ -104,10 +114,10 @@ export default class Zoomies extends Scene {
     this.sofaScale = box[2] > 0 ? SOFA.w / box[2] : 1;
     const legs = puppetPoint(SOFA_POSES[1]!, 'legs', SOFA.x, 0, { h: SZ, scale: this.sofaScale });
     this.sofaY = legs ? SOFA.legs - legs.y : SOFA.legs + 40;
-    // QQ 越過抱枕的那一拍（每一圈的第二拍），兩個人換成大笑指著狗的那張，一拍半後回來
+    // 元元叼著抱枕經過前面正中間的那一拍（每一圈的小節線），隔一圈兩個人換成大笑指著狗的那張，一拍半後回來
     const keys: [number, string][] = [[-1e9, SOFA_POSES[0]!]];
     for (let k = 0; k < 64; k++) {
-      const tb = au.timeOfBeat(this.go + LAP * (k + 0.25));
+      const tb = au.timeOfBeat(this.beatOfLap('yy', k + 0.25));
       if (tb > this.ctx.end) break;
       if (k % 2 === 0) keys.push([tb - 0.04, SOFA_POSES[1]!], [tb + au.beatPeriod(tb) * 1.6, SOFA_POSES[0]!]);
     }
@@ -212,33 +222,45 @@ export default class Zoomies extends Scene {
 
   /** 狗在第幾圈的哪裡（圈數，0 = 左端、0.25 = 前面正中間、0.5 = 右端、0.75 = 後面正中間）；還沒衝出去是 null。 */
   private lapAt(who: Who, t: number): number | null {
-    const b = this.ctx.audio.beatAt(t) - this.go - (who === 'pp' ? LAP * LAG : 0);
+    const b = this.ctx.audio.beatAt(t) - this.go - START[who];
     return b < 0 ? null : b / LAP;
   }
 
+  /** 這隻狗跑到第 u 圈（圈數）的那一拍。 */
+  private beatOfLap(who: Who, u: number) {
+    return this.go + START[who] + LAP * u;
+  }
+
+  /** 元元叼起抱枕的時間（牠第一次跑到前面正中間＝QQ 衝出去的小節線）。 */
+  private get grabT() {
+    return this.ctx.audio.timeOfBeat(this.beatOfLap('yy', 0.25));
+  }
+
   /** 跑道上的位置：左端出發、前面往右、後面往左。 */
-  private trackPos(u: number) {
-    const a = u * Math.PI * 2;
-    return { x: TR.cx - TR.rx * Math.cos(a), y: TR.cy + TR.ry * Math.sin(a) };
+  private trackPos(u: number, who: Who) {
+    const a = u * Math.PI * 2, k = LANE[who];
+    return { x: TR.cx - TR.rx * k * Math.cos(a), y: TR.cy + TR.ry * k * Math.sin(a) };
   }
 
   /** 一隻狗這一格的樣子。 */
   private dogAt(who: Who, t: number): DogState {
     const au = this.ctx.audio, s = this.ctx.start;
     const D = DOGS[who];
-    const ent = puppetIn(t, s + (who === 'qq' ? 0.12 : 0.22), 0.42);
+    const ent = puppetIn(t, s + (who === 'yy' ? 0.04 : who === 'qq' ? 0.12 : 0.22), 0.42);
     const u = this.lapAt(who, t);
-    // 邀玩的時候兩隻並排（QQ 在後面右邊、芃芃在前面左邊），不要疊在一起
-    const wait = who === 'qq' ? { x: TR.cx - TR.rx + 150, y: TR.cy - 8 } : { x: TR.cx - TR.rx - 40, y: TR.cy + 40 };
+    // 等的時候三隻錯開（QQ 在後面右邊、元元在中間、芃芃在前面左邊），不要疊在一起
+    const wait = who === 'qq' ? { x: TR.cx - TR.rx + 300, y: TR.cy - 44 } : who === 'yy' ? { x: TR.cx - TR.rx + 90, y: TR.cy - 4 } : { x: TR.cx - TR.rx - 50, y: TR.cy + 44 };
     const depth = (y: number) => DOG_S * lerp(0.84, 1.12, clamp((y - (TR.cy - TR.ry)) / (TR.ry * 2)));
     if (u === null) {
       // 邀玩：前趴、屁股翹高，拍點上壓一下（快要衝的時候更低）
       const k = beatKick(au, t, 0.22);
-      return { x: wait.x, y: wait.y, lift: 0, squash: 0.06 * k + breathe(t, 0.02, 0.9, who === 'qq' ? 0 : 0.5), spin: ent.spin, rot: 0, scale: depth(wait.y), speed: 0, dir: 1, name: D.bow, bow: true, alpha: ent.alpha };
+      // 元元站著：拍點上往上彈一下（興奮地原地踏）；博美前趴壓低
+      const lift = who === 'yy' ? 7 * k : 0;
+      return { x: wait.x, y: wait.y, lift, squash: (who === 'yy' ? -0.03 : 0.06) * k + breathe(t, 0.02, 0.9, who === 'qq' ? 0 : 0.5), spin: ent.spin, rot: 0, scale: depth(wait.y), speed: 0, dir: 1, name: D.bow, bow: true, alpha: ent.alpha };
     }
-    let p = this.trackPos(u);
-    // 芃芃剛起跑：從等的位置接上跑道
-    const tStart = au.timeOfBeat(this.go + (who === 'pp' ? LAP * LAG : 0));
+    let p = this.trackPos(u, who);
+    // 剛起跑：從等的位置接上跑道
+    const tStart = au.timeOfBeat(this.go + START[who]);
     const blend = clamp((t - tStart) / 0.18);
     if (blend < 1) p = { x: lerp(wait.x, p.x, ease.outCubic(blend)), y: lerp(wait.y, p.y, ease.outCubic(blend)) };
     const v = u - Math.floor(u);
@@ -248,13 +270,14 @@ export default class Zoomies extends Scene {
     const spin = 0.5 * S((vv - 0.43) / 0.14) + 0.5 * S((vv - 0.93) / 0.14);
     const speed = Math.abs(Math.sin(v * Math.PI * 2));
     const dir = v < 0.5 ? 1 : -1;
-    // 跳：前面正中間越過抱枕（大跳）、後面正中間小跳；頂點在拍點（第 k 圈的 0.25、0.75）
+    // 跳：博美在前面正中間撲起來（大跳）、後面正中間小跳；元元在前面正中間叼抱枕，只在後面正中間輕輕一躍。頂點在拍點（第 k 圈的 0.25、0.75）
     const lap = Math.floor(u);
     let lift = 0, squash = 0, air = false, tilt = 0.04;
     const bp = au.beatPeriod(t);
-    for (const [ph, hgt] of [[0.25, 96], [0.75, 38]] as const) {
+    const hops: readonly (readonly [number, number])[] = who === 'yy' ? [[0.75, 26]] : [[0.25, 96], [0.75, 38]];
+    for (const [ph, hgt] of hops) {
       for (const k of [lap - 1, lap, lap + 1]) {
-        const tc = au.timeOfBeat(this.go + (who === 'pp' ? LAP * LAG : 0) + LAP * (k + ph));
+        const tc = au.timeOfBeat(this.beatOfLap(who, k + ph));
         const half = Math.min(0.24, bp * (ph === 0.25 ? 0.46 : 0.3));
         if (t < tc - half - 0.15 || t > tc + half + 0.3) continue;
         const j = jumpArc(t, tc - half, tc + half, hgt, { crouch: 0.05, stretch: 0.1, land: 0.14 });
@@ -297,8 +320,8 @@ export default class Zoomies extends Scene {
       this.lit.draw(c, [bx[0] - 20, bx[1] - 20, bx[2] + 40, bx[3] + 30], rgba('ink', 0.1), rgba('ink', 0.5), (sc) => { drawPick(sc, this.sofaKeys, t, SOFA.x, this.sofaY, o); });
     }
 
-    // ---- 兩隻狗：照遠近排（遠的先畫）；歌詞夾在中間（遠的在字後面、近的從字前面跑過去）
-    const dogs = (['qq', 'pp'] as Who[]).map((w) => ({ who: w, st: this.dogAt(w, t) })).sort((a, b) => a.st.y - b.st.y);
+    // ---- 三隻狗：照遠近排（遠的先畫）；歌詞夾在中間（遠的在字後面、近的從字前面跑過去）
+    const dogs = WHO.map((w) => ({ who: w, st: this.dogAt(w, t) })).sort((a, b) => a.st.y - b.st.y);
     let lyricDone = false;
     for (const d of dogs) {
       if (!lyricDone && d.st.y >= LYR.y) { this.drawLyric(c, t, lyrics, rv); this.drawPillow(c, t); lyricDone = true; }
@@ -320,7 +343,7 @@ export default class Zoomies extends Scene {
     const o: PuppetOpts = { h: SZ, scale: st.scale, squash: st.squash, spin: st.spin, rot: st.rot, pivot: 0.5, alpha: 1 };
     puppetShadow(c, who, st.x, st.y, { h: SZ * st.scale, lift: st.lift, alpha: 0.55 * st.alpha, color: '0,0,0' });
     const y = st.y - st.lift;
-    const dh = SZ * 0.27 * st.scale;
+    const dh = SZ * (who === 'yy' ? 0.36 : 0.27) * st.scale;
     // 速度線：身體後面幾條水平的淡線，跑越快越長
     if (st.speed > 0.35) {
       const len = 150 * st.speed, tail = st.x - st.dir * dh * 0.9;
@@ -352,28 +375,39 @@ export default class Zoomies extends Scene {
       if (nm) drawPuppet(sc, nm, st.x, y, o);
       else drawCycle(sc, au, t, DOGS[who].run, 2, st.x, y, o);
     }, { alpha: st.alpha, ghosts });
+    // 元元叼著抱枕：抱枕跟著嘴（圖上量好的 mouth 點），叼起的那一下從地上被甩上來
+    if (who === 'yy' && t >= this.grabT) {
+      const frame = nm || cycle(DOGS.yy.run, au.beatAt(t), 2);
+      const m = puppetPoint(frame, 'mouth', st.x, y, o);
+      if (m) {
+        const k = ease.outBack(clamp((t - this.grabT) / 0.14));
+        const face = Math.cos(st.spin * Math.PI * 2);
+        const hx = m.x + 16 * (st.scale / DOG_S) * Math.sign(face || 1), hy = m.y + 30 * (st.scale / DOG_S);
+        this.pillow(c, lerp(PILLOW.x, hx, k), lerp(PILLOW.y, hy, k), (st.scale / DOG_S) * 0.9, st.rot + (1 - k) * 0.6, face);
+      }
+    }
     // 進場：從側面翻正（仙女棒的火花在腳邊）
     if (st.bow && st.alpha < 1) {
       sparkHead(this.glow, st.x, st.y - 4, t, 0.7);
-      sparkParticles(this.glow, t, () => ({ x: st.x, y: st.y - 4 }), { rate: 50, life: 0.25, speed: 140, seed: who === 'qq' ? 3 : 4 });
+      sparkParticles(this.glow, t, () => ({ x: st.x, y: st.y - 4 }), { rate: 50, life: 0.25, speed: 140, seed: who === 'qq' ? 3 : who === 'pp' ? 4 : 5 });
     }
   }
 
-  /** 掉在地上的抱枕：狗越過它的時候被風帶得晃一下。 */
+  /** 掉在地上的抱枕（元元叼起來之前）：元元跑過來的最後一拍抖一下。 */
   private drawPillow(c: CanvasRenderingContext2D, t: number) {
-    const au = this.ctx.audio;
-    let wob = 0;
-    for (const who of ['qq', 'pp'] as Who[]) {
-      const u = this.lapAt(who, t);
-      if (u === null) continue;
-      const tc = au.timeOfBeat(this.go + (who === 'pp' ? LAP * LAG : 0) + LAP * (Math.floor(u) + 0.25));
-      const d = t - tc;
-      if (d > -0.05 && d < 0.6) wob += Math.sin(d * 26) * Math.exp(-d * 6) * 0.12;
-    }
+    const g = this.grabT;
+    if (t >= g) return;
+    const d = t - (g - this.ctx.audio.beatPeriod(t));
+    const wob = d > 0 ? Math.sin(d * 30) * 0.06 * Math.min(1, d / 0.5) : 0;
+    this.pillow(c, PILLOW.x, PILLOW.y, 1, wob, 1);
+  }
+
+  /** 一個蓬蓬的方抱枕（四個角尖尖的、中間鼓起來），上亮下暗；(x, y) 是底邊中間。face：紙偶翻面時寬度跟著縮。 */
+  private pillow(c: CanvasRenderingContext2D, x: number, y: number, s: number, rot: number, face: number) {
     c.save();
-    c.translate(PILLOW.x, PILLOW.y);
-    c.rotate(wob);
-    // 蓬蓬的方抱枕（四個角尖尖的、中間鼓起來），上亮下暗；底下一小片影子
+    c.translate(x, y);
+    c.rotate(rot);
+    c.scale(s * Math.max(0.08, Math.abs(face)), s);
     c.fillStyle = rgba('ink', 0.5);
     c.beginPath(); c.ellipse(0, 2, 44, 7, 0, 0, Math.PI * 2); c.fill();
     const g = c.createLinearGradient(0, -40, 0, 4);
@@ -405,13 +439,13 @@ export default class Zoomies extends Scene {
     const bumps: number[] = [];
     const bumpAt = (i: number, cx: number) => {
       let best = 0, rot = 0;
-      for (const who of ['qq', 'pp'] as Who[]) {
+      for (const who of WHO) {
         const u = this.lapAt(who, t);
         if (u === null) continue;
-        const us = Math.acos(clamp((TR.cx - (cx - 40)) / TR.rx, -1, 1)) / (Math.PI * 2);
+        const us = Math.acos(clamp((TR.cx - (cx - 40)) / (TR.rx * LANE[who]), -1, 1)) / (Math.PI * 2);
         for (const k of [Math.floor(u) - 1, Math.floor(u)]) {
           if (k + us < 0) continue;
-          const tb = au.timeOfBeat(this.go + (who === 'pp' ? LAP * LAG : 0) + LAP * (k + us));
+          const tb = au.timeOfBeat(this.beatOfLap(who, k + us));
           // 被撞到的字飛起來再落下（0.34 秒）：狗跑一趟，字一個接一個跳，像一道浪跟在狗後面
           const d = (t - tb) / 0.34;
           if (d < 0 || d >= 1) continue;
