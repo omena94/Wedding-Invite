@@ -1955,6 +1955,15 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "bilingual": true
  },
  {
+  "name": "keyboard",
+  "title": "雙語鍵盤",
+  "family": "lingo",
+  "light": false,
+  "couple": false,
+  "idea": "背光機械鍵盤（鍵帽印兩種字母），唱一個字就按下一顆鍵、背光一閃，上方螢幕同時打出中文與原文；留言在螢幕邊的便利貼。",
+  "bilingual": true
+ },
+ {
   "name": "seoultrip",
   "title": "老街散步",
   "family": "trip",
