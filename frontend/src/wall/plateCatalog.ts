@@ -611,7 +611,7 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "護照內頁滿是各國入境章，拍點上「碰」地蓋新章，章裡是留言；（不是任何國家真的護照樣式）。",
-  "bilingual": false
+  "bilingual": true
  },
  {
   "name": "invoice",
@@ -1511,7 +1511,7 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "紅心 K 與紅心 Q 從牌堆翻出來，洗牌、發牌在拍點，牌面上寫留言。",
-  "bilingual": false
+  "bilingual": true
  },
  {
   "name": "fortune",

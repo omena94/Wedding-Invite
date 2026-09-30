@@ -9,6 +9,7 @@
 // 歌詞：登機證下緣「登機廣播」那一行，照跟唱規則（感熱紙本來就是加熱才顯色：唱到的字才「印」深）。
 // 韓文歌有中文翻譯時（2026-09-30）：原文小一號印在中文下面；登機廣播那一段（小標、分隔線）整段往上挪 SUB_UP 讓出位置，
 // 中文＋原文在小標與登機證下緣之間置中，放不下就把中文縮小一點（不小於 40 螢幕 px）。
+// 雙語（2026-09-30）：有主打留言也畫原文；原文照螢幕字級排（≥ 32 螢幕 px，screenSub），祝福欄下緣收 SUB_MSG 讓登機廣播再往上一點。
 // 沒有留言：乘客是「全體賓客」、祝福欄印邀請，章改蓋「候補」。新人的留言：乘客是新人。
 // v2（2026-09-29「留言尺寸與版面比例標準 v2」＋場景多元化）：機場候機室窗邊的長桌，午後的暖光從大片玻璃窗照進來。
 // 登機證大大地擺在桌上（它就是場景），但寫留言的那一塊照 v2：留言 40～60 px、署名印在留言下面、歌詞比留言小。
@@ -22,7 +23,8 @@ import { F, font, layout, loadText, measure, type TextLayout } from '../engine/t
 import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, hash, lerp, prog, pulse, frameIdx } from '../engine/util';
 import type { FitResult } from '../engine/text';
-import { lyricAt, drawLyric, layoutLyric, lyricSubOf, beatAfter, signature, COUPLE_ZH, DATE_DOTS } from './_motifs';
+import { lyricAt, drawLyric, layoutLyric, lyricSubOf, subSizeFor, subStyleFor, subGap, beatAfter, signature, COUPLE_ZH, DATE_DOTS, type LyricLayout, type LyricStyle } from './_motifs';
+import type { Line } from '../engine/lyrics';
 import { msgMaxFor, lyricV2, sigV2, V2 } from './_v2';
 import {
   sigInk, ink, paper, heatInk, paperLyric, makeCanvas, freeCanvas, shadowSprite, drawShadow, drawBarcode, beatsIn, barsIn,
@@ -30,7 +32,7 @@ import {
 } from './_t1';
 
 // 淺色的木頭長桌、午後的光：右下角 HUD 用深色字 → 亮版面
-export const spec: PlateSpecDecl = { group: 'type', family: 'doc', paper: true, energy: [0.2, 0.85], bars: [4, 8], weight: 1 };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'doc', paper: true, energy: [0.2, 0.85], bars: [4, 8], weight: 1 };
 
 type Ctx2 = CanvasRenderingContext2D;
 
@@ -47,8 +49,10 @@ const EDGE_V = 330;
 const MSG = { x: 40, y: 176, w: 1060, h: 330 };
 const ROUTE = { y: 132, from: 40, to: 700 };
 const PA = { x: 76, base: 650, maxW: 1030 };
-/** 有韓文原文副行的窗格：登機廣播那一段往上挪多少（沒有留言時祝福欄的邀請在更上面，還有空）。 */
-const SUB_UP = 60;
+/** 有韓文原文副行的窗格：登機廣播那一段最多往上挪多少（沒有留言時祝福欄的邀請在更上面，還有空；分隔線不能壓到署名）。 */
+const SUB_UP = 100;
+/** 有原文的窗格祝福欄下緣收多少（紙面 px）：登機廣播多挪上來的那一段不能壓到留言與署名。 */
+const SUB_MSG = 40;
 
 const PASS_TEXT = '登機證愛情航空旅客相遇永遠座位登機廣播已登機候補全體賓客一位賓客間奏中請旅客耐心等候本班機全程播放純音樂掃描右下角把祝福寫上大螢幕新人';
 
@@ -76,6 +80,8 @@ export default class Boarding extends Scene {
   fit: FitResult | null = null;
   /** 紙面 px → 螢幕 px 的縮放（登機證的縮放 × 鏡頭在留言那裡的縮放）：v2 的字級是螢幕 px。 */
   S = 1;
+  /** 登機廣播那一條在畫面上的縮放（鏡頭從遠推近，取最遠的時候）：原文照它換算螢幕字級。 */
+  sPA = 1;
   /** 歌詞字級（紙面 px）。 */
   lyrPx = 60;
   /** 登機廣播（歌詞）的基線：有韓文原文的窗格往上挪 SUB_UP。 */
@@ -84,6 +90,8 @@ export default class Boarding extends Scene {
   planes: number[] = [];
   /** 寫留言那一塊的寬高（紙面 px；v2：螢幕上 ≤ 840 × 420）。 */
   msgW = 1060; msgH = 330;
+  /** 祝福欄實際的高（有原文的窗格收掉 SUB_MSG）。 */
+  msgBoxH = MSG.h;
   msgFam = F.hand(700);
   chars: PChar[] = [];
   isInvite = false;
@@ -116,7 +124,7 @@ export default class Boarding extends Scene {
     this.seat = m?.couple ? '1A' : `${((n * 7) % 38) + 2}${'ABCDEF'[n % 6]}`;
     // 韓文歌的原文副行：在第一個 await 之前拿（副行開關是引擎在 init 開始前替這個窗格設的）
     const subs = lyrics.linesIn(s - 2, e + 1).map((l) => lyricSubOf(l)?.text ?? '').join('');
-    if (subs) this.paBase = PA.base - SUB_UP;
+    if (subs) this.msgBoxH = MSG.h - SUB_MSG;
     await loadText(PASS_TEXT + this.name + body + COUPLE_ZH + lyrics.linesIn(s - 2, e + 1).map((l) => l.text).join('') + subs);
 
     await yieldFrame();
@@ -138,18 +146,20 @@ export default class Boarding extends Scene {
     this.camA = { ...this.camB, tu: 1040, tv: 600, dist: this.camB.dist * 1.06, tilt: 0.6, yaw: 0.04 };
     const [mu, mv] = toDesk(MSG.x + MSG.w / 2, MSG.y + MSG.h / 2);
     this.S = K * deskScale(this.camB, mu, mv);
+    const [pu, pv] = toDesk(PA.x + PA.maxW / 2, PA.base - SUB_UP);
+    this.sPA = K * Math.min(deskScale(this.camA, pu, pv), deskScale(this.camB, pu, pv));
     const S = this.S;
 
     // ---- 祝福欄：留言 40～60 螢幕 px（依字數），照子句斷行；下面留一行給署名
     const sigGuess = sigV2(msgMaxFor(body)) / S;
-    this.msgW = Math.min(MSG.w, 840 / S); this.msgH = Math.min(MSG.h, 420 / S);
+    this.msgW = Math.min(MSG.w, 840 / S); this.msgH = Math.min(this.msgBoxH, 420 / S);
     const box = { w: this.msgW, h: this.msgH - sigGuess * 1.7 };
     const o = { min: V2.msgMin / S, max: msgMaxFor(body) / S, lineHeight: 1.26, maxLines: 4 };
     this.fit = fitV2(c, body, this.msgFam, box.w, box.h, o);
     const fit = this.fit;
     // 留言＋署名整塊在祝福欄裡垂直置中（短留言不要擠在上面、下面空一大片）
     const blockH = fit.height + sigV2(fit.size * S) / S * 1.5;
-    const top = MSG.y + Math.max(0, (MSG.h - blockH) / 2) + fit.size * 0.9;
+    const top = MSG.y + Math.max(0, (this.msgBoxH - blockH) / 2) + fit.size * 0.9;
     this.chars = [];
     fit.lines.forEach((ln, row) => {
       const lay = layout(ln, this.msgFam, fit.size);
@@ -162,6 +172,9 @@ export default class Boarding extends Scene {
     this.sigX = Math.min(MSG.x + this.msgW, MSG.x + Math.max(fit.width, this.sigLay.width + 40)) - this.sigLay.width;
     this.sigY = top + (fit.lines.length - 1) * fit.lineHeight + fit.size * 0.42 + sigPx * 1.15;
     this.lyrPx = lyricV2(m ? msgScreen : null) / S;
+    // 有原文：登機廣播（小標、分隔線）往上挪 SUB_UP 讓出兩行的位置，但分隔線要留在署名下面
+    // （四行的長留言就少挪一點，最少照舊挪 60；放不下的由中文縮小一點來讓）
+    if (subs) this.paBase = Math.min(PA.base - 60, Math.max(PA.base - SUB_UP, this.sigY + sigPx * 0.4 + 16 + this.lyrPx * 0.95 + 34));
 
     // ---- 時間表
     const B = (this.B = au.beatPeriod(s + 0.1));
@@ -507,7 +520,7 @@ export default class Boarding extends Scene {
     const ly = lyricAt(lyrics, t);
     if (ly) {
       const stl = paperLyric(F.archivo(100, 800), this.lyrPx, PA.maxW, { lineHeight: 1.1, minSize: V2.lyrMin / this.S });
-      const lay = layoutLyric(c, ly.line, stl);
+      const lay = screenSub(c, ly.line, stl, layoutLyric(c, ly.line, stl), this.sPA);
       const inK = ease.outExpo(prog(t, ly.line.start - 0.35, ly.line.start + 0.15));
       c.save();
       if (lay.sub) {
@@ -519,7 +532,7 @@ export default class Boarding extends Scene {
         for (let sz = stl.size; depth(l2) > floor - ceil && sz > minSize;) {
           sz = Math.max(minSize, sz * 0.94);
           st2 = { ...stl, size: sz };
-          l2 = layoutLyric(c, ly.line, st2);
+          l2 = screenSub(c, ly.line, st2, layoutLyric(c, ly.line, st2), this.sPA);
         }
         c.translate(PA.x, ceil + Math.max(0, (floor - ceil - depth(l2)) / 2) + 0.9 * l2.size + (1 - inK) * 12);
         drawLyric(c, ly.line, t, st2, l2, ly.k);
@@ -543,6 +556,20 @@ export default class Boarding extends Scene {
     c.fillText(lyrics.has ? '間奏中，請旅客耐心等候' : '本班機全程播放純音樂', PA.x, this.paBase);
     c.restore();
   }
+}
+
+/**
+ * 原文副行照「螢幕」字級重排（2026-09-30 雙語普查）：subSizeFor 的 32～56 是螢幕 px，登機證在畫面上只有 S 倍大，
+ * 照紙面座標排的原文上了螢幕只剩 26 px。中文不動，原文換成 subSizeFor(中文的螢幕字級) ÷ S，drawLyric 照這個排版畫。
+ * 鏡頭斜斜地看著桌面，字在畫面上會被壓扁一成左右，所以原文至少排 35 螢幕 px（量起來約 31），太長就折行、不再縮。
+ */
+function screenSub(c: Ctx2, line: Line, st: LyricStyle, lay: LyricLayout, S: number): LyricLayout {
+  const sub = lyricSubOf(line);
+  if (!sub || !lay.sub) return lay;
+  const size = Math.max(35, subSizeFor(lay.size * S)) / S;
+  const sl = layoutLyric(c, sub, { ...subStyleFor(st, lay.size), size, minSize: size });
+  const dy = lay.sub.dy - subGap(lay.size, lay.sub.lay.size) + subGap(lay.size, sl.size);
+  return { ...lay, sub: { lay: sl, dy }, height: dy + (sl.height - sl.size) + lay.size };
 }
 
 /** 側面的噴射客機剪影（機身、垂直尾翼、主翼、發動機），頭朝 +x；pitch 是抬頭的角度（負的是機頭往上）。 */

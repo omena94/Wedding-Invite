@@ -19,18 +19,20 @@ import { LineBatch } from '../engine/lines';
 import { F, font, loadText } from '../engine/type';
 import { LIN, rgba } from '../engine/palette';
 import { clamp, ease, prog, hash, lerp } from '../engine/util';
-import { lyricAt, WEDDING_DATE, COUPLE_ZH, lyricSubOf, layoutLyric, subStyleFor, subGap, drawLyricSub, type LyricStyle } from './_motifs';
+import { lyricAt, WEDDING_DATE, COUPLE_ZH, lyricSubOf, layoutLyric, subStyleFor, subSizeFor, subGap, drawLyric, type LyricStyle } from './_motifs';
 import { grid, stagger, layoutRows, drawRows, type KaraokeInk } from './_t4';
 import { PlaneCam, camUniforms, CAM_GLSL, orderMask, lineItems, msgBlockV2, INVITE, type OrderMask, type MsgBlock, type MaskItem, type Rect, type P2 } from './_t14';
 import { lyricV2 } from './_v2';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'craft', paper: false, energy: [0.2, 0.85], bars: [4, 8], weight: 1 };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'craft', paper: false, energy: [0.2, 0.85], bars: [4, 8], weight: 1 };
 
 /** 黑板：下緣停在 760（粉筆槽 774～812），右下角 HUD（y ≥ 830）底下是牆。 */
 const BOARD = { x0: 80, y0: 70, x1: 1840, y1: 760 };
 /** 留言在左邊這一塊（螢幕上寬 ≤ 860、高 ≤ 430，init 依鏡頭縮放換算）；歌詞在最上面一行。 */
 const MSG_BOX = { x: 190, y: 250, w: 800, h: 440 };
 const LYR_S = { x: 190, y: 176, w: 1250 };
+/** 原文副行最小的螢幕字級（比 subSizeFor 的 32 大一點：粉筆字的字面小、黑板有透視）。 */
+const SUB_MIN = 36;
 /** 沒有留言：歌詞寫在左邊這一塊。 */
 const BIG = { x: 190, y: 280, w: 820, h: 330 };
 /** 右上角的日期與值日生（右對齊）。 */
@@ -307,7 +309,9 @@ export default class Chalkboard extends Scene {
       // 原文（韓文歌）：同一支白粉筆寫在中文正下方。字級照螢幕 px 算（黑板座標要除以 k），整組一起置中、一起被板擦擦掉
       const sub = lyricSubOf(line), kk = this.k, ms = lay.size * kk;
       const sst: LyricStyle = { family: FAM, size: ms, maxWidth: lz.w * kk, align: 'left', sung: ink.sung, unsung: ink.unsung };
-      const sLay = sub ? layoutLyric(c, sub, subStyleFor(sst, ms)) : null;
+      // 雙語（2026-09-30）：粉筆字的字面小、黑板又是斜斜地往上看，原文至少排 SUB_MIN 螢幕 px；太長就折行、不再縮
+      const sPx = Math.max(SUB_MIN, subSizeFor(ms));
+      const sLay = sub ? layoutLyric(c, sub, { ...subStyleFor(sst, ms), size: sPx, minSize: sPx }) : null;
       const sGap = sLay ? subGap(ms, sLay.size) / kk : 0;
       const sExtra = sLay ? sGap + (sLay.height - sLay.size) / kk : 0;
       const y = lz.rows > 1 ? lz.y - ((lay.rows.length - 1) * lay.lineHeight + sExtra) / 2 : lz.y;
@@ -320,7 +324,8 @@ export default class Chalkboard extends Scene {
       if (sub) {
         c.translate(0, (lay.rows.length - 1) * lay.lineHeight + sGap);
         c.scale(1 / kk, 1 / kk);
-        drawLyricSub(c, sub, t, sst, ms, ly ? ly.k : 1);
+        // drawLyric 只畫 lay.sub（主行是空的）：照上面自己排好的原文畫，顏色、淡化跟一般原文副行一樣
+        drawLyric(c, line, t, sst, { size: ms, rows: [], words: [], height: 0, sub: { lay: sLay!, dy: 0 } }, ly ? ly.k : 1);
       }
       c.restore();
       // 擦過的白霧帶：蓋到最後一排（有原文就到原文那一排）的下緣

@@ -27,7 +27,7 @@ import { sigInk } from './_t1';
 import { loadWindow, revealAt, beatsBetween, v2Block } from './_t18';
 import { lyricV2, V2 } from './_v2';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'game', paper: true, energy: [0.25, 0.9], bars: [4, 8], weight: 1 };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'game', paper: true, energy: [0.25, 0.9], bars: [4, 8], weight: 1 };
 
 // ---------------------------------------------------------------- 籤詩（紙面像素，左上原點；直的一張）
 const PW = 860, PH = 1000;
@@ -208,7 +208,8 @@ export default class Fortune extends Scene {
     const bar = g.bars.find((x) => x > this.u2 + 0.45);
     this.tStamp = bar !== undefined && bar < e - 0.6 ? bar : Math.min(this.u2 + B * 1.5, e - 0.4);
     this.knocks = g.bars.filter((x) => x > this.tr + 0.8 && x < e - 0.2);
-    this.koJie = !this.msg && this.ctx.lyrics.linesIn(s - 1, e + 1).some((l) => !!lyricSubOf(l));
+    // 雙語（2026-09-30）：有留言也照樣有原文，一樣把分隔線往上挪；留言（含署名）碰到新的分隔線就不挪（畫完留言再決定）
+    this.koJie = this.ctx.lyrics.linesIn(s - 1, e + 1).some((l) => !!lyricSubOf(l));
     // 擲筊：蓋完章之後，每兩小節一次（每次都是聖筊：一正一反）
     const tb = g.bars.filter((x) => x > this.tStamp + 0.3 && x < e - 0.9);
     for (let i = 0; i < tb.length; i += 2) {
@@ -239,14 +240,11 @@ export default class Fortune extends Scene {
     c.fillStyle = red;
     for (const [x, y] of [[44, 44], [PW - 44, 44], [44, PH - 44], [PW - 44, PH - 44]]) c.fillRect(x! - 8, y! - 8, 16, 16);
     c.fillRect(64, 150, PW - 128, 2);
-    c.fillRect(64, this.koJie ? 646 : 690, PW - 128, 2);
-    // 籤號、解曰（小字：螢幕上 ≤ 22 px）
+    // 籤號（小字：螢幕上 ≤ 22 px）
     c.textBaseline = 'alphabetic';
     c.font = font(F.ming(700), 26); c.letterSpacing = '8px';
     const no = this.msg ? this.msg.n : this.ctx.song.index;
     c.fillText(`第 ${String(Math.max(0, no)).padStart(3, '0')} 籤`, POEM.x, 112);
-    c.font = font(F.hei(700), 26); c.letterSpacing = '4px';
-    c.fillText('解曰：', JIE.x, this.koJie ? 712 : JIE.y);
     c.letterSpacing = '0px';
     // 詩：主打留言（v2：螢幕上 40～60 px，紙上的字級要除以 PS；沒有留言：原創的七言籤詩）
     c.fillStyle = rgba('sepia', 0.96);
@@ -263,6 +261,13 @@ export default class Fortune extends Scene {
       c.textAlign = 'left'; c.letterSpacing = '0px';
       this.lyrSize = lyricV2(null);
     }
+    // 分隔線與「解曰」（小字）：有原文的窗格往上挪一段，讓中文＋原文兩段都放得下；留言的署名要在分隔線上面
+    if (this.koJie && this.block && this.block.sig.y + this.block.sig.size * 0.35 > 646 - 14) this.koJie = false;
+    c.fillStyle = red;
+    c.fillRect(64, this.koJie ? 646 : 690, PW - 128, 2);
+    c.font = font(F.hei(700), 26); c.letterSpacing = '4px';
+    c.fillText('解曰：', JIE.x, this.koJie ? 712 : JIE.y);
+    c.letterSpacing = '0px';
     this.paper.upload();
   }
 
@@ -279,7 +284,8 @@ export default class Fortune extends Scene {
       const size = Math.max(V2.lyrMin / PS, (this.lyrSize / PS) * Math.pow(0.95, k));
       const lay = layoutRows(c, line, { family: FAM_LYR, size, minSize: V2.lyrMin / PS, maxW: JIE.w, maxRows: 2, lineHeight: 1.1 });
       const ss = subSizeFor(lay.size * PS) / PS;
-      const sl = layoutRows(c, sub, { family: FAM_LYR, size: ss, minSize: Math.min(ss, 26 / PS), maxW: JIE.w, maxRows: 2, lineHeight: 1.1 });
+      // 原文不再縮（≥ 32 螢幕 px），太長就折成兩行
+      const sl = layoutRows(c, sub, { family: FAM_LYR, size: ss, minSize: ss, maxW: JIE.w, maxRows: 2, lineHeight: 1.1 });
       const gap = (lay.rows.length - 1) * lay.lineHeight + subGap(lay.size, sl.size);
       out = { lay, sl, gap };
       if (top + lay.size * 0.8 + gap + (sl.rows.length - 1) * sl.lineHeight + sl.size * 0.25 <= bottom) break;

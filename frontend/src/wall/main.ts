@@ -826,7 +826,7 @@ function setupExport() {
      * message = 主打第幾則假留言（1 起算）；theme = 配色；analysis = 之前算好的分析（腳本會快取，省時間）。
      * 回傳這首歌的分析（腳本存起來下次用）與時間軸。
      */
-    async setup(o: { song?: string; scene?: string; params?: Record<string, any>; message?: number; theme?: string; analysis?: any; lrc?: string; trans?: string; ko?: boolean; koAlt?: boolean; from?: number; to?: number } = {}) {
+    async setup(o: { song?: string; scene?: string; params?: Record<string, any>; message?: number; theme?: string; analysis?: any; lrc?: string; trans?: string; ko?: boolean; koAlt?: boolean; koNoSub?: boolean; from?: number; to?: number } = {}) {
       const d = (o.song ? devSongs.find((s) => s.file === o.song) : devSongs[0]);
       let audio: AudioData, lyrics: Lyrics, json: any = null;
       if (d) {
@@ -840,6 +840,8 @@ function setupExport() {
         // 跟原本的畫面一比，只有原文裡的韓文字形不一樣 → 量得到原文在畫面上實際多大
         if (ko && o.koAlt) ko.lrc = ko.lrc.replace(/[\uAC00-\uD7A3]/g, (ch) => { const i = ch.charCodeAt(0) - 0xac00; return String.fromCharCode(0xac00 + ((i + 588) % 11172)); });
         lyrics = ko ? buildLyrics(ko.lrc, audio, 0, ko.trans) : buildLyrics(o.lrc ?? (d.lrc || dummyLrc(audio)), audio, 0, o.trans ?? d.trans ?? '');
+        // koNoSub（bi 模式的對照格）：中文照舊、整首拿掉原文副行——已經標 bilingual 的版面也比得出「原文佔了哪裡」
+        if (ko && o.koNoSub) lyrics = lyrics.withoutSub();
         // 截圖要確定性：歌詞（連韓文副行）的字型先載好再畫
         await loadText(lyrics.lines.map((l) => l.text + (l.sub?.text ?? '')).join(''));
       } else { audio = AudioData.silent(120); lyrics = buildLyrics(dummyLrc(audio), audio); }

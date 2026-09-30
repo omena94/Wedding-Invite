@@ -18,12 +18,13 @@ import { F, font, loadText } from '../engine/type';
 import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, pulse, hash, frameIdx } from '../engine/util';
 import { fitText } from '../engine/text';
-import { lyricAt, layoutLyric, drawLyric, beatAfter, drawHeart, fillWithHearts, COUPLE_ZH, lyricSubOf } from './_motifs';
+import { lyricAt, layoutLyric, drawLyric, beatAfter, drawHeart, fillWithHearts, COUPLE_ZH, lyricSubOf, subSizeFor, subStyleFor, subGap, type LyricLayout, type LyricStyle } from './_motifs';
+import type { Line } from '../engine/lyrics';
 import { msgMaxFor, lyricV2, sigV2, fitClauses } from './_v2';
 import { darkInk } from './_t4';
 import { sigOf, applyOrbit, lerpOrbit, toScreen, T17_INVITE, T17_TEXT, type OrbitCam, type V3 } from './_t17';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'game', paper: false, energy: [0.25, 0.9], bars: [4, 8], weight: 1 };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'game', paper: false, energy: [0.25, 0.9], bars: [4, 8], weight: 1 };
 
 /** 牌的大小（世界單位）與圖集。 */
 const CW = 300, CH = 420, RES = 1.5;
@@ -35,7 +36,9 @@ const LIGHT: V3 = [-0.35, 0.55, 1];
 /** 弧線文字的畫布大小（世界單位 ≈ 螢幕像素）。 */
 const LW = 1700, LH = 150;
 /** 有韓文原文時，中文＋原文擠在展開的牌與 K、Q 之間：中文最上緣、原文最下緣在字帶上的範圍（再下去是 K、Q 的上緣）。 */
-const SUB_TOP = 4, SUB_BOT = 110;
+const SUB_TOP = 4, SUB_BOT = 118;
+/** 原文最小的螢幕字級：毛氈是斜斜地躺著的，字在畫面上會被壓扁一成多，排 36 量起來才有 31。 */
+const SUB_MIN = 36;
 
 const PRE = /* glsl */ `precision highp float;\nprecision highp int;\n`;
 const VERT = /* glsl */ `${PRE}
@@ -192,6 +195,19 @@ const SP_Y = 330;
 /** 翻牌浪潮裡一張牌翻過去要多久。 */
 const FL = 0.26;
 
+/**
+ * 原文副行照「螢幕」字級重排（2026-09-30 雙語）：subSizeFor 的 32～56 是螢幕 px，毛氈上的字在畫面上只有 pxLyr 倍大、又被透視壓扁，
+ * 照畫布 px 排的原文上了螢幕只剩 24 px。中文不動，原文換成 max(SUB_MIN, subSizeFor(中文的螢幕字級)) ÷ pxLyr，太長就折行、不再縮。
+ */
+function feltSub(c: CanvasRenderingContext2D, line: Line, st: LyricStyle, lay: LyricLayout, px: number): LyricLayout {
+  const sub = lyricSubOf(line);
+  if (!sub || !lay.sub) return lay;
+  const size = Math.max(SUB_MIN, subSizeFor(lay.size * px)) / px;
+  const sl = layoutLyric(c, sub, { ...subStyleFor(st, lay.size), size, minSize: size });
+  const dy = lay.sub.dy - subGap(lay.size, lay.sub.lay.size) + subGap(lay.size, sl.size);
+  return { ...lay, sub: { lay: sl, dy }, height: dy + (sl.height - sl.size) + lay.size };
+}
+
 export default class Cards extends Scene {
   rig = shared('cards.rig', () => new Rig());
   lyrL = this.track(new Layer2D(LW, LH, 1.4, { fast: true }));
@@ -210,6 +226,8 @@ export default class Cards extends Scene {
   t1 = 0; tDone = 0; tNudge = 0; B = 0.5; sweep = 0.4;
   arc: [number, number, number] = [0, 0, 0];
   lyrSize = 52;
+  /** 毛氈上的字（弧線畫布 px）→ 螢幕 px：原文照螢幕字級換算。 */
+  pxLyr = 1;
   camA!: OrbitCam; camB!: OrbitCam;
   m4 = new THREE.Matrix4(); q = new THREE.Quaternion(); e = new THREE.Euler(); v = new THREE.Vector3(); s3 = new THREE.Vector3();
 
@@ -333,6 +351,7 @@ export default class Cards extends Scene {
     tx.needsUpdate = true;
     // 歌詞（印在毛氈的弧線上）：v2 的字級換成毛氈上的單位
     this.lyrSize = Math.round(lyricV2(m ? msgPx : null) / pxLyr);
+    this.pxLyr = pxLyr;
     const R = 2600;
     this.arc = [0, LYR_Y + R, R];
   }
@@ -530,7 +549,7 @@ export default class Cards extends Scene {
           // 中文折兩行放不下時整組縮小（最小 36）
           for (let s = st.size; ; s -= 2) {
             const s2 = { ...st, size: s, minSize: Math.min(s, st.minSize) };
-            const l2 = layoutLyric(c, ly.line, s2);
+            const l2 = feltSub(c, ly.line, s2, layoutLyric(c, ly.line, s2), this.pxLyr);
             const y = SUB_BOT - l2.sub!.lay.size * 0.22 - (l2.height - l2.size);
             st = s2; lay = l2; y0 = y;
             if (y - l2.size * 0.9 >= SUB_TOP || s <= 36) break;

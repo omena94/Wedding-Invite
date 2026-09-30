@@ -24,7 +24,8 @@ import { F, font, layout, loadText, measure, type TextLayout } from '../engine/t
 import { mixRgba, rgba } from '../engine/palette';
 import { clamp, ease, hash, lerp, mulberry32, prog, pulse, frameIdx, fbm2, TAU } from '../engine/util';
 import type { FitResult } from '../engine/text';
-import { lyricAt, drawLyric, layoutLyric, beatAfter, sparkHead, sparkParticles, heartPoints, COUPLE_ZH, DATE_DOTS, lyricSubOf } from './_motifs';
+import { lyricAt, drawLyric, layoutLyric, beatAfter, sparkHead, sparkParticles, heartPoints, COUPLE_ZH, DATE_DOTS, lyricSubOf, subSizeFor, subStyleFor, subGap, type LyricLayout, type LyricStyle } from './_motifs';
+import type { Line } from '../engine/lyrics';
 import { msgMaxFor, lyricV2, sigV2, V2 } from './_v2';
 import {
   sigInk, ink, paper, paperLyric, makeCanvas, freeCanvas, inkStamp, arcText, writeGlyph, beatsIn, barsIn, ensureBake, themeKey, fitMsg, yieldFrame, heartGlyph,
@@ -32,7 +33,7 @@ import {
 } from './_t1';
 
 // 夜裡的皮革行李箱、一盞燈：四周是暗的，右下角 HUD 用淺色字 → 暗版面
-export const spec: PlateSpecDecl = { group: 'type', family: 'doc', paper: false, energy: [0.35, 1], bars: [4, 8], weight: 1 };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'doc', paper: false, energy: [0.35, 1], bars: [4, 8], weight: 1 };
 
 type Ctx2 = CanvasRenderingContext2D;
 
@@ -47,6 +48,8 @@ const VISA = { x: 78, y: 130, w: 690, h: 520 };
 const VMSG = { x: VISA.x + 44, y: VISA.y + 100, w: VISA.w - 88, h: 300 };
 /** 官員註記（歌詞）：左頁下方。 */
 const NOTE = { x: 96, label: 712, base: 790, maxW: 690 };
+/** 有原文的窗格：官員註記整段往上挪多少（簽證章下緣在 650），歌詞＋原文的底不能超過 NOTE_FLOOR（頁面下緣上面一點）。 */
+const NOTE_UP = 20, NOTE_FLOOR = 940;
 /** 舊旅行地圖（桌面座標）：墊在護照底下、比護照大，四周露出來。 */
 const MAP = { x: -120, y: -10, w: 1860, h: 1080, rot: 0.04 };
 /** 地圖上的站（桌面座標）：護照外面露出來的地方；每兩小節多一站。 */
@@ -109,11 +112,16 @@ export default class Passport extends Scene {
   pins: number[] = [];
   /** 跨頁 px → 螢幕 px（K × 鏡頭在簽證章那裡的縮放）：v2 的字級是螢幕 px。 */
   S = 1;
+  /** 官員註記那一行在畫面上的縮放（鏡頭從遠推近，取最遠的時候）：原文照它換算螢幕字級。 */
+  sNote = 1;
+  /** 官員註記往上挪了多少（有原文的窗格 = NOTE_UP）。 */
+  noteUp = 0;
   lyrPx = 56;
 
   override async init() {
     const { audio: au, lyrics, start: s, end: e } = this.ctx;
     const m = this.msg;
+    this.noteUp = lyrics.linesIn(s, e).some((l) => lyricSubOf(l)) ? NOTE_UP : 0;
     this.kind = !m ? 'invite' : m.couple ? 'couple' : 'msg';
     this.holder = m ? (m.couple ? COUPLE_ZH : m.name || '一位賓客') : '全體賓客';
     const body = m ? m.text : '掃描右下角 QR code，把祝福寫上大螢幕。';
@@ -134,6 +142,8 @@ export default class Passport extends Scene {
     this.pins = barsIn(au, s + 0.3, e - 0.3).filter((_, i) => i % 2 === 0);
     const [vu, vv] = toDesk(VMSG.x + VMSG.w / 2, VMSG.y + VMSG.h / 2);
     this.S = K * deskScale(this.camB, vu, vv);
+    const [nu, nv] = toDesk(NOTE.x + NOTE.maxW / 2, NOTE.base);
+    this.sNote = K * Math.min(deskScale(this.camA, nu, nv), deskScale(this.camB, nu, nv));
     const S = this.S;
 
     // ---- 時間：大章在第一個拍點，接著寫留言（最多兩小節、最多窗格的四成），再簽持有人
@@ -535,16 +545,24 @@ export default class Passport extends Scene {
   private drawNote(c: Ctx2, t: number) {
     const { lyrics } = this.ctx;
     c.fillStyle = ink(0.5);
-    c.font = font(F.hei(500), 16); c.letterSpacing = '4px'; c.fillText('♪ 官員註記', NOTE.x, NOTE.label);
+    c.font = font(F.hei(500), 16); c.letterSpacing = '4px'; c.fillText('♪ 官員註記', NOTE.x, NOTE.label - this.noteUp);
     c.letterSpacing = '0px';
-    c.fillStyle = ink(0.22); c.fillRect(NOTE.x, NOTE.label + 12, NOTE.maxW, 1.1);
+    c.fillStyle = ink(0.22); c.fillRect(NOTE.x, NOTE.label - this.noteUp + 12, NOTE.maxW, 1.1);
     const ly = lyricAt(lyrics, t);
     if (ly) {
-      const st = paperLyric(F.archivo(100, 800), this.lyrPx, NOTE.maxW, { minSize: V2.lyrMin / this.S });
-      const lay = layoutLyric(c, ly.line, st);
+      let st = paperLyric(F.archivo(100, 800), this.lyrPx, NOTE.maxW, { minSize: V2.lyrMin / this.S });
+      let lay = screenSub(c, ly.line, st, layoutLyric(c, ly.line, st), this.sNote);
+      // 有原文：整塊（到原文最後一排的字腳）要在頁面下緣上面，放不下就把中文縮小一點（不小於 40 螢幕 px）；原文不縮
+      const base = NOTE.base - this.noteUp, minSize = st.minSize ?? st.size;
+      const bottom = (l: LyricLayout) => base + l.height - l.size + 0.25 * (l.sub?.lay.size ?? 0);
+      for (let sz = st.size; lay.sub && bottom(lay) > NOTE_FLOOR && sz > minSize;) {
+        sz = Math.max(minSize, sz * 0.94);
+        st = { ...st, size: sz };
+        lay = screenSub(c, ly.line, st, layoutLyric(c, ly.line, st), this.sNote);
+      }
       const inK = ease.outExpo(prog(t, ly.line.start - 0.35, ly.line.start + 0.15));
       c.save();
-      c.translate(NOTE.x, NOTE.base + (1 - inK) * 16);
+      c.translate(NOTE.x, base + (1 - inK) * 16);
       drawLyric(c, ly.line, t, st, lay, ly.k);
       c.restore();
       return;
@@ -558,13 +576,27 @@ export default class Passport extends Scene {
     c.globalAlpha = k;
     c.fillStyle = ink(0.6);
     c.font = font(F.hand(700), 40);
-    c.fillText(lyrics.has ? '間奏中' : '本曲為純音樂，請自行哼唱', NOTE.x, NOTE.base);
+    c.fillText(lyrics.has ? '間奏中' : '本曲為純音樂，請自行哼唱', NOTE.x, NOTE.base - this.noteUp);
     c.restore();
   }
 }
 
 // ------------------------------------------------------------------ 章的樣子
 /** 印章的章身（俯視）：木頭色的圓角方塊、側邊暗一點、中間一個圓握把（跟主題的墨色與紙色混出來）。 */
+/**
+ * 原文副行照「螢幕」字級重排（2026-09-30 雙語普查）：subSizeFor 的 32～56 是螢幕 px，紙在畫面上只有 S 倍大，
+ * 照紙面座標排的原文上了螢幕只剩 26 px。中文不動，原文換成 subSizeFor(中文的螢幕字級) ÷ S，drawLyric 照這個排版畫。
+ * 鏡頭斜斜地看著桌面，字在畫面上會被壓扁一成左右，所以原文至少排 35 螢幕 px（量起來約 31），太長就折行、不再縮。
+ */
+function screenSub(c: Ctx2, line: Line, st: LyricStyle, lay: LyricLayout, S: number): LyricLayout {
+  const sub = lyricSubOf(line);
+  if (!sub || !lay.sub) return lay;
+  const size = Math.max(35, subSizeFor(lay.size * S)) / S;
+  const sl = layoutLyric(c, sub, { ...subStyleFor(st, lay.size), size, minSize: size });
+  const dy = lay.sub.dy - subGap(lay.size, lay.sub.lay.size) + subGap(lay.size, sl.size);
+  return { ...lay, sub: { lay: sl, dy }, height: dy + (sl.height - sl.size) + lay.size };
+}
+
 function makeHandle() {
   const s = makeCanvas(300, 300, 1);
   const c = s.c;

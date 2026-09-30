@@ -45,8 +45,13 @@ const tracked = process.argv.includes('--tracked')
   ? new Set(execSync('git ls-files src/wall/scenes', { cwd: ROOT, encoding: 'utf8' }).split(/\r?\n/).map((f) => path.basename(f, '.ts')))
   : null;
 const built = rows.filter((r) => existsSync(path.join(scenes, `${r.name}.ts`)) && (!tracked || tracked.has(r.name)));
-// 雙語版面（有翻譯的歌只排這種）：看版面檔自己宣告的 spec.bilingual
-for (const r of built) r.bilingual = /\bbilingual\s*:\s*true\b/.test(readFileSync(path.join(scenes, `${r.name}.ts`), 'utf8'));
+// 雙語版面（有翻譯的歌只排這種）：看版面檔自己宣告的 spec.bilingual。
+// --tracked 讀「要 commit 的版本」（git 暫存區），不讀工作目錄：同事可能正在改某個版面、先加了 bilingual 還沒交件，
+// 讀工作目錄會讓後台清單標成雙語、但 commit 進去的版面檔沒有（2026-09-30 boarding 等三個發生過）。
+const source = (name) => tracked
+  ? execSync(`git show :./src/wall/scenes/${name}.ts`, { cwd: ROOT, encoding: 'utf8', maxBuffer: 1 << 26 })
+  : readFileSync(path.join(scenes, `${name}.ts`), 'utf8');
+for (const r of built) r.bilingual = /\bbilingual\s*:\s*true\b/.test(source(r.name));
 const out = `// 自動產生（node scripts/wall-catalog.mjs），不要手改：大螢幕版面清單，後台「大螢幕版面」頁用。
 export interface PlateInfo { name: string; title: string; family: string; light: boolean; couple: boolean; bilingual: boolean; idea: string }
 export const PLATE_CATALOG: PlateInfo[] = ${JSON.stringify(built, null, 1)};

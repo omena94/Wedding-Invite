@@ -8,7 +8,8 @@
 //   node scripts/wall-render.mjs perf   --scene stars --from 20 [--n 180]
 //   node scripts/wall-render.mjs timeline [--song x.mp3]      （印出導演排出來的時間軸）
 //   node scripts/wall-render.mjs ko --scene a,b,c              （韓文歌原文副行驗收，每個版面一張 wall-out/ko/<版面>.jpg）
-//   node scripts/wall-render.mjs bi --scene a,b,c              （雙語普查：有翻譯＋有主打留言時三樣是不是都清楚，wall-out/bi/<版面>.jpg＋.json；加 --full 另存全尺寸 <版面>-1.jpg、-2.jpg）
+//   node scripts/wall-render.mjs bi --scene a,b,c              （雙語普查：有翻譯＋有主打留言時三樣是不是都清楚，wall-out/bi/<版面>.jpg＋.json；加 --full 另存全尺寸 <版面>-1.jpg、-2.jpg；
+//        加 --sung 改在句子唱完後量原文字級：淡的還沒唱的字會量小）
 //   stills／sheet 加 --ko：用韓文佔位歌詞＋中文翻譯（中文大字、韓文原文小字在下面）。
 //   stills／sheet／ko 加 --keep-sub：有主打留言的窗格也畫原文（params.keepSub，只給檢查用：看還沒標 bilingual 的版面三樣擠不擠）。
 //   不給 --scene：讓導演排整首歌（跟現場一樣）。
@@ -349,8 +350,8 @@ try {
         const sp = cand.sort((p, q) => Math.abs((p[0] + p[1]) / 2 - want) - Math.abs((q[0] + q[1]) / 2 - want))[0];
         if (!sp) { rep.cases.push({ label: cs.label, error: '窗格裡沒有有原文的句子' }); continue; }
         const t = sp[0] + (sp[1] - sp[0]) * 0.55;
-        // 先畫「不畫原文」的那一格，記下像素；再畫有原文的，比出差異
-        await page.evaluate((o) => window.__wall.setup(o), { ...base, params: {} });
+        // 先畫「不畫原文」的那一格（koNoSub：整首拿掉原文，已經標 bilingual 的版面也適用），記下像素；再畫有原文的，比出差異
+        await page.evaluate((o) => window.__wall.setup(o), { ...base, koNoSub: true, params: {} });
         await page.evaluate((tt) => window.__wall.still(tt), t);
         await page.evaluate(() => { const cv = new OffscreenCanvas(1920, 1080), c = cv.getContext('2d', { willReadFrequently: true }); c.drawImage(document.getElementById('c'), 0, 0, 1920, 1080); window.__bi.ref = c.getImageData(0, 0, 1920, 1080).data; });
         await page.evaluate((o) => window.__wall.setup(o), { ...base, params: { keepSub: true } });
@@ -404,9 +405,13 @@ try {
         }
         // 量原文的字：同一格再畫一次（韓文字換成別的字），兩張一比只剩韓文字形的差異；
         // 差異稍微膨脹（2 px）連成一個一個字／詞，取最高的那個 ≈ 韓文字身（約 0.78 個字級：karaoke 的 32 px 原文量起來 24～26 px）→ 原文在畫面上的字級（subFont）
+        // --sung：改在這一句快唱完時（原文大多是「唱完」的亮字）量：還沒唱的字很淡（粉筆、透視的紙上更淡），量起來會偏小；
+        // karaoke 的 32 px 這樣量是 32～33。字形差異量法本身有 ±3 px 的誤差（換掉的字跟原本的字筆畫重疊的地方量不到），要配合看圖
+        const tm = argv.includes('--sung') ? sp[1] - 0.05 : t;
+        if (tm !== t) await page.evaluate((tt) => window.__wall.still(tt), tm);
         await page.evaluate(() => { const cv = new OffscreenCanvas(1920, 1080), c = cv.getContext('2d', { willReadFrequently: true }); c.drawImage(document.getElementById('c'), 0, 0, 1920, 1080); window.__bi.withSub = c.getImageData(0, 0, 1920, 1080).data; });
         await page.evaluate((o) => window.__wall.setup(o), { ...base, koAlt: true, params: { keepSub: true } });
-        await page.evaluate((tt) => window.__wall.still(tt), t);
+        await page.evaluate((tt) => window.__wall.still(tt), tm);
         const g = await page.evaluate(() => {
           const W = 1920, Hh = 1080;
           const cv = new OffscreenCanvas(W, Hh), c = cv.getContext('2d', { willReadFrequently: true });
