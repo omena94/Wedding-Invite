@@ -1547,6 +1547,9 @@ tbody tr:last-child td { border-bottom: none; }
 .wr-conn.ok { background: #eaf1ea; color: #4c6b4e; }
 .wr-conn.wait { background: #fbf1dc; color: #8a6117; }
 .wr-conn.off { background: #f6eaea; color: #9e5a54; }
+.wr-lock { flex-wrap: wrap; align-items: center; }
+.wr-lock span { flex: 1 1 200px; }
+.wr-lock-tip { margin: -6px 0 14px; }
 .wr-now { text-align: center; }
 .wr-label { font-size: 12.5px; color: var(--text-muted); }
 .wr-title { margin-top: 4px; font-size: 20px; font-weight: 700; color: var(--milk-tea-900); word-break: break-word; }

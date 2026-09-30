@@ -59,7 +59,10 @@ export interface RemoteCommand { id: number; action: string; args: Record<string
 export const saveDuckLevel = (level: number) => api<{ level: number }>('/api/planner/wall/duck', { method: 'PUT', body: { level } });
 // 同時開好幾台時只有一台接收遙控（leader），screens 是現在開著幾台；claim = 按了「改由這台接收遙控」
 export const syncRemote = (body: { client: string; after: number; state: unknown; claim?: boolean }) =>
-  api<{ seq: number; commands: RemoteCommand[]; leader?: boolean; screens?: number }>('/api/planner/wall/remote/sync', { method: 'POST', body });
+  api<{ seq: number; commands: RemoteCommand[]; leader?: boolean; screens?: number; locked?: '' | 'mine' | 'other' }>('/api/planner/wall/remote/sync', { method: 'POST', body });
+// 鎖定遙控（2026-10-01）：鎖了之後別台搶不走，只有這台自己解除或後台強制解除
+export const lockRemote = (client: string) => api<{ locked: string }>('/api/planner/wall/remote/lock', { method: 'POST', body: { client } });
+export const unlockRemote = (client: string) => api<{ locked: string }>('/api/planner/wall/remote/unlock', { method: 'POST', body: { client } });
 
 const AUDIO_CACHE = 'wedding-wall-audio-v1';
 

@@ -402,6 +402,58 @@ def test_remote_two_screens(setup):
     assert s["screens"] == 0 and s["online"] is False and s["client"] == "hall" and s["age"] >= 11
 
 
+def test_remote_lock(setup):
+    """鎖定遙控（2026-10-01）：鎖在一台之後，別台按開始、搶遙控、鎖定都沒用；鎖定的那台斷線，別台也不接手；
+    只有它自己解除，或後台強制解除。"""
+    c, db, _ = setup
+    def sync(client, after, claim=False):
+        body = {"client": client, "after": after, "state": {"started": True, "song": {"title": client}}, "claim": claim}
+        return c.post("/api/planner/wall/remote/sync", json=body, headers=COUPLE).json()
+    lock = lambda client, h=COUPLE: c.post("/api/planner/wall/remote/lock", json={"client": client}, headers=h)
+    unlock = lambda client: c.post("/api/planner/wall/remote/unlock", json={"client": client}, headers=COUPLE)
+    cmd = lambda action: c.post("/api/planner/wall/remote/command", json={"action": action}, headers=COUPLE)
+    state = lambda: c.get("/api/planner/wall/remote/state", headers=COUPLE).json()
+
+    assert lock("ghost").status_code == 400  # 還沒同步過的代號不能鎖
+    a = sync("hall", -1)["seq"]
+    assert state()["locked"] is False
+    assert lock("hall").status_code == 200 and lock("hall").status_code == 200  # 重按沒關係
+    r = sync("hall", a)
+    assert r["leader"] is True and r["locked"] == "mine"
+    # 後來打開、按開始、按搶遙控的筆電：都還是備用，也鎖不走、解不開
+    b = sync("laptop", -1)["seq"]
+    r = sync("laptop", b, claim=True)
+    assert r["leader"] is False and r["locked"] == "other"
+    assert lock("laptop").status_code == 409 and unlock("laptop").status_code == 409
+    s = state()
+    assert s["locked"] is True and s["screens"] == 2 and s["state"]["song"]["title"] == "hall"
+    assert cmd("next").status_code == 201
+    assert sync("laptop", b)["commands"] == []
+    r = sync("hall", a)
+    assert [x["action"] for x in r["commands"]] == ["next"]
+    a = r["seq"]
+    # 鎖定的那台斷線：筆電照樣不接手，手機看到「鎖定的那台沒有連線」
+    from datetime import datetime, timedelta, timezone
+    from app.models import WallScreen
+    db.get(WallScreen, "hall").seen_at = datetime.now(timezone.utc) - timedelta(seconds=30)
+    db.commit()
+    assert sync("laptop", b)["leader"] is False
+    s = state()
+    assert s["locked"] is True and s["online"] is False and s["client"] == "hall" and s["screens"] == 1
+    # 同一個代號回來（重新整理）：還是它
+    assert sync("hall", a)["leader"] is True
+    # 沒有 wall 鑰匙的幫手不能鎖、不能強制解除
+    assert lock("hall", HELPER).status_code == 403
+    assert c.delete("/api/planner/wall/remote/lock", headers=HELPER).status_code == 403
+    # 後台強制解除：回到「最後按開始／搶遙控」的規則，筆電搶得到
+    assert c.delete("/api/planner/wall/remote/lock", headers=COUPLE).status_code == 200
+    assert state()["locked"] is False
+    assert sync("laptop", b, claim=True)["leader"] is True
+    # 鎖定的那台自己解除
+    assert lock("laptop").status_code == 200
+    assert unlock("laptop").status_code == 200 and state()["locked"] is False
+
+
 def test_duck_level(setup):
     """講話模式的音量（2026-09-30）：預設 20%，有 wall 鑰匙就能調（0～90），大螢幕從 feed 拿、手機遙控頁從 remote/state 拿。"""
     c, db, _ = setup

@@ -20,7 +20,7 @@ import { MessagePool } from './pool';
 import { Director } from './director';
 import { applyTheme, pickTheme } from './themes';
 import { loadSong, type LoadedSong } from './songs';
-import { fetchFeed, fetchSongs, getToken, login, saveDuckLevel, syncRemote, HttpError, type RemoteCommand, type SongRow } from './net';
+import { fetchFeed, fetchSongs, getToken, lockRemote, login, saveDuckLevel, syncRemote, unlockRemote, HttpError, type RemoteCommand, type SongRow } from './net';
 import { buildLyrics } from './lyrics/build';
 import { loadText } from './engine/type';
 import { DEV_LIVE, DEV_MESSAGES, dummyLrc, dummyKoLrc } from './dev/fixtures';
@@ -71,7 +71,8 @@ const statusLine = { text: '', ok: true };
 // 手機遙控（版面預覽、開發、截圖模式不參與）：同時開好幾台大螢幕時只有一台接收（伺服器決定），其他台是備用。
 // 放在這裡而不是下面「手機遙控」那段，是因為 updateUi 一開始就會用到
 const REMOTE = !DEV && !EXPORT && !PREVIEW;
-const remote = { leader: true, screens: 1, claim: false };
+// locked：mine = 鎖定在這台、other = 鎖定在別台（這台只能當備用）；unlockArm：按了一次「解除鎖定」的時間，要再按一次才真的解除
+const remote = { leader: true, screens: 1, claim: false, locked: '' as '' | 'mine' | 'other', unlockArm: 0 };
 
 declare global { interface Window { __wall: any } }
 
@@ -536,12 +537,19 @@ function updateUi() {
   $('ui-play').textContent = playing ? '暫停' : '播放';
   $('ui-status').textContent = `留言 ${pool.count} 則　${statusLine.text}`;
   $('ui-status').classList.toggle('bad', !statusLine.ok);
-  // 開了不只一台：這台是備用就說清楚、給一個搶回遙控的按鈕（手機遙控頁也會警告）
-  const multi = REMOTE && (!remote.leader || remote.screens > 1);
-  $('ui-remote').hidden = !multi;
-  $('ui-remote-text').textContent = !remote.leader ? `備用畫面：手機遙控的是另一台大螢幕（共 ${remote.screens} 台開著）`
-    : `另外還開著 ${remote.screens - 1} 台大螢幕，手機遙控的是這台`;
-  $('ui-claim').hidden = remote.leader;
+  // 手機遙控控制的是不是這台、有沒有鎖定（開了好幾台時手機遙控頁也會警告）
+  $('ui-remote').hidden = !REMOTE;
+  $('ui-remote').classList.toggle('locked', remote.locked === 'mine');
+  const others = remote.screens - 1;
+  $('ui-remote-text').textContent =
+    remote.locked === 'mine' ? `手機遙控已鎖定在這台，別台大螢幕搶不走${others > 0 ? `（另外 ${others} 台是備用）` : ''}`
+    : remote.locked === 'other' ? '備用畫面：手機遙控已鎖定在另一台大螢幕。要換到這台，請到後台「大螢幕遙控」按「強制解除鎖定」'
+    : !remote.leader ? `備用畫面：手機遙控的是另一台大螢幕（共 ${remote.screens} 台開著）`
+    : others > 0 ? `另外還開著 ${others} 台大螢幕，手機遙控的是這台（還沒鎖定）`
+    : '手機遙控的是這台（還沒鎖定：別台按「開始播放」會接走）';
+  $('ui-claim').hidden = remote.leader || !!remote.locked;
+  $('ui-lock').hidden = remote.locked === 'other';
+  $('ui-lock').textContent = remote.locked !== 'mine' ? '鎖定遙控在這台' : unlockArmed() ? '再按一次解除鎖定' : '解除鎖定';
   $('ui-queue-btn').classList.toggle('on', showQueue);
   $('ui-duck').classList.toggle('on', player.ducked);
   $('ui-duck').textContent = player.ducked ? '講話模式中（音樂小聲）' : '講話模式';
@@ -564,6 +572,7 @@ function bindUi() {
   on('ui-duck-down', () => setDuckLevel(duckLevel - 5, true));
   on('ui-duck-up', () => setDuckLevel(duckLevel + 5, true));
   on('ui-claim', () => { remote.claim = true; void remoteSync(); });
+  on('ui-lock', () => void toggleRemoteLock());
   for (const el of [ui, queueEl]) {
     el.addEventListener('pointerenter', () => { hovering = true; });
     el.addEventListener('pointerleave', () => { hovering = false; });
@@ -686,7 +695,58 @@ function setDuck(on: boolean) {
 // ------------------------------------------------------------------ 手機遙控（2026-09-30）
 // 每秒 POST 一次：回報播放狀態（手機遙控頁顯示），拿走手機按的指令照順序做。
 // 還沒按「開始播放」只回報、不做指令（現場還沒準備好）；備用畫面伺服器不給指令。
-const remoteClient = Math.random().toString(36).slice(2, 10);
+let remoteClient = ''; // 這個分頁的代號，boot 時 pickRemoteClient 決定
+const SS_CLIENT = 'wall_remote_client', LS_LOCKED = 'wall_remote_lock_client';
+const store = (s: () => Storage) => ({
+  get: (k: string) => { try { return s().getItem(k) || ''; } catch { return ''; } },
+  set: (k: string, v: string) => { try { if (v) s().setItem(k, v); else s().removeItem(k); } catch { /* 存不了就算了 */ } },
+});
+const ss = store(() => sessionStorage), ls = store(() => localStorage);
+/** 佔住代號：同一台電腦的另一個分頁（包括「複製分頁」會連 sessionStorage 一起複製）已經在用就回 false。 */
+function holdClient(id: string): Promise<boolean> {
+  if (!navigator.locks) return Promise.resolve(true);
+  return new Promise((done) => {
+    void navigator.locks.request(`wall-client-${id}`, { ifAvailable: true }, (lk) => {
+      done(!!lk);
+      return lk ? new Promise<void>(() => {}) : undefined; // 拿到就一直佔著，分頁關掉才放
+    });
+  });
+}
+/** 分頁代號要在重新整理後不變：鎖定的那台重新整理（或瀏覽器當掉重開）還是同一台，鎖才不會掉。
+ *  先用這個分頁的（sessionStorage），再用這台電腦鎖定過的（localStorage），都被別的分頁佔著才換新的。
+ *  重新整理時舊頁面可能還沒放掉代號，所以同一個代號多等幾次。 */
+async function pickRemoteClient() {
+  for (const id of [ss.get(SS_CLIENT), ls.get(LS_LOCKED)]) {
+    if (!id) continue;
+    for (let i = 0; i < 4; i++) {
+      if (await holdClient(id)) { ss.set(SS_CLIENT, id); return id; }
+      await new Promise((r) => setTimeout(r, 300));
+    }
+  }
+  let id = '';
+  do id = Math.random().toString(36).slice(2, 10); while (!(await holdClient(id)));
+  ss.set(SS_CLIENT, id);
+  return id;
+}
+const unlockArmed = () => performance.now() - remote.unlockArm < 4000;
+async function toggleRemoteLock() {
+  try {
+    if (remote.locked === 'mine') {
+      // 解除要按兩次：操作列在投影畫面上，誤觸一次不該把鎖放掉
+      if (!unlockArmed()) { remote.unlockArm = performance.now(); updateUi(); setTimeout(updateUi, 4100); return; }
+      remote.unlockArm = 0;
+      await unlockRemote(remoteClient);
+      remote.locked = '';
+      ls.set(LS_LOCKED, '');
+    } else {
+      await lockRemote(remoteClient);
+      remote.locked = 'mine'; remote.leader = true;
+      ls.set(LS_LOCKED, remoteClient);
+    }
+  } catch (e) { setStatus((e as Error).message || '鎖定沒有成功', false); }
+  updateUi();
+  void remoteSync();
+}
 let remoteAfter = -1;
 let remoteBusy = false;
 function remoteState() {
@@ -706,7 +766,7 @@ function remoteState() {
   };
 }
 async function remoteSync() {
-  if (!REMOTE || remoteBusy) return;
+  if (!REMOTE || remoteBusy || !remoteClient) return;
   remoteBusy = true;
   let did = false;
   try {
@@ -715,8 +775,13 @@ async function remoteSync() {
     if (claim) remote.claim = false;
     const first = remoteAfter < 0;
     remoteAfter = Math.max(remoteAfter, r.seq);
-    const leader = r.leader ?? true, screens = r.screens ?? 1;
-    if (leader !== remote.leader || screens !== remote.screens) { remote.leader = leader; remote.screens = screens; updateUi(); }
+    const leader = r.leader ?? true, screens = r.screens ?? 1, locked = r.locked ?? '';
+    if (leader !== remote.leader || screens !== remote.screens || locked !== remote.locked) {
+      remote.leader = leader; remote.screens = screens; remote.locked = locked; updateUi();
+    }
+    // 記住「這台電腦鎖定過的代號」，瀏覽器整個關掉重開也接得回來；後台強制解除了就忘掉
+    if (locked === 'mine') ls.set(LS_LOCKED, remoteClient);
+    else if (ls.get(LS_LOCKED) === remoteClient) ls.set(LS_LOCKED, '');
     if (!first) for (const c of r.commands) { await runRemote(c); did = true; }
   } catch { /* 斷線：下一秒再試 */ }
   remoteBusy = false;
@@ -898,7 +963,7 @@ function showLogin(msg = '') {
 function showStart() {
   gate.innerHTML = `<div class="gate-card">
     <p class="gate-eyebrow">ALAN &amp; OMENA · 2027.03.13</p><h1>大螢幕準備好了</h1>
-    <p class="gate-sub">按「開始播放」後會進入全螢幕。滑鼠移動會出現操作列：進度條（可以拖拉）、上一首／下一首、歌單（插播、隨機播放）、講話模式、音量、音畫同步。也可以用手機開後台的「大螢幕遙控」操作。<br/>空白鍵暫停、F 全螢幕、Shift＋← → 倒退／快轉 10 秒、L 歌單、M 講話模式、↑↓ 音量、[ ] 音畫同步。</p>
+    <p class="gate-sub">按「開始播放」後會進入全螢幕。滑鼠移動會出現操作列：進度條（可以拖拉）、上一首／下一首、歌單（插播、隨機播放）、講話模式、音量、音畫同步。也可以用手機開後台的「大螢幕遙控」操作；婚禮當天請在會場這台按操作列的「鎖定遙控在這台」，別台大螢幕就搶不走手機遙控。<br/>空白鍵暫停、F 全螢幕、Shift＋← → 倒退／快轉 10 秒、L 歌單、M 講話模式、↑↓ 音量、[ ] 音畫同步。</p>
     <button id="go" type="button">開始播放</button><p id="gate-status" class="gate-status">${statusLine.text}</p></div>`;
   $('go').addEventListener('click', async () => {
     gate.hidden = true;
@@ -935,7 +1000,7 @@ async function boot() {
       setStatus('連不上伺服器，稍後會自動重試', false);
     }
     setInterval(() => void pollFeed(), 2000);
-    if (REMOTE) setInterval(() => void remoteSync(), 1000);
+    if (REMOTE) { remoteClient = await pickRemoteClient(); setInterval(() => void remoteSync(), 1000); }
   }
   if (EXPORT) { setupExport(); return; }
   bindUi();

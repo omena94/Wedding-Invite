@@ -66,6 +66,9 @@ WALL_PACE_KEY = "wall_pace"
 # 2026-09-30 講話模式把音樂降到幾 %（0～90，預設 20）。不放進 ALL_KEYS：幫手只要有「現場留言」鑰匙就能在手機遙控調，
 # 走 wall 自己的 API（/api/planner/wall/duck），不用「設定」鑰匙
 WALL_DUCK_KEY = "wall_duck"
+# 2026-10-01 手機遙控鎖定在哪一台大螢幕（那個分頁的代號；空字串 = 沒鎖）。新人怕婚禮當天遙控被別台搶走：
+# 鎖了之後別台按「開始播放」或「改由這台接收遙控」都沒用，只有鎖定的那台自己解除、或後台「強制解除鎖定」
+WALL_REMOTE_LOCK_KEY = "wall_remote_lock"
 MENU_KEYS = ("menu_version", "menu_note")  # 2026-09-29 婚宴菜單：目前版本、討論備忘
 PERMISSION_KEY = "role_permissions"  # 2026-09-27 各角色能用的功能（JSON），見 permissions.py
 ALL_KEYS = (PHASE2_KEY, SEAT_KEY, PHOTOS_KEY, GUEST_UPLOAD_KEY, WALL_OPEN_KEY, WALL_MODERATION_KEY, WALL_PLATES_OFF_KEY, WALL_PACE_KEY, *INFO_KEYS, *BANQUET_KEYS, *SEATING_KEYS, *BROADCAST_KEYS, *MENU_KEYS, PERMISSION_KEY)

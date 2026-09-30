@@ -27,7 +27,8 @@ from ..database import get_db
 from ..models import WallCommand, WallMessage, WallScreen, WallSong
 from ..permissions import require_perm
 from ..security import optional_staff
-from ..stage import WALL_DUCK_KEY, WALL_MODERATION_KEY, WALL_OPEN_KEY, WALL_PACE_KEY, WALL_PLATES_OFF_KEY, get_setting, is_on, set_setting
+from ..stage import (WALL_DUCK_KEY, WALL_MODERATION_KEY, WALL_OPEN_KEY, WALL_PACE_KEY, WALL_PLATES_OFF_KEY, WALL_REMOTE_LOCK_KEY, get_setting, is_on,
+                     set_setting)
 from ..storage import LocalStore
 
 router = APIRouter(tags=["wall"])
@@ -542,6 +543,15 @@ def _online_screens(db: Session, now: datetime) -> list[WallScreen]:
     return sorted(rows, key=lambda r: (_aware(r.lead_at) if r.lead_at else far, _aware(r.opened_at), r.client), reverse=True)
 
 
+def _remote_lock(db: Session) -> str:
+    return get_setting(db, WALL_REMOTE_LOCK_KEY).strip()
+
+
+def _leader(db: Session, screens: list[WallScreen]) -> str:
+    """接收遙控的那台：鎖定了就是鎖定的那台（就算它現在斷線，別台也不接手，等它回來）；沒鎖就照 _online_screens 的順序。"""
+    return _remote_lock(db) or (screens[0].client if screens else "")
+
+
 @router.post("/api/planner/wall/remote/sync", dependencies=[Perm])
 def wall_remote_sync(payload: RemoteSyncIn, db: Session = Depends(get_db)):
     """大螢幕每秒一次：存下播放狀態；接收遙控的那台才拿到還沒做的指令，備用的只更新編號（之後接手時不補做舊指令）。"""
@@ -550,13 +560,15 @@ def wall_remote_sync(payload: RemoteSyncIn, db: Session = Depends(get_db)):
         raise HTTPException(413, "播放狀態太大")
     now = _now()
     client = payload.client.strip()[:40] or "-"
+    lock = _remote_lock(db)
 
     def save() -> None:
         row = db.get(WallScreen, client)
         if row is None:
             row = WallScreen(client=client, opened_at=now)
             db.add(row)
-        if payload.claim or (payload.state.get("started") is True and row.lead_at is None):
+        # 鎖定時 claim 不理（lead_at 照記，解除鎖定後還是照「最後按開始」的順序）
+        if (payload.claim and not lock) or (payload.state.get("started") is True and row.lead_at is None):
             row.lead_at = now
         row.state_json, row.seen_at = raw, now
         db.commit()
@@ -569,14 +581,15 @@ def wall_remote_sync(payload: RemoteSyncIn, db: Session = Depends(get_db)):
         db.rollback()
         save()
     screens = _online_screens(db, now)
-    leader = bool(screens) and screens[0].client == client
+    leader = _leader(db, screens) == client
     seq = db.scalar(select(func.max(WallCommand.id))) or 0
     commands = []
     if leader and payload.after >= 0:
         rows = db.scalars(select(WallCommand).where(WallCommand.id > payload.after, WallCommand.created_at >= now - timedelta(seconds=REMOTE_TTL))
                           .order_by(WallCommand.id)).all()
         commands = [{"id": r.id, "action": r.action, "args": json.loads(r.args_json or "{}")} for r in rows]
-    return {"seq": max([seq, *[c["id"] for c in commands]]), "commands": commands, "leader": leader, "screens": len(screens)}
+    return {"seq": max([seq, *[c["id"] for c in commands]]), "commands": commands, "leader": leader, "screens": len(screens),
+            "locked": ("mine" if lock == client else "other") if lock else ""}
 
 
 @router.get("/api/planner/wall/remote/state", dependencies=[Perm])
@@ -585,12 +598,53 @@ def wall_remote_state(db: Session = Depends(get_db)):
     都斷線了就拿最後回報的那台，手機才能顯示「最後一次回報是幾秒前」。"""
     now = _now()
     screens = _online_screens(db, now)
-    row = screens[0] if screens else db.scalars(select(WallScreen).order_by(WallScreen.seen_at.desc()).limit(1)).first()
+    lock = _remote_lock(db)
+    if lock:
+        row = db.get(WallScreen, lock)  # 鎖定的那台斷線超過一小時，列會被清掉：照「沒有連線」顯示
+    else:
+        row = screens[0] if screens else db.scalars(select(WallScreen).order_by(WallScreen.seen_at.desc()).limit(1)).first()
+    base = {"screens": len(screens), "locked": bool(lock), "duck_level": _duck_level(db)}
     if row is None:
-        return {"state": None, "age": None, "online": False, "client": "", "screens": 0, "duck_level": _duck_level(db)}
+        return {"state": None, "age": None, "online": False, "client": lock, **base}
     age = max(0.0, (now - _aware(row.seen_at)).total_seconds())
-    return {"state": json.loads(row.state_json or "{}"), "age": round(age, 2), "online": age < REMOTE_ONLINE, "client": row.client,
-            "screens": len(screens), "duck_level": _duck_level(db)}
+    return {"state": json.loads(row.state_json or "{}"), "age": round(age, 2), "online": age < REMOTE_ONLINE, "client": row.client, **base}
+
+
+class RemoteLockIn(BaseModel):
+    client: StrictStr
+
+
+@router.post("/api/planner/wall/remote/lock", dependencies=[Perm])
+def wall_remote_lock(payload: RemoteLockIn, db: Session = Depends(get_db)):
+    """大螢幕操作列「鎖定遙控在這台」：沒鎖（或本來就鎖在這台）才能鎖；鎖在別台就擋，要到後台強制解除。"""
+    client = payload.client.strip()[:40]
+    if not client or db.get(WallScreen, client) is None:
+        raise HTTPException(400, "這台大螢幕還沒連上伺服器，等一兩秒再按")
+    lock = _remote_lock(db)
+    if lock and lock != client:
+        raise HTTPException(409, "遙控已經鎖定在另一台大螢幕。要換到這台，請到後台「大螢幕遙控」按「強制解除鎖定」")
+    set_setting(db, WALL_REMOTE_LOCK_KEY, client)
+    db.commit()
+    return {"locked": client}
+
+
+@router.post("/api/planner/wall/remote/unlock", dependencies=[Perm])
+def wall_remote_unlock(payload: RemoteLockIn, db: Session = Depends(get_db)):
+    """鎖定的那台自己按「解除鎖定」。別台送來的不算（不然就等於能搶）。"""
+    lock = _remote_lock(db)
+    if lock and lock != payload.client.strip()[:40]:
+        raise HTTPException(409, "遙控鎖定在另一台大螢幕，這台不能解除")
+    set_setting(db, WALL_REMOTE_LOCK_KEY, "")
+    db.commit()
+    return {"locked": ""}
+
+
+@router.delete("/api/planner/wall/remote/lock", dependencies=[Perm])
+def wall_remote_force_unlock(db: Session = Depends(get_db)):
+    """後台「強制解除鎖定」：鎖定的那台電腦壞了、打不開時用。解除後回到「最後按開始播放的那台」接收遙控。"""
+    set_setting(db, WALL_REMOTE_LOCK_KEY, "")
+    db.commit()
+    return {"locked": ""}
 
 
 # ---------------- 講話模式的音量（2026-09-30） ----------------

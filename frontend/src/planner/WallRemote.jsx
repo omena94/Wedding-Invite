@@ -3,10 +3,10 @@
 // 大螢幕每秒回報一次狀態、順便拿走這裡按的指令（後端 routers/wall.py 的 remote/*），所以按下去大約一兩秒後生效；
 // 在那之前畫面先照「按下去的樣子」顯示（pending），大螢幕回報跟上了就改用真的狀態。
 import { useEffect, useRef, useState } from "react";
-import { ListMusic, Mic, MicOff, Minus, MonitorSmartphone, Pause, Play, Plus, SkipBack, SkipForward, Wifi, WifiOff } from "lucide-react";
-import { fetchWallRemote, saveWallDuck, sendWallRemote } from "../api.js";
+import { ListMusic, Lock, Mic, MicOff, Minus, MonitorSmartphone, Pause, Play, Plus, SkipBack, SkipForward, Wifi, WifiOff } from "lucide-react";
+import { fetchWallRemote, forceUnlockWallRemote, saveWallDuck, sendWallRemote } from "../api.js";
 import Toggle from "../components/Toggle.jsx";
-import { PageHead, confirmAsk, toastErr } from "./ui.jsx";
+import { PageHead, confirmAsk, toastErr, toastOk } from "./ui.jsx";
 
 const mmss = (x) => { const v = Math.max(0, Math.floor(x || 0)); return `${Math.floor(v / 60)}:${String(v % 60).padStart(2, "0")}`; };
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
@@ -82,10 +82,24 @@ export default function WallRemote() {
     catch (e) { toastErr(e); setPending((p) => { const n = { ...p }; delete n.duckLevel; return n; }); }
   };
 
+  // 鎖定的那台電腦壞了、關掉打不開時才用：解除後回到「最後按開始播放的那台」接收遙控
+  const forceUnlock = async () => {
+    const ok = await confirmAsk({
+      title: "強制解除遙控鎖定？",
+      text: "解除後，任何一台大螢幕按「開始播放」或「鎖定遙控在這台」都能接走手機遙控。只有鎖定的那台電腦壞了、打不開時才需要；解除後記得在要用的那台再按一次「鎖定遙控在這台」。",
+      confirmText: "強制解除",
+    });
+    if (!ok) return;
+    try { await forceUnlockWallRemote(); toastOk("已解除鎖定"); setSnap((s) => (s ? { ...s, locked: false } : s)); }
+    catch (e) { toastErr(e); }
+  };
+  const locked = !!snap?.locked;
+
   let conn;
   if (err) conn = { cls: "off", icon: WifiOff, text: `連不上伺服器：${err}` };
   else if (!snap) conn = { cls: "wait", icon: Wifi, text: "連線中…" };
   else if (!st) conn = { cls: "off", icon: WifiOff, text: "還沒有大螢幕連線。請在會場電腦開啟大螢幕（後台「現場留言」→「開啟大螢幕」）並按「開始播放」。" };
+  else if (!online && locked) conn = { cls: "off", icon: WifiOff, text: `鎖定的那台大螢幕沒有連線（最後一次回報是 ${ago(snap.age ?? 0)}前），其他大螢幕不會接手。請在那台電腦重新打開大螢幕（同一個瀏覽器會自動接回鎖定）；那台壞了的話，按下面「強制解除鎖定」改用別台。` };
   else if (!online) conn = { cls: "off", icon: WifiOff, text: `大螢幕沒有連線（最後一次回報是 ${ago(snap.age ?? 0)}前）。請確認會場電腦的大螢幕還開著、網路正常。` };
   else if (!st.started) conn = { cls: "wait", icon: Wifi, text: "大螢幕已經打開，等現場按「開始播放」後就能遙控。" };
   else conn = { cls: "ok", icon: Wifi, text: `大螢幕連線中 · 留言 ${st.messages ?? 0} 則${st.ok === false && st.status ? ` · ${st.status}` : ""}` };
@@ -100,9 +114,20 @@ export default function WallRemote() {
       {/* 同時開了好幾台大螢幕（2026-09-30）：只有一台照手機做，要讓人知道控制的是哪一台、怎麼換 */}
       {online && snap.screens > 1 && (
         <div className="wr-conn wait"><MonitorSmartphone size={16} />
-          <span>偵測到 {snap.screens} 台大螢幕同時開著。手機只控制<b>最後按「開始播放」的那台</b>（上面顯示的就是它），其他台畫面照播、不跟著遙控。
-            用不到的請關掉；要改控制另一台，在那台的操作列按「改由這台接收遙控」。</span>
+          {locked
+            ? <span>偵測到 {snap.screens} 台大螢幕同時開著。手機只控制<b>鎖定的那台</b>（上面顯示的就是它），其他台畫面照播、不跟著遙控，用不到的請關掉。</span>
+            : <span>偵測到 {snap.screens} 台大螢幕同時開著。手機只控制<b>最後按「開始播放」的那台</b>（上面顯示的就是它），其他台畫面照播、不跟著遙控。
+              用不到的請關掉；要改控制另一台，在那台的操作列按「改由這台接收遙控」。</span>}
         </div>
+      )}
+      {/* 鎖定遙控（2026-10-01）：新人怕婚禮當天遙控被別台大螢幕搶走 */}
+      {locked ? (
+        <div className="wr-conn ok wr-lock"><Lock size={16} />
+          <span>遙控已鎖定在一台大螢幕，別台搶不走。要換電腦：在鎖定的那台操作列按「解除鎖定」；那台壞了才用這裡的強制解除。</span>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={forceUnlock}>強制解除鎖定</button>
+        </div>
+      ) : snap?.state && (
+        <div className="helper-text wr-lock-tip">婚禮當天建議在會場電腦的大螢幕操作列按「鎖定遙控在這台」，之後別台大螢幕就搶不走手機遙控。</div>
       )}
 
       <div className="panel wr-now">
