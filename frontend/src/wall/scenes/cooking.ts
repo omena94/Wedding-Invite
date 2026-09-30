@@ -1,6 +1,8 @@
-// 一起做菜（亮、home）：廚房的側面。孟庭在爐子前甩鍋，宣文在中島另一邊端著盤子等，QQ 在孟庭身後站起來討吃的。角色是 Codex 畫的紙偶（_puppet.ts）。
+// 一起做菜（亮、home）：廚房的側面。孟庭在爐子前甩鍋，宣文在中島另一邊端著盤子等，三隻狗（QQ、元元、芃芃）在孟庭身後排排坐討吃的。
+// 角色是 Codex 畫的紙偶（_puppet.ts）。2026-09-30 新人加了第三隻狗元元（白色柴犬）：「有狗的畫，三隻狗都要一起」。
 //  - 甩鍋落在拍點：每兩拍一次（大鼓通常在 1、3 拍）。拍點前壓低往後帶（wok_1）→ 拍點上換成鍋子往上甩、菜飛在空中的那張（wok_2），
-//    整個人往上一送 → 下一次甩之前收回（wok_1）。每兩小節有一塊菜「飛出去」越過孟庭的頭，QQ 在拍點上跳起來咬住（嘴邊冒一顆小愛心）。
+//    整個人往上一送 → 下一次甩之前收回（wok_1）。每兩小節有一塊菜「飛出去」越過孟庭的頭，輪到的那隻狗在拍點上咬住（嘴邊冒一顆小愛心）：
+//    QQ、芃芃要整隻跳起來；元元個子高，坐著往上一蹬、身體拉長就咬到（穩重的大狗，頭也不會碰到冰箱上的便條）。三隻坐著時跟著拍子點頭，相位錯開。
 //  - 中島與爐口的位置照 wok_1 圖上鍋子的位置擺（鍋子剛好坐在爐火上）；爐火大鼓時竄高、鍋子冒蒸氣。
 //  - 歌詞像食譜的步驟：直接寫在爐子上方的牆上，旁邊一個小小的「STEP 0N」（每換一行加一），比留言小一級（標準 v2：40～52）。
 //  - **焦點是主打留言**：寫在冰箱門上的便條（膠帶貼著、稍微歪、有影子），深墨手寫字；照「留言尺寸與版面比例標準 v2」：
@@ -23,11 +25,18 @@ export const spec: PlateSpecDecl = { group: 'couple', family: 'home', paper: tru
 
 const FLOOR = 880;
 const SZ = 420;
-const OM_X = 800, AL_X = 1290, QQ_X = 700;
-/** 狗在這個版面放大一點（遠處的桌子也要認得出是 QQ）。 */
+const OM_X = 800, AL_X = 1290;
+/** 狗在這個版面放大一點（遠處的桌子也要認得出是哪一隻）；三隻用同一個倍數，比例照 dogs3-lineup.png。 */
 const DOG_S = 1.2;
-/** QQ 跳多高。 */
-const QJUMP = 70;
+/** 三隻狗排在孟庭身後、冰箱前面（便條下面）：x、咬菜時跳多高、點頭的相位、進場的先後。接菜的順序照這個陣列輪流。 */
+const DOGS = [
+  { d: 'qq', x: 700, jump: 70, phase: 0, delay: 0.26 },
+  { d: 'yy', x: 560, jump: 24, phase: 0.33, delay: 0.3 },
+  { d: 'pp', x: 420, jump: 64, phase: 0.66, delay: 0.34 },
+] as const;
+type Dog = (typeof DOGS)[number]['d'];
+/** 元元咬菜時身體拉長多少（squash < 0 = 拉長）：個子高，不用跳，伸長脖子就咬到。 */
+const YY_STRETCH = -0.1;
 const FRIDGE = { x: 96, y: 170, w: 548, h: FLOOR - 170 };
 /** 冰箱門上的便條：最大的範圍（標準 v2；上緣貼膠帶的位置固定、高度跟著留言）與寫字的內距。 */
 const NOTE = { x: 130, y: 236, w: 480, h: 400, rot: -0.018 };
@@ -35,9 +44,10 @@ const PAD = { x: 30, top: 36, bottom: 24 };
 /** 牆上寫歌詞（食譜步驟）的範圍：爐子上方，沒有框。 */
 const WALL = { x: 790, y: 160, w: 560 };
 const INVITE = '掃描右下角 QR code，把祝福寫上大螢幕';
-const SPRITES = ['mt_wok_1', 'mt_wok_2', 'xw_plate', 'qq_beg', 'qq_jump'];
+const SPRITES = ['mt_wok_1', 'mt_wok_2', 'xw_plate', 'qq_beg', 'qq_jump', 'yy_beg', 'yy_jump', 'pp_beg', 'pp_jump'];
 
-interface Toss { t: number; back: number; escape: boolean }
+/** 一次甩鍋；escape = 這一次有一塊菜飛出去，catcher = 哪一隻狗咬。 */
+interface Toss { t: number; back: number; escape: boolean; catcher: number }
 
 export default class Cooking extends Scene {
   paper = paperBG();
@@ -49,10 +59,10 @@ export default class Cooking extends Scene {
   keys: [number, string][] = [];
   note: Note | null = null;
   sheet = { ...NOTE };
-  /** 鍋子（wok_1 靜止時、wok_2 甩起來時）與 QQ 跳到最高時嘴的位置。 */
+  /** 鍋子（wok_1 靜止時、wok_2 甩起來時）與每隻狗跳到最高時嘴的位置。 */
   wokLow: Pt = { x: 0, y: 0 };
   wokHigh: Pt = { x: 0, y: 0 };
-  qqMouth: Pt = { x: 0, y: 0 };
+  mouths: Pt[] = [];
   island = { x: 930, w: 230, top: 700 };
   lyricSize = 52;
 
@@ -60,12 +70,13 @@ export default class Cooking extends Scene {
     const { audio: au } = this.ctx;
     await loadText('一位賓客（間奏：小火慢炒）' + INVITE);
     this.track(await loadPuppets(SPRITES));
-    // 甩鍋：開場進場後的第一拍起，每兩拍一次；每四次（兩小節）有一塊菜飛出去給 QQ
+    // 甩鍋：開場進場後的第一拍起，每兩拍一次；每四次（兩小節）有一塊菜飛出去，三隻狗輪流咬
     let b = Math.ceil(au.beatAt(beatAfter(au, this.ctx.start + 0.7)) - 1e-6);
     for (let k = 0; k < 80; k++) {
       const t = au.timeOfBeat(b);
       if (t > this.ctx.end + 1) break;
-      this.tosses.push({ t, back: au.timeOfBeat(b + 1.1), escape: k % 4 === 3 });
+      const escape = k % 4 === 3;
+      this.tosses.push({ t, back: au.timeOfBeat(b + 1.1), escape, catcher: escape ? Math.floor(k / 4) % DOGS.length : -1 });
       b += 2;
     }
     // 孟庭的姿勢時間軸：拍點上甩（wok_2）、一拍多一點之後收回（wok_1）
@@ -75,7 +86,10 @@ export default class Cooking extends Scene {
     this.wokLow = puppetPoint('mt_wok_1', 'wok', OM_X, FLOOR, { h: SZ })!;
     this.wokHigh = puppetPoint('mt_wok_2', 'wok', OM_X, FLOOR - 10, { h: SZ })!;
     this.island = { x: this.wokLow.x - 80, w: 270, top: this.wokLow.y + 22 };
-    this.qqMouth = puppetPoint('qq_jump', 'mouth', QQ_X, FLOOR - QJUMP, { h: SZ, scale: DOG_S })!;
+    // 元元不跳：坐著往上一蹬、伸長身體（拉長）咬住，嘴的位置照坐姿算；兩隻博美照跳起來的圖算
+    this.mouths = DOGS.map((g) => (g.d === 'yy'
+      ? puppetPoint('yy_beg', 'mouth', g.x, FLOOR - g.jump, { h: SZ, scale: DOG_S, squash: YY_STRETCH })!
+      : puppetPoint(`${g.d}_jump`, 'mouth', g.x, FLOOR - g.jump, { h: SZ, scale: DOG_S })!));
     // 冰箱上的便條：標準 v2 的字級；便條的寬高跟著留言（在冰箱門上置中）
     const c = this.fg.ctx;
     const w = NOTE.w - PAD.x * 2, hmax = NOTE.h - PAD.top - PAD.bottom;
@@ -166,8 +180,8 @@ export default class Cooking extends Scene {
 
     // ---- 宣文端盤子（每拍輕輕點頭；甩鍋時盤子往前遞一點）
     this.drawAlan(c, t);
-    // ---- QQ：站起來討，菜飛出來的時候在拍點跳起來咬住
-    this.drawQQ(c, t, bp);
+    // ---- 三隻狗：排排坐討吃的，菜飛出來的時候輪到的那隻在拍點跳起來咬住（元元最大，先畫在後面）
+    for (const i of [1, 2, 0]) this.drawDog(c, t, bp, i);
     // ---- 飛出去的那塊菜
     for (const ts of this.tosses) if (ts.escape) this.escape(c, ink, t, ts);
 
@@ -224,38 +238,51 @@ export default class Cooking extends Scene {
     drawPuppet(c, 'xw_plate', AL_X - 8 * reach, FLOOR, { h: SZ, flip: true, rot: -0.03 * nod - 0.02 * reach, pivot: 0.1, squash: 0.012 * nod + breathe(t, 0.008, 3.3, 0.5), spin: en.spin, alpha: en.alpha });
   }
 
-  /** QQ：在孟庭身後站起來討吃的（每拍搖一下）；菜飛過來時跳起來、最高點在拍點上咬住。 */
-  private drawQQ(c: CanvasRenderingContext2D, t: number, bp: number) {
-    const en = this.enter(t, 0.26, QQ_X, 3);
+  /** 一隻狗：在孟庭身後坐著討吃的（每拍點一下頭，三隻的相位錯開）；輪到牠的那塊菜飛過來時跳起來、最高點在拍點上咬住。 */
+  private drawDog(c: CanvasRenderingContext2D, t: number, bp: number, i: number) {
+    const g = DOGS[i]!, d: Dog = g.d;
+    const en = this.enter(t, g.delay, g.x, 3 + i);
     if (!en) return;
     const au = this.ctx.audio;
     const base: PuppetOpts = { h: SZ, scale: DOG_S, spin: en.spin, alpha: en.alpha };
+    const shadow = (lift: number) => puppetShadow(c, d, g.x, FLOOR, { h: SZ * DOG_S, lift, alpha: 0.32 * en.alpha, color: '70,45,25' });
     for (const ts of this.tosses) {
-      if (!ts.escape) continue;
+      if (ts.catcher !== i) continue;
       const ct = this.catchT(ts), air = Math.min(0.5, bp * 1.1);
       if (t > ct - air / 2 - 0.12 && t < ct + air / 2 + 0.3) {
-        const j = jumpArc(t, ct - air / 2, ct + air / 2, QJUMP, { crouch: 0.1, land: 0.2 });
-        puppetShadow(c, 'qq', QQ_X, FLOOR, { h: SZ * DOG_S, lift: -j.y, alpha: 0.32 * en.alpha, color: '70,45,25' });
+        const j = jumpArc(t, ct - air / 2, ct + air / 2, g.jump, { crouch: d === 'yy' ? 0.05 : 0.1, land: d === 'yy' ? 0.1 : 0.2 });
+        shadow(-j.y);
+        if (d === 'yy') {
+          // 元元：坐著往上一蹬、身體拉長，最高點（拍點）剛好咬住；落回來壓一下
+          const up = j.air ? Math.sin(Math.PI * j.u) : 0;
+          drawPuppet(c, 'yy_beg', g.x, FLOOR + j.y, { ...base, squash: j.air ? YY_STRETCH * up : j.squash });
+          return;
+        }
         // 跳起來那張圖嘴前畫了網球：這裡咬的是菜，一律蓋掉
-        if (j.air) drawPuppet(c, 'qq_jump', QQ_X, FLOOR + j.y, { ...base, hide: ['ball'], rot: -0.12 + 0.24 * j.u, pivot: 0.5, squash: j.squash });
-        else drawPuppet(c, 'qq_beg', QQ_X, FLOOR, { ...base, squash: j.squash });
+        if (j.air) drawPuppet(c, `${d}_jump`, g.x, FLOOR + j.y, { ...base, hide: ['ball'], rot: -0.12 + 0.24 * j.u, pivot: 0.5, squash: j.squash });
+        else drawPuppet(c, `${d}_beg`, g.x, FLOOR, { ...base, squash: j.squash });
         return;
       }
     }
-    puppetShadow(c, 'qq', QQ_X, FLOOR, { h: SZ * DOG_S, alpha: 0.32 * en.alpha, color: '70,45,25' });
-    drawPuppet(c, 'qq_beg', QQ_X, FLOOR, { ...base, rot: 0.04 * Math.sin(au.beatAt(t) * Math.PI), pivot: 0.1, squash: 0.04 * beatKick(au, t, 0.25) });
+    shadow(0);
+    // 元元比較穩：點頭的幅度小一點
+    const amp = d === 'yy' ? 0.5 : 1;
+    const beat = au.beatAt(t) + g.phase;
+    drawPuppet(c, `${d}_beg`, g.x, FLOOR, { ...base, rot: 0.04 * amp * Math.sin(beat * Math.PI), pivot: 0.1, squash: 0.04 * amp * beatKick(au, t - g.phase * bp, 0.25) });
   }
 
   /** 飛出去的那塊菜在哪一刻被咬到：甩鍋後兩拍（落在拍點上）。 */
   private catchT(ts: Toss) { return this.ctx.audio.timeOfBeat(Math.round(this.ctx.audio.beatAt(ts.t)) + 2); }
 
-  /** 每兩小節那一次多一塊菜：從甩起來的鍋子越過孟庭的頭，飛到 QQ 跳起來的嘴邊（在拍點被咬住），咬到時冒一顆小愛心。 */
+  /** 每兩小節那一次多一塊菜：從甩起來的鍋子越過孟庭的頭，飛到輪到的那隻狗跳起來的嘴邊（在拍點被咬住），咬到時冒一顆小愛心。 */
   private escape(c: CanvasRenderingContext2D, ink: Ink, t: number, ts: Toss) {
     const ct = this.catchT(ts);
     if (t < ts.t || t > ct + 0.6) return;
+    const mouth = this.mouths[ts.catcher]!;
     if (t <= ct) {
       const v = clamp((t - ts.t) / (ct - ts.t));
-      const q = arcAt(this.wokHigh, this.qqMouth, 190, v);
+      // 拋物線：飛給後面的狗壓低一點，不要越過冰箱上便條的字與署名
+      const q = arcAt(this.wokHigh, mouth, [150, 90, 70][ts.catcher]!, v);
       this.bit(c, ink, q.x, q.y, t * 8, 3, t);
       return;
     }
@@ -264,7 +291,7 @@ export default class Cooking extends Scene {
     c.save();
     c.globalAlpha = 1 - k;
     c.fillStyle = rgba('rose');
-    const hx = this.qqMouth.x + 10, hy = this.qqMouth.y - 30 - k * 30, sz = 16;
+    const hx = mouth.x + 10, hy = mouth.y - 30 - k * 30, sz = 16;
     c.beginPath(); c.moveTo(hx, hy + sz * 0.35);
     c.bezierCurveTo(hx - sz, hy - sz * 0.4, hx - sz * 0.4, hy - sz, hx, hy - sz * 0.35);
     c.bezierCurveTo(hx + sz * 0.4, hy - sz, hx + sz, hy - sz * 0.4, hx, hy + sz * 0.35);

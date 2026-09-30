@@ -1,8 +1,10 @@
-// 丟網球（亮、dog）：紅磚公園步道，宣文站左邊、孟庭站右邊，兩人輪流把黃綠色網球丟給芃芃和 QQ，狗在中間來回跑。角色是 Codex 畫的紙偶（_puppet.ts）。
+// 丟網球（亮、dog）：紅磚公園步道，宣文站左邊、孟庭站右邊，兩人輪流把黃綠色網球丟給三隻狗（芃芃、QQ、元元），狗在中間來回跑。角色是 Codex 畫的紙偶（_puppet.ts）。
 // 2026-09-29 新人：「丟網球的一人站一邊，不然一個人很像阿呆站在那裡」→ 兩人分站兩側、輪流丟，兩個人都一直有事做。
+// 2026-09-30 新人加了第三隻狗元元（白色柴犬）：「有狗的畫，三隻狗都要一起」→ 三隻一起追，每趟輪流接球（QQ → 元元 → 芃芃）；
+//   元元腿最長、跳最高，輪到牠接時比兩隻博美高一截；開場先坐在宣文腳邊（正面坐、張嘴笑），穩穩地等第一球。
 //  - 一趟兩小節，兩人輪流：小節線上出手（往後拉 → 丟出去）→ 球在第一拍落地彈一下 → 第二拍接球的那隻狗跳到最高點剛好咬住（落在拍點）→
 //    兩隻狗跑到對面那個人前面 → 對面的人蹲下接球（第五拍，球從狗嘴裡到手上）、摸摸狗 → 站起來往後拉 → 下一個小節線換他丟回去，狗往回跑。
-//    接球的狗每趟輪流（QQ、芃芃），另一隻晚一點起跑、在後面撲空。
+//    接球的狗每趟輪流（QQ、元元、芃芃），另外兩隻晚一點起跑、在後面撲空；跑到對面後照體型一隻挨一隻排在人前面（接的那隻嘴對準人的手）。
 //  - 沒在丟的人也有事：對方丟的時候拍手叫狗、狗接到的時候歡呼跳一下；自己丟完之後看、歡呼，快輪到對方丟回來時拍手叫狗回來。
 //  - 球的接力：出手前球是圖上手裡的球；出手後由程式沿著拋物線飛（留下訊號色的細線），xw_throw_2 手邊畫好的球蓋掉；
 //    狗跳起來那張圖本來就畫了嘴前的球：飛行中蓋掉、咬到的那一刻打開，終點就是那顆球的位置，所以接得剛剛好。
@@ -22,7 +24,7 @@ import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, lerp } from '../engine/util';
 import { lyricAt, barAfter, beatAfter, sparkHead, sparkParticles, msgChars } from './_motifs';
 import { inkFor, paperBG, inkLine, inkPath, inkPoly, inkEllipse, hatch, tennisBall, arcAt, arcPts, lyricOnPath, drawNote, type Pt, type Note } from './_couple';
-import { loadPuppets, drawPuppet, drawCycle, drawPick, pick, puppetPoint, puppetShadow, puppetIn, jumpArc, landSquash, breathe, beatKick, hop, noteV2, tightenNote, type PuppetOpts } from './_puppet';
+import { loadPuppets, drawPuppet, drawCycle, drawPick, pick, puppetPoint, puppetBox, puppetShadow, puppetIn, jumpArc, landSquash, breathe, beatKick, hop, noteV2, tightenNote, type PuppetOpts } from './_puppet';
 import { lyricV2 } from './_v2';
 
 export const spec: PlateSpecDecl = { group: 'couple', family: 'dog', paper: true, energy: [0.3, 1], bars: [4, 8] };
@@ -35,10 +37,14 @@ const XS = [250, 1650] as const;
 /** 木牌：上方中間吊著；最大寬高（標準 v2：寬 ≤ 860、高 ≤ 430；這裡壓在 330 以內，底下留給歌詞與球）與寫字的內距。 */
 const SIGN = { cx: 960, top: 60, w: 860, h: 330 };
 const PAD = { x: 38, top: 50, bottom: 24 };
-/** 接球的地方（跳到最高的 x）：往右丟在右邊接、往左丟在左邊接；另一隻狗在後面 190 px 撲空。 */
+/** 接球的地方（跳到最高的 x）：往右丟在右邊接、往左丟在左邊接；另外兩隻照體型排在後面撲空。 */
 const CATCH = [1160, 760] as const;
-const JUMP = { qq: 92, pp: 80 };
-/** 狗在這個版面放大一點（牠們是主角，遠處的桌子也要認得出是芃芃和 QQ）。 */
+/** 接球時跳多高、撲空時跳多高（px）：元元腿長，跳得最高。 */
+const JUMP = { qq: 92, pp: 80, yy: 118 };
+const MISS = { qq: 48, pp: 44, yy: 58 };
+/** 接球的順序（每趟換一隻），也是排隊的順序。 */
+const DOGS = ['qq', 'yy', 'pp'] as const;
+/** 狗在這個版面放大一點（牠們是主角，遠處的桌子也要認得出是哪一隻）；三隻用同一個倍數，比例照 dogs3-lineup.png。 */
 const DOG_S = 1.2;
 const INVITE = '掃描右下角 QR code，把祝福寫上大螢幕';
 const PEOPLE = ['xw', 'mt'] as const;
@@ -46,14 +52,24 @@ const SPRITES = [
   'xw_throw_1', 'xw_throw_2', 'xw_cheer', 'xw_idle_front', 'xw_fetch_clap', 'xw_fetch_take', 'xw_fetch_pet',
   'mt_fetch_throw_1', 'mt_fetch_throw_2', 'mt_cheer', 'mt_idle_front', 'mt_fetch_clap', 'mt_fetch_take', 'mt_fetch_pet',
   'qq_stand', 'qq_run_1', 'qq_run_2', 'qq_jump', 'qq_ball', 'pp_stand', 'pp_sit', 'pp_run_1', 'pp_run_2', 'pp_jump', 'pp_ball',
+  'yy_stand', 'yy_sit', 'yy_run_1', 'yy_run_2', 'yy_jump', 'yy_ball',
 ];
 
-type Dog = 'qq' | 'pp';
+type Dog = (typeof DOGS)[number];
+/**
+ * 每隻狗的小差別：進場的先後、呼吸的相位、站在紅磚步道的哪一條「跑道」（lane：腳底往下移幾 px，越大越靠近鏡頭）。
+ * 三隻在同一條線上跑，追球時路線會交錯，會整隻被擋住（芃芃躲在 QQ 後面就只剩兩隻）；分前後三條跑道就像真的在草地上錯身而過。
+ * 大的元元站最後面（頭一直比博美高，不會被擋），芃芃最前面，從後面畫到前面。
+ */
+const DOGX: Record<Dog, { delay: number; phase: number; seed: number; lane: number }> = {
+  yy: { delay: 0.28, phase: 0.25, seed: 5, lane: -22 },
+  qq: { delay: 0.24, phase: 0, seed: 3, lane: 0 },
+  pp: { delay: 0.32, phase: 0.5, seed: 4, lane: 24 },
+};
 /** 一趟：誰丟（0 宣文往右、1 孟庭往左）、出手、球落地、咬到、對面的人接到球，哪隻狗接。 */
 interface Leg { rel: number; bounce: number; ctc: number; hand: number; next: number; from: 0 | 1; catcher: Dog; release: Pt; bounceAt: Pt; catchPt: Pt }
 /** 慢慢起跑、慢慢停下（狗追球與跑過去）。 */
 const sine = (u: number) => 0.5 - 0.5 * Math.cos(Math.PI * u);
-const other = (d: Dog): Dog => (d === 'qq' ? 'pp' : 'qq');
 const throw1 = (p: 0 | 1) => (p ? 'mt_fetch_throw_1' : 'xw_throw_1');
 const throw2 = (p: 0 | 1) => (p ? 'mt_fetch_throw_2' : 'xw_throw_2');
 
@@ -66,8 +82,11 @@ export default class Fetch extends Scene {
   legs: Leg[] = [];
   /** 兩個人的姿勢時間軸。 */
   keys: [number, string][][] = [[], []];
-  /** 狗停在人前面的位置：[哪一邊][哪隻狗] → near（交球的那隻，嘴剛好在人蹲下伸出的手上）、far（旁邊那隻）。 */
-  spots = [{ qq: { near: 0, far: 0 }, pp: { near: 0, far: 0 } }, { qq: { near: 0, far: 0 }, pp: { near: 0, far: 0 } }];
+  /** 交球的那隻停的位置：[哪一邊][哪隻狗]，嘴剛好在人蹲下伸出的手上。 */
+  near: Record<Dog, number>[] = [{ qq: 0, pp: 0, yy: 0 }, { qq: 0, pp: 0, yy: 0 }];
+  /** 每隻狗站著時的半個身寬（排隊用）；跳起來時身體在錨點前面、後面各多長（撲空的排在接球的後面，不要跳到牠腳下）。 */
+  halfW: Record<Dog, number> = { qq: 0, pp: 0, yy: 0 };
+  jumpExt: Record<Dog, { front: number; back: number }> = { qq: { front: 0, back: 0 }, pp: { front: 0, back: 0 }, yy: { front: 0, back: 0 } };
   lyricPath: Pt[] = [];
   note: Note | null = null;
   sign = { x: SIGN.cx - SIGN.w / 2, y: SIGN.top, w: SIGN.w, h: SIGN.h };
@@ -80,20 +99,21 @@ export default class Fetch extends Scene {
     // 狗停的位置：交球的那隻面向人、嘴對準人蹲下伸出來的手（右邊的孟庭翻過來，手在她左邊）
     for (const side of [0, 1] as const) {
       const hand = puppetPoint(`${PEOPLE[side]}_fetch_take`, 'hand', XS[side], GROUND, { h: SZ, flip: side === 1 })!;
-      for (const d of ['qq', 'pp'] as const) {
-        const m = puppetPoint(`${d}_ball`, 'ball', 0, GROUND, { h: SZ, scale: DOG_S, flip: side === 0 })!;
-        const near = hand.x - m.x;
-        this.spots[side]![d] = { near, far: near + (side === 0 ? 150 : -150) };
-      }
+      for (const d of DOGS) this.near[side]![d] = hand.x - puppetPoint(`${d}_ball`, 'ball', 0, GROUND, { h: SZ, scale: DOG_S, flip: side === 0 })!.x;
+    }
+    for (const d of DOGS) {
+      this.halfW[d] = puppetBox(`${d}_stand`, 0, GROUND, { h: SZ, scale: DOG_S })[2] / 2;
+      const [x0, , w] = puppetBox(`${d}_jump`, 0, GROUND, { h: SZ, scale: DOG_S });
+      this.jumpExt[d] = { back: -x0, front: x0 + w };
     }
     // 一趟兩小節：小節線出手、第一拍落地、第二拍咬到、第五拍交球、兩小節後對面丟回來；窗格太短就在下一拍出手
     let rel = barAfter(au, this.ctx.start + 0.8);
     if (this.ctx.end - rel < au.beatPeriod(rel) * 3) rel = beatAfter(au, this.ctx.start + 0.8);
     for (let k = 0; k < 20 && rel < this.ctx.end + 1; k++) {
       const b = Math.round(au.beatAt(rel));
-      const from = (k % 2) as 0 | 1, catcher: Dog = k % 2 ? 'pp' : 'qq', dir = from === 0 ? 1 : -1;
+      const from = (k % 2) as 0 | 1, catcher: Dog = DOGS[k % DOGS.length]!, dir = from === 0 ? 1 : -1;
       const release = from === 0 ? puppetPoint('xw_throw_2', 'ball', XS[0], GROUND, { h: SZ })! : puppetPoint('mt_fetch_throw_2', 'hand', XS[1], GROUND, { h: SZ, flip: true })!;
-      const catchPt = puppetPoint(`${catcher}_jump`, 'ball', CATCH[from], GROUND - JUMP[catcher], { h: SZ, scale: DOG_S, flip: dir < 0 })!;
+      const catchPt = puppetPoint(`${catcher}_jump`, 'ball', CATCH[from], GROUND + DOGX[catcher].lane - JUMP[catcher], { h: SZ, scale: DOG_S, flip: dir < 0 })!;
       const bounceAt = { x: lerp(release.x, catchPt.x, 0.52), y: GROUND - 6 };
       this.legs.push({ rel, bounce: au.timeOfBeat(b + 1), ctc: au.timeOfBeat(b + 2), hand: au.timeOfBeat(b + 5), next: au.timeOfBeat(b + 8), from, catcher, release, bounceAt, catchPt });
       rel = au.timeOfBeat(b + 8);
@@ -260,8 +280,10 @@ export default class Fetch extends Scene {
     // ---- 人（後面）→ 狗（前面）
     this.drawPerson(c, t, 0);
     this.drawPerson(c, t, 1);
-    this.drawDog(c, t, li, 'pp');
+    // 從後面的跑道畫到前面：元元 → QQ → 芃芃
+    this.drawDog(c, t, li, 'yy');
     this.drawDog(c, t, li, 'qq');
+    this.drawDog(c, t, li, 'pp');
 
     // ---- 飛行中的球：沿著拋物線（留下訊號色的線），第一拍落地彈起來
     for (const Lg of this.legs) {
@@ -373,53 +395,89 @@ export default class Fetch extends Scene {
   }
 
   /**
-   * 一隻狗，一趟裡：在丟的人那邊等（拍點上興奮地壓一下）→ 出手後追（跑步兩張、半拍一張、一步一彈）→ 在拍點跳起來（接的那隻咬到、另一隻撲空）→
+   * 狗在某一邊停的位置：接球的那隻嘴對準人的手，另外兩隻照 DOGS 的順序一隻挨一隻往場中間排（間距照體型，稍微疊一點，像擠在一起等）。
+   */
+  private slotX(side: 0 | 1, catcher: Dog, d: Dog) {
+    let x = this.near[side]![catcher], prev: Dog = catcher;
+    if (d === catcher) return x;
+    const away = side === 0 ? 1 : -1;
+    for (const o of DOGS) {
+      if (o === catcher) continue;
+      x += away * (this.halfW[prev] * 0.8 + this.halfW[o] * 0.8 + 10);
+      if (o === d) return x;
+      prev = o;
+    }
+    return x;
+  }
+
+  /** 撲空的那兩隻排第幾（1、2）：照 DOGS 的順序，跳過接球的那隻。 */
+  private missRank(catcher: Dog, d: Dog) { return DOGS.filter((o) => o !== catcher).indexOf(d) + 1; }
+
+  /** 撲空的那隻在接球的那隻後面多遠（px）：前一隻跳起來的後腳到這一隻的鼻尖，留一點空（元元跳起來很長、身體還會轉，後面的要離遠一點）。 */
+  private missOffset(catcher: Dog, d: Dog) {
+    let off = 0, prev: Dog = catcher;
+    for (const o of DOGS) {
+      if (o === catcher) continue;
+      off += (this.jumpExt[prev].back + this.jumpExt[o].front) * 1.08;
+      if (o === d) return off;
+      prev = o;
+    }
+    return off;
+  }
+
+  /**
+   * 一隻狗，一趟裡：在丟的人那邊等（拍點上興奮地壓一下）→ 出手後追（跑步兩張、半拍一張、一步一彈）→ 在拍點跳起來（接的那隻咬到、另外兩隻撲空）→
    * 跑到接的人前面（接的那隻叼著球）→ 面向人交球、被摸 → 快換對面丟時轉身準備追。
    */
   private drawDog(c: CanvasRenderingContext2D, t: number, li: number, d: Dog) {
     const legs = this.legs, L = legs[li];
     const first = legs[0];
-    // 還沒開始：在第一個丟的人那邊等，面向要丟的方向
-    const prevCatcher = (i: number) => (i <= 0 ? other(first?.catcher ?? 'qq') : legs[i - 1]!.catcher);
+    // 還沒開始：在第一個丟的人那邊等，面向要丟的方向（元元排最靠近人：正面坐著等第一球）
+    const prevCatcher = (i: number): Dog => (i <= 0 ? 'yy' : legs[i - 1]!.catcher);
     const startSide = L ? L.from : (first?.from ?? 0);
     const dir = startSide === 0 ? 1 : -1;
-    const startX = this.spots[startSide]![d][prevCatcher(Math.max(0, li)) === d ? 'near' : 'far'];
-    const en = this.enter(t, d === 'qq' ? 0.24 : 0.32, startX, d === 'qq' ? 3 : 4);
+    const startX = this.slotX(startSide, prevCatcher(Math.max(0, li)), d);
+    const X = DOGX[d];
+    const en = this.enter(t, X.delay, startX, X.seed);
     if (!en) return;
     const au = this.ctx.audio, bp = au.beatPeriod(t);
     const base: PuppetOpts = { h: SZ, scale: DOG_S, spin: en.spin, alpha: en.alpha };
-    const shadow = (x: number, lift: number) => puppetShadow(c, d, x, GROUND, { h: SZ * DOG_S, lift, alpha: 0.32 * en.alpha, color: '70,45,25' });
+    // 這隻狗的地面（自己的跑道）
+    const G = GROUND + X.lane;
+    const shadow = (x: number, lift: number) => puppetShadow(c, d, x, G, { h: SZ * DOG_S, lift, alpha: 0.32 * en.alpha, color: '70,45,25' });
     const idle = `${d}_stand`;
     const wait = (x: number, face: number, name: string, extra = 0) => {
       shadow(x, 0);
-      drawPuppet(c, name, x, GROUND, { ...base, flip: face < 0, squash: 0.05 * beatKick(au, t, 0.25) + breathe(t, 0.015, 1.3, d === 'qq' ? 0 : 0.5) + extra });
+      drawPuppet(c, name, x, G, { ...base, flip: face < 0, squash: 0.05 * beatKick(au, t, 0.25) + breathe(t, 0.015, 1.3, X.phase) + extra });
     };
-    if (!L || t < L.rel) { wait(startX, dir, d === 'pp' && !L ? 'pp_sit' : idle); return; }
+    // 第一球之前：芃芃、元元坐著等（元元正面坐、看著鏡頭笑），QQ 站著
+    if (!L || t < L.rel) { wait(startX, dir, li <= 0 ? (d === 'pp' ? 'pp_sit' : d === 'yy' ? 'yy_sit' : idle) : idle); return; }
     const isC = d === L.catcher;
-    const endX = this.spots[1 - L.from]![d][isC ? 'near' : 'far'];
+    const rank = isC ? 0 : this.missRank(L.catcher, d);
+    const endX = this.slotX((1 - L.from) as 0 | 1, L.catcher, d);
     const air = Math.min(0.5, bp * 1.1);
-    const jx = CATCH[L.from] - (isC ? 0 : dir * 190);
+    const jx = CATCH[L.from] - dir * (isC ? 0 : this.missOffset(L.catcher, d));
     const takeoff = L.ctc - air / 2, land = L.ctc + air / 2;
-    const go = L.rel + (isC ? 0.05 : 0.18);
+    const go = L.rel + 0.05 + 0.09 * rank;
     const arrive = L.rel + bp * 3.8;
     const runs = [`${d}_run_1`, `${d}_run_2`];
-    // 追：出手後才起跑（沒接球的那隻晚一點點），越跑越快、快到的時候放慢，剛好在起跳點
+    // 追：出手後才起跑（沒接球的晚一點點），越跑越快、快到的時候放慢，剛好在起跳點
     if (t < takeoff) {
       if (t < go) { wait(startX, dir, idle); return; }
       const x = lerp(startX, jx - dir * 65, sine(clamp((t - go) / (takeoff - go))));
       const b = hop(au.beatAt(t), 2) * 9;
       shadow(x, b);
-      drawCycle(c, au, t, runs, 2, x, GROUND - b, { ...base, flip: dir < 0, rot: dir * 0.04 });
+      drawCycle(c, au, t, runs, 2, x, G - b, { ...base, flip: dir < 0, rot: dir * 0.04 });
       return;
     }
     // 跳：最高點在拍點上、剛好在 jx、身體水平（接球點是照這個位置算的）；接的那隻咬到的那一刻打開圖上的球
     if (t < land + 0.12) {
-      const j = jumpArc(t, takeoff, land, isC ? JUMP[d] : 48, { crouch: 0, land: 0.2 });
+      const j = jumpArc(t, takeoff, land, isC ? JUMP[d] : MISS[d], { crouch: 0, land: 0.2 });
       const x = lerp(jx - dir * 65, jx + dir * 65, clamp((t - takeoff) / (land - takeoff)));
       shadow(x, -j.y);
       const hide = !isC || t < L.ctc ? ['ball'] : undefined;
-      if (j.air) drawPuppet(c, `${d}_jump`, x, GROUND + j.y, { ...base, flip: dir < 0, hide, rot: dir * (-0.2 + 0.4 * j.u), pivot: 0.5, squash: j.squash });
-      else drawPuppet(c, `${d}_run_1`, jx + dir * 65, GROUND, { ...base, flip: dir < 0, squash: landSquash(t, land, 0.2) });
+      if (j.air) drawPuppet(c, `${d}_jump`, x, G + j.y, { ...base, flip: dir < 0, hide, rot: dir * (-0.2 + 0.4 * j.u), pivot: 0.5, squash: j.squash });
+      else drawPuppet(c, `${d}_run_1`, jx + dir * 65, G, { ...base, flip: dir < 0, squash: landSquash(t, land, 0.2) });
       return;
     }
     // 跑到接的人前面（接的那隻叼著球）
@@ -431,8 +489,8 @@ export default class Fetch extends Scene {
       const b = hop(au.beatAt(t), 2) * 7;
       shadow(x, b);
       const o: PuppetOpts = { ...base, flip: face < 0, rot: face * 0.03 };
-      const name = drawCycle(c, au, t, runs, 2, x, GROUND - b, o);
-      if (isC) { const m = puppetPoint(name, 'mouth', x, GROUND - b, o); if (m) tennisBall(c, m.x, m.y + 2, 8, { ink: inkFor(true), t }); }
+      const name = drawCycle(c, au, t, runs, 2, x, G - b, o);
+      if (isC) { const m = puppetPoint(name, 'mouth', x, G - b, o); if (m) tennisBall(c, m.x, m.y + 2, 8, { ink: inkFor(true), t }); }
       return;
     }
     // 到了：面向接的人。接的那隻叼著球等交球；交球後被摸（跟著拍子壓一下）；對面快丟時轉身
