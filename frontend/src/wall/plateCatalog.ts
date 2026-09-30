@@ -2234,6 +2234,15 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "bilingual": true
  },
  {
+  "name": "kpopdance",
+  "title": "練舞室",
+  "family": "kculture",
+  "light": true,
+  "couple": true,
+  "idea": "鏡牆練舞室，兩人跟著節奏跳（每拍一個動作，照鏡子有鏡像），鏡子上貼著雙語歌詞紙；三隻狗在角落跟著點頭；留言是鏡子上的便利貼。",
+  "bilingual": true
+ },
+ {
   "name": "hanbok",
   "title": "穿韓服",
   "family": "kculture",
