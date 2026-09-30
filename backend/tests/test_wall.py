@@ -440,14 +440,16 @@ def test_remote_lock(setup):
     assert sync("laptop", b)["leader"] is False
     s = state()
     assert s["locked"] is True and s["online"] is False and s["client"] == "hall" and s["screens"] == 1
-    # 同一個代號回來（重新整理）：還是它
-    assert sync("hall", a)["leader"] is True
+    # 同一個代號回來（重新整理）：還是它；重新按開始播放（claim）也記下來，解除鎖定後它是「最後按開始的」
+    assert sync("hall", a, claim=True)["leader"] is True
+    assert sync("laptop", b)["locked"] == "other"
     # 沒有 wall 鑰匙的幫手不能鎖、不能強制解除
     assert lock("hall", HELPER).status_code == 403
     assert c.delete("/api/planner/wall/remote/lock", headers=HELPER).status_code == 403
     # 後台強制解除：回到「最後按開始／搶遙控」的規則，筆電搶得到
     assert c.delete("/api/planner/wall/remote/lock", headers=COUPLE).status_code == 200
     assert state()["locked"] is False
+    assert sync("laptop", b)["leader"] is False  # 會場那台比筆電晚按開始
     assert sync("laptop", b, claim=True)["leader"] is True
     # 鎖定的那台自己解除
     assert lock("laptop").status_code == 200

@@ -567,8 +567,8 @@ def wall_remote_sync(payload: RemoteSyncIn, db: Session = Depends(get_db)):
         if row is None:
             row = WallScreen(client=client, opened_at=now)
             db.add(row)
-        # 鎖定時 claim 不理（lead_at 照記，解除鎖定後還是照「最後按開始」的順序）
-        if (payload.claim and not lock) or (payload.state.get("started") is True and row.lead_at is None):
+        # 鎖在別台時 claim 不理；鎖在自己或沒鎖就記下時間，解除鎖定後照「最後按開始播放」的順序
+        if (payload.claim and lock in ("", client)) or (payload.state.get("started") is True and row.lead_at is None):
             row.lead_at = now
         row.state_json, row.seen_at = raw, now
         db.commit()
