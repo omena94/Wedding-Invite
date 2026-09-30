@@ -1,9 +1,12 @@
-// 野餐（亮、date）：草地上的格紋野餐墊、籐籃、一盤三明治，宣文和孟庭坐在墊子上；芃芃偷偷摸摸爬過來偷三明治、QQ 在旁邊討吃的。
+// 野餐（亮、date）：草地上的格紋野餐墊、籐籃、一盤三明治，宣文和孟庭坐在墊子上；芃芃偷偷摸摸爬過來偷三明治、QQ 在旁邊討吃的、
+// 元元乖乖坐在墊子右邊。
 // 角色是 Codex 畫的紙偶（_puppet.ts）。
 //  - 第一個小節線起一陣風：**寫著留言的餐巾紙被吹起來**，翻著筋斗飛到右上方的空中，停在那裡隨風輕輕飄（留言就在餐巾紙上）；
-//    宣文伸手去抓（撲空）、孟庭指著它大笑。草跟著拍子被風吹得一波一波。
+//    宣文伸手去抓（撲空）、孟庭指著它大笑。**元元（大狗）在下一拍高高跳起來往右上方咬（最高點在拍點，也撲空）**——
+//    博美跳不了那麼高；落地後歪頭看著天上的餐巾紙兩拍，再坐回去。草跟著拍子被風吹得一波一波。
 //  - 芃芃：從左邊壓低身子一拍一步地爬過來（拍點上往前挪一下），**下一個小節線剛好叼走盤子上的一塊三明治**，
-//    得意地往右後方跑走；QQ 晚一拍追上去。四小節一輪，窗格長的話再來一次（盤子上的三明治少一塊）。
+//    得意地往右後方跑走；QQ 晚一拍追上去、元元坐著仰頭叫一聲（在拍點，穩重的大哥在喊「小偷！」）。
+//    四小節一輪，窗格長的話再來一次（盤子上的三明治少一塊）。
 //  - 歌詞沿著一道風（天空左上方一條會起伏的弧線）逐字亮，照跟唱規則；比留言小一級。
 //  - **焦點是主打留言**：餐巾紙（米白、四邊一圈小格紋）照「留言尺寸與版面比例標準 v2」：字 40～60、紙最大 700 × 380，
 //    飛到之後一個字一個字寫上去、署名淡入。字先畫在一張暫存畫布上，飄的時候整張貼圖轉（不用每格重新光柵化斜的字）。
@@ -18,7 +21,7 @@ import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, lerp, hash } from '../engine/util';
 import { lyricAt, barAfter, sparkHead, sparkParticles, msgChars } from './_motifs';
 import { inkFor, paperBG, inkLine, inkPath, inkPoly, inkEllipse, hatch, lyricOnPath, drawNote, type Pt, type Note } from './_couple';
-import { loadPuppets, drawPuppet, drawPick, drawCycle, puppetShadow, puppetIn, breathe, beatKick, landSquash, hop, noteV2, tightenNote, type PuppetOpts } from './_puppet';
+import { loadPuppets, drawPuppet, drawPick, drawCycle, puppetShadow, puppetIn, breathe, beatKick, landSquash, hop, jumpArc, noteV2, tightenNote, type PuppetOpts } from './_puppet';
 import { lyricV2 } from './_v2';
 import { INVITE } from './_c3';
 
@@ -33,13 +36,18 @@ const MAT = { farY: 772, nearY: 978, far: [470, 1180], near: [300, 1320] };
 const AL = { x: 600, y: 902 }, OM = { x: 890, y: 890 };
 const PLATE = { x: 760, y: 944 };
 const BASKET = { x: 420, y: 846 };
-const QQ_BEG = { x: 1130, y: 906 };
+const QQ_BEG = { x: 1060, y: 906 };
+/** 芃芃叼著三明治跑去的遠處草地（右後方，在餐巾紙下面、右下角 HUD 上面）：繞圈的右端、左右幅度、遠處的縮小。 */
+const FAR = { x: 1700, y: 700, rx: 150, s: 0.6 };
+/** 元元坐的地方（墊子右邊的草地，比 QQ 前面一點）、跳多高、往右跳多遠。三隻狗用同一個場景尺度。 */
+const YY = { x: 1225, y: 976, jump: 118, dx: 40 };
 /** 芃芃爬的那條線（墊子前緣的草地上）與叼到三明治時站的地方。 */
 const SNEAK_Y = 1000, GRAB_X = 640;
 /** 餐巾紙：飄在右上方的中心、最大寬高（標準 v2）、寫字內距。 */
 const NAP = { cx: 1330, cy: 330, w: 700, h: 380 };
 const PAD = { x: 42, top: 40, bottom: 30 };
-const SPRITES = ['xw_picnic_sit', 'xw_picnic_reach', 'mt_picnic_sit', 'mt_picnic_laugh', 'pp_picnic_sneak', 'pp_picnic_steal', 'qq_beg', 'qq_run_1', 'qq_run_2'];
+const SPRITES = ['xw_picnic_sit', 'xw_picnic_reach', 'mt_picnic_sit', 'mt_picnic_laugh', 'pp_picnic_sneak', 'pp_picnic_steal', 'qq_beg', 'qq_run_1', 'qq_run_2',
+  'yy_sit', 'yy_jump', 'yy_tilt', 'yy_howl'];
 
 interface Heist { start: number; grab: number; flee: number; b: number }
 
@@ -222,6 +230,7 @@ export default class Picnic extends Scene {
     this.drawPerson(c, t, 'xw', AL, this.alKeys, 0.05);
     this.drawPerson(c, t, 'mt', OM, this.omKeys, 0.14);
     this.drawQQ(c, t, bp);
+    this.drawYuanyuan(c, t, bp);
     this.drawPenpen(c, t, bp);
 
     this.drawNapkin(c, t, bp);
@@ -310,16 +319,20 @@ export default class Picnic extends Scene {
     const en = puppetIn(t, this.ctx.start + 0.22, 0.42);
     if (h && t < h.grab + bp * 9) {
       const go = h.grab + bp, u = (t - go) / (bp * 3.2);
-      if (u > 1) {
-        // 追出去了；下一輪前（偷之後第八拍）從右邊走回來
-        const back = h.grab + bp * 8;
-        if (t < back) return;
-      } else {
-        const x = lerp(QQ_BEG.x, 1700, ease.inQuad(u)), y = lerp(QQ_BEG.y, 700, u);
-        const sc = lerp(1, 0.62, u);
-        const b = hop(au.beatAt(t), 2) * 8;
-        puppetShadow(c, 'qq', x, y, { h: SZ * DOG_S * sc, lift: b, alpha: 0.25, color: '60,50,30' });
-        drawCycle(c, au, t, ['qq_run_1', 'qq_run_2'], 2, x, y - b, { ...base, scale: DOG_S * sc, rot: -0.1 });
+      const back = h.grab + bp * 8;
+      if (t < back) {
+        // 追出去：先跑到遠處的草地（三拍多），接著追著芃芃繞圈（落後半圈），偷之後第八拍回到孟庭旁邊
+        let x: number, y: number, sc: number, flip = false;
+        if (u <= 1) {
+          x = lerp(QQ_BEG.x, FAR.x + 60, ease.inQuad(u)); y = lerp(QQ_BEG.y, FAR.y + 6, u); sc = lerp(1, FAR.s, u);
+        } else {
+          const p = this.farLoop(t, go + bp * 3.2, 0.5);
+          x = p.x; y = p.y; sc = FAR.s; flip = p.flip;
+        }
+        const b = hop(au.beatAt(t), 2) * 8 * sc;
+        const fade = 1 - prog(t, back - 0.12, back);
+        puppetShadow(c, 'qq', x, y, { h: SZ * DOG_S * sc, lift: b, alpha: 0.25 * fade, color: '60,50,30' });
+        drawCycle(c, au, t, ['qq_run_1', 'qq_run_2'], 2, x, y - b, { ...base, scale: DOG_S * sc, flip, rot: flip ? 0.1 : -0.1, alpha: fade });
         return;
       }
     }
@@ -328,6 +341,43 @@ export default class Picnic extends Scene {
     const squash = 0.06 * beatKick(au, t, 0.25) + breathe(t, 0.02, 1.1);
     puppetShadow(c, 'qq', QQ_BEG.x, QQ_BEG.y, { h: SZ * DOG_S, alpha: 0.25 * back.alpha, color: '60,50,30' });
     drawPuppet(c, 'qq_beg', QQ_BEG.x, QQ_BEG.y, { ...base, flip: true, squash, spin: back.spin, alpha: back.alpha });
+  }
+
+  /**
+   * 元元：坐在墊子右邊（拍點上輕輕點頭）。風來之後的下一拍高高跳起來往右上方咬餐巾紙（最高點在拍點、撲空），
+   * 落地後歪頭看天上兩拍；每次三明治被偷，QQ 追出去的那一拍仰頭叫一聲（一拍半）。
+   */
+  private drawYuanyuan(c: CanvasRenderingContext2D, t: number, bp: number) {
+    const au = this.ctx.audio;
+    const en = puppetIn(t, this.ctx.start + 0.3, 0.42);
+    if (en.alpha <= 0) return;
+    const base: PuppetOpts = { h: SZ, scale: DOG_S, spin: en.spin, alpha: en.alpha };
+    const apex = au.timeOfBeat(Math.round(au.beatAt(this.gust)) + 1), air = Math.min(0.32, bp * 0.6);
+    const j = jumpArc(t, apex - air, apex + air, YY.jump, { crouch: 0.08, stretch: 0.1, land: 0.16 });
+    // 跳的時候往右飛一點、落地後慢慢走回原位
+    const dx = j.air ? YY.dx * j.u : YY.dx * (1 - ease.inOutCubic(prog(t, apex + air + bp * 2, apex + air + bp * 3)));
+    const x = YY.x + (t >= apex - air ? dx : 0);
+    if (j.air) {
+      puppetShadow(c, 'yy', x, YY.y, { h: SZ * DOG_S, lift: -j.y, alpha: 0.25, color: '60,50,30' });
+      drawPuppet(c, 'yy_jump', x, YY.y + j.y, { ...base, hide: ['ball'], squash: j.squash, rot: -0.18 * Math.sin(Math.PI * j.u), pivot: 0.5 });
+      return;
+    }
+    let name = 'yy_sit';
+    if (t > apex && t < apex + air + bp * 2) name = 'yy_tilt';
+    for (const h of this.heists) { const tb = h.grab + bp; if (t >= tb && t < tb + bp * 1.5) name = 'yy_howl'; }
+    const squash = j.squash + breathe(t, 0.012, 2.4, 0.7) + (name === 'yy_sit' ? 0.03 * beatKick(au, t, 0.25) : 0);
+    puppetShadow(c, 'yy', x, YY.y, { h: SZ * DOG_S, alpha: 0.25 * en.alpha, color: '60,50,30' });
+    drawPuppet(c, name, x, YY.y, { ...base, squash });
+  }
+
+  /**
+   * 遠處草地上的追逐圈（芃芃叼著三明治在前、QQ 追在後）：一圈四拍，左右來回（sin），朝著跑的方向翻面。
+   * from = 開始繞的時間，lag = 落後幾圈（QQ 0.5：在芃芃的另一邊追）。
+   */
+  private farLoop(t: number, from: number, lag: number): { x: number; y: number; flip: boolean } {
+    const au = this.ctx.audio;
+    const ph = ((au.beatAt(t) - au.beatAt(from)) / 4 - lag) * Math.PI * 2;
+    return { x: FAR.x - FAR.rx + FAR.rx * Math.cos(ph), y: FAR.y + 10 * Math.sin(ph), flip: Math.sin(ph) > 0 };
   }
 
   /** 芃芃：一拍一步壓低身子爬過來（拍點上往前挪），小節線上叼走三明治，往右後方跑掉。 */
@@ -348,15 +398,21 @@ export default class Picnic extends Scene {
       drawPuppet(c, 'pp_picnic_sneak', x, SNEAK_Y, { ...base, squash });
       return;
     }
-    // 叼到了：往右後方跑（越跑越遠、越小），三拍跑出畫面
+    // 叼到了：往右後方跑（越跑越遠、越小），三拍跑到遠處的草地，接著在那裡繞圈（QQ 追著牠繞），下一輪開始前跑出畫面
     const u = (t - h.grab) / (h.flee - h.grab);
-    if (u > 1.1) return;
-    const x = lerp(GRAB_X, 1640, ease.inQuad(clamp(u))), y = lerp(SNEAK_Y, 690, clamp(u));
-    const sc = lerp(1, 0.6, clamp(u));
-    const b = hop(au.beatAt(t), 2) * 10;
+    const next = this.heists[this.heists.indexOf(h) + 1];
+    if (next && t >= next.start) return;
+    let x: number, y: number, sc: number, flip = false;
+    if (u <= 1) {
+      x = lerp(GRAB_X, FAR.x, ease.inQuad(u)); y = lerp(SNEAK_Y, FAR.y, u); sc = lerp(1, FAR.s, u);
+    } else {
+      const p = this.farLoop(t, h.flee, 0);
+      x = p.x; y = p.y; sc = FAR.s; flip = p.flip;
+    }
+    const b = hop(au.beatAt(t), 2) * 10 * sc;
     const squash = u < 0.15 ? landSquash(t, h.grab, 0.14, 0.2) : 0;
     puppetShadow(c, 'pp', x, y, { h: SZ * DOG_S * sc, lift: b, alpha: 0.25, color: '60,50,30' });
-    drawPuppet(c, 'pp_picnic_steal', x, y - b, { ...base, scale: DOG_S * sc, squash, rot: -0.06 });
+    drawPuppet(c, 'pp_picnic_steal', x, y - b, { ...base, scale: DOG_S * sc, squash, flip, rot: flip ? 0.06 : -0.06 });
     // 叼到的那一下：嘴邊一圈短線（訊號色）
     const k = 1 - clamp((t - h.grab) / 0.25);
     if (k > 0) {
