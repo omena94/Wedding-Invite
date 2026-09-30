@@ -1,8 +1,10 @@
-// 飛盤（亮、sport）：午後的大草地，宣文與孟庭輪流丟飛盤，芃芃與 QQ 追，一隻飛身在拍點上咬住（慢動作一拍），叼回來交給下一個要丟的人。
+// 飛盤（亮、sport）：午後的大草地，宣文與孟庭輪流丟飛盤，芃芃、QQ、元元三隻狗追，一隻飛身在拍點上咬住（慢動作一拍），叼回來交給下一個要丟的人。
 // 角色是 Codex 畫的紙偶（_puppet.ts）。2026-09-29 新人：「宣文不要像阿呆一樣站著」——兩個人都一直有事做，而且輪流丟：
 //  - 一輪兩小節：小節線上出手（throw_1 往後捲 → throw_2 丟出去）→ 飛盤飛三拍 → 第三拍狗跳到最高點咬住（拍點）→ 兩人一起跳起來歡呼 →
 //    狗叼回來、第六拍半把飛盤交到沒丟的那個人手上（他／她單膝跪下來接，fetch_take）→ 第七拍站起來往後捲 → 下一個小節線換這個人丟。
-//    孟庭先丟、兩人輪流；芃芃、QQ 輪流接（每隻都會接到兩個人丟的）；沒接到的那隻跑到一半停下來看。
+//    孟庭先丟、兩人輪流；三隻狗輪流接（芃芃、元元、QQ，第二輪就輪到元元）；沒接到的兩隻跑到一半、一前一後停下來看。
+//  - 元元（2026-09-30 新人加的第三隻：白色柴犬，最大隻、穩重愛笑）：等的時候正面坐著笑、每個小節線歪一次頭；
+//    輪到牠接時跳得比兩隻博美低（牠本來就高，一伸脖子就咬到），別隻接到的那一刻牠仰頭叫一聲慶祝。三隻的大小照 dogs3 的比例。
 //  - 沒丟的人在出手前後一直拍手叫狗（一拍拍一下、跟著彈一下）；狗跑回來、交飛盤的時候換丟的人拍手。
 //  - 慢動作：咬到前後半拍，狗的跳躍用「頂點停久一點」的時間曲線（空中像停住），飛盤轉慢、四周拉出幾條速度線，鏡頭輕輕往前推一下。
 //  - 飛盤是程式畫的（紙白的盤面、訊號色的邊，轉的時候盤面上一道反光跟著轉）：出手後沿拋物線飛（出手點是 throw_2 圖上的 hand 點），
@@ -28,16 +30,21 @@ export const spec: PlateSpecDecl = { group: 'couple', family: 'sport', paper: tr
 const GROUND = 900;
 const SZ = 400;
 /**
- * 孟庭在左、宣文在右，兩隻狗坐在兩人中間等。孟庭丟的飛盤從宣文頭頂上飛過去。
- * 兩人中間要空得出一隻狗的位置：狗叼給孟庭時停在她右手邊（她跪下伸手接），不能踩到坐著等的那一隻。
+ * 孟庭在左、宣文在右，三隻狗坐在兩人中間等（芃芃、QQ、元元一排）。孟庭丟的飛盤從宣文頭頂上飛過去。
+ * 孟庭右手邊要空得出一隻狗的位置：狗叼給孟庭時停在那裡（她跪下伸手接），不能踩到坐著等的那一排。
  * 孟庭往後捲的時候飛盤在身體左後方，離畫面左緣要留一點。
  */
-const MT_X = 200, XW_X = 790;
+const MT_X = 200, XW_X = 900;
 const X: Record<'mt' | 'xw', number> = { mt: MT_X, xw: XW_X };
-/** 狗：等的位置、咬到的位置（最高點）與跳多高。 */
-const DOG_S = 1.55;
-const REST = { pp: 520, qq: 640 };
-const CATCH_X = 1200, JUMP = 190;
+/** 狗：三隻用同一個倍數（大小比例照 dogs3）、等的位置、咬到的位置（最高點的 x）、跳多高（元元比較高，跳低一點就咬得到）。 */
+const DOG_S = 1.4;
+const REST = { pp: 455, qq: 578, yy: 718 };
+const CATCH_X = 1250;
+const JUMP: Record<'pp' | 'qq' | 'yy', number> = { pp: 190, qq: 190, yy: 140 };
+/** 飛身接飛盤的圖：兩隻博美有專門的一張；元元用跳起來接東西的那張（圖上畫的球蓋掉）。 */
+const LEAP: Record<'pp' | 'qq' | 'yy', string> = { pp: 'pp_frisbee_leap', qq: 'qq_frisbee_leap', yy: 'yy_jump' };
+/** 接的順序：第二輪就輪到元元（大部分窗格只有兩三輪）。 */
+const FETCH = ['pp', 'yy', 'qq'] as const;
 /** 飛盤狗練習場的牌子（巨大的飛盤、從底下看）：最大範圍（標準 v2）、寫字的內距（橢圓裡的矩形）。 */
 const SIGN = { cx: 1450, top: 104, w: 720, h: 430 };
 const INVITE = '掃描右下角 QR code，把祝福寫上大螢幕';
@@ -48,9 +55,10 @@ const SPRITES = [
   'xw_frisbee_throw_1', 'xw_frisbee_throw_2', 'xw_fetch_clap', 'xw_fetch_take', 'xw_idle_front', 'xw_cheer',
   'pp_sit', 'pp_stand', 'pp_run_1', 'pp_run_2', 'pp_frisbee_leap',
   'qq_sit', 'qq_stand', 'qq_run_1', 'qq_run_2', 'qq_frisbee_leap',
+  'yy_sit', 'yy_tilt', 'yy_stand', 'yy_run_1', 'yy_run_2', 'yy_jump', 'yy_howl',
 ];
 
-type Dog = 'pp' | 'qq';
+type Dog = 'pp' | 'qq' | 'yy';
 type Who = 'mt' | 'xw';
 /**
  * 一輪（拍數從出手的小節線算）：rel 出手、ctc 咬到（+3）、back 狗回到接的人前面（+6）、drop 飛盤交到接的人手上（+6.5）、
@@ -77,9 +85,9 @@ export default class Frisbee extends Scene {
   release: Record<Who, Pt> = { mt: { x: 0, y: 0 }, xw: { x: 0, y: 0 } };
   hand: Record<Who, Pt> = { mt: { x: 0, y: 0 }, xw: { x: 0, y: 0 } };
   /** 叼回來的狗停在哪裡（嘴裡的飛盤剛好在接的人伸出來的手上）：[接的人][狗]。 */
-  dropX: Record<Who, Record<Dog, number>> = { mt: { pp: 0, qq: 0 }, xw: { pp: 0, qq: 0 } };
+  dropX: Record<Who, Record<Dog, number>> = { mt: { pp: 0, qq: 0, yy: 0 }, xw: { pp: 0, qq: 0, yy: 0 } };
   /** 咬到的地方：兩隻狗在最高點時嘴的位置。 */
-  catchAt: Record<Dog, Pt> = { pp: { x: 0, y: 0 }, qq: { x: 0, y: 0 } };
+  catchAt: Record<Dog, Pt> = { pp: { x: 0, y: 0 }, qq: { x: 0, y: 0 }, yy: { x: 0, y: 0 } };
   lyricPath: Pt[] = [];
   note: Note | null = null;
   sign = { x: SIGN.cx - SIGN.w / 2, y: SIGN.top, w: SIGN.w, h: SIGN.h };
@@ -94,8 +102,8 @@ export default class Frisbee extends Scene {
       this.release[p] = puppetPoint(`${p}_frisbee_throw_2`, 'hand', X[p], GROUND, { h: SZ }) ?? { x: X[p] + SZ * 0.34, y: GROUND - SZ * 0.72 };
       this.hand[p] = puppetPoint(`${p}_fetch_take`, 'hand', X[p], GROUND, { h: SZ }) ?? { x: X[p] + SZ * 0.22, y: GROUND - SZ * 0.27 };
     }
-    for (const d of ['pp', 'qq'] as const) {
-      this.catchAt[d] = puppetPoint(`${d}_frisbee_leap`, 'mouth', CATCH_X, GROUND - JUMP, { h: SZ, scale: DOG_S }) ?? { x: CATCH_X + 70, y: GROUND - JUMP - 90 };
+    for (const d of ['pp', 'qq', 'yy'] as const) {
+      this.catchAt[d] = puppetPoint(LEAP[d], 'mouth', CATCH_X, GROUND - JUMP[d], { h: SZ, scale: DOG_S }) ?? { x: CATCH_X + 70, y: GROUND - JUMP[d] - 90 };
       // 叼回來的狗朝左站：嘴裡的飛盤（畫在嘴的左邊半個飛盤）剛好落在接的人伸出來的手上
       const m = puppetPoint(`${d}_stand`, 'mouth', 0, GROUND, { h: SZ, scale: DOG_S, flip: true });
       for (const p of ['mt', 'xw'] as const) this.dropX[p][d] = this.hand[p].x + DISC_R * 0.55 - (m ? m.x : -60);
@@ -107,7 +115,7 @@ export default class Frisbee extends Scene {
       const b = Math.round(au.beatAt(rel));
       const T = (i: number) => au.timeOfBeat(b + i);
       const thrower: Who = k % 2 ? 'xw' : 'mt', catcher: Who = k % 2 ? 'mt' : 'xw';
-      const who: Dog = Math.floor((k + 1) / 2) % 2 ? 'qq' : 'pp';
+      const who: Dog = FETCH[k % 3]!;
       const dx = Math.abs(this.catchAt[who].x - this.release[thrower].x);
       this.rounds.push({ rel, ctc: T(3), back: T(6), drop: T(6.5), up: T(7), next: T(8), who, thrower, catcher, peak: clamp(dx * 0.3, 110, 230) });
       rel = T(8);
@@ -344,25 +352,31 @@ export default class Frisbee extends Scene {
   }
 
   /**
-   * 兩隻狗：等（坐著、拍點上興奮地壓一下）→ 出手後追 → 接的那隻在拍點飛身咬住（慢動作），另一隻跑到一半停下來看 →
+   * 三隻狗：等（坐著、拍點上興奮地壓一下；元元每個小節線歪一次頭）→ 出手後追 → 接的那隻在拍點飛身咬住（慢動作），
+   * 另外兩隻跑到一半、一前一後停下來看（元元在別隻咬到的那一刻仰頭叫一聲）→
    * 轉身跑回來（叼著飛盤）→ 交到接的人手上 → 跑回等的位置坐好。回傳叼著的飛盤要畫在哪（嘴的位置、朝向），沒叼著回傳 null。
    */
   private drawDogs(c: CanvasRenderingContext2D, t: number, r: Round | null): { x: number; y: number; flip: boolean } | null {
     const au = this.ctx.audio, bp = au.beatPeriod(t);
     let held: { x: number; y: number; flip: boolean } | null = null;
-    for (const d of ['pp', 'qq'] as const) {
-      const en = this.enter(t, d === 'pp' ? 0.24 : 0.32, REST[d], d === 'pp' ? 3 : 4);
+    // 先畫後面（元元最大隻，放在最後面、最先畫），前面的博美疊在上面
+    for (const d of ['yy', 'qq', 'pp'] as const) {
+      const delay = { pp: 0.24, qq: 0.32, yy: 0.4 }[d];
+      const en = this.enter(t, delay, REST[d], { pp: 3, qq: 4, yy: 5 }[d]);
       if (!en) continue;
       const base: PuppetOpts = { h: SZ, scale: DOG_S, spin: en.spin, alpha: en.alpha };
       const shadow = (x: number, lift: number) => puppetShadow(c, d, x + 10, GROUND + 3, { h: SZ * DOG_S, lift, alpha: 0.3 * en.alpha, color: '70,45,25' });
-      const sit = () => { shadow(REST[d], 0); drawPuppet(c, `${d}_sit`, REST[d], GROUND, { ...base, squash: 0.05 * beatKick(au, t, 0.25) + breathe(t, 0.014, 1.3, d === 'pp' ? 0 : 0.5) }); };
-      if (!r || t < r.rel + (d === 'pp' ? 0.05 : 0.15)) { sit(); continue; }
+      const sitName = d === 'yy' && Math.floor(au.beatAt(t) / 4) % 2 === 1 ? 'yy_tilt' : `${d}_sit`;
+      const sit = () => { shadow(REST[d], 0); drawPuppet(c, sitName, REST[d], GROUND, { ...base, squash: 0.05 * beatKick(au, t, 0.25) + breathe(t, 0.014, 1.3, { pp: 0, qq: 0.5, yy: 0.25 }[d]) }); };
+      const go = r ? r.rel + delay - 0.2 : 0;
+      if (!r || t < go) { sit(); continue; }
       const runs = [`${d}_run_1`, `${d}_run_2`];
       const catcher = r.who === d;
       const lp = this.leapOf(r);
-      const jx = catcher ? CATCH_X : CATCH_X - 200;
+      // 沒接的兩隻：一前一後停下來看（在後面出發的停得比較前面，不會疊在一起）
+      const others = (['pp', 'qq', 'yy'] as const).filter((q) => q !== r.who);
+      const jx = catcher ? CATCH_X : CATCH_X - 200 - 170 * others.indexOf(d as never);
       const dropX = this.dropX[r.catcher][d];
-      const go = r.rel + (d === 'pp' ? 0.05 : 0.15);
       const back0 = lp.t1 + 0.1, back1 = r.back;
       if (t < lp.t0) {
         // 追：起跑、越跑越快、快到起跳點放慢
@@ -377,13 +391,13 @@ export default class Frisbee extends Scene {
           // 飛身：時間曲線在頂點走得很慢（慢動作一拍），頂點剛好在咬到的拍點、身體在 CATCH_X
           const u = clamp((t - lp.t0) / (lp.t1 - lp.t0));
           const te = lp.t0 + slowmo(u) * (lp.t1 - lp.t0);
-          const j = jumpArc(te, lp.t0, lp.t1, JUMP, { crouch: 0, land: 0.2 });
+          const j = jumpArc(te, lp.t0, lp.t1, JUMP[d], { crouch: 0, land: 0.2 });
           const x = lerp(jx - 80, jx + 80, slowmo(u));
           shadow(x, -j.y);
           if (j.air) {
-            const o: PuppetOpts = { ...base, rot: -0.22 + 0.44 * slowmo(u), pivot: 0.5, squash: j.squash };
-            drawPuppet(c, `${d}_frisbee_leap`, x, GROUND + j.y, o);
-            if (t >= r.ctc) { const m = puppetPoint(`${d}_frisbee_leap`, 'mouth', x, GROUND + j.y, o); if (m) held = { x: m.x, y: m.y, flip: false }; }
+            const o: PuppetOpts = { ...base, rot: -0.22 + 0.44 * slowmo(u), pivot: 0.5, squash: j.squash, hide: d === 'yy' ? ['ball'] : undefined };
+            drawPuppet(c, LEAP[d], x, GROUND + j.y, o);
+            if (t >= r.ctc) { const m = puppetPoint(LEAP[d], 'mouth', x, GROUND + j.y, o); if (m) held = { x: m.x, y: m.y, flip: false }; }
             // 慢動作的速度線（身體後面幾條細線）
             const k = Math.sin(Math.PI * u);
             c.save();
@@ -399,9 +413,10 @@ export default class Frisbee extends Scene {
             if (m) held = { x: m.x, y: m.y, flip: false };
           }
         } else {
-          // 沒接到的那隻：停下來、抬頭看
+          // 沒接到的：停下來、抬頭看；元元在別隻咬到的那一刻仰頭叫一聲（慶祝），叫完再站好
           shadow(jx - 80, 0);
-          drawPuppet(c, `${d}_stand`, jx - 80, GROUND, { ...base, squash: landSquash(t, lp.t0, 0.1) + 0.03 * beatKick(au, t, 0.25) });
+          const howl = d === 'yy' && t >= r.ctc && t < r.ctc + bp * 0.9;
+          drawPuppet(c, howl ? 'yy_howl' : `${d}_stand`, jx - 80, GROUND, { ...base, squash: landSquash(t, lp.t0, 0.1) + 0.03 * beatKick(au, t, 0.25) + (howl ? -0.04 * Math.sin(Math.PI * clamp((t - r.ctc) / (bp * 0.9))) : 0) });
         }
         continue;
       }
