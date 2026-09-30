@@ -1926,5 +1926,14 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "couple": false,
   "idea": "古老的鐘面特寫，指針在拍點跳一格，整點（小節線）鐘聲的圓環擴散，鐘面數字換成歌詞的字，鐘下的銘板是留言。",
   "bilingual": false
+ },
+ {
+  "name": "subtitles",
+  "title": "老電影雙語字幕",
+  "family": "screen",
+  "light": false,
+  "couple": false,
+  "idea": "老電影院的銀幕在放黑白愛情片（剪影、底片刮痕、放映機光束），銀幕下緣是雙語字幕：中文大、原文小，照歌聲逐字亮；留言是片頭的標題卡，每小節畫面換一個鏡頭。",
+  "bilingual": false
  }
 ];
