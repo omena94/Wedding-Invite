@@ -54,6 +54,17 @@ const live: LiveInfo = {
 };
 const engine = new Engine(canvas, live);
 engine.debug = DEV;
+// 瀏覽器沒開「硬體加速」（2026-10-01 新人電腦的 Edge 就是關的）：WebGL 改用 CPU 模擬顯示卡（WARP、SwiftShader），
+// 光是大螢幕就吃掉整台電腦六成 CPU、畫面也會卡。偵測到就在開始畫面、操作列、手機遙控頁提醒怎麼打開。
+const SOFT_GL = (() => {
+  try {
+    const gl = engine.renderer.getContext();
+    const ext = gl.getExtension('WEBGL_debug_renderer_info');
+    const name = String(gl.getParameter(ext ? ext.UNMASKED_RENDERER_WEBGL : gl.RENDERER) ?? '');
+    return /swiftshader|warp|basic render|llvmpipe|software/i.test(name) ? name : '';
+  } catch { return ''; }
+})();
+const SOFT_GL_TIP = '這個瀏覽器沒有開「硬體加速」，畫面是用 CPU 模擬顯示卡畫的，會很吃電腦也會卡。請到瀏覽器設定（Edge：edge://settings/system，Chrome：chrome://settings/system）打開「使用圖形加速」，按「重新啟動」後再開大螢幕。';
 const director = new Director(engine, pool);
 // 截圖／驗收要可重現：同一首歌每次排一樣；現場每次播都重新洗牌
 director.fixedSeed = EXPORT;
@@ -567,8 +578,8 @@ function updateUi() {
   $('ui-vol').textContent = `${Math.round(player.volume * 100)}%`;
   $('ui-sync').textContent = `${player.offsetMs > 0 ? '+' : ''}${player.offsetMs} ms`;
   $('ui-play').textContent = playing ? '暫停' : '播放';
-  $('ui-status').textContent = `留言 ${pool.count} 則　${statusLine.text}`;
-  $('ui-status').classList.toggle('bad', !statusLine.ok);
+  $('ui-status').textContent = `留言 ${pool.count} 則　${SOFT_GL ? '沒有開硬體加速（很吃電腦，見開始畫面的說明）　' : ''}${statusLine.text}`;
+  $('ui-status').classList.toggle('bad', !statusLine.ok || !!SOFT_GL);
   // 手機遙控控制的是不是這台、有沒有鎖定（開了好幾台時手機遙控頁也會警告）
   $('ui-remote').hidden = !REMOTE;
   $('ui-remote').classList.toggle('locked', remote.locked === 'mine');
@@ -794,7 +805,7 @@ function remoteState() {
       const r = rowById(e.id);
       return { id: e.id, j: pos + 1 + k, ins: !!e.ins, title: r?.title ?? '', artist: r?.artist ?? '', len: r ? lenOf(r) : 0 };
     }),
-    messages: pool.count, status: statusLine.text, ok: statusLine.ok,
+    messages: pool.count, status: statusLine.text, ok: statusLine.ok, softGL: !!SOFT_GL,
   };
 }
 async function remoteSync() {
@@ -996,6 +1007,7 @@ function showStart() {
   gate.innerHTML = `<div class="gate-card">
     <p class="gate-eyebrow">ALAN &amp; OMENA · 2027.03.13</p><h1>大螢幕準備好了</h1>
     <p class="gate-sub">按「開始播放」後會進入全螢幕。滑鼠移動會出現操作列：進度條（可以拖拉）、上一首／下一首、歌單（插播、隨機播放）、講話模式、音量、音畫同步。也可以用手機開後台的「大螢幕遙控」操作；婚禮當天請在會場這台按操作列的「鎖定遙控在這台」，別台大螢幕就搶不走手機遙控。<br/>空白鍵暫停、F 全螢幕、Shift＋← → 倒退／快轉 10 秒、L 歌單、M 講話模式、↑↓ 音量、[ ] 音畫同步。</p>
+    ${SOFT_GL ? `<p class="gate-warn">${SOFT_GL_TIP}</p>` : ''}
     <button id="go" type="button">開始播放</button><p id="gate-status" class="gate-status">${statusLine.text}</p></div>`;
   $('go').addEventListener('click', async () => {
     gate.hidden = true;
