@@ -1516,6 +1516,10 @@ tbody tr:last-child td { border-bottom: none; }
 .ws-chip.clickable:hover { background: var(--bg-card-subtle); }
 .ws-chip.done { color: var(--milk-tea-900); }
 .ws-chip.now { color: var(--milk-tea-900); border-color: var(--milk-tea-500); background: #fbf1dc; }
+/* 字中間的空格：點了就是「停頓」（間奏時字不亮），沒點的淡淡的、窄一點 */
+.ws-chip.gap { min-width: 22px; font-weight: 400; color: var(--milk-tea-300); }
+.ws-chip.gap.cut { color: var(--milk-tea-700); background: var(--bg-card-subtle); border-top: 2px dashed var(--milk-tea-300); border-bottom: 2px dashed var(--milk-tea-300); border-right: 2px dashed var(--milk-tea-300); }
+.ws-chip.gap.now { border-color: var(--milk-tea-500); background: #fbf1dc; }
 @media (max-width: 640px) {
   .ws-row { flex-wrap: wrap; }
   .ws-actions { width: 100%; justify-content: flex-end; }

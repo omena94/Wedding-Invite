@@ -714,7 +714,7 @@ function LyricSync({ lrc, offset, blobUrl, analysis, onLrc, onCommit, saveNote, 
   // ------------------------------------------------ 逐字對時（只修一句）
   const openWord = (idx) => {
     const l = doc.lines[idx];
-    // 每個會被唱的單位（中文一個字、英文一個字）在整句裡的位置；段落文字從這裡切，空白與標點跟著前一段
+    // 每個會被唱的單位（中文一個字、英文一個字）在整句裡的位置；段落文字從這裡切，標點跟著前一段
     const units = [];
     let at = 0;
     for (const u of lyricUnits(l.text)) {
@@ -724,18 +724,33 @@ function LyricSync({ lrc, offset, blobUrl, analysis, onLrc, onCommit, saveNote, 
       at = (pos >= 0 ? pos : at) + u.w.length;
     }
     if (!units.length) return;
+    // 字中間的空格也是一格（新人 2026-09-30）：點了就是「這裡停頓」，存成 <唱完的時間> <再開始的時間>，
+    // 間奏時前面的字不會一路慢慢亮到下一段。沒點的空格照舊跟著前一段。
+    for (let j = 1; j < l.text.length; j++) if (l.text[j] === " ") units.push({ w: " ", pos: j, gap: true });
+    units.sort((a, b) => a.pos - b.pos);
+    // 這句已經對過字：照上次的分段先切好（含停頓），要改哪裡再點，不用每次從整句一段重來
+    const cuts = units.map(() => false);
+    if (l.words?.length && l.words.map((w) => w.w).join("") === l.text) {
+      let p = 0;
+      l.words.forEach((w, k) => {
+        const u = k > 0 && w.w ? units.findIndex((x) => x.pos === p) : -1;
+        if (u > 0) cuts[u] = true;
+        p += w.w.length;
+      });
+    }
     audio.current?.pause();
     selectOne(idx);
     requestAnimationFrame(() => syncRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" }));
     const t0 = l.t; // 第一個字／第一段就是這句在 LRC 上的時間
-    // 只有「自己分段」（新人拿掉了每個字按一下）：一開始整句一段，點字切段
-    setWt({ idx, t: t0, text: l.text, units, cuts: units.map(() => false), times: [], phase: "setup" });
+    // 只有「自己分段」（新人拿掉了每個字按一下）：點字切段
+    setWt({ idx, t: t0, text: l.text, units, cuts, times: [], phase: "setup" });
   };
+  // 分段：點了的字是新一段的開頭；點了的空格（停頓）自己一段，它後面的字一定從新的一段開始
   const segsOf = (w) => {
-    const starts = w.units.map((u, i) => i).filter((i) => i === 0 || w.cuts[i]);
+    const starts = w.units.map((u, i) => i).filter((i) => i === 0 || w.cuts[i] || (w.units[i - 1].gap && w.cuts[i - 1]));
     return starts.map((from, k) => {
       const end = k + 1 < starts.length ? w.units[starts[k + 1]].pos : w.text.length;
-      return { from, text: w.text.slice(k === 0 ? 0 : w.units[from].pos, end) };
+      return { from, gap: k > 0 && !!w.units[from].gap, text: w.text.slice(k === 0 ? 0 : w.units[from].pos, end) };
     });
   };
   // 按法（新人要求）：第一個字／第一段就從這句原本的時間開始，不用按；之後每一段（或每個字）開始唱時按一下，
@@ -1016,9 +1031,11 @@ function LyricSync({ lrc, offset, blobUrl, analysis, onLrc, onCommit, saveNote, 
 /**
  * 逐字對時的畫面：設定（每個字／自己分段、播放速度）→ 邊聽邊按空白鍵 → 套用。
  * 第一段從這句原本的時間開始（不用按），wt.times 是之後每一段開頭、最後是唱完（可以沒有）。
+ * 點了的空格是「停頓」：它那一下是前面唱完、停下來的時間，下一下才是後面開始唱。
  */
 function WordTapPanel({ wt, segs, rate, ended, onRate, onCut, onStart, onHit, onBack, onCancel, onApply }) {
-  const cuts = segs.length - 1; // 要按幾個「開始」
+  const cuts = segs.length - 1; // 要按幾個「開始」（含停頓）
+  const gaps = segs.filter((sg) => sg.gap).length;
   const k = wt.times.length; // 已經按了幾下
   const tapping = wt.phase === "tap";
   const segOf = (i) => { let s = 0; segs.forEach((sg, j) => { if (i >= sg.from) s = j; }); return s; };
@@ -1031,9 +1048,10 @@ function WordTapPanel({ wt, segs, rate, ended, onRate, onCut, onStart, onHit, on
           const head = segs[sg].from === i;
           const at = sg === 0 ? wt.t : wt.times[sg - 1];
           return (
-            <span key={i} className={`ws-chip${state}${i > 0 && head ? " cut" : ""}${wt.phase === "setup" && i > 0 ? " clickable" : ""}`} onClick={() => onCut(i)}>
-              {u.w}
-              <small>{head && at !== undefined ? fmtTime(at).slice(3) : " "}</small>
+            <span key={i} className={`ws-chip${u.gap ? " gap" : ""}${state}${i > 0 && head ? " cut" : ""}${wt.phase === "setup" && i > 0 ? " clickable" : ""}`}
+              title={u.gap && wt.phase === "setup" ? (head ? "再點一次取消停頓" : "點這個空格：這裡停頓（間奏），停的時候字不會亮") : undefined} onClick={() => onCut(i)}>
+              {u.gap ? "␣" : u.w}
+              <small>{head && at !== undefined ? fmtTime(at).slice(3) : u.gap && head ? "停頓" : " "}</small>
             </span>
           );
         })}
@@ -1047,9 +1065,11 @@ function WordTapPanel({ wt, segs, rate, ended, onRate, onCut, onStart, onHit, on
           先點上面的字把這句切成幾段：點一個字，就從那個字開始新的一段（例如「窗外飛過著｜宣告戀愛｜的蜻蜓」），再點一次取消。
           第一段從這句原本的時間開始，不用按；之後每段開始唱的那一刻按一下空白鍵，段裡的字平均分時間。
           最後一個字唱完再按一下（沒按到也沒關係，結尾會自動推算）。只播這一句（這句的時間到下一句的時間）；跟不上可以放慢。
+          <br />中間有<b>停頓或間奏</b>的地方，點那裡的空格（␣）：前面唱完、停下來時按一下，後面開始唱再按一下，停的時候字不會亮。
+          句子裡沒有空格的話，先在 LRC 原文那句要停的地方打一個空格。
         </div>
         <div className="toolbar" style={{ marginTop: 8 }}>
-          <button type="button" className="btn btn-primary" onClick={onStart}><Play size={13} /> 開始（{cuts ? `按 ${cuts} 次開頭＋` : ""}唱完按 1 次）</button>
+          <button type="button" className="btn btn-primary" onClick={onStart}><Play size={13} /> 開始（{cuts ? `按 ${cuts} 次${gaps ? `，含 ${gaps} 次停頓` : "開頭"}＋` : ""}唱完按 1 次）</button>
           <button type="button" className="btn btn-ghost btn-sm" onClick={onCancel}>取消</button>
         </div>
       </>}
@@ -1062,7 +1082,11 @@ function WordTapPanel({ wt, segs, rate, ended, onRate, onCut, onStart, onHit, on
         <div className="toolbar" style={{ marginTop: 10 }}>
           {ended && k >= cuts && <button type="button" className="btn btn-primary" onClick={onApply}>套用並重播這一句</button>}
           {ended && <button type="button" className={`btn ${k >= cuts ? "btn-ghost btn-sm" : "btn-primary"}`} onClick={onStart}><Play size={13} /> 重按一次</button>}
-          {!ended && <button type="button" className="btn btn-primary" onClick={onHit}>{k < cuts ? `「${segs[k + 1].text.trim()}」開始（空白鍵）` : "唱完了（空白鍵）"}</button>}
+          {!ended && (
+            <button type="button" className="btn btn-primary" onClick={onHit}>
+              {k >= cuts ? "唱完了（空白鍵）" : segs[k + 1].gap ? `「${segs[k].text.trim()}」唱完、停下來（空白鍵）` : `「${segs[k + 1].text.trim()}」開始（空白鍵）`}
+            </button>
+          )}
           <button type="button" className="btn btn-ghost btn-sm" onClick={onBack} disabled={!k}>退一下（⌫）</button>
           <button type="button" className="btn btn-ghost btn-sm" onClick={onCancel}>取消</button>
           <span className="helper-text" style={{ margin: 0 }}>{k} / {cuts + 1}</span>
