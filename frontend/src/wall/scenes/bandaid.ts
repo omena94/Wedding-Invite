@@ -1,9 +1,10 @@
-// OK 繃（亮、work）：家裡的客廳。宣文被紙割到手指，孟庭（護理服）熟練地消毒、貼上 OK 繃、再在上面畫一顆愛心；芃芃和 QQ 坐在腳邊歪頭看。
-// 角色是 Codex 畫的紙偶（_puppet.ts，work 組；狗是 base 的坐姿＋work 組的歪頭）；客廳、OK 繃、盒子用程式畫。**不畫血。**
+// OK 繃（亮、work）：家裡的客廳。宣文被紙割到手指，孟庭（護理服）熟練地消毒、貼上 OK 繃、再在上面畫一顆愛心；芃芃、QQ、元元坐在腳邊歪頭看。
+// 角色是 Codex 畫的紙偶（_puppet.ts，work 組；博美是 base 的坐姿＋work 組的歪頭，元元是 yuanyuan 組）；客廳、OK 繃、盒子用程式畫。**不畫血。**
 //  - 一個小節一個步驟（窗格短時往前擠）：被紙割到（嘶！手指邊一圈小火花）→ 小節線上伸手，孟庭用棉花棒一拍點一下 →
 //    小節線上貼上 OK 繃（手指上多一片米色的小 OK 繃）→ 小節線上用紅筆畫愛心（OK 繃上冒出一顆小愛心、頭上冒一顆大的）→
-//    小節線上宣文舉起手指開心地看、孟庭比讚；之後每個小節線冒愛心、狗輪流彈一下。
-//  - 狗狗：芃芃和 QQ 輪流歪頭（兩拍換一次），貼好的那一下兩隻一起彈一下。
+//    小節線上宣文舉起手指開心地看、孟庭比讚；之後每個小節線冒愛心、狗輪流彈一下（輪到元元時牠仰頭叫）。
+//  - 狗狗（2026-09-30 加入元元，三隻一起）：芃芃坐在宣文左邊、QQ 坐在宣文腳前、元元坐在兩個人中間的手底下；三隻輪流歪頭（兩拍換一隻）。
+//    貼好的那一下兩隻博美一起彈；元元比較大、穩重：畫愛心的那一刻站起來看（牠最高，看得到手指），舉手指那一下仰頭叫好。
 //  - **焦點是主打留言**：印在前景桌上的 OK 繃盒子正面（離鏡頭近、比較大，像商品特寫；盒蓋打開、露出幾片 OK 繃），
 //    深墨字、署名；照「留言尺寸與版面比例標準 v2」：字 40～60、盒面最大 560 × 400，放在畫面左下，高度跟著留言長短。
 //    盒子上只有一行小小的「OK 繃 · 20 片入」。沒有留言時盒子印邀請、字淡，歌詞變主角。
@@ -25,9 +26,10 @@ export const spec: PlateSpecDecl = { group: 'couple', family: 'work', paper: tru
 
 const FLOOR = 880;
 const SZ = 530;
-const AL_X = 920;
-/** 狗坐的位置：芃芃在宣文左邊、QQ 在兩個人中間（手底下）；放大一點（遠處的桌子也要認得出來）。 */
-const PP_X = 740, DOG_S = 1.15;
+const AL_X = 950;
+/** 芃芃坐在宣文左邊、QQ 坐在宣文腳前（元元的位置跟著孟庭算，在兩個人中間）；三隻狗放大一樣多（遠處的桌子也要認得出來，大小比例照 dogs3-lineup）。 */
+const PP_X = 760, QQ_X = 895, DOG_S = 1.15;
+type Dog = 'pp' | 'qq' | 'yy';
 /** 前景的桌子（左下）與桌上的 OK 繃盒：盒子正面的最大範圍（底邊固定在桌面上、高度跟著留言）與寫字的內距。 */
 const TABLE_Y = 930;
 const BOX = { x: 120, w: 560, h: 400 };
@@ -35,7 +37,7 @@ const PAD = { x: 36, top: 92, bottom: 26 };
 /** 右上牆上的歌詞。 */
 const WALL = { x: 800, y: 150, w: 900 };
 const POSES = ['xw_work_ouch', 'xw_work_hand', 'xw_work_finger', 'mt_work_idle_front', 'mt_work_swab', 'mt_work_press', 'mt_work_pen', 'mt_work_thumb',
-  'pp_sit', 'qq_sit', 'pp_work_tilt', 'qq_work_tilt'];
+  'pp_sit', 'qq_sit', 'pp_work_tilt', 'qq_work_tilt', 'yy_sit', 'yy_tilt', 'yy_beg', 'yy_howl'];
 
 export default class Bandaid extends Scene {
   paper = paperBG();
@@ -244,20 +246,38 @@ export default class Bandaid extends Scene {
   /** 舉手指之後最近的一個小節線（跟著彈一下）。 */
   private lastBar(t: number) { let b = this.tDone; for (const x of this.after) if (t >= x) b = x; return b; }
 
-  /** 狗狗：坐在兩個人前面，輪流歪頭（兩拍換一次）；貼好 OK 繃的那一下兩隻一起彈一下。 */
+  /** 狗狗：三隻坐在兩個人前面輪流歪頭（兩拍換一隻）；貼好 OK 繃的那一下兩隻博美一起彈，元元有自己的動作（站起來看、仰頭叫）。 */
   private drawDogs(c: CanvasRenderingContext2D, t: number) {
     const au = this.ctx.audio, s = this.ctx.start;
-    const phase = Math.floor(au.beatAt(t) / 2) % 2;
-    for (const [d, x, i] of [['pp', PP_X, 0], ['qq', (AL_X + this.omX) / 2 + 6, 1]] as const) {
-      const e = enter(this.glow, t, s + 0.26 + i * 0.08, x, FLOOR - 6, 3 + i);
+    const b = au.beatAt(t), bp = au.beatPeriod(t);
+    // 輪流歪頭：兩拍換一隻（芃芃 → QQ → 元元）；換的那一下被點到的那隻壓一下（換圖時身體不會像突然變瘦）
+    const turn = Math.floor(b / 2), phase = ((turn % 3) + 3) % 3;
+    const sinceTurn = t - au.timeOfBeat(turn * 2);
+    // 由後往前畫：芃芃（宣文左邊）→ 元元（兩個人中間的手底下）→ QQ（坐在宣文腳前，前面一排）；孟庭那一側空著，不擠成一團
+    const spots: [Dog, number, number, number][] = [['pp', PP_X, FLOOR, 0], ['yy', (AL_X + this.omX) / 2 + 12, FLOOR + 6, 2], ['qq', QQ_X, FLOOR + 24, 1]];
+    for (const [d, x, y, i] of spots) {
+      const e = enter(this.glow, t, s + 0.26 + i * 0.08, x, y - 6, 3 + i);
       if (!e) continue;
       const tilt = phase === i && t > s + 0.8;
-      // 貼好的那一下兩隻一起彈；之後每個小節線輪流彈一下
-      let hopT = this.tPress + i * 0.06;
-      this.after.forEach((b, k) => { if (k % 2 === i && t >= b) hopT = b; });
-      const lift = t >= hopT && t < hopT + 0.3 ? 26 * Math.sin((Math.PI * (t - hopT)) / 0.3) : 0;
-      puppetShadow(c, d, x, FLOOR, { h: SZ * DOG_S, lift, alpha: 0.3 * e.alpha, color: '70,45,25' });
-      drawPuppet(c, tilt ? `${d}_work_tilt` : `${d}_sit`, x, FLOOR - lift, { h: SZ, scale: DOG_S, spin: e.spin, alpha: e.alpha, squash: landSquash(t, hopT + 0.3, 0.12) + breathe(t, 0.015, 1.4, i * 0.5) });
+      let squash = breathe(t, 0.015, 1.4, i * 0.4) + (tilt ? 0.05 * Math.exp(-sinceTurn / 0.12) : 0);
+      let lift = 0, rot = 0, name = tilt ? (d === 'yy' ? 'yy_tilt' : `${d}_work_tilt`) : `${d}_sit`;
+      if (d === 'yy') {
+        // 元元（大、穩重、愛笑）：畫愛心的那一刻站起來看（牠最高，看得到手指）；舉手指那一下仰頭叫好，之後輪到牠的小節線再叫一次。
+        // 貼 OK 繃時兩隻博美跳，元元不跳，只是尾巴那邊輕輕晃
+        rot = 0.015 * Math.sin(b * Math.PI);
+        if (t >= this.tPen && t < this.tPen + bp * 2) { name = 'yy_beg'; squash -= 0.05 * Math.exp(-(t - this.tPen) / 0.15); }
+        for (const h of [this.tDone, ...this.after.filter((_, k) => k % 3 === 2)]) {
+          if (t >= h && t < h + bp * 1.5) { name = 'yy_howl'; squash -= 0.05 * Math.exp(-(t - h) / 0.15); }
+        }
+      } else {
+        // 博美：貼好的那一下兩隻一起彈；之後輪到的小節線彈一下
+        let hopT = this.tPress + i * 0.06;
+        this.after.forEach((a, k) => { if (k % 3 === i && t >= a) hopT = a; });
+        lift = t >= hopT && t < hopT + 0.3 ? 26 * Math.sin((Math.PI * (t - hopT)) / 0.3) : 0;
+        squash += landSquash(t, hopT + 0.3, 0.12);
+      }
+      puppetShadow(c, d, x, y, { h: SZ * DOG_S, lift, alpha: 0.3 * e.alpha, color: '70,45,25' });
+      drawPuppet(c, name, x, y - lift, { h: SZ, scale: DOG_S, spin: e.spin, alpha: e.alpha, rot, pivot: 0.1, squash });
     }
   }
 
