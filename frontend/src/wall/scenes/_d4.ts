@@ -4,6 +4,7 @@
 //    不用每格重新光柵化斜的字（又慢、又可能每次差一點點，確定性會不過）。
 //  - `writeTiming`：留言一個字一個字寫上去的時間（全批一致：1.5 秒左右寫完，每字 0.03～0.1 秒），寫完署名淡入。
 import type { Line } from '../engine/lyrics';
+import { layoutLyric, drawLyric, type LyricStyle, type LyricLayout } from './_motifs';
 import { clamp, prog } from '../engine/util';
 import { msgChars } from './_motifs';
 import { drawNote, inkFor, inkLine, hatch, type Note } from './_couple';
@@ -90,6 +91,22 @@ export function parkTree(c: Ctx, x: number, y: number, k: number, seed: number, 
   const crown = [{ x: x - 150 * k, y: top + 200 * k }, { x: x - 150 * k, y: top + 110 * k }, { x: x + 160 * k, y: top + 110 * k }, { x: x + 160 * k, y: top + 200 * k }];
   hatch(c, crown, { ink, angle: -0.9, gap: 9, w: 0.3, color: rgba('sepia', 0.14 * alpha), seed });
   c.restore();
+}
+
+/**
+ * 原文副行的樣式（本批自己畫原文的地方共用）：字級是主行的 0.68 倍、**至少 32 px**（標準），放不下就折成兩排、不再縮；
+ * 顏色照副行的規矩：唱到、唱完都用「唱完」的顏色（不用訊號色，不跟中文搶）。
+ */
+export function subLine(st: LyricStyle, mainSize: number, maxWidth: number): LyricStyle {
+  return { ...st, size: Math.max(32, Math.round(mainSize * 0.68)), minSize: 32, maxWidth, tracking: (st.tracking ?? 0) * 0.5, active: st.sung, sung: st.sung };
+}
+
+/** 排原文副行（subLine 的樣式）。 */
+export const layoutSub = (c: Ctx, sub: Line, sst: LyricStyle): LyricLayout => layoutLyric(c, sub, sst);
+
+/** 畫原文副行（已經 translate 到第一排基線的對齊點）。 */
+export function drawSub(c: Ctx, sub: Line, t: number, sst: LyricStyle, lay: LyricLayout, alpha: number): void {
+  drawLyric(c, sub, t, sst, lay, alpha);
 }
 
 /** 常用：沒有留言時的邀請。 */

@@ -8,22 +8,22 @@
     "yy_": {"ref":"yy_stand","refFrac":0.5859375,"groundFrac":0.9365234375,"target":400,"from":"yuanyuan:yy_"}
   },
   "sprites": {
-    "mt_d4_cmd": {"kind":"person","w":195,"h":607,"ax":92.9,"ay":603,"ref":600},
-    "mt_d4_phone": {"kind":"person","w":342,"h":607,"ax":172.7,"ay":603.4,"ref":600},
-    "mt_d4_popper": {"kind":"person","w":342,"h":607,"ax":172.7,"ay":603.4,"ref":600},
-    "mt_d4_stroll_1": {"kind":"person","w":319,"h":585,"ax":153.2,"ay":581.6,"ref":600},
-    "mt_d4_stroll_2": {"kind":"person","w":317,"h":595,"ax":169,"ay":591.3,"ref":600},
+    "mt_d4_cmd": {"kind":"person","w":361,"h":539,"ax":141.9,"ay":535,"ref":600},
+    "mt_d4_phone": {"kind":"person","w":305,"h":360,"ax":139.5,"ay":355.7,"ref":600,"pts":{"phone":[266,99.2]}},
+    "mt_d4_popper": {"kind":"person","w":286,"h":592,"ax":104.7,"ay":588.5,"ref":600,"pts":{"tip":[261.5,27.9]}},
+    "mt_d4_stroll_1": {"kind":"person","w":497,"h":528,"ax":155.9,"ay":524.9,"ref":600,"pts":{"handle":[226.7,208.1]}},
+    "mt_d4_stroll_2": {"kind":"person","w":512,"h":530,"ax":170.4,"ay":525.7,"ref":600,"pts":{"handle":[241.3,208.5]}},
     "pp_d4_down": {"kind":"dog","w":305,"h":188,"ax":169.1,"ay":184.1,"ref":260},
-    "pp_d4_party": {"kind":"dog","w":220,"h":294,"ax":105.3,"ay":290.4,"ref":260},
+    "pp_d4_party": {"kind":"dog","w":265,"h":292,"ax":163.3,"ay":288.3,"ref":260},
     "pp_d4_swim": {"kind":"dog","w":305,"h":247,"ax":165.7,"ay":243.7,"ref":260},
     "qq_d4_down": {"kind":"dog","w":295,"h":201,"ax":139.4,"ay":196.9,"ref":280},
-    "qq_d4_party": {"kind":"dog","w":215,"h":290,"ax":91.9,"ay":286.3,"ref":280},
+    "qq_d4_party": {"kind":"dog","w":262,"h":295,"ax":152.3,"ay":291.3,"ref":280},
     "qq_d4_swim": {"kind":"dog","w":297,"h":169,"ax":191,"ay":165.8,"ref":280},
-    "xw_d4_cmd": {"kind":"person","w":414,"h":576,"ax":174.3,"ay":572.3,"ref":600},
-    "xw_d4_phone": {"kind":"person","w":245,"h":616,"ax":60.6,"ay":611.7,"ref":600},
-    "xw_d4_popper": {"kind":"person","w":309,"h":608,"ax":152.6,"ay":604.3,"ref":600},
+    "xw_d4_cmd": {"kind":"person","w":223,"h":611,"ax":95.1,"ay":607.6,"ref":600},
+    "xw_d4_phone": {"kind":"person","w":289,"h":493,"ax":122.6,"ay":488.9,"ref":600,"pts":{"phone":[253.8,97.7]}},
+    "xw_d4_popper": {"kind":"person","w":336,"h":604,"ax":111.9,"ay":599.8,"ref":600,"pts":{"tip":[317,14.4]}},
     "yy_d4_down": {"kind":"dog","w":533,"h":311,"ax":284.3,"ay":307,"ref":400,"height":0.42},
-    "yy_d4_party": {"kind":"dog","w":280,"h":407,"ax":121.7,"ay":403,"ref":400,"height":0.42},
+    "yy_d4_party": {"kind":"dog","w":303,"h":469,"ax":178.3,"ay":465,"ref":400,"height":0.42},
     "yy_d4_swim": {"kind":"dog","w":537,"h":328,"ax":286.3,"ay":323.7,"ref":400,"height":0.42,"pts":{"mouth":[508.7,123.3]}}
   }
 }

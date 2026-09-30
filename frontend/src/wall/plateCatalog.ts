@@ -2288,6 +2288,42 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "bilingual": true
  },
  {
+  "name": "dogcafe",
+  "title": "狗狗咖啡廳",
+  "family": "dog",
+  "light": true,
+  "couple": true,
+  "idea": "狗狗咖啡廳，三隻狗在桌上等狗狗蛋糕，兩人幫牠們拍照；店裡的雙語小黑板是歌詞；留言寫在狗狗蛋糕的插牌上。",
+  "bilingual": true
+ },
+ {
+  "name": "dogtraining",
+  "title": "雙語口令",
+  "family": "dog",
+  "light": true,
+  "couple": true,
+  "idea": "草地上兩人訓練三隻狗：宣文說中文口令、孟庭說原文口令（對話框是歌詞），三隻狗在拍點坐下、握手、趴下（元元最標準，芃芃慢半拍）；留言寫在訓練手冊。",
+  "bilingual": true
+ },
+ {
+  "name": "dogbirthday",
+  "title": "狗狗生日派對",
+  "family": "dog",
+  "light": true,
+  "couple": true,
+  "idea": "元元的生日派對：三隻狗戴派對帽圍著狗狗蛋糕，兩人拉拉炮、唱生日歌；牆上的彩旗字是雙語歌詞；留言寫在生日卡。",
+  "bilingual": true
+ },
+ {
+  "name": "stroller",
+  "title": "狗推車散步",
+  "family": "dog",
+  "light": true,
+  "couple": true,
+  "idea": "公園步道，孟庭推著狗狗推車（元元坐在裡面探頭，兩隻博美在旁邊走），宣文牽著博美；路旁的雙語指示牌是歌詞；留言寫在推車掛的小吊牌。",
+  "bilingual": true
+ },
+ {
   "name": "dogswim",
   "title": "狗狗游泳",
   "family": "dog",
