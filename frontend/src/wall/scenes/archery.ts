@@ -1,7 +1,9 @@
-// 射箭（暗、sport）：夜裡的射箭場，側面看孟庭拉弓射箭，宣文在後面遞箭，芃芃和 QQ 坐著看。角色是 Codex 畫的紙偶（_puppet.ts）。
+// 射箭（暗、sport）：夜裡的射箭場，側面看孟庭拉弓射箭，宣文在後面遞箭，芃芃、QQ、元元三隻狗坐成一排看。角色是 Codex 畫的紙偶（_puppet.ts）。
 //  - 一輪兩小節：前一小節預備（搭箭 → 第三拍半開始拉弓、滿弓停住微微發抖），**小節線上放箭**（換成放箭後的姿勢），
-//    箭飛一拍，**下一拍正中靶心**：金色的靶心變成一顆愛心（點綴色）、靶環閃一圈、火花炸開，狗跳起來、宣文歡呼；
+//    箭飛一拍，**下一拍正中靶心**：金色的靶心變成一顆愛心（點綴色）、靶環閃一圈、火花炸開，兩隻博美跳起來、宣文歡呼；
 //    之後宣文遞下一支箭。箭一支一支留在靶上（射中的那一刻箭尾還在抖）。
+//  - 元元（白色柴犬，比博美大、穩重愛笑）坐在宣文旁邊：孟庭拉弓時歪頭盯著看，射中的那一拍**仰頭叫一聲**
+//    （博美在跳、牠挺起身子叫，一拍半），再坐回去，跟著拍子點頭。三隻狗用同一個場景尺度，大小照 dogs3-lineup.png。
 //  - 箭的接力：滿弓那張圖上畫好的箭，放箭的那一刻交給程式（起點就是圖上的箭，manifest 的道具點 tip／nock），
 //    程式沿著很平的拋物線飛過畫面正中，後面拖一道訊號色的細線（會發光）。
 //  - 歌詞是掛在射箭場上方的一串三角旗：一個字（英文一個字詞）一面旗，唱到哪面亮到哪面（跟唱規則），旗子被風吹、拍點上一晃。
@@ -28,7 +30,8 @@ export const spec: PlateSpecDecl = { group: 'couple', family: 'sport', paper: fa
 /** 人站的地面、靶架站的地面（遠一點，所以比較高）。 */
 const GROUND = 872, FAR = 792;
 const SZ = 400;
-const OM_X = 505, AL_X = 222, PP_X = 362, QQ_X = 92;
+/** 由左到右：QQ、芃芃、元元（三隻坐成一排）、宣文、孟庭。孟庭滿弓時箭頭在 OM_X + 158 左右，要在小黑板的左上方。 */
+const OM_X = 562, AL_X = 424, YY_X = 312, PP_X = 204, QQ_X = 104;
 /**
  * 靶：中心、半徑。側面看靶面只是一條線，所以靶架轉向鏡頭（sx = 靶面水平方向的扁度），看得到一圈一圈的環。
  * 靶心的高度跟滿弓時箭的高度差不多，箭才是平平地飛過去。
@@ -43,7 +46,7 @@ const INVITE = '掃描右下角 QR code，把祝福寫上大螢幕';
 const LABEL = 'LANE 03 · 計分';
 const SPRITES = [
   'mt_archery_ready', 'mt_archery_draw', 'mt_archery_release', 'xw_archery_quiver', 'xw_idle_front', 'xw_cheer',
-  'pp_sit', 'pp_jump', 'qq_sit', 'qq_jump',
+  'pp_sit', 'pp_jump', 'qq_sit', 'qq_jump', 'yy_sit', 'yy_tilt', 'yy_howl',
 ];
 
 /**
@@ -290,8 +293,9 @@ export default class Archery extends Scene {
 
     // ---- 人與狗（這一層最先畫：打光只染紙偶）。探照燈從左上打下來：頭頂亮、往腳底暗
     this.drawDog(c, t, 'qq', QQ_X, 0.3);
-    this.drawAlan(c, t);
     this.drawDog(c, t, 'pp', PP_X, 0.2);
+    this.drawAlan(c, t);
+    this.drawYuanyuan(c, t);
     this.drawOmena(c, t);
     puppetLight(c, [0, GROUND - SZ * 1.3, 820, SZ * 1.3 + 40], rgba('ink', 0.06), rgba('ink', 0.46));
 
@@ -377,6 +381,27 @@ export default class Archery extends Scene {
     }
     puppetShadow(c, who, x, GROUND, { h: SZ * 1.1, alpha: 0.8 * en.alpha, color: '0,0,0' });
     drawPuppet(c, `${who}_sit`, x, GROUND, { ...base, squash: 0.04 * beatKick(au, t, 0.25) + breathe(t, 0.012, 1.4, who === 'qq' ? 0 : 0.5) });
+  }
+
+  /**
+   * 元元：坐著看（跟著拍子輕輕點頭）；孟庭開始拉弓就歪頭盯著靶（tilt）；射中的那一拍仰頭叫一聲（howl，一拍半）：
+   * 那一下身體往上一挺（拉長）、之後每拍再挺一下，叫完坐回去。博美在跳、牠在叫，兩種開心不一樣。
+   */
+  private drawYuanyuan(c: CanvasRenderingContext2D, t: number) {
+    const au = this.ctx.audio;
+    const en = this.enter(t, 0.24, YY_X, 5);
+    if (!en) return;
+    let name = 'yy_sit', squash = 0.03 * beatKick(au, t, 0.3) + breathe(t, 0.01, 2.2, 0.3);
+    for (const sh of this.shots) {
+      const bp = au.beatPeriod(sh.rel);
+      if (t >= sh.rel - bp * 1.5 && t < sh.hit) name = 'yy_tilt';
+      if (t >= sh.hit && t < sh.hit + bp * 1.5) {
+        name = 'yy_howl';
+        squash = -0.07 * Math.exp(-(t - sh.hit) / 0.16) - 0.03 * beatKick(au, t, 0.25);
+      }
+    }
+    puppetShadow(c, 'yy', YY_X, GROUND, { h: SZ * 1.1, alpha: 0.8 * en.alpha, color: '0,0,0' });
+    drawPuppet(c, name, YY_X, GROUND, { h: SZ, scale: 1.1, spin: en.spin, alpha: en.alpha, squash });
   }
 
   /** 進場：從側面翻正（仙女棒的火花在腳邊）。還沒輪到回傳 null。 */

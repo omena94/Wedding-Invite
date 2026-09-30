@@ -1,9 +1,12 @@
-// 遛狗（亮、dog）：河堤邊的紅磚步道，宣文牽 QQ、孟庭牽芃芃（藍色牽繩）一起散步，鏡頭跟著他們橫向移動。角色是 Codex 畫的紙偶（_puppet.ts）。
+// 遛狗（亮、dog）：河堤邊的紅磚步道，宣文一手牽 QQ 和元元（兩條藍色牽繩）、孟庭牽芃芃，一起散步，鏡頭跟著他們橫向移動。
+// 角色是 Codex 畫的紙偶（_puppet.ts）。
 //  - 走（一拍一步，人兩張走路圖、狗兩張小跑圖一拍換兩次，一步一彈）→ 在路邊的告示牌前停下來 → 窗格夠長時最後一小節再走出去。
 //    鏡頭跟著走：地上的紅磚、路樹、遠處的街景照遠近用不同速度往後捲（視差），停下來時慢慢煞住。
 //  - **狗狗在每棵樹停一下**：走的時候每小節輪流一隻狗在拍點上停在經過的樹下聞一拍（牠停住、景還在捲，所以牠往後退，牽繩拉長），
-//    下一拍小跑追回原位。停在告示牌前時 QQ 跑去聞告示牌旁邊那棵樹、芃芃抬頭看孟庭、低頭聞草。
-//  - 牽繩由程式畫：從人手上的握把（圖上的道具點 hand）到狗脖子的蓬毛裡（狗不畫項圈，繩子最後一段淡進毛裡，_couple 的 leash）。
+//    下一拍小跑追回原位。停在告示牌前時 QQ 跑去聞告示牌旁邊那棵樹、芃芃抬頭看孟庭、低頭聞草；
+//    元元先站著望向告示牌，然後坐下來、每隔一小節歪頭「看公告」（牠是三隻裡最高、看得到牌子的那隻）。
+//  - 牽繩由程式畫：從人手上的握把（圖上的道具點 hand）到狗脖子的蓬毛裡（狗不畫項圈，繩子最後一段淡進毛裡，_couple 的 leash）；
+//    宣文一隻手握兩條。元元的圖沒有脖子的道具點，照圖量好寫在 YY_NECK。
 //  - 歌詞是頭上的電線上停著的一排字（像停在電線上的麻雀），唱到的那個字跳一下、亮成訊號色（跟唱規則），比留言小一級（標準 v2：40～52）。
 //  - **焦點是主打留言**：寫在路邊的社區告示牌上（綠色木框、小屋頂、軟木板，一張用圖釘釘著的公告紙），深墨手寫字、署名；
 //    照「留言尺寸與版面比例標準 v2」：字 40～60、告示牌最大 700 × 370，停下來時停在畫面右邊，寬高跟著留言。沒有留言時寫邀請。
@@ -17,7 +20,7 @@ import { clamp, ease, prog, hash, lerp } from '../engine/util';
 import { Lyrics, type Line, type Word } from '../engine/lyrics';
 import { lyricAt, barAfter, beatAfter, sparkHead, sparkParticles, msgChars, lyricSubOf, subSizeFor, subGap } from './_motifs';
 import { inkFor, paperBG, inkLine, inkPoly, inkEllipse, leash, drawNote, type Pt, type Note, type Ink } from './_couple';
-import { loadPuppets, drawPuppet, drawCycle, puppetPoint, puppetBox, puppetShadow, puppetIn, hop, breathe, beatKick, noteV2, tightenNote, type PuppetOpts } from './_puppet';
+import { loadPuppets, drawPuppet, drawCycle, puppetPoint, puppetBox, puppetInfo, puppetHeight, puppetShadow, puppetIn, hop, breathe, beatKick, noteV2, tightenNote, type PuppetOpts } from './_puppet';
 import { lyricV2 } from './_v2';
 
 export const spec: PlateSpecDecl = { group: 'couple', family: 'dog', paper: true, energy: [0.3, 1], bars: [4, 8] };
@@ -25,8 +28,13 @@ export const spec: PlateSpecDecl = { group: 'couple', family: 'dog', paper: true
 /** 兩條走道：宣文與 QQ 走遠的那一邊（腳底高一點、小一點點），孟庭與芃芃走近的那一邊。 */
 const LANE_B = 850, LANE_F = 906;
 const SZ = 400, FAR_K = 0.95;
-const AL_X = 470, OM_X = 280, QQ_X = 720, PP_X = 520;
+const AL_X = 470, OM_X = 280;
+/** 狗走路時的位置：芃芃在孟庭前面（近的那一道），元元與 QQ 在宣文前面（遠的那一道，元元緊跟著、QQ 衝在最前面）。 */
+const DOG_X: Record<Dog, number> = { pp: 520, yy: 640, qq: 880 };
 const DOG_S = 1.15;
+type Dog = 'pp' | 'qq' | 'yy';
+/** 元元各張圖的脖子（圖上的 px，量 public/wall-sprites/yuanyuan 的圖）：牽繩接在這裡（yuanyuan 組只量了嘴，不動別人的組）。 */
+const YY_NECK: Record<string, [number, number]> = { yy_walk: [430, 160], yy_stand: [380, 160], yy_sit: [110, 185], yy_tilt: [104, 190] };
 /** 步道的遠邊與近邊。 */
 const PATH = { top: 800, bottom: 968 };
 /** 告示牌：停下來時的左緣、底邊（遠邊的路旁），最大寬高（標準 v2），寫字的內距。 */
@@ -39,6 +47,7 @@ const LABEL = '社區公告 · NOTICE';
 const SPRITES = [
   'xw_dogwalk_1', 'xw_dogwalk_2', 'xw_dogwalk_stop', 'mt_dogwalk_1', 'mt_dogwalk_2', 'mt_dogwalk_point', 'mt_dogwalk_stop',
   'pp_dogwalk_1', 'pp_dogwalk_2', 'pp_sniff', 'pp_beg', 'qq_dogwalk_1', 'qq_dogwalk_2', 'qq_sniff', 'qq_stand',
+  'yy_walk', 'yy_stand', 'yy_sit', 'yy_tilt',
 ];
 
 /** 走路的速度 w(t)：0 = 停、1 = 走；煞車與起步各半拍。 */
@@ -99,7 +108,7 @@ export default class DogWalk extends Scene {
         if (Math.abs(au.barAt(t0) - Math.round(au.barAt(t0))) < 0.05 || b === Math.ceil(au.beatAt(Math.max(s + 0.3, w.t0 + bp0)) - 1e-6)) {
           const who: 'pp' | 'qq' = k++ % 2 ? 'pp' : 'qq';
           this.sniffs.push({ who, t0, t1: au.timeOfBeat(b + 1), t2: au.timeOfBeat(b + 2) });
-          this.trees.push(this.camX(t0) + (who === 'qq' ? QQ_X : PP_X) + 52);
+          this.trees.push(this.camX(t0) + DOG_X[who] + 52);
           b += 4;
         } else b++;
       }
@@ -155,8 +164,8 @@ export default class DogWalk extends Scene {
     this.drawBoard(c, ink, t, this.boardX - cam);
     this.drawPath(c, ink, cam);
     // 遠的那一道：宣文與 QQ；近的那一道：孟庭與芃芃（先畫遠的）
-    this.drawPair(c, t, 'xw', 'qq');
-    this.drawPair(c, t, 'mt', 'pp');
+    this.drawPair(c, t, 'xw', ['yy', 'qq']);
+    this.drawPair(c, t, 'mt', ['pp']);
     this.drawGrass(c, cam);
     const ly = lyricAt(lyrics, t);
     if (ly) this.perched(c, ly.line, t, ly.k * rv);
@@ -302,7 +311,7 @@ export default class DogWalk extends Scene {
   }
 
   /** 狗現在落後原位多少（px）：在樹下停一拍時停在原地（鏡頭還在走），下一拍小跑追回來。 */
-  private lag(t: number, who: 'pp' | 'qq') {
+  private lag(t: number, who: Dog) {
     let lag = 0, state: 'walk' | 'sniff' | 'catch' = 'walk';
     for (const sn of this.sniffs) {
       if (sn.who !== who || t < sn.t0 || t > sn.t2) continue;
@@ -314,10 +323,10 @@ export default class DogWalk extends Scene {
   }
 
   /**
-   * 一個人和他牽的狗：走路（人一拍一步、狗一拍兩步，一步一彈）或停下來；牽繩從人手上的握把連到狗脖子。
-   * 停下來時：宣文低頭看 QQ、QQ 跑去聞告示牌旁邊的樹；孟庭先指著告示牌、再低頭看芃芃，芃芃抬頭看她、低頭聞草。
+   * 一個人和他牽的狗：人走路（一拍一步）或停下來；每隻狗照自己的樣子走或停（drawDog），牽繩從人手上的握把連到每隻狗的脖子。
+   * 停下來時：宣文低頭看狗；孟庭先指著告示牌、再低頭看芃芃。
    */
-  private drawPair(c: CanvasRenderingContext2D, t: number, p: 'xw' | 'mt', d: 'pp' | 'qq') {
+  private drawPair(c: CanvasRenderingContext2D, t: number, p: 'xw' | 'mt', dogs: readonly Dog[]) {
     const au = this.ctx.audio;
     const far = p === 'xw';
     const y = far ? LANE_B : LANE_F, sc = far ? FAR_K : 1;
@@ -339,22 +348,43 @@ export default class DogWalk extends Scene {
       drawPuppet(c, person, px, y, { ...po, squash: breathe(t, 0.01, 3.1, far ? 0 : 0.4) + 0.012 * beatKick(au, t, 0.3) });
     }
     const hand = puppetPoint(person, 'hand', px, y - lift, po) ?? { x: px + SZ * 0.24, y: y - SZ * 0.43 };
-    // ---- 狗
-    const dx0 = d === 'qq' ? QQ_X : PP_X;
+    // ---- 狗（先畫後面的；牽繩最後畫，蓋在狗的上面）
+    const necks = dogs.map((d) => this.drawDog(c, t, d, y, sc, en, walking, wk));
+    for (const neck of necks) leash(c, hand, neck, { ink: inkFor(true), t, h: SZ, slack: Math.max(8, Math.hypot(neck.x - hand.x, neck.y - hand.y) * 0.12) });
+    // 進場：仙女棒的火花在腳邊
+    if (en.k < 1) {
+      sparkHead(this.glow, px, y - 6, t, 0.7);
+      sparkParticles(this.glow, t, () => ({ x: px, y: y - 6 }), { rate: 50, life: 0.25, speed: 140, seed: far ? 1 : 2 });
+    }
+  }
+
+  /**
+   * 一隻狗，回傳牠脖子的畫面座標（接牽繩）。
+   *  - 博美走路：一拍兩步、一步一彈；在樹下停一拍聞（lag），下一拍小跑追回來。
+   *  - 元元走路：一拍一步（大狗走得從容），走路與站的圖交替，身體起伏小一點。
+   *  - 停下來：QQ 跑到告示牌旁邊那棵樹下聞；芃芃在孟庭腳邊（每小節換一次：抬頭看她 → 低頭聞草）；
+   *    元元先站著望向告示牌，兩拍後坐下，之後每隔一小節歪頭看公告。
+   */
+  private drawDog(c: CanvasRenderingContext2D, t: number, d: Dog, y: number, sc: number, en: { spin: number; alpha: number }, walking: boolean, wk: number): Pt {
+    const au = this.ctx.audio, bp = au.beatPeriod(t);
+    const dx0 = DOG_X[d];
     const doS = sc * DOG_S;
     const dogO: PuppetOpts = { h: SZ, scale: doS, spin: en.spin, alpha: en.alpha };
     let dx = dx0, name: string, bob = 0;
-    const dy = y;
     if (walking) {
-      const { lag, state } = this.lag(t, d);
-      dx = dx0 - lag;
-      if (state === 'sniff') name = `${d}_sniff`;
-      else {
-        bob = hop(au.beatAt(t), 2) * 6 * wk;
-        name = [`${d}_dogwalk_1`, `${d}_dogwalk_2`][Math.floor(au.beatAt(t) * (state === 'catch' ? 3 : 2)) % 2]!;
+      if (d === 'yy') {
+        bob = hop(au.beatAt(t)) * 4 * wk;
+        name = Math.floor(au.beatAt(t)) % 2 ? 'yy_stand' : 'yy_walk';
+      } else {
+        const { lag, state } = this.lag(t, d);
+        dx = dx0 - lag;
+        if (state === 'sniff') name = `${d}_sniff`;
+        else {
+          bob = hop(au.beatAt(t), 2) * 6 * wk;
+          name = [`${d}_dogwalk_1`, `${d}_dogwalk_2`][Math.floor(au.beatAt(t) * (state === 'catch' ? 3 : 2)) % 2]!;
+        }
       }
     } else {
-      // 停下來：QQ 跑到告示牌旁邊那棵樹下聞，芃芃在孟庭腳邊（每小節換一次：抬頭看她 → 低頭聞草）
       const cam = this.camX(t);
       const since = t - this.stopT;
       if (d === 'qq') {
@@ -363,22 +393,19 @@ export default class DogWalk extends Scene {
         dx = lerp(dx0, tx, ease.inOutCubic(u));
         name = u < 1 ? [`${d}_dogwalk_1`, `${d}_dogwalk_2`][Math.floor(au.beatAt(t) * 2) % 2]! : Math.floor(au.barAt(t)) % 2 ? 'qq_stand' : 'qq_sniff';
         if (u < 1) bob = hop(au.beatAt(t), 2) * 6;
+      } else if (d === 'yy') {
+        name = since < bp * 2 ? 'yy_stand' : Math.floor(au.barAt(t)) % 2 ? 'yy_tilt' : 'yy_sit';
       } else {
         dx = dx0 + 10;
         name = Math.floor(au.barAt(t)) % 2 ? 'pp_sniff' : 'pp_beg';
       }
     }
-    puppetShadow(c, d, dx, dy, { h: SZ * doS, lift: bob, alpha: 0.32 * en.alpha, color: '70,45,25' });
-    const sq = 0.03 * beatKick(au, t, 0.25) + breathe(t, 0.012, 1.2, d === 'qq' ? 0 : 0.5);
-    drawPuppet(c, name, dx, dy - bob, { ...dogO, squash: sq });
-    // ---- 牽繩：手 → 狗脖子（蓬毛裡）
-    const neck = puppetPoint(name, 'neck', dx, dy - bob, dogO) ?? neckGuess(name, dx, dy - bob, dogO);
-    leash(c, hand, neck, { ink: inkFor(true), t, h: SZ, slack: Math.max(8, Math.hypot(neck.x - hand.x, neck.y - hand.y) * 0.12) });
-    // 進場：仙女棒的火花在腳邊
-    if (en.k < 1) {
-      sparkHead(this.glow, px, y - 6, t, 0.7);
-      sparkParticles(this.glow, t, () => ({ x: px, y: y - 6 }), { rate: 50, life: 0.25, speed: 140, seed: far ? 1 : 2 });
-    }
+    puppetShadow(c, d, dx, y, { h: SZ * doS, lift: bob, alpha: 0.32 * en.alpha, color: '70,45,25' });
+    const sq = 0.03 * beatKick(au, t, 0.25) + breathe(t, 0.012, d === 'yy' ? 2.2 : 1.2, d === 'qq' ? 0 : 0.5);
+    drawPuppet(c, name, dx, y - bob, { ...dogO, squash: sq });
+    const yn = YY_NECK[name];
+    const neck = yn ? puppetPointAt(name, yn, dx, y - bob, dogO) : null;
+    return neck ?? puppetPoint(name, 'neck', dx, y - bob, dogO) ?? neckGuess(name, dx, y - bob, dogO);
   }
 
   /**
@@ -449,6 +476,18 @@ export default class DogWalk extends Scene {
 }
 
 /** 沒量脖子道具點的狗圖：照外框估（側面朝右：身體前三分之一、上面四成）。 */
+/**
+ * 圖上的一點（圖的 px）→ 畫面座標：跟 drawPuppet 同一套縮放（腳底錨點、身高），加上翻面（spin）的水平縮；
+ * 沒算壓扁（牽繩的端點差一兩 px 看不出來）。給沒有量道具點的圖用（元元的脖子）。
+ */
+function puppetPointAt(name: string, pt: readonly [number, number], x: number, y: number, o: PuppetOpts): Pt | null {
+  const info = puppetInfo(name);
+  if (!info) return null;
+  const k = puppetHeight(name, o.h, o.scale ?? 1) / info.ref;
+  const sx = Math.cos((o.spin ?? 0) * Math.PI * 2) * (o.flip ? -1 : 1);
+  return { x: x + (pt[0] - info.ax) * k * sx, y: y + (pt[1] - info.ay) * k };
+}
+
 function neckGuess(name: string, x: number, y: number, o: PuppetOpts): Pt {
   const [bx, by, bw, bh] = puppetBox(name, x, y, o);
   const fx = o.flip ? 0.3 : 0.7;

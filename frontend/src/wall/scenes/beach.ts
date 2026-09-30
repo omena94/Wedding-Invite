@@ -1,8 +1,10 @@
 // 海邊散步（亮、date、日常服二）：黃昏的沙灘側面，海在後面、沙灘在前面。宣文與孟庭牽著手在浪花邊跑，芃芃和 QQ 追浪。
-// 角色是 Codex 畫的紙偶（cp2_beach_run_1／2、pp_beach_shake、qq_beach_shake，狗跑步用 base 的 pp／qq_run），海、浪、沙、字是程式畫的。
+// 角色是 Codex 畫的紙偶（cp2_beach_run_1／2、pp_beach_shake、qq_beach_shake，狗跑步用 base 的 pp／qq_run、yuanyuan 組的 yy_run／yy_jump），海、浪、沙、字是程式畫的。
 //  - 浪一個小節一道：小節線上浪從海那邊沖上沙灘，第 2 拍沖到最遠（兩人剛好在拍點上跳起來躲浪、腳邊濺起水花），之後慢慢退回去，
 //    沖過的地方留下一片濕沙、慢慢乾掉。兩人一拍換一步（兩張跑步圖）、一步一彈，整個窗格從左往右慢慢跑過去。
-//  - 狗：浪來的時候往右逃，第 2 拍被浪追上、原地甩水（正面甩水那張，水珠在拍點上噴出去），浪退的時候再往左追回去。
+//  - 狗：芃芃和 QQ 浪來的時候往右逃，第 2 拍被浪追上、原地甩水（正面甩水那張，水珠在拍點上噴出去），浪退的時候再往左追回去。
+//    元元（白色柴犬，比博美大、穩重）不逃：嘴裡叼著一根比牠還長的漂流木，跟在兩人後面一起跑，第 2 拍浪最遠的時候
+//    跟兩人一起跳過浪花（跳得比較高，落地濺起水花）——兩隻博美做不到的事。
 //  - **主打留言寫在前景的沙上**（畫面左下）：第一道浪特別大，沖過整片前景的沙，退下去之後沙上一個字一個字浮出留言
 //    （沙上刻的字：深一點的凹痕＋下緣一條亮邊），寫完署名。之後的浪都比較小、碰不到字。照標準 v2：字 40～60、署名 26～32，
 //    寫字的範圍 ≤ 860 × 192（離下緣 96 px），在畫面左下。沒有留言時沙上寫邀請（字小、淡）。
@@ -17,7 +19,7 @@ import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, hash, lerp } from '../engine/util';
 import { lyricAt, barAfter, sparkHead, sparkParticles, msgChars, lyricSubOf, subGap } from './_motifs';
 import { paperBG, lyricOnPath, drawNote, type Pt, type Note } from './_couple';
-import { loadPuppets, drawPuppet, drawCycle, puppetShadow, puppetIn, jumpArc, breathe, hop, beatKick, noteV2, tightenNote } from './_puppet';
+import { loadPuppets, drawPuppet, drawCycle, puppetPoint, puppetShadow, puppetIn, jumpArc, breathe, hop, beatKick, noteV2, tightenNote } from './_puppet';
 import { lyricV2 } from './_v2';
 
 export const spec: PlateSpecDecl = { group: 'couple', family: 'date', paper: true, energy: [0.2, 0.9], bars: [4, 8] };
@@ -33,7 +35,9 @@ const DOG_S = 1.25;
 /** 前景沙上寫留言的範圍（左下；標準 v2）。 */
 const SAND = { x: 110, y: 792, w: 860, h: 192 };
 const INVITE = '掃描右下角 QR code，把祝福寫上大螢幕';
-const SPRITES = ['cp2_beach_run_1', 'cp2_beach_run_2', 'pp_beach_shake', 'qq_beach_shake', 'pp_run_1', 'pp_run_2', 'qq_run_1', 'qq_run_2'];
+const SPRITES = ['cp2_beach_run_1', 'cp2_beach_run_2', 'pp_beach_shake', 'qq_beach_shake', 'pp_run_1', 'pp_run_2', 'qq_run_1', 'qq_run_2', 'yy_run_1', 'yy_run_2', 'yy_jump'];
+/** 元元跟在兩人左後方多遠（x）、腳踩的地面（比兩人靠鏡頭一點）。 */
+const YY_BACK = 370, YY_Y = 786;
 
 interface Wave { t: number; B: number; big: boolean }
 
@@ -157,6 +161,7 @@ export default class Beach extends Scene {
     this.drawSwash(c, t);
     this.drawSandNote(c, t);
     this.drawCouple(c, t);
+    this.drawYuan(c, t);
     for (const D of DOGS) this.drawDog(c, t, D.d, D.x0, D.y);
 
     comp.draw(renderer, L.upload(), out);
@@ -306,6 +311,64 @@ export default class Beach extends Scene {
       sparkHead(this.glow, x, GROUND - 6, t, 0.7);
       sparkParticles(this.glow, t, () => ({ x, y: GROUND - 6 }), { rate: 50, life: 0.25, speed: 140, seed: 2 });
     }
+  }
+
+  /**
+   * 元元：叼著一根漂流木跟在兩人左後方一起跑（一拍兩步、一步一彈）；每道浪第 2 拍（浪最遠）跟兩人一起跳過浪花，
+   * 最高點在拍點上、跳得比兩人高，落地濺水花。漂流木由程式畫在圖上嘴的位置（道具點 mouth），跟著身體一起傾斜。
+   */
+  private drawYuan(c: CanvasRenderingContext2D, t: number) {
+    const au = this.ctx.audio, s = this.ctx.start, e = this.ctx.end;
+    const en = puppetIn(t, s + 0.18, 0.45);
+    if (en.alpha <= 0) return;
+    const x = lerp(RUN_X0, RUN_X1, ease.inOutQuad(clamp((t - s) / (e - s)))) - YY_BACK;
+    let lift = hop(au.beatAt(t), 2) * 7, squash = 0, air = false, u = 0;
+    for (const w of this.waves) {
+      const peak = w.t + w.B * 0.25, bp = w.B / 4;
+      const j = jumpArc(t, peak - bp * 0.5, peak + bp * 0.5, 70, { crouch: 0.1, land: 0.16 });
+      if (j.air) { lift = -j.y; squash = j.squash; air = true; u = j.u; }
+      else if (t > peak && t < peak + bp) squash += j.squash;
+      const d = t - (peak + bp * 0.5);
+      if (d > 0 && d < 0.5) this.splash(c, x + 20, YY_Y, d, w.t + 11, 0.8);
+    }
+    const o = { h: SZ, scale: DOG_S, squash, spin: en.spin, alpha: en.alpha, rot: air ? -0.22 + 0.44 * u : 0.03, pivot: 0.5, hide: ['ball'] };
+    puppetShadow(c, 'yy', x, YY_Y, { h: SZ * DOG_S, lift, alpha: 0.28 * en.alpha, color: '70,45,25' });
+    const name = air ? 'yy_jump' : drawCycle(c, au, t, ['yy_run_1', 'yy_run_2'], 2, x, YY_Y - lift, o);
+    if (air) drawPuppet(c, 'yy_jump', x, YY_Y - lift, o);
+    const m = puppetPoint(name, 'mouth', x, YY_Y - lift, o);
+    if (m) this.driftwood(c, m.x, m.y, (o.rot ?? 0) + 0.1);
+  }
+
+  /** 漂流木：一根比元元還長的灰褐色木頭（兩頭細、中間粗、一個分岔），咬在中間偏後的地方。 */
+  private driftwood(c: CanvasRenderingContext2D, x: number, y: number, ang: number) {
+    c.save();
+    c.translate(x, y);
+    c.rotate(ang);
+    // 道具點在嘴角，木頭咬在嘴裡：往下一點
+    c.translate(-6, 7);
+    const L0 = -150, L1 = 120;
+    c.fillStyle = mixRgba('fur', 'ash', 0.55);
+    c.strokeStyle = rgba('sepia', 0.7);
+    c.lineWidth = 1.5;
+    c.beginPath();
+    c.moveTo(L0, -4);
+    c.quadraticCurveTo((L0 + L1) / 2, -14, L1, -5);
+    c.lineTo(L1 + 7, 1);
+    c.lineTo(L1, 6);
+    c.quadraticCurveTo((L0 + L1) / 2, 13, L0, 5);
+    c.closePath();
+    c.fill(); c.stroke();
+    // 分岔
+    c.beginPath();
+    c.moveTo(L1 * 0.55, -5); c.lineTo(L1 * 0.8, -26); c.lineTo(L1 * 0.84, -23); c.lineTo(L1 * 0.66, -3);
+    c.closePath(); c.fill(); c.stroke();
+    // 木紋
+    c.strokeStyle = rgba('sepia', 0.3);
+    c.lineWidth = 1;
+    c.beginPath();
+    c.moveTo(L0 + 20, 0); c.lineTo(-30, -2); c.moveTo(20, 2); c.lineTo(L1 - 20, 0);
+    c.stroke();
+    c.restore();
   }
 
   /** 水花：從腳邊往上噴的小水珠（白色、細墨邊），d 秒後落下。 */

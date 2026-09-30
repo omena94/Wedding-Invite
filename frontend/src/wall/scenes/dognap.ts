@@ -1,6 +1,8 @@
-// 午睡（亮、dog、慢歌）：午後的客廳，宣文與孟庭靠在沙發上睡著了，QQ 翻著肚子睡在沙發上、芃芃縮成一顆甜甜圈睡在地毯上。
+// 午睡（亮、dog、慢歌）：午後的客廳，宣文與孟庭靠在沙發上睡著了，QQ 翻著肚子睡在沙發上；地毯上元元（白色柴犬）側躺著睡，
+// 芃芃縮成一顆甜甜圈窩在元元的肚子邊，把牠當枕頭。
 // 角色是 Codex 畫的紙偶（_puppet.ts）。
-//  - **呼吸起伏跟著節拍**：每小節一次深呼吸（吸兩拍、吐兩拍），四個一起起伏；狗睡到一半腳抖一下（拍點上）。
+//  - **呼吸起伏跟著節拍**：每小節一次深呼吸（吸兩拍、吐兩拍），大家一起起伏；元元是大狗，呼吸起伏最大，
+//    靠在牠肚子上的芃芃跟著牠一起一上一下；狗睡到一半腳抖一下（拍點上），元元每兩小節耳朵抖一下（夢到什麼）。
 //    每兩小節宣文醒來偷看孟庭一眼（cp_nap_peek，一小節），又睡回去。
 //  - **夢泡泡裡是留言**：從孟庭頭上冒出三顆小泡泡、一朵雲（在拍點上一顆一顆冒出來），雲裡寫著主打留言（深墨手寫字、署名）；
 //    照「留言尺寸與版面比例標準 v2」：字 40～60、雲最大 740 × 400、在畫面右上，寬高跟著留言。沒有留言時雲裡寫邀請。
@@ -28,7 +30,9 @@ const CX = 900, HIP = 0.4;
 const SIT = SZ * 0.8;
 /** 沙發：左右、椅背頂。 */
 const SOFA = { x0: 470, x1: 1260, back: 500 };
-const QQ_X = 640, PP_X = 1200;
+const QQ_X = 640;
+/** 地毯上：元元側躺（頭朝右），芃芃窩在牠的肚子邊（前面一點、低一點）。 */
+const YY_X = 1160, PP_X = 1090;
 /** 夢泡泡的雲：最大範圍（標準 v2）與寫字的內距。 */
 const CLOUD = { right: 1830, top: 96, w: 860, h: 430 };
 /**
@@ -40,7 +44,7 @@ const SQ = 1.5;
 /** 歌詞的中心與基線（窗戶和夢泡泡之間、宣文頭上）。 */
 const LYR = { x: 730, y: 300 };
 const INVITE = '掃描右下角 QR code，把祝福寫上大螢幕';
-const SPRITES = ['cp_nap', 'cp_nap_peek', 'pp_nap', 'qq_nap'];
+const SPRITES = ['cp_nap', 'cp_nap_peek', 'pp_nap', 'qq_nap', 'yy_sleep'];
 
 export default class DogNap extends Scene {
   paper = paperBG();
@@ -106,7 +110,7 @@ export default class DogNap extends Scene {
     for (let k = -8; k <= 14; k++) { const x0 = 900 + k * 120, x1 = 900 + k * 200; c.moveTo(x0, FLOOR - 70); c.lineTo(x1, H); }
     c.stroke();
     // 地毯（芃芃睡在上面）：一塊扁扁的橢圓
-    inkEllipse(c, 960, FLOOR + 36, 350, 54, 0, { ink, fill: mixRgba('paper', 'rose', 0.07), w: 0.6, seed: 3, color: rgba('sepia', 0.5) });
+    inkEllipse(c, 1000, FLOOR + 36, 330, 54, 0, { ink, fill: mixRgba('paper', 'rose', 0.07), w: 0.6, seed: 3, color: rgba('sepia', 0.5) });
     c.restore();
     // 窗（左上）：窗框、兩片窗簾（窗簾的晃動每格畫）
     inkPoly(c, [{ x: 90, y: 120 }, { x: 330, y: 120 }, { x: 330, y: 520 }, { x: 90, y: 520 }], { ink, fill: mixRgba('paper', 'bone', 0.6), w: 0.9, seed: 4 });
@@ -152,8 +156,14 @@ export default class DogNap extends Scene {
       const bb = Math.floor(au.beatAt(t) + 1e-6), tb = au.timeOfBeat(bb);
       const twitch = ((bb % 4) + 4) % 4 === 2 ? Math.exp(-(t - tb) / 0.12) * Math.sin((t - tb) * 60) : 0;
       drawPuppet(c, 'qq_nap', QQ_X, this.seat + 6, { h: SZ, scale: 1.05, spin: enD.spin, alpha: enD.alpha, squash: -0.03 * breath, rot: 0.03 * twitch, pivot: 0.3 });
-      puppetShadow(c, 'pp', PP_X, FLOOR + 30, { h: SZ * 1.05, alpha: 0.25 * enD.alpha, color: '70,45,25' });
-      drawPuppet(c, 'pp_nap', PP_X, FLOOR + 30, { h: SZ, scale: 1.05, spin: enD.spin, alpha: enD.alpha, squash: -0.035 * (1 - breath) + 0.02 * Math.abs(twitch) });
+      // 元元：側躺在地毯上，呼吸起伏最大；每兩小節的第一拍耳朵（頭）抖一下
+      const bar = Math.floor(au.barAt(t) + 1e-6), tbar = au.timeOfBar(bar);
+      const flick = bar % 2 === 0 ? Math.exp(-(t - tbar) / 0.1) * Math.sin((t - tbar) * 70) : 0;
+      puppetShadow(c, 'yy', YY_X, FLOOR + 22, { h: SZ * 1.05, alpha: 0.22 * enD.alpha, wide: 0.9, color: '70,45,25' });
+      drawPuppet(c, 'yy_sleep', YY_X, FLOOR + 22, { h: SZ, scale: 1.05, spin: enD.spin, alpha: enD.alpha, squash: -0.06 * breath, rot: 0.012 * flick, pivot: 0.5 });
+      // 芃芃窩在元元的肚子邊：跟著元元的呼吸一起一上一下
+      puppetShadow(c, 'pp', PP_X, FLOOR + 40, { h: SZ * 1.05, alpha: 0.2 * enD.alpha, color: '70,45,25' });
+      drawPuppet(c, 'pp_nap', PP_X, FLOOR + 40 - 5 * breath, { h: SZ, scale: 1.05, spin: enD.spin, alpha: enD.alpha, squash: -0.03 * (1 - breath) + 0.02 * Math.abs(twitch) });
     }
 
     // ---- 歌詞：從宣文頭上飄出來的一行字（旁邊幾個小小的 z）

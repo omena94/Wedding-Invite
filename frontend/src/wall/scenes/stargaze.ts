@@ -1,5 +1,6 @@
-// 看星星（暗、date、慢歌、日常服一）：夜裡的山坡，宣文與孟庭並肩躺在草地上（頭在坡上、腳在坡下），芃芃和 QQ 睡在前景的草地上。
-// 角色是 Codex 畫的紙偶（cp_stargaze_1～3、pp_sleep、qq_sleep，_puppet.ts），夜空、銀河、山坡、草、螢火蟲是程式畫的。
+// 看星星（暗、date、慢歌、日常服一）：夜裡的山坡，宣文與孟庭並肩躺在草地上（頭在坡上、腳在坡下），芃芃和 QQ 在兩人腳邊睡成兩團，
+// 元元（白色柴犬，比博美大）坐在坡的左邊守著大家：每一段星星亮起的拍點歪一下頭，留言寫完的那一拍仰頭對著星星長嚎，之後流星劃過時也歪頭看。
+// 角色是 Codex 畫的紙偶（cp_stargaze_1～3、pp_sleep、qq_sleep、yy_sit／tilt／howl，_puppet.ts），夜空、銀河、山坡、草、螢火蟲是程式畫的。
 //  - **主打留言寫在天上**（右上方）：他們指到的星星一顆一顆亮起、連成留言的字——每一拍一小段：從指尖射出一道細細的光到那幾個字的星，
 //    拍點上星星一閃、那幾個字浮現（宋體、紙白），星與星之間連上很淡的星座線。前半段宣文指（cp_stargaze_1）、後半段孟庭指（_2），
 //    全部亮完的下一拍兩人牽手、轉頭看對方（_3）。一小段幾個字，照字數分成最多六拍，一個半小節內寫完。寫完署名淡入。
@@ -16,19 +17,22 @@ import { LIN, rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, hash, lerp } from '../engine/util';
 import { lyricAt, lyricSubOf, subGap, beatAfter, barAfter, sparkHead, sparkParticles, heartPoints, msgChars } from './_motifs';
 import { lyricOnPath, drawNote, type Pt, type Note } from './_couple';
-import { loadPuppets, drawPuppet, puppetPoint, puppetShadow, puppetIn, puppetLight, breathe, beatKick, noteV2, tightenNote } from './_puppet';
+import { loadPuppets, drawPuppet, puppetPoint, puppetBox, puppetShadow, puppetIn, puppetLight, breathe, beatKick, noteV2, tightenNote } from './_puppet';
 import { lyricV2 } from './_v2';
 
 export const spec: PlateSpecDecl = { group: 'couple', family: 'date', paper: false, energy: [0, 0.55], bars: [4, 8] };
 
 /** 兩人躺的位置（腳底錨點）與場景尺度。 */
 const CX = 640, GROUND = 925, SZ = 420;
-/** 芃芃與 QQ 睡在前景（離鏡頭近一點、大一點）的草地上，在兩人腳邊。 */
-const PP = { x: 150, y: 1016 }, QQ = { x: 336, y: 1034 };
+/** 芃芃與 QQ 睡在前景（離鏡頭近一點、大一點）的草地上，在兩人腳邊；三隻狗同一個尺度（DOG_S）。 */
+const PP = { x: 420, y: 1022 }, QQ = { x: 592, y: 1040 };
+const DOG_S = 1.3;
+/** 元元坐在坡的左邊（離兩人的腳遠一點，不擠成一團）。 */
+const YY_X = 140;
 /** 天上寫留言的範圍（右上；標準 v2：≤ 860 × 430）。 */
 const SKYMSG = { x: 980, y: 120, w: 800, h: 380 };
 const INVITE = '掃描右下角 QR code，把祝福寫上大螢幕';
-const SPRITES = ['cp_stargaze_1', 'cp_stargaze_2', 'cp_stargaze_3', 'pp_sleep', 'qq_sleep'];
+const SPRITES = ['cp_stargaze_1', 'cp_stargaze_2', 'cp_stargaze_3', 'pp_sleep', 'qq_sleep', 'yy_sit', 'yy_tilt', 'yy_howl'];
 
 /**
  * 夜空：上深下淡、地平線一點點暖；斜斜的一條銀河（fbm 的雲氣）；滿天的小星星（格子裡隨機一顆），在 hi-hat 上閃。
@@ -218,9 +222,10 @@ export default class Stargaze extends Scene {
       if (e2.alpha <= 0) continue;
       // 睡著：肚子照拍子很慢地起伏（兩拍一次）
       const sq = 0.03 * Math.sin((au.beatAt(t) * 0.5 + ph) * Math.PI * 2) + 0.02 * beatKick(au, t, 0.4);
-      puppetShadow(c, d, P.x, P.y, { h: SZ * 1.3, alpha: 0.5, color: '0,0,0' });
-      drawPuppet(c, `${d}_sleep`, P.x, P.y, { h: SZ, scale: 1.3, flip: d === 'qq', spin: e2.spin, alpha: e2.alpha, squash: sq });
+      puppetShadow(c, d, P.x, P.y, { h: SZ * DOG_S, alpha: 0.5, color: '0,0,0' });
+      drawPuppet(c, `${d}_sleep`, P.x, P.y, { h: SZ, scale: DOG_S, flip: d === 'qq', spin: e2.spin, alpha: e2.alpha, squash: sq });
     }
+    this.drawYuan(c, t);
     // 月光從右上來：上面淡、下面（草裡）暗
     puppetLight(c, [0, GROUND - SZ * 1.3, CX + 600, H - (GROUND - SZ * 1.3)], rgba('ink', 0.18), rgba('ink', 0.6));
 
@@ -251,6 +256,53 @@ export default class Stargaze extends Scene {
     const push = ease.inOutCubic(f.p);
     const fx = SKYMSG.x + SKYMSG.w / 2, fy = SKYMSG.y + SKYMSG.h / 2;
     return { bloom: 0.8, vignette: 0.55, zoom: 1 + 0.03 * push, shake: [-(fx - W / 2) * 0.03 * push, -(fy - H / 2) * 0.03 * push] };
+  }
+
+  /**
+   * 元元：正面坐著守在坡上；每一段星星亮起的拍點歪一下頭（半拍），留言全部亮完的那一拍仰頭長嚎一小節（第 1、3 拍嘴邊冒聲波），
+   * 之後流星劃過時也歪頭。呼吸很慢、拍點上輕輕點一下。
+   */
+  private drawYuan(c: CanvasRenderingContext2D, t: number) {
+    const au = this.ctx.audio, s = this.ctx.start;
+    const bp = au.beatPeriod(t);
+    const en = puppetIn(t, s + 0.3, 0.4);
+    if (en.alpha <= 0) return;
+    const g = this.hillY(YY_X) + 4;
+    let pose = 'yy_sit';
+    for (const gr of this.groups) if (t >= gr.t && t < gr.t + bp * 0.5) pose = 'yy_tilt';
+    const howl = this.groups.length > 0 && t >= this.done && t < this.done + bp * 4;
+    if (howl) pose = 'yy_howl';
+    // 流星（每兩小節一顆，寫完之後）：劃過的那半拍歪頭
+    if (!howl && t >= this.done) {
+      const b = Math.floor(au.barAt(t));
+      if (b % 2 === 0 && t - au.timeOfBar(b) < bp * 0.6 && au.timeOfBar(b) >= this.done) pose = 'yy_tilt';
+    }
+    const o = {
+      h: SZ, scale: DOG_S, spin: en.spin, alpha: en.alpha, pivot: 0.2,
+      rot: howl ? -0.04 * Math.sin(Math.PI * prog(t, this.done, this.done + bp * 2)) : 0,
+      squash: breathe(t, 0.01, 3.4, 0.6) + 0.015 * beatKick(au, t, 0.35),
+    };
+    puppetShadow(c, 'yy', YY_X, g, { h: SZ * DOG_S, alpha: 0.5 * en.alpha, color: '0,0,0' });
+    drawPuppet(c, pose, YY_X, g, o);
+    if (howl) {
+      // 聲波：嘴邊往右上（星星那邊）冒三道短弧
+      const b = puppetBox('yy_howl', YY_X, g, o);
+      const mx = b[0] + b[2] * 0.86, my = b[1] + b[3] * 0.1;
+      for (const k of [0, 2]) {
+        const tb = au.timeOfBeat(Math.round(au.beatAt(this.done)) + k);
+        const u = (t - tb) / (bp * 0.9);
+        if (u < 0 || u > 1) continue;
+        c.save();
+        c.strokeStyle = rgba('bone', 0.5 * (1 - u));
+        c.lineWidth = 2.5;
+        c.lineCap = 'round';
+        for (let i = 0; i < 3; i++) {
+          const r = 16 + i * 14 + u * 30;
+          c.beginPath(); c.arc(mx, my, r, -Math.PI * 0.45, -Math.PI * 0.05); c.stroke();
+        }
+        c.restore();
+      }
+    }
   }
 
   /** 這一格的姿勢：前半段宣文指、後半段孟庭指，全部亮完的下一拍牽手對看。 */

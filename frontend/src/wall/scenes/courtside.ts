@@ -1,4 +1,4 @@
-// 場邊看球（暗、hoops）：夜裡的室內球場，宣文和孟庭穿著自己設計的 A&O 情侶球衣（紫白、背號 13／03）坐在場邊第一排，
+// 場邊看球（暗、hoops）：夜裡的室內球場，宣文和孟庭穿著自己設計的 A&O 情侶球衣（寶藍配金黃、背號宣文 420／孟庭 87）坐在場邊第一排，
 // 孟庭抱著一桶爆米花。角色是 Codex 畫的紙偶（_puppet.ts、素材組 hoops）；球員、觀眾是程式畫的剪影（_c8.ts，不畫真實球隊與聯盟）。
 //  - 球場在右邊：六個剪影球員照拍子跑位（一拍兩步），持球的那個一拍運一下球（球在拍點落地）。
 //    每兩小節一次快攻：小節線上灌籃（跳到最高點剛好把球塞進籃框），網子往下甩；場館大螢幕上的比分 +2。
@@ -20,7 +20,7 @@ import { lyricAt, lyricSubOf, subSizeFor, subGap, barAfter, beatAfter, msgChars 
 import { lyricOnPath, drawNote, type Note } from './_couple';
 import { loadPuppets, drawPick, pick, puppetPoint, puppetShadow, puppetIn, puppetLight, jumpArc, breathe, beatKick, noteV2, tightenNote, type PuppetOpts } from './_puppet';
 import { lyricV2 } from './_v2';
-import { drawPlayer, playerPose, makeCrowd, CrowdLayer, basketball, drawHoop, popcorn, seats, sine01, crowdShade, lyricRows, jumbotronShell, ledBand, scanPattern, type Hoop, type Pt, type PlayerPose } from './_c8';
+import { drawPlayer, playerPose, makeCrowd, CrowdLayer, basketball, drawHoop, popcorn, seats, sine01, crowdShade, lyricRows, teamRgba, TEAM_TAG, jumbotronShell, ledBand, scanPattern, type Hoop, type Pt, type PlayerPose } from './_c8';
 
 export const spec: PlateSpecDecl = { group: 'couple', family: 'hoops', paper: false, energy: [0.45, 1], bars: [4, 8] };
 
@@ -358,9 +358,11 @@ export default class Courtside extends Scene {
     for (const S of this.scores) if (t >= S) pts += 2;
     c.font = font(F.mono(500), 20);
     c.letterSpacing = '3px';
-    c.fillStyle = rgba('ash', 0.7);
+    // 主隊（我們這隊）用隊色的金黃，客隊灰
+    c.fillStyle = teamRgba('gold', 0.8);
     c.textAlign = 'left';
-    c.fillText(`A&O ${pts}`, J.x + PAD.x, J.y + 31);
+    c.fillText(`${TEAM_TAG.name} ${pts}`, J.x + PAD.x, J.y + 31);
+    c.fillStyle = rgba('ash', 0.7);
     c.textAlign = 'right';
     c.fillText('97 GUEST', J.x + J.w - PAD.x, J.y + 31);
     c.textAlign = 'center';
@@ -382,18 +384,18 @@ export default class Courtside extends Scene {
     // 亮起來的那條掃描光
     if (on < 1) { c.fillStyle = rgba('bone', 0.5 * (1 - on)); c.fillRect(J.x, J.y + J.h * on - 2, J.w, 3); }
     c.restore();
-    // 螢幕底面的一圈 LED：平常一格一格跟著八分音符走；進球時整圈亮
+    // 螢幕底面的一圈 LED（隊色）：平常是暗暗的寶藍，一格金黃跟著八分音符走；我們進球時整圈亮成金黃
     const au = this.ctx.audio;
     const step = Math.floor(au.beatAt(t) * 2);
     const y = J.y + J.h + 20, n2 = Math.floor((J.w - 20) / 14);
     for (let k = 0; k < n2; k++) {
-      const lit = hit > 0.05 ? 0.4 + 0.5 * hit : (k + step) % 8 === 0 ? 0.55 : 0.08;
-      c.fillStyle = rgba('signal', lit);
+      const runner = (k + step) % 8 === 0;
+      c.fillStyle = hit > 0.05 ? teamRgba('gold', 0.4 + 0.45 * hit) : runner ? teamRgba('gold', 0.6) : teamRgba('blue', 0.55);
       c.fillRect(J.x + 10 + k * 14, y, 7, 3);
     }
   }
 
-  /** 環場 LED 帶上的歌詞（逐字跟唱）；沒有歌詞時慢慢捲一排很淡的 A&O ♥。 */
+  /** 環場 LED 帶上的歌詞（逐字跟唱）；沒有歌詞時慢慢捲一排很淡的隊名與背號（隊色金黃）。 */
   private drawRibbon(c: CanvasRenderingContext2D, t: number) {
     const R = this.rib, s = this.ctx.start;
     const ly = lyricAt(this.ctx.lyrics, t);
@@ -423,8 +425,8 @@ export default class Courtside extends Scene {
       c.beginPath(); c.rect(R.x0, R.y0, R.x1 - R.x0, R.y1 - R.y0); c.clip();
       c.font = font(F.mono(600), 24);
       c.letterSpacing = '10px';
-      c.fillStyle = rgba('signal', 0.2 * idle * rv);
-      const unit = 'A&O ♥ 13 · 03   ';
+      c.fillStyle = teamRgba('gold', 0.24 * idle * rv);
+      const unit = `${TEAM_TAG.name} ♥ ${TEAM_TAG.xw} · ${TEAM_TAG.mt}   `;
       const uw = c.measureText(unit).width;
       const off = -((t * 60) % uw);
       for (let x = R.x0 + off; x < R.x1; x += uw) c.fillText(unit, x, tall ? (R.y0 + R.y1) / 2 + 8 : R.base - 6);

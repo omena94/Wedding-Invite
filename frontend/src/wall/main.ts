@@ -20,7 +20,7 @@ import { MessagePool } from './pool';
 import { Director } from './director';
 import { applyTheme, pickTheme } from './themes';
 import { loadSong, type LoadedSong } from './songs';
-import { fetchFeed, fetchSongs, getToken, login, syncRemote, HttpError, type RemoteCommand, type SongRow } from './net';
+import { fetchFeed, fetchSongs, getToken, login, saveDuckLevel, syncRemote, HttpError, type RemoteCommand, type SongRow } from './net';
 import { buildLyrics } from './lyrics/build';
 import { loadText } from './engine/type';
 import { DEV_LIVE, DEV_MESSAGES, dummyLrc, dummyKoLrc } from './dev/fixtures';
@@ -78,7 +78,7 @@ class Player {
   gain: GainNode | null = null;
   url = '';
   volume = readNum('wall_volume', 0.9);
-  /** 講話模式：主持人講話時音樂降到 DUCK 倍（畫面照跑）。 */
+  /** 講話模式：主持人講話時音樂降到 duckLevel %（畫面照跑）。 */
   ducked = false;
   /** 音畫同步微調（毫秒，正數＝畫面晚一點）：會場音響若有延遲，在這裡補。 */
   offsetMs = readNum('wall_sync_ms', 0);
@@ -110,7 +110,7 @@ class Player {
 
   /** 套用音量：這首歌的響度補償 × 音量 × 講話模式；fade 秒數 > 0 就慢慢變過去（講話模式不要一下子沒聲音）。 */
   applyGain(s: LoadedSong | null = cur, fade = 0) {
-    const v = (s?.gain ?? 1) * this.volume * (this.ducked ? DUCK : 1);
+    const v = (s?.gain ?? 1) * this.volume * (this.ducked ? duckLevel / 100 : 1);
     if (this.gain && this.ctx) {
       const g = this.gain.gain, now = this.ctx.currentTime;
       g.cancelScheduledValues(now);
@@ -133,7 +133,9 @@ class Player {
   }
 }
 const player = new Player();
-const DUCK = 0.2; // 講話模式的音量：原本的兩成，現場還聽得到有音樂、不會蓋過講話
+// 講話模式的音量（%）：新人可以自己設（2026-09-30），存在伺服器，feed 每兩秒帶回來；預設兩成，現場還聽得到有音樂、不會蓋過講話
+let duckLevel = 20;
+let duckSetAt = -Infinity; // 這台電腦剛改過：幾秒內不要被還沒存好之前的 feed 蓋回去
 
 function readNum(k: string, d: number) { try { const v = Number(localStorage.getItem(k)); return localStorage.getItem(k) !== null && Number.isFinite(v) ? v : d; } catch { return d; } }
 function saveNum(k: string, v: number) { try { localStorage.setItem(k, String(v)); } catch { /* 存不了就算了 */ } }
@@ -389,6 +391,7 @@ async function pollFeed(initial = false) {
     await pool.sync(f.messages, initial);
     director.off = new Set(f.plates_off ?? []);
     director.pace = f.pace ?? 'normal';
+    if (f.duck !== undefined && performance.now() - duckSetAt > 5000) setDuckLevel(f.duck, false);
     if (f.songs_rev !== songsRev) {
       songsRev = f.songs_rev;
       const rows = (await fetchSongs()).filter((s) => s.enabled).sort((a, b) => a.sort_order - b.sort_order || a.id - b.id);
@@ -532,6 +535,7 @@ function updateUi() {
   $('ui-queue-btn').classList.toggle('on', showQueue);
   $('ui-duck').classList.toggle('on', player.ducked);
   $('ui-duck').textContent = player.ducked ? '講話模式中（音樂小聲）' : '講話模式';
+  $('ui-duck-level').textContent = `${duckLevel}%`;
   renderQueue();
   drawSeek();
 }
@@ -547,6 +551,8 @@ function bindUi() {
   on('ui-full', () => toggleFull());
   on('ui-queue-btn', () => toggleQueue());
   on('ui-duck', () => setDuck(!player.ducked));
+  on('ui-duck-down', () => setDuckLevel(duckLevel - 5, true));
+  on('ui-duck-up', () => setDuckLevel(duckLevel + 5, true));
   for (const el of [ui, queueEl]) {
     el.addEventListener('pointerenter', () => { hovering = true; });
     el.addEventListener('pointerleave', () => { hovering = false; });
@@ -643,6 +649,21 @@ async function setPlaying(on: boolean) {
   updateUi();
 }
 function togglePlay() { return setPlaying(!playing); }
+/**
+ * 講話模式要降到幾 %：操作列的 − ＋（save = true，存回伺服器，手機遙控與別台電腦也跟著變）或 feed 帶回來的（手機遙控頁改的）。
+ * 講話模式開著時改，音量半秒內跟過去。
+ */
+function setDuckLevel(p: number, save: boolean) {
+  const v = Math.round(Math.min(90, Math.max(0, p)));
+  if (v === duckLevel) return;
+  duckLevel = v;
+  if (player.ducked) player.applyGain(cur, 0.5);
+  if (save) {
+    duckSetAt = performance.now();
+    saveDuckLevel(v).catch((e) => setStatus(`講話模式的音量沒存到：${(e as Error).message}`, false));
+  }
+  updateUi();
+}
 /** 講話模式：開的時候 1.2 秒降下來，關的時候 2 秒慢慢回來。 */
 function setDuck(on: boolean) {
   if (player.ducked === on) return;
@@ -666,7 +687,7 @@ function remoteState() {
     started, playing, silent, t: Math.round(t * 100) / 100,
     song: on ? { id: cur!.row.id, title: cur!.row.title, artist: cur!.row.artist, ins: !!order[pos]?.ins } : null,
     start: on ? cur!.startAt : 0, end: on ? cur!.endAt : 0,
-    volume: player.volume, duck: player.ducked, shuffle,
+    volume: player.volume, duck: player.ducked, duckLevel, shuffle,
     queue: order.slice(pos + 1, pos + 1 + count).map((e, k) => {
       const r = rowById(e.id);
       return { id: e.id, j: pos + 1 + k, ins: !!e.ins, title: r?.title ?? '', artist: r?.artist ?? '', len: r ? lenOf(r) : 0 };
@@ -886,6 +907,7 @@ async function boot() {
       await pool.sync(f.messages, true);
       director.off = new Set(f.plates_off ?? []);
       director.pace = f.pace ?? 'normal';
+      if (f.duck !== undefined) duckLevel = f.duck;
       songsRev = f.songs_rev;
       playlist = (await fetchSongs()).filter((s) => s.enabled).sort((a, b) => a.sort_order - b.sort_order || a.id - b.id);
     } catch (e) {

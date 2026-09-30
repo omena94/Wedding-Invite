@@ -4,6 +4,9 @@
 //  - 飛：沿著一條弧線飛上天（三拍），邊飛邊變大、轉成從後上方看的角度，到了定點「啪」一下攤平，留言一個字一個字寫上機翼。
 //    之後在風裡滑翔：每拍輕輕一沉、慢慢左右傾。飛過的弧線留下一條虛線，**歌詞沿著這條軌跡排**（跟唱，比留言小一級）。
 //  - 孟庭在旁邊：宣文射出去之後指著天空；之後每兩小節她也射一架小紙飛機（沒有字）飛過畫面，QQ 在下一拍跳起來追。
+//  - 元元（白柴，三隻裡跳得最高、最穩重）負責撿小紙飛機：孟庭每兩小節射一架小的，元元在右邊等著，兩拍後小飛機滑下來，
+//    牠在拍點上跳起來一口咬住，叼著跑回孟庭面前站好等，孟庭下一次瞄準（那一拍）就從牠嘴裡接過去、再射一次——一直循環。
+//    大紙飛機飛上天的時候，牠仰頭看著叫。QQ 在兩人中間，每次有飛機射出去就跳起來；芃芃在左邊坐著看。
 //  - 標準 v2：留言 40～60，機翼上的字區 ≤ 600 × 270，整架飛機寬 ≤ 860。暗版面：紙偶上亮下暗（月光）。
 import * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
@@ -14,7 +17,7 @@ import { LIN, rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, lerp, hash } from '../engine/util';
 import { lyricAt, barAfter, beatAfter, sparkHead, sparkParticles, msgChars } from './_motifs';
 import { inkFor, inkPoly, arcAt, lyricOnPath, drawNote, type Pt, type Note } from './_couple';
-import { loadPuppets, drawPuppet, drawPick, puppetPoint, puppetShadow, puppetLight, jumpArc, breathe, beatKick, noteV2, tightenNote } from './_puppet';
+import { loadPuppets, drawPuppet, drawPick, drawCycle, puppetPoint, puppetShadow, puppetLight, jumpArc, landSquash, breathe, beatKick, hop, noteV2, tightenNote, type PuppetOpts } from './_puppet';
 import { lyricV2 } from './_v2';
 import { INVITE, enterPuppet } from './_c5';
 
@@ -22,7 +25,9 @@ export const spec: PlateSpecDecl = { group: 'couple', family: 'home', paper: fal
 
 const GROUND = 930;
 const SZ = 520;
-const AL_X = 360, OM_X = 690, PP_X = 150, QQ_X = 890, DOG_S = 1.15;
+const AL_X = 360, OM_X = 690, PP_X = 150, QQ_X = 528, DOG_S = 1.15;
+/** 元元等小飛機（也是跳起來接的地方）、叼回來交給孟庭的地方；跳多高。 */
+const YY_X = 1150, GIVE_X = 890, YJUMP = 18;
 /** 大紙飛機滑翔的位置（機身中心）與大小。 */
 const GLIDE = { x: 1372, y: 392, s: 1 };
 /** 機翼上寫字的範圍（紙飛機的座標，機頭朝上；標準 v2：≤ 600 × 270）。上緣剛好在往後掠的機翼前緣裡面。 */
@@ -34,7 +39,8 @@ const PLANE: readonly Pt[] = [
 ];
 /** 紙飛機的圖（機身＋摺線，字另外一張）：圖上的原點在畫布的哪裡。 */
 const PW = 900, PH = 500, PO = { x: 450, y: 300 };
-const POSES = ['xw_plane_fold', 'xw_plane_aim', 'xw_plane_throw', 'xw_plane_watch', 'mt_idle_front', 'mt_plane_aim', 'mt_plane_throw', 'mt_plane_point', 'pp_beg', 'qq_stand', 'qq_jump'];
+const POSES = ['xw_plane_fold', 'xw_plane_aim', 'xw_plane_throw', 'xw_plane_watch', 'mt_idle_front', 'mt_plane_aim', 'mt_plane_throw', 'mt_plane_point', 'pp_beg', 'qq_stand', 'qq_jump',
+  'yy_stand', 'yy_run_1', 'yy_run_2', 'yy_jump', 'yy_howl'];
 
 /**
  * 夜空與城市：上面深、地平線附近亮一點（城市的光）、淡淡的星星（很慢地閃）。用 shader 算，漸層才不會一階一階的。
@@ -57,6 +63,8 @@ const SKY = () => new FSPass(/* glsl */ `
   }`, { t: { value: 0 } });
 
 interface Throw { who: 'xw' | 'mt'; t: number; land: number; from: Pt; to: Pt; hgt: number; seed: number }
+/** 元元撿一架小飛機的時間軸：接住（land）→ 跑回來（back0～back1）→ 站著等 → 孟庭拿走（give）→ 跑回去等（～ret）。 */
+interface Fetch { back0: number; back1: number; give: number; ret: number }
 
 export default class Paperplane extends Scene {
   sky = shared('paperplane.sky', SKY);
@@ -78,6 +86,7 @@ export default class Paperplane extends Scene {
   omKeys: [number, string][] = [];
   /** 孟庭之後射的小紙飛機。 */
   smalls: Throw[] = [];
+  fetches: Fetch[] = [];
   note: Note | null = null;
   noteT0 = 0;
   lyricSize = 52;
@@ -105,12 +114,17 @@ export default class Paperplane extends Scene {
     // 孟庭：宣文摺紙的時候站在旁邊看；射出去之後指著天空；之後每兩小節自己也射一架小的
     this.omKeys = [[-1e9, 'mt_idle_front'], [this.T + bp * 0.3, 'mt_plane_point']];
     const mFrom = puppetPoint('mt_plane_throw', 'hand', OM_X, GROUND, { h: SZ }) ?? { x: OM_X + 140, y: GROUND - 440 };
+    // 小飛機滑到元元跳起來最高時的嘴邊（兩拍後、拍點上）
+    const catchAt = puppetPoint('yy_jump', 'mouth', YY_X, GROUND - YJUMP, { h: SZ, scale: DOG_S, flip: true }) ?? { x: YY_X - 150, y: GROUND - 250 };
     for (let k = 1; k < 20; k++) {
       const t = au.timeOfBar(Math.round(au.barAt(this.T)) + 2 * k);
       if (t > this.ctx.end - 0.3) break;
-      const b = au.beatPeriod(t);
+      const b = au.beatPeriod(t), bt = Math.round(au.beatAt(t));
       this.omKeys.push([t - b, 'mt_plane_aim'], [t, 'mt_plane_throw'], [t + b * 1.5, 'mt_plane_point']);
-      this.smalls.push({ who: 'mt', t, land: t + b * 6, from: mFrom, to: { x: W + 120, y: 140 + 160 * hash(k, 3) }, hgt: 160, seed: k });
+      const land = au.timeOfBeat(bt + 2);
+      this.smalls.push({ who: 'mt', t, land, from: mFrom, to: catchAt, hgt: 130, seed: k });
+      const air = Math.min(0.5, b * 1.1);
+      this.fetches.push({ back0: land + air / 2 + 0.12, back1: au.timeOfBeat(bt + 4), give: au.timeOfBeat(bt + 7), ret: au.timeOfBeat(bt + 8.6) });
     }
     // 機翼上的留言：標準 v2 的字級；紙飛機的圖與字各畫一次
     const c = this.textImg.ctx;
@@ -206,7 +220,8 @@ export default class Paperplane extends Scene {
 
     // ---- 人與狗（最先畫：打光只染紙偶）
     this.drawPeople(c, t, bp);
-    puppetLight(c, [0, GROUND - SZ * 1.3, 1100, SZ * 1.3 + 40], rgba('ink', 0.12), rgba('ink', 0.6));
+    this.drawYuanyuan(c, t, bp);
+    puppetLight(c, [0, GROUND - SZ * 1.3, 1400, SZ * 1.3 + 40], rgba('ink', 0.12), rgba('ink', 0.6));
 
     // ---- 摺紙（宣文手上）
     this.drawFold(c, t, bp);
@@ -277,6 +292,78 @@ export default class Paperplane extends Scene {
     }
     shadow('qq', QQ_X, 0, enQ.alpha);
     drawPuppet(c, 'qq_stand', QQ_X, GROUND, { h: SZ, scale: DOG_S, squash: 0.04 * nod, spin: enQ.spin, alpha: enQ.alpha });
+  }
+
+  /**
+   * 元元：在右邊等（面向孟庭）→ 小飛機滑過來時在拍點跳起來咬住 → 叼著跑回孟庭面前 → 站著等她拿（孟庭瞄準的那一拍）→ 跑回去等下一架。
+   * 大紙飛機飛上天的時候仰頭看著叫。
+   */
+  private drawYuanyuan(c: CanvasRenderingContext2D, t: number, bp: number) {
+    const en = enterPuppet(this.glow, t, this.ctx.start + 0.42, YY_X, GROUND - 6, 5);
+    if (!en) return;
+    const au = this.ctx.audio;
+    const base: PuppetOpts = { h: SZ, scale: DOG_S, spin: en.spin, alpha: en.alpha };
+    const shadow = (x: number, lift = 0) => puppetShadow(c, 'yy', x, GROUND, { h: SZ * DOG_S, lift, alpha: 0.6 * en.alpha, color: '0,0,0' });
+    const hold = (name: string, x: number, y: number, o: PuppetOpts) => {
+      const m = puppetPoint(name, 'mouth', x, y, o);
+      if (m) this.heldPlane(c, m.x, m.y + 4, !!o.flip, t);
+    };
+    const air = Math.min(0.5, bp * 1.1);
+    for (let i = 0; i < this.smalls.length; i++) {
+      const sm = this.smalls[i]!, fe = this.fetches[i]!;
+      if (t < sm.land - air / 2 - 0.12 || t >= fe.ret) continue;
+      // 跳起來接（最高點在拍點上）
+      if (t < fe.back0) {
+        const j = jumpArc(t, sm.land - air / 2, sm.land + air / 2, YJUMP, { crouch: 0.1, land: 0.18 });
+        shadow(YY_X, -j.y);
+        const o: PuppetOpts = { ...base, flip: true, hide: ['ball'], rot: j.air ? 0.12 - 0.24 * j.u : 0, pivot: 0.5, squash: j.squash };
+        const name = j.air ? 'yy_jump' : 'yy_stand';
+        drawPuppet(c, name, YY_X, GROUND + (j.air ? j.y : 0), o);
+        if (t >= sm.land) hold(name, YY_X, GROUND + (j.air ? j.y : 0), o);
+        return;
+      }
+      // 叼著跑回孟庭面前
+      if (t < fe.back1) {
+        const u = clamp((t - fe.back0) / (fe.back1 - fe.back0));
+        const x = lerp(YY_X, GIVE_X, 0.5 - 0.5 * Math.cos(Math.PI * u));
+        const b = hop(au.beatAt(t), 2) * 8;
+        shadow(x, b);
+        const o: PuppetOpts = { ...base, flip: true, rot: -0.03 };
+        const name = drawCycle(c, au, t, ['yy_run_1', 'yy_run_2'], 2, x, GROUND - b, o);
+        hold(name, x, GROUND - b, o);
+        return;
+      }
+      // 站著等孟庭拿（每拍搖一下）；孟庭瞄準那一拍拿走
+      if (t < fe.give) {
+        shadow(GIVE_X);
+        const o: PuppetOpts = { ...base, flip: true, squash: 0.03 * beatKick(au, t, 0.25) + landSquash(t, fe.back1, 0.12), pivot: 0.2 };
+        drawPuppet(c, 'yy_stand', GIVE_X, GROUND, o);
+        hold('yy_stand', GIVE_X, GROUND, o);
+        return;
+      }
+      // 跑回去等下一架
+      const u = clamp((t - fe.give - 0.1) / (fe.ret - fe.give - 0.1));
+      const x = lerp(GIVE_X, YY_X, 0.5 - 0.5 * Math.cos(Math.PI * u));
+      const b = hop(au.beatAt(t), 2) * 8;
+      shadow(x, b);
+      drawCycle(c, au, t, ['yy_run_1', 'yy_run_2'], 2, x, GROUND - b, { ...base, rot: 0.03 });
+      return;
+    }
+    // 等：大紙飛機在天上飛的時候仰頭叫，其他時候面向孟庭站著、跟著拍子點頭
+    shadow(YY_X);
+    if (t >= this.T && t < this.arrive + bp) drawPuppet(c, 'yy_howl', YY_X, GROUND, { ...base, rot: -0.03, pivot: 0.3 });
+    else drawPuppet(c, 'yy_stand', YY_X, GROUND, { ...base, flip: true, squash: 0.02 * beatKick(au, t, 0.28) + breathe(t, 0.01, 2.8), pivot: 0.2 });
+  }
+
+  /** 叼在嘴上的小紙飛機（側面，機頭朝前）。 */
+  private heldPlane(c: CanvasRenderingContext2D, x: number, y: number, left: boolean, t: number) {
+    const ink = inkFor(false, { line: rgba('ink2', 0.8) });
+    c.save();
+    c.translate(x, y);
+    c.scale(left ? -1.1 : 1.1, 1.1);
+    c.rotate(-0.12);
+    inkPoly(c, [{ x: 30, y: 0 }, { x: -22, y: -14 }, { x: -16, y: 1 }, { x: -24, y: 9 }], { ink, fill: mixRgba('bone', 'ash', 0.1), w: 0.6, lw: 2.2, t, seed: 91 });
+    c.restore();
   }
 
   /** 摺紙：宣文胸前的一張紙，每拍摺一步（彈一下），射出去前變成一架小紙飛機（之後換成圖上手裡的那架）。 */
@@ -369,7 +456,7 @@ export default class Paperplane extends Scene {
     c.scale(sc, sc);
     // 影子（飛機底下淡淡一塊，讓它浮起來）
     c.save();
-    c.translate(18, 40);
+    c.translate(16, 24);
     c.fillStyle = rgba('ink', 0.35);
     c.beginPath(); PLANE.forEach((p, i) => (i ? c.lineTo(p.x, p.y) : c.moveTo(p.x, p.y))); c.closePath(); c.fill();
     c.restore();

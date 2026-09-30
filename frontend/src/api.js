@@ -269,6 +269,8 @@ export const fetchWallSongs = () => request(`${WALL}/songs`, { auth: true });
 // 大螢幕遙控（2026-09-30）：手機看大螢幕回報的狀態 {state, age, online}、送指令（大螢幕每秒來拿）
 export const fetchWallRemote = () => request(`${WALL}/remote/state`, { auth: true });
 export const sendWallRemote = (action, args = {}) => request(`${WALL}/remote/command`, { method: "POST", body: { action, args }, auth: true });
+// 講話模式把音樂降到幾 %（0～90）：存在伺服器，大螢幕兩秒內跟上
+export const saveWallDuck = (level) => request(`${WALL}/duck`, { method: "PUT", body: { level }, auth: true });
 // fields = {title, artist}，留空就從檔名「歌手 - 歌名」自動拆
 export function uploadWallSong(file, fields = {}) {
   const fd = new FormData();

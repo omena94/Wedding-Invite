@@ -63,6 +63,9 @@ WALL_MODERATION_KEY = "wall_moderation"  # 現場留言要不要先審核
 WALL_PLATES_OFF_KEY = "wall_plates_off"
 # 2026-09-28 大螢幕換版面的節奏：fast／normal（預設，空字串也是）／slow
 WALL_PACE_KEY = "wall_pace"
+# 2026-09-30 講話模式把音樂降到幾 %（0～90，預設 20）。不放進 ALL_KEYS：幫手只要有「現場留言」鑰匙就能在手機遙控調，
+# 走 wall 自己的 API（/api/planner/wall/duck），不用「設定」鑰匙
+WALL_DUCK_KEY = "wall_duck"
 MENU_KEYS = ("menu_version", "menu_note")  # 2026-09-29 婚宴菜單：目前版本、討論備忘
 PERMISSION_KEY = "role_permissions"  # 2026-09-27 各角色能用的功能（JSON），見 permissions.py
 ALL_KEYS = (PHASE2_KEY, SEAT_KEY, PHOTOS_KEY, GUEST_UPLOAD_KEY, WALL_OPEN_KEY, WALL_MODERATION_KEY, WALL_PLATES_OFF_KEY, WALL_PACE_KEY, *INFO_KEYS, *BANQUET_KEYS, *SEATING_KEYS, *BROADCAST_KEYS, *MENU_KEYS, PERMISSION_KEY)

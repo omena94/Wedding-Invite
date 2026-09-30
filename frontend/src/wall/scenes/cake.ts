@@ -8,7 +8,10 @@
 //    （每層的寬度不一樣，照子句一層一層斷行）；署名寫在蛋糕檯的桌巾上（最後一行下面）。照「留言尺寸與版面比例標準 v2」：
 //    字 40～60，整座蛋糕的字加起來 ≤ 640 × 430，放在畫面左半。第一拍起一個字一個字擠上去。沒有留言時蛋糕上寫邀請、字淡，歌詞變主角。
 //  - 歌詞在長桌前面的地板上（下三分之一，比留言小一級 40～52），照跟唱規則逐字亮。
-//  - 次要動作：QQ 在桌子左邊站起來討（每拍搖一下，切下去那一刻開心地跳一下）；幾片花瓣慢慢飄；右邊大窗戶斜斜的光。
+//  - 三隻狗（2026-09-30 加入第三隻：白色柴犬元元）坐在長桌前面的地上一起等：芃芃、QQ 在左邊站起來討（每拍搖一下），
+//    切下去那一刻兩隻博美開心地跳一下；元元比較大、坐在右邊宣文孟庭的腳前面，**下一拍切下來的一小塊蛋糕從刀口彈出來，元元跳起來一口接住**
+//    （頂點落在拍點上，嘴邊冒一顆小愛心）。三隻用同一個場景尺度（大小照 dogs3-lineup.png）。
+//  - 次要動作：幾片花瓣慢慢飄；右邊大窗戶斜斜的光。
 //  - 鏡頭：整個窗格慢慢推近蛋糕；切下去那一下輕輕一頓。
 import * as THREE from 'three';
 import { Scene, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
@@ -20,7 +23,7 @@ import { clamp, ease, prog, hash } from '../engine/util';
 import { tokens, wrapGreedy } from '../engine/text';
 import { drawHeart } from '../engine/motifs';
 import { lyricAt, layoutLyric, drawLyric, barAfter, beatAfter, drawMessage, signature } from './_motifs';
-import { inkFor, inkLine, inkPath, inkShape, inkPoly, inkEllipse, heartPop, lyricOnPath, paperBG, type Pt, type Ink } from './_couple';
+import { inkFor, inkLine, inkPath, inkShape, inkPoly, inkEllipse, heartPop, arcAt, paperBG, type Pt, type Ink } from './_couple';
 import { loadPuppets, drawPick, pick, drawPuppet, puppetPoint, puppetBox, puppetShadow, puppetIn, jumpArc, breathe, beatKick } from './_puppet';
 import { msgMaxFor, sigV2, lyricV2, V2 } from './_v2';
 
@@ -32,8 +35,11 @@ const SZ = 700;
 const CP_X = 1080;
 /** 餵蛋糕那張兩個人站得比較開：往左挪一點，宣文才不會露出長桌右邊（右下角 QR 那一區也要空著）。 */
 const FEED_DX = -40;
-const QQ_X = 160;
-const DOG_S = 1.15;
+/** 三隻狗（在長桌前面的地上）：芃芃、QQ 在左邊蛋糕下面，元元在右邊兩個人的腳前面、翻過來面向蛋糕。三隻同一個縮放。 */
+const PP_X = 430, QQ_X = 235, YY_X = 1112;
+const DOG_S = 1;
+/** 元元接蛋糕跳多高、博美跳多高（px）。 */
+const YJUMP = 34, PJUMP = 40;
 /** 三層蛋糕（上 → 下）的寬、每層最多寫幾行；最下層右邊留給刀切（字不寫到那裡）。 */
 const TIERS = [{ w: 360, rows: 1 }, { w: 480, rows: 2 }, { w: 620, rows: 3 }] as const;
 const KNIFE_ROOM = 96;
@@ -43,7 +49,10 @@ const TIP_UP = 42;
 /** 歌詞：長桌前面的地板上（左邊對齊），最後一排的基線。 */
 const LYR = { x: 150, base: 972, w: 1120 };
 const INVITE = '掃描右下角 QR code，把祝福寫上大螢幕';
-const P = { ready: 'cp_cake_ready', cut: 'cp_cake_cut', feed: 'cp_cake_feed', qqBeg: 'qq_beg', qqJump: 'qq_jump' } as const;
+const P = {
+  ready: 'cp_cake_ready', cut: 'cp_cake_cut', feed: 'cp_cake_feed',
+  ppBeg: 'pp_beg', ppJump: 'pp_jump', qqBeg: 'qq_beg', qqJump: 'qq_jump', yyBeg: 'yy_beg', yyJump: 'yy_jump',
+} as const;
 /**
  * 切下去那一下用哪一張。2026-09-29 cp_cake_cut 的孟庭眼睛太細（新人要求兩眼一定張開），暫時改用 ready＋整張往下沉；
  * 2026-09-30 Codex 重畫了眼睛（明顯張開、往下看刀），換回 cut。以後又要暫時換掉，把這裡改成 P.ready，下沉（SINK）會自動打開。
@@ -145,6 +154,8 @@ export default class Cake extends Scene {
   feeds: number[] = [];
   keys: [number, string][] = [];
   knife: Pt = { x: 0, y: 0 };
+  /** 元元跳到最高時嘴的位置（接蛋糕的那一點）。 */
+  yyMouth: Pt = { x: 0, y: 0 };
   lyricSize = 52;
 
   override async init() {
@@ -198,6 +209,7 @@ export default class Cake extends Scene {
     const tierH = got.rows.map((r, i) => Math.max(r.length ? r.length * lh + 26 : 0, [92, 112, 132][i]!));
     const tip = this.pointOr(P.cut, 'knife', 0.12, 0.42);
     this.knife = tip;
+    this.yyMouth = puppetPoint(P.yyJump, 'mouth', YY_X, FLOOR - YJUMP, { h: SZ, scale: DOG_S, flip: true }) ?? { x: YY_X - 110, y: FLOOR - 330 };
     const right = tip.x + KNIFE_ROOM * 0.7;
     const cx = right - TIERS[2].w / 2;
     const top = tip.y + TIP_UP + STAND;
@@ -337,8 +349,9 @@ export default class Cake extends Scene {
     // ---- 蛋糕上的字（擠花）、切痕、署名
     this.drawIcing(c, t);
     this.drawCuts(c, ink, t);
-    // ---- QQ（在桌子前面的地上）
-    this.drawQQ(c, t);
+    // ---- 三隻狗（在桌子前面的地上）、切下來飛給元元的那一小塊蛋糕
+    this.drawDogs(c, t);
+    this.drawChunks(c, ink, t);
     // ---- 切下去那一刻：碎屑、刀面的反光；餵蛋糕：一顆小愛心
     this.crumbs(c, ink, t);
     for (const tf of this.feeds) {
@@ -433,24 +446,80 @@ export default class Cake extends Scene {
     drawPick(c, this.keys, t, x, FLOOR - lift, { h: SZ, flip: true, spin: en.spin, alpha: en.alpha, squash, rot, pivot: 0.3 });
   }
 
-  /** QQ：在桌子左邊站起來討（每拍搖一下）；切下去那一刻開心地跳一下。 */
-  private drawQQ(c: CanvasRenderingContext2D, t: number) {
+  /** 切下來的那一小塊蛋糕被元元接到的時間：切下去之後的下一拍（落在拍點上）。 */
+  private catchT(tc: number) { const au = this.ctx.audio; return au.timeOfBeat(Math.round(au.beatAt(tc)) + 1); }
+
+  /**
+   * 三隻狗：平常站起來討（每拍搖一下、輪流點頭）；切下去那一刻芃芃、QQ 開心地跳一下（QQ 早一點點，不要兩隻同步）；
+   * 下一拍元元跳起來、最高點剛好在拍點上咬到那一小塊蛋糕，落地嚼一嚼。
+   */
+  private drawDogs(c: CanvasRenderingContext2D, t: number) {
     const au = this.ctx.audio;
-    const en = puppetIn(t, this.ctx.start + 0.25, 0.45);
+    const shadowC = '70,45,25';
+    const hopDog = (who: 'pp' | 'qq', x: number, beg: string, jump: string, delay: number, height: number, phase: number) => {
+      const en = puppetIn(t, this.ctx.start + 0.2 + phase * 0.1, 0.45);
+      if (en.alpha <= 0) return;
+      const o = { h: SZ, scale: DOG_S, spin: en.spin, alpha: en.alpha };
+      for (const tc of this.cuts) {
+        const t0 = tc + delay, t1 = t0 + Math.min(0.42, au.beatPeriod(tc) * 0.9);
+        if (t > t0 - 0.12 && t < t1 + 0.3) {
+          const j = jumpArc(t, t0, t1, height, { crouch: 0.1, land: 0.18 });
+          puppetShadow(c, who, x, FLOOR, { h: SZ * DOG_S, lift: -j.y, alpha: 0.32 * en.alpha, color: shadowC });
+          if (j.air) drawPuppet(c, jump, x, FLOOR + j.y, { ...o, hide: ['ball'], rot: -0.1 + 0.2 * j.u, pivot: 0.5, squash: j.squash });
+          else drawPuppet(c, beg, x, FLOOR, { ...o, squash: j.squash });
+          return;
+        }
+      }
+      puppetShadow(c, who, x, FLOOR, { h: SZ * DOG_S, alpha: 0.32 * en.alpha, color: shadowC });
+      drawPuppet(c, beg, x, FLOOR, { ...o, rot: 0.04 * Math.sin(au.beatAt(t) * Math.PI + phase * 1.6), pivot: 0.1, squash: 0.04 * beatKick(au, t, 0.25) });
+    };
+    hopDog('qq', QQ_X, P.qqBeg, P.qqJump, 0.02, PJUMP + 6, 0);
+    hopDog('pp', PP_X, P.ppBeg, P.ppJump, 0.1, PJUMP, 1);
+    // 元元：翻過來面向蛋糕，坐著討（穩重，只跟著拍子輕輕點頭）；接蛋糕那一拍跳起來
+    const en = puppetIn(t, this.ctx.start + 0.4, 0.45);
     if (en.alpha <= 0) return;
-    const o = { h: SZ, scale: DOG_S, spin: en.spin, alpha: en.alpha };
+    const o = { h: SZ, scale: DOG_S, flip: true, spin: en.spin, alpha: en.alpha };
+    const bp = au.beatPeriod(t);
     for (const tc of this.cuts) {
-      const t0 = tc + 0.04, t1 = tc + Math.min(0.46, au.beatPeriod(tc) * 0.95);
-      if (t > t0 - 0.12 && t < t1 + 0.3) {
-        const j = jumpArc(t, t0, t1, 46, { crouch: 0.1, land: 0.18 });
-        puppetShadow(c, 'qq', QQ_X, FLOOR, { h: SZ * DOG_S, lift: -j.y, alpha: 0.32 * en.alpha, color: '70,45,25' });
-        if (j.air) drawPuppet(c, P.qqJump, QQ_X, FLOOR + j.y, { ...o, hide: ['ball'], rot: -0.1 + 0.2 * j.u, pivot: 0.5, squash: j.squash });
-        else drawPuppet(c, P.qqBeg, QQ_X, FLOOR, { ...o, squash: j.squash });
+      const ct = this.catchT(tc), air = Math.min(0.5, bp * 1.1);
+      if (t > ct - air / 2 - 0.12 && t < ct + air / 2 + 0.6) {
+        const j = jumpArc(t, ct - air / 2, ct + air / 2, YJUMP, { crouch: 0.08, land: 0.16 });
+        puppetShadow(c, 'yy', YY_X, FLOOR, { h: SZ * DOG_S, lift: -j.y, alpha: 0.32 * en.alpha, color: shadowC });
+        // 跳起來那張嘴前畫了球：這裡咬的是蛋糕，一律蓋掉
+        if (j.air) drawPuppet(c, P.yyJump, YY_X, FLOOR + j.y, { ...o, hide: ['ball'], rot: 0.08 - 0.16 * j.u, pivot: 0.5, squash: j.squash });
+        else {
+          // 落地之後嚼一嚼（上下壓兩三下）、冒一顆小愛心
+          const d = t - (ct + air / 2);
+          const chew = d > 0 ? 0.035 * Math.abs(Math.sin(d * 18)) * Math.exp(-d / 0.3) : 0;
+          drawPuppet(c, P.yyBeg, YY_X, FLOOR, { ...o, squash: j.squash + chew });
+          const [bx, by, bw] = puppetBox(P.yyBeg, YY_X, FLOOR, o);
+          heartPop(c, bx + bw * 0.25, by + 10, 24, (t - ct - 0.1) / 1.1);
+        }
         return;
       }
     }
-    puppetShadow(c, 'qq', QQ_X, FLOOR, { h: SZ * DOG_S, alpha: 0.32 * en.alpha, color: '70,45,25' });
-    drawPuppet(c, P.qqBeg, QQ_X, FLOOR, { ...o, rot: 0.04 * Math.sin(au.beatAt(t) * Math.PI), pivot: 0.1, squash: 0.04 * beatKick(au, t, 0.25) });
+    puppetShadow(c, 'yy', YY_X, FLOOR, { h: SZ * DOG_S, alpha: 0.32 * en.alpha, color: shadowC });
+    drawPuppet(c, P.yyBeg, YY_X, FLOOR, { ...o, rot: -0.02 * Math.sin(au.beatAt(t) * Math.PI * 0.5), pivot: 0.1, squash: 0.02 * beatKick(au, t, 0.3) + breathe(t, 0.01, 2.6) });
+  }
+
+  /** 切下來的一小塊蛋糕：切下去那一刻從刀口往右彈出來，畫一道小弧線，下一拍落進元元跳起來的嘴裡。 */
+  private drawChunks(c: CanvasRenderingContext2D, ink: Ink, t: number) {
+    const B = this.tiers[2]!;
+    const from = { x: B.x + B.w - 24, y: B.y + B.h * 0.4 };
+    for (const tc of this.cuts) {
+      const ct = this.catchT(tc);
+      if (t < tc || t > ct) continue;
+      const u = (t - tc) / Math.max(0.05, ct - tc);
+      const q = arcAt(from, this.yyMouth, Math.min(from.y, this.yyMouth.y) - 70, u);
+      c.save();
+      c.translate(q.x, q.y);
+      c.rotate(u * 5);
+      // 三角形的一小塊：奶油白的蛋糕、中間一條淡淡的莓果夾層
+      inkShape(c, [{ x: -11, y: 8 }, { x: 12, y: 7 }, { x: 0, y: -12 }], { ink, t, fill: rgba('bone'), w: 0.5, seed: 95 });
+      c.fillStyle = mixRgba('rose', 'paper', 0.45);
+      c.fillRect(-6, 0, 12, 2.5);
+      c.restore();
+    }
   }
 
   /** 切下去那一刻：刀切進去的地方噴出幾粒奶油碎屑（往外、往下掉），刀面一道訊號色的反光。 */

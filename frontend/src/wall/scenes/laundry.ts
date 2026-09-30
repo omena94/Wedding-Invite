@@ -6,7 +6,9 @@
 //  - 歌詞沿著曬衣繩排在繩子上方（lyricOnPath），照跟唱規則逐字亮；比留言小一級（標準 v2：40～52）。
 //  - **焦點是主打留言**：寫在左邊另一條繩子上曬的白床單上（深墨手寫字、署名），標準 v2：字 40～60、床單最大 680 × 370，
 //    高度跟著留言長短；床單只有下緣隨風擺，字的地方保持平整。沒有留言時床單寫邀請、字淡。
-//  - QQ 在前景咬著一隻條紋襪甩（拍點上甩一下、每小節跳一下）。鏡頭：整個窗格慢慢推近床單。
+//  - 元元（白柴，三隻裡力氣最大）負責拉曬衣繩：站在左邊滑輪柱下面，嘴裡咬著滑輪垂下來的拉繩把手，每夾好一件，
+//    牠就往後一退、一扯，整條繩子往右送一格（送繩子的那一下就是牠拉的）；平常跟著拍子點頭、繩子鬆鬆地垂著。
+//  - QQ 在右前景咬著一隻條紋襪甩（拍點上甩一下、每小節跳一下）。鏡頭：整個窗格慢慢推近床單。
 import * as THREE from 'three';
 import { Scene, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
 import { Layer2D, W, H } from '../engine/gl';
@@ -24,9 +26,11 @@ export const spec: PlateSpecDecl = { group: 'couple', family: 'home', paper: tru
 
 const GROUND = 940;
 const SZ = 700;
-/** 宣文（面向右）與孟庭（面向左）面對面，洗衣籃（芃芃）在兩人中間；QQ 在左前景。 */
-const AL_X = 470, OM_X = 900;
-const QQ_X = 190, QQ_Y = 1030, DOG_S = 1.1;
+/** 宣文（面向右）與孟庭（面向左）面對面，洗衣籃（芃芃）在兩人中間；QQ 在右前景（床單下面、HUD 左邊）。 */
+const AL_X = 590, OM_X = 995;
+const QQ_X = 1200, QQ_Y = 1040, DOG_S = 1.1;
+/** 元元站在左邊滑輪柱下面拉繩（面向柱子），比兩人往前一點。 */
+const YY_X = 318, YY_Y = 1046;
 /** 籃子比兩人的腳往前（往鏡頭）一點。 */
 const BASKET_DY = 34;
 /** 拉繩的滑輪柱（左）；繩子從柱頂往右拉出畫面，中間微微下垂。衣服一格的間距。 */
@@ -34,7 +38,7 @@ const POLE_X = 120, SLOT = 176;
 /** 床單：右邊另一條繩子（兩根柱子）上曬著；最大範圍（標準 v2）與寫字的內距。下緣離右下角 HUD 遠遠的。 */
 const SHEET = { x: 1150, y: 440, w: 660, h: 360 };
 const PAD = { x: 44, top: 54, bottom: 50 };
-const POSES = ['xw_laundry_pick', 'xw_laundry_hand', 'mt_laundry_reach', 'mt_laundry_ready', 'qq_laundry_sock', 'pp_laundry_basket'];
+const POSES = ['xw_laundry_pick', 'xw_laundry_hand', 'mt_laundry_reach', 'mt_laundry_ready', 'qq_laundry_sock', 'pp_laundry_basket', 'yy_stand'];
 
 /** 衣服的種類（程式畫）：宣文的白 T、牛仔褲、淺藍襯衫、條紋襪、毛巾、狗狗的小毛衣、格紋洋裝。
  *  （拿掉了枕頭套：一塊白色的方塊拿在手上看不出是衣服。每一件都要一眼看得出是什麼：有袖子、褲管、條紋、顏色。） */
@@ -208,6 +212,7 @@ export default class Laundry extends Scene {
     this.drawPeople(c, t);
     this.inHands(c, ink, t);
     this.drawBasket(c, t);
+    this.drawYuanyuan(c, t);
     this.drawQQ(c, t);
 
     comp.draw(renderer, L.upload(), out);
@@ -392,6 +397,54 @@ export default class Laundry extends Scene {
     }
   }
 
+  /** 元元往後扯的程度（0..1）：每夾好一件，送繩子的時候扯到底，送完慢慢放鬆（預備：夾上去前一點點先壓低）。 */
+  private pullAt(t: number) {
+    const bp = this.ctx.audio.beatPeriod(t);
+    const dur = bp * 0.32 * this.per;
+    let k = 0;
+    for (const it of this.items) {
+      const t0 = it.pin + 0.04;
+      k = Math.max(k, prog(t, t0 - 0.08, t0 + dur * 0.6, ease.outCubic) * (1 - prog(t, t0 + dur, t0 + dur + 0.3, ease.inOutCubic)));
+    }
+    return k;
+  }
+
+  /**
+   * 元元：面向滑輪柱站著，嘴裡咬著拉繩的木把手；每次送繩子往後一退、身體往後仰（扯），拉繩繃直；平常點頭、拉繩鬆鬆地垂著。
+   * 拉繩從柱頂的滑輪垂下來，接到牠嘴上的把手。
+   */
+  private drawYuanyuan(c: CanvasRenderingContext2D, t: number) {
+    const en = enterPuppet(this.glow, t, this.ctx.start + 0.38, YY_X, YY_Y - 6, 5);
+    if (!en) return;
+    const au = this.ctx.audio;
+    const pull = this.pullAt(t);
+    const x = YY_X + 26 * pull;
+    const o: PuppetOpts = { h: SZ, flip: true, rot: 0.12 * pull, pivot: 0.15, squash: 0.02 * beatKick(au, t, 0.28) * (1 - pull) - 0.03 * pull + breathe(t, 0.01, 2.8), spin: en.spin, alpha: en.alpha };
+    puppetShadow(c, 'yy', x, YY_Y, { h: SZ, alpha: 0.3 * en.alpha, color: '70,45,25' });
+    drawPuppet(c, 'yy_stand', x, YY_Y, o);
+    const m = puppetPoint('yy_stand', 'mouth', x, YY_Y, o);
+    if (!m) return;
+    // 拉繩：從滑輪（柱頂）垂到把手；鬆的時候往外垂一點，扯的時候繃直
+    const top = { x: POLE_X + 8, y: this.ropeAt(POLE_X) + 10 };
+    const slack = 26 * (1 - pull);
+    const ink = inkFor(true);
+    c.save();
+    c.globalAlpha = en.alpha;
+    c.strokeStyle = rgba('sepia', 0.85);
+    c.lineWidth = 2;
+    c.beginPath();
+    c.moveTo(top.x, top.y);
+    c.quadraticCurveTo((top.x + m.x) / 2 + slack, (top.y + m.y) / 2, m.x, m.y - 6);
+    c.stroke();
+    c.restore();
+    // 木把手：橫著咬在嘴裡
+    c.save();
+    c.translate(m.x, m.y - 2);
+    c.rotate(-0.15 + 0.09 * pull);
+    inkRect(c, -22, -6, 44, 12, { ink, fill: mixRgba('paper', 'fur', 0.55), w: 0.7, seed: 71, r: 5 });
+    c.restore();
+  }
+
   /** QQ（前景）：咬著條紋襪甩——拍點上甩一下（轉一下），每小節跳一下。 */
   private drawQQ(c: CanvasRenderingContext2D, t: number) {
     const en = enterPuppet(this.glow, t, this.ctx.start + 0.32, QQ_X, QQ_Y - 6, 4);
@@ -401,6 +454,6 @@ export default class Laundry extends Scene {
     const bar = au.barAt(t), ph = bar - Math.floor(bar);
     const lift = ph < 0.2 ? 26 * Math.sin(Math.PI * ph / 0.2) : 0;
     puppetShadow(c, 'qq', QQ_X, QQ_Y, { h: SZ * DOG_S, lift, alpha: 0.32 * en.alpha, color: '70,45,25' });
-    drawPuppet(c, 'qq_laundry_sock', QQ_X, QQ_Y - lift, { h: SZ, scale: DOG_S, rot: 0.09 * k * (Math.floor(au.beatAt(t)) % 2 ? 1 : -1), pivot: 0.4, squash: 0.04 * k, spin: en.spin, alpha: en.alpha });
+    drawPuppet(c, 'qq_laundry_sock', QQ_X, QQ_Y - lift, { h: SZ, scale: DOG_S, flip: true, rot: 0.09 * k * (Math.floor(au.beatAt(t)) % 2 ? 1 : -1), pivot: 0.4, squash: 0.04 * k, spin: en.spin, alpha: en.alpha });
   }
 }

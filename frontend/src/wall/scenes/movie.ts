@@ -1,10 +1,12 @@
-// 電影院（暗、home）：從後排看過去，宣文與孟庭的背影、兩隻狗從椅背上探出頭，前面是一整面大銀幕。角色是 Codex 畫的紙偶（_puppet.ts）。
+// 電影院（暗、home）：從後排看過去，宣文與孟庭的背影、三隻狗在旁邊的座位上，前面是一整面大銀幕。角色是 Codex 畫的紙偶（_puppet.ts）。
 //  - 銀幕上放的就是這個窗格：開場是底片的倒數（3、2、1，一拍一個數字、指針掃一圈），小節線上切到**片頭字卡 = 主打留言**
 //    （宋體、銀幕正中、署名在下面），歌詞是銀幕下緣的**字幕**（跟唱，比留言小一級）。沒有留言時字卡寫邀請。
 //  - 兩人的動作一小節一個（小節線上換）：看電影 → 孟庭靠到宣文肩上 → 轉頭看對方笑 → 第四小節的大拍被電影嚇一跳（爆米花噴起來、狗也跳），
 //    然後重來。爆米花在每小節的第二、四拍（小鼓）從桶子裡跳出來幾顆。
 //  - 放映機的光從我們頭上打過去（一道一道很淡的光束、光裡飄著灰塵），銀幕的光把人和椅背照亮一點：紙偶上亮下暗（puppetLight），
 //    背影是剪影感，不搶銀幕上的字。
+//  - 元元（白柴）個子最大，不用站起來就看得到銀幕：端端正正坐在宣文左邊的座位上（背影）。爆米花桶放在牠和宣文中間的扶手上，
+//    每小節第二拍桶子裡跳出一顆往牠頭上飛，下一拍牠頭一抬、一口接住（三隻裡只有牠搆得到桶子）。兩隻博美站在椅子上、前腳搭著前排椅背。
 //  - 標準 v2：留言 40～60、字卡的字區 ≤ 820 × 330；字幕 40～52。右下角 HUD 只有椅背的暗面。
 import * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
@@ -15,7 +17,7 @@ import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, hash, frameIdx } from '../engine/util';
 import { lyricAt, layoutLyric, drawLyric, barAfter, DATE_DOTS } from './_motifs';
 import { inkFor, inkPoly, drawNote, type Note } from './_couple';
-import { loadPuppets, drawPuppet, drawPick, puppetLight, breathe, beatKick, noteV2, tightenNote, type PuppetOpts } from './_puppet';
+import { loadPuppets, drawPuppet, drawPick, puppetBox, puppetLight, breathe, beatKick, noteV2, tightenNote, type PuppetOpts } from './_puppet';
 import { lyricV2 } from './_v2';
 import { INVITE } from './_c5';
 
@@ -33,11 +35,13 @@ const CP_X = 880, SEAT_Y = 1078;
 const CP_S = 1.06;
 /** 這一排椅背的上緣、每個座位的寬；狗狗坐的兩個位子。 */
 const BACK_Y = 892, SEAT_W = 240;
-const PP_X = CP_X - 1.5 * SEAT_W + 10, QQ_X = CP_X + 1.5 * SEAT_W, DOG_Y = 1012;
+const PP_X = CP_X - 2.5 * SEAT_W + 10, QQ_X = CP_X + 1.5 * SEAT_W, DOG_Y = 1012;
+/** 元元坐在宣文左邊的座位（坐著，腳底在椅墊上）。 */
+const YY_X = CP_X - 1.5 * SEAT_W, YY_Y = 1060;
 /** 爆米花桶（兩人中間的扶手上）。 */
-const TUB = { x: CP_X + SEAT_W + 30, y: BACK_Y - 16 };
+const TUB = { x: CP_X - SEAT_W + 6, y: BACK_Y - 16 };
 const LAYER_Y = 620;
-const POSES = ['cp_movie_1', 'cp_movie_2', 'cp_movie_3', 'cp_movie_4', 'pp_movie_back', 'qq_movie_turn'];
+const POSES = ['cp_movie_1', 'cp_movie_2', 'cp_movie_3', 'cp_movie_4', 'pp_movie_back', 'qq_movie_turn', 'yy_c5_movie'];
 
 type Act = 'watch' | 'lean' | 'look' | 'jump';
 interface Beat4 { t: number; act: Act }
@@ -94,6 +98,10 @@ export default class Movie extends Scene {
   keys: [number, string][] = [];
   /** 爆米花跳起來的時間（每小節第二、四拍）與被嚇到的時間（一次噴很多）。 */
   pops: { t: number; n: number; seed: number }[] = [];
+  /** 丟給元元的爆米花：t 從桶子跳出來（第二拍）、catch 元元一口接住（第三拍）。 */
+  treats: { t: number; catch: number }[] = [];
+  /** 元元頭頂上方一點（接爆米花的地方）。 */
+  yyMouth = { x: YY_X, y: 700 };
   note: Note | null = null;
   lyricSize = 52;
 
@@ -102,6 +110,9 @@ export default class Movie extends Scene {
     const s = this.ctx.start;
     await loadText('一位賓客TONIGHT\'S FEATURE · 0123456789' + DATE_DOTS + INVITE);
     this.track(await loadPuppets(POSES));
+    // 元元的頭頂（接爆米花的地方）：外框的上緣往下一點、水平中間
+    const yb = puppetBox('yy_c5_movie', YY_X, YY_Y, { h: SZ, scale: 1.15 });
+    this.yyMouth = { x: yb[0] + yb[2] / 2, y: yb[1] + 30 };
     // 片頭字卡在第一個小節線；前面有幾拍就倒數幾個（最多 3、2、1）
     this.title = barAfter(au, s + 0.5);
     const bp = au.beatPeriod(this.title);
@@ -128,7 +139,10 @@ export default class Movie extends Scene {
       const t = au.timeOfBeat(b);
       if (t > this.ctx.end) break;
       const inBar = ((Math.round(au.barAt(t) * 4) % 4) + 4) % 4;
-      if (inBar === 1 || inBar === 3) this.pops.push({ t, n: 2 + (b % 2), seed: b });
+      // 第二拍：給元元的那一顆（有下一拍可以接的話），第四拍：桶子裡隨便跳幾顆
+      const treat = inBar === 1 && t > s + 0.5 && au.timeOfBeat(b + 1) < this.ctx.end - 0.1;
+      if (treat) this.treats.push({ t, catch: au.timeOfBeat(b + 1) });
+      else if (inBar === 1 || inBar === 3) this.pops.push({ t, n: 2 + (b % 2), seed: b });
     }
     for (const a of this.acts) if (a.act === 'jump') this.pops.push({ t: a.t, n: 14, seed: 900 + Math.round(a.t * 10) });
     // 字卡：標準 v2 的字級（宋體，片頭字卡的感覺）；沒有留言時寫邀請
@@ -219,12 +233,14 @@ export default class Movie extends Scene {
     const box: [number, number, number, number] = [0, LAYER_Y, W, H - LAYER_Y];
     this.drawDog(c, t, 'pp', scare, bp);
     this.drawDog(c, t, 'qq', scare, bp);
+    this.drawYuanyuan(c, t, scare, bp);
     this.drawTub(c, t);
     this.drawCouple(c, t, bp);
     // 銀幕的光從前面來：看得到的是背，整體壓暗、頭頂留一點光
     puppetLight(c, box, rgba('ink', 0.36 - 0.2 * scare), rgba('ink', 0.84));
     c.drawImage(this.seats.canvas, 0, LAYER_Y, W, H - LAYER_Y);
     this.drawPopcorn(c, t);
+    this.drawTreats(c, t);
 
     // ---- 銀幕上的東西：倒數 → 片頭字卡（留言）；字幕（歌詞）
     this.drawScreen(c, t, lum);
@@ -264,7 +280,42 @@ export default class Movie extends Scene {
     drawPuppet(c, who === 'pp' ? 'pp_movie_back' : 'qq_movie_turn', x, DOG_Y - lift, o);
   }
 
-  /** 兩人中間扶手上的爆米花桶：紅白直條紋的紙桶（用訊號色與紙白，不寫字），上面冒出一坨爆米花。 */
+  /** 元元：背對我們端坐看電影，每拍很輕地晃；爆米花飛過來時頭一抬接住（拍點），被嚇到時跟大家一起跳一下。 */
+  private drawYuanyuan(c: CanvasRenderingContext2D, t: number, scare: number, bp: number) {
+    const au = this.ctx.audio;
+    let lift = 0, snap = 0;
+    for (const a of this.acts) {
+      if (a.act !== 'jump') continue;
+      const d = t - a.t - 0.1;
+      if (d >= 0 && d < bp) lift = 30 * Math.sin(Math.PI * d / bp);
+    }
+    for (const tr of this.treats) { const d = t - tr.catch; if (d > -0.08 && d < 0.3) snap = Math.max(snap, d < 0 ? 1 + d / 0.08 : Math.exp(-d / 0.1)); }
+    const o: PuppetOpts = { h: SZ, scale: 1.15, rot: 0.03 * Math.sin(au.beatAt(t) * Math.PI * 0.5), pivot: 0.5, squash: breathe(t, 0.012, 2.6, 0.3) - 0.05 * scare - 0.05 * snap, alpha: prog(t, this.ctx.start + 0.15, this.ctx.start + 0.55) };
+    drawPuppet(c, 'yy_c5_movie', YY_X, YY_Y - lift - 14 * snap, o);
+  }
+
+  /** 丟給元元的爆米花：從桶子跳出來、畫一道弧飛到牠頭頂（下一拍接住就不見了）。 */
+  private drawTreats(c: CanvasRenderingContext2D, t: number) {
+    const ink = inkFor(false, { fill: rgba('ink2') });
+    for (const tr of this.treats) {
+      if (t < tr.t || t >= tr.catch) continue;
+      const u = (t - tr.t) / (tr.catch - tr.t);
+      const a = { x: TUB.x, y: TUB.y - 20 }, b = this.yyMouth;
+      const x = a.x + (b.x - a.x) * u, y = a.y + (b.y - a.y) * u - 230 * 4 * u * (1 - u);
+      // 飛過的地方留一點點銀幕反光（很淡），看得出是一顆「丟過去」的
+      c.save();
+      c.strokeStyle = rgba('bone', 0.18);
+      c.lineWidth = 2;
+      c.setLineDash([4, 10]);
+      c.beginPath();
+      for (let k = 0; k <= 12; k++) { const v = (k / 12) * u; const px = a.x + (b.x - a.x) * v, py = a.y + (b.y - a.y) * v - 230 * 4 * v * (1 - v); if (k) c.lineTo(px, py); else c.moveTo(px, py); }
+      c.stroke();
+      c.restore();
+      this.kernel(c, x, y, 16, u * 8, ink);
+    }
+  }
+
+  /** 宣文和元元中間扶手上的爆米花桶：紅白直條紋的紙桶（用訊號色與紙白，不寫字），上面冒出一坨爆米花。 */
   private drawTub(c: CanvasRenderingContext2D, t: number) {
     const ink = inkFor(false, { fill: rgba('ink2') });
     const { x, y } = TUB, w0 = 96, w1 = 76, h = 110;

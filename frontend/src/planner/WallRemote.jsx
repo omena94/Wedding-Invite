@@ -4,7 +4,7 @@
 // 在那之前畫面先照「按下去的樣子」顯示（pending），大螢幕回報跟上了就改用真的狀態。
 import { useEffect, useRef, useState } from "react";
 import { ListMusic, Mic, MicOff, Minus, Pause, Play, Plus, SkipBack, SkipForward, Wifi, WifiOff } from "lucide-react";
-import { fetchWallRemote, sendWallRemote } from "../api.js";
+import { fetchWallRemote, saveWallDuck, sendWallRemote } from "../api.js";
 import Toggle from "../components/Toggle.jsx";
 import { PageHead, confirmAsk, toastErr } from "./ui.jsx";
 
@@ -18,7 +18,7 @@ export default function WallRemote() {
   const [snap, setSnap] = useState(null); // 後端回的 {state, age, online}，加上收到的時間 at
   const [err, setErr] = useState("");
   const [now, setNow] = useState(Date.now());
-  const [pending, setPending] = useState({}); // 按下去還沒反映的：{ playing|duck|shuffle|volume|seek: { value, at } }
+  const [pending, setPending] = useState({}); // 按下去還沒反映的：{ playing|duck|duckLevel|shuffle|volume|seek: { value, at } }
   const [sent, setSent] = useState(null); // 「已送出」提示：{ text, at }
 
   // 每秒問一次大螢幕的狀態（一個問完才問下一個，網路慢也不會疊起來）；畫面每 0.25 秒更新播放時間
@@ -47,6 +47,8 @@ export default function WallRemote() {
   const duck = !!live("duck", st?.duck);
   const shuffle = !!live("shuffle", st?.shuffle);
   const volume = live("volume", st?.volume ?? 0.9);
+  // 講話模式的音量是存在伺服器的設定：大螢幕沒連線也能先調好
+  const duckLevel = live("duckLevel", snap?.duck_level ?? 20);
   // 播放時間：大螢幕回報的時間，加上回報之後過了多久（播放中才往前走）
   const since = snap ? (snap.age ?? 0) + (now - snap.at) / 1000 : 0;
   let tShow = st ? Math.min(st.end || Infinity, st.t + (st.playing && !st.silent ? since : 0)) : 0;
@@ -73,6 +75,12 @@ export default function WallRemote() {
     if (ok) send("now", { id: q.id, j: q.j });
   };
   const setVol = (v) => { const x = Math.round(clamp(v, 0, 1.5) * 10) / 10; send("volume", { v: x }, ["volume", x]); };
+  const setDuckLevel = async (v) => {
+    const x = Math.round(clamp(v, 0, 90));
+    setPending((p) => ({ ...p, duckLevel: { value: x, at: Date.now() } }));
+    try { await saveWallDuck(x); setSent({ text: `講話模式改成音樂剩 ${x}%`, at: Date.now() }); }
+    catch (e) { toastErr(e); setPending((p) => { const n = { ...p }; delete n.duckLevel; return n; }); }
+  };
 
   let conn;
   if (err) conn = { cls: "off", icon: WifiOff, text: `連不上伺服器：${err}` };
@@ -111,10 +119,20 @@ export default function WallRemote() {
       <button type="button" className={`wr-duck${duck ? " on" : ""}`} disabled={!ready} onClick={() => send("duck", { on: !duck }, ["duck", !duck])}>
         {duck ? <MicOff size={26} /> : <Mic size={26} />}
         <span>
-          <b>{duck ? "講話模式中：音樂小聲" : "講話模式"}</b>
+          <b>{duck ? `講話模式中：音樂剩 ${duckLevel}%` : "講話模式"}</b>
           <small>{duck ? "講完了按一下，音樂慢慢恢復" : "主持人、致詞要講話時按一下：音樂慢慢調小聲，畫面照跑"}</small>
         </span>
       </button>
+      {/* 講話時音樂剩幾 %（新人 2026-09-30 要可以自己設）：五個百分點一格，0 = 完全靜音；講話模式開著時改，大螢幕兩秒內跟上 */}
+      <div className="panel wr-opts wr-duck-level">
+        <div className="wr-row">
+          <span className="wr-row-label">講話時音樂剩</span>
+          <button type="button" className="btn btn-ghost btn-sm" disabled={duckLevel <= 0} onClick={() => setDuckLevel(duckLevel - 5)} aria-label="講話時音樂再小聲一點"><Minus size={14} /></button>
+          <b className="wr-vol">{duckLevel}%</b>
+          <button type="button" className="btn btn-ghost btn-sm" disabled={duckLevel >= 90} onClick={() => setDuckLevel(duckLevel + 5)} aria-label="講話時音樂大聲一點"><Plus size={14} /></button>
+        </div>
+        <div className="helper-text" style={{ margin: 0 }}>原本音量的幾 %；0% 就是講話時完全靜音。可以先開講話模式，邊聽邊調。</div>
+      </div>
 
       <div className="panel wr-opts">
         <div className="wr-row">

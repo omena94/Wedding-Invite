@@ -27,7 +27,7 @@ from ..database import get_db
 from ..models import WallCommand, WallMessage, WallRemoteState, WallSong
 from ..permissions import require_perm
 from ..security import optional_staff
-from ..stage import WALL_MODERATION_KEY, WALL_OPEN_KEY, WALL_PACE_KEY, WALL_PLATES_OFF_KEY, get_setting, is_on
+from ..stage import WALL_DUCK_KEY, WALL_MODERATION_KEY, WALL_OPEN_KEY, WALL_PACE_KEY, WALL_PLATES_OFF_KEY, get_setting, is_on, set_setting
 from ..storage import LocalStore
 
 router = APIRouter(tags=["wall"])
@@ -229,6 +229,7 @@ def wall_feed(db: Session = Depends(get_db)):
         # 後台關掉的版面：大螢幕的導演不會再排到它們
         "plates_off": [x for x in (get_setting(db, WALL_PLATES_OFF_KEY) or "").split(",") if x.strip()],
         "pace": get_setting(db, WALL_PACE_KEY) or "normal",
+        "duck": _duck_level(db),
     }
 
 
@@ -565,6 +566,34 @@ def wall_remote_state(db: Session = Depends(get_db)):
     """手機遙控頁每秒一次：大螢幕最近回報的狀態、隔了幾秒、算不算連線中。"""
     row = db.get(WallRemoteState, 1)
     if row is None:
-        return {"state": None, "age": None, "online": False, "client": ""}
+        return {"state": None, "age": None, "online": False, "client": "", "duck_level": _duck_level(db)}
     age = max(0.0, (_now() - _aware(row.updated_at)).total_seconds())
-    return {"state": json.loads(row.state_json or "{}"), "age": round(age, 2), "online": age < REMOTE_ONLINE, "client": row.client}
+    return {"state": json.loads(row.state_json or "{}"), "age": round(age, 2), "online": age < REMOTE_ONLINE, "client": row.client,
+            "duck_level": _duck_level(db)}
+
+
+# ---------------- 講話模式的音量（2026-09-30） ----------------
+DUCK_DEFAULT = 20  # %：現場還聽得到有音樂、不會蓋過講話
+DUCK_MAX = 90
+
+
+def _duck_level(db: Session) -> int:
+    try:
+        v = int(get_setting(db, WALL_DUCK_KEY) or DUCK_DEFAULT)
+    except ValueError:
+        v = DUCK_DEFAULT
+    return min(DUCK_MAX, max(0, v))
+
+
+class DuckIn(BaseModel):
+    level: StrictInt
+
+
+@router.put("/api/planner/wall/duck", dependencies=[Perm])
+def set_wall_duck(payload: DuckIn, db: Session = Depends(get_db)):
+    """講話模式把音樂降到幾 %：手機遙控頁、大螢幕操作列都能調，大螢幕下一次輪詢（兩秒內）就照新的。"""
+    if not 0 <= payload.level <= DUCK_MAX:
+        raise HTTPException(400, f"講話模式的音量要在 0～{DUCK_MAX}% 之間")
+    set_setting(db, WALL_DUCK_KEY, str(payload.level))
+    db.commit()
+    return {"level": payload.level}

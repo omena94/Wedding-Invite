@@ -8,7 +8,8 @@
     "xw_": {"ref":"xw_idle_front","refFrac":0.951171875,"groundFrac":0.9739583333333334,"target":600,"from":"base:xw_"},
     "mt_": {"ref":"mt_idle_front","refFrac":0.96484375,"groundFrac":0.984375,"target":600,"from":"base:mt_"},
     "pp_": {"ref":"pp_stand","refFrac":0.8310546875,"groundFrac":0.927734375,"target":260,"from":"base:pp_"},
-    "qq_": {"ref":"qq_stand","refFrac":0.9326171875,"groundFrac":0.958984375,"target":280,"from":"base:qq_"}
+    "qq_": {"ref":"qq_stand","refFrac":0.9326171875,"groundFrac":0.958984375,"target":280,"from":"base:qq_"},
+    "yy_": {"ref":"yy_stand","refFrac":0.5859375,"groundFrac":0.9365234375,"target":400,"from":"yuanyuan:yy_"}
   },
   "sprites": {
     "cp_fdance_lean": {"kind":"couple","w":433,"h":611,"ax":150.4,"ay":606.7,"ref":600},
@@ -45,6 +46,7 @@
     "xw_bath_towel": {"kind":"person","w":383,"h":613,"ax":190.8,"ay":609.2,"ref":600},
     "xw_dogwalk_1": {"kind":"person","w":340,"h":601,"ax":150.5,"ay":597.3,"ref":600,"pts":{"hand":[296.9,341.7]}},
     "xw_dogwalk_2": {"kind":"person","w":370,"h":595,"ax":166.9,"ay":591.2,"ref":600,"pts":{"hand":[314.2,338.8]}},
-    "xw_dogwalk_stop": {"kind":"person","w":194,"h":610,"ax":72.9,"ay":606,"ref":600,"pts":{"hand":[183.2,370]}}
+    "xw_dogwalk_stop": {"kind":"person","w":194,"h":610,"ax":72.9,"ay":606,"ref":600,"pts":{"hand":[183.2,370]}},
+    "yy_c2_bath": {"kind":"dog","w":323,"h":415,"ax":200.3,"ay":410.3,"ref":400,"height":0.42}
   }
 }

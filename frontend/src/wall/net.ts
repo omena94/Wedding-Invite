@@ -33,7 +33,7 @@ export async function login(password: string) {
 }
 
 export interface FeedMessage { id: number; name: string; text: string; created_at: string; source?: string }
-export interface Feed { messages: FeedMessage[]; count: number; open: boolean; moderation: boolean; songs_rev: string; plates_off?: string[]; pace?: 'fast' | 'normal' | 'slow' }
+export interface Feed { messages: FeedMessage[]; count: number; open: boolean; moderation: boolean; songs_rev: string; plates_off?: string[]; pace?: 'fast' | 'normal' | 'slow'; duck?: number }
 export const fetchFeed = () => api<Feed>('/api/planner/wall/feed');
 
 export interface SongRow {
@@ -55,6 +55,8 @@ export const saveAnalysis = (id: number, payload: { version: number; duration: n
 
 // 手機遙控（2026-09-30）：每秒回報播放狀態，順便拿走手機按的指令（after：做過的最後一個指令編號，-1 = 剛打開）
 export interface RemoteCommand { id: number; action: string; args: Record<string, any> }
+/** 講話模式把音樂降到幾 %（0～90）：存在伺服器，手機遙控頁看到的、其他電腦開的大螢幕都一樣。 */
+export const saveDuckLevel = (level: number) => api<{ level: number }>('/api/planner/wall/duck', { method: 'PUT', body: { level } });
 export const syncRemote = (body: { client: string; after: number; state: unknown }) =>
   api<{ seq: number; commands: RemoteCommand[] }>('/api/planner/wall/remote/sync', { method: 'POST', body });
 

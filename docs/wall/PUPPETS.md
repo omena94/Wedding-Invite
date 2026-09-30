@@ -16,10 +16,10 @@
 1. **照片永遠不能進影片。** 角色只能是畫的。新人的生活照只給 Codex 看臉用，不能放進 `public/`、專案、畫面，也不能做成照片濾鏡、描圖。
 2. **孟庭一律兩眼張開**：不眨眼、不閉眼、不 wink（新人 2026-09-29 的要求）。
 3. **宣文不要鬍子、鬍渣。**
-4. **QQ 不畫項圈、不畫胸背帶**（芃芃也不畫）。
+4. **三隻狗都不畫項圈、胸背帶、領巾**（芃芃、QQ、元元）。**有狗的版面三隻狗要一起出現**（新人 2026-09-30）。
 5. **不畫真實的品牌、醫院、公司、球隊、歌手、團名的名稱或標誌**；衣服、球拍、球衣、鞋子、識別證、手燈上都不要有字或商標。
 6. **背景一定要真的透明。** 不合格的圖請 Codex 重畫，**不要用程式修圖**（去白底、補手、改眼睛都不行：白衣服、白狗、白紗會被吃掉）。
-7. **側面的姿勢一律朝右**（程式會自己翻）。**例外：衣服上有字**（例如籃球衣的 A&O／13／03），翻過去字會變成反的。需要朝左時，請 Codex 另外畫一張朝左、字是正的版本，檔名加 `_left`（例如 `mt_hoops_guard_left`）。
+7. **側面的姿勢一律朝右**（程式會自己翻）。**例外：衣服上有字**（例如籃球衣的 A&O／420／87），翻過去字會變成反的。需要朝左時，請 Codex 另外畫一張朝左、字是正的版本，檔名加 `_left`（例如 `mt_hoops_guard_left`）。
 8. **只改自己的檔**：自己那一組的 `wall-out/codex-chars/poses/<組名>/`、`frontend/public/wall-sprites/<組名>/`、`frontend/src/wall/sprites/<組名>.json`，
    和自己的版面 `scenes/<名字>.ts`。不要動 `base`、`waltz` 或別人的組，不要改 `_puppet.ts`、`wall-sprites.mjs`（需要就在回報裡寫，由主導者改）。
 
@@ -36,6 +36,8 @@
   - 兩人 `cp_`：walk_1/2、hug
   - 芃芃 `pp_`：stand、walk、run_1/2、jump、sit、beg、sleep、ball
   - QQ `qq_`：stand、walk、run_1/2、jump、sit、beg、sleep、ball
+- `yuanyuan`（第三隻狗元元，白色柴犬，2026-09-30）`yy_`：stand、walk、run_1/2、jump（跳起來張嘴接球）、ball（叼網球）、sit（正面坐）、beg（側坐討食）、
+  sleep、shake（甩水）、tilt（正面坐歪頭）、howl（仰頭叫）。身高 0.42（芃芃 0.26、QQ 0.29）：三隻傳同一個場景尺度，比例就照 `dogs3-lineup.png`。
 - `waltz`（婚禮服）：`cp_waltz_1`（閉式舞姿）、`_2`（旋轉、裙擺甩開）、`_3`（孟庭在宣文手下轉圈）、`_4`（下腰）
 - `fetch`（日常服一，借 base 的比例）：宣文 `xw_fetch_`：clap（拍手叫狗）、take（蹲下伸手接球）、pet（蹲著摸狗、手上拿球）；
   孟庭 `mt_fetch_`：clap、take、pet、throw_1（往後拉）、throw_2（丟出去，手上沒球）
@@ -78,7 +80,7 @@
 | 日常服一 | `couple-daily.png` |
 | 婚禮服 | `couple-wedding.png` |
 | 有狗 | `dogs-side.png`、`dogs-front.png` |
-| 新衣服 | 已定案：`outfit-work.png`（宣文工程師、孟庭護理師）、`outfit-hoops.png`（看籃球賽，A&O 紫白球衣 13／03）、`outfit-concert.png`（演唱會）、`outfit2-sheet.png`（日常服二：白 T＋羽球袋／米白荷葉裙洋裝）。其他服裝先問主導者，不要自己編 |
+| 新衣服 | 已定案：`outfit-work.png`（宣文工程師、孟庭護理師）、`outfit-hoops.png`（看籃球賽，A&O 球衣，勇士隊配色寶藍＋金黃，宣文 420、孟庭 87）、`outfit-concert.png`（演唱會）、`outfit2-sheet.png`（日常服二：白 T＋羽球袋／米白荷葉裙洋裝）。其他服裝先問主導者，不要自己編 |
 | 要跟 base 一樣大、一樣的畫風 | `poses/base/xw_idle_front.png`、`mt_idle_front.png`、`pp_stand.png`、`qq_stand.png`（基準姿勢）＋一兩張動作圖（`xw_bad_ready.png`、`pp_jump.png`） |
 
 附太多張 Codex 會抓不到重點，一次 5～8 張為限。

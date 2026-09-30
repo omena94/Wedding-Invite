@@ -1,4 +1,4 @@
-// KTV 對唱（暗、music）：包廂裡，宣文和孟庭各拿一支麥克風，面向右上的電視唱歌；後面一排沙發上坐著芃芃和 QQ。
+// KTV 對唱（暗、music）：包廂裡，宣文和孟庭各拿一支麥克風，面向右上的電視唱歌；後面一排沙發上坐著芃芃、QQ 和元元。
 // 角色是 Codex 畫的紙偶（_puppet.ts），包廂、電視、燈、桌子、點歌單用程式畫。
 //  - 電視上跑歌詞（跟唱），像真的 KTV：一行一個「男／女／合」的小標，**換人唱用不同顏色**（男：訊號色、女：更亮的 ember）；
 //    下一行淡淡地預告在右下。歌詞一行換一個人唱（段落能量高的時候兩個人合唱）。
@@ -6,7 +6,9 @@
 //    合唱的那一行換成兩個人搭肩一起唱的雙人圖，狗狗也轉過去一起「唱」（howl）。間奏／純音樂：兩人一小節輪流哼。
 //  - **焦點是主打留言**：寫在左前景桌上立著的點歌單（夾板＋紙、手寫字、署名；標題「點歌單 No.042」），
 //    標準 v2：字 40～60、點歌單最大 560 × 430，高度跟著留言。沒有留言時寫邀請。
-//  - 燈：天花板的鏡面球把一顆一顆的光點灑在牆上慢慢轉，拍點上亮一下；兩道彩色的光在小節線上掃過。桌上的鈴鼓每拍抖一下。
+//  - 燈：天花板的鏡面球把一顆一顆的光點灑在牆上慢慢轉，拍點上亮一下；兩道彩色的光在小節線上掃過。
+//  - 元元（白柴，三隻裡最大）是伴奏：坐在沙發最右邊、面向兩隻博美，嘴裡咬著鈴鼓，每拍甩一下（小節線甩大一點、鈴片閃一下）；
+//    合唱時把鈴鼓放在沙發上，跟芃芃、QQ 一起仰頭「唱」。
 import * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
 import { FSPass, Layer2D, W, H } from '../engine/gl';
@@ -16,7 +18,7 @@ import { rgba, mixRgba } from '../engine/palette';
 import { clamp, prog, ease } from '../engine/util';
 import { lyricAt, layoutLyric, drawLyric, type LyricStyle } from './_motifs';
 import { inkFor, inkLine, inkPoly, inkRect, inkEllipse, type Note } from './_couple';
-import { loadPuppets, drawPick, puppetShadow, puppetLight, breathe, beatKick, noteV2, tightenNote, type PuppetOpts } from './_puppet';
+import { loadPuppets, drawPick, puppetPoint, puppetShadow, puppetLight, breathe, beatKick, noteV2, tightenNote, type PuppetOpts } from './_puppet';
 import { lyricV2 } from './_v2';
 import { INVITE, enterPuppet, writeNote } from './_c5';
 import type { Line } from '../engine/lyrics';
@@ -31,14 +33,14 @@ const TV = { x: 1150, y: 92, w: 680, h: 384 };
 /** 後面的沙發：椅背上緣、坐墊的高度。狗狗坐在上面。 */
 const SOFA = { top: 640, seat: 800 };
 /** 狗狗坐在後面的沙發上（離鏡頭遠一點，比站在前面的人小一點）。 */
-const PP_X = 1320, QQ_X = 1510, DOG_S = 0.92;
+const PP_X = 1300, QQ_X = 1470, YY_X = 1690, DOG_S = 0.92;
 /** 左前景的桌子（桌面的 y）與立在桌上的點歌單（最大範圍、內距）。 */
 const TABLE_Y = 930;
 const CLIP = { x: 118, w: 560, h: 430 };
 const PAD = { x: 44, top: 84, bottom: 36 };
 const POSES = [
   'xw_duet_sing', 'xw_duet_belt', 'xw_duet_listen', 'mt_duet_sing', 'mt_duet_belt', 'mt_duet_listen', 'cp_duet_chorus',
-  'pp_howl', 'qq_howl', 'pp_sit', 'qq_sit',
+  'pp_howl', 'qq_howl', 'pp_sit', 'qq_sit', 'yy_beg', 'yy_howl',
 ];
 type Part = '男' | '女' | '合';
 
@@ -97,7 +99,7 @@ export default class Duet extends Scene {
   omKeys: [number, string][] = [];
   cpKeys: [number, string][] = [];
   /** 狗狗的姿勢時間軸（坐著／合唱時仰頭唱）。 */
-  dogKeys: Record<'pp' | 'qq', [number, string][]> = { pp: [], qq: [] };
+  dogKeys: Record<'pp' | 'qq' | 'yy', [number, string][]> = { pp: [], qq: [], yy: [] };
   note: Note | null = null;
   clip = { x: CLIP.x, y: TABLE_Y - CLIP.h, w: CLIP.w, h: CLIP.h };
   noteT0 = 0;
@@ -141,6 +143,8 @@ export default class Duet extends Scene {
     for (const K of [A, O, C, D]) K.sort((a, b) => a[0] - b[0]);
     this.alanKeys = A; this.omKeys = O; this.cpKeys = C;
     for (const who of ['pp', 'qq'] as const) this.dogKeys[who] = D.map(([tt, n]) => [tt, `${who}_${n}`]);
+    // 元元平常是咬著鈴鼓的側坐（yy_beg），合唱時仰頭叫
+    this.dogKeys.yy = D.map(([tt, n]) => [tt, n === 'howl' ? 'yy_howl' : 'yy_beg']);
     // 點歌單上的留言：標準 v2 的字級；夾板的寬高跟著留言（底邊立在桌上）
     const c = this.fg.ctx;
     const w = CLIP.w - PAD.x * 2, hmax = CLIP.h - PAD.top - PAD.bottom;
@@ -246,7 +250,7 @@ export default class Duet extends Scene {
     }
   }
 
-  /** 沙發上的芃芃與 QQ：平常坐著（每拍點頭）；合唱時轉過去仰頭一起「唱」。 */
+  /** 沙發上的芃芃與 QQ：平常坐著（每拍點頭）；合唱時轉過去仰頭一起「唱」。元元另外畫（drawYuanyuan）。 */
   private drawDogs(c: CanvasRenderingContext2D, t: number) {
     const au = this.ctx.audio;
     const keys = this.dogKeys.pp;
@@ -260,9 +264,60 @@ export default class Duet extends Scene {
       puppetShadow(c, who, x, SOFA.seat + 4, { h: SZ * DOG_S, alpha: 0.5 * en.alpha, color: '0,0,0' });
       drawPick(c, this.dogKeys[who], t, x, SOFA.seat + 4, { h: SZ, scale: DOG_S, rot: howl ? -0.05 : 0.05 * Math.sin(au.beatAt(t) * Math.PI + (who === 'pp' ? 0 : 1)), pivot: 0.3, squash: howl ? -0.02 : 0.04 * nod, spin: en.spin, alpha: en.alpha });
     }
+    this.drawYuanyuan(c, t, howl);
   }
 
-  /** 左前景的矮桌：桌面、兩杯有吸管的飲料、一個鈴鼓（每拍抖一下）。 */
+  /**
+   * 元元：坐在沙發最右邊、面向兩隻博美（翻成朝左），嘴裡咬著鈴鼓打拍子——拍點上頭往下一點、鈴鼓甩一下，
+   * 小節線甩得大一點、鈴片閃一下（三隻裡只有牠咬得動鈴鼓）。合唱時鈴鼓放在腳邊，仰頭跟大家一起唱。
+   */
+  private drawYuanyuan(c: CanvasRenderingContext2D, t: number, howl: boolean) {
+    const au = this.ctx.audio;
+    const en = enterPuppet(this.glow, t, this.ctx.start + 0.42, YY_X, SOFA.seat - 4, 5);
+    if (!en) return;
+    const nod = beatKick(au, t, 0.26);
+    const bar = beatKick(au, t, 0.35) * (Math.round(au.beatAt(t) % 4) === 0 ? 1 : 0.5);
+    const y = SOFA.seat + 4;
+    const o: PuppetOpts = { h: SZ, scale: DOG_S, flip: true, rot: howl ? -0.04 : 0.05 * nod, pivot: 0.35, squash: howl ? -0.02 : 0.03 * nod, spin: en.spin, alpha: en.alpha };
+    puppetShadow(c, 'yy', YY_X, y, { h: SZ * DOG_S, alpha: 0.5 * en.alpha, color: '0,0,0' });
+    const name = drawPick(c, this.dogKeys.yy, t, YY_X, y, o);
+    // 鈴鼓：咬在嘴上（側面看是一個直立的圓框），合唱時放在前腳邊的沙發上（平放）
+    const side = Math.floor(au.beatAt(t)) % 2 ? 1 : -1;
+    const m = name === 'yy_beg' ? puppetPoint('yy_beg', 'mouth', YY_X, y, o) : null;
+    if (m) this.tambourine(c, m.x - 26, m.y + 10, 0.9, 0.25 * side * (0.4 * nod + 0.6 * bar), bar);
+    else this.tambourine(c, YY_X + 70, y - 6, 0.34, 0, 0);
+  }
+
+  /** 一個鈴鼓：木框＋一圈金屬鈴片（sy 是看過去的扁度：1 = 正面、0.3 = 平放）；flash 時鈴片亮一下（拍點）。 */
+  private tambourine(c: CanvasRenderingContext2D, x: number, y: number, sy: number, rot: number, flash: number) {
+    const ink = inkFor(false, { fill: rgba('ink2') });
+    const r = 34;
+    c.save();
+    c.translate(x, y);
+    c.rotate(rot);
+    c.scale(1, sy);
+    inkEllipse(c, 0, 0, r, r, 0, { ink, fill: mixRgba('ink2', 'fur', 0.4), w: 0.7, seed: 9, color: rgba('bone', 0.45) });
+    inkEllipse(c, 0, 0, r - 7, r - 7, 0, { ink, fill: mixRgba('ink2', 'bone', 0.12), w: 0.4, seed: 8, color: rgba('bone', 0.3) });
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2 + 0.3;
+      c.fillStyle = flash > 0.3 ? mixRgba('bone', 'ember', 0.5) : mixRgba('bone', 'signal', 0.3);
+      c.fillRect(Math.cos(a) * (r - 2) - 5, Math.sin(a) * (r - 2) - 3, 10, 6);
+    }
+    c.restore();
+    // 甩的時候：幾條很短的聲音線
+    if (flash > 0.3) {
+      c.save();
+      c.strokeStyle = rgba('bone', 0.4 * flash);
+      c.lineWidth = 2;
+      c.lineCap = 'round';
+      c.beginPath();
+      for (const a of [-2.4, -1.6, -0.8]) { c.moveTo(x + Math.cos(a) * (r + 10), y + Math.sin(a) * (r + 10)); c.lineTo(x + Math.cos(a) * (r + 22), y + Math.sin(a) * (r + 22)); }
+      c.stroke();
+      c.restore();
+    }
+  }
+
+  /** 左前景的矮桌：桌面、兩杯有吸管的飲料（鈴鼓在元元嘴上）。 */
   private drawTable(c: CanvasRenderingContext2D, t: number) {
     const ink = inkFor(false, { fill: rgba('ink2') });
     const top = TABLE_Y;
@@ -278,14 +333,6 @@ export default class Duet extends Scene {
       inkPoly(c, [{ x: x - 20, y: top - 70 }, { x: x + 20, y: top - 70 }, { x: x + 16, y: top + 6 }, { x: x - 16, y: top + 6 }], { ink, fill: mixRgba('ink2', 'signal', 0.18), w: 0.6, seed: sd, t, color: rgba('bone', 0.4) });
       inkLine(c, [{ x: x + 4, y: top - 50 }, { x: x + 12, y: top - 104 }], { ink, w: 0.8, seed: sd + 5, color: rgba('bone', 0.5) });
     }
-    // 鈴鼓（每拍抖一下）
-    const k = beatKick(this.ctx.audio, t, 0.2);
-    c.save();
-    c.translate(560, top + 16);
-    c.rotate(0.12 * k * (Math.floor(this.ctx.audio.beatAt(t)) % 2 ? 1 : -1));
-    inkEllipse(c, 0, 0, 52, 14, 0, { ink, fill: mixRgba('ink2', 'fur', 0.35), w: 0.7, seed: 9, color: rgba('bone', 0.4) });
-    for (let i = 0; i < 6; i++) { const a = (i / 6) * Math.PI * 2; inkRect(c, Math.cos(a) * 46 - 5, Math.sin(a) * 12 - 3, 10, 6, { ink, fill: mixRgba('bone', 'signal', 0.3), w: 0.4, seed: 10 + i, color: rgba('bone', 0.5) }); }
-    c.restore();
   }
 
   /** 立在桌上的點歌單：夾板（木色）＋紙＋夾子；標題「點歌單 No.042」（小、淡）；留言逐字寫上去。 */
