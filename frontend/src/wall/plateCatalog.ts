@@ -2270,6 +2270,15 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "bilingual": true
  },
  {
+  "name": "bookstore",
+  "title": "書店約會",
+  "family": "date",
+  "light": true,
+  "couple": true,
+  "idea": "書店的外文書區，兩人各拿一本書靠在一起看，書架上的書背是雙語歌詞；宣文偷偷把一張紙條夾進孟庭的書裡（留言）。",
+  "bilingual": true
+ },
+ {
   "name": "dogswim",
   "title": "狗狗游泳",
   "family": "dog",
