@@ -2261,6 +2261,15 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "bilingual": true
  },
  {
+  "name": "nightsnack",
+  "title": "便利商店宵夜",
+  "family": "kculture",
+  "light": true,
+  "couple": true,
+  "idea": "深夜便利商店窗邊座位，兩人吃泡麵（吹涼、捲麵在拍點），窗外下雨；窗戶上的雙語貼紙廣告是歌詞；留言是收據。不畫真實品牌。",
+  "bilingual": true
+ },
+ {
   "name": "hanbok",
   "title": "穿韓服",
   "family": "kculture",

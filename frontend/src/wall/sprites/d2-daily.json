@@ -10,7 +10,11 @@
     "cp_kdrama_watch": {"kind":"couple","w":382,"h":437,"ax":157.9,"ay":432.8,"ref":600},
     "mt_kbbq_feed": {"kind":"person","w":315,"h":442,"ax":194.1,"ay":438.3,"ref":600},
     "mt_kbbq_wrap": {"kind":"person","w":195,"h":441,"ax":89.3,"ay":437.4,"ref":600},
+    "mt_snack_blow": {"kind":"person","w":195,"h":449,"ax":95.3,"ay":444.7,"ref":600},
+    "mt_snack_eat": {"kind":"person","w":202,"h":457,"ax":98.6,"ay":453.6,"ref":600},
     "xw_kbbq_cut": {"kind":"person","w":306,"h":448,"ax":113.1,"ay":445,"ref":600},
-    "xw_kbbq_open": {"kind":"person","w":260,"h":448,"ax":107.4,"ay":443.7,"ref":600}
+    "xw_kbbq_open": {"kind":"person","w":260,"h":448,"ax":107.4,"ay":443.7,"ref":600},
+    "xw_snack_look": {"kind":"person","w":205,"h":451,"ax":102.1,"ay":447,"ref":600},
+    "xw_snack_slurp": {"kind":"person","w":202,"h":444,"ax":107.8,"ay":439.6,"ref":600}
   }
 }
