@@ -1,0 +1,25 @@
+{
+  "group": "d3",
+  "series": {
+    "xw_work_d3_": {"ref":"xw_work_d3_idle","refFrac":0.9505208333333334,"groundFrac":0.9739583333333334,"target":1400},
+    "mt_work_d3_": {"ref":"mt_work_d3_idle","refFrac":0.9596354166666666,"groundFrac":0.978515625,"target":1400},
+    "xw_d3_": {"ref":"xw_idle_front","refFrac":0.951171875,"groundFrac":0.9739583333333334,"target":720,"from":"base:xw_"},
+    "mt_d3_": {"ref":"mt_idle_front","refFrac":0.96484375,"groundFrac":0.984375,"target":720,"from":"base:mt_"},
+    "cp_d3_": {"ref":"xw_idle_front","refFrac":0.951171875,"groundFrac":0.9739583333333334,"target":720,"from":"base:xw_"}
+  },
+  "sprites": {
+    "mt_d3_card_show": {"kind":"person","w":323,"h":518,"ax":138.2,"ay":514.7,"ref":720,"pts":{"face":[124.9,70.9,31.6],"card":[199.2,83.1,19.4]}},
+    "mt_d3_flick": {"kind":"person","w":376,"h":539,"ax":175.1,"ay":535.1,"ref":720,"pts":{"face":[168.1,72.9,30.6]}},
+    "mt_d3_highfive": {"kind":"person","w":327,"h":551,"ax":164.5,"ay":547.3,"ref":720,"pts":{"face":[166.6,71.9,31.6],"hand":[298.3,47.6,21.9]}},
+    "mt_work_d3_happy": {"kind":"person","w":366,"h":1405,"ax":176.2,"ay":1399.5,"ref":1400},
+    "mt_work_d3_idle": {"kind":"person","w":437,"h":1408,"ax":221.8,"ay":1403.3,"ref":1400},
+    "mt_work_d3_sip": {"kind":"person","w":449,"h":1409,"ax":217,"ay":1404.3,"ref":1400},
+    "mt_work_d3_thumb": {"kind":"person","w":443,"h":1410,"ax":235.1,"ay":1405.2,"ref":1400},
+    "xw_d3_answer": {"kind":"person","w":351,"h":580,"ax":170.8,"ay":575.4,"ref":720,"pts":{"face":[174.9,86.7,34.5],"hand":[313.4,50.8,22.2]}},
+    "xw_d3_think": {"kind":"person","w":367,"h":532,"ax":152,"ay":528.5,"ref":720,"pts":{"face":[142.9,50.3,34.5]}},
+    "xw_work_d3_blush": {"kind":"person","w":346,"h":1412,"ax":176.9,"ay":1407.2,"ref":1400},
+    "xw_work_d3_finger": {"kind":"person","w":563,"h":1425,"ax":276.6,"ay":1420.6,"ref":1400},
+    "xw_work_d3_idle": {"kind":"person","w":489,"h":1408,"ax":237.3,"ay":1403.4,"ref":1400},
+    "xw_work_d3_thumb": {"kind":"person","w":517,"h":1421,"ax":272.8,"ay":1416.8,"ref":1400}
+  }
+}

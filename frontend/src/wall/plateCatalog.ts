@@ -1982,12 +1982,30 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "bilingual": true
  },
  {
+  "name": "dictionary",
+  "title": "雙語字典",
+  "family": "print",
+  "light": true,
+  "couple": false,
+  "idea": "翻開的厚字典，詞條排版（詞頭、音標、釋義）：歌詞就是例句，原文例句＋中文翻譯；紅筆在唱到的字下畫線；留言是頁邊的手寫註記。",
+  "bilingual": true
+ },
+ {
   "name": "flashcards",
   "title": "單字卡",
   "family": "print",
   "light": true,
   "couple": false,
   "idea": "一疊用鐵環串起來的單字卡：正面原文、在拍點翻面露出中文（兩面輪流），翻過的卡片疊在一旁；留言寫在最上面一張大卡。",
+  "bilingual": true
+ },
+ {
+  "name": "phrasebook",
+  "title": "旅遊會話手冊",
+  "family": "print",
+  "light": true,
+  "couple": false,
+  "idea": "攤開的旅遊會話小冊子（插圖、分類色塊、便利貼），每句歌詞是一條「原文／中文」會話，用螢光筆在拍點劃過；留言是夾在書裡的車票背面。",
   "bilingual": true
  },
  {
@@ -2186,6 +2204,15 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": true,
   "idea": "山頂觀景台的欄杆掛滿愛情鎖，兩人一起把寫著兩人名字的鎖扣上（小節線「喀」），遠處城市夜景；鎖上的吊牌是歌詞；留言是新掛上的那把鎖。不畫真實地標。",
+  "bilingual": true
+ },
+ {
+  "name": "langcards",
+  "title": "互考單字",
+  "family": "date",
+  "light": true,
+  "couple": true,
+  "idea": "咖啡廳裡兩人用單字卡互考：孟庭舉卡（原文），宣文搶答（中文），答對擊掌、答錯被彈額頭；卡片上的字是歌詞；留言寫在桌上的筆記本。",
   "bilingual": true
  }
 ];
