@@ -19,7 +19,7 @@
 4. **三隻狗都不畫項圈、胸背帶、領巾**（芃芃、QQ、元元）。**有狗的版面三隻狗要一起出現**（新人 2026-09-30）。
 5. **不畫真實的品牌、醫院、公司、球隊、歌手、團名的名稱或標誌**；衣服、球拍、球衣、鞋子、識別證、手燈上都不要有字或商標。
 6. **背景一定要真的透明。** 不合格的圖請 Codex 重畫，**不要用程式修圖**（去白底、補手、改眼睛都不行：白衣服、白狗、白紗會被吃掉）。
-7. **側面的姿勢一律朝右**（程式會自己翻）。**例外：衣服上有字**（例如籃球衣的 A&O／13／03），翻過去字會變成反的。需要朝左時，請 Codex 另外畫一張朝左、字是正的版本，檔名加 `_left`（例如 `mt_hoops_guard_left`）。
+7. **側面的姿勢一律朝右**（程式會自己翻）。**例外：衣服上有字**（例如籃球衣的 A&O／420／87），翻過去字會變成反的。需要朝左時，請 Codex 另外畫一張朝左、字是正的版本，檔名加 `_left`（例如 `mt_hoops_guard_left`）。
 8. **只改自己的檔**：自己那一組的 `wall-out/codex-chars/poses/<組名>/`、`frontend/public/wall-sprites/<組名>/`、`frontend/src/wall/sprites/<組名>.json`，
    和自己的版面 `scenes/<名字>.ts`。不要動 `base`、`waltz` 或別人的組，不要改 `_puppet.ts`、`wall-sprites.mjs`（需要就在回報裡寫，由主導者改）。
 
@@ -80,7 +80,7 @@
 | 日常服一 | `couple-daily.png` |
 | 婚禮服 | `couple-wedding.png` |
 | 有狗 | `dogs-side.png`、`dogs-front.png` |
-| 新衣服 | 已定案：`outfit-work.png`（宣文工程師、孟庭護理師）、`outfit-hoops.png`（看籃球賽，A&O 紫白球衣 13／03）、`outfit-concert.png`（演唱會）、`outfit2-sheet.png`（日常服二：白 T＋羽球袋／米白荷葉裙洋裝）。其他服裝先問主導者，不要自己編 |
+| 新衣服 | 已定案：`outfit-work.png`（宣文工程師、孟庭護理師）、`outfit-hoops.png`（看籃球賽，A&O 球衣，勇士隊配色寶藍＋金黃，宣文 420、孟庭 87）、`outfit-concert.png`（演唱會）、`outfit2-sheet.png`（日常服二：白 T＋羽球袋／米白荷葉裙洋裝）。其他服裝先問主導者，不要自己編 |
 | 要跟 base 一樣大、一樣的畫風 | `poses/base/xw_idle_front.png`、`mt_idle_front.png`、`pp_stand.png`、`qq_stand.png`（基準姿勢）＋一兩張動作圖（`xw_bad_ready.png`、`pp_jump.png`） |
 
 附太多張 Codex 會抓不到重點，一次 5～8 張為限。
