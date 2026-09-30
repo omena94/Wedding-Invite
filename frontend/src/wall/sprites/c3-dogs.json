@@ -3,10 +3,12 @@
   "series": {
     "pp_dogportrait_oil": {"ref":"pp_dogportrait_oil","refFrac":0.9546875,"groundFrac":0.97578125,"target":640},
     "qq_dogportrait_oil": {"ref":"qq_dogportrait_oil","refFrac":0.9546875,"groundFrac":0.97578125,"target":640},
+    "yy_c3_dogportrait_oil": {"ref":"yy_c3_dogportrait_oil","refFrac":0.95625,"groundFrac":0.97734375,"target":640},
     "pp_": {"ref":"pp_stand","refFrac":0.8310546875,"groundFrac":0.927734375,"target":260,"from":"base:pp_"},
     "qq_": {"ref":"qq_stand","refFrac":0.9326171875,"groundFrac":0.958984375,"target":280,"from":"base:qq_"},
     "cp_zoomies_": {"ref":"cp_hug","refFrac":0.9760765550239234,"groundFrac":0.9864433811802232,"target":600,"from":"base:cp_"},
-    "cp_ringbearer_": {"ref":"cp_waltz_1","refFrac":0.96875,"groundFrac":0.9830729166666666,"target":600,"from":"waltz:cp_waltz_"}
+    "cp_ringbearer_": {"ref":"cp_waltz_1","refFrac":0.96875,"groundFrac":0.9830729166666666,"target":600,"from":"waltz:cp_waltz_"},
+    "yy_": {"ref":"yy_stand","refFrac":0.5859375,"groundFrac":0.9365234375,"target":400,"from":"yuanyuan:yy_"}
   },
   "sprites": {
     "cp_ringbearer_kneel": {"kind":"couple","w":568,"h":602,"ax":251,"ay":597.4,"ref":600},
@@ -27,6 +29,10 @@
     "qq_ringbearer_walk_2": {"kind":"dog","w":300,"h":262,"ax":132.4,"ay":258.5,"ref":280},
     "qq_zoomies_1": {"kind":"dog","w":296,"h":200,"ax":139.4,"ay":196,"ref":280},
     "qq_zoomies_2": {"kind":"dog","w":296,"h":245,"ax":135,"ay":241.2,"ref":280},
-    "qq_zoomies_bow": {"kind":"dog","w":289,"h":267,"ax":128.6,"ay":263.7,"ref":280}
+    "qq_zoomies_bow": {"kind":"dog","w":289,"h":267,"ax":128.6,"ay":263.7,"ref":280},
+    "yy_c3_dogportrait_back": {"kind":"dog","w":233,"h":407,"ax":113.7,"ay":402.3,"ref":400,"height":0.42},
+    "yy_c3_dogportrait_oil": {"kind":"dog","w":512,"h":646,"ax":255.9,"ay":642.9,"ref":640,"height":1},
+    "yy_c3_flower_walk_1": {"kind":"dog","w":645,"h":407,"ax":340.3,"ay":402.3,"ref":400,"height":0.42,"pts":{"basket":[523.3,190,46.7]}},
+    "yy_c3_flower_walk_2": {"kind":"dog","w":649,"h":405,"ax":349.7,"ay":400.3,"ref":400,"height":0.42,"pts":{"basket":[526.7,190,46.7]}}
   }
 }

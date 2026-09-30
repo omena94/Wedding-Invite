@@ -1,7 +1,8 @@
-// 狗狗肖像（亮、dog）：美術館的一面牆，燈打著一幅鍍金畫框裡的狗狗正式肖像（Codex 畫的古典油畫，變化款 0 = 芃芃、1 = QQ），
-// 真的芃芃和 QQ 坐在紅絨繩前面、背對我們抬頭看著牆上的自己。角色是 Codex 畫的紙偶（_puppet.ts）。
+// 狗狗肖像（亮、dog）：美術館的一面牆，燈打著一幅鍍金畫框裡的狗狗正式肖像（Codex 畫的古典油畫，變化款 0 = 芃芃、1 = QQ、2 = 元元），
+// 真的芃芃、QQ、元元三隻坐在紅絨繩前面、背對我們抬頭看著牆上的畫。角色是 Codex 畫的紙偶（_puppet.ts）。
 //  - 開場展廳的燈「喀」一聲在第一拍亮起來（牆上軌道燈的光一扇一扇打下來，閃一下再穩住）。
-//  - 每個小節線有一隻狗轉過頭來看我們（換成歪頭的正面，跳一下），第三拍再轉回去看畫；兩隻輪流。
+//  - 每個小節線輪到一隻狗有動作，三隻輪流，第三拍回到原位：QQ、芃芃轉過頭來看我們（換成歪頭的正面，跳一下）；
+//    元元是大狗，**站起來（後腳站、前腳抬高）湊到說明卡前面「讀」留言**——兩隻博美搆不到。
 //    其他時候背對我們跟著拍子輕輕晃（尾巴在搖的感覺）。每兩小節畫框的角閃一下、畫面上掃過一道光（油畫的亮光漆）。
 //  - **焦點是主打留言**：寫在畫旁邊的展品說明卡上（米白卡、細細的影子），上面兩行小字是畫名與「油彩．畫布」，
 //    留言用思源宋體（典雅），署名，最下面一行小小的「No.042 館藏」（留言編號）；照「留言尺寸與版面比例標準 v2」：
@@ -21,7 +22,7 @@ import { loadPuppets, drawPuppet, drawPick, puppetShadow, puppetIn, puppetBox, b
 import { lyricV2 } from './_v2';
 import { INVITE } from './_c3';
 
-export const spec: PlateSpecDecl = { group: 'couple', family: 'dog', paper: true, energy: [0, 0.8], bars: [4, 8], variants: 2 };
+export const spec: PlateSpecDecl = { group: 'couple', family: 'dog', paper: true, energy: [0, 0.8], bars: [4, 8], variants: 3 };
 
 const SZ = 420, DOG_S = 1.62;
 /** 牆腳（牆與木地板的交界）。 */
@@ -33,14 +34,24 @@ const CARD = { x: 930, y: 346, w: 700, h: 410 };
 const PAD = { x: 44, top: 104, bottom: 64 };
 /** 牆上的引言（歌詞）：中心 x、基線、最寬。 */
 const QUOTE = { x: 960, y: 150, w: 1360 };
-/** 兩隻狗坐的地方（腳底）。 */
-const SEAT = { pp: { x: 440, y: 992 }, qq: { x: 690, y: 980 } };
+/** 三隻狗坐的地方（腳底）：兩隻博美在畫下面，元元坐在右邊、靠近說明卡（牠站起來要去讀卡）。三隻用同一個場景尺度。 */
+const SEAT = { pp: { x: 400, y: 992 }, qq: { x: 610, y: 982 }, yy: { x: 800, y: 968 } };
 /** 紅絨繩的兩根柱子（x）與柱子的腳。 */
-const POSTS = [262, 858], POST_Y = 912, POST_H = 118;
+const POSTS = [232, 902], POST_Y = 912, POST_H = 118;
 const TITLES = [
   { en: 'Portrait of PenPen', zh: '《芃芃》　油彩．畫布　宣文 & 孟庭 家族收藏' },
   { en: 'Portrait of QQ', zh: '《QQ》　油彩．畫布　宣文 & 孟庭 家族收藏' },
+  { en: 'Portrait of YuanYuan', zh: '《元元》　油彩．畫布　宣文 & 孟庭 家族收藏' },
 ];
+/** 每隻狗的圖：背對（看畫）、輪到牠的那一下（博美回頭歪頭、元元站起來讀卡）、油畫肖像。元元的歪頭與站起來用 yuanyuan 組現成的。 */
+const POSE: Record<Who, { back: string; turn: string; oil: string }> = {
+  pp: { back: 'pp_dogportrait_back', turn: 'pp_dogportrait_tilt', oil: 'pp_dogportrait_oil' },
+  qq: { back: 'qq_dogportrait_back', turn: 'qq_dogportrait_tilt', oil: 'qq_dogportrait_oil' },
+  yy: { back: 'yy_c3_dogportrait_back', turn: 'yy_beg', oil: 'yy_c3_dogportrait_oil' },
+};
+/** 輪流的順序（每個小節線換一隻）與畫的順序（遠的先畫）。 */
+const TURNS: Who[] = ['qq', 'pp', 'yy'];
+const WHO: Who[] = ['yy', 'qq', 'pp'];
 
 /** 展廳：牆（紙色，軌道燈在牆上打出一扇一扇的光）、踢腳板、木地板。燈在開場的第一拍亮起來。 */
 const GALLERY = () => new FSPass(/* glsl */ `
@@ -72,7 +83,7 @@ const GALLERY = () => new FSPass(/* glsl */ `
     fragColor = vec4(col, 1.0);
   }`, { on: { value: 0 } });
 
-type Who = 'pp' | 'qq';
+type Who = 'pp' | 'qq' | 'yy';
 
 export default class DogPortrait extends Scene {
   gal = shared('dogportrait.gallery', GALLERY);
@@ -80,7 +91,7 @@ export default class DogPortrait extends Scene {
   fg = this.track(new Layer2D(W, H, undefined, { fast: true }));
   glow = this.track(new LineBatch(1024, { screen2D: true, blend: 'add' }));
   msg: Msg | null = this.ctx.params.message ?? null;
-  v = (this.ctx.params.variant ?? 0) % 2;
+  v = (this.ctx.params.variant ?? 0) % 3;
   art = { x: 0, y: 0, w: 0, h: ART.h, scale: 1 };
   note: Note | null = null;
   card = { ...CARD };
@@ -88,36 +99,39 @@ export default class DogPortrait extends Scene {
   /** 燈亮起來的拍、每個小節線（轉頭、閃光用）。 */
   lightsOn = 0;
   bars: number[] = [];
-  keys: Record<Who, [number, string][]> = { pp: [], qq: [] };
-  hops: Record<Who, number[]> = { pp: [], qq: [] };
+  keys: Record<Who, [number, string][]> = { pp: [], qq: [], yy: [] };
+  hops: Record<Who, number[]> = { pp: [], qq: [], yy: [] };
+  /** 元元站起來讀卡的時間段（站起來往卡片那邊挪一點）。 */
+  reads: [number, number][] = [];
 
-  private get sitter() { return this.v === 0 ? 'pp' : 'qq'; }
+  private get sitter(): Who { return (['pp', 'qq', 'yy'] as const)[this.v]!; }
 
   override async init() {
     const { audio: au } = this.ctx;
     const T = TITLES[this.v]!;
     await loadText('一位賓客館藏徵集中' + INVITE + T.zh + T.en + '0123456789No.');
-    const oil = `${this.sitter}_dogportrait_oil`;
-    this.track(await loadPuppets([oil, 'pp_dogportrait_back', 'qq_dogportrait_back', 'pp_dogportrait_tilt', 'qq_dogportrait_tilt']));
+    const oil = POSE[this.sitter].oil;
+    this.track(await loadPuppets([oil, ...WHO.flatMap((w) => [POSE[w].back, POSE[w].turn])]));
     // 油畫照畫框的開口縮放（高 = ART.h）
     const box = puppetBox(oil, 0, 0, { h: SZ });
     this.art.scale = box[3] > 0 ? ART.h / box[3] : 1;
     this.art.w = box[2] * this.art.scale;
     this.art.x = ART.cx - this.art.w / 2;
     this.art.y = ART.cy - ART.h / 2;
-    // 燈在開場後的第一拍亮；之後每個小節線有一隻狗轉頭（兩隻輪流），第三拍轉回去
+    // 燈在開場後的第一拍亮；之後每個小節線輪到一隻狗（三隻輪流），第三拍回去
     this.lightsOn = au.nextBeat(this.ctx.start + 0.25);
     let b = barAfter(au, this.lightsOn + 0.3);
     for (let k = 0; k < 40 && b < this.ctx.end + 0.1; k++) {
       this.bars.push(b);
       b = au.timeOfBar(Math.round(au.barAt(b)) + 1);
     }
-    for (const w of ['pp', 'qq'] as Who[]) this.keys[w] = [[-1e9, `${w}_dogportrait_back`]];
+    for (const w of WHO) this.keys[w] = [[-1e9, POSE[w].back]];
     this.bars.forEach((t, k) => {
-      const w: Who = k % 2 === 0 ? 'qq' : 'pp';
+      const w = TURNS[k % TURNS.length]!;
       const back = au.timeOfBeat(Math.round(au.beatAt(t)) + 2);
-      this.keys[w].push([t, `${w}_dogportrait_tilt`], [back, `${w}_dogportrait_back`]);
+      this.keys[w].push([t, POSE[w].turn], [back, POSE[w].back]);
       this.hops[w].push(t, back);
+      if (w === 'yy') this.reads.push([t, back]);
     });
     // 說明卡：標準 v2 的字級（宋體）；卡的高度跟著留言、寬度跟著字
     const c = this.fg.ctx;
@@ -179,7 +193,7 @@ export default class DogPortrait extends Scene {
       c.restore();
     }
     // 油畫（Codex 畫的古典肖像）
-    drawPuppet(c, `${this.sitter}_dogportrait_oil`, ART.cx, A.y + A.h, { h: SZ, scale: A.scale });
+    drawPuppet(c, POSE[this.sitter].oil, ART.cx, A.y + A.h, { h: SZ, scale: A.scale });
     // 說明卡
     const K = this.card, T = TITLES[this.v]!;
     c.fillStyle = rgba('sepia', 0.14);
@@ -270,8 +284,8 @@ export default class DogPortrait extends Scene {
       c.restore();
     }
 
-    // 兩隻狗：背對我們看畫；輪到的小節線轉過頭來（跳一下），第三拍轉回去
-    for (const w of ['pp', 'qq'] as Who[]) this.drawDog(c, t, w);
+    // 三隻狗：背對我們看畫；輪到的小節線轉過頭來（元元站起來讀卡），第三拍回去
+    for (const w of WHO) this.drawDog(c, t, w);
 
     this.drawCardText(c, t);
     comp.draw(renderer, L.upload(), out);
@@ -283,8 +297,8 @@ export default class DogPortrait extends Scene {
 
   private drawDog(c: CanvasRenderingContext2D, t: number, w: Who) {
     const au = this.ctx.audio;
-    const P = SEAT[w];
-    const en = puppetIn(t, this.ctx.start + (w === 'pp' ? 0.1 : 0.18), 0.45);
+    const S = SEAT[w];
+    const en = puppetIn(t, this.ctx.start + (w === 'pp' ? 0.1 : w === 'qq' ? 0.18 : 0.26), 0.45);
     if (en.alpha <= 0) return;
     let lift = 0, squash = breathe(t, 0.012, 2.6, w === 'pp' ? 0 : 0.4) + 0.025 * beatKick(au, t, 0.25);
     for (const h of this.hops[w]) {
@@ -292,14 +306,18 @@ export default class DogPortrait extends Scene {
       if (d >= -0.02 && d < 0.26) lift += 18 * Math.sin(Math.PI * clamp(d / 0.26));
       squash += landSquash(t, h + 0.26, 0.1, 0.25);
     }
-    // 背對我們的時候跟著拍子左右晃（尾巴在搖）
-    const rot = 0.03 * Math.sin(au.beatAt(t) * Math.PI);
+    // 元元站起來讀卡：往卡片那邊挪一步（起身時滑過去、回去時滑回來）
+    let dx = 0;
+    for (const [a, b] of this.reads) dx += 46 * (ease.outCubic(prog(t, a, a + 0.25)) - ease.inOutCubic(prog(t, b - 0.05, b + 0.25)));
+    const P = { x: S.x + dx, y: S.y };
+    // 背對我們的時候跟著拍子左右晃（尾巴在搖）；站起來的時候不晃
+    const rot = dx > 1 ? 0 : 0.03 * Math.sin(au.beatAt(t) * Math.PI);
     const o: PuppetOpts = { h: SZ, scale: DOG_S, squash, rot, pivot: 0.1, spin: en.spin, alpha: en.alpha };
     puppetShadow(c, w, P.x, P.y, { h: SZ * DOG_S, lift, alpha: 0.3 * en.alpha, color: '60,40,25' });
     drawPick(c, this.keys[w], t, P.x, P.y - lift, o);
     if (en.k < 1) {
       sparkHead(this.glow, P.x, P.y - 4, t, 0.6);
-      sparkParticles(this.glow, t, () => ({ x: P.x, y: P.y - 4 }), { rate: 40, life: 0.25, speed: 120, seed: w === 'pp' ? 5 : 6 });
+      sparkParticles(this.glow, t, () => ({ x: P.x, y: P.y - 4 }), { rate: 40, life: 0.25, speed: 120, seed: w === 'pp' ? 5 : w === 'qq' ? 6 : 7 });
     }
   }
 
