@@ -1,13 +1,13 @@
 {
   "group": "d2-dance",
   "series": {
-    "cp_dance_": {"ref":"cp_dance_ready","refFrac":0.9505582137161085,"groundFrac":0.9633173843700159,"target":600}
+    "cp_dance_": {"ref":"cp_dance_ready","refFrac":0.9505208333333334,"groundFrac":0.9733072916666666,"target":600}
   },
   "sprites": {
-    "cp_dance_1": {"kind":"couple","w":521,"h":610,"ax":263.8,"ay":606.3,"ref":600},
-    "cp_dance_2": {"kind":"couple","w":455,"h":599,"ax":226.5,"ay":593.2,"ref":600},
-    "cp_dance_3": {"kind":"couple","w":620,"h":608,"ax":330.2,"ay":604.3,"ref":600},
-    "cp_dance_4": {"kind":"couple","w":394,"h":622,"ax":209.4,"ay":617.9,"ref":600},
-    "cp_dance_ready": {"kind":"couple","w":379,"h":607,"ax":202.3,"ay":602.8,"ref":600}
+    "cp_dance_1": {"kind":"couple","w":489,"h":612,"ax":247,"ay":607.6,"ref":600},
+    "cp_dance_2": {"kind":"couple","w":460,"h":547,"ax":228.5,"ay":542.3,"ref":600},
+    "cp_dance_3": {"kind":"couple","w":550,"h":598,"ax":310.7,"ay":594,"ref":600},
+    "cp_dance_4": {"kind":"couple","w":418,"h":613,"ax":218.6,"ay":609.2,"ref":600},
+    "cp_dance_ready": {"kind":"couple","w":381,"h":607,"ax":202.6,"ay":603.1,"ref":600}
   }
 }
