@@ -1944,5 +1944,14 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "couple": false,
   "idea": "口譯廂的玻璃窗與耳機、麥克風燈（唱時亮紅），桌上螢幕上面原文、下面中文同步出現，兩條音量表跳動；留言寫在廂外的會議名牌。",
   "bilingual": true
+ },
+ {
+  "name": "seoultrip",
+  "title": "老街散步",
+  "family": "trip",
+  "light": true,
+  "couple": true,
+  "idea": "兩人在石牆老屋的小巷散步拍照（孟庭拿相機、宣文比 YA），兩旁是雙語路牌與店招（歌詞）；拍照閃光在小節線；留言寫在明信片上。",
+  "bilingual": true
  }
 ];
