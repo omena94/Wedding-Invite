@@ -1937,6 +1937,15 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "bilingual": true
  },
  {
+  "name": "webtoon",
+  "title": "條漫",
+  "family": "screen",
+  "light": true,
+  "couple": false,
+  "idea": "直向捲動的條漫，一格一格往上捲（一拍一格），對話框裡中文大、原文小；留言是最新一話的作者的話。",
+  "bilingual": true
+ },
+ {
   "name": "interpreter",
   "title": "同步口譯廂",
   "family": "lingo",
