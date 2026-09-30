@@ -3,7 +3,9 @@
 //  - 拉花落在拍點：宣文先倒一顆愛心（拍點上奶泡一鼓一鼓地長大，**小節線上拉過去**，圓變成愛心）；
 //    接著孟庭倒一片葉子（每半拍擺一下、多一層葉片，下一個小節線拉出葉脈）。拉花那一下壺往上一提（整個人往上一送）。
 //  - 杯子在前景、夠大（俯角看得到杯面），愛心與葉子是這個畫面最亮的白；拉好之後杯子冒熱氣，之後每個小節線浮起一顆小愛心。
-//  - 狗狗從吧台後面探頭：每小節輪流（芃芃、QQ）在第二拍冒出來、第四拍縮回去，前腳搭在檯面上。
+//  - 兩隻博美從吧台後面偷看（平常只露出耳朵和眼睛）：每小節輪流（芃芃、QQ）在第二拍整個冒出來、第四拍縮回去，前腳搭在檯面上。
+//    元元（白柴，三隻裡最高）不用跳：一直站起來、兩隻前腳穩穩搭在檯面上，面前一小杯給狗喝的奶泡（puppuccino）；
+//    每個小節線低頭舔一口（奶泡一口一口變少、冒兩個小泡泡），平常跟著拍子點頭。兩隻博美在牠左右兩邊輪流冒出來。
 //  - **焦點是主打留言**：寫在左邊牆上的黑板菜單（粉筆字、木框、上面一盞小燈打著），標準 v2：字 40～60、黑板最大 600 × 430，
 //    高度跟著留言長短。沒有留言時黑板寫邀請、字淡，歌詞變主角。
 //  - 歌詞直接寫在右上的牆上（像咖啡店手寫的牆字），旁邊一個小小的「NOW BREWING」；比留言小一級（標準 v2：40～52）。
@@ -42,10 +44,12 @@ const WALL = { x: 842, y: 150, w: 700 };
 /** 右邊的吊燈（跟著拍子輕輕晃）。 */
 const LAMP = { x: 1650, y: 236 };
 /** 狗狗探頭的位置、放大倍數。 */
-const PP_X = 1430, QQ_X = 1545, DOG_S = 1.15;
+const PP_X = 1340, QQ_X = 1690, YY_X = 1515, DOG_S = 1.15;
 /** 吧台圖層從哪一個 y 開始（檯面後緣再往上一點，留給杯子的熱氣以外的東西不用）。 */
 const BAR_Y = TOP.back - 4;
-const SPRITES = ['xw_coffee_pour', 'xw_coffee_smile', 'mt_coffee_pour', 'mt_coffee_smile', 'pp_coffee_peek', 'qq_coffee_peek'];
+const SPRITES = ['xw_coffee_pour', 'xw_coffee_smile', 'mt_coffee_pour', 'mt_coffee_smile', 'pp_coffee_peek', 'qq_coffee_peek', 'yy_c5_peek'];
+/** 元元面前那杯狗狗奶泡（杯底中心，放在檯面上）。 */
+const PUP = { x: YY_X + 2, y: 652 };
 
 interface Pour { who: 0 | 1; kind: 'heart' | 'leaf'; t0: number; pull: number }
 interface Peek { who: 'pp' | 'qq'; up: number; down: number }
@@ -66,6 +70,8 @@ export default class Coffee extends Scene {
   cups: Pt[] = [{ x: AL_X, y: CUP_Y }, { x: OM_X, y: CUP_Y }];
   /** 之後每個小節線浮起一顆小愛心的時間。 */
   hearts: number[] = [];
+  /** 元元低頭舔奶泡的時間（每個小節線）。 */
+  licks: number[] = [];
   note: Note | null = null;
   board = { ...BOARD };
   noteT0 = 0;
@@ -97,6 +103,7 @@ export default class Coffee extends Scene {
       if (b0 > this.ctx.end) break;
       const bp = au.beatPeriod(b0);
       this.peeks.push({ who: k % 2 ? 'qq' : 'pp', up: b0 + bp, down: b0 + bp * 3 });
+      if (b0 > s + 0.6) this.licks.push(b0);
       if (b0 > pull1 + 0.1) this.hearts.push(b0);
     }
     // 黑板上的留言：標準 v2 的字級；黑板的寬高跟著留言（上緣固定）
@@ -278,8 +285,10 @@ export default class Coffee extends Scene {
 
     // ---- 人（吧台後面）→ 探頭的狗 → 吧台蓋在前面 → 杯面的咖啡與拉花 → 奶柱
     const spouts: (Pt | null)[] = [this.drawPerson(c, t, 0, bp), this.drawPerson(c, t, 1, bp)];
-    for (const pk of this.peeks) this.drawPeek(c, t, pk);
+    this.drawYuanyuan(c, t);
+    this.drawPeeks(c, t);
     c.drawImage(this.bar.canvas, 0, BAR_Y, W, H - BAR_Y);
+    this.drawPuppuccino(c, t);
     for (let i = 0; i < 2; i++) this.drawCup(c, t, i as 0 | 1, bp, spouts[i]!);
 
     // 拉好之後：每個小節線從杯子浮起一顆小愛心（點綴色，輪流）
@@ -343,19 +352,79 @@ export default class Coffee extends Scene {
     c.restore();
   }
 
-  /** 狗狗從吧台後面探頭：拍點上冒出來（前腳搭在檯面上）、歪頭，兩拍後縮回去。 */
-  private drawPeek(c: CanvasRenderingContext2D, t: number, pk: Peek) {
-    const bp = this.ctx.audio.beatPeriod(pk.up);
-    if (t < pk.up - 0.2 || t > pk.down + 0.3) return;
-    const upK = prog(t, pk.up - 0.16, pk.up, ease.outBack) * (1 - prog(t, pk.down, pk.down + 0.2, ease.inCubic));
-    const name = `${pk.who}_coffee_peek`;
-    const x = pk.who === 'pp' ? PP_X : QQ_X;
-    const o: PuppetOpts = { h: SZ, scale: DOG_S, rot: 0.06 * Math.sin((t - pk.up) / bp * Math.PI) * clamp(upK), pivot: 0.6 };
-    // 前腳搭在檯面後緣：用圖上的前腳點對齊；還沒量的話用狗身高的比例
-    const paw = puppetPoint(name, 'paws', x, 0, o);
-    const rest = paw ? TOP.back + 4 - paw.y : TOP.back + SZ * 0.26 * DOG_S * 0.45;
-    const hide = SZ * 0.3 * DOG_S;
-    drawPuppet(c, name, x, rest + (1 - upK) * hide, o);
+  /**
+   * 兩隻博美從吧台後面探頭：平常只露出耳朵和眼睛（前腳搆不到檯面，在後面踮腳偷看）；輪到的那一隻在第二拍整個冒出來、
+   * 前腳搭上檯面、歪頭，第四拍縮回去。三隻狗一直都看得到。
+   */
+  private drawPeeks(c: CanvasRenderingContext2D, t: number) {
+    for (const [who, x, d] of [['pp', PP_X, 0.36], ['qq', QQ_X, 0.46]] as const) {
+      const en = enterPuppet(this.glow, t, this.ctx.start + d, x, TOP.back - 6, who === 'pp' ? 3 : 4);
+      if (!en) continue;
+      let upK = 0, rot = 0;
+      for (const pk of this.peeks) {
+        if (pk.who !== who || t < pk.up - 0.2 || t > pk.down + 0.3) continue;
+        const bp = this.ctx.audio.beatPeriod(pk.up);
+        upK = prog(t, pk.up - 0.16, pk.up, ease.outBack) * (1 - prog(t, pk.down, pk.down + 0.2, ease.inCubic));
+        rot = 0.06 * Math.sin((t - pk.up) / bp * Math.PI) * clamp(upK);
+      }
+      const name = `${who}_coffee_peek`;
+      const o: PuppetOpts = { h: SZ, scale: DOG_S, rot, pivot: 0.6, spin: en.spin, alpha: en.alpha, squash: breathe(t, 0.012, 1.4, who === 'pp' ? 0 : 0.5) };
+      // 前腳搭在檯面後緣：用圖上的前腳點對齊；縮下去的時候只露出耳朵和眼睛
+      const paw = puppetPoint(name, 'paws', x, 0, o);
+      const rest = paw ? TOP.back + 4 - paw.y : TOP.back + SZ * 0.26 * DOG_S * 0.45;
+      const sink = SZ * DOG_S * 0.05;
+      drawPuppet(c, name, x, rest + (1 - upK) * sink, o);
+    }
+  }
+
+  /** 元元低頭舔一口的進度（0..1）：小節線前一點點開始低、小節線上最低、之後慢慢抬起來。 */
+  private lickAt(t: number) {
+    let k = 0;
+    for (const l of this.licks) k = Math.max(k, prog(t, l - 0.12, l, ease.outCubic) * (1 - prog(t, l + 0.08, l + 0.42, ease.inOutCubic)));
+    return k;
+  }
+
+  /** 元元：站起來、前腳搭在檯面後緣（圖上的前腳點對齊），每拍點一下頭；小節線上低頭舔奶泡。 */
+  private drawYuanyuan(c: CanvasRenderingContext2D, t: number) {
+    const en = enterPuppet(this.glow, t, this.ctx.start + 0.3, YY_X, TOP.back - 6, 5);
+    if (!en) return;
+    const lick = this.lickAt(t);
+    const o: PuppetOpts = { h: SZ, scale: DOG_S, pivot: 0.3, squash: 0.02 * beatKick(this.ctx.audio, t, 0.28) + 0.05 * lick + breathe(t, 0.01, 2.6), spin: en.spin, alpha: en.alpha };
+    const paw = puppetPoint('yy_c5_peek', 'paws', YY_X, 0, o);
+    // 舔：整隻往前下方低下去（前腳滑到檯面後面），下巴碰到杯口的奶泡
+    const rest = (paw ? TOP.back + 6 - paw.y : TOP.back + 240) + 62 * lick;
+    drawPuppet(c, 'yy_c5_peek', YY_X, rest, o);
+  }
+
+  /** 元元面前的狗狗奶泡：小紙杯＋一球奶泡；每舔一口奶泡少一點，舔的那一下冒兩個小泡泡。 */
+  private drawPuppuccino(c: CanvasRenderingContext2D, t: number) {
+    const a = prog(t, this.ctx.start + 0.3, this.ctx.start + 0.7);
+    if (a <= 0) return;
+    const ink = inkFor(true);
+    const done = this.licks.filter((l) => t >= l).length;
+    const level = Math.max(0.25, 1 - done * 0.18);
+    const { x, y } = PUP;
+    c.save();
+    c.globalAlpha = a;
+    c.fillStyle = rgba('sepia', 0.14);
+    c.beginPath(); c.ellipse(x + 6, y + 2, 34, 8, 0, 0, Math.PI * 2); c.fill();
+    // 紙杯（上寬下窄）與杯口
+    inkPoly(c, [{ x: x - 27, y: y - 44 }, { x: x + 27, y: y - 44 }, { x: x + 20, y }, { x: x - 20, y }], { ink, fill: rgba('bone'), w: 0.8, seed: 61 });
+    inkLine(c, [{ x: x - 25, y: y - 34 }, { x: x + 25, y: y - 34 }], { ink, w: 0.5, seed: 62, color: rgba('sepia', 0.35) });
+    // 奶泡：一球圓頂，越舔越低
+    const fh = 6 + 20 * level;
+    inkEllipse(c, x, y - 44, 29, fh * 0.55, 0, { ink, fill: mixRgba('bone', 'cream', 0.4), w: 0.5, seed: 63 });
+    c.fillStyle = mixRgba('bone', 'cream', 0.4);
+    c.beginPath(); c.ellipse(x, y - 44 - fh * 0.3, 22 * (0.6 + 0.4 * level), fh * 0.55, 0, Math.PI, 0); c.fill();
+    // 舔的那一下：兩個小泡泡往上飄
+    for (const l of this.licks) {
+      const d = t - l;
+      if (d < 0 || d > 0.6) continue;
+      const k = d / 0.6;
+      c.globalAlpha = a * (1 - k);
+      for (const [dx, sp] of [[-12, 1], [14, 0.8]] as const) inkEllipse(c, x + dx + 6 * Math.sin(k * 6), y - 60 - fh - 50 * k * sp, 4 + 2 * sp, 4 + 2 * sp, 0, { ink, w: 0.4, seed: 64, color: rgba('sepia', 0.5) });
+    }
+    c.restore();
   }
 
   /** 一杯咖啡的杯面：克立瑪（中間淺、邊緣深）＋拉花；倒奶時從壺嘴畫一道奶柱到杯面上正在倒的點。 */
