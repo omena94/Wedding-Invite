@@ -2297,6 +2297,15 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "bilingual": true
  },
  {
+  "name": "departuregate",
+  "title": "登機口",
+  "family": "date",
+  "light": true,
+  "couple": true,
+  "idea": "機場登機口，兩人拖著行李、拿著護照與登機證，三隻狗坐在寵物提籃裡探頭；登機口螢幕是雙語航班資訊（歌詞）；留言是行李吊牌。",
+  "bilingual": true
+ },
+ {
   "name": "dogcafe",
   "title": "狗狗咖啡廳",
   "family": "dog",
