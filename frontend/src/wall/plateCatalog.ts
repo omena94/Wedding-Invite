@@ -1935,5 +1935,14 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "couple": false,
   "idea": "老電影院的銀幕在放黑白愛情片（剪影、底片刮痕、放映機光束），銀幕下緣是雙語字幕：中文大、原文小，照歌聲逐字亮；留言是片頭的標題卡，每小節畫面換一個鏡頭。",
   "bilingual": true
+ },
+ {
+  "name": "interpreter",
+  "title": "同步口譯廂",
+  "family": "lingo",
+  "light": false,
+  "couple": false,
+  "idea": "口譯廂的玻璃窗與耳機、麥克風燈（唱時亮紅），桌上螢幕上面原文、下面中文同步出現，兩條音量表跳動；留言寫在廂外的會議名牌。",
+  "bilingual": true
  }
 ];
