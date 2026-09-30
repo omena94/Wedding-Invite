@@ -1946,6 +1946,15 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "bilingual": true
  },
  {
+  "name": "teleprompter",
+  "title": "提詞機",
+  "family": "screen",
+  "light": false,
+  "couple": false,
+  "idea": "攝影機前的提詞機玻璃，反射出兩行字幕往上捲（中文、原文），唱到的那行亮；留言是講台上的講稿。",
+  "bilingual": true
+ },
+ {
   "name": "interpreter",
   "title": "同步口譯廂",
   "family": "lingo",
@@ -1961,6 +1970,15 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "背光機械鍵盤（鍵帽印兩種字母），唱一個字就按下一顆鍵、背光一閃，上方螢幕同時打出中文與原文；留言在螢幕邊的便利貼。",
+  "bilingual": true
+ },
+ {
+  "name": "povfan",
+  "title": "旋轉 LED 扇",
+  "family": "light",
+  "light": false,
+  "couple": false,
+  "idea": "旋轉的 LED 扇葉（視覺暫留）在空中畫出兩行字，扇葉的殘影與光點跟著拍子；留言是扇座下的貼紙。",
   "bilingual": true
  },
  {
