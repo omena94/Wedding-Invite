@@ -968,6 +968,8 @@ function showStart() {
   $('go').addEventListener('click', async () => {
     gate.hidden = true;
     started = true;
+    // 沒鎖定時「最後按開始播放的那台」接收遙控：重新整理後代號沒換（見 pickRemoteClient），也要算這次按的
+    remote.claim = true;
     player.unlock();
     void keepAwake();
     void document.documentElement.requestFullscreen().catch(() => {});
