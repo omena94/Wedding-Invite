@@ -204,10 +204,10 @@ export class Director {
       out.push({ energy: [0, 1], bars: [4, 8], lyricsOnly: true, weight: 1, group: 'type', ...base, ...decl, name });
     }
     // 有翻譯的歌（韓文歌）只排雙語版面：一般版面有主打留言時會收起原文，新人看到的就只剩一種文字（2026-09-30）。
-    // 雙語版面全被後台關掉（或還沒做）時退回全部，至少不會沒得播。
+    // 雙語版面不到 8 個（還在陸續做、或被後台關掉）時退回全部：只有兩三個版面輪流播，一首歌會重複到很膩。
     if (this.song.lyrics.lines.some((l) => l.sub)) {
       const bi = out.filter((p) => p.bilingual);
-      if (bi.length >= 3) return bi;
+      if (bi.length >= 8) return bi;
     }
     return out;
   }
