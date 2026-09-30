@@ -1,6 +1,8 @@
-// 洗澡（亮、dog）：浴室裡一個貓腳浴缸，芃芃與 QQ 坐在滿滿的泡泡裡，孟庭跪在浴缸邊拿蓮蓬頭沖水，宣文撐著大浴巾在旁邊等。
-// 角色是 Codex 畫的紙偶（_puppet.ts）。
+// 洗澡（亮、dog）：浴室裡一個加長的貓腳浴缸，芃芃、元元（白色柴犬）、QQ 三隻坐在滿滿的泡泡裡，孟庭跪在浴缸邊拿蓮蓬頭沖水，
+// 宣文撐著大浴巾在旁邊等。角色是 Codex 畫的紙偶（_puppet.ts）。
 //  - **狗狗甩水在小鼓**（每小節的第二拍、第四拍）：QQ 在第二拍、芃芃在第四拍換成甩水的那張，身體扭一下、水珠往外噴。
+//  - **元元甩水最壯觀**：牠最大，坐在中間，每兩小節的第一拍（重拍）站起來甩一整拍：水珠噴得又多又遠、泡泡被甩飛、
+//    鏡頭跟著震一下，兩隻博美被噴到縮一下。三隻狗用同一個場景尺度（大小照 dogs3-lineup.png），元元坐得比較深（缸裡露出頭和肩膀）。
 //    其他時候坐在泡泡裡跟著拍子點頭。孟庭的蓮蓬頭一直在噴水（水柱在拍點上變強），宣文每拍輕輕點頭。
 //  - **留言是泡泡**：一個字一個泡泡，從浴缸裡冒出來、飛上去，**落在拍點上**排好成一行一行的字（右上），停在那裡輕輕浮動；
 //    字排完署名淡入。排字照「留言尺寸與版面比例標準 v2」：字 40～60（泡泡本身就是容器，整塊最大 700 × 400）。沒有留言時泡泡排邀請。
@@ -23,16 +25,19 @@ export const spec: PlateSpecDecl = { group: 'couple', family: 'dog', paper: true
 const FLOOR = 920;
 const SZ = 440;
 /** 浴缸（側面）：左緣、寬、缸口的高度、缸底。 */
-const TUB = { x: 210, w: 880, rim: 652, bottom: 858 };
-/** 狗坐在浴缸裡（腳底藏在缸裡）。 */
-const PP_X = 500, QQ_X = 810, DOG_Y = 730, DOG_S = 2.1;
-const OM_X = 118, AL_X = 1250;
+const TUB = { x: 200, w: 950, rim: 652, bottom: 858 };
+/**
+ * 狗坐在浴缸裡（腳底藏在缸裡）：芃芃、元元（中間，最大）、QQ。三隻同一個縮放（DOG_S），比例才對；
+ * 元元比博美高很多，腳底放深一點（YY_Y），露出頭和肩膀就好，頭頂不要碰到鏡子。
+ */
+const PP_X = 400, YY_X = 680, QQ_X = 950, DOG_Y = 706, YY_Y = 770, DOG_S = 1.8;
+const OM_X = 118, AL_X = 1262;
 /** 泡泡字的範圍（右上；標準 v2：最大 700 × 400）。 */
 const AREA = { x: 1110, y: 120, w: 700, h: 400 };
 /** 起霧的鏡子（左上）。 */
-const MIRROR = { x: 120, y: 110, w: 760, h: 300 };
+const MIRROR = { x: 120, y: 100, w: 760, h: 280 };
 const INVITE = '掃描右下角 QR code，把祝福寫上大螢幕';
-const SPRITES = ['pp_bath', 'pp_shake', 'qq_bath', 'qq_shake', 'mt_bath_shower', 'xw_bath_towel'];
+const SPRITES = ['pp_bath', 'pp_shake', 'qq_bath', 'qq_shake', 'yy_c2_bath', 'yy_shake', 'mt_bath_shower', 'xw_bath_towel'];
 
 /** 一個字泡泡：字、在畫面上的位置、從哪裡冒出來、幾點到。 */
 interface Bub { ch: string; x: number; y: number; w: number; from: Pt; t0: number; t1: number; seed: number }
@@ -170,9 +175,13 @@ export default class DogBath extends Scene {
     }
 
     // ---- 狗（先畫，浴缸的前面蓋住下半身）
-    this.drawDog(c, t, 'pp', PP_X, 3);
-    this.drawDog(c, t, 'qq', QQ_X, 1);
+    const big = this.yyShakeK(t);
+    this.drawDog(c, t, 'pp', PP_X, 3, big);
+    this.drawDog(c, t, 'qq', QQ_X, 1, big);
+    this.drawYuanyuan(c, t, big);
     this.drawTub(c, ink, t);
+    // 元元甩出去的泡泡：一團一團往兩邊飛、落下（蓋在缸口上面）
+    if (big >= 0) this.flyingFoam(c, ink, big);
     // ---- 人：孟庭跪在浴缸左邊沖水、宣文撐著浴巾在右邊等
     const enO = puppetIn(t, s + 0.05, 0.42), enA = puppetIn(t, s + 0.16, 0.42);
     if (enO.alpha > 0) {
@@ -192,7 +201,9 @@ export default class DogBath extends Scene {
     if (this.glow.count) this.glow.render(renderer, out);
     // 鏡頭：慢慢推近泡泡字（最多 1.03 倍）
     const push = ease.inOutCubic(f.p);
-    return { paper: 1, bloom: 0.2, bloomThreshold: 1.6, halation: 0.03, vignette: 0.24, grain: 0.045, ca: 0.5, zoom: 1 + 0.03 * push, shake: [-(AREA.x + AREA.w / 2 - W / 2) * 0.03 * push, -(AREA.y + AREA.h / 2 - H / 2) * 0.03 * push] };
+    // 元元甩水的那一拍：鏡頭跟著抖一下（越甩越小）
+    const jolt = big >= 0 ? (1 - big) * 5 : 0;
+    return { paper: 1, bloom: 0.2, bloomThreshold: 1.6, halation: 0.03, vignette: 0.24, grain: 0.045, ca: 0.5, zoom: 1 + 0.03 * push, shake: [-(AREA.x + AREA.w / 2 - W / 2) * 0.03 * push + jolt * Math.sin(big * 40), -(AREA.y + AREA.h / 2 - H / 2) * 0.03 * push + jolt * 0.5 * Math.cos(big * 33)] };
   }
 
   /** 這一拍是不是這隻狗甩水（每小節第二拍 QQ、第四拍芃芃），回傳甩水的進度 0..1（沒在甩回傳 -1）。 */
@@ -205,8 +216,48 @@ export default class DogBath extends Scene {
     return (t - tb) / dur;
   }
 
-  /** 一隻狗：坐在泡泡裡跟著拍子點頭；輪到牠的小鼓那一拍甩水（換圖、身體左右扭、水珠噴出去）。 */
-  private drawDog(c: CanvasRenderingContext2D, t: number, who: 'pp' | 'qq', x: number, beatInBar: number) {
+  /** 元元甩水：每兩小節的第一拍（重拍）甩一整拍，回傳進度 0..1（沒在甩回傳 -1）。窗格開頭一秒內不甩（還在進場）。 */
+  private yyShakeK(t: number) {
+    const au = this.ctx.audio;
+    const bar = Math.floor(au.barAt(t) + 1e-6), tb = au.timeOfBar(bar);
+    const dur = Math.min(0.75, au.beatPeriod(t) * 1.3);
+    if (bar % 2 !== 0 || t - tb > dur || tb < this.ctx.start + 1) return -1;
+    return (t - tb) / dur;
+  }
+
+  /**
+   * 元元：坐在中間的泡泡裡（最大、最穩，每拍慢慢點頭）；每兩小節的重拍站起來甩水：換成甩水的圖、
+   * 身體左右大幅扭三下、往上一挺，水珠噴得又多又遠。
+   */
+  private drawYuanyuan(c: CanvasRenderingContext2D, t: number, k: number) {
+    const au = this.ctx.audio;
+    const en = puppetIn(t, this.ctx.start + 0.24, 0.42);
+    if (en.alpha <= 0) return;
+    const o: PuppetOpts = { h: SZ, scale: DOG_S, spin: en.spin, alpha: en.alpha, pivot: 0.45 };
+    if (k >= 0) {
+      // 站起來甩：身體整個挺出泡泡（往上 90 px），甩完坐回去
+      const up = Math.sin(Math.PI * Math.min(1, k * 1.15)) * 90;
+      drawPuppet(c, 'yy_shake', YY_X, YY_Y - up, { ...o, rot: 0.1 * Math.sin(k * Math.PI * 6) * (1 - k), squash: -0.05 * Math.sin(Math.PI * k) + 0.03 * Math.sin(k * Math.PI * 6) });
+      this.drops(c, YY_X, YY_Y - SZ * 0.42 * DOG_S * 0.6 - up, k, 7, 2);
+    } else {
+      drawPuppet(c, 'yy_c2_bath', YY_X, YY_Y, { ...o, rot: 0.02 * Math.sin(au.beatAt(t) * Math.PI * 0.5), squash: 0.025 * beatKick(au, t, 0.35) + breathe(t, 0.01, 2.2, 0.3) });
+    }
+  }
+
+  /** 元元甩飛的泡泡：幾團泡泡從牠身上往兩邊拋出去、畫弧線落到缸口與地上，邊飛邊變小。 */
+  private flyingFoam(c: CanvasRenderingContext2D, ink: Ink, k: number) {
+    const y0 = YY_Y - SZ * 0.42 * DOG_S * 0.55;
+    for (let i = 0; i < 10; i++) {
+      const dir = i % 2 ? 1 : -1;
+      const vx = dir * (160 + 260 * hash(i, 91)), vy = -(120 + 200 * hash(i, 92));
+      const x = YY_X + vx * k, y = y0 + vy * k + 520 * k * k;
+      const r = (10 + 12 * hash(i, 93)) * (1 - 0.6 * k);
+      inkEllipse(c, x, y, r, r * 0.9, 0, { ink, fill: rgba('bone'), w: 0.45, seed: 120 + i, color: rgba('sepia', 0.4 * (1 - k)), alpha: 1 - k * k });
+    }
+  }
+
+  /** 一隻博美：坐在泡泡裡跟著拍子點頭；輪到牠的小鼓那一拍甩水（換圖、身體左右扭、水珠噴出去）；元元甩水時被噴到、縮一下。 */
+  private drawDog(c: CanvasRenderingContext2D, t: number, who: 'pp' | 'qq', x: number, beatInBar: number, big: number) {
     const au = this.ctx.audio;
     const en = puppetIn(t, this.ctx.start + (who === 'pp' ? 0.2 : 0.28), 0.42);
     if (en.alpha <= 0) return;
@@ -216,22 +267,26 @@ export default class DogBath extends Scene {
       drawPuppet(c, `${who}_shake`, x, DOG_Y, { ...o, rot: 0.12 * Math.sin(k * Math.PI * 5) * (1 - k), squash: 0.04 * Math.sin(k * Math.PI * 3) });
       this.drops(c, x, DOG_Y - SZ * 0.29 * DOG_S * 0.55, k, who === 'pp' ? 1 : 2);
     } else {
-      drawPuppet(c, `${who}_bath`, x, DOG_Y, { ...o, rot: 0.03 * Math.sin(au.beatAt(t) * Math.PI + (who === 'pp' ? 0 : 1)), squash: 0.04 * beatKick(au, t, 0.25) + breathe(t, 0.012, 1.4, who === 'pp' ? 0 : 0.5) });
+      // 元元甩水噴到：往外側一縮（身體往遠離元元的方向歪、壓低）
+      const duck = big >= 0 ? Math.sin(Math.PI * Math.min(1, big * 1.5)) : 0;
+      const away = x < YY_X ? -1 : 1;
+      drawPuppet(c, `${who}_bath`, x, DOG_Y, { ...o, rot: 0.03 * Math.sin(au.beatAt(t) * Math.PI + (who === 'pp' ? 0 : 1)) + 0.12 * duck * away, squash: 0.04 * beatKick(au, t, 0.25) + breathe(t, 0.012, 1.4, who === 'pp' ? 0 : 0.5) + 0.06 * duck });
     }
   }
 
   /** 甩出去的水珠：從身體往四周飛、慢慢落下、變淡（短短的線）。 */
-  private drops(c: CanvasRenderingContext2D, x: number, y: number, k: number, seed: number) {
+  private drops(c: CanvasRenderingContext2D, x: number, y: number, k: number, seed: number, big = 1) {
     c.save();
     c.strokeStyle = mixRgba('denim', 'bone', 0.35, 0.8 * (1 - k));
-    c.lineWidth = 3;
+    c.lineWidth = 3 * (big > 1 ? 1.3 : 1);
     c.lineCap = 'round';
     c.beginPath();
-    for (let i = 0; i < 18; i++) {
-      const a = (i / 18) * Math.PI * 2 + hash(seed, i) * 0.3;
-      const r = 50 + 220 * ease.outCubic(k) * (0.6 + 0.4 * hash(i, seed));
-      const px = x + Math.cos(a) * r, py = y + Math.sin(a) * r * 0.7 + 80 * k * k;
-      const tail = 12 * (1 - k);
+    const n = Math.round(18 * big * big);
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2 + hash(seed, i) * 0.3;
+      const r = 50 * big + 220 * big * ease.outCubic(k) * (0.6 + 0.4 * hash(i, seed));
+      const px = x + Math.cos(a) * r, py = y + Math.sin(a) * r * 0.7 + 80 * big * k * k;
+      const tail = 12 * big * (1 - k);
       c.moveTo(px, py); c.lineTo(px - Math.cos(a) * tail, py - Math.sin(a) * tail * 0.7);
     }
     c.stroke();
@@ -259,7 +314,7 @@ export default class DogBath extends Scene {
         const u = (i + 0.5 * hash(i, row + 40)) / n;
         const bx = T.x + 6 + u * (T.w - 12) + Math.sin(t * 1.3 + i + row) * 3;
         // 狗的前面泡泡低一點（臉要露出來），兩隻狗之間與兩邊堆高
-        const heap = 1 - Math.max(Math.exp(-(((bx - PP_X) / 90) ** 2)), Math.exp(-(((bx - QQ_X) / 90) ** 2)));
+        const heap = 1 - Math.max(Math.exp(-(((bx - PP_X) / 90) ** 2)), Math.exp(-(((bx - QQ_X) / 90) ** 2)), Math.exp(-(((bx - YY_X) / 110) ** 2)));
         const by = T.rim - (row ? 4 : 18) - (row ? 8 : 20) * hash(i, 41 + row) - heap * (row ? 10 : 26) + Math.sin(t * 1.7 + i * 2) * 2;
         const br = (row ? 9 : 15) + (row ? 10 : 16) * hash(i, 42 + row);
         inkEllipse(c, bx, by, br, br * 0.9, 0, { ink, fill: rgba('bone'), w: 0.45, seed: 50 + i + row * 60, color: rgba('sepia', 0.4) });
