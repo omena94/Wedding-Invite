@@ -46,7 +46,7 @@ const tracked = process.argv.includes('--tracked')
   : null;
 const built = rows.filter((r) => existsSync(path.join(scenes, `${r.name}.ts`)) && (!tracked || tracked.has(r.name)));
 // 雙語版面（有翻譯的歌只排這種）：看版面檔自己宣告的 spec.bilingual
-for (const r of built) r.bilingual = /bilingual\s*:\s*true/.test(readFileSync(path.join(scenes, `${r.name}.ts`), 'utf8'));
+for (const r of built) r.bilingual = /\bbilingual\s*:\s*true\b/.test(readFileSync(path.join(scenes, `${r.name}.ts`), 'utf8'));
 const out = `// 自動產生（node scripts/wall-catalog.mjs），不要手改：大螢幕版面清單，後台「大螢幕版面」頁用。
 export interface PlateInfo { name: string; title: string; family: string; light: boolean; couple: boolean; bilingual: boolean; idea: string }
 export const PLATE_CATALOG: PlateInfo[] = ${JSON.stringify(built, null, 1)};

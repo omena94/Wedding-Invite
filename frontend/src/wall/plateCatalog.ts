@@ -1934,6 +1934,6 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "老電影院的銀幕在放黑白愛情片（剪影、底片刮痕、放映機光束），銀幕下緣是雙語字幕：中文大、原文小，照歌聲逐字亮；留言是片頭的標題卡，每小節畫面換一個鏡頭。",
-  "bilingual": false
+  "bilingual": true
  }
 ];
