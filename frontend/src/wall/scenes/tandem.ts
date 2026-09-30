@@ -1,8 +1,11 @@
-// 雙人腳踏車（亮、sport）：河濱自行車道的側面，宣文（前座）載孟庭（後座）騎協力車往右，後座的藤籃裡坐著芃芃與 QQ，
+// 雙人腳踏車（亮、sport）：河濱自行車道的側面，宣文（前座）載孟庭（後座）騎協力車往右，後座的藤籃裡坐著芃芃與 QQ，元元在前面帶路跑，
 // 景一層一層往後捲（遠的城市慢、河堤的樹與路燈快、路面的虛線最快）。角色是 Codex 畫的雙人紙偶（cp_tandem_1～4，_puppet.ts）。
 //  - **踏板一拍一圈**：四張關鍵影格（曲柄朝前、朝下、朝後、朝上）一拍換完一輪（drawCycle，一拍四張）；車速也跟著拍子：
 //    一拍往前 K px（快歌騎得快、慢歌騎得慢），輪子照車速轉（程式畫的輪子：外胎、輻條、花鼓，轉快時輻條淡成一片）。
 //  - 車身跟著路面在拍點上輕輕一顛；籃子裡的兩隻狗在拍點上跟著彈一下、輪流歪頭。
+//  - 元元（2026-09-30 新人加的第三隻：白色柴犬，比博美大很多，籃子裝不下）：在車子前面、路的另一側跟著跑、帶路，
+//    一拍兩步（跑步兩張）、一步一彈，速度跟車子差不多但一下超前一下落後一點（每四小節來回一次），張嘴笑；
+//    每兩小節的小節線開心地跳一下（最高點在小節線上）。跑在車的後面一層（輪子擋在牠前面），不會碰到右下角 HUD。
 //  - **焦點是主打留言**：車尾用兩條繩子拖著一面布條（紙白的布、手寫字），布條在風裡一波一波飄（整張先畫好，每格切成細條上下錯開）；
 //    開場布條從車尾往左「展開」。照「留言尺寸與版面比例標準 v2」：字 40～60、布條最大 660 × 400，高度跟著留言長短。沒有留言時寫邀請。
 //  - 歌詞：車尾插著一根細長的旗桿（協力車常見的安全旗），歌詞像旗子上的飄帶，沿著一條會飄的波浪線從旗桿頂往後飄，照跟唱規則逐字亮，
@@ -18,7 +21,7 @@ import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, hash } from '../engine/util';
 import { lyricAt, sparkHead, sparkParticles } from './_motifs';
 import { inkFor, paperBG, inkLine, inkPath, inkEllipse, lyricOnPath, drawNote, type Pt, type Note, type Ink } from './_couple';
-import { loadPuppets, drawPuppet, drawCycle, puppetPoint, puppetShadow, puppetIn, breathe, beatKick, noteV2, tightenNote, type PuppetOpts } from './_puppet';
+import { loadPuppets, drawPuppet, drawCycle, puppetPoint, puppetShadow, puppetIn, breathe, beatKick, hop, jumpArc, noteV2, tightenNote, type PuppetOpts } from './_puppet';
 import { lyricV2 } from './_v2';
 
 export const spec: PlateSpecDecl = { group: 'couple', family: 'sport', paper: true, energy: [0.3, 1], bars: [4, 8] };
@@ -36,8 +39,11 @@ const BANNER = { w: 660, h: 400, gap: 70 };
 const PAD = { x: 34, top: 30, bottom: 24 };
 const INVITE = '掃描右下角 QR code，把祝福寫上大螢幕';
 const FRAMES = ['cp_tandem_1', 'cp_tandem_2', 'cp_tandem_3', 'cp_tandem_4'];
-const SPRITES = [...FRAMES, 'pp_sit', 'qq_sit'];
+const SPRITES = [...FRAMES, 'pp_sit', 'qq_sit', 'yy_run_1', 'yy_run_2', 'yy_jump'];
+/** 三隻狗同一個倍數（大小比例照 dogs3）。 */
 const DOG_S = 1.35;
+/** 元元跑的地方：路的另一側（遠的那一邊）、車頭前面；每四小節前後來回 YY.swing px。 */
+const YY = { x: 1680, g: 772, swing: 45, jump: 58 };
 
 /** 布條的布料：一次畫好在自己的畫布上（字、布紋、邊），每格切成細條上下錯開貼上去，看起來在風裡飄。 */
 class Cloth {
@@ -346,6 +352,7 @@ export default class Tandem extends Scene {
     const ent = puppetIn(t, st + 0.05, 0.5);
     this.drawBanner(c, t, dy);
     this.drawFlagLyric(c, t, dy, rv, lyrics);
+    this.drawYuan(c, t);
     if (ent.alpha > 0) {
       puppetShadow(c, 'cp', BIKE_X, GROUND + 3, { h: SZ, alpha: 0.3 * ent.alpha, wide: 1.9, color: '70,45,25' });
       this.drawWheels(c, t, dy, ent.alpha);
@@ -362,6 +369,35 @@ export default class Tandem extends Scene {
     // 鏡頭：跟著車子輕輕晃（拍點上一顛），整個窗格慢慢推近一點點
     const push = ease.inOutCubic(f.p);
     return { paper: 1, bloom: 0.2, bloomThreshold: 1.6, halation: 0.03, vignette: 0.22, grain: 0.045, ca: 0.4, zoom: 1 + 0.022 * push, shake: [-12 * push, 1.5 * bump] };
+  }
+
+  /**
+   * 元元在前面帶路跑：一拍兩步（跑步兩張交叉換）、一步一彈；位置跟著四小節一個來回前後晃；
+   * 每兩小節的小節線跳一下（jumpArc，最高點在小節線上；用跳起來接東西那張，圖上畫的球蓋掉）。
+   */
+  private drawYuan(c: CanvasRenderingContext2D, t: number) {
+    const au = this.ctx.audio;
+    const en = puppetIn(t, this.ctx.start + 0.25, 0.45);
+    if (en.alpha <= 0) return;
+    const bar = au.barAt(t);
+    const x = YY.x + YY.swing * Math.sin((bar / 4) * Math.PI * 2);
+    const base: PuppetOpts = { h: SZ, scale: DOG_S, spin: en.spin, alpha: en.alpha };
+    // 這一格在不在跳：最近的偶數小節線前後半拍
+    const n = Math.round(bar / 2) * 2, tb = au.timeOfBar(n), bp = au.beatPeriod(tb);
+    const j = jumpArc(t, tb - bp * 0.5, tb + bp * 0.5, YY.jump, { crouch: 0.06, land: 0.12 });
+    if (j.air) {
+      puppetShadow(c, 'yy', x, YY.g + 2, { h: SZ * DOG_S, lift: -j.y, alpha: 0.26 * en.alpha, color: '70,45,25' });
+      drawPuppet(c, 'yy_jump', x, YY.g + j.y, { ...base, rot: -0.14 + 0.28 * j.u, pivot: 0.5, squash: j.squash, hide: ['ball'] });
+    } else {
+      const b = hop(au.beatAt(t), 2) * 7;
+      puppetShadow(c, 'yy', x, YY.g + 2, { h: SZ * DOG_S, lift: b, alpha: 0.26 * en.alpha, color: '70,45,25' });
+      // 跑步兩張的頭高差很多，交叉淡化只留一格（不然換圖那一下看得到兩個頭）
+      drawCycle(c, au, t, ['yy_run_1', 'yy_run_2'], 2, x, YY.g - b, { ...base, squash: j.squash, rot: 0.03 }, 0.017);
+    }
+    if (en.k < 1) {
+      sparkHead(this.glow, x, YY.g - 6, t, 0.7);
+      sparkParticles(this.glow, t, () => ({ x, y: YY.g - 6 }), { rate: 50, life: 0.25, speed: 140, seed: 5 });
+    }
   }
 
   /** 兩個輪子（在車身後面）：外胎、輪圈、花鼓、輻條；照車速轉，轉得快時輻條畫淡一點、多幾條殘影。 */
