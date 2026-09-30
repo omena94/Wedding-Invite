@@ -1447,6 +1447,10 @@ tbody tr:last-child td { border-bottom: none; }
 .ws-lyrics-head { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px 12px; margin-bottom: 8px; font-size: 13.5px; font-weight: 600; color: var(--milk-tea-900); letter-spacing: 0.5px; }
 .ws-lyrics-tools { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 8px 18px; font-weight: 400; }
 .ws-lyrics-tools .ui-check-label { font-weight: 600; color: var(--milk-tea-900); }
+/* 歌詞標了「對好了」就鎖起來：提示列說明為什麼按鈕不見了、怎麼解鎖 */
+.ws-locked { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin-bottom: 10px; padding: 10px 12px; border-radius: 10px; background: #eaf1ea; color: #4c6b4e; font-size: 13.5px; }
+.ws-locked > span { flex: 1; min-width: 220px; }
+.ws-locked .btn { margin-left: auto; }
 .ws-cands { border: 1px solid var(--border-soft); border-radius: 12px; padding: 4px 12px; margin-bottom: 10px; max-height: 260px; overflow-y: auto; background: var(--bg-card-subtle); }
 .ws-cand { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--milk-tea-100); }
 .ws-cand:last-child { border-bottom: none; }

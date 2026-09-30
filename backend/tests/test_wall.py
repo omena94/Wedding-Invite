@@ -211,7 +211,18 @@ def test_songs(setup, monkeypatch):
     assert c.patch(f"/api/planner/wall/songs/{a['id']}", json={"lyrics_done": True}, headers=COUPLE).json()["lyrics_done"] is True
     assert c.patch(f"/api/planner/wall/songs/{a['id']}", json={"lyrics_lrc": lrc}, headers=COUPLE).json()["lyrics_done"] is True
     assert c.patch(f"/api/planner/wall/songs/{a['id']}", json={"lyrics_done": "yes"}, headers=COUPLE).status_code == 422
-    assert c.patch(f"/api/planner/wall/songs/{a['id']}", json={"lyrics_done": False}, headers=COUPLE).json()["lyrics_done"] is False
+    # 對好了就鎖起來：歌詞、偏移、純音樂、來源都不能改（送一樣的值可以），歌名等其他欄位照常能改
+    for change in ({"lyrics_lrc": "[00:01.00]改掉"}, {"lyrics_offset": 0.3}, {"instrumental": False}, {"lyrics_source": "lrclib"}):
+        r = c.patch(f"/api/planner/wall/songs/{a['id']}", json=change, headers=COUPLE)
+        assert r.status_code == 409 and "對好了" in r.json()["detail"], change
+    assert c.patch(f"/api/planner/wall/songs/{a['id']}", json={"lyrics_done": True, "lyrics_lrc": "[00:01.00]改掉"}, headers=COUPLE).status_code == 409
+    same = {"lyrics_lrc": lrc, "lyrics_offset": -0.5, "instrumental": True, "lyrics_source": "manual", "title": "還是新歌名"}
+    r = c.patch(f"/api/planner/wall/songs/{a['id']}", json=same, headers=COUPLE)
+    assert r.status_code == 200 and r.json()["title"] == "還是新歌名" and r.json()["lyrics_lrc"] == lrc
+    # 同一個請求裡取消「對好了」就能改；之後就不再鎖
+    r = c.patch(f"/api/planner/wall/songs/{a['id']}", json={"lyrics_done": False, "lyrics_offset": 0.25}, headers=COUPLE)
+    assert r.status_code == 200 and r.json()["lyrics_done"] is False and r.json()["lyrics_offset"] == 0.25
+    assert c.patch(f"/api/planner/wall/songs/{a['id']}", json={"lyrics_offset": -0.5, "title": "新歌名"}, headers=COUPLE).status_code == 200
     # 配色、只播中間一段
     r = c.patch(f"/api/planner/wall/songs/{a['id']}", json={"theme": "rose", "start_at": 12.5, "end_at": 200}, headers=COUPLE)
     assert r.status_code == 200 and (r.json()["theme"], r.json()["start_at"], r.json()["end_at"]) == ("rose", 12.5, 200)

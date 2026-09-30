@@ -356,6 +356,17 @@ def _finite(value: Any, label: str, lo: float, hi: float) -> float:
 def update_wall_song(song_id: int, payload: SongPatch, db: Session = Depends(get_db)):
     s = _get_song(db, song_id)
     fields = payload.model_fields_set
+    # 標了「歌詞對好了」的歌鎖起來（新人 2026-09-30）：歌詞、偏移、純音樂都不能改，要先取消勾選（同一個請求取消也可以）。
+    # 送一樣的值不算改：編輯視窗按「儲存」會把整張表單送回來。
+    if s.lyrics_done and not ("lyrics_done" in fields and payload.lyrics_done is False):
+        same = {
+            "lyrics_lrc": lambda v: v == s.lyrics_lrc,
+            "lyrics_source": lambda v: v.strip()[:20] == s.lyrics_source,
+            "lyrics_offset": lambda v: isinstance(v, (int, float)) and math.isfinite(v) and abs(v - s.lyrics_offset) < 1e-6,
+            "instrumental": lambda v: v == s.instrumental,
+        }
+        if any(k in fields and getattr(payload, k) is not None and not ok(getattr(payload, k)) for k, ok in same.items()):
+            raise HTTPException(409, "這首的歌詞已經標記「對好了」，要修改請先取消勾選「歌詞對好了」")
     if "title" in fields and payload.title is not None:
         s.title = _clean(payload.title)[:200]
     if "artist" in fields and payload.artist is not None:
