@@ -1964,6 +1964,15 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "bilingual": true
  },
  {
+  "name": "trainlcd",
+  "title": "車廂顯示器",
+  "family": "city",
+  "light": true,
+  "couple": false,
+  "idea": "列車車門上方的寬螢幕：左邊路線圖（站點照拍子一站站亮）、右邊雙語「下一站」大字是歌詞；窗外景色往後捲；留言在車廂廣告框。",
+  "bilingual": true
+ },
+ {
   "name": "interpreter",
   "title": "同步口譯廂",
   "family": "lingo",
