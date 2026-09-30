@@ -1,0 +1,14 @@
+{
+  "group": "d2-hanbok",
+  "series": {
+    "xw_hanbok_": {"ref":"xw_hanbok_idle_front","refFrac":0.9596354166666666,"groundFrac":0.9798177083333334,"target":600},
+    "mt_hanbok_": {"ref":"mt_hanbok_idle_front","refFrac":0.955078125,"groundFrac":0.9772135416666666,"target":600}
+  },
+  "sprites": {
+    "mt_hanbok_idle_front": {"kind":"person","w":355,"h":607,"ax":172.8,"ay":603.1,"ref":600},
+    "mt_hanbok_stand": {"kind":"person","w":358,"h":606,"ax":175.7,"ay":601.8,"ref":600},
+    "mt_hanbok_twirl": {"kind":"person","w":385,"h":598,"ax":193.3,"ay":594.5,"ref":600},
+    "xw_hanbok_idle_front": {"kind":"person","w":215,"h":607,"ax":108.9,"ay":603.1,"ref":600},
+    "xw_hanbok_umbrella": {"kind":"person","w":318,"h":609,"ax":104.8,"ay":605.5,"ref":600}
+  }
+}

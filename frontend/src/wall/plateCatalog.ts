@@ -2234,6 +2234,15 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "bilingual": true
  },
  {
+  "name": "hanbok",
+  "title": "穿韓服",
+  "family": "kculture",
+  "light": true,
+  "couple": true,
+  "idea": "兩人穿韓服在古宮殿的迴廊前拍照（不畫真實地標），孟庭轉圈讓裙擺飛起、宣文替她撐傘；屋簷下的木匾是雙語歌詞；留言寫在紙扇上。",
+  "bilingual": true
+ },
+ {
   "name": "langcards",
   "title": "互考單字",
   "family": "date",

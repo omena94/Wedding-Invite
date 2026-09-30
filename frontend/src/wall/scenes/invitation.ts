@@ -436,7 +436,9 @@ export default class Invitation extends Scene {
       // 字級是照螢幕上的大小算的（頁面座標要除掉 sLyric）。雙語（2026-09-30）：內頁斜斜地躺在盒子裡，字在畫面上會被壓扁一點，
       // 原文至少排 38 螢幕 px（斜放的內頁會把字壓扁一成）、不再縮（左頁窄，長句就折成三行）
       const sub = lyricSubOf(ly.line), S = this.sLyric, subPx = Math.max(38, subSizeFor(lay.size * S)) / S;
-      const sl = sub ? layoutRows(c, sub, { ...LY, size: subPx, minSize: subPx, maxRows: 3 }) : null;
+      // 原文跟中文差不多大（看得清楚比較重要），主次靠字重分：原文用細一級的 500（韓文備援字型就是一般字重）
+      const SUBF = F.archivo(100, 500);
+      const sl = sub ? layoutRows(c, sub, { ...LY, family: SUBF, size: subPx, minSize: subPx, maxRows: 3 }) : null;
       const gap = sl ? subGap(lay.size * S, sl.size * S) / S : 0;
       const hAll = lay.height + (sl ? gap + (sl.rows.length - 1) * sl.lineHeight : 0);
       const top = 450 - hAll / 2 + lay.size * 0.84;
@@ -446,7 +448,7 @@ export default class Invitation extends Scene {
         // 比中文安靜：唱到、唱完都是墨色淡兩成（不用 blood），還沒唱的三成
         const lit = rgba('sepia', 0.95 * 0.8);
         c.translate(0, (lay.rows.length - 1) * lay.lineHeight + gap);
-        drawRows(c, sl, LY.family, t, { active: lit, sung: lit, unsung: paperInk().unsung }, ly.k);
+        drawRows(c, sl, SUBF, t, { active: lit, sung: lit, unsung: paperInk().unsung }, ly.k);
       }
       c.restore();
     } else {
