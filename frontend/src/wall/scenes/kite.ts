@@ -1,8 +1,9 @@
 // 放風箏（亮、date）：草坡上，宣文拉著風箏線、孟庭指著天上；一只長方形的和紙風箏在上面飄，**留言就寫在風箏上**，
-// 風往右吹，風箏的長尾巴往右下飄，**歌詞沿著尾巴排**（逐字亮）。芃芃和 QQ 在坡下跑來跑去。角色是 Codex 畫的紙偶（_puppet.ts）。
+// 風往右吹，風箏的長尾巴往右下飄，**歌詞沿著尾巴排**（逐字亮）。元元、芃芃和 QQ 在坡下跑來跑去。角色是 Codex 畫的紙偶（_puppet.ts）。
 //  - 每個小節線宣文用力扯一下線（pull_2，半拍後回 pull_1）：風箏往上一竄、歪一下再擺回來，線從手到風箏抖一道波；
 //    其他拍點線也輕輕抖一下。孟庭指著風箏，隔一個小節線跳起來歡呼一次。
-//  - 狗：兩小節跑一趟（一拍兩步），在小節線上跳起來轉身往回跑。
+//  - 狗（元元、QQ、芃芃三隻）：兩小節跑一趟（一拍兩步），跑到頭跳起來轉身往回跑，三隻差兩拍、每一跳都在拍點；
+//    元元帶頭，在小節線（宣文扯線、風箏往上竄）高高跳起來仰頭朝風箏咬——博美跳不了那麼高。
 //  - **焦點是主打留言**：風箏面（米白和紙、竹骨是四邊與中間一條很淡的線、四角加一點點深色）照「留言尺寸與版面比例標準 v2」：
 //    字 40～60、風箏面最大 640 × 360；字先畫在暫存畫布上，風箏晃的時候整張貼圖轉（不用每格重新光柵化斜的字）。
 //    沒有留言時風箏上寫邀請、字淡，歌詞變主角。
@@ -29,8 +30,19 @@ const AL_X = 400, OM_X = 215;
 const KITE = { cx: 1010, cy: 236, w: 620, h: 350 };
 const PAD = { x: 46, top: 40, bottom: 34 };
 /** 狗跑的範圍。 */
-const RUN = { a: 660, b: 1080 };
-const SPRITES = ['xw_kite_pull_1', 'xw_kite_pull_2', 'mt_kite_point', 'mt_cheer', 'pp_run_1', 'pp_run_2', 'pp_jump', 'qq_run_1', 'qq_run_2', 'qq_jump'];
+const RUN = { a: 640, b: 1100 };
+/**
+ * 三隻狗（畫的順序＝遠到近）：lag 晚幾拍（轉身跳落在那一拍；隊伍的間距也是它拉開的）、dx 這隻狗的跑道整段往右移多少、
+ * dy 前後排（負 = 遠一點）；三隻各跑各的一段、前後錯開，轉身時才不會疊成一團。jump 跳多高。
+ * 間距不要用「往前多少 px」做：跑到頭轉身時方向一換，位置會瞬間跳一截。
+ * 三隻用同一個場景尺度（DOG_S），元元比博美大是 PUPPET_H 換算出來的。
+ */
+const KITE_DOGS = [
+  { who: 'yy', lag: 0, dx: 60, dy: -46, jump: 120, enter: 0.2, seed: 9 },
+  { who: 'qq', lag: 2, dx: 0, dy: 0, jump: 50, enter: 0.25, seed: 8 },
+  { who: 'pp', lag: 4, dx: -70, dy: 26, jump: 50, enter: 0.35, seed: 7 },
+] as const;
+const SPRITES = ['xw_kite_pull_1', 'xw_kite_pull_2', 'mt_kite_point', 'mt_cheer', ...KITE_DOGS.flatMap((d) => [`${d.who}_run_1`, `${d.who}_run_2`, `${d.who}_jump`])];
 
 /** 草坡：左邊一個緩緩的坡頂（兩人站在上面），往右慢慢低下去。 */
 const ground = (x: number) => 925 - 70 * Math.exp(-(((x - 380) / 520) ** 2));
@@ -346,34 +358,40 @@ export default class Kite extends Scene {
     drawPick(c, this.omKeys, t, OM_X, y - lift, { h: SZ, squash, spin: en.spin, alpha: en.alpha, rot: 0.02 * Math.sin(au.beatAt(t) * Math.PI) });
   }
 
-  /** 狗：兩小節跑一趟，在小節線上跳起來轉身（頂點在小節線）；芃芃跟在 QQ 後面。 */
+  /**
+   * 狗：兩小節跑一趟、跑到頭跳起來轉身，三隻差兩拍排成一串，**每隻的轉身跳都落在拍點**：
+   * 元元帶頭，在小節線上（宣文扯線、風箏往上竄的那一下）高高跳起來、仰頭朝風箏咬（博美跳不了那麼高）；QQ 晚兩拍、芃芃晚一小節跳。
+   * 元元比較大，跑在後排一點（離鏡頭遠一點），不會蓋住兩隻博美。
+   */
   private drawDogs(c: CanvasRenderingContext2D, t: number) {
     const au = this.ctx.audio;
-    for (const who of ['pp', 'qq'] as const) {
-      const lag = who === 'pp' ? 0.5 : 0;
-      const en = puppetIn(t, this.ctx.start + (who === 'qq' ? 0.25 : 0.35), 0.4);
+    for (const D of KITE_DOGS) {
+      const who = D.who, lag = D.lag;
+      const en = puppetIn(t, this.ctx.start + D.enter, 0.4);
       if (en.alpha <= 0) continue;
       const bar = au.barAt(t) - lag / 4;
       const leg = Math.floor(bar / 2), u = bar / 2 - leg;
       const dir = leg % 2 === 0 ? 1 : -1;
       const along = 0.5 - 0.5 * Math.cos(Math.PI * u);
-      let x = dir > 0 ? lerp(RUN.a, RUN.b, along) : lerp(RUN.b, RUN.a, along);
-      if (who === 'pp') x -= dir * 110;
-      const y = Math.min(ground(x) + 50, 985);
-      // 轉身跳：每一趟的終點（小節線）跳起來
+      const x = (dir > 0 ? lerp(RUN.a, RUN.b, along) : lerp(RUN.b, RUN.a, along)) + D.dx;
+      const y = Math.min(ground(x) + 50, 985) + D.dy;
+      // 轉身跳：每一趟的終點跳起來（頂點在這隻狗的拍點）
       const tTurn = au.timeOfBar((leg + 1) * 2 + lag / 4);
       const bp = au.beatPeriod(t);
-      const j = jumpArc(t, tTurn - bp * 0.4, tTurn + bp * 0.4, 50, { crouch: 0.05, land: 0.14 });
-      const jPrev = jumpArc(t, au.timeOfBar(leg * 2 + lag / 4) - bp * 0.4, au.timeOfBar(leg * 2 + lag / 4) + bp * 0.4, 50, { crouch: 0.05, land: 0.14 });
+      const air = bp * (who === 'yy' ? 0.55 : 0.4);
+      const j = jumpArc(t, tTurn - air, tTurn + air, D.jump, { crouch: 0.06, land: 0.14 });
+      const jPrev = jumpArc(t, au.timeOfBar(leg * 2 + lag / 4) - air, au.timeOfBar(leg * 2 + lag / 4) + air, D.jump, { crouch: 0.06, land: 0.14 });
       const J = j.air ? j : jPrev;
-      const o: PuppetOpts = { h: SZ, scale: DOG_S, flip: dir < 0, squash: J.squash, spin: en.spin, alpha: en.alpha };
+      const o: PuppetOpts = { h: SZ, scale: DOG_S, flip: dir < 0, squash: J.squash, spin: en.spin, alpha: en.alpha, hide: ['ball'] };
       const b = J.air ? 0 : hop(au.beatAt(t), 2) * 7;
       puppetShadow(c, who, x, y, { h: SZ * DOG_S, lift: J.air ? -J.y : b, alpha: 0.26 * en.alpha, color: '60,50,30' });
-      if (J.air) drawPuppet(c, `${who}_jump`, x, y + J.y, { ...o, rot: (-0.2 + 0.4 * J.u) * (dir < 0 ? -1 : 1), pivot: 0.5 });
+      // 空中：博美前半段抬頭、後半段低頭；元元整段仰頭往上咬（朝著風箏）
+      const tilt = who === 'yy' ? -0.32 * Math.sin(Math.PI * J.u) : -0.2 + 0.4 * J.u;
+      if (J.air) drawPuppet(c, `${who}_jump`, x, y + J.y, { ...o, rot: tilt * (dir < 0 ? -1 : 1), pivot: 0.5 });
       else drawCycle(c, au, t, [`${who}_run_1`, `${who}_run_2`], 2, x, y - b, o);
       if (en.k < 1) {
         sparkHead(this.glow, x, y - 4, t, 0.5);
-        sparkParticles(this.glow, t, () => ({ x, y: y - 4 }), { rate: 30, life: 0.2, speed: 110, seed: who === 'pp' ? 7 : 8 });
+        sparkParticles(this.glow, t, () => ({ x, y: y - 4 }), { rate: 30, life: 0.2, speed: 110, seed: D.seed });
       }
     }
   }
