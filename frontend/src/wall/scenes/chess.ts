@@ -19,18 +19,20 @@ import { F, font, loadText } from '../engine/type';
 import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, pulse, hash, frameIdx } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
-import { lyricAt, layoutLyric, drawLyric, beatAfter, drawHeart, fillWithHearts } from './_motifs';
+import { lyricAt, layoutLyric, drawLyric, beatAfter, drawHeart, fillWithHearts, lyricSubOf } from './_motifs';
 import { msgMaxFor, lyricV2, sigV2, fitClauses } from './_v2';
 import { darkInk } from './_t4';
 import { sigOf, applyOrbit, lerpOrbit, camBasis, T17_INVITE, T17_TEXT, type OrbitCam } from './_t17';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'game', paper: false, energy: [0.15, 0.75], bars: [4, 8], weight: 1 };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'game', paper: false, energy: [0.15, 0.75], bars: [4, 8], weight: 1 };
 
 /** 棋格大小、棋盤框寬（世界單位）。第 r 排（1..8）在 y = (r − 4.5)·S，第 f 行（a..h = 0..7）在 x = (f − 3.5)·S。 */
 const S = 150, FR = 64;
 /** 留言的平面：直立、面向鏡頭（落定時）的水平方向，在鏡頭對準點後方 TD 的地方；螢幕上落在 TXT 的範圍。 */
 const TD = 1300;
 const TXT = { x: 150, y: 110, w: 840, h: 340 };
+/** 有留言又有原文的窗格：左下角的棋譜與歌詞往上挪多少（原文在中文下面多一排）。 */
+const SUB_LIFT = 52;
 const FAM_MSG = F.ming(700);
 const FAM_SIG = F.hand(700);
 const FAM_LYR = F.archivo(100, 800);
@@ -507,7 +509,9 @@ export default class Chess extends Scene {
   /** 左下角：一行小小的棋譜（走一步記一步），下面是跟唱的歌詞（沒有留言時歌詞在後方，這裡只剩邀請）。 */
   private drawBottom(c: CanvasRenderingContext2D, t: number) {
     const { lyrics, song } = this.ctx;
-    const x = 150, base = 968;
+    // 雙語（2026-09-30）：有原文的窗格整組（棋譜、歌詞）往上挪 SUB_LIFT，原文最後一排的字腳離畫面下緣 ≥ 96 px
+    const lift = this.msg && this.ctx.lyrics.linesIn(this.ctx.start - 1, this.ctx.end + 1).some((l) => lyricSubOf(l)) ? SUB_LIFT : 0;
+    const x = 150, base = 968 - lift;
     const moves = this.moveT.filter((tt) => t >= tt + 0.2).length + this.danceT.filter((tt) => t >= tt + 0.2).length;
     c.fillStyle = rgba('ash', 0.75);
     c.font = font(F.mono(500), 20);

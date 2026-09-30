@@ -16,11 +16,11 @@ import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, hash, mulberry32, lerp } from '../engine/util';
 import type { FitResult } from '../engine/text';
 import { Lyrics, type Line } from '../engine/lyrics';
-import { lyricAt, layoutLyric, beatAfter, signature, drawMessage, COUPLE_ZH, type LyricStyle, type LyricLayout } from './_motifs';
+import { lyricAt, layoutLyric, beatAfter, signature, drawMessage, COUPLE_ZH, lyricSubOf, subSizeFor, subStyleFor, subGap, type LyricStyle, type LyricLayout } from './_motifs';
 import { no3, fitV2, slowPush, INVITE_SMALL, DECODE_GLSL, type Rect, SYMBOLS } from './_t20';
 import { lyricV2, sigV2, msgMaxFor, V2 } from './_v2';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'water', paper: false, energy: [0.15, 0.75], bars: [4, 8] };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'water', paper: false, energy: [0.15, 0.75], bars: [4, 8] };
 
 /** 同時最多幾滴雨的漣漪（shader 的陣列大小）。 */
 const N_DROP = 28;
@@ -170,6 +170,19 @@ const BG = () => new FSPass(FRAG, {
 
 interface Drop { x: number; y: number; t: number; a: number; v: number }
 
+/**
+ * 原文副行（2026-09-30 雙語）：水面上的字邊緣被漣漪與倒影打散，32 px 的原文在水窪裡讀起來偏小，
+ * 改成至少 36 px、不再縮（太長就折行）；中文不動。
+ */
+function rainSub(c: CanvasRenderingContext2D, line: Line, st: LyricStyle, lay: LyricLayout): LyricLayout {
+  const sub = lyricSubOf(line);
+  if (!sub || !lay.sub) return lay;
+  const size = Math.max(36, subSizeFor(lay.size));
+  const sl = layoutLyric(c, sub, { ...subStyleFor(st, lay.size), size, minSize: size });
+  const dy = lay.sub.dy - subGap(lay.size, lay.sub.lay.size) + subGap(lay.size, sl.size);
+  return { ...lay, sub: { lay: sl, dy }, height: dy + (sl.height - sl.size) + lay.size };
+}
+
 export default class Puddle extends Scene {
   bg = shared('puddle.bg', BG);
   /** 倒影：城市（畫一次）。 */
@@ -219,7 +232,7 @@ export default class Puddle extends Scene {
     }
     const c = this.lyr.ctx;
     for (const line of lines) {
-      const lay = layoutLyric(c, line, this.lyrSt);
+      const lay = rainSub(c, line, this.lyrSt, layoutLyric(c, line, this.lyrSt));
       this.lays.set(line.i, lay);
       const y0 = this.lyrTop(lay);
       for (const pw of lay.words) {
@@ -389,7 +402,7 @@ export default class Puddle extends Scene {
     }
     const ly = lyricAt(lyrics, t, 1.2, 0.35);
     if (!ly) return;
-    const lay = this.lays.get(ly.line.i) ?? layoutLyric(c, ly.line, this.lyrSt);
+    const lay = this.lays.get(ly.line.i) ?? rainSub(c, ly.line, this.lyrSt, layoutLyric(c, ly.line, this.lyrSt));
     const y0 = this.lyrTop(lay);
     this.floatWords(c, lay, y0, t, ly.k, false);
     if (lay.sub) this.floatWords(c, lay.sub.lay, y0 + lay.sub.dy, t, ly.k, true);

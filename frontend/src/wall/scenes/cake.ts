@@ -27,7 +27,7 @@ import { inkFor, inkLine, inkPath, inkShape, inkPoly, inkEllipse, heartPop, arcA
 import { loadPuppets, drawPick, pick, drawPuppet, puppetPoint, puppetBox, puppetShadow, puppetIn, jumpArc, breathe, beatKick } from './_puppet';
 import { msgMaxFor, sigV2, lyricV2, V2 } from './_v2';
 
-export const spec: PlateSpecDecl = { group: 'couple', family: 'wedding', paper: true, energy: [0.25, 1], bars: [4, 8] };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'couple', family: 'wedding', paper: true, energy: [0.25, 1], bars: [4, 8] };
 
 const FLOOR = 900;
 const SZ = 700;
@@ -48,6 +48,8 @@ const STAND = 16;
 const TIP_UP = 42;
 /** 歌詞：長桌前面的地板上（左邊對齊），最後一排的基線。 */
 const LYR = { x: 150, base: 972, w: 1120 };
+/** 有原文的句子：中文字頂的 y（長桌下緣線再下面一點）。 */
+const SUB_TOP = FLOOR + 12;
 const INVITE = '掃描右下角 QR code，把祝福寫上大螢幕';
 const P = {
   ready: 'cp_cake_ready', cut: 'cp_cake_cut', feed: 'cp_cake_feed',
@@ -366,8 +368,17 @@ export default class Cake extends Scene {
       const st = { family: F.archivo(100, big ? 800 : 700), size: this.lyricSize, minSize: 40, maxWidth: LYR.w, unsung: rgba('sepia', 0.26), sung: rgba('sepia', big ? 0.92 : 0.8), active: rgba('signal') };
       const lay = layoutLyric(c, ly.line, st);
       c.save();
-      c.translate(LYR.x, LYR.base - (lay.height - lay.size));
-      drawLyric(c, ly.line, t, st, lay, ly.k * prog(t, s + 0.1, s + 0.5));
+      if (lay.sub) {
+        // 雙語（2026-09-30）：地板上只有長桌下緣（FLOOR + 6）到畫面下緣這一條，中文＋原文兩段照原本「最後一排貼底」往上長，
+        // 中文會被桌子的下緣線穿過。改成中文字頂貼在桌緣下面（SUB_TOP），中文用 40（一排），原文接在下面
+        const st2 = { ...st, size: 40 };
+        const lay2 = layoutLyric(c, ly.line, st2);
+        c.translate(LYR.x, SUB_TOP + 0.86 * lay2.size);
+        drawLyric(c, ly.line, t, st2, lay2, ly.k * prog(t, s + 0.1, s + 0.5));
+      } else {
+        c.translate(LYR.x, LYR.base - (lay.height - lay.size));
+        drawLyric(c, ly.line, t, st, lay, ly.k * prog(t, s + 0.1, s + 0.5));
+      }
       c.restore();
     }
 

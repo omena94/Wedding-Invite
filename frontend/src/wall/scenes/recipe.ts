@@ -28,7 +28,7 @@ import { grid, windowLines, stagger, paperLyric, FAST_TEX_GLSL, type Grid } from
 import { V2, msgMaxFor, lyricV2, sigV2, fitClauses } from './_v2';
 import { homography, applyH } from './_t11';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'doc', paper: true, energy: [0.1, 0.8], bars: [4, 8] };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'doc', paper: true, energy: [0.1, 0.8], bars: [4, 8] };
 
 // ---------------------------------------------------------------- 卡片座標（透視之前）
 const CW = 1180, CH = 780;
@@ -52,6 +52,8 @@ const STEPS = { label: 364, base0: 412 };
 const BIG = { x: 340, y: 150, w: 790, h: 390, label: 124 };
 /** 下緣的「作法」：有留言時歌詞在這裡（中等大小）。右界收在 1100：鏡頭推近後也不會碰到右下角的 QR 區。 */
 const BAND = { x: 48, label: 606, base: 678, maxX: 1100 };
+/** 有留言又有原文的窗格：作法欄往上挪多少（大字區的下緣也收一樣多，署名不會碰到作法欄）。 */
+const BAND_UP = 80;
 const HAND = F.hand(400), HAND_B = F.hand(700);
 const MAX_STAINS = 8;
 /** 鏡頭整個窗格推近多少（一個小節一段，在小節線緩停）。 */
@@ -363,6 +365,8 @@ export default class Recipe extends Scene {
   sigPos = { x: 0, base: 0 };
   lines: Line[] = [];
   slot: Slot | null = null;
+  /** 作法欄往上挪多少（有留言又有原文的窗格：中文＋原文兩段要在卡片下緣、咖啡漬上面）。 */
+  bandUp = 0;
   steps = INSTR_STEPS;
   stepT: number[] = [];
   stepTick: number[] = [];
@@ -383,6 +387,8 @@ export default class Recipe extends Scene {
     const g = this.g = grid(au, s, e);
     const m = this.msg;
     this.lines = windowLines(lyrics, s, e, 0.35, 0.8);
+    // 雙語（2026-09-30）：有留言時歌詞在卡片下緣的作法欄，原文接在下面會掉出卡片、被咖啡漬蓋住：作法欄整段往上 BAND_UP
+    if (m && this.lines.some((l) => lyricSubOf(l))) this.bandUp = BAND_UP;
     this.items = m?.couple ? COUPLE_ING : INGREDIENTS[Math.floor(hash(this.seed, 5) * INGREDIENTS.length)]!;
     // 大字寫什麼：留言；沒有留言但有歌詞 → 大字給歌詞；兩個都沒有 → 大字寫邀請
     const bigText = m ? m.text : this.lines.length ? '' : INVITE;
@@ -410,7 +416,7 @@ export default class Recipe extends Scene {
     if (bigText) {
       const sigH = this.sig ? this.sigSize * 1.9 : 0;
       // 沒有歌詞的窗格下緣是空的：大字區往下延伸，整塊置中在卡片上
-      const bh = this.lines.length ? BIG.h : BAND.base - BIG.y;
+      const bh = this.lines.length ? BIG.h - this.bandUp * 0.75 : BAND.base - BIG.y;
       const opt = { min: V2.msgMin / kz, max: (m ? msgMaxFor(bigText) : 52) / kz, lineHeight: 1.2, maxLines: 6 };
       const fit = this.big = m ? (fitClauses(fc, bigText, HAND_B, BIG.w, bh - sigH, opt) ?? fitFew(fc, bigText, HAND_B, BIG.w, bh - sigH, opt)) : this.inviteFit(fc);
       const top = BIG.y + (bh - fit.height - sigH) / 2 + fit.size * 0.88;
@@ -444,7 +450,9 @@ export default class Recipe extends Scene {
       if (this.big) {
         // 配角的歌詞用比留言細的筆（400）：一眼看過去留言是焦點
         const ls = lyricV2(m ? this.big.size * kz : null) / kz;
-        this.slot = { x: BAND.x, base: BAND.base, lh: 1.1, st: { family: HAND, size: ls, minSize: lmin, maxWidth: BAND.maxX - BAND.x - numW(ls), align: 'left', lineHeight: 1.1, ...paperLyric() } };
+        // 有原文：用到卡片右緣（中文少折一排，兩段才放得進作法欄）
+        const maxX = this.bandUp ? CW - 56 : BAND.maxX;
+        this.slot = { x: BAND.x, base: BAND.base - this.bandUp, lh: 1.1, st: { family: HAND, size: ls, minSize: lmin, maxWidth: maxX - BAND.x - numW(ls), align: 'left', lineHeight: 1.1, ...paperLyric() } };
       } else {
         const ls = V2.lyrMax / kz;
         this.slot = { x: BIG.x, base: 0, lh: 1.12, st: { family: HAND_B, size: ls, minSize: lmin, maxWidth: BIG.w - numW(ls), align: 'left', lineHeight: 1.12, ...paperLyric() } };
@@ -464,7 +472,8 @@ export default class Recipe extends Scene {
     if (drops.length > 6) drops = drops.filter((_, i) => i % 2 === 0).slice(0, 6);
     if (!drops.length && this.tLand + g.beat * 2 < e - 0.1) drops = [this.tLand + g.beat * 2];
     const rnd = mulberry32(this.seed * 7 + 3);
-    const order = SPOTS.map((sp, i) => ({ sp, k: rnd() + (i < 4 ? 0 : 0.35) })).sort((a, b) => a.k - b.k);
+    // 有原文的作法欄貼近卡片下緣：下緣那兩個點（y > CH）不滴，免得污漬蓋到原文
+    const order = SPOTS.filter(([, y]) => !this.bandUp || y < CH).map((sp, i) => ({ sp, k: rnd() + (i < 4 ? 0 : 0.35) })).sort((a, b) => a.k - b.k);
     this.stains = drops.map((t0, i) => {
       const [x, y, r] = order[i % order.length]!.sp;
       // 抖一點（邊緣的點只沿著邊抖，不要往字的方向跑）
@@ -537,7 +546,7 @@ export default class Recipe extends Scene {
     const bigLabel = !m ? (this.big ? '★ 秘方徵求中：掃描右下角 QR code' : '作法') : m.couple ? '★ 主廚的話（新人）' : '★ 秘方';
     this.label(c, bigLabel, !m && !this.big ? 'METHOD' : m?.couple ? 'FROM THE CHEFS' : 'SECRET', BIG.x, BIG.label, rgba('blood', 0.72));
     // 下緣那一行：有留言又有歌詞是「作法」；沒有留言（歌詞在大字）是一行小小的邀請；沒有歌詞是歌名
-    if (m && this.lines.length) this.label(c, '作法', 'METHOD', BAND.x, BAND.label);
+    if (m && this.lines.length) this.label(c, '作法', 'METHOD', BAND.x, BAND.label - this.bandUp);
     else if (!m && this.lines.length) { c.font = font(HAND, 20); c.fillStyle = rgba('sepia', 0.5); c.fillText(INVITE_SMALL, BAND.x, BAND.base - 20); }
     else {
       const title = Array.from(this.ctx.song.title || '').slice(0, 18).join('');
@@ -716,8 +725,9 @@ export default class Recipe extends Scene {
   private subLay(c: CanvasRenderingContext2D, line: Line, st: LyricStyle, lay: LyricLayout) {
     const sub = lyricSubOf(line);
     if (!sub) return null;
-    const k = this.k, ss = subSizeFor(lay.size * k) / k;
-    const sl = layoutLyric(c, sub, { ...st, size: ss, minSize: Math.min(ss, 26 / k), tracking: (st.tracking ?? 0) * 0.5 });
+    // 雙語（2026-09-30）：原文至少 36 螢幕 px（卡片斜放在檯面上會壓扁一點）、不再縮，太長就折行
+    const k = this.k, ss = Math.max(36, subSizeFor(lay.size * k)) / k;
+    const sl = layoutLyric(c, sub, { ...st, size: ss, minSize: ss, tracking: (st.tracking ?? 0) * 0.5 });
     const dy = lay.rows[lay.rows.length - 1]!.y + subGap(lay.size * k, sl.size * k) / k;
     return { sub, sl, dy, height: dy + sl.rows[sl.rows.length - 1]!.y + lay.size };
   }
@@ -725,22 +735,32 @@ export default class Recipe extends Scene {
   /** 畫一步「N. 歌詞」（dy：往上下挪的量，alpha：透明度）。大字的位置依行數垂直置中。 */
   private drawStep(c: CanvasRenderingContext2D, line: Line, n: number, t: number, slot: Slot, dy: number, alpha: number) {
     if (alpha <= 0.01) return;
-    const lay = layoutLyric(c, line, slot.st);
-    const d = this.subLay(c, line, slot.st, lay);
+    let st = slot.st, lay = layoutLyric(c, line, st);
+    let d = this.subLay(c, line, st, lay);
+    // 作法欄（有留言）：中文＋原文的底（原文字腳）要在卡片下緣 30 以上，放不下就把中文縮小一點（不小於 40 螢幕 px）
+    if (this.big && d) {
+      const minSize = st.minSize ?? st.size;
+      for (let sz = st.size; slot.base + d.height - lay.size + d.sl.size * 0.25 > CH - 30 && sz > minSize;) {
+        sz = Math.max(minSize, sz * 0.95);
+        st = { ...st, size: sz };
+        lay = layoutLyric(c, line, st);
+        d = this.subLay(c, line, st, lay)!;
+      }
+    }
     const base = this.big ? slot.base : BIG.y + (BIG.h - (d ? d.height : lay.height)) / 2 + lay.size * 0.86;
     c.save();
     c.translate(slot.x, base + dy);
     c.globalAlpha = alpha;
-    c.font = font(slot.st.family, lay.size); c.fillStyle = rgba('sepia', 0.55);
+    c.font = font(st.family, lay.size); c.fillStyle = rgba('sepia', 0.55);
     const num = `${n}.`;
     c.fillText(num, 0, 0);
     c.translate(c.measureText(num).width + lay.size * 0.22, 0);
-    drawLyric(c, line, t, slot.st, d ? ({ ...lay, sub: undefined } as LyricLayout) : lay, alpha);
+    drawLyric(c, line, t, st, d ? ({ ...lay, sub: undefined } as LyricLayout) : lay, alpha);
     if (d) {
       // 原文：同一支筆寫在中文下面、小一號；比中文安靜（唱到、唱完都是「唱完」的墨色再淡兩成）
       c.translate(0, d.dy);
       const q = rgba('sepia', 0.95 * 0.8);
-      drawLyric(c, d.sub, t, { ...slot.st, active: q, sung: q }, d.sl, alpha);
+      drawLyric(c, d.sub, t, { ...st, active: q, sung: q }, d.sl, alpha);
     }
     c.restore();
   }

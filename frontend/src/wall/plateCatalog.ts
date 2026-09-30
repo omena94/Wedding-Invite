@@ -413,7 +413,7 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": true,
   "idea": "三層蛋糕，兩人握同一把刀切下去（小節線），每一層蛋糕的側面寫著留言／歌詞。",
-  "bilingual": false
+  "bilingual": true
  },
  {
   "name": "toast",
@@ -692,7 +692,7 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "手寫食譜卡：材料清單（一拍一項）、步驟，留言是「秘方」；有醬汁的污漬。",
-  "bilingual": false
+  "bilingual": true
  },
  {
   "name": "patent",
@@ -1493,7 +1493,7 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "棋盤俯視，國王與皇后兩顆棋子一拍一步走到一起，被吃掉的棋子旁邊寫著留言；棋譜是歌詞。",
-  "bilingual": false
+  "bilingual": true
  },
  {
   "name": "mahjong",
@@ -1628,7 +1628,7 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "俯視的水窪，雨滴在拍點落下激起同心漣漪，漣漪擴散處浮出字；倒影裡是城市燈光與留言。",
-  "bilingual": false
+  "bilingual": true
  },
  {
   "name": "sailboat",
@@ -1745,7 +1745,7 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "一條長緞帶在畫面中飄、翻面（正反面色差），緞帶上印著歌詞，打成蝴蝶結時結上的吊牌是留言。",
-  "bilingual": false
+  "bilingual": true
  },
  {
   "name": "matches",

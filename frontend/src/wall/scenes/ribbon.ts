@@ -17,14 +17,15 @@ import { F, font } from '../engine/type';
 import { LIN, rgba } from '../engine/palette';
 import { clamp, ease, prog, pulse, lerp, springStep, noise1, smoothstep } from '../engine/util';
 import { fitText } from '../engine/text';
-import { lyricAt, drawLyric, layoutLyric, beatAfter, COUPLE_EN, COUPLE_ZH, DATE_DOTS, type LyricStyle } from './_motifs';
+import type { Line } from '../engine/lyrics';
+import { lyricAt, drawLyric, layoutLyric, beatAfter, COUPLE_EN, COUPLE_ZH, DATE_DOTS, lyricSubOf, subSizeFor, subStyleFor, subGap, type LyricStyle, type LyricLayout } from './_motifs';
 import { preloadText, INVITE_SMALL, paperSignal } from './_t19';
 import { barsIn } from './_t1';
 import { camDist } from './_t4';
 import { placeBlock, drawBlock, sigOf, stripGeometry, setStrip, fitV2, T22_TEXT, type Rect } from './_t22';
 import { lyricV2, V2 } from './_v2';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'keepsake', paper: false, energy: [0.15, 0.8], bars: [4, 12], weight: 1 };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'keepsake', paper: false, energy: [0.15, 0.8], bars: [4, 12], weight: 1 };
 
 const FOV = 30;
 const D0 = camDist(FOV);
@@ -34,6 +35,8 @@ const HALF = 66;
 const TEXW = 3400, TEXH = 132, TEXRES = 1.4;
 /** 歌詞印在緞帶的哪一段（弧長，px）：下緣平躺的那一段。 */
 const TXT = { s0: 360, s1: 1180 };
+/** 有原文的句子：印字那一段往右挪多少、多寬（弧長）。 */
+const SUB_DX = 125, SUB_W = 850;
 /** 蝴蝶結的結（螢幕座標）。 */
 const KNOT = { x: 1320, y: 196 };
 /**
@@ -243,6 +246,16 @@ function makeRig() {
   return { scene, cam, ribbon, mat, bow, bowMat, knotMat, knot, tagPivot, tag, tagMat, curve, curls, curlMat };
 }
 
+/** 原文副行換成至少 34 px、不再縮（太長就折行）；中文不動。 */
+function ribbonSub(c: CanvasRenderingContext2D, line: Line, st: LyricStyle, lay: LyricLayout): LyricLayout {
+  const sub = lyricSubOf(line);
+  if (!sub || !lay.sub) return lay;
+  const size = Math.max(34, subSizeFor(lay.size));
+  const sl = layoutLyric(c, sub, { ...subStyleFor(st, lay.size), size, minSize: size });
+  const dy = lay.sub.dy - subGap(lay.size, lay.sub.lay.size) + subGap(lay.size, sl.size);
+  return { ...lay, sub: { lay: sl, dy }, height: dy + (sl.height - sl.size) + lay.size };
+}
+
 export default class Ribbon extends Scene {
   rig = shared('ribbon.rig', makeRig);
   bg = shared('ribbon.bg', BG);
@@ -355,7 +368,23 @@ export default class Ribbon extends Scene {
     const L = this.txt, c = L.ctx;
     L.clear();
     const ly = lyricAt(this.ctx.lyrics, t);
-    if (ly) {
+    if (ly && lyricSubOf(ly.line)) {
+      // 雙語（2026-09-30）：緞帶只有 TEXH 高，中文折兩排再加原文會被緞帶邊切掉。有原文的句子用寬一點的一段（弧長往右挪 SUB_DX、寬 SUB_W：
+      // 左邊不出畫面、右邊到緞帶開始捲之前），
+      // 中文盡量一排；原文至少 34 px、不再縮；整塊（中文字頂到原文字腳）放不進緞帶就把中文縮小一點（不小於 40），上下置中
+      let st: LyricStyle = { ...this.ribSt, maxWidth: SUB_W };
+      const lay0 = (s2: LyricStyle) => ribbonSub(c, ly.line, s2, layoutLyric(c, ly.line, s2));
+      const depth = (l: LyricLayout) => 0.86 * l.size + l.height - l.size + 0.22 * (l.sub?.lay.size ?? 0);
+      let lay = lay0(st);
+      for (let sz = st.size, minSize = st.minSize ?? st.size; depth(lay) > TEXH - 12 && sz > minSize;) {
+        sz = Math.max(minSize, sz * 0.95);
+        st = { ...st, size: sz };
+        lay = lay0(st);
+      }
+      c.save(); c.translate((TXT.s0 + TXT.s1) / 2 + SUB_DX, (TEXH - depth(lay)) / 2 + 0.86 * lay.size);
+      drawLyric(c, ly.line, t, st, lay, ly.k);
+      c.restore();
+    } else if (ly) {
       const lay = layoutLyric(c, ly.line, this.ribSt);
       c.save(); c.translate((TXT.s0 + TXT.s1) / 2, TEXH / 2 + lay.size * 0.36 - (lay.rows.length - 1) * lay.size * 0.54);
       drawLyric(c, ly.line, t, this.ribSt, lay, ly.k);
