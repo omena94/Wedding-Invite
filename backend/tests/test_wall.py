@@ -338,3 +338,24 @@ def test_remote_control(setup):
     assert cmd("next", h=HELPER).status_code == 403
     assert sync(seq, h=HELPER).status_code == 403
     assert c.get("/api/planner/wall/remote/state", headers=HELPER).status_code == 403
+
+
+def test_duck_level(setup):
+    """講話模式的音量（2026-09-30）：預設 20%，有 wall 鑰匙就能調（0～90），大螢幕從 feed 拿、手機遙控頁從 remote/state 拿。"""
+    c, db, _ = setup
+    assert _feed(c)["duck"] == 20
+    assert c.get("/api/planner/wall/remote/state", headers=COUPLE).json()["duck_level"] == 20
+    r = c.put("/api/planner/wall/duck", json={"level": 35}, headers=COUPLE)
+    assert r.status_code == 200 and r.json()["level"] == 35
+    assert _feed(c)["duck"] == 35
+    assert c.get("/api/planner/wall/remote/state", headers=COUPLE).json()["duck_level"] == 35
+    assert c.put("/api/planner/wall/duck", json={"level": 0}, headers=COUPLE).status_code == 200  # 0 = 講話時完全靜音
+    assert _feed(c)["duck"] == 0
+    for bad in (-5, 91, "30", 12.5):
+        assert c.put("/api/planner/wall/duck", json={"level": bad}, headers=COUPLE).status_code in (400, 422), bad
+    assert c.put("/api/planner/wall/duck", json={"level": 30}, headers=HELPER).status_code == 403
+    # 設定表裡被手動改成怪值：照範圍夾住，不會讓大螢幕壞掉
+    _on(db, "wall_duck", "abc")
+    assert _feed(c)["duck"] == 20
+    _on(db, "wall_duck", "500")
+    assert _feed(c)["duck"] == 90
