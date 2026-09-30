@@ -20,7 +20,8 @@ import { F, font, layout, loadText, measure } from '../engine/type';
 import { mixRgba, rgba } from '../engine/palette';
 import { clamp, ease, hash, lerp, prog, pulse, frameIdx, TAU } from '../engine/util';
 import { wrap } from '../engine/text';
-import { lyricAt, drawLyric, layoutLyric, beatAfter, signature, COUPLE_ZH, DATE_DOTS } from './_motifs';
+import { lyricAt, drawLyric, layoutLyric, beatAfter, signature, COUPLE_ZH, DATE_DOTS, lyricSubOf, subSizeFor, subStyleFor, subGap, type LyricLayout, type LyricStyle } from './_motifs';
+import type { Line } from '../engine/lyrics';
 import { msgMaxFor, lyricV2, sigV2, V2 } from './_v2';
 import { drawPen, PEN_WRITE_A } from './certificate-props';
 import {
@@ -29,7 +30,7 @@ import {
 } from './_t1';
 
 // v2：桌面是暗的木頭，右下角 HUD 用淺色字 → 當暗的版面排
-export const spec: PlateSpecDecl = { group: 'type', family: 'doc', paper: false, energy: [0.3, 1], bars: [4, 8], weight: 1 };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'doc', paper: false, energy: [0.3, 1], bars: [4, 8], weight: 1 };
 
 type Ctx2 = CanvasRenderingContext2D;
 
@@ -55,6 +56,15 @@ const NOTE_SUB_MAX = 274;
 const TEXT = '電報愛情電報局收報人發報人字數等級急電附言發報時播放之歌曲本曲為純音樂請自行哼唱間奏中收報時間全體賓客一位賓客大螢幕新郎新娘掃描右下角把祝福寫上大螢幕收已收到本電報以愛心計費每字零元字';
 
 interface Strip { text: string; cv: ReturnType<typeof makeCanvas>; w: number; t0: number; t1: number; cut: number; row: number; rot: number; dx: number; chars: { at: number; x: number }[] }
+
+/** 原文副行換成固定的字級 size（電報紙 px）重排，太長就折行、不再縮；主行不動。 */
+function paperSub(c: Ctx2, line: Line, st: LyricStyle, lay: LyricLayout, size: number): LyricLayout {
+  const sub = lyricSubOf(line);
+  if (!sub || !lay.sub) return lay;
+  const sl = layoutLyric(c, sub, { ...subStyleFor(st, lay.size), size, minSize: size });
+  const dy = lay.sub.dy - subGap(lay.size, lay.sub.lay.size) + subGap(lay.size, sl.size);
+  return { ...lay, sub: { lay: sl, dy }, height: dy + (sl.height - sl.size) + lay.size };
+}
 
 export default class Telegram extends Scene {
   layer = this.track(new Layer2D(W, H, SCALE * 1.25, { fast: true }));
@@ -588,13 +598,17 @@ export default class Telegram extends Scene {
     const { lyrics } = this.ctx;
     const ly = lyricAt(lyrics, t);
     if (ly) {
-      let st = paperLyric(F.archivo(100, 800), this.lyrPx, NOTE.maxW, { lineHeight: 1.16, minSize: V2.lyrMin / this.S });
-      let lay = layoutLyric(c, ly.line, st);
+      // 有原文的句子用到跟下面紙帶一樣寬（BODY.maxW）：兩段都少折一行，才放得進「收報人」上面那一條
+      let st = paperLyric(F.archivo(100, 800), this.lyrPx, lyricSubOf(ly.line) ? BODY.maxW : NOTE.maxW, { lineHeight: 1.16, minSize: V2.lyrMin / this.S });
+      // 雙語（2026-09-30）：原文的字級照一開始的中文字級換成螢幕 px 算好就固定（≥ 36 螢幕 px），中文縮的時候原文不跟著縮
+      const subPx = Math.max(36, subSizeFor(st.size * this.S)) / this.S;
+      let lay = paperSub(c, ly.line, st, layoutLyric(c, ly.line, st), subPx);
       // 韓文歌：原文副行接在中文下面，最後一排要跟下面的「收報人」欄（字頂約在 y 300）隔開一點：放不下就把中文縮一點
-      for (let k = 0; k < 10 && lay.sub && NOTE.base + lay.height - lay.size > NOTE_SUB_MAX; k++) {
-        const sz = lay.size * 0.93;
+      // （中文最小 36 螢幕 px；長句折兩行時才會縮到這麼小）
+      for (let k = 0; k < 10 && lay.sub && NOTE.base + lay.height - lay.size > NOTE_SUB_MAX && lay.size * this.S > 36; k++) {
+        const sz = Math.max(36 / this.S, lay.size * 0.93);
         st = { ...st, size: sz, minSize: Math.min(st.minSize ?? sz, sz) };
-        lay = layoutLyric(c, ly.line, st);
+        lay = paperSub(c, ly.line, st, layoutLyric(c, ly.line, st), subPx);
       }
       const inK = ease.outExpo(prog(t, ly.line.start - 0.35, ly.line.start + 0.15));
       c.save();

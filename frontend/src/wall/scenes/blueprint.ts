@@ -19,11 +19,11 @@ import { LIN, rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, hash, lerp, prog, pulse } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
 import type { Line } from '../engine/lyrics';
-import { drawLyric, signature, sparkHead, sparkParticles, drawHeart, DATE_DOTS, type LyricStyle } from './_motifs';
+import { drawLyric, signature, sparkHead, sparkParticles, drawHeart, DATE_DOTS, lyricSubOf, layoutLyric, subGap, type LyricStyle, type LyricLayout } from './_motifs';
 import { grid, stagger, windowLines, boxLyric, mono, tag, pad3, fiberTex, inOut, type Grid, type P2, type Rect } from './_t3';
 import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 } from './_v2';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'doc', paper: false, energy: [0.2, 0.85], bars: [4, 8], weight: 1 };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'doc', paper: false, energy: [0.2, 0.85], bars: [4, 8], weight: 1 };
 
 // ---------------------------------------------------------------- 平面圖（世界座標 = 鏡頭沒推時的螢幕 px，y 向下；都是牆的中心線）
 const X0 = 168, X1 = 938, Y0 = 208, Y1 = 896;
@@ -199,6 +199,32 @@ function toSegs(strokes: Stroke[]): { segs: Seg[]; len: number } {
 interface Placed { line: Line; room: number; tIn: number; tOut: number }
 /** 標註的一個字：位置、什麼時候寫到。 */
 interface Glyph { ch: string; x: number; y: number; t: number; w: number }
+
+/** 原文副行最小的字級（房間座標 ≈ 螢幕 px；窄體字的韓文是備援字型，排 34 量起來約 31）。 */
+const SUB_MIN = 34;
+const roomCache = new WeakMap<Line, Map<string, LyricLayout>>();
+/**
+ * 房間裡的歌詞（2026-09-30 雙語）：boxLyric 會讓原文跟著主行縮，廚房那一格窄，原文一路縮到 26 px。
+ * 原文比 SUB_MIN 小的時候改成：原文固定 SUB_MIN（太長就折行），先扣掉它佔的高度，再用剩下的高度排中文。
+ */
+function roomLyric(c: CanvasRenderingContext2D, line: Line, w: number, h: number, o: { min: number; max: number; lineHeight: number }): LyricLayout {
+  const lay0 = boxLyric(c, line, LYR_FAM, w, h, o);
+  const sub = lyricSubOf(line);
+  if (!sub || !lay0.sub || lay0.sub.lay.size >= SUB_MIN - 0.5) return lay0;
+  const key = `${w}|${h}|${o.min}|${o.max}|${o.lineHeight}`;
+  let m = roomCache.get(line);
+  if (!m) { m = new Map(); roomCache.set(line, m); }
+  const hit = m.get(key);
+  if (hit) return hit;
+  const sl = layoutLyric(c, sub, { family: LYR_FAM, size: SUB_MIN, minSize: SUB_MIN, maxWidth: w, align: 'left', lineHeight: 1.12 });
+  // 中文照「沒有原文」排進扣掉原文之後的高度（subGap 用最小的中文字級估，寧可多留一點）
+  const extra = subGap(o.min, SUB_MIN) + sl.height - sl.size;
+  const main = boxLyric(c, { ...line, sub: undefined }, LYR_FAM, w, Math.max(o.min, h - extra), o);
+  const dy = main.rows[main.rows.length - 1]!.y + subGap(main.size, SUB_MIN);
+  const out: LyricLayout = { ...main, sub: { lay: sl, dy }, height: dy + sl.height - sl.size + main.size };
+  m.set(key, out);
+  return out;
+}
 
 export default class Blueprint extends Scene {
   paper = shared('blueprint.paper', PAPER);
@@ -500,7 +526,7 @@ export default class Blueprint extends Scene {
       const end = Math.min(p.line.end + 1.5, next ? next.tIn + 0.2 : Infinity);
       if (t < p.tIn || t >= end) return;
       const [bx, by, bw, bh] = ROOMS[p.room]!.box;
-      const lay = boxLyric(c, p.line, LYR_FAM, bw, bh, { min: V2.lyrMin / ZK, max: this.lyrMax, lineHeight: 1.14 });
+      const lay = roomLyric(c, p.line, bw, bh, { min: V2.lyrMin / ZK, max: this.lyrMax, lineHeight: 1.14 });
       const y0 = by + Math.max(0, (bh - lay.height) / 2) + lay.size * 0.8;
       const a = prog(t, p.tIn, p.tIn + 0.25) * (1 - prog(t, end - 0.25, end));
       const st: LyricStyle = { family: LYR_FAM, size: lay.size, maxWidth: bw, active: rgba('signal'), sung: rgba('bone', 0.92), unsung: rgba('bone', 0.3) };

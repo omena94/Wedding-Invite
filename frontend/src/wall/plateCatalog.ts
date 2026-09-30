@@ -476,7 +476,7 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": true,
   "idea": "孟庭用聽診器聽宣文的胸口，旁邊的心電圖跟著歌的 BPM 跳，聽著聽著心跳越來越快、跳出愛心。留言寫在病歷夾上。",
-  "bilingual": false
+  "bilingual": true
  },
  {
   "name": "whiteboard",
@@ -629,7 +629,7 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "老電報紙條從機器吐出，逐字打出留言（STOP 分句），蓋上收件戳；歌詞是電報表頭。",
-  "bilingual": false
+  "bilingual": true
  },
  {
   "name": "newspaper",
@@ -710,7 +710,7 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "施工藍圖（主題色的藍圖紙）：「我們的家」平面圖在拍點一條線一條線畫出，房間名稱是歌詞、標註是留言。",
-  "bilingual": false
+  "bilingual": true
  },
  {
   "name": "crossword",
@@ -773,7 +773,7 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "攤開的簽名簿，一支筆（火花）在拍點寫下名字與留言，前面幾頁已經寫滿別人的留言（真的留言）。",
-  "bilingual": false
+  "bilingual": true
  },
  {
   "name": "manual",
@@ -908,7 +908,7 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "氣象圖：台灣地圖輪廓、降愛機率 100%、心形的高氣壓，數字在拍點翻；留言是「今日天氣小語」。",
-  "bilingual": false
+  "bilingual": true
  },
  {
   "name": "credits",

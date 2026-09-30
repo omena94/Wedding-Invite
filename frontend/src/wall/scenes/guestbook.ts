@@ -23,7 +23,7 @@ import type { Line } from '../engine/lyrics';
 import { grid, layoutRows, drawRows, paperInk, Stage, docRT, camDist, type Grid, type RowsStyle, type P2, type V3 } from './_t4';
 import { msgMaxFor, lyricV2, sigV2, V2, fitClauses } from './_v2';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'doc', paper: true, energy: [0.15, 0.8], bars: [4, 8] };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'doc', paper: true, energy: [0.15, 0.8], bars: [4, 8] };
 
 // ---------------------------------------------------------------- 跨頁（像素，左上原點、y 向下；左頁 0..PW、右頁 PW..2PW）
 const PW = 760, PH = 980, DW = PW * 2, DH = PH;
@@ -506,8 +506,9 @@ export default class Guestbook extends Scene {
     const lay = layoutRows(c, l, st);
     const sl = lyricSubOf(l);
     if (!sl) return { lay, sub: null, dy: 0, blockH: lay.height };
-    const S = this.sHead, ss = subSizeFor(lay.size * S) / S;
-    const sub = layoutRows(c, sl, { ...st, size: ss, minSize: Math.min(ss, 26 / S) });
+    // 雙語（2026-09-30）：原文至少 38 螢幕 px（書頁斜躺在桌上，字會被壓扁一成多）、不再縮，太長就折行（最多三排）；書眉跟著長高
+    const S = this.sHead, ss = Math.max(38, subSizeFor(lay.size * S)) / S;
+    const sub = layoutRows(c, sl, { ...st, size: ss, minSize: ss, maxRows: 3 });
     const dy = (lay.rows.length - 1) * lay.lineHeight + subGap(lay.size * S, sub.size * S) / S;
     return { lay, sub, dy, blockH: lay.size * 0.84 + dy + (sub.rows.length - 1) * sub.lineHeight + sub.size * 0.22 };
   }

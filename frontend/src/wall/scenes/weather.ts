@@ -16,13 +16,13 @@ import { F, font } from '../engine/type';
 import { rgba } from '../engine/palette';
 import { clamp, ease, hash, lerp, prog, TAU } from '../engine/util';
 import type { FitResult } from '../engine/text';
-import type { Lyrics } from '../engine/lyrics';
-import { lyricAt, drawLyric, layoutLyric, beatAfter, signature, drawMessage, sparkHead, sparkParticles } from './_motifs';
+import type { Lyrics, Line } from '../engine/lyrics';
+import { lyricAt, drawLyric, layoutLyric, beatAfter, signature, drawMessage, sparkHead, sparkParticles, lyricSubOf, subSizeFor, subStyleFor, subGap, type LyricLayout, type LyricStyle } from './_motifs';
 import { taiwanIn, VENUE, inOut, ScreenRig, loadPlateText } from './_t6';
 import { fitText } from '../engine/text';
 import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 } from './_v2';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'screen', paper: true, energy: [0.15, 0.75], bars: [4, 8], weight: 1 };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'screen', paper: true, energy: [0.15, 0.75], bars: [4, 8], weight: 1 };
 
 // ---------------------------------------------------------------- 紙（1920×1080 的貼圖座標，y 向下）
 const X0 = 120;
@@ -108,6 +108,19 @@ const TABLE = () => new FSPass(/* glsl */ `
   }`, { c: { value: new THREE.Vector2(960, 540) }, r: { value: new THREE.Vector2(800, 450) }, k: { value: 1 } });
 
 interface Barb { x: number; y: number; ph: number }
+
+/**
+ * 原文副行照「螢幕」字級重排（2026-09-30 雙語）：subSizeFor 的 32～56 是螢幕 px，天氣圖在畫面上約 LS 倍大、又斜斜地躺在桌上，
+ * 照紙面 px 排的原文上了螢幕只剩 22 px。中文不動，原文換成 max(38, subSizeFor(中文的螢幕字級)) ÷ LS（斜放會壓扁一成多），太長就折行、不再縮。
+ */
+function sheetSub(c: CanvasRenderingContext2D, line: Line, st: LyricStyle, lay: LyricLayout): LyricLayout {
+  const sub = lyricSubOf(line);
+  if (!sub || !lay.sub) return lay;
+  const size = Math.max(38, subSizeFor(lay.size * LS)) / LS;
+  const sl = layoutLyric(c, sub, { ...subStyleFor(st, lay.size), size, minSize: size });
+  const dy = lay.sub.dy - subGap(lay.size, lay.sub.lay.size) + subGap(lay.size, sl.size);
+  return { ...lay, sub: { lay: sl, dy }, height: dy + (sl.height - sl.size) + lay.size };
+}
 
 export default class Weather extends Scene {
   sheetBg = shared('weather.sheet', SHEET);
@@ -338,9 +351,21 @@ export default class Weather extends Scene {
     const ly = lyricAt(lyrics, t);
     const size = lyricV2(this.msgScreen) / LS;
     if (ly) {
-      const st = { family: F.archivo(100, 800), size, minSize: V2.lyrMin / LS, maxWidth: 1360 - X0, active: rgba('blood'), sung: rgba('sepia', 0.92), unsung: rgba('sepia', 0.24), lineHeight: 1.1 };
-      const lay = layoutLyric(c, ly.line, st);
-      c.save(); c.translate(X0, LYR_Y - (lay.height - lay.size) * 0.5);
+      let st: LyricStyle = { family: F.archivo(100, 800), size, minSize: V2.lyrMin / LS, maxWidth: 1360 - X0, active: rgba('blood'), sung: rgba('sepia', 0.92), unsung: rgba('sepia', 0.24), lineHeight: 1.1 };
+      let lay = sheetSub(c, ly.line, st, layoutLyric(c, ly.line, st));
+      let y = LYR_Y - (lay.height - lay.size) * 0.5;
+      if (lay.sub) {
+        // 雙語（2026-09-30）：中文字頂在「今日預報」標籤下面、原文字腳在「今日天氣小語」標籤上面，中間置中；放不下就把中文縮小一點（不小於 40 螢幕 px）
+        const top = LYR_Y - 78 + 18, bot = this.msgTop - this.fit!.size * 0.95 - 26 - 22 - 12, minSize = st.minSize ?? st.size;
+        const depth = (l: LyricLayout) => 0.9 * l.size + l.height - l.size + 0.25 * (l.sub?.lay.size ?? 0);
+        for (let sz = st.size; depth(lay) > bot - top && sz > minSize;) {
+          sz = Math.max(minSize, sz * 0.95);
+          st = { ...st, size: sz };
+          lay = sheetSub(c, ly.line, st, layoutLyric(c, ly.line, st));
+        }
+        y = top + 0.9 * lay.size + Math.max(0, (bot - top - depth(lay)) / 2);
+      }
+      c.save(); c.translate(X0, y);
       drawLyric(c, ly.line, t, st, lay, ly.k);
       c.restore();
     } else {

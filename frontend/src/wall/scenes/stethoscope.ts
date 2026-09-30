@@ -15,13 +15,14 @@ import { LineBatch } from '../engine/lines';
 import { F, font, loadText } from '../engine/type';
 import { LIN, rgba, mixRgba } from '../engine/palette';
 import { ease, prog } from '../engine/util';
-import { lyricAt, layoutLyric, drawLyric, heartPoints } from './_motifs';
+import { lyricAt, layoutLyric, drawLyric, heartPoints, lyricSubOf, subSizeFor, subStyleFor, subGap, type LyricLayout, type LyricStyle } from './_motifs';
+import type { Line } from '../engine/lyrics';
 import { inkFor, inkLine, inkPoly, inkRect, inkEllipse, hatch, paperBG, heartPop, type Pt, type Note } from './_couple';
 import { loadPuppets, drawPick, puppetPoint, puppetShadow, breathe, beatKick, noteV2, tightenNote, type PuppetOpts } from './_puppet';
 import { lyricV2 } from './_v2';
 import { INVITE, enter, writeNote, barsIn, at } from './_c7';
 
-export const spec: PlateSpecDecl = { group: 'couple', family: 'work', paper: true, energy: [0.2, 0.85], bars: [4, 8] };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'couple', family: 'work', paper: true, energy: [0.2, 0.85], bars: [4, 8] };
 
 const FLOOR = 900;
 const SZ = 600;
@@ -37,6 +38,19 @@ const LYR = { x: 1300, y: 470, w: 500 };
 const WIN = { x: 800, y: 110, w: 360, h: 190 };
 const POSES = ['xw_work_stand', 'xw_work_stand_blush', 'mt_work_listen', 'mt_work_listen_smile'];
 const DX = '診斷：心搏過速（良性，預計持續一輩子）';
+
+/**
+ * 原文副行（2026-09-30 雙語）：心電圖下面那一欄窄（LYR.w），自動排的原文長句會一路縮到 26 px。
+ * 改成至少 34 px、不再縮，太長就折成兩行（往下長，下面到 HUD 之前都是空牆）。
+ */
+function wallSub(c: CanvasRenderingContext2D, line: Line, st: LyricStyle, lay: LyricLayout): LyricLayout {
+  const sub = lyricSubOf(line);
+  if (!sub || !lay.sub) return lay;
+  const size = Math.max(34, subSizeFor(lay.size));
+  const sl = layoutLyric(c, sub, { ...subStyleFor(st, lay.size), size, minSize: size });
+  const dy = lay.sub.dy - subGap(lay.size, lay.sub.lay.size) + subGap(lay.size, sl.size);
+  return { ...lay, sub: { lay: sl, dy }, height: dy + (sl.height - sl.size) + lay.size };
+}
 
 export default class Stethoscope extends Scene {
   paper = paperBG();
@@ -301,7 +315,7 @@ export default class Stethoscope extends Scene {
     if (ly) {
       const big = !this.msg;
       const st = { family: F.archivo(100, big ? 800 : 700), size: this.lyricSize, minSize: 40, maxWidth: LYR.w, unsung: rgba('sepia', 0.24), sung: rgba('sepia', big ? 0.94 : 0.82), active: rgba('signal') };
-      const lay = layoutLyric(c, ly.line, st);
+      const lay = wallSub(c, ly.line, st, layoutLyric(c, ly.line, st));
       c.translate(LYR.x, LYR.y + lay.size * 0.84);
       drawLyric(c, ly.line, t, st, lay, ly.k);
     } else {
