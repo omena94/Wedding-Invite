@@ -6,6 +6,7 @@
 //  - 被新人隱藏的留言：小卡馬上收、主打它的窗格在下一拍切走。
 //  - 一首接一首（歌單順序，播完從頭；可以隨機播放），下一首在背景先下載、分析好。歌單是空的就先無聲地跑留言。
 //  - 操作列（2026-09-30）：進度條可以拖拉跳到任何時間；旁邊的歌單面板看下一首與待播清單，可以「現在播」「插播」。
+//  - 手機遙控（2026-09-30）：每秒把播放狀態回報給後台、拿走手機按的指令（後台「大螢幕遙控」）；講話模式把音樂慢慢調小聲。
 //  - 開發模式 ?dev=1：不連後端，用 dev/fixtures 的假留言與本機的測試音檔（見 vite.config.js 的 wall-dev），
 //    加上 ?export=1 給截圖腳本（scripts/wall-render.mjs）用。
 import { Engine, SCENES, type SongRuntime } from './engine/engine';
@@ -19,7 +20,7 @@ import { MessagePool } from './pool';
 import { Director } from './director';
 import { applyTheme, pickTheme } from './themes';
 import { loadSong, type LoadedSong } from './songs';
-import { fetchFeed, fetchSongs, getToken, login, HttpError, type SongRow } from './net';
+import { fetchFeed, fetchSongs, getToken, login, syncRemote, HttpError, type RemoteCommand, type SongRow } from './net';
 import { buildLyrics } from './lyrics/build';
 import { DEV_LIVE, DEV_MESSAGES, dummyLrc } from './dev/fixtures';
 import { analyzeArrayBuffer } from './analysis/client';
@@ -64,6 +65,7 @@ let nextFor = -1; // next 準備的是哪一首（歌的 id）
 let silent = false;
 let t = 0;
 let playing = false;
+let started = false; // 現場按過「開始播放」了（之前手機的指令不做）
 const statusLine = { text: '', ok: true };
 
 declare global { interface Window { __wall: any } }
@@ -75,6 +77,8 @@ class Player {
   gain: GainNode | null = null;
   url = '';
   volume = readNum('wall_volume', 0.9);
+  /** 講話模式：主持人講話時音樂降到 DUCK 倍（畫面照跑）。 */
+  ducked = false;
   /** 音畫同步微調（毫秒，正數＝畫面晚一點）：會場音響若有延遲，在這裡補。 */
   offsetMs = readNum('wall_sync_ms', 0);
   private lastA = 0; private lastP = 0;
@@ -88,6 +92,10 @@ class Player {
     const src = this.ctx.createMediaElementSource(this.el);
     this.gain = this.ctx.createGain();
     src.connect(this.gain).connect(this.ctx.destination);
+    // 之前（按「開始播放」前）音量是設在 <audio> 上的：改由 GainNode 管，<audio> 回到 1，
+    // 馬上套一次這首歌的響度補償與音量（不然第一首會用預設的 1 倍播，直到換歌或調音量）
+    this.el.volume = 1;
+    this.applyGain();
   }
 
   async load(s: LoadedSong) {
@@ -99,9 +107,15 @@ class Player {
     this.lastA = s.startAt; this.lastP = performance.now();
   }
 
-  applyGain(s: LoadedSong | null = cur) {
-    if (this.gain) this.gain.gain.value = (s?.gain ?? 1) * this.volume;
-    else this.el.volume = Math.min(1, this.volume);
+  /** 套用音量：這首歌的響度補償 × 音量 × 講話模式；fade 秒數 > 0 就慢慢變過去（講話模式不要一下子沒聲音）。 */
+  applyGain(s: LoadedSong | null = cur, fade = 0) {
+    const v = (s?.gain ?? 1) * this.volume * (this.ducked ? DUCK : 1);
+    if (this.gain && this.ctx) {
+      const g = this.gain.gain, now = this.ctx.currentTime;
+      g.cancelScheduledValues(now);
+      g.setValueAtTime(g.value, now);
+      if (fade > 0) g.linearRampToValueAtTime(v, now + fade); else g.setValueAtTime(v, now);
+    } else this.el.volume = Math.min(1, v);
   }
 
   async play() { this.unlock(); await this.ctx?.resume(); await this.el.play(); }
@@ -118,6 +132,7 @@ class Player {
   }
 }
 const player = new Player();
+const DUCK = 0.2; // 講話模式的音量：原本的兩成，現場還聽得到有音樂、不會蓋過講話
 
 function readNum(k: string, d: number) { try { const v = Number(localStorage.getItem(k)); return localStorage.getItem(k) !== null && Number.isFinite(v) ? v : d; } catch { return d; } }
 function saveNum(k: string, v: number) { try { localStorage.setItem(k, String(v)); } catch { /* 存不了就算了 */ } }
@@ -403,6 +418,8 @@ let lastFrame = performance.now(), fpsAcc = 0, fpsN = 0, fps = 60;
   messages: pool.count, errors: engine.errors.length, fps,
   // 接下來的播放順序（歌的 id，i = 插播）：測試插播、隨機播放用
   queue: order.slice(pos, pos + 10).map((e) => `${e.id}${e.ins ? 'i' : ''}`).join(' '),
+  // 實際輸出的音量倍數（講話模式會降到兩成）
+  gain: player.gain?.gain.value ?? player.el.volume, ducked: player.ducked, volume: player.volume,
 });
 
 function tick() {
@@ -512,6 +529,8 @@ function updateUi() {
   $('ui-status').textContent = `留言 ${pool.count} 則　${statusLine.text}`;
   $('ui-status').classList.toggle('bad', !statusLine.ok);
   $('ui-queue-btn').classList.toggle('on', showQueue);
+  $('ui-duck').classList.toggle('on', player.ducked);
+  $('ui-duck').textContent = player.ducked ? '講話模式中（音樂小聲）' : '講話模式';
   renderQueue();
   drawSeek();
 }
@@ -526,6 +545,7 @@ function bindUi() {
   on('ui-sync-up', () => setSync(player.offsetMs + 20));
   on('ui-full', () => toggleFull());
   on('ui-queue-btn', () => toggleQueue());
+  on('ui-duck', () => setDuck(!player.ducked));
   for (const el of [ui, queueEl]) {
     el.addEventListener('pointerenter', () => { hovering = true; });
     el.addEventListener('pointerleave', () => { hovering = false; });
@@ -604,6 +624,7 @@ function bindUi() {
     else if (k === ']') setSync(player.offsetMs + 20);
     else if (k === 'd' || k === 'D') debugEl.hidden = !debugEl.hidden;
     else if (k === 'l' || k === 'L') toggleQueue();
+    else if (k === 'm' || k === 'M') setDuck(!player.ducked);
     else if (DEV && (k === 'ArrowRight' || k === 'ArrowLeft')) { const dt = (k === 'ArrowRight' ? 1 : -1) * (ev.shiftKey ? 15 : 5); player.el.currentTime = Math.max(0, player.el.currentTime + dt); engine.drop(0); engine.setSong(engine.song); director.startSong(engine.song, Math.max(0, t + dt)); }
     else if (DEV && (k === 'n' || k === 'N')) void nextSong();
     else return;
@@ -613,10 +634,82 @@ function bindUi() {
 function setVolume(v: number) { player.volume = Math.max(0, Math.min(1.5, Math.round(v * 10) / 10)); player.applyGain(); saveNum('wall_volume', player.volume); }
 function setSync(ms: number) { player.offsetMs = Math.max(-500, Math.min(1500, ms)); saveNum('wall_sync_ms', player.offsetMs); }
 function toggleFull() { if (document.fullscreenElement) void document.exitFullscreen(); else void document.documentElement.requestFullscreen().catch(() => {}); }
-async function togglePlay() {
-  playing = !playing;
-  if (silent) { if (playing) silentStart = performance.now() - t * 1000; return; }
+async function setPlaying(on: boolean) {
+  if (on === playing) return;
+  playing = on;
+  if (silent) { if (playing) silentStart = performance.now() - t * 1000; updateUi(); return; }
   if (playing) await player.play().catch(() => { playing = false; }); else player.pause();
+  updateUi();
+}
+function togglePlay() { return setPlaying(!playing); }
+/** 講話模式：開的時候 1.2 秒降下來，關的時候 2 秒慢慢回來。 */
+function setDuck(on: boolean) {
+  if (player.ducked === on) return;
+  player.ducked = on;
+  player.applyGain(cur, on ? 1.2 : 2);
+  updateUi();
+}
+
+// ------------------------------------------------------------------ 手機遙控（2026-09-30）
+// 每秒 POST 一次：回報播放狀態（手機遙控頁顯示），拿走手機按的指令照順序做。
+// 版面預覽、開發、截圖模式不參與；還沒按「開始播放」只回報、不做指令（現場還沒準備好）。
+const REMOTE = !DEV && !EXPORT && !PREVIEW;
+const remoteClient = Math.random().toString(36).slice(2, 10);
+let remoteAfter = -1;
+let remoteBusy = false;
+function remoteState() {
+  const on = !!cur && !silent && playlist.length > 0;
+  if (on) ensureAhead();
+  const count = on ? insertsAhead() + Math.max(1, playlist.length - 1) : 0;
+  return {
+    started, playing, silent, t: Math.round(t * 100) / 100,
+    song: on ? { id: cur!.row.id, title: cur!.row.title, artist: cur!.row.artist, ins: !!order[pos]?.ins } : null,
+    start: on ? cur!.startAt : 0, end: on ? cur!.endAt : 0,
+    volume: player.volume, duck: player.ducked, shuffle,
+    queue: order.slice(pos + 1, pos + 1 + count).map((e, k) => {
+      const r = rowById(e.id);
+      return { id: e.id, j: pos + 1 + k, ins: !!e.ins, title: r?.title ?? '', artist: r?.artist ?? '', len: r ? lenOf(r) : 0 };
+    }),
+    messages: pool.count, status: statusLine.text, ok: statusLine.ok,
+  };
+}
+async function remoteSync() {
+  if (!REMOTE || remoteBusy) return;
+  remoteBusy = true;
+  let did = false;
+  try {
+    const r = await syncRemote({ client: remoteClient, after: remoteAfter, state: remoteState() });
+    const first = remoteAfter < 0;
+    remoteAfter = Math.max(remoteAfter, r.seq);
+    if (!first) for (const c of r.commands) { await runRemote(c); did = true; }
+  } catch { /* 斷線：下一秒再試 */ }
+  remoteBusy = false;
+  // 做完指令馬上再回報一次，手機上很快就看到結果
+  if (did) setTimeout(() => void remoteSync(), 120);
+}
+/** 手機送來的清單操作帶著「第幾個」與歌的 id：大螢幕這邊順序可能剛好變了，對不上就找那首歌現在的位置。 */
+function slotOf(a: Record<string, any>, ins = false) {
+  const j = Number(a.j);
+  if (order[j]?.id === a.id && j > pos && (!ins || order[j]!.ins)) return j;
+  return order.findIndex((e, i) => i > pos && e.id === a.id && (!ins || !!e.ins));
+}
+async function runRemote(c: RemoteCommand) {
+  if (!started) return;
+  const a = c.args ?? {};
+  switch (c.action) {
+    case 'play': await setPlaying(true); break;
+    case 'pause': await setPlaying(false); break;
+    case 'next': await nextSong(); break;
+    case 'prev': await prevSong(); break;
+    case 'seek': if (Number.isFinite(a.t)) seekTo(a.t); break;
+    case 'now': { const j = slotOf(a); if (j > pos) await playNow(j); break; }
+    case 'insert': { const j = slotOf(a); if (j > pos && !order[j]!.ins) insertAt(j); break; }
+    case 'cancel': { const j = slotOf(a, true); if (j > pos) cancelInsert(j); break; }
+    case 'shuffle': setShuffle(!!a.on); break;
+    case 'reshuffle': rebuildAhead(); refreshNext(); break;
+    case 'volume': if (Number.isFinite(a.v)) setVolume(a.v); break;
+    case 'duck': setDuck(!!a.on); break;
+  }
   updateUi();
 }
 
@@ -760,10 +853,11 @@ function showLogin(msg = '') {
 function showStart() {
   gate.innerHTML = `<div class="gate-card">
     <p class="gate-eyebrow">ALAN &amp; OMENA · 2027.03.13</p><h1>大螢幕準備好了</h1>
-    <p class="gate-sub">按「開始播放」後會進入全螢幕。滑鼠移動會出現操作列：進度條（可以拖拉）、上一首／下一首、歌單（插播、隨機播放）、音量、音畫同步。<br/>空白鍵暫停、F 全螢幕、Shift＋← → 倒退／快轉 10 秒、L 歌單、↑↓ 音量、[ ] 音畫同步。</p>
+    <p class="gate-sub">按「開始播放」後會進入全螢幕。滑鼠移動會出現操作列：進度條（可以拖拉）、上一首／下一首、歌單（插播、隨機播放）、講話模式、音量、音畫同步。也可以用手機開後台的「大螢幕遙控」操作。<br/>空白鍵暫停、F 全螢幕、Shift＋← → 倒退／快轉 10 秒、L 歌單、M 講話模式、↑↓ 音量、[ ] 音畫同步。</p>
     <button id="go" type="button">開始播放</button><p id="gate-status" class="gate-status">${statusLine.text}</p></div>`;
   $('go').addEventListener('click', async () => {
     gate.hidden = true;
+    started = true;
     player.unlock();
     void keepAwake();
     void document.documentElement.requestFullscreen().catch(() => {});
@@ -795,6 +889,7 @@ async function boot() {
       setStatus('連不上伺服器，稍後會自動重試', false);
     }
     setInterval(() => void pollFeed(), 2000);
+    if (REMOTE) setInterval(() => void remoteSync(), 1000);
   }
   if (EXPORT) { setupExport(); return; }
   bindUi();

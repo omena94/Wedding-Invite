@@ -594,6 +594,27 @@ class WallSong(Base):
     end_at: Mapped[float] = mapped_column(Float, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+class WallCommand(Base):
+    """大螢幕遙控（2026-09-30）：手機後台按的指令排在這裡，大螢幕每秒來拿一次。
+    正式站有好幾個 uvicorn worker，所以放資料庫、不放記憶體；一小時前的會被清掉。"""
+    __tablename__ = "wall_commands"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    action: Mapped[str] = mapped_column(String(20))
+    args_json: Mapped[str] = mapped_column(Text, default="{}")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+
+class WallRemoteState(Base):
+    """大螢幕最近一次回報的播放狀態（只有 id = 1 這一列）：手機遙控頁看現在播什麼、播到哪、待播清單。"""
+    __tablename__ = "wall_remote_state"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    client: Mapped[str] = mapped_column(String(40), default="")  # 哪一個大螢幕分頁回報的（開了兩個時分得出來）
+    state_json: Mapped[str] = mapped_column(Text, default="{}")
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class MenuItem(Base):
     """婚宴菜單（2026-09-29）：跟飯店討論中的菜色，只給新人看。一道一列，可標討論中／確定／要更換並寫備註。"""
     __tablename__ = "menu_items"
