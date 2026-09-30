@@ -23,7 +23,7 @@ import { signature, drawHeart, drawLyricSub, layoutLyric, lyricSubOf, subStyleFo
 import { grid, stagger, windowLines, mono, tag, pad3, DocCam, withMips, drawPencil, HUD, EDGE, type Grid, type Pose } from './_t3';
 import { msgMaxFor, lyricV2, sigV2, V2 } from './_v2';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'doc', paper: true, energy: [0.2, 0.85], bars: [4, 8], weight: 1 };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'doc', paper: true, energy: [0.2, 0.85], bars: [4, 8], weight: 1 };
 
 // ---------------------------------------------------------------- 文件（報紙）座標，y 向下
 const DW = 1700, DH = 1240;
@@ -204,7 +204,7 @@ export default class Crossword extends Scene {
       for (const tt of [e, this.msgDone + g.bar]) {
         this.cam.pose(this.pose(tt), DW, DH);
         // 格子四角＋署名那一行（有原文副行時再加副行的下緣）
-        const pts = [this.cam.project(GX, GY), this.cam.project(GX + gw, GY), this.cam.project(GX, GY + gh), this.cam.project(GX + gw, GY + gh), this.cam.project(GX + gw, GY + gh + this.sigSize * 1.6)];
+        const pts = [this.cam.project(GX, GY), this.cam.project(GX + gw, GY), this.cam.project(GX, GY + gh), this.cam.project(GX + gw, GY + gh), this.cam.project(GX + gw, GY + gh + this.subH + this.sigSize * 1.6)];
         if (this.subH) pts.push(this.cam.project(GX, GY + gh + this.subH), this.cam.project(GX + gw, GY + gh + this.subH));
         for (const p of pts) {
           if (p.y > HUD.y - 10 && p.x > HUD.x - 20) left = Math.max(left, p.x - (HUD.x - 20));
@@ -389,7 +389,8 @@ export default class Crossword extends Scene {
         c.save(); c.globalAlpha *= a;
         // 署名永遠在整個格子下面（v2：26～32 px），不會跟留言重疊
         c.font = font(F.hand(400), this.sigSize); c.fillStyle = rgba('sepia', 0.82); c.textAlign = 'right';
-        c.fillText(signature(m.name), GX + this.nc * cs, GY + (this.msgRows + 1 + this.lyrRows) * cs + this.sigSize * 1.3);
+        // 雙語（2026-09-30）：有原文時原文抄在格子正下方，署名再往下一排（不跟原文擠在同一行、讀成一串）
+        c.fillText(signature(m.name), GX + this.nc * cs, GY + (this.msgRows + 1 + this.lyrRows) * cs + this.subH + this.sigSize * 1.3);
         c.textAlign = 'left';
         c.restore();
       }
@@ -535,7 +536,8 @@ export default class Crossword extends Scene {
       // 解題：筆從格子那邊飛過去（第一下用 outExpo，之後跟著劃線）
       tx = solve.x; ty = solve.y; px = GX + this.nc * cs + 26; py = GY + (this.msgRows + 0.5) * cs; t0 = solve.t0 - 0.12; writing = true;
       if (t > solve.t0) { px = tx; py = ty; }
-    } else if (lyrHead) {
+    } else if (lyrHead && !this.subH) {
+      // 有原文的窗格不跟著歌詞走：寫歌詞時筆身往右下斜，會橫過格子下面的原文；擱在格子右下角外面就好
       tx = lyrHead.x + cs * 0.22; ty = lyrHead.y + cs * 0.2; px = tx - cs; py = ty; t0 = lyrHead.t0; writing = true; ang = 1.1;
     } else {
       // 休息：擱在格子右下角外面

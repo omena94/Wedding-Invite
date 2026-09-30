@@ -22,7 +22,7 @@ import { layoutLyric, drawLyric, fillWithHearts, signature, WEDDING_DATE, lyricA
 import { grid, windowLines, rrect, pad, settle, renderStage, bodyMaterial, screenMaterial, tableMaterial, slab, setV3, mixV, projScale, fitMsgV2, type Grid } from './_t5';
 import { V2, lyricV2, sigV2 } from './_v2';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'screen', paper: false, energy: [0.1, 0.8], bars: [4, 8] };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'screen', paper: false, energy: [0.1, 0.8], bars: [4, 8] };
 
 // ---------------------------------------------------------------- 手機（公分）與螢幕畫布（像素）
 const PHONE = { w: 7.4, h: 15.9, d: 0.8, r: 1.1 };
@@ -106,7 +106,23 @@ export default class Phone extends Scene {
     // 原文副行：量這個窗格每一句中文＋原文要多高，音樂小卡不夠就往上長（下緣不動；上面只有邀請那一張小卡，讓得出位置）
     let need = 0;
     for (const l of lines) { const d = this.subLay(c, l); if (d) need = Math.max(need, 110 + d.blockH + 90); }
-    if (need > WID_H) { this.widH = Math.ceil(need); this.widY -= this.widH - WID_H; }
+    if (need > WID_H && m) {
+      // 雙語（2026-09-30）：有留言時音樂小卡在時鐘下面，往上長會蓋到時鐘；改成往下長，通知卡整張往下讓（螢幕下半本來就有空）。
+      // 通知卡放不下就用少掉的高度重排留言（字級還是照 v2），歌詞字級跟著留言變，所以再量一次小卡要多高
+      this.widH = Math.ceil(need);
+      this.cardY += this.widH - WID_H;
+      const hMax2 = CH - 60 - this.cardY - HEAD_H - (V2.sigMax / k) * 1.9;
+      if (this.fit.height > hMax2) {
+        this.fit = fitMsgV2(c, body, F.hand(400), MW - 80, hMax2, k, 1.18, 9);
+        this.msgScreen = this.fit.size * k;
+        this.lyr = { ...LYRIC_BASE, size: lyricV2(this.msgScreen) / k, minSize: V2.lyrMin / k };
+        this.sigSize = sigV2(this.msgScreen) / k;
+        this.cardH = HEAD_H + this.fit.height + this.fit.size * 0.3 + this.sigSize * 1.9;
+        let need2 = 0;
+        for (const l of lines) { const d = this.subLay(c, l); if (d) need2 = Math.max(need2, 110 + d.blockH + 90); }
+        this.widH = Math.max(WID_H, Math.ceil(need2));
+      }
+    } else if (need > WID_H) { this.widH = Math.ceil(need); this.widY -= this.widH - WID_H; }
     c.font = font(F.archivo(62, 300), 130);
     this.digitW = Math.max(...'0123456789'.split('').map((d) => c.measureText(d).width));
     this.colonW = c.measureText(':').width + 8;
@@ -303,8 +319,9 @@ export default class Phone extends Scene {
     const sub = lyricSubOf(l);
     if (!sub) return null;
     const k = this.sc, st = this.lyr, lay = layoutLyric(c, l, st);
-    const ss = subSizeFor(lay.size * k) / k;
-    const sl = layoutLyric(c, sub, { ...st, size: ss, minSize: Math.min(ss, 26 / k), tracking: (st.tracking ?? 0) * 0.5 });
+    // 原文至少 34 螢幕 px、不再縮（手機斜躺、離鏡頭遠，太小就讀不到），太長就折行
+    const ss = Math.max(34, subSizeFor(lay.size * k)) / k;
+    const sl = layoutLyric(c, sub, { ...st, size: ss, minSize: ss, tracking: (st.tracking ?? 0) * 0.5 });
     const dy = lay.rows[lay.rows.length - 1]!.y + subGap(lay.size * k, sl.size * k) / k;
     const blockH = lay.size * 0.8 + dy + sl.rows[sl.rows.length - 1]!.y + sl.size * 0.22;
     return { lay, sub, sl, dy, blockH };

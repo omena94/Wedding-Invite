@@ -15,13 +15,14 @@ import { LineBatch } from '../engine/lines';
 import { F, loadText } from '../engine/type';
 import { LIN, rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, lerp, hash } from '../engine/util';
-import { lyricAt, barAfter, beatAfter, sparkHead, sparkParticles, msgChars } from './_motifs';
+import { lyricAt, barAfter, beatAfter, sparkHead, sparkParticles, msgChars, lyricSubOf, layoutLyric, drawLyric, subSizeFor, subStyleFor, subGap, type LyricStyle, type LyricLayout } from './_motifs';
+import type { Line } from '../engine/lyrics';
 import { inkFor, inkPoly, arcAt, lyricOnPath, drawNote, type Pt, type Note } from './_couple';
 import { loadPuppets, drawPuppet, drawPick, drawCycle, puppetPoint, puppetShadow, puppetLight, jumpArc, landSquash, breathe, beatKick, hop, noteV2, tightenNote, type PuppetOpts } from './_puppet';
 import { lyricV2 } from './_v2';
 import { INVITE, enterPuppet } from './_c5';
 
-export const spec: PlateSpecDecl = { group: 'couple', family: 'home', paper: false, energy: [0.15, 0.85], bars: [4, 8] };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'couple', family: 'home', paper: false, energy: [0.15, 0.85], bars: [4, 8] };
 
 const GROUND = 930;
 const SZ = 520;
@@ -32,6 +33,8 @@ const YY_X = 1150, GIVE_X = 890, YJUMP = 18;
 const GLIDE = { x: 1372, y: 392, s: 1 };
 /** 機翼上寫字的範圍（紙飛機的座標，機頭朝上；標準 v2：≤ 600 × 270）。上緣剛好在往後掠的機翼前緣裡面。 */
 const TEXT = { x: -300, y: -62, w: 600, h: 232 };
+/** 有原文的句子：天空上那一塊（左緣、中文字頂、最寬；右邊是大紙飛機的機翼；鏡頭最後推近 3.5%，所以離邊多留一點）。 */
+const SKY_LYR = { x: 150, top: 116, w: 1040 };
 /** 紙飛機的外形（機頭朝上、從後上方看）：尖尖的機頭、往後掠的機翼前緣、翼尖往後折的小翼、尾巴中間的缺口。 */
 const PLANE: readonly Pt[] = [
   { x: 0, y: -310 }, { x: -440, y: 40 }, { x: -432, y: 118 }, { x: -372, y: 192 }, { x: -44, y: 178 }, { x: 0, y: 152 },
@@ -228,9 +231,19 @@ export default class Paperplane extends Scene {
 
     // ---- 軌跡（虛線）＋歌詞
     const rv = prog(t, s + 0.1, s + 0.7);
-    this.drawTrail(c, t, rv);
     const ly = lyricAt(lyrics, t);
-    if (ly) lyricOnPath(c, ly.line, t, this.trail.slice(6, 38), { family: F.archivo(100, 700), size: this.lyricSize, minSize: 40, offset: 26, alpha: ly.k * rv, unsung: rgba('bone', 0.26), sung: rgba('bone', 0.88) });
+    // 雙語（2026-09-30）：中文＋原文沿著弧線會各折兩排、擠成一團，軌跡的虛線還穿過原文。有原文的句子改成平平地寫在天空上
+    // （大紙飛機左邊那一塊）：中文一排、原文接在下面；虛線經過字的那一段不畫（字底下留 14 px）
+    const st: LyricStyle = { family: F.archivo(100, 700), size: this.lyricSize, minSize: 40, maxWidth: SKY_LYR.w, align: 'left', unsung: rgba('bone', 0.26), sung: rgba('bone', 0.88), active: rgba('signal') };
+    const sky = ly && lyricSubOf(ly.line) ? skySub(c, ly.line, st, layoutLyric(c, ly.line, st)) : null;
+    const skyBottom = sky ? SKY_LYR.top + 0.9 * sky.size + sky.height - sky.size + 0.3 * (sky.sub?.lay.size ?? 0) + 14 : 0;
+    this.drawTrail(c, t, rv, skyBottom);
+    if (ly && sky) {
+      const lay = sky;
+      c.save(); c.translate(SKY_LYR.x, SKY_LYR.top + 0.9 * lay.size);
+      drawLyric(c, ly.line, t, st, lay, ly.k * rv);
+      c.restore();
+    } else if (ly) lyricOnPath(c, ly.line, t, this.trail.slice(6, 38), { family: F.archivo(100, 700), size: this.lyricSize, minSize: 40, offset: 26, alpha: ly.k * rv, unsung: rgba('bone', 0.26), sung: rgba('bone', 0.88) });
 
     // ---- 小紙飛機（孟庭的）
     for (const sm of this.smalls) this.drawSmall(c, t, sm);
@@ -394,12 +407,14 @@ export default class Paperplane extends Scene {
   }
 
   /** 飛過的弧線：一開始就有一條很淡的虛線（歌詞排在上面），紙飛機飛過的那一段變成訊號色、慢慢淡回去。 */
-  private drawTrail(c: CanvasRenderingContext2D, t: number, rv: number) {
+  private drawTrail(c: CanvasRenderingContext2D, t: number, rv: number, skipAbove = 0) {
     const u = clamp((t - this.T) / (this.arrive - this.T));
     c.save();
     c.setLineDash([6, 14]);
     c.lineWidth = 2;
     c.strokeStyle = rgba('bone', 0.12 * rv);
+    // skipAbove：天空上有雙語歌詞時，這條線以上（字那一帶）的虛線不畫
+    if (skipAbove) { c.beginPath(); c.rect(0, skipAbove, W, H); c.clip(); }
     c.beginPath(); this.trail.forEach((q, i) => (i ? c.lineTo(q.x, q.y) : c.moveTo(q.x, q.y))); c.stroke();
     c.restore();
     if (t < this.T) return;
@@ -484,4 +499,14 @@ export default class Paperplane extends Scene {
     }
     c.restore();
   }
+}
+
+/** 原文副行換成至少 34 px、不再縮（太長就折行）；中文不動。 */
+function skySub(c: CanvasRenderingContext2D, line: Line, st: LyricStyle, lay: LyricLayout): LyricLayout {
+  const sub = lyricSubOf(line);
+  if (!sub || !lay.sub) return lay;
+  const size = Math.max(34, subSizeFor(lay.size));
+  const sl = layoutLyric(c, sub, { ...subStyleFor(st, lay.size), size, minSize: size });
+  const dy = lay.sub.dy - subGap(lay.size, lay.sub.lay.size) + subGap(lay.size, sl.size);
+  return { ...lay, sub: { lay: sl, dy }, height: dy + (sl.height - sl.size) + lay.size };
 }

@@ -14,14 +14,14 @@ import { FSPass, W, H } from '../engine/gl';
 import { F, font, loadText } from '../engine/type';
 import { clamp, ease, prog, hash, lerp, pulse } from '../engine/util';
 import { type Line } from '../engine/lyrics';
-import { lyricAt, lyricSubOf, subGap, subSizeFor, COUPLE_ZH, DATE_DOTS } from './_motifs';
+import { lyricAt, lyricSubOf, subSizeFor, COUPLE_ZH, DATE_DOTS } from './_motifs';
 import { V2, lyricV2 } from './_v2';
 import {
   T25_TEXT, T25_INVITE, sigOf, winBars, winBeats, stagger, layMsg, layMsgV2, msgGlyphs, glyphMask, glyphStates, MASK_GLSL,
   type MaskGlyph, type GlyphMask, type MsgLay, type Rect,
 } from './_t25';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'journey', paper: false, energy: [0.15, 0.9], bars: [4, 8] };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'journey', paper: false, energy: [0.15, 0.9], bars: [4, 8] };
 
 // ---------------------------------------------------------------- 幾何（世界座標＝鏡頭休息時的畫面座標，y 向下）
 /** 鐘面中心、外框（拱石內緣）、鐘面、字的那一圈（字的中心）、刻度圈。 */
@@ -42,7 +42,10 @@ const MSG_BOX = { x: 214, y: 744, w: 732, h: 214 };
 /** 塔身右下一扇拱窗（裡面點著燈），給空出來的牆一點生氣；不放到右下角 QR 底下。 */
 const WINDOW = { x: 1150, y: 706, w: 96, h: 200 };
 /** 鐘面一圈的字的資料貼圖範圍（1.25 倍解析度，鏡頭推近也清楚）。 */
-const RING_RECT: Rect = [CLK.x - R_DIAL, CLK.y - R_DIAL, R_DIAL * 2, R_DIAL * 2];
+// 雙語（2026-09-30）：原文刻在外面石圈的下半圈，遮罩範圍要包到石圈外緣
+const RING_RECT: Rect = [CLK.x - R_STONE, CLK.y - R_STONE, R_STONE * 2, R_STONE * 2];
+/** 原文那一圈的半徑（石圈 R_BEZ～R_STONE 的中間）。 */
+const R_SUB = (R_BEZ + R_STONE) / 2;
 const RING_SCALE = 1.25;
 const PLQ_RECT: Rect = [PLQ.x, PLQ.y, PLQ.w, PLQ.h];
 /** 月亮（塔身外面、右上）。 */
@@ -51,8 +54,6 @@ const MOON = { x: 1780, y: 206, r: 40 };
 const MAXG = 128;
 /** 原文副行的字在資料貼圖裡的標記（R 通道）：shader 認得出來、用比較安靜的顏色。 */
 const SUB_TAG = 100;
-/** 有原文副行時分針縮短：副行在字的那一圈裡面再一圈，分針照原本的長度會掃過副行。 */
-const L_MIN_SUB = 96;
 const FAM_LYR = F.archivo(75, 700);
 const FAM_MSG = F.ming(900);
 const FAM_SMALL = F.ming(700);
@@ -191,6 +192,15 @@ const BG = () => new FSPass(/* glsl */ `
       vec3 vc = C_INK2 * (1.25 + 0.3 * hash11(floor((th + 3.1416) / seg) + 1.0)) * (0.85 + 0.15 * fbm(p / 40.0, 2));
       vc = mix(vc, C_INK * 0.6, max(jr, 1.0 - smoothstep(1.2, 3.0, abs(d - ${R_STONE}.0))));
       vc *= 0.7 + 0.3 * smoothstep(${R_BEZ}.0, ${R_BEZ + 26}.0, d);
+      // 原文副行（韓文歌）刻在石圈下半圈：還沒唱是淡淡的刻痕，唱到、唱完是淡兩成的紙白（不發光）
+      if (ringOn > 0.5 && d > ${R_BEZ}.0) {
+        vec4 rs = maskAt(ring, RR, p);
+        if (rs.a > 0.0) {
+          vec2 g = gs[min(int(rs.g * 255.0 + 0.5), ${MAXG - 1})];
+          float on = smoothstep(rs.b - 0.04, rs.b + 0.04, g.x);
+          vc = mix(vc, mix(C_BONE * 0.3, C_BONE * 0.78, on), rs.a * ringA);
+        }
+      }
       col = vc;
     }
     // ---- 鎏金外框：圓環的剖面（上面亮、下面暗），一點訊號色
@@ -336,12 +346,12 @@ const measure = (s: string, fam: string, size: number) => { mc ??= document.crea
  * 放得下上半圈就只用上半圈；不然在最接近一半的詞之間分兩段，字級縮到兩段都放得下（最小 minSize）。
  * R：字的中心那一圈的半徑（原文副行用裡面一圈）。
  */
-function ringGlyphs(units: { ch: string; gap: number }[][], fam: string, size0: number, minSize: number, idx0 = 0, tag = 0, R = R_RING): { items: MaskGlyph[]; size: number } {
+function ringGlyphs(units: { ch: string; gap: number }[][], fam: string, size0: number, minSize: number, idx0 = 0, tag = 0, R = R_RING, onlyLower = false): { items: MaskGlyph[]; size: number } {
   const cap = Math.PI * R * 0.92;
   const widthOf = (us: { ch: string; gap: number }[][], size: number) => us.flat().reduce((s, u) => s + measure(u.ch, fam, size) + u.gap * size, 0);
   let size = size0;
   let top = units, bot: typeof units = [];
-  if (widthOf(units, size) > cap && units.length > 1) {
+  if (!onlyLower && widthOf(units, size) > cap && units.length > 1) {
     let best = 1, bestD = Infinity;
     for (let k = 1; k < units.length; k++) {
       const d = Math.max(widthOf(units.slice(0, k), size), widthOf(units.slice(k), size));
@@ -377,8 +387,9 @@ function ringGlyphs(units: { ch: string; gap: number }[][], fam: string, size0: 
       s += w + u.gap * size;
     }
   };
-  place(top, true);
-  if (bot.length) place(bot, false);
+  // onlyLower：整段排在下半圈（石圈上的原文，從 6 點往兩邊、由左往右讀）
+  if (onlyLower) place(top, false);
+  else { place(top, true); if (bot.length) place(bot, false); }
   return { items, size };
 }
 
@@ -475,13 +486,13 @@ export default class ClockTower extends Scene {
     this.lyrSize = lyricV2(this.msgSize);
     lines.forEach((ln, li) => {
       const { items: ri, size } = ringGlyphs(lineUnits(ln), FAM_LYR, this.lyrSize, V2.lyrMin);
-      // 韓文歌：原文是字的那一圈裡面再一圈（同心、小一號；上半圈在中文正下方），中間隔著那條鎏金細線
+      // 韓文歌：原文刻在外面的石圈下半圈（從 6 點往兩邊，由左往右讀；同一種鎏金的字，淡兩成）。
+      // 雙語（2026-09-30）：原本原文是鐘面裡面再一圈、也分上下兩段，中文上下兩弧夾著原文兩弧，四段交錯讀不順，指針也會掃過原文
       const sub = subs[li];
       let all = ri.slice(0, MAXG);
       if (sub) {
-        const ss = subSizeFor(size);
-        const r = R_RING - size * 0.35 - subGap(size, ss) + ss * 0.35;
-        const { items: si } = ringGlyphs(lineUnits(sub), FAM_LYR, ss, Math.min(ss, 24), all.length, SUB_TAG, r);
+        const ss = Math.min(38, subSizeFor(size));
+        const { items: si } = ringGlyphs(lineUnits(sub), FAM_LYR, ss, 30, all.length, SUB_TAG, R_SUB, true);
         all = all.concat(si).slice(0, MAXG);
         this.subAny = true;
       }
@@ -526,7 +537,7 @@ export default class ClockTower extends Scene {
     const jump = ph < 0 ? 0 : 1 - Math.exp(-ph * 26) * Math.cos(ph * 34);
     const turns = bi + (j - 1 + clamp(jump, 0, 1.12)) / nb;
     u.angM!.value = turns * Math.PI * 2;
-    u.lenM!.value = this.subAny ? L_MIN_SUB : L_MIN;
+    u.lenM!.value = L_MIN;
     u.angH!.value = ((this.hour0 + turns) / 12) * Math.PI * 2;
 
     // ---- 鐘響：窗格裡的小節線（第一聲是銅牌亮的那一下）
@@ -584,7 +595,7 @@ export default class ClockTower extends Scene {
       bloom: 0.7, vignette: 0.5, halation: 0.22,
       shake: [0, bell * 3],
       fade: exit * 0.35,
-      popupAvoid: [[CLK.x - R_DIAL, CLK.y - R_DIAL, R_DIAL * 2, R_DIAL * 2], ...(box ? [box as Rect] : [])],
+      popupAvoid: [[CLK.x - R_STONE, CLK.y - R_STONE, R_STONE * 2, R_STONE * 2], ...(box ? [box as Rect] : [])],
     };
   }
 }

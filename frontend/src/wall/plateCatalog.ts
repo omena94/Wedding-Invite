@@ -377,7 +377,7 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": true,
   "idea": "摺紙飛機（摺的步驟在拍點上），射出去飛過畫面，機翼上寫著留言；飛過的軌跡是歌詞。",
-  "bilingual": false
+  "bilingual": true
  },
  {
   "name": "duet",
@@ -719,7 +719,7 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "報紙填字格，字一格一格在拍點填入（歌詞與留言交錯），提示欄是冷面笑話。",
-  "bilingual": false
+  "bilingual": true
  },
  {
   "name": "sheetmusic",
@@ -791,7 +791,7 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "營養標示表：甜度 200%、心動 ∞，每一列在拍點填上，成分是留言。",
-  "bilingual": false
+  "bilingual": true
  },
  {
   "name": "redenvelope",
@@ -863,7 +863,7 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "手機鎖定畫面：大時鐘（歌曲時間）、通知一則一則滑下來（留言），歌詞是音樂播放器的小卡。",
-  "bilingual": false
+  "bilingual": true
  },
  {
   "name": "spreadsheet",
@@ -1925,7 +1925,7 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "古老的鐘面特寫，指針在拍點跳一格，整點（小節線）鐘聲的圓環擴散，鐘面數字換成歌詞的字，鐘下的銘板是留言。",
-  "bilingual": false
+  "bilingual": true
  },
  {
   "name": "subtitles",

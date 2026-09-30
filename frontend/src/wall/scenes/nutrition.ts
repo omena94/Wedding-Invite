@@ -22,7 +22,7 @@ import { lyricAt, lyricSubOf, subGap, subSizeFor, signature } from './_motifs';
 import { grid, stagger, drawFit, layoutRows, drawRows, paperInk, lastIdx, Stage, docRT, camDist, type Grid, type RowsStyle, type V3 } from './_t4';
 import { msgMaxFor, lyricV2, sigV2, V2, fitClauses } from './_v2';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'doc', paper: true, energy: [0.3, 0.9], bars: [4, 8] };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'doc', paper: true, energy: [0.3, 0.9], bars: [4, 8] };
 
 // ---------------------------------------------------------------- 盒子的展開圖（像素，左上原點、y 向下）
 // 正面 LW × LH 在左上；右側 BT 寬、接在正面右邊；前側 BT 高、接在正面下面（右下角那塊沒用到）。
@@ -183,9 +183,12 @@ export default class Nutrition extends Scene {
   reroll: number[] = [];
   /**
    * 韓文歌有原文副行時「歌詞那一格」多出來的高度：粗線以下（營養素、成分欄）整塊往下挪這麼多。
-   * 有副行一定沒有主打留言（留言的窗格副行收起來），成分欄只有一句邀請，挪下去不會擠；沒有副行是 0，版面跟原本一樣。
+   * 雙語（2026-09-30）：有主打留言也有原文，成分欄（留言）往下挪之後高度少 subRoom，留言照少掉的高度排（字級還在 v2 範圍），署名不會被擠出標籤；
+   * 沒有副行是 0，版面跟原本一樣。
    */
   subRoom = 0;
+  /** 署名跟留言最後一行同一排（有原文、成分欄比較矮的時候）。 */
+  sigInline = false;
   private baseDrawn = false;
 
   override async init() {
@@ -213,11 +216,24 @@ export default class Nutrition extends Scene {
     // v2：留言字級照螢幕標準（依字數 40～60）換成盒面字級；可用高度先扣掉署名，照子句斷行
     if (this.msg) {
       const c = this.live.ctx, S = this.sMsg, maxS = msgMaxFor(this.msg.text);
-      const boxH = MSG.h - (sigV2(maxS) / S) * SIG_K;
+      const boxH = MSG.h - this.subRoom - (sigV2(maxS) / S) * SIG_K;
       const opt = { min: V2.msgMin / S, max: maxS / S, lineHeight: 1.22, maxLines: 5 };
-      const byW = fitText(c, this.msg.text, this.fam, MSG.w, boxH, opt);
-      const byC = fitClauses(c, this.msg.text, this.fam, MSG.w, boxH, opt);
-      this.fit = byC && byC.size >= byW.size * 0.9 ? byC : byW;
+      const fitIn = (h: number) => {
+        const byW = fitText(c, this.msg!.text, this.fam, MSG.w, h, opt);
+        const byC = fitClauses(c, this.msg!.text, this.fam, MSG.w, h, opt);
+        return byC && byC.size >= byW.size * 0.9 ? byC : byW;
+      };
+      this.fit = fitIn(boxH);
+      // 有原文（成分欄少了 subRoom）：先試「署名跟最後一行同一排、靠右」，留言就不用再讓出署名那一排的高度
+      if (this.subRoom) {
+        const f2 = fitIn(MSG.h - this.subRoom - 8);
+        const sig2 = Math.round(sigV2(f2.size * S) / S);
+        c.font = font(this.fam, f2.size);
+        const lastW = c.measureText(f2.lines[f2.lines.length - 1] ?? '').width;
+        c.font = font(F.hand(700), sig2);
+        const sigW = c.measureText(`${signature(this.msg.name)}${this.msg.couple ? '（新人）' : ''}`).width;
+        if (lastW + sigW + 40 <= MSG.w) { this.fit = f2; this.sigInline = true; }
+      }
       this.msgScreen = this.fit.size * S;
       this.sigSize = Math.round(sigV2(this.msgScreen) / S);
     }
@@ -478,7 +494,7 @@ export default class Nutrition extends Scene {
     if (m && this.fit) {
       const fit = this.fit;
       const sigH = this.sigSize * SIG_K;
-      const top = MSG.y + fit.size * 0.9 + Math.max(0, (MSG.h - fit.height - sigH) * 0.3);
+      const top = MSG.y + fit.size * 0.9 + Math.max(0, (MSG.h - this.subRoom - fit.height - (this.sigInline ? 0 : sigH)) * 0.3);
       // 印刷滾筒：一行一行由左往右印上去
       fit.lines.forEach((ln, i) => {
         const a = t0 + i * 0.09, u = prog(t, a, a + 0.26, ease.outCubic);
@@ -494,7 +510,8 @@ export default class Nutrition extends Scene {
         c.save(); c.globalAlpha = ka;
         c.font = font(F.hand(700), this.sigSize); c.fillStyle = rgba('sepia', 0.85); c.textAlign = 'right';
         // 署名永遠在最後一行下面（字級是扣掉署名的高度算的）：讓出下伸部再放署名
-        c.fillText(`${signature(m.name)}${m.couple ? '（新人）' : ''}`, MSG.x + MSG.w, top + (fit.lines.length - 1) * fit.lineHeight + fit.size * 0.3 + this.sigSize * 1.05);
+        const lastBase = top + (fit.lines.length - 1) * fit.lineHeight;
+        c.fillText(`${signature(m.name)}${m.couple ? '（新人）' : ''}`, MSG.x + MSG.w, this.sigInline ? lastBase : lastBase + fit.size * 0.3 + this.sigSize * 1.05);
         c.restore();
       }
       return;
