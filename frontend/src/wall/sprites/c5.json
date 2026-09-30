@@ -5,7 +5,8 @@
     "mt_": {"ref":"mt_idle_front","refFrac":0.96484375,"groundFrac":0.984375,"target":600,"from":"base:mt_"},
     "cp_": {"ref":"cp_hug","refFrac":0.9760765550239234,"groundFrac":0.9864433811802232,"target":600,"from":"base:cp_"},
     "pp_": {"ref":"pp_stand","refFrac":0.8310546875,"groundFrac":0.927734375,"target":260,"from":"base:pp_"},
-    "qq_": {"ref":"qq_stand","refFrac":0.9326171875,"groundFrac":0.958984375,"target":280,"from":"base:qq_"}
+    "qq_": {"ref":"qq_stand","refFrac":0.9326171875,"groundFrac":0.958984375,"target":280,"from":"base:qq_"},
+    "yy_": {"ref":"yy_stand","refFrac":0.5859375,"groundFrac":0.9365234375,"target":400,"from":"yuanyuan:yy_"}
   },
   "sprites": {
     "cp_duet_chorus": {"kind":"couple","w":318,"h":604,"ax":156.3,"ay":599.7,"ref":600},
@@ -45,6 +46,8 @@
     "xw_plane_aim": {"kind":"person","w":402,"h":606,"ax":167.8,"ay":602.3,"ref":600},
     "xw_plane_fold": {"kind":"person","w":162,"h":607,"ax":65.1,"ay":603.5,"ref":600,"pts":{"hands":[140,125.3]}},
     "xw_plane_throw": {"kind":"person","w":411,"h":598,"ax":188.3,"ay":594.5,"ref":600,"pts":{"hand":[394.3,49.7]}},
-    "xw_plane_watch": {"kind":"person","w":161,"h":606,"ax":60.6,"ay":602.7,"ref":600}
+    "xw_plane_watch": {"kind":"person","w":161,"h":606,"ax":60.6,"ay":602.7,"ref":600},
+    "yy_c5_movie": {"kind":"dog","w":257,"h":407,"ax":128.3,"ay":402.3,"ref":400,"height":0.42},
+    "yy_c5_peek": {"kind":"dog","w":230,"h":567,"ax":98.3,"ay":563,"ref":400,"height":0.42,"pts":{"paws":[116.7,283.3]}}
   }
 }

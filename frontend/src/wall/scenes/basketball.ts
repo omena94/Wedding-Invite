@@ -1,13 +1,16 @@
-// 街頭鬥牛（亮、hoops）：午後的公園籃球場，宣文和孟庭穿著 A&O 情侶球衣一對一；芃芃和 QQ 在場邊當裁判。
-// 角色是 Codex 畫的紙偶（_puppet.ts、素材組 hoops；狗坐著的樣子借 base 的 pp_sit／qq_sit）。
+// 街頭鬥牛（亮、hoops）：午後的公園籃球場，宣文和孟庭穿著 A&O 情侶球衣一對一；芃芃和 QQ 在場邊當裁判，元元當撿球的。
+// 角色是 Codex 畫的紙偶（_puppet.ts、素材組 hoops；狗坐著的樣子借 base 的 pp_sit／qq_sit，元元用 yuanyuan 組的現成姿勢）。
 //  - 宣文運球：一拍拍一下（球在拍點落地、半拍回到手上），左右晃（每兩拍換一邊）；孟庭壓低身體跟著他左右移動防守。
-//  - 每兩小節一次，小節線上宣文跳投（最高點出手）：
-//    · 單數次：孟庭同時跳起來蓋火鍋（她的手在出手後一瞬間碰到球），球往左下方被拍掉、落地彈兩下滾到狗旁邊；
+//  - 每兩小節一次（快歌三小節），小節線上宣文跳投（最高點出手）：
+//    · 單數次：孟庭同時跳起來蓋火鍋（她的手在出手後一瞬間碰到球），球往左下方被拍掉；
 //      芃芃吹哨、QQ 舉手判決；孟庭落地搖手指「不行喔～」，宣文抱頭大笑。
 //    · 雙數次：孟庭慢了半拍，球從她手上飛過去空心進（鐵鍊網往下甩），宣文轉過來握拳大叫。
-//    一小節後球彈回宣文手上，繼續運球。
+//  - 元元（白色柴犬，2026-09-30 新人加的第三隻狗）是撿球的：平常坐在場邊（一小節坐、一小節歪頭），宣文出手前站起來盯著球。
+//    · 被蓋的球：牠從場邊跳起來，最高點（下一拍）在空中一口接住——兩隻小博美跳不到、也叼不動那顆大籃球；
+//    · 進的球：牠跑到籃框底下，在球彈起來之後的拍點一口叼起來。
+//    叼著球跑到宣文左邊，在拍點上把球交到他手上，再小跑步回場邊坐好。宣文拿到球繼續運球。
 //  - **焦點是主打留言**：噴漆寫在球場後面那道牆上（先刷一塊米白的底漆、邊緣有流下來的漆），一個字一個字噴上去（噴嘴有一點漆霧），寫完署名；
-//    照「留言尺寸與版面比例標準 v2」：字 40～60、底漆那一塊最大 780 × 420，放在左上，寬高跟著留言。沒有留言時寫邀請。
+//    照「留言尺寸與版面比例標準 v2」：字 40～60、底漆那一塊最大 820 × 420，放在左上，寬高跟著留言。沒有留言時寫邀請。
 //  - 歌詞像漆在前景的球場地上（lyricOnPath，逐字跟唱），比留言小一級。
 //  - 光線：午後的太陽在左上，牆頭後面探出來的樹梢在拍點上被風推一下。鏡頭整個窗格慢慢推近兩個人。
 //  - 右下角 HUD：籃框的柱子站在它上面一點，場線到那裡就淡掉。
@@ -19,7 +22,7 @@ import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, lerp, hash } from '../engine/util';
 import { lyricAt, barAfter, beatAfter, msgChars } from './_motifs';
 import { inkFor, paperBG, inkLine, hatch, lyricOnPath, drawNote, arcAt, type Note } from './_couple';
-import { loadPuppets, drawPuppet, drawPick, drawCycle, puppetPoint, puppetShadow, puppetIn, jumpArc, breathe, beatKick, landSquash, noteV2, tightenNote, type PuppetOpts } from './_puppet';
+import { loadPuppets, drawPuppet, drawPick, drawCycle, puppetPoint, puppetShadow, puppetIn, jumpArc, breathe, beatKick, landSquash, hop, noteV2, tightenNote, type PuppetOpts } from './_puppet';
 import { lyricV2 } from './_v2';
 import { basketball, drawHoop, lyricRows, type Hoop, type Pt } from './_c8';
 
@@ -38,6 +41,15 @@ const PANEL = { x: 120, y: 196, w: 820, h: 420 };
 const PAD = { x: 44, top: 60, bottom: 34 };
 /** 狗（裁判）：前景左邊，放大一點（遠處的桌子也要認得出是芃芃和 QQ）。 */
 const DOGS = { pp: 330, qq: 520, g: 928, s: 1.5 };
+/**
+ * 元元（撿球的）：場邊的位置（x、腳底）、交球給宣文時站的位置（宣文左邊、面向他）、放大倍數。
+ * 牠站在球場這一條（比前景的芃芃、QQ 遠一點），倍數小一點；三隻狗傳同一個場景尺度 SZ，身高比例照 dogs3-lineup。
+ * 跑到籃框底下時腳底抬回球場那條線（818），不會踩進右下角 HUD（y ≥ 830）。
+ */
+const YY = { home: 720, hand: 850, g: 838, s: 1.2 };
+const yyGround = (x: number) => lerp(YY.g, GROUND, clamp((x - 1100) / 200));
+/** 元元跳起來接球跳多高（px）。 */
+const YY_JUMP = 70;
 /** 地上粉筆寫的歌詞：沿著這條線。 */
 const CHALK: Pt[] = [{ x: 640, y: 972 }, { x: 980, y: 962 }, { x: 1320, y: 970 }];
 const BALL_R = 11;
@@ -47,10 +59,19 @@ const INVITE = '掃描右下角 QR code，把祝福寫上大螢幕';
 const POSES = [
   'xw_hoops_dribble_1', 'xw_hoops_dribble_2', 'xw_hoops_shoot_1', 'xw_hoops_shoot_2', 'xw_hoops_laugh', 'xw_hoops_cheer',
   'mt_hoops_guard_left', 'mt_hoops_block_left', 'mt_hoops_cheer', 'pp_sit', 'pp_hoops_whistle', 'qq_sit', 'qq_hoops_call',
+  'yy_sit', 'yy_tilt', 'yy_stand', 'yy_run_1', 'yy_run_2', 'yy_ball', 'yy_jump',
 ];
 
-/** 一次進攻：C = 出手的小節線；block = 被蓋；contact = 球碰到孟庭的手（被蓋時）或到籃框（進球時）；reset = 球回到宣文手上。 */
-interface Play { C: number; block: boolean; air: number; contact: number; land: number; reset: number; rest: Pt }
+/**
+ * 一次進攻：C = 出手的小節線；block = 被蓋；contact = 球碰到孟庭的手（被蓋時）或到籃框（進球時）；rest = 球最後會滾到哪。
+ * 元元：go 起跑、pick 叼到球（拍點）、pickAt 牠叼球時站的位置與朝向、reset 把球交給宣文（拍點）、handMouth 交球那一刻牠嘴上的球、back 回到場邊。
+ */
+interface Play {
+  C: number; block: boolean; air: number; contact: number; land: number; rest: Pt;
+  go: number; pick: number; pickAt: { x: number; dir: 1 | -1 }; carry0: number; reset: number; handMouth: Pt; back: number;
+  /** 被蓋的那次：元元跳起來在空中接住被拍掉的球（起跳、落地、x、接到的拍點與位置）。 */
+  jump: { t0: number; t1: number; x0: number; x1: number; catchPt: Pt } | null;
+}
 
 export default class Basketball extends Scene {
   paper = paperBG();
@@ -71,20 +92,51 @@ export default class Basketball extends Scene {
     const s = this.ctx.start, e = this.ctx.end;
     await loadText('一位賓客新人留言A&O ♥' + INVITE);
     this.track(await loadPuppets(POSES));
-    // 進攻：開場一小段之後的小節線，每兩小節一次（窗格太短就在下一拍）
+    this.release = puppetPoint('xw_hoops_shoot_2', 'hand', XW_X, GROUND - JUMP.xw, { h: SZ }) ?? { x: XW_X + 70, y: GROUND - JUMP.xw - SZ * 1.15 };
+    this.blockAt = puppetPoint('mt_hoops_block_left', 'hand', MT_X - 40, GROUND - JUMP.mt, { h: SZ }) ?? { x: MT_X - 110, y: GROUND - JUMP.mt - SZ * 1.1 };
+    // 進攻：開場一小段之後的小節線，每兩小節一次（窗格太短就在下一拍）。
+    // 快歌兩小節太短（元元來不及把球撿回來），改成三小節一次
     let C = barAfter(au, s + 1.5);
     if (C > e - 1.4) C = beatAfter(au, s + 1.1);
+    const gap = au.timeOfBar(Math.round(au.barAt(C)) + 2) - C < 3.3 ? 3 : 2;
+    const yyO = (dir: number): PuppetOpts => ({ h: SZ, scale: YY.s, flip: dir < 0 });
+    const fall = Math.sqrt((2 * (GROUND - BALL_R - HOOP.y)) / 1800);
     for (let k = 0; k < 10 && C < e - 1.2; k++) {
       const bp = au.beatPeriod(C), air = clamp(bp * 1.1, 0.45, 0.7);
       const block = k % 2 === 0;
       const contact = block ? C + 0.09 : C + clamp(bp * 0.9, 0.4, 0.7);
-      // 被蓋的球往左下方飛、落地彈兩下，停在狗旁邊；進球的球從網子掉下來、往左滾一點
-      const rest = block ? { x: 760 - 40 * (k % 3), y: GROUND - BALL_R } : { x: HOOP.x - 170, y: GROUND - BALL_R };
-      this.plays.push({ C, block, air, contact, land: C + air / 2, reset: au.timeOfBeat(Math.round(au.beatAt(C)) + 5), rest });
-      C = au.timeOfBar(Math.round(au.barAt(C)) + 2);
+      // 進球的球從網子掉下來、在籃框底下彈、往左滾一點（被蓋的球由元元在空中接走，用不到 rest）
+      const rest = block ? { x: 470 + 30 * (k % 3), y: GROUND - BALL_R } : { x: HOOP.x - 60, y: GROUND - BALL_R };
+      const nextC = au.timeOfBar(Math.round(au.barAt(C)) + gap);
+      const p: Play = { C, block, air, contact, land: C + air / 2, rest, go: 0, pick: 0, pickAt: { x: 0, dir: 1 }, carry0: 0, reset: 0, handMouth: { x: 0, y: 0 }, back: 0, jump: null };
+      if (block) {
+        // 被蓋：球被往左下拍掉，元元從場邊跳起來、最高點（下一拍）剛好在空中一口接住——兩隻小博美跳不到的高度
+        const catchT = beatAfter(au, contact + 0.2), ya = clamp(bp, 0.4, 0.6);
+        const x0 = YY.home, x1 = YY.hand + 10, xm = (x0 + x1) / 2;
+        const catchPt = puppetPoint('yy_jump', 'ball', xm, yyGround(xm) - YY_JUMP, yyO(1))!;
+        p.jump = { t0: catchT - ya / 2, t1: catchT + ya / 2, x0, x1, catchPt };
+        p.pick = catchT;
+        p.go = p.jump.t0 - 0.12;
+        p.pickAt = { x: x1, dir: 1 };
+        p.carry0 = p.jump.t1 + 0.25;
+      } else {
+        // 進球：球穿過網子掉下來、在籃框底下彈；元元跑過去，在第一次彈起來之後的拍點叼到（牠站在球旁邊、嘴對著球）
+        p.pick = beatAfter(au, contact + fall + 0.25);
+        const b = this.flight(p, p.pick);
+        const dir: 1 | -1 = b.x >= YY.home ? 1 : -1;
+        const m = puppetPoint('yy_ball', 'mouth', 0, 0, yyO(dir))!;
+        p.pickAt = { x: b.x - m.x, dir };
+        p.go = Math.min(contact + 0.25, p.pick - PICK_IN - Math.abs(p.pickAt.x - YY.home) / 900);
+        p.carry0 = p.pick + 0.25;
+      }
+      // 叼著跑回宣文左邊、在拍點上交球；來不及的話在下一次出手前一拍半交到
+      const carry = Math.abs(p.pickAt.x - YY.hand) / 750 + 0.2;
+      p.reset = Math.min(beatAfter(au, p.carry0 + carry), nextC - au.beatPeriod(nextC) * 1.5);
+      p.handMouth = puppetPoint('yy_ball', 'mouth', YY.hand, yyGround(YY.hand), yyO(1))!;
+      p.back = p.reset + 0.35 + Math.abs(YY.hand - YY.home) / 450;
+      this.plays.push(p);
+      C = nextC;
     }
-    this.release = puppetPoint('xw_hoops_shoot_2', 'hand', XW_X, GROUND - JUMP.xw, { h: SZ }) ?? { x: XW_X + 70, y: GROUND - JUMP.xw - SZ * 1.15 };
-    this.blockAt = puppetPoint('mt_hoops_block_left', 'hand', MT_X - 40, GROUND - JUMP.mt, { h: SZ }) ?? { x: MT_X - 110, y: GROUND - JUMP.mt - SZ * 1.1 };
     // 牆上的留言：標準 v2；底漆那一塊的寬高跟著留言
     const c = this.fg.ctx;
     const w = PANEL.w - PAD.x * 2, hmax = PANEL.h - PAD.top - PAD.bottom;
@@ -185,11 +237,13 @@ export default class Basketball extends Scene {
     this.trees(c, t);
     this.drawSpray(c, t);
     this.drawLyric(c, t);
-    this.drawDogs(c, t);
     const ball = this.ballAt(t);
     this.drawMengting(c, t);
     this.drawXuanwen(c, t);
+    // 元元在球場這一條（人的前面一點），芃芃、QQ 在更前面的前景
+    this.drawYuanyuan(c, t);
     if (ball) basketball(c, ball.x, ball.y, BALL_R, ball.rot);
+    this.drawDogs(c, t);
     let sw = 0;
     for (const p of this.plays) if (!p.block && t >= p.contact) sw = Math.max(sw, Math.exp(-(t - p.contact) / 0.4));
     drawHoop(c, HOOP, 'front', { line: rgba('sepia', 0.8), glass: '', pole: '', swish: sw, t, chain: true });
@@ -280,7 +334,10 @@ export default class Basketball extends Scene {
     drawPick(c, keys, t, x, GROUND - lift, { ...base, squash, rot: !p.block && t >= done ? 0.03 * Math.sin(t * 10) : 0 });
   }
 
-  /** 球：運球（拍點落地）→ 出手 → 被蓋（往左下飛、彈兩下、停住）或空心進（網子掉下來、往左滾）→ 一小節後彈回宣文手上。 */
+  /**
+   * 球：運球（拍點落地）→ 出手 → 被蓋（往左下飛、彈兩下）或空心進（網子掉下來、彈）→ 元元叼走（這段畫在牠嘴上，drawYuanyuan）
+   * → 交球的拍點從元元嘴上拋回宣文手上。
+   */
   private ballAt(t: number): (Pt & { rot: number }) | null {
     const au = this.ctx.audio;
     const p = this.playAt(t);
@@ -296,25 +353,137 @@ export default class Basketball extends Scene {
     if (!p) {
       const x0 = XW_X + 30 * this.sway(t);
       const d = dribble(x0);
-      // 剛 reset：球從停的地方彈回手上（0.45 秒）
+      // 剛交球：球從元元嘴上拋回宣文手上（0.45 秒）
       if (prev && t < prev.reset + 0.45) {
         const u = (t - prev.reset) / 0.45;
-        const q = arcAt(prev.rest, d, 120, ease.inOutCubic(u));
+        const q = arcAt(prev.handMouth, d, 90, ease.inOutCubic(u));
         return { ...q, rot: t * 3 };
       }
       return t < this.ctx.start + 0.3 ? null : d;
     }
     if (t < p.C) return null; // 拿在 shoot_1 的手上（圖上畫的球）
+    if (t >= p.pick - (p.block ? 0 : PICK_IN)) return null; // 元元接到／正要叼、或叼著跑（drawYuanyuan 畫）
+    return this.flight(p, t);
+  }
+
+  /** 出手之後、元元叼走之前的球：被蓋（往左下飛、彈兩下、往場邊滾）或進球（網子掉下來、彈、往左滾一點）。 */
+  private flight(p: Play, t: number): Pt & { rot: number } {
     if (p.block) {
       if (t < p.contact) { const u = (t - p.C) / (p.contact - p.C); return { x: lerp(this.release.x, this.blockAt.x, u), y: lerp(this.release.y, this.blockAt.y, u), rot: 0 }; }
-      // 被拍掉：往左下飛（重力）、彈兩下、滾到 rest
-      return { ...bounceTo(this.blockAt, p.rest, t - p.contact, -520), rot: -(t - p.contact) * 6 };
+      // 被拍掉：往左下飛，落進跳起來的元元嘴裡
+      const J = p.jump!;
+      const u = clamp((t - p.contact) / Math.max(0.05, p.pick - p.contact));
+      return { ...arcAt(this.blockAt, J.catchPt, 36, u), rot: -(t - p.contact) * 6 };
     }
     // 進球：飛到籃框、從網子掉下來、往左滾到 rest
     if (t < p.contact) { const u = (t - p.C) / (p.contact - p.C); const q = arcAt(this.release, HOOP, 170, u); return { ...q, rot: u * 3 }; }
     const d = t - p.contact, g = 1800, fall = Math.sqrt((2 * (GROUND - BALL_R - HOOP.y)) / g);
     if (d < fall) return { x: HOOP.x, y: HOOP.y + 0.5 * g * d * d, rot: 3 };
     return { ...bounceTo({ x: HOOP.x, y: GROUND - BALL_R }, p.rest, d - fall, 0, g * fall * 0.45), rot: 3 + (d - fall) * 5 };
+  }
+
+  /**
+   * 元元（撿球的）：場邊坐著（一小節坐、一小節歪頭，拍點上身體壓一下）→ 宣文準備出手時站起來盯著球 →
+   * 跑過去（跑步兩張、半拍一張、一步一彈）→ 拍點上低頭叼起籃球（身體往前一傾，球從地上吸到嘴裡）→
+   * 叼著跑回宣文左邊站好 → 拍點上把球交給宣文（球從嘴上拋到他手上）→ 看一下，小跑步回場邊。
+   * yy_ball 圖上嘴裡本來是網球：蓋掉（hide），嘴上改畫程式的籃球。
+   */
+  private drawYuanyuan(c: CanvasRenderingContext2D, t: number) {
+    const au = this.ctx.audio, bp = au.beatPeriod(t);
+    const ent = puppetIn(t, this.ctx.start + 0.2, 0.42);
+    if (ent.alpha <= 0) return;
+    const base = (dir: number): PuppetOpts => ({ h: SZ, scale: YY.s, flip: dir < 0, spin: ent.spin, alpha: ent.alpha, hide: ['yy_ball:ball', 'yy_jump:ball'] });
+    const shadow = (x: number, lift = 0) => puppetShadow(c, 'yy', x, yyGround(x), { h: SZ * YY.s, lift, alpha: 0.3 * ent.alpha, color: '70,45,25' });
+    const wag = 0.04 * beatKick(au, t, 0.25) + breathe(t, 0.012, 1.4, 0.2);
+    const runs = ['yy_run_1', 'yy_run_2'];
+    const bob = () => hop(au.beatAt(t), 2) * 5;
+    const withBall = (name: string, x: number, g: number, o: PuppetOpts) => {
+      const m = puppetPoint(name, 'mouth', x, g, o);
+      if (m) basketball(c, m.x, m.y + 2, BALL_R, 0.1);
+    };
+    let P: Play | null = null;
+    for (const p of this.plays) if (t >= p.C - bp * 0.5 && t < p.back) P = p;
+    // 在場邊：坐著（每小節換坐、歪頭）；宣文準備出手時站起來盯著球
+    if (!P || t < P.go) {
+      const x = YY.home, g = yyGround(x);
+      shadow(x);
+      if (P) drawPuppet(c, 'yy_stand', x, g, { ...base(1), squash: landSquash(t, P.C - bp * 0.5, 0.08) + wag * 0.5 });
+      else drawPuppet(c, Math.floor(au.barAt(t)) % 2 ? 'yy_tilt' : 'yy_sit', x, g, { ...base(1), squash: wag });
+      return;
+    }
+    const pk = P.pickAt;
+    // 被蓋：蹲一下 → 跳起來，最高點（拍點）在空中接住被拍掉的球 → 叼著球落地（就落在宣文左邊）
+    if (P.jump && t < P.carry0) {
+      const J = P.jump;
+      const j = jumpArc(t, J.t0, J.t1, YY_JUMP, { crouch: 0.12, land: 0.16 });
+      const x = lerp(J.x0, J.x1, clamp((t - J.t0) / (J.t1 - J.t0))), g = yyGround(x);
+      shadow(x, -j.y);
+      if (j.air) {
+        const o: PuppetOpts = { ...base(1), rot: -0.15 + 0.3 * j.u, pivot: 0.5, squash: j.squash };
+        drawPuppet(c, 'yy_jump', x, g + j.y, o);
+        if (t >= P.pick) { const b = puppetPoint('yy_jump', 'ball', x, g + j.y, o)!; basketball(c, b.x, b.y, BALL_R, 0.3); }
+      } else if (t < J.t0) drawPuppet(c, 'yy_stand', x, g, { ...base(1), squash: j.squash });
+      else { const o: PuppetOpts = { ...base(1), squash: j.squash }; drawPuppet(c, 'yy_ball', x, g, o); withBall('yy_ball', x, g, o); }
+      return;
+    }
+    // 跑過去：到的時候剛好是叼到的那一拍
+    if (t < P.pick - PICK_IN) {
+      const u = clamp((t - P.go) / Math.max(0.1, P.pick - PICK_IN - P.go));
+      const x = lerp(YY.home, pk.x, sine(u)), dir = pk.x >= YY.home ? 1 : -1;
+      shadow(x, bob());
+      drawCycle(c, au, t, runs, 2, x, yyGround(x) - bob(), { ...base(dir), rot: dir * 0.04 });
+      return;
+    }
+    // 叼球：身體往前一傾（最低點在叼到的拍點），球從地上吸到嘴裡
+    if (t < P.pick + 0.25) {
+      const g = yyGround(pk.x);
+      const dip = Math.exp(-Math.pow((t - P.pick) / 0.1, 2));
+      const o: PuppetOpts = { ...base(pk.dir), rot: pk.dir * 0.42 * dip, squash: 0.06 * dip };
+      shadow(pk.x);
+      drawPuppet(c, 'yy_ball', pk.x, g, o);
+      const m = puppetPoint('yy_ball', 'mouth', pk.x, g, o)!;
+      const free = this.flight(P, Math.min(t, P.pick));
+      const k = ease.outCubic(clamp((t - (P.pick - PICK_IN)) / PICK_IN));
+      basketball(c, lerp(free.x, m.x, k), lerp(free.y, m.y + 2, k), BALL_R, free.rot);
+      return;
+    }
+    // 叼著跑回宣文左邊，最後一小段站好、面向他
+    if (t < P.reset) {
+      const t0 = P.carry0, t1 = P.reset - 0.15;
+      // 離交球的位置很近（被蓋那次，牠本來就落在宣文左邊）：不用跑，叼著球站著等、拍點上點一下頭
+      if (t < t1 && Math.abs(pk.x - YY.hand) < 60) {
+        const x = lerp(pk.x, YY.hand, sine(clamp((t - t0) / Math.max(0.1, t1 - t0)))), g = yyGround(x);
+        const o: PuppetOpts = { ...base(1), squash: wag };
+        shadow(x);
+        drawPuppet(c, 'yy_ball', x, g, o);
+        withBall('yy_ball', x, g, o);
+        return;
+      }
+      if (t < t1) {
+        const u = clamp((t - t0) / Math.max(0.1, t1 - t0));
+        const x = lerp(pk.x, YY.hand, sine(u)), dir = YY.hand >= pk.x ? 1 : -1, g = yyGround(x) - bob();
+        shadow(x, bob());
+        const o: PuppetOpts = { ...base(dir), rot: dir * 0.03 };
+        withBall(drawCycle(c, au, t, runs, 2, x, g, o), x, g, o);
+        return;
+      }
+      const g = yyGround(YY.hand), o: PuppetOpts = { ...base(1), squash: landSquash(t, t1, 0.08) };
+      shadow(YY.hand);
+      drawPuppet(c, 'yy_ball', YY.hand, g, o);
+      withBall('yy_ball', YY.hand, g, o);
+      return;
+    }
+    // 交完球：看一下宣文，再小跑步回場邊
+    const t2 = P.reset + 0.35;
+    if (t < t2) {
+      shadow(YY.hand);
+      drawPuppet(c, 'yy_stand', YY.hand, yyGround(YY.hand), { ...base(1), squash: wag });
+      return;
+    }
+    const u = clamp((t - t2) / Math.max(0.1, P.back - t2));
+    const x = lerp(YY.hand, YY.home, sine(u));
+    shadow(x, bob());
+    drawCycle(c, au, t, runs, 2, x, yyGround(x) - bob(), base(YY.home >= YY.hand ? 1 : -1));
   }
 
   /** 狗（裁判）：平常坐著、拍點上興奮地壓一下；被蓋／進球的那一下芃芃吹哨（旁邊畫幾道聲音的弧）、QQ 站起來舉手。 */
@@ -384,6 +553,11 @@ export default class Basketball extends Scene {
     });
   }
 }
+
+/** 元元叼球：叼到的拍點前多久球開始往嘴裡吸（秒）。 */
+const PICK_IN = 0.12;
+/** 慢慢起跑、慢慢停下（元元跑過去、跑回來）。 */
+const sine = (u: number) => 0.5 - 0.5 * Math.cos(Math.PI * u);
 
 /**
  * 從 a 丟出去、落地彈兩下、最後停在 b（地上）：vx0 = 水平初速（0 = 照 b 算），vy0 = 往上的初速（0 = 往下丟）。

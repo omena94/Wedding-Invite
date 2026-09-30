@@ -1,4 +1,4 @@
-// 彈吉他（亮、music）：客廳的午後，宣文坐在高腳椅上彈木吉他，孟庭站在旁邊唱歌，芃芃和 QQ 坐在地毯上跟著搖頭。
+// 彈吉他（亮、music）：客廳的午後，宣文坐在高腳椅上彈木吉他，孟庭站在旁邊唱歌，芃芃和 QQ 坐在地毯上跟著搖頭，元元在孟庭腳邊接音符。
 // 角色是 Codex 畫的紙偶（_puppet.ts），客廳、譜架、音符、五線譜用程式畫。
 //  - 刷弦在拍點：拍點上往下刷（down）、半拍往上刷（up；快歌改成一拍下、一拍上），往下刷的那一下弦震一下、從音孔飄出一顆音符。
 //  - **音符飄出去組成歌詞**：歌詞沿著右上一條彎彎的五線譜排（lyricOnPath，跟唱，比留言小一級）；每一拍飄出去的音符
@@ -6,6 +6,8 @@
 //  - 孟庭唱歌：平常雙手交握（sing），每兩小節張開手擺一下（sway）；狗狗每拍左右搖頭，副歌（能量高）仰頭一起「唱」。
 //  - **焦點是主打留言**：寫在左邊譜架上的樂譜紙（上面一小段五線譜當裝飾），深墨手寫字、署名；
 //    標準 v2：字 40～60、樂譜紙最大 540 × 420，高度跟著留言。沒有留言時寫邀請。
+//  - 元元（白柴，三隻裡最大、跳得最高）：平常坐在孟庭右邊歪頭聽；每個小節線上宣文刷出一顆特別的音符，越過孟庭的頭飛向右邊，
+//    元元在下一拍（慢歌）或下兩拍（快歌）跳起來、最高點剛好一口咬住（叮一下、冒一點光）。副歌（能量高）三隻一起仰頭唱，元元照樣接。
 //  - 右邊牆上一扇窗，午後的光斜斜地照進來（很淡）。右下角 HUD 那一塊地板空著。
 import * as THREE from 'three';
 import { Scene, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
@@ -15,8 +17,8 @@ import { F, font, loadText } from '../engine/type';
 import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, lerp, hash } from '../engine/util';
 import { lyricAt } from './_motifs';
-import { inkFor, inkLine, inkPath, inkPoly, inkRect, inkEllipse, paperBG, lyricOnPath, type Pt, type Note, type Ink } from './_couple';
-import { loadPuppets, drawPuppet, drawPick, puppetPoint, puppetShadow, breathe, beatKick, noteV2, tightenNote, type PuppetOpts } from './_puppet';
+import { inkFor, inkLine, inkPath, inkPoly, inkRect, inkEllipse, paperBG, lyricOnPath, arcAt, type Pt, type Note, type Ink } from './_couple';
+import { loadPuppets, drawPuppet, drawPick, puppetPoint, puppetShadow, jumpArc, breathe, beatKick, noteV2, tightenNote, type PuppetOpts } from './_puppet';
 import { lyricV2 } from './_v2';
 import { INVITE, enterPuppet, writeNote } from './_c5';
 
@@ -25,8 +27,10 @@ export const spec: PlateSpecDecl = { group: 'couple', family: 'music', paper: tr
 const FLOOR = 930;
 const SZ = 560;
 const AL_X = 850, OM_X = 1140;
-/** QQ 坐在孟庭腳邊偏右，尾巴翻到左邊（右下角 HUD 那一塊要空著）。 */
-const PP_X = 620, QQ_X = 1262, DOG_Y = 1000, DOG_S = 1.15;
+/** 兩隻博美坐在宣文的高腳椅左邊；元元坐在孟庭右邊（右下角 HUD 那一塊要空著：坐著的元元右緣在 x 1360 之前）。 */
+const PP_X = 545, QQ_X = 690, YY_X = 1244, DOG_Y = 1000, DOG_S = 1.15;
+/** 元元跳多高（px）。 */
+const YJUMP = 96;
 /** 譜架上的樂譜紙：最大範圍（標準 v2）、內距；譜架的桿子落在地上。 */
 const SHEET = { x: 120, y: 250, w: 540, h: 420 };
 const PAD = { x: 40, top: 86, bottom: 34 };
@@ -34,9 +38,11 @@ const PAD = { x: 40, top: 86, bottom: 34 };
 const STAFF = { x0: 760, x1: 1790, y: 206, gap: 13 };
 /** 右邊牆上的窗。 */
 const WIN = { x: 1440, y: 318, w: 360, h: 380 };
-const POSES = ['xw_guitar_down', 'xw_guitar_up', 'mt_guitar_sing', 'mt_guitar_sway', 'pp_sit', 'qq_sit', 'pp_howl', 'qq_howl'];
+const POSES = ['xw_guitar_down', 'xw_guitar_up', 'mt_guitar_sing', 'mt_guitar_sway', 'pp_sit', 'qq_sit', 'pp_howl', 'qq_howl', 'yy_tilt', 'yy_howl', 'yy_jump'];
 
 interface Flight { t: number; land: number; seed: number }
+/** 給元元接的音符：小節線上從音孔出發，catch 那一刻（拍點）被元元跳到最高點咬住。 */
+interface Toss { t: number; catch: number }
 
 export default class Guitar extends Scene {
   paper = paperBG();
@@ -47,6 +53,9 @@ export default class Guitar extends Scene {
   alanKeys: [number, string][] = [];
   omKeys: [number, string][] = [];
   flights: Flight[] = [];
+  tosses: Toss[] = [];
+  /** 元元跳到最高點時嘴前的位置（接音符的地方）。 */
+  yyCatch: Pt = { x: 0, y: 0 };
   hole: Pt = { x: 0, y: 0 };
   note: Note | null = null;
   sheet = { ...SHEET };
@@ -78,6 +87,14 @@ export default class Guitar extends Scene {
       if (k % 2 === 1) this.omKeys.push([t, 'mt_guitar_sway'], [au.timeOfBeat(Math.round(au.beatAt(t)) + 2), 'mt_guitar_sing']);
     }
     this.hole = puppetPoint('xw_guitar_down', 'hole', AL_X, FLOOR, { h: SZ }) ?? { x: AL_X + 30, y: FLOOR - 250 };
+    // 元元接音符：每個小節線丟一顆（開場進場之後），慢歌下一拍接住、快歌下兩拍
+    this.yyCatch = puppetPoint('yy_jump', 'mouth', YY_X, DOG_Y - YJUMP, { h: SZ, scale: DOG_S }) ?? { x: YY_X + 150, y: DOG_Y - 420 };
+    for (let bar = Math.ceil(au.barAt(s + 0.9) - 1e-6), k = 0; k < 40; k++, bar++) {
+      const t = au.timeOfBar(bar);
+      const ct = au.timeOfBeat(Math.round(au.beatAt(t)) + (fast ? 2 : 1));
+      if (ct > e - 0.15) break;
+      this.tosses.push({ t, catch: ct });
+    }
     // 樂譜紙上的留言：標準 v2 的字級；紙的寬高跟著留言（上緣夾在譜架上）
     const c = this.fg.ctx;
     const w = SHEET.w - PAD.x * 2, hmax = SHEET.h - PAD.top - PAD.bottom;
@@ -196,6 +213,7 @@ export default class Guitar extends Scene {
     this.drawDogs(c, t);
     // ---- 音符：從音孔飄出去，飛到正在唱的字（間奏時落在五線譜上）
     for (const fl of this.flights) this.drawFlight(c, t, fl, head, staff[2]!);
+    for (const ts of this.tosses) this.drawToss(c, t, ts);
 
     this.drawMessage(c, t);
     comp.draw(renderer, L.upload(), out);
@@ -240,10 +258,63 @@ export default class Guitar extends Scene {
     for (const [who, x, d, ph] of [['pp', PP_X, 0.28, 0], ['qq', QQ_X, 0.34, 1]] as const) {
       const en = enterPuppet(this.glow, t, this.ctx.start + d, x, DOG_Y - 6, who === 'pp' ? 3 : 4);
       if (!en) continue;
-      const o: PuppetOpts = { h: SZ, scale: DOG_S, flip: who === 'qq', rot: loud ? -0.04 : 0.07 * Math.sin((au.beatAt(t) + ph) * Math.PI), pivot: 0.35, squash: 0.03 * beatKick(au, t, 0.3), spin: en.spin, alpha: en.alpha };
+      const o: PuppetOpts = { h: SZ, scale: DOG_S, rot: loud ? -0.04 : 0.07 * Math.sin((au.beatAt(t) + ph) * Math.PI), pivot: 0.35, squash: 0.03 * beatKick(au, t, 0.3), spin: en.spin, alpha: en.alpha };
       puppetShadow(c, who, x, DOG_Y, { h: SZ * DOG_S, alpha: 0.3 * en.alpha, color: '70,45,25' });
       drawPuppet(c, loud ? `${who}_howl` : `${who}_sit`, x, DOG_Y, o);
     }
+    this.drawYuanyuan(c, t, loud);
+  }
+
+  /** 元元：平常歪頭聽（每拍輕輕晃）、副歌仰頭唱；有音符飛過來時跳起來，最高點（拍點）剛好咬住。 */
+  private drawYuanyuan(c: CanvasRenderingContext2D, t: number, loud: boolean) {
+    const au = this.ctx.audio;
+    const en = enterPuppet(this.glow, t, this.ctx.start + 0.4, YY_X, DOG_Y - 6, 5);
+    if (!en) return;
+    const base: PuppetOpts = { h: SZ, scale: DOG_S, spin: en.spin, alpha: en.alpha };
+    const bp = au.beatPeriod(t);
+    for (const ts of this.tosses) {
+      const air = Math.min(0.5, bp * 1.1);
+      if (t > ts.catch - air / 2 - 0.12 && t < ts.catch + air / 2 + 0.25) {
+        const j = jumpArc(t, ts.catch - air / 2, ts.catch + air / 2, YJUMP, { crouch: 0.1, land: 0.18 });
+        puppetShadow(c, 'yy', YY_X, DOG_Y, { h: SZ * DOG_S, lift: -j.y, alpha: 0.3 * en.alpha, color: '70,45,25' });
+        // 跳起來那張圖嘴前畫了網球：這裡咬的是音符，一律蓋掉
+        if (j.air) drawPuppet(c, 'yy_jump', YY_X, DOG_Y + j.y, { ...base, hide: ['ball'], rot: -0.12 + 0.24 * j.u, pivot: 0.5, squash: j.squash });
+        else drawPuppet(c, loud ? 'yy_howl' : 'yy_tilt', YY_X, DOG_Y, { ...base, squash: j.squash });
+        return;
+      }
+    }
+    puppetShadow(c, 'yy', YY_X, DOG_Y, { h: SZ * DOG_S, alpha: 0.3 * en.alpha, color: '70,45,25' });
+    drawPuppet(c, loud ? 'yy_howl' : 'yy_tilt', YY_X, DOG_Y, { ...base, rot: loud ? -0.03 : 0.04 * Math.sin(au.beatAt(t) * Math.PI * 0.5), pivot: 0.3, squash: 0.03 * beatKick(au, t, 0.3) });
+  }
+
+  /** 給元元的音符：從音孔出發，越過孟庭的頭，落到元元跳起來的嘴前（拍點）；咬到的那一刻冒一圈訊號色的小點。 */
+  private drawToss(c: CanvasRenderingContext2D, t: number, ts: Toss) {
+    if (t < ts.t || t > ts.catch + 0.35) return;
+    const E = this.yyCatch;
+    if (t > ts.catch) {
+      const k = (t - ts.catch) / 0.35;
+      c.save();
+      c.globalAlpha = 1 - k;
+      c.fillStyle = rgba('signal');
+      for (let i = 0; i < 7; i++) { const a = (i / 7) * Math.PI * 2 + ts.t; c.beginPath(); c.arc(E.x + Math.cos(a) * (14 + 26 * k), E.y + Math.sin(a) * (14 + 26 * k), 3, 0, Math.PI * 2); c.fill(); }
+      c.restore();
+      return;
+    }
+    const u = (t - ts.t) / (ts.catch - ts.t);
+    const q = arcAt({ x: this.hole.x + 10, y: this.hole.y - 10 }, E, 300, u);
+    c.save();
+    c.translate(q.x, q.y);
+    c.rotate(0.4 * Math.sin(u * 8));
+    c.scale(1.35, 1.35);
+    c.fillStyle = rgba('signal', 0.95);
+    c.strokeStyle = rgba('signal', 0.95);
+    c.lineWidth = 2.4;
+    // 八分音符（兩顆連在一起）：比一般飄出去的音符大一點、訊號色，看得出是「特別丟給元元的」
+    c.beginPath(); c.ellipse(-10, 4, 8, 6, -0.4, 0, Math.PI * 2); c.fill();
+    c.beginPath(); c.ellipse(12, 0, 8, 6, -0.4, 0, Math.PI * 2); c.fill();
+    c.beginPath(); c.moveTo(-3, 2); c.lineTo(-3, -28); c.lineTo(19, -32); c.lineTo(19, -2); c.stroke();
+    c.lineWidth = 5; c.beginPath(); c.moveTo(-3, -26); c.lineTo(19, -30); c.stroke();
+    c.restore();
   }
 
   /** 一顆音符：從音孔出發，沿著往上拱的弧線飛到正在唱的字（沒有在唱就落在五線譜上），到了散成一點光。 */
