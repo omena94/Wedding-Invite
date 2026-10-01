@@ -81,10 +81,10 @@ export default function RsvpForm() {
   };
 
   return (
-    <div className="container">
+    <div className="container guest-page">
       <GuestHeader title="把這一天，留給我們" subtitle="2027.03.13 · 台北美福大飯店"/>
 
-      {receipt ? <GuestReceipt receipt={receipt}/> : <form onSubmit={onSubmit} noValidate>
+      {receipt ? <GuestReceipt receipt={receipt}/> : <form className="guest-sheet" onSubmit={onSubmit} noValidate>
         {draft.restored && <p className="draft-notice">已恢復這個分頁尚未送出的回覆。草稿保留 24 小時。</p>}
         {/* 基本資料 */}
         <section className="section-card">
@@ -144,7 +144,7 @@ export default function RsvpForm() {
         {form.attending && (
           <>
             {/* 聯絡方式 */}
-            <section className="section-card">
+            <section className="section-card section-reveal">
               <div className="section-header">
                 <div className="section-header-title"><Mail size={18} /> 聯絡方式</div>
                 <div className="section-header-en">Contact</div>
@@ -162,7 +162,7 @@ export default function RsvpForm() {
                   <input
                     type="tel" id="rsvp-phone" autoComplete="tel" aria-invalid={!!fieldErrors.phone}
                     inputMode="tel"
-                    placeholder="0912345678"
+                    placeholder="例如 0912345678"
                     value={form.phone}
                     onChange={(e) => set("phone", e.target.value)}
                     className={fieldErrors.phone ? "input-error" : undefined}
@@ -173,7 +173,7 @@ export default function RsvpForm() {
             </section>
 
             {/* 日期與人數 */}
-            <section className="section-card">
+            <section className="section-card section-reveal">
               <div className="section-header">
                 <div className="section-header-title"><Users size={18} /> 出席人數</div>
                 <div className="section-header-en">Party Size</div>

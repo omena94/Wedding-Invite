@@ -1,10 +1,10 @@
 // 婚禮當天現場留言（2026-09-28）：賓客掃會場的 QR code 進來寫一句祝福，送出後會出現在會場大螢幕（/wall）。
 // 不用登入、名字可不填；字數跟後端一樣限 60 字，大螢幕上才一眼讀得完。
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, Check, MessageSquareHeart, PenLine, Send } from "lucide-react";
+import { ArrowLeft, MessageSquareHeart, PenLine, Send, Sparkles } from "lucide-react";
 import { fetchStage, postWallMessage } from "../api.js";
 import PreviewBanner from "../components/PreviewBanner.jsx";
-import { GuestHeader, GuestNav, LoadError, useGuestLoad } from "../components/GuestUI.jsx";
+import { GuestHeader, GuestNav, LoadError, useGuestLoad, WaxSeal } from "../components/GuestUI.jsx";
 
 const TEXT_MAX = 60;
 const NAME_MAX = 20;
@@ -66,7 +66,7 @@ export default function Wish() {
   const open = !!(stage && (stage.wall_open || stage.preview));
 
   return (
-    <div className="container">
+    <div className="container guest-page">
       <PreviewBanner stage={stage} closedLabels={stage && !stage.wall_open ? ["現場留言"] : []} />
       <GuestHeader title="現場留言給新人" subtitle="寫下你想對宣文和孟庭說的話，送出後會出現在會場的大螢幕上" />
 
@@ -81,9 +81,9 @@ export default function Wish() {
         </section>
       ) : sent ? (
         <section className="section-card guest-receipt" role="status">
-          <div className="receipt-seal"><Check size={28} /></div>
+          <WaxSeal />
           <h2>已送出！</h2>
-          <p>{sent.status === "pending" ? "新人確認後就會出現在大螢幕上" : "抬頭看看大螢幕，幾秒後就會出現 ✨"}</p>
+          <p>{sent.status === "pending" ? "新人確認後就會出現在大螢幕上" : <>抬頭看看大螢幕，幾秒後就會出現 <Sparkles size={17} className="wish-sparkle" aria-hidden="true" /></>}</p>
           <blockquote className="wish-quote">
             <p>{sent.text}</p>
             <footer>— {sent.name || "一位賓客"}</footer>

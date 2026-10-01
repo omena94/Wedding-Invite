@@ -1,6 +1,6 @@
 // 婚紗照分享頁：分相簿、方格牆（縮圖）、燈箱可左右滑
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, Images } from "lucide-react";
+import { ArrowLeft, Heart, Images, ShieldCheck, Sparkles } from "lucide-react";
 import { fetchPhotos, fetchStage, photoThumbUrl, photoUrl } from "../api.js";
 import PreviewBanner from "../components/PreviewBanner.jsx";
 import { GuestHeader, GuestNav, LoadError, useGuestLoad } from '../components/GuestUI.jsx';
@@ -58,13 +58,13 @@ export default function Photos() {
   };
 
   return (
-    <div className="container container-photos">
+    <div className="container container-photos guest-page">
       <PreviewBanner stage={stage} closedLabels={stage && !stage.photos_open ? ["婚紗照"] : []} />
       <GuestHeader title="把喜歡的時光，留在這裡" english="OUR MOMENTS" subtitle="與你分享我們的美好片刻"/>
       <section className="photo-notice" aria-label="肖像與影像權益提醒">
-        <strong>⚠️ 肖像與影像權益提醒</strong>
+        <strong><ShieldCheck size={16} aria-hidden="true"/> 肖像與影像權益提醒</strong>
         <p>本頁面展示之婚紗攝影與影像內容，肖像權及著作權為新人與合作攝影團隊所有。</p>
-        <p>僅供受邀親友線上瀏覽祝福，請勿擅自下載、截圖、轉載、重製或作其他商業與公開傳播用途，感謝大家的體貼與尊重 ❤️</p>
+        <p>僅供受邀親友線上瀏覽祝福，請勿擅自下載、截圖、轉載、重製或作其他商業與公開傳播用途，感謝大家的體貼與尊重 <Heart size={14} className="inline-heart" aria-hidden="true"/></p>
       </section>
 
       {photoError||stageError ? <LoadError error={photoError||stageError} retry={()=>{retryPhotos();retryStage();}}/> : photos === null || stage === null ? (
@@ -74,7 +74,7 @@ export default function Photos() {
           <div className="section-header" style={{ justifyContent: "center" }}>
             <div className="section-header-title"><Images size={18} /> 美好回憶整理中</div>
           </div>
-          <p style={{ fontSize: 14, lineHeight: 1.8 }}>目前尚無公開的照片，甜蜜畫面正在悄悄準備中 ✨</p>
+          <p style={{ fontSize: 14, lineHeight: 1.8 }}>目前尚無公開的照片，甜蜜畫面正在悄悄準備中 <Sparkles size={15} className="wish-sparkle" aria-hidden="true"/></p>
           <div className="receipt-actions"><a className="btn" href="/">回首頁</a></div>
         </section>
       ) : photos.length === 0 ? (
@@ -82,7 +82,7 @@ export default function Photos() {
           <div className="section-header" style={{ justifyContent: "center" }}>
             <div className="section-header-title"><Images size={18} /> 美好回憶整理中</div>
           </div>
-          <p style={{ fontSize: 14, lineHeight: 1.8 }}>目前尚無公開的照片，甜蜜畫面正在悄悄準備中 ✨</p>
+          <p style={{ fontSize: 14, lineHeight: 1.8 }}>目前尚無公開的照片，甜蜜畫面正在悄悄準備中 <Sparkles size={15} className="wish-sparkle" aria-hidden="true"/></p>
           {stage.preview && <p className="helper-text">（管理員請至「照片」管理頁上傳，並勾選「設為公開」即可在此顯示）</p>}
           <div className="receipt-actions"><a className="btn" href="/">回首頁</a></div>
         </section>

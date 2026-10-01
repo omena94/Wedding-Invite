@@ -119,7 +119,7 @@ export default function DetailsForm() {
   };
 
   return (
-    <div className="container">
+    <div className="container guest-page">
       <GuestHeader title="入席 ‧ 共赴美好時光" subtitle="核對邀請資訊，確認同行人數與特殊飲食需求" brush/>
 
       <>{stageError?<LoadError error={stageError} retry={retry}/>:!stage&&<div className="loading" role="status">讀取回覆開放時間…</div>}</>
@@ -138,7 +138,7 @@ export default function DetailsForm() {
         </section>
       )}
       {step === "lookup" && stage && (stage.phase2_open || stage.preview) && (
-        <form onSubmit={doLookup}>
+        <form className="guest-sheet" onSubmit={doLookup}>
           {access && <p className="draft-notice">已讀取您的專屬回覆連結，按下方按鈕繼續。</p>}
           <section className="section-card">
             <div className="section-header">
@@ -169,7 +169,7 @@ export default function DetailsForm() {
       )}
 
       {step === "form" && guest && (
-        <form onSubmit={doSubmit}>
+        <form className="guest-sheet" onSubmit={doSubmit}>
           {draft.restored && <p className="draft-notice">已恢復這個分頁未送出的餐點回覆。</p>}
           <section className="section-card">
             <p style={{ fontSize: 14, color: "var(--milk-tea-900)", marginBottom: 4 }}>

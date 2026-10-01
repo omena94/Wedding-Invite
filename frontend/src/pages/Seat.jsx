@@ -31,7 +31,7 @@ export default function Seat() {
   };
 
   return (
-    <div className="container">
+    <div className="container guest-page">
       <PreviewBanner stage={stage} closedLabels={stage && !stage.seat_open ? ["桌次查詢"] : []} />
       <GuestHeader title="找到你的那一席" subtitle="輸入姓名或手機，讓我們帶你入座"/>
 
@@ -45,7 +45,7 @@ export default function Seat() {
           <p style={{ fontSize: 14, lineHeight: 1.8 }}>婚禮當天會開放查詢，到時候再來看看喔</p>
         </section>
       ) : (
-        <form onSubmit={submit}>
+        <form className="guest-sheet" onSubmit={submit}>
           <section className="section-card">
             <div className="section-header">
               <div className="section-header-title"><Search size={18} /> 姓名或電話</div>
@@ -58,10 +58,10 @@ export default function Seat() {
             {error && <p role="alert" style={{ color: "var(--rose-accent)", fontSize: 13.5 }}>{error}</p>}
           </section>
           <button type="submit" className="btn-submit" disabled={busy}>{busy ? "查詢中…" : <><Search size={17} /> 查詢我的桌次</>}</button>
-          <SeatResult result={result} />
         </form>
       )}
 
+      {stage && (stage.seat_open || stage.preview) && <SeatResult result={result} />}
       <p className="footnote"><a href="/" className="top-link"><ArrowLeft size={14} /> 回首頁</a></p>
       <GuestNav/>
     </div>

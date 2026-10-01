@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 // 2026-09-08 依新人要求拿掉入口區「第一階段 填寫出席意願」卡：頁首主按鈕與底部導覽已有出席回覆
 // 2026-09-08 依新人要求移除「赴約前，你需要的都在這裡」入口區；第二階段與座位改放底部導覽
 import { ArrowRight, CalendarPlus, Heart, MailOpen } from 'lucide-react';
-import { GuestNav, LoadError, useGuestLoad, CalendarButtons } from '../components/GuestUI.jsx';
+import { GuestNav, LoadError, useGuestLoad, CalendarButtons, Ornament } from '../components/GuestUI.jsx';
 import EventDetails from '../components/EventDetails.jsx';
 import PreviewBanner from '../components/PreviewBanner.jsx';
 import { fetchStage } from '../api.js';
@@ -49,7 +49,7 @@ export default function Home() {
   const countdown = <Reveal className="home-countdown"><Countdown clock={clock}/></Reveal>;
   // 2026-09-08 依新人要求拿掉「下一步」深色卡片：頁首已有同樣的主按鈕，只留倒數
 
-  return <div className={`container guest-home wedding-home${revealed ? ' invitation-opened' : ''}`}>
+  return <div className={`container guest-page guest-home wedding-home${revealed ? ' invitation-opened' : ''}`}>
     <PreviewBanner stage={s} closedLabels={[!s.phase2_open && '第二階段', !s.seat_open && '桌次查詢'].filter(Boolean)}/>
     <div className="home-masthead"><span className="home-edition">THE WEDDING OF ALAN & OMENA</span><button type="button" ref={replayRef} className="invitation-replay" onClick={() => { replaying.current = true; setIntro(true); }}><MailOpen size={16}/>重看喜帖</button></div>
     {error && <LoadError error={error} retry={retry}/>}
@@ -61,7 +61,9 @@ export default function Home() {
         <p className="guest-eyebrow">SO GLAD TO HAVE YOU HERE</p>
         {/* 2026-09-08 依新人要求拿掉回訪問候句（歡迎回來…）；首次進站仍有稱呼 */}
         {!visit && <p className="home-greeting">最愛的家人與好友們，</p>}
-        <h1 ref={titleRef} tabIndex={-1}>重要的日子<br/><span>只想和最喜歡的你們好好聚聚</span></h1>
+        {/* 兩行各自包一層遮罩，開喜帖後由下往上浮出（2026-10-01） */}
+        <h1 ref={titleRef} tabIndex={-1}><span className="hero-line"><span>重要的日子</span></span><span className="hero-line hero-line-accent"><span>只想和最喜歡的你們好好聚聚</span></span></h1>
+        <Ornament className="hero-ornament"/>
         <p className="home-couple">宣文 <span className="amp">&</span> 孟庭</p>
         <p className="home-couple-english">Alan <span className="amp">&</span> Omena</p>
         <p className="home-wedding-date">{WEDDING_DATE_DISPLAY}</p>{/* 2026-09-22 新人要求：首頁日期下面不再放場地名稱（婚禮資訊頁還有） */}

@@ -95,7 +95,7 @@ export default function Upload() {
   const open = !!(stage && (stage.guest_upload_open || stage.preview));
 
   return (
-    <div className="container">
+    <div className="container guest-page">
       <PreviewBanner stage={stage} closedLabels={stage && !stage.guest_upload_open ? ["照片上傳"] : []} />
       {/* 2026-09-28 新人給的文案 */}
       <GuestHeader title="交出你的相簿！留下今天的美好瞬間 📸" subtitle={<>今天只顧著笑跟吃，你手上一定有好多精彩畫面<br />謝謝大家今天熱情相伴！<br />快把你們手機裡的照片全部丟過來給我們收藏吧！</>} />

@@ -11,55 +11,81 @@
 /* 首頁沿用全站色票；動畫以短暫進場與捲動回應為主。 */
 .wedding-home { max-width: 1080px; padding-top: 16px; }
 .home-masthead { display: flex; align-items: center; gap: 18px; border-bottom: 1px solid var(--border-highlight); padding: 6px 0 16px; }
-.home-edition { font-size: 10px; letter-spacing: .18em; margin-right: auto; }
-.invitation-replay { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 44px; border: 0; background: transparent; color: var(--milk-tea-700); font-family: inherit; font-size: 13px; cursor: pointer; }
+.home-edition { font-size: 12px; letter-spacing: .2em; margin-right: auto; color: var(--ink-soft); }
+.invitation-replay { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 44px; border: 0; background: transparent; color: var(--milk-tea-700); font: 14px 'Noto Serif TC', serif; letter-spacing: .08em; cursor: pointer; } /* 2026-10-01 改宋體：手寫字 13px 太小看不清（比照新人把按鈕改宋體） */
 .invitation-replay { margin-left: auto; flex-shrink: 0; }
 .wedding-home :is(h1,h2,h3) { font-family: 'ChenYuluoyan', 'Noto Serif TC', serif; font-weight: 500; color: var(--milk-tea-900); }
 .wedding-home h2 { font-size: clamp(22px, 3vw, 30px); line-height: 1.6; }
 .wedding-home :is(a,button):focus-visible, .invitation-intro button:focus-visible { outline: 3px solid var(--milk-tea-700); outline-offset: 5px; }
 /* 頁首只剩文字（插畫移到倒數下方），改單欄置中 */
-.wedding-hero { display: grid; grid-template-columns: 1fr; justify-items: center; text-align: center; padding: 44px 14px 44px; }
+.wedding-hero { display: grid; grid-template-columns: 1fr; justify-items: center; text-align: center; padding: 40px 14px 40px; }
 .wedding-hero-copy { min-width: 0; }
-.home-greeting { font-size: 14px; margin: 16px 0 20px; }
-.wedding-hero h1 { font-size: clamp(28px, 3.5vw, 39px); line-height: 1.75; letter-spacing: .07em; white-space: nowrap; }
+.home-greeting { font-size: 17px; margin: 18px 0 20px; color: var(--milk-tea-700); }
+.wedding-hero h1 { font-size: clamp(30px, 4vw, 56px); line-height: 1.5; letter-spacing: .08em; white-space: nowrap; }
 .wedding-hero h1:focus { outline: none; }
-.wedding-hero h1 span { color: var(--milk-tea-700); }
-.home-couple { font: 23px/1.6 'ChenYuluoyan', 'Noto Serif TC', serif; letter-spacing: .13em; color: var(--milk-tea-900); margin-top: 28px; }
+/* 每行一層遮罩（2026-10-01），字從遮罩底下浮上來；padding 留給手寫字的筆畫，不被裁掉 */
+.hero-line { display: block; overflow: hidden; padding: .04em .14em; }
+.hero-line > span { display: block; }
+.hero-line-accent { color: var(--milk-tea-700); }
+.hero-ornament { width: 150px; margin: 22px auto 0; }
+.home-couple { font: 26px/1.6 'ChenYuluoyan', 'Noto Serif TC', serif; letter-spacing: .13em; color: var(--milk-tea-900); margin-top: 18px; }
 /* 所有「&」一律正體，不用草寫或斜體（新人反映草寫看不出是 &） */
 .home-couple .amp { font: 26px 'Cormorant Garamond', Georgia, serif; color: var(--milk-tea-500); margin: 0 10px; }
 .home-couple-english { font: italic 24px 'Cormorant Garamond', Georgia, serif; margin-top: 5px; }
 .home-couple-english .amp { font-style: normal; }
-.home-wedding-date { font: 26px 'Cormorant Garamond', Georgia, serif; letter-spacing: .1em; margin: 22px 0; color: var(--milk-tea-900); }
+.home-wedding-date { font: 28px 'Cormorant Garamond', Georgia, serif; letter-spacing: .14em; margin: 16px 0 26px; color: var(--milk-tea-900); }
 .home-wedding-date span { display: block; font: 13px/1.8 'Plus Jakarta Sans', 'ChenYuluoyan', sans-serif; /* 地點中文也用首頁手寫字 */ letter-spacing: .06em; margin-top: 9px; }
-.wedding-home .home-primary { display: inline-flex; align-items: center; justify-content: center; gap: 12px; width: auto; padding: 14px 23px; margin: 0; font-family: 'Plus Jakarta Sans', 'Noto Serif TC', serif; /* 2026-09-09 新人要求按鈕文字用宋體 */ }
-.wedding-hero-art { position: relative; min-width: 0; width: min(420px, 86%); margin: 44px auto 56px; }
-.hero-arch-frame { position: relative; overflow: hidden; border-radius: 220px 220px 16px 16px; background: var(--milk-tea-100); aspect-ratio: 4 / 5; border: 1px solid var(--milk-tea-200); box-shadow: var(--shadow-elegant); }
+.wedding-home .home-primary { display: inline-flex; align-items: center; justify-content: center; gap: 12px; width: auto; min-height: 58px; padding: 15px 34px; margin: 0; font-family: 'Plus Jakarta Sans', 'Noto Serif TC', serif; /* 2026-09-09 新人要求按鈕文字用宋體 */ }
+.wedding-hero-art { position: relative; min-width: 0; width: min(400px, 82%); margin: 40px auto 76px; }
+.hero-arch-frame { position: relative; overflow: hidden; border-radius: 220px 220px 16px 16px; background: var(--milk-tea-100); aspect-ratio: 4 / 5; border: 1px solid var(--milk-tea-200); box-shadow: 0 44px 70px -44px rgba(92, 66, 44, .4), 0 12px 26px -16px rgba(92, 66, 44, .14);
+  outline: 1px solid var(--milk-tea-200); outline-offset: 12px; /* 第二道細拱框，像喜帖的襯紙 */ }
 .hero-arch-frame::after { content: ''; position: absolute; inset: 10px; border: 1px solid #ffffff90; border-radius: inherit; pointer-events: none; }
 .hero-arch-frame img { display: block; width: 100%; height: 100%; object-fit: cover; }
 /* 插畫只有一張（2026-09-08 拿掉底下不同構圖的線稿），開場後由下往上浮現 */
 .hero-arch-frame .hero-color-reveal { position: absolute; inset: 0; clip-path: inset(100% 0 0); }
 /* 新人要求一直重複並上下交替：一輪由下往上浮現、下一輪由上往下浮現，每輪 3 秒（停留後淡出），兩輪 6 秒循環；減少動態效果時由下方規則改為靜態 */
 .invitation-opened .hero-color-reveal { animation: photoUnveil 6s .25s cubic-bezier(.22,1,.36,1) infinite both; }
-.hero-art-caption { display: flex; justify-content: space-between; align-items: center; margin: 18px 12px 0; color: var(--milk-tea-700); }
-.hero-art-caption span { font: 15px 'Cormorant Garamond', Georgia, serif; letter-spacing: .32em; text-transform: uppercase; }
-.hero-art-note { position: absolute; right: -25px; top: 31%; writing-mode: vertical-rl; font: 20px 'Alex Brush', cursive; letter-spacing: .04em; color: var(--milk-tea-700); }
-.invitation-opened .wedding-hero-copy { animation: homeArrive .9s .1s both; }
+.hero-art-caption { display: flex; justify-content: center; align-items: center; gap: 14px; margin: 34px 2px 0; color: var(--milk-tea-700); } /* 置中在拱門底下，愛心跟在字後面 */
+.hero-art-caption span { font: clamp(11.5px, 3.3vw, 15px) 'Cormorant Garamond', Georgia, serif; letter-spacing: .3em; text-transform: uppercase; white-space: nowrap; }
+.hero-art-note { position: absolute; right: -54px; top: 28%; writing-mode: vertical-rl; font: 24px 'Alex Brush', cursive; letter-spacing: .04em; color: var(--milk-tea-700); }
+/* 開喜帖後的進場（2026-10-01）：標語 → 兩行標題從遮罩浮出 → 花飾展開 → 名字、日期、按鈕依序到位 */
+.invitation-opened .wedding-hero-copy > * { animation: homeArrive 1s .1s var(--ease-out-expo) both; }
+.invitation-opened .wedding-hero-copy > h1 { animation: none; }
+.invitation-opened .home-greeting { animation-delay: .18s; }
+.invitation-opened .hero-line > span { animation: heroLineUp 1.25s .3s var(--ease-out-expo) both; }
+.invitation-opened .hero-line + .hero-line > span { animation-delay: .46s; }
+.invitation-opened .hero-ornament { animation: ornamentOpen 1.3s .78s var(--ease-out-expo) both; }
+.invitation-opened .home-couple { animation-delay: .9s; }
+.invitation-opened .home-couple-english { animation-delay: .98s; }
+.invitation-opened .home-wedding-date { animation-delay: 1.06s; }
+.invitation-opened .home-primary { animation-delay: 1.16s; }
+.home-primary svg { transition: transform .4s var(--ease-out-expo); }
+.home-primary:hover svg { transform: translateX(4px); }
 .home-countdown { border-block: 1px solid var(--border-highlight); padding: 28px 12px 32px; text-align: center; }
-.wedding-clock-digits { display: flex; justify-content: center; gap: clamp(18px, 5vw, 64px); margin-top: 18px; }
-.clock-unit { min-width: 48px; }
-.clock-window { overflow: hidden; height: 59px; }
-.clock-window span { display: block; font: 52px/1.1 'Cormorant Garamond', Georgia, serif; font-variant-numeric: tabular-nums; color: var(--milk-tea-900); animation: clockTick .35s ease-out; }
-.clock-unit small { font-size: 11px; color: var(--text-muted); }
+.wedding-clock > .guest-eyebrow { font-size: 17px; letter-spacing: .1em; color: var(--milk-tea-700); margin-bottom: 0; } /* 手寫字 12px 看不清，放大 */
+.wedding-clock-digits { display: flex; justify-content: center; margin-top: 16px; }
+.clock-unit { position: relative; padding: 0 clamp(13px, 3.8vw, 40px); } /* 寬度跟著數字走、左右留一樣的空，分隔線才會在兩組數字正中間（天數是三位數） */
+.clock-unit + .clock-unit::before { content: ''; position: absolute; left: 0; top: 10px; width: 1px; height: 48px; background: linear-gradient(transparent, var(--milk-tea-300) 30%, var(--milk-tea-300) 70%, transparent); }
+.clock-window { overflow: hidden; height: 66px; }
+.clock-window span { display: block; font: clamp(40px, 11vw, 60px)/1.1 'Cormorant Garamond', Georgia, serif; font-variant-numeric: lining-nums tabular-nums; /* 倒數用齊線數字，不然 3、4、5、9 會往下掉，數字高低不一 */ color: var(--milk-tea-900); animation: clockTick .35s ease-out; }
+.clock-unit small { display: block; margin-top: 8px; font: 13px/1.4 'Noto Serif TC', serif; letter-spacing: .3em; padding-left: .3em; color: var(--text-muted); } /* 單位字原本 11px 手寫字看不清，改宋體 */
 .wedding-clock-message p { font: 24px/1.6 'ChenYuluoyan', 'Noto Serif TC', serif; }
 .moving-photo { overflow: hidden; background: var(--milk-tea-100); }
 .moving-photo img { display: block; width: 100%; height: 100%; object-fit: cover; transform: translateY(var(--photo-shift, 0px)) scale(1.12); }
-.home-meet { display: grid; grid-template-columns: 1fr 1fr; gap: 48px; padding: 45px 36px; border-radius: var(--radius-card); background: var(--bg-card-subtle); border: 1px solid var(--border-highlight); align-items: center; }
-.home-meet-heading > p:not(.guest-eyebrow) { margin-top: 16px; font-size: 14px; }
+/* 日期地點：跟回函卡同一種卡紙（細內框＋顆粒），裡面的資訊改成細線分隔的清單，不再卡片裡套卡片（2026-10-01） */
+.home-meet { position: relative; display: grid; grid-template-columns: 1fr 1fr; gap: 60px; padding: 60px 62px; border-radius: 18px; background: var(--paper-grain-card), linear-gradient(180deg, #fffefb, #fdf7ee); border: 1px solid var(--paper-edge); box-shadow: var(--shadow-paper); align-items: center; }
+.home-meet::before { content: ''; position: absolute; inset: 8px; border: 1px solid var(--paper-frame); border-radius: 11px; pointer-events: none; }
+.wedding-home .home-meet h2 { font-size: clamp(25px, 3vw, 33px); letter-spacing: .06em; }
+.home-meet .event-details-card { padding: 0; background: none; border: 0; border-radius: 0; gap: 0; }
+.home-meet .detail-item { padding: 17px 2px; font-size: 15px; border-top: 1px solid var(--milk-tea-100); }
+.home-meet .detail-item:last-child { border-bottom: 1px solid var(--milk-tea-100); }
+.home-meet .detail-icon { width: 38px; height: 38px; margin-right: 14px; background: var(--milk-tea-50); }
+.home-meet-heading > p:not(.guest-eyebrow) { margin-top: 16px; font-size: 15px; }
 .home-meet .calendar-actions { margin: 22px 0 0; justify-content: flex-start; } /* 桌機：按鈕靠左，跟標題對齊 */
 .home-meet .event-details-card { margin: 0; }
-.home-signoff { text-align: center; padding: 65px 0 28px; }
+.home-signoff { text-align: center; padding: 80px 0 30px; }
 .home-signoff svg { color: var(--rose-accent); stroke-width: 1; }
-.home-signoff p { font: 21px/1.8 'ChenYuluoyan', 'Noto Serif TC', serif; margin: 16px 0; }
+.home-signoff p { font: 23px/1.8 'ChenYuluoyan', 'Noto Serif TC', serif; margin: 16px 0; }
 .home-signoff > span { font: 30px 'Alex Brush', cursive; color: var(--milk-tea-700); }
 .home-signoff > span .amp { font: 26px 'Cormorant Garamond', Georgia, serif; }
 /* 2026-09-22 新人反映頁尾聯絡方式用手寫字看不清楚：改宋體、放大一點、顏色深一點 */
@@ -71,21 +97,26 @@
 .invitation-intro { position: fixed; z-index: 1000; inset: 0; height: 100%; height: 100dvh; overflow: hidden; isolation: isolate; outline: none; }
 .invitation-paper { position: absolute; inset-block: 0; width: calc(50% + 1px); background: var(--milk-tea-50); }
 .invitation-paper::after { content: ''; position: absolute; top: 20px; bottom: 20px; border: 1px solid var(--milk-tea-200); pointer-events: none; }
-.invitation-paper-left { left: 0; background: linear-gradient(110deg, var(--milk-tea-100), var(--milk-tea-50) 70%); }
+.invitation-paper-left { left: 0; background: var(--paper-grain), linear-gradient(110deg, var(--milk-tea-100), var(--milk-tea-50) 70%); box-shadow: inset -18px 0 26px -22px rgba(92, 66, 44, .32); } /* 兩片紙中間的摺痕，暗示會往兩邊打開 */
 .invitation-paper-left::after { left: 18px; right: 0; border-right: 0; }
-.invitation-paper-right { right: 0; background: linear-gradient(250deg, var(--milk-tea-100), var(--milk-tea-50) 70%); }
+.invitation-paper-right { right: 0; background: var(--paper-grain), linear-gradient(250deg, var(--milk-tea-100), var(--milk-tea-50) 70%); box-shadow: inset 18px 0 26px -22px rgba(92, 66, 44, .32); }
 .invitation-paper-right::after { right: 18px; left: 0; border-left: 0; }
 /* 兩頁喜帖上下排列、手機直接捲動；第一頁尺寸以可視高度為準，讓封面完整可見、內頁露出一點提示往下滑 */
 .invitation-content { position: relative; z-index: 2; display: flex; align-items: center; justify-content: flex-start; flex-direction: column; gap: 18px; height: 100%; width: min(100%, 480px); margin: auto; padding: max(68px, calc(env(safe-area-inset-top) + 44px)) 30px max(36px, calc(env(safe-area-inset-bottom) + 20px)); text-align: center; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
 .invitation-content::-webkit-scrollbar { display: none; }
 .invitation-content > * { flex-shrink: 0; }
+/* 有剩餘高度時整組置中（手機上卡片受寬度限制，下面會空一大塊）；放不下時 auto 邊界歸零，照常從上面開始捲 */
+.invitation-content > :first-child { margin-top: auto; }
+.invitation-content > :last-child { margin-bottom: auto; }
 /* 新人自製喜帖（PDF 轉圖，1400×1972）：以可視高度為準等比縮放，寬度不超過畫面 */
 .invitation-card { width: min(100%, calc((100dvh - 170px) * 1400 / 1972), 520px); aspect-ratio: 1400 / 1972; border-radius: 10px; overflow: hidden; box-shadow: 0 18px 50px rgba(92, 70, 52, .18); background: #fbf6ee; animation: invitationCardIn .45s cubic-bezier(.22,1,.36,1) both; }
 .invitation-card img { display: block; width: 100%; height: 100%; object-fit: contain; user-select: none; -webkit-user-drag: none; }
 @keyframes invitationCardIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
 .invitation-open { display: inline-flex; align-items: center; justify-content: center; gap: 23px; min-height: 52px; width: min(100%, 262px); border: 1px solid var(--milk-tea-700); border-radius: 28px; padding: 12px 22px; background: var(--milk-tea-700); color: var(--milk-tea-50); box-shadow: 0 7px 18px #7e60471c; font: 14px/1.6 'Plus Jakarta Sans', sans-serif; letter-spacing: .08em; cursor: pointer; touch-action: manipulation; }
-.invitation-open:active { background: var(--milk-tea-900); }
-.invitation-footnote { font-size: 10px; letter-spacing: .12em; color: var(--text-muted); }
+.invitation-open { transition: background-color .25s, transform .35s var(--ease-out-expo), box-shadow .35s var(--ease-out-expo); }
+.invitation-open:hover { background: #6b503a; transform: translateY(-2px); box-shadow: 0 16px 30px -14px #5c422c80; }
+.invitation-open:active { background: var(--milk-tea-900); transform: none; }
+.invitation-footnote { font-size: 12px; letter-spacing: .14em; color: var(--text-muted); }
 .is-opening .invitation-content { animation: invitationContentLeave 180ms ease-out both; pointer-events: none; }
 .is-opening .invitation-paper-left { animation: invitationPaperLeft 900ms 180ms cubic-bezier(.65,0,.25,1) both; }
 .is-opening .invitation-paper-right { animation: invitationPaperRight 900ms 180ms cubic-bezier(.65,0,.25,1) both; }
@@ -97,23 +128,28 @@
   0% { clip-path: inset(100% 0 0); opacity: 1; } 22.5% { clip-path: inset(0); opacity: 1; } 37% { clip-path: inset(0); opacity: 1; } 47.5% { clip-path: inset(0); opacity: 0; } 49.9% { clip-path: inset(0 0 100%); opacity: 0; }
   50% { clip-path: inset(0 0 100%); opacity: 1; } 72.5% { clip-path: inset(0); opacity: 1; } 87% { clip-path: inset(0); opacity: 1; } 97.5% { clip-path: inset(0); opacity: 0; } 100% { clip-path: inset(100% 0 0); opacity: 0; }
 }
+@keyframes heroLineUp { from { transform: translateY(108%); } to { transform: none; } }
+@keyframes ornamentOpen { from { opacity: 0; transform: scaleX(.15); } to { opacity: 1; transform: none; } }
 @keyframes clockTick { from { opacity: .4; transform: translateY(12px); } to { opacity: 1; transform: none; } }
 
 @media (max-width: 760px) {
   .home-edition { max-width: 135px; font-size: 9px; line-height: 1.7; }
   .home-masthead { gap: 12px; }
   .wedding-hero { grid-template-columns: 1fr; gap: 36px; padding: 38px 6px 32px; text-align: center; }
-  .wedding-hero h1 { font-size: clamp(20px, 6.6vw, 37px); } /* 新標題第二行 13 字，窄手機要縮小才不溢出 */
+  .wedding-hero h1 { font-size: clamp(20px, 6.5vw, 37px); } /* 新標題第二行 13 字，窄手機要縮小才不溢出 */
   .wedding-hero .guest-eyebrow { font-size: 10px; letter-spacing: .14em; }
-  .home-greeting { margin: 12px 0 16px; font-size: 13px; }
+  .home-greeting { margin: 12px 0 14px; font-size: 16px; }
   .home-couple { margin-top: 22px; }
-  .wedding-hero-art { width: min(310px, 86%); margin: 0 auto; }
+  .wedding-hero-art { width: min(290px, 74%); margin: 4px auto 12px; }
   .hero-arch-frame { aspect-ratio: 1; }
-  .hero-art-note { right: -20px; }
-  .home-meet { grid-template-columns: 1fr; gap: 25px; padding: 28px 21px; }
+  .hero-art-note { right: -38px; font-size: 19px; }
+  .hero-arch-frame { outline-offset: 9px; }
+  .hero-art-caption { margin-top: 28px; }
+  .home-meet { grid-template-columns: 1fr; gap: 28px; padding: 40px 24px 30px; border-radius: 15px; }
+  .home-meet::before { inset: 6px; border-radius: 9px; }
   .home-meet-heading { text-align: center; }
   .home-meet .calendar-actions { justify-content: center; } /* 手機標題置中，按鈕跟著置中 */
-  .home-signoff { padding-top: 45px; }
+  .home-signoff { padding-top: 64px; }
 }
 @media (max-height: 680px) {
   .invitation-content { gap: 13px; padding-top: 60px; padding-bottom: 27px; }
@@ -128,4 +164,10 @@
   .wedding-reveal, .wedding-hero-copy { opacity: 1; transform: none; }
   .hero-arch-frame .hero-color-reveal { clip-path: none; }
   .moving-photo img { transform: none; }
+}
+
+/* 桌機大螢幕：插畫放大，填掉兩側的空（順序不變） */
+@media (min-width: 1200px) {
+  .wedding-hero-art { width: clamp(420px, 32vw, 500px); }
+  .hero-arch-frame { border-radius: 260px 260px 18px 18px; }
 }

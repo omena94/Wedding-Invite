@@ -190,8 +190,11 @@ export default function SeatViewer({ layout, names, mineIds, fullscreen = false,
   const routeView = useCallback((planned) => {
     if (!planned.points.length) return null;
     const xs=planned.points.map(p=>p.x), ys=planned.points.map(p=>p.y);
+    // 路線停在椅子邊，桌子常被切掉一半：把自己那一桌也框進來（2026-10-01）
+    const mine=objects.filter(o=>mineIds&&mineIds.has(o.id));
+    if(mine.length){const b=bounds(mine);xs.push(b.minX,b.maxX);ys.push(b.minY,b.maxY);}
     return matchRatio({x:Math.min(...xs)-90,y:Math.min(...ys)-90,w:Math.max(240,Math.max(...xs)-Math.min(...xs)+180),h:Math.max(240,Math.max(...ys)-Math.min(...ys)+180)},containerRatio());
-  }, [containerRatio]);
+  }, [containerRatio, objects, mineIds]);
 
   // ---------- 先看我的位置 → 放大到完整路線；手勢與按鍵立即接手 ----------
   useLayoutEffect(() => {
@@ -479,11 +482,12 @@ export default function SeatViewer({ layout, names, mineIds, fullscreen = false,
             </marker>
           </defs>
           <rect x={full.x - full.w * 2} y={full.y - full.h * 2} width={full.w * 5} height={full.h * 5} className="seatmap-floor" />
+          {/* 路線先畫、桌椅後畫：箭頭與起點不會壓住名字和入口字樣（2026-10-01） */}
+          {route.points.length>0&&intro!=='mine'&&<g pointerEvents="none" className="seat-route-reveal"><polyline points={route.points.map(p=>`${p.x},${p.y}`).join(' ')} className="seat-route" fill="none" strokeLinejoin="round" markerEnd="url(#seat-route-arrow)"/><circle cx={route.points[0].x} cy={route.points[0].y} r="8" fill="#9a435f"/></g>}
           {objects.map((o) => (
             <ObjectShape key={o.id} o={o} highlighted={hiIds.has(o.id)} showNames={showNamesFor(o)} labelPlan={labelPlan}
               seatNames={names ? names[String(o.id)] || {} : undefined} seatClass={seatClass} />
           ))}
-          {route.points.length>0&&intro!=='mine'&&<g pointerEvents="none" className="seat-route-reveal"><polyline points={route.points.map(p=>`${p.x},${p.y}`).join(' ')} className="seat-route" fill="none" strokeLinejoin="round" markerEnd="url(#seat-route-arrow)"/><circle cx={route.points[0].x} cy={route.points[0].y} r="8" fill="#9a435f"/></g>}
           {minePosition&&<g pointerEvents="none" transform={`translate(${minePosition.x} ${minePosition.y}) scale(${view.w/(svgRef.current?.getBoundingClientRect().width||390)})`} className="seat-mine-pin"><circle r="8"/><path d="M -5 -14 L 0 -7 L 5 -14"/><rect x="-40" y="-43" width="80" height="29" rx="14"/><text x="0" y="-24" textAnchor="middle">我的位置</text></g>}
         </svg>
       </div>
