@@ -19,19 +19,25 @@ import { F, font } from '../engine/type';
 import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, hash, mulberry32, pulse, lerp } from '../engine/util';
 import type { Line } from '../engine/lyrics';
-import { lyricAt, drawHeart, COUPLE_ZH, DATE_DOTS, signature, lyricSubOf, layoutLyric, drawLyricSub, subStyleFor, subGap, type LyricStyle } from './_motifs';
+import { lyricAt, drawHeart, COUPLE_ZH, DATE_DOTS, signature, lyricSubOf, layoutLyric, drawLyric, subStyleFor, subSizeFor, subGap, type LyricStyle } from './_motifs';
 import { grid, layoutRows, drawRows, paperInk, Stage, camDist, type Grid, type V3, type RowsLayout, type KaraokeInk } from './_t4';
 import { drawBarcode } from './_t1';
 import { loadAll, sigOf, block, T21_INVITE, type Block, type Rect } from './_t21';
 import { V2, lyricV2, msgMaxFor } from './_v2';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'print', paper: true, energy: [0.3, 0.95], bars: [4, 8], weight: 1 };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'print', paper: true, energy: [0.3, 0.95], bars: [4, 8], weight: 1 };
 
 /** 封面（紙面 px）與 render target 的倍率（右上那一堆在焦外，解析度低一點）。 */
 const CW = 800, CH = 1040, RES = 1.3, RES_FAN = 0.8;
 /** 封面故事的框（封面下半部）、「現場連線」欄。 */
 const STORY = { x: 56, y: 572, w: 688, h: 392 };
 const SIDE = { x: 56, y: 318, w: 330 };
+/**
+ * 雙語（2026-09-30）：有留言又有原文的窗格，「現場連線」欄往上 28、加寬到 500（中文＋原文兩段），
+ * 右邊的插畫縮小、移到右上角（ILL_B：中心與半徑）。
+ */
+const SIDE_B = { x: 56, y: 290, w: 500 };
+const ILL_B = { x: 664, y: 318, r: 96 };
 /** 主疊（留言那一期）在桌上的中心（世界座標）；鏡頭看的點在它右邊，所以它在畫面左邊。 */
 const PILE = { x: -500, y: 0 };
 /** 右上散開的過期特刊：每一期的位置與角度（越後面的越上面）。 */
@@ -213,6 +219,8 @@ export default class Magazine extends Scene {
   /** 右上那一堆過期特刊（開場就有兩期，之後每兩個小節線丟上來一期）。 */
   fan: Issue[] = [];
   hasLyrics = false;
+  /** 有留言又有原文（見 SIDE_B）。 */
+  biSide = false;
   avoid: Rect[] = [];
   /** 封面在螢幕上的倍數（v2 的字級換算：封面 px × K = 螢幕 px）。 */
   K = 0.8;
@@ -228,6 +236,7 @@ export default class Magazine extends Scene {
     await loadAll(this.ctx, `Our Day婚禮特刊SPECIAL ISSUE本期封面故事現場連線LIVE上一期過期特刊今天，我們結婚了邀請NT$ ∞VOL.${FAN_HEADS.join('')}${other ? other.text + signature(other.name) : ''}`);
     const g = (this.g = grid(au, s, e));
     this.hasLyrics = lyrics.linesIn(s, e).length > 0;
+    this.biSide = !!m && lyrics.linesIn(s - 1, e + 1).some((l) => lyricSubOf(l));
     this.fall = clamp(g.beat * 0.8, 0.3, 0.42);
     // 封面在螢幕上的倍數：量封面故事那一段在畫面上多寬（窗格中段的鏡頭；推近前後差不到一成）
     this.shoot(lerp(s, e, 0.6), null, 0);
@@ -295,8 +304,11 @@ export default class Magazine extends Scene {
     // 插畫：訊號色的圓墊在後面，線條畫在上面
     const ill = kind === 'main' || kind === 'names' ? 0 : (k % 3 === 0 ? 1 : k % 3 === 1 ? 2 : 0);
     c.fillStyle = mixRgba('signal', bg, 0.35, 0.55);
-    c.beginPath(); c.arc(590, 400, 170, 0, Math.PI * 2); c.fill();
-    ILLUS[ill]!(c, 590, 372, 290, seed, rgba('sepia', 0.9), mixRgba('signal', 'bone', 0.45, 0.7));
+    // 雙語的窗格（主角那一期與下面那一期）插畫縮小到右上角，讓出「現場連線」欄的寬度
+    const small = this.biSide && (kind === 'main' || kind === 'back');
+    const ic = small ? ILL_B : { x: 590, y: 400, r: 170 };
+    c.beginPath(); c.arc(ic.x, ic.y, ic.r, 0, Math.PI * 2); c.fill();
+    ILLUS[ill]!(c, ic.x, ic.y - ic.r * 0.165, ic.r * 1.706, seed, rgba('sepia', 0.9), mixRgba('signal', 'bone', 0.45, 0.7));
     // 刊名（細、斜、淡：是封面的一部分，不搶封面故事）
     c.font = font(MAST, 132); c.fillStyle = rgba('blood', 0.42); c.fillText('Our Day', 46, 196);
     this.small(c, '婚禮特刊 · SPECIAL ISSUE', 52, 60, F.hei(500), 17, 4, soft);
@@ -330,7 +342,8 @@ export default class Magazine extends Scene {
       kick('本期封面故事  ·  現場連線', STORY.y - 12);
     }
     if (kind === 'main' || kind === 'back' || kind === 'names') {
-      this.small(c, kind === 'names' ? '邀請' : '現場連線  ·  LIVE', SIDE.x, SIDE.y - 22, F.hei(700), 17, 5, rgba('blood', 0.9));
+      const sd = this.biSide && kind !== 'names' ? SIDE_B : SIDE;
+      this.small(c, kind === 'names' ? '邀請' : '現場連線  ·  LIVE', sd.x, sd.y - 22, F.hei(700), 17, 5, rgba('blood', 0.9));
       if (kind === 'names') {
         c.font = font(F.hei(500), 26 / K); c.fillStyle = ink;
         c.fillText('掃描右下角 QR code，', SIDE.x, SIDE.y + 32 / K); c.fillText('把你的祝福寫上大螢幕', SIDE.x, SIDE.y + 72 / K);
@@ -347,18 +360,36 @@ export default class Magazine extends Scene {
    * 同墨色（唱到、唱完都是唱完的墨色、淡一點）。字級與間距照螢幕 px 的規則（封面 px × K = 螢幕 px），所以先縮成螢幕 px 再畫。
    * maxY：原文最後一排基線最多可以到哪（相對主行第一排基線，封面 px）；放不下就不印。
    */
-  private subLine(c: Ctx, line: Line, t: number, lay: RowsLayout, family: string, maxW: number, ink: KaraokeInk, alpha: number, maxY: number) {
+  private subLine(c: Ctx, line: Line, t: number, lay: RowsLayout, family: string, maxW: number, ink: KaraokeInk, alpha: number, maxY: number, minPx = 0) {
     const sub = lyricSubOf(line);
     if (!sub) return;
     const K = this.K, main = lay.size * K;
     const st: LyricStyle = { family, size: main, maxWidth: maxW * K, align: 'left', active: ink.active, sung: ink.sung, unsung: ink.unsung };
-    const sl = layoutLyric(c, sub, subStyleFor(st, main));
+    const sl = this.subLay(c, sub, st, main, minPx);
     const y = lay.rows[lay.rows.length - 1]!.y + subGap(main, sl.size) / K;
     if (y + sl.rows[sl.rows.length - 1]!.y / K > maxY) return;
     c.save();
     c.translate(0, y); c.scale(1 / K, 1 / K);
-    drawLyricSub(c, sub, t, st, main, alpha * c.globalAlpha);
+    // 主行空著：drawLyric 只照 sl 畫原文（顏色、淡化跟一般原文副行一樣）
+    drawLyric(c, sub, t, st, { size: main, rows: [], words: [], height: 0, sub: { lay: sl, dy: 0 } }, alpha * c.globalAlpha);
     c.restore();
+  }
+
+  /** 原文的排版（螢幕 px）：minPx > 0 時原文至少這麼大、不再縮（太長就折行）。 */
+  private subLay(c: Ctx, sub: Line, st: LyricStyle, main: number, minPx: number) {
+    if (!minPx) return layoutLyric(c, sub, subStyleFor(st, main));
+    const ss = Math.max(minPx, subSizeFor(main));
+    return layoutLyric(c, sub, { ...subStyleFor(st, main), size: ss, minSize: ss });
+  }
+
+  /** 中文第一排基線到原文最後一排字腳（封面 px）。 */
+  private subDepth(c: Ctx, line: Line, lay: RowsLayout, family: string, maxW: number, minPx: number): number {
+    const sub = lyricSubOf(line);
+    const last = lay.rows[lay.rows.length - 1]!.y;
+    if (!sub) return last + lay.size * 0.25;
+    const K = this.K, main = lay.size * K;
+    const sl = this.subLay(c, sub, { family, size: main, maxWidth: maxW * K, align: 'left' }, main, minPx);
+    return last + (subGap(main, sl.size) + sl.rows[sl.rows.length - 1]!.y + sl.size * 0.25) / K;
   }
 
   private small(c: Ctx, text: string, x: number, y: number, family: string, size: number, tracking: number, color: string) {
@@ -448,7 +479,22 @@ export default class Magazine extends Scene {
       c.restore();
     } else if (active.kind !== 'names') {
       const ly = lyricAt(lyrics, t);
-      if (ly) {
+      if (ly && this.biSide) {
+        // 雙語：加寬的欄，原文至少 36 螢幕 px、不再縮；兩段放不進（到封面故事的小標上面）就把中文縮小一點（不小於 40）
+        const sd = SIDE_B, maxY = STORY.y - 54;
+        let size = lyricV2(this.msgScreen) / K, lay = layoutRows(c, ly.line, { family: FAM_SIDE, size, minSize: V2.lyrMin / K, maxW: sd.w, maxRows: 3, align: 'left', lineHeight: 1.16 });
+        for (let k = 0; k < 12; k++) {
+          const d = this.subDepth(c, ly.line, lay, FAM_SIDE, sd.w, 36);
+          if (sd.y + lay.size * 0.62 + d <= maxY || lay.size <= V2.lyrMin / K + 0.1) break;
+          size = Math.max(V2.lyrMin / K, size * 0.95);
+          lay = layoutRows(c, ly.line, { family: FAM_SIDE, size, minSize: V2.lyrMin / K, maxW: sd.w, maxRows: 3, align: 'left', lineHeight: 1.16 });
+        }
+        const y0 = sd.y + lay.size * 0.62;
+        c.save(); c.translate(sd.x, y0);
+        drawRows(c, lay, FAM_SIDE, t, ink, ly.k);
+        this.subLine(c, ly.line, t, lay, FAM_SIDE, sd.w, ink, ly.k, Infinity, 36);
+        c.restore();
+      } else if (ly) {
         const size = lyricV2(active.kind === 'main' ? this.msgScreen : msgMaxFor('今天，我們結婚了')) / K;
         const lay = layoutRows(c, ly.line, { family: FAM_SIDE, size, minSize: V2.lyrMin / K, maxW: SIDE.w, maxRows: 3, align: 'left', lineHeight: 1.16 });
         const y0 = SIDE.y + lay.size * 0.62;

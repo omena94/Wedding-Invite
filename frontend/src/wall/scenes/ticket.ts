@@ -26,13 +26,14 @@ import { LIN } from '../engine/palette';
 import { F, font, layout, loadText, fitSize, measure } from '../engine/type';
 import { fitText, type FitResult } from '../engine/text';
 import { clamp, ease, prog, pulse, hash, lerp } from '../engine/util';
-import { lyricAt, lyricSubOf, layoutLyric, drawLyric, signature, heartPoints, COUPLE_EN, COUPLE_ZH, type LyricStyle, type LyricLayout } from './_motifs';
+import { lyricAt, lyricSubOf, layoutLyric, drawLyric, signature, heartPoints, COUPLE_EN, COUPLE_ZH, subSizeFor, subStyleFor, subGap, type LyricStyle, type LyricLayout } from './_motifs';
+import type { Line } from '../engine/lyrics';
 import { grid, stagger, pad3, type Grid } from './_t2';
 import { homography, applyH, type P2 } from './_t11';
 import { TW, TH, PERF, MSG, STRIP, SLOT_W, slotAt, BAKE_FRAG, MAIN_FRAG } from './ticket-glsl';
 import { V2, msgMaxFor, lyricV2, sigV2, fitClauses } from './_v2';
 
-export const spec: PlateSpecDecl = { group: 'type', family: 'doc', paper: true, energy: [0.3, 1], bars: [4, 8] };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'doc', paper: true, energy: [0.3, 1], bars: [4, 8] };
 
 /**
  * 鏡頭：票平放在桌上，先在桌面上轉一點（rz，右邊高一點），再往後倒（tilt：上緣離鏡頭遠）、往右轉一點（yaw：票根離鏡頭遠，
@@ -44,6 +45,8 @@ const CAM = { rz: -0.06, tilt: 0.4, yaw: 0.1, D: 2300, Z0: 0.74, Z1: 0.78, cx: 7
 const STUB_C = { x: (PERF + TW) / 2, y: TH / 2 };
 /** 韓文歌時歌詞條往上長多少（票面 px）：邀請的最後一行約在 y 466，NOW PLAYING 那條線移到 491，中間還留一點空。 */
 const KO_UP = 72;
+/** 有留言又有原文的窗格（雙語 2026-09-30）：歌詞條往上長多少；留言的框跟著矮這麼多（留言照 v2 重新找字級）。 */
+const KO_UP_MSG = 76;
 const RECT: P2[] = [{ x: 0, y: 0 }, { x: TW, y: 0 }, { x: TW, y: TH }, { x: 0, y: TH }];
 
 // 資料圖層的「色版」：不是顏色，是 R = 壓痕深度、G = 墨、B = 訊號色的墨（畫在不透明的黑底上）
@@ -134,7 +137,7 @@ export default class Ticket extends Scene {
     const g = this.g = grid(au, s, e);
     const P = this.P = g.beat;
     // 韓文歌：邀請只用到留言區的上半，歌詞條可以往上長（NOW PLAYING 那條線跟著上移），中文下面才放得下原文
-    if (!m && lyrics.linesIn(s - 1, e + 1).some((l) => !!lyricSubOf(l))) { this.sY = STRIP.y - KO_UP; this.sH = STRIP.h + KO_UP; }
+    if (lyrics.linesIn(s - 1, e + 1).some((l) => !!lyricSubOf(l))) { const up = m ? KO_UP_MSG : KO_UP; this.sY = STRIP.y - up; this.sH = STRIP.h + up; }
     this.strip = this.track(new Layer2D(STRIP.w, this.sH, SCALE, { fast: true }));
     // ---- 時間表
     this.tLand = g.b0;
@@ -248,7 +251,7 @@ export default class Ticket extends Scene {
     // 要壓的每一行：[文字, 字族, 字級, x, 基線 y]（圖層座標；圖層左上角在票面的 MSG.x, MSG.y）
     const rows: { s: string; fam: string; size: number; x: number; y: number; right?: boolean }[] = [];
     // 留言的框：票面最大的一塊（圖層 y 6..390 = 票面 162..546），留言＋署名一起放進去。最小 52：斜放以後螢幕上還有 44 以上
-    const BOX = { x: 4, y: 6, w: MSG.w - 8, h: 384 };
+    const BOX = { x: 4, y: 6, w: MSG.w - 8, h: 384 - (m ? STRIP.y - this.sY : 0) };
     // 署名那一行（間距＋字高）先從可用高度扣掉，留言的字級只用剩下的高度找——署名才不會被最後一行蓋住
     // v2：留言 40～60（依字數的上限 msgMaxFor）、署名 26～32，都是螢幕 px，除以縮放換成票面 px
     const k = this.kMsg;
@@ -322,16 +325,17 @@ export default class Ticket extends Scene {
     }
     const ly = lyricAt(this.ctx.lyrics, t);
     if (ly) {
-      let lay = layoutLyric(c, ly.line, this.ly), st = this.lyData;
+      const K = this.kLy;
+      let lay = stripSub(c, ly.line, this.ly, layoutLyric(c, ly.line, this.ly), K), st = this.lyData;
       let y0 = lay.rows.length > 1 ? lay.size * 0.92 + 2 : STRIP.h * 0.5 + lay.size * 0.36;
       if (lay.sub) {
         // 韓文歌：中文＋原文（drawLyric 自動畫原文：盲壓 → 上墨，比中文淡兩成、不上訊號色的墨）一起放進長高的歌詞條；
-        // 放不下就一起縮（中文不小於 lyrMin），兩段垂直置中
+        // 放不下就縮中文（不小於 lyrMin），原文照螢幕字級、不縮（stripSub），兩段垂直置中
         const tall = (l: LyricLayout) => l.height + (l.sub ? l.sub.lay.size * 0.25 : 0);
         for (let k = 1; k < 10 && tall(lay) > this.sH - 8 && lay.size > (this.ly.minSize ?? 0) + 0.5; k++) {
           const size = Math.max(this.ly.minSize ?? 0, (this.ly.size) * Math.pow(0.93, k));
           st = { ...this.lyData, size };
-          lay = layoutLyric(c, ly.line, { ...this.ly, size });
+          lay = stripSub(c, ly.line, { ...this.ly, size }, layoutLyric(c, ly.line, { ...this.ly, size }), K);
         }
         y0 = Math.max(4, (this.sH - tall(lay)) / 2) + lay.size * 0.92;
       } else if (this.sH > STRIP.h) {
@@ -525,4 +529,17 @@ export default class Ticket extends Scene {
       }
     }
   }
+}
+
+/**
+ * 原文副行照「螢幕」字級重排（2026-09-30 雙語）：歌詞條在畫面上只有 K 倍大、又斜放，照票面 px 排的原文上了螢幕只剩 18 px。
+ * 中文不動，原文換成 max(36, subSizeFor(中文的螢幕字級)) ÷ K，太長就折行、不再縮。
+ */
+function stripSub(c: CanvasRenderingContext2D, line: Line, st: LyricStyle, lay: LyricLayout, K: number): LyricLayout {
+  const sub = lyricSubOf(line);
+  if (!sub || !lay.sub) return lay;
+  const size = Math.max(36, subSizeFor(lay.size * K)) / K;
+  const sl = layoutLyric(c, sub, { ...subStyleFor(st, lay.size), size, minSize: size });
+  const dy = lay.sub.dy - subGap(lay.size, lay.sub.lay.size) + subGap(lay.size, sl.size);
+  return { ...lay, sub: { lay: sl, dy }, height: dy + (sl.height - sl.size) + lay.size };
 }

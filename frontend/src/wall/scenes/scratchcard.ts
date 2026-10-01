@@ -20,12 +20,12 @@ import { F, font, loadText } from '../engine/type';
 import { LIN, rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, hash, lerp, prog, pulse, TAU } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
-import { lyricAt, signature, drawHeart, sparkParticles, WEDDING_DATE, lyricSubOf, layoutLyric, drawLyricSub, subStyleFor, subGap, type LyricStyle } from './_motifs';
+import { lyricAt, signature, drawHeart, sparkParticles, WEDDING_DATE, lyricSubOf, layoutLyric, drawLyric, subStyleFor, subSizeFor, subGap, type LyricStyle } from './_motifs';
 import { grid, stagger, drawFit, layoutRows, drawRows, paperInk, Stage, docRT, camDist, type Grid, type RowsStyle, type P2, type V3 } from './_t4';
 import { msgMaxFor, lyricV2, sigV2, V2, fitClauses } from './_v2';
 
 // 背景是深色絨布：暗版面（右下角 HUD 用亮字）
-export const spec: PlateSpecDecl = { group: 'type', family: 'doc', paper: false, energy: [0.35, 1], bars: [4, 8] };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'doc', paper: false, energy: [0.35, 1], bars: [4, 8] };
 
 // ---------------------------------------------------------------- 展開圖（像素，左上原點、y 向下）
 const CA = { x: 0, y: 0, w: 880, h: 480 }; // 留言卡（v2：畫面上約 760×420）
@@ -35,7 +35,14 @@ const HEAD = 58; // 表頭（放射紋）的高
 const MSGP = { x: 30, y: 76, w: 820, h: 376 }; // 留言的銀漆
 const LYR = { x: CB.x + 34, y: 96, w: CB.w - 68, h: 206 }; // 本期主題曲
 const CELL = { x: CB.x + 40, y: 322, w: 156, h: 116, gap: 10 };
-const cellRect = (i: number) => ({ x: CELL.x + (i % 3) * (CELL.w + CELL.gap), y: CELL.y + Math.floor(i / 3) * (CELL.h + CELL.gap), w: CELL.w, h: CELL.h });
+const cellRect = (i: number, C: typeof CELL = CELL) => ({ x: C.x + (i % 3) * (C.w + C.gap), y: C.y + Math.floor(i / 3) * (C.h + C.gap), w: C.w, h: C.h });
+/**
+ * 雙語（2026-09-30）：有原文的窗格九宮格每格矮 SUB_CELL_DH（三排往下讓），「本期主題曲」那一格多出 3 × SUB_CELL_DH，
+ * 中文＋原文兩段才放得下（原本框高固定，原文被擠到 24 px）。刮漆的範圍（panels）跟著每個窗格自己的格子走。
+ */
+const SUB_CELL_DH = 26;
+const SUB_CELL: typeof CELL = { ...CELL, y: CELL.y + 3 * SUB_CELL_DH, h: CELL.h - SUB_CELL_DH };
+const panelsOf = (C: typeof CELL): THREE.Vector4[] => [new THREE.Vector4(MSGP.x, MSGP.y, MSGP.w, MSGP.h), ...Array.from({ length: 9 }, (_, i) => { const r = cellRect(i, C); return new THREE.Vector4(r.x, r.y, r.w, r.h); }), new THREE.Vector4(PRIZE.x, PRIZE.y, PRIZE.w, PRIZE.h)];
 const PRIZE = { x: CB.x + 40, y: 716, w: CB.w - 80, h: 60 };
 const SYMBOLS = ['∞', '♥', '♪', '♥', '♥', '♥', '♪', '♥', '∞']; // 中間那一排三顆愛心 = 中獎
 const PANELS: [number, number, number, number][] = [[MSGP.x, MSGP.y, MSGP.w, MSGP.h], ...Array.from({ length: 9 }, (_, i): [number, number, number, number] => { const r = cellRect(i); return [r.x, r.y, r.w, r.h]; }), [PRIZE.x, PRIZE.y, PRIZE.w, PRIZE.h]];
@@ -218,6 +225,10 @@ export default class ScratchCard extends Scene {
   fit: FitResult | null = null;
   /** 留言卡、九宮格在畫面上是展開圖的幾倍（鏡頭停好時量的），v2 的字級要換算。 */
   sA = 0.75; sB = 0.72;
+  /** 九宮格與「本期主題曲」那一格（有原文的窗格見 SUB_CELL）。 */
+  cell = CELL;
+  lyrH = LYR.h;
+  panelV = panelsOf(CELL);
   msgScreen: number | null = null;
   sigSize = 40;
   private printed = false;
@@ -225,6 +236,7 @@ export default class ScratchCard extends Scene {
   override async init() {
     const { audio: au, song, lyrics } = this.ctx;
     const s = this.ctx.start, e = this.ctx.end;
+    if (lyrics.linesIn(s - 1, e + 1).some((l) => lyricSubOf(l))) { this.cell = SUB_CELL; this.lyrH = LYR.h + 3 * SUB_CELL_DH; this.panelV = panelsOf(SUB_CELL); }
     await loadText(TEXT + song.title + (this.msg ? signature(this.msg.name) : '') + lyrics.linesIn(s, e).map((l) => l.text).join(''));
     const g = (this.g = grid(au, s, e));
     const seed = (this.ctx.params.seed ?? 7) * 13;
@@ -242,7 +254,7 @@ export default class ScratchCard extends Scene {
       const x0 = hf ? MSGP.x + MSGP.w / 2 - 24 : MSGP.x + IN, x1 = hf ? MSGP.x + MSGP.w - IN : MSGP.x + MSGP.w / 2 + 24;
       plan.push({ r: { x: x0, y: MSGP.y + b * bandH, w: x1 - x0, h: bandH }, panel: 0, top: b ? OV : EDGE, bot: b < 1 ? OV : EDGE });
     }
-    for (let i = 0; i < 9; i++) { const r = cellRect(i); plan.push({ r: { x: r.x + 18, y: r.y, w: r.w - 36, h: r.h }, panel: 1 + i, top: EDGE, bot: EDGE }); }
+    for (let i = 0; i < 9; i++) { const r = cellRect(i, this.cell); plan.push({ r: { x: r.x + 18, y: r.y, w: r.w - 36, h: r.h }, panel: 1 + i, top: EDGE, bot: EDGE }); }
     const avail = Math.max(1.2, e - g.b0 - 0.8);
     const add = (i: number, t0: number, next: number) => {
       const pl = plan[i]!;
@@ -308,6 +320,7 @@ export default class ScratchCard extends Scene {
     if (this.scratch.count) this.scratch.render(renderer, R.mask);
     const bar = au.barAt(t), bp = bar - Math.floor(bar);
     this.silver.u.mask!.value = R.mask.texture;
+    this.silver.u.panels!.value = this.panelV;
     this.silver.u.sheen!.value = lerp(-300, AW + 500, ease.outCubic(clamp(bp * 1.6)));
     this.silver.render(renderer, doc);
     const coin = this.coinAt(t);
@@ -322,7 +335,7 @@ export default class ScratchCard extends Scene {
     if (this.dust.count) this.dust.render(renderer, doc);
     if (t > this.tWin - 0.05) {
       // 連成一線：中間那一排噴一下火星；刮開獎項那一條時再噴一次
-      const y = cellRect(4).y + CELL.h / 2, x0 = cellRect(3).x, x1 = cellRect(5).x + CELL.w;
+      const C = this.cell, y = cellRect(4, C).y + C.h / 2, x0 = cellRect(3, C).x, x1 = cellRect(5, C).x + C.w;
       const head = (tb: number) => (tb >= this.tWin && tb <= this.tWin + 0.3 ? { x: lerp(x0, x1, (tb - this.tWin) / 0.3), y } : null);
       sparkParticles(this.sparks, t, head, { rate: 150, life: 0.5, speed: 260, seed: 5, intensity: 0.6 });
       if (this.tPrize < Infinity && t > this.tPrize) {
@@ -415,7 +428,7 @@ export default class ScratchCard extends Scene {
     }
     // 九宮格：愛心（點綴色）、∞、♪（墨色）
     SYMBOLS.forEach((sym, i) => {
-      const r = cellRect(i), cx = r.x + r.w / 2, cy = r.y + r.h / 2;
+      const r = cellRect(i, this.cell), cx = r.x + r.w / 2, cy = r.y + r.h / 2;
       if (sym === '♥') { drawHeart(c, cx, cy + 3, 64); return; }
       c.font = font(sym === '∞' ? F.archivo(100, 700) : F.hei(700), 58); c.fillStyle = rgba('sepia', 0.8); c.textAlign = 'center';
       c.fillText(sym, cx, cy + 20);
@@ -438,34 +451,37 @@ export default class ScratchCard extends Scene {
       // 韓文歌：中文下面小一號印原文（同一張卡、同字族、墨色，唱到、唱完都是唱完的墨色、淡一點）。
       // 字級與間距照螢幕 px 的規則（卡面 px × S = 螢幕 px）；框的高度固定：主行＋原文放不下就把主行縮小一點，不爆出框外
       const ink = paperInk();
-      let lay = layoutRows(c, ly.line, st), gap = 0, deep = 0, sst: LyricStyle | null = null;
+      let lay = layoutRows(c, ly.line, st), gap = 0, deep = 0, sst: LyricStyle | null = null, sl: ReturnType<typeof layoutLyric> | null = null;
       for (let sz = st.size; ; sz *= 0.95) {
         lay = layoutRows(c, ly.line, { ...st, size: Math.max(sz, st.minSize) });
         sst = { family: st.family, size: lay.size * S, maxWidth: LYR.w * S, align: 'left', active: ink.active, sung: ink.sung, unsung: ink.unsung };
-        const sl = layoutLyric(c, orig, subStyleFor(sst, lay.size * S));
+        // 原文至少 38 螢幕 px（卡片斜放在桌上會壓扁一點）、不再縮，太長就折行
+        const ss = Math.max(38, subSizeFor(lay.size * S));
+        sl = layoutLyric(c, orig, { ...subStyleFor(sst, lay.size * S), size: ss, minSize: ss });
         gap = subGap(lay.size * S, sl.size) / S;
         deep = gap + sl.rows[sl.rows.length - 1]!.y / S;
-        if (lay.height + deep <= LYR.h + 12 || sz <= st.minSize) break;
+        if (lay.height + deep <= this.lyrH + 12 || sz <= st.minSize) break;
       }
-      const top = LYR.y + (LYR.h - lay.height - deep) / 2 + lay.size * 0.82;
+      const top = LYR.y + (this.lyrH - lay.height - deep) / 2 + lay.size * 0.82;
       c.save(); c.translate(LYR.x, top);
       drawRows(c, lay, st.family, t, ink, ly.k);
       c.translate(0, lay.rows[lay.rows.length - 1]!.y + gap); c.scale(1 / S, 1 / S);
-      drawLyricSub(c, orig, t, sst!, lay.size * S, ly.k * c.globalAlpha);
+      // 主行空著：drawLyric 只照上面排好的原文畫（顏色、淡化跟一般原文副行一樣）
+      drawLyric(c, orig, t, sst!, { size: lay.size * S, rows: [], words: [], height: 0, sub: { lay: sl!, dy: 0 } }, ly.k * c.globalAlpha);
       c.restore();
       return;
     }
     if (ly) {
       const lay = layoutRows(c, ly.line, st);
-      const top = LYR.y + (LYR.h - lay.height) / 2 + lay.size * 0.82;
+      const top = LYR.y + (this.lyrH - lay.height) / 2 + lay.size * 0.82;
       c.save(); c.translate(LYR.x, top);
       drawRows(c, lay, st.family, t, paperInk(), ly.k);
       c.restore();
       return;
     }
     c.font = font(st.family, V2.lyrMin / S); c.fillStyle = rgba('sepia', lyrics.has ? 0.26 : 0.8);
-    c.fillText(song.title || '本期主題曲', LYR.x, LYR.y + LYR.h / 2 + 10);
-    if (!lyrics.has) { c.font = font(F.hei(500), 18); c.fillStyle = rgba('sepia', 0.55); c.fillText('（純音樂）', LYR.x, LYR.y + LYR.h / 2 + 56); }
+    c.fillText(song.title || '本期主題曲', LYR.x, LYR.y + this.lyrH / 2 + 10);
+    if (!lyrics.has) { c.font = font(F.hei(500), 18); c.fillStyle = rgba('sepia', 0.55); c.fillText('（純音樂）', LYR.x, LYR.y + this.lyrH / 2 + 56); }
   }
 
   // ------------------------------------------------------------ 硬幣
@@ -551,7 +567,7 @@ export default class ScratchCard extends Scene {
     // 中間那一排三顆愛心刮出來：一條紅筆線劃過去
     const u = prog(t, this.tWin + 0.02, this.tWin + 0.3, ease.outCubic);
     if (u <= 0) return;
-    const y = cellRect(4).y + CELL.h / 2 + 4, x0 = cellRect(3).x + 16, x1 = cellRect(5).x + CELL.w - 16;
+    const C = this.cell, y = cellRect(4, C).y + C.h / 2 + 4, x0 = cellRect(3, C).x + 16, x1 = cellRect(5, C).x + C.w - 16;
     c.save();
     c.strokeStyle = rgba('blood', 0.85); c.lineWidth = 6; c.lineCap = 'round';
     c.beginPath(); c.moveTo(x0, y + 6); c.quadraticCurveTo((x0 + x1) / 2, y - 14, lerp(x0, x1, u), y + 4 - 6 * u); c.stroke();

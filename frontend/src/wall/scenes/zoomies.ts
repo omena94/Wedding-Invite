@@ -26,7 +26,7 @@ import { lyricV2 } from './_v2';
 import { Lit, layoutChars, drawChars, INVITE } from './_c3';
 import type { Lyrics } from '../engine/lyrics';
 
-export const spec: PlateSpecDecl = { group: 'couple', family: 'dog', paper: false, energy: [0.55, 1], bars: [4, 8] };
+export const spec: PlateSpecDecl = { bilingual: true, group: 'couple', family: 'dog', paper: false, energy: [0.55, 1], bars: [4, 8] };
 
 /** 場景尺度（宣文站直的身高）；狗是主角，放大。 */
 const SZ = 400, DOG_S = 1.55;
@@ -322,12 +322,16 @@ export default class Zoomies extends Scene {
 
     // ---- 三隻狗：照遠近排（遠的先畫）；歌詞夾在中間（遠的在字後面、近的從字前面跑過去）
     const dogs = WHO.map((w) => ({ who: w, st: this.dogAt(w, t) })).sort((a, b) => a.st.y - b.st.y);
+    // 雙語（2026-09-30）：有原文的句子兩排字，狗從前面跑過去會整段蓋掉、字也被撞得東倒西歪讀不出來：
+    // 這種句子的字畫在最上面（狗從字底下跑過去）、不被撞，字底下墊一層暗暗的光暈，白色的元元跑過去也讀得到
+    const front = !!lyricSubOf(lyricAt(lyrics, t)?.line);
     let lyricDone = false;
     for (const d of dogs) {
-      if (!lyricDone && d.st.y >= LYR.y) { this.drawLyric(c, t, lyrics, rv); this.drawPillow(c, t); lyricDone = true; }
+      if (!lyricDone && d.st.y >= LYR.y) { if (!front) this.drawLyric(c, t, lyrics, rv); this.drawPillow(c, t); lyricDone = true; }
       this.drawDog(c, t, d.who, d.st);
     }
-    if (!lyricDone) { this.drawLyric(c, t, lyrics, rv); this.drawPillow(c, t); }
+    if (!lyricDone) { if (!front) this.drawLyric(c, t, lyrics, rv); this.drawPillow(c, t); }
+    if (front) this.drawLyric(c, t, lyrics, rv);
 
     comp.draw(renderer, L.upload(), out);
     if (this.glow.count) this.glow.render(renderer, out);
@@ -459,19 +463,21 @@ export default class Zoomies extends Scene {
     };
     // 韓文歌：原文小一號擺在中文正下方的地毯上（同樣置中）。兩行一起往上挪一點，原文才不會壓到前面掉在地上的抱枕
     const sub = lyricSubOf(ly.line);
-    const ss = subSizeFor(lay.size);
-    const sl = sub ? layoutChars(c, sub, fam, ss, LYR.w, Math.min(ss, 26)) : null;
+    // 原文至少 34、不再縮（太長就照 layoutChars 折行）
+    const ss = Math.max(34, subSizeFor(lay.size));
+    const sl = sub ? layoutChars(c, sub, fam, ss, LYR.w, ss) : null;
     const gap = sl ? subGap(lay.size, sl.size) : 0;
     const y = sl ? Math.min(LYR.y, PILLOW.y - 44 - sl.size * 0.22 - gap) : LYR.y;
     c.save();
     c.globalAlpha = ly.k * rv;
+    // 有原文：字在狗上面、不被撞（見 render），底下墊一層暗暗的光暈
+    if (sub) { c.shadowColor = rgba('ink', 0.9); c.shadowBlur = 16; }
     // 字躺在地毯上：底下一點點影子（字被撞起來時影子留在原地、變小）
-    drawChars(c, ly.line, lay, fam, x0, y, t, { unsung: rgba('bone', 0.28), sung: rgba('bone', this.msg ? 0.82 : 0.95), active: rgba('signal') }, bumpAt);
+    drawChars(c, ly.line, lay, fam, x0, y, t, { unsung: rgba('bone', sub ? 0.4 : 0.28), sung: rgba('bone', this.msg ? 0.82 : 0.95), active: rgba('signal') }, sub ? undefined : bumpAt);
     if (sub && sl) {
-      // 狗跑過去一樣會撞到原文，但跳得矮一點（比中文安靜）；唱到、唱完都是淡兩成的紙白（不用訊號色），逐字時間照原文自己的
+      // 原文：唱到、唱完都是淡兩成的紙白（不用訊號色），逐字時間照原文自己的
       const lit = rgba('bone', (this.msg ? 0.82 : 0.95) * 0.8);
-      const subBump = (i: number, cx: number) => { const m = bumpAt(i + 500, cx); return m ? { ...m, dy: m.dy * 0.6, rot: m.rot * 0.6 } : null; };
-      drawChars(c, sub, sl, fam, LYR.x - sl.width / 2, y + gap, t, { unsung: rgba('bone', 0.28), sung: lit, active: lit }, subBump);
+      drawChars(c, sub, sl, fam, LYR.x - sl.width / 2, y + gap, t, { unsung: rgba('bone', 0.4), sung: lit, active: lit });
     }
     c.restore();
   }
