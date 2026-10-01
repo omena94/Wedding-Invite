@@ -2,8 +2,8 @@
 // 縮圖是 scripts/wall-render.mjs thumbs 拍好的靜態圖（public/wall-thumbs/）；按「預覽」開新分頁，
 // 大螢幕用真的歌單與留言只播這個版面（/wall?plate=名字，← → 換下一個）。
 // 關掉的版面存在設定 wall_plates_off（逗號分隔），節奏存在 wall_pace；大螢幕每兩秒問一次就會照新的設定排。
-import { useMemo, useState } from "react";
-import { LayoutGrid, Play } from "lucide-react";
+import { useId, useMemo, useState } from "react";
+import { LayoutGrid, Play, Search, X } from "lucide-react";
 import { fetchPlannerSettings, savePlannerSettings } from "../api.js";
 import Toggle from "../components/Toggle.jsx";
 import { ErrorBox, Loading, PageHead, toastErr, toastOk, useLoader } from "./ui.jsx";
@@ -19,11 +19,38 @@ const PACE = [
   ["normal", "中（建議）", "約 6～10 秒換一個（每 2 句歌詞左右）"],
   ["slow", "慢", "每個版面播久一點（3～5 句歌詞）"],
 ];
+// 搜尋：中文名稱、系列、點子、英文代號都算；名稱開頭符合的排最前面，其次名稱裡有、系列、點子
+const norm = (s) => (s || "").toLowerCase();
+function searchPlates(plates, q) {
+  const k = norm(q.trim());
+  if (!k) return plates;
+  const rank = (p) => {
+    const t = norm(p.title);
+    if (t.startsWith(k)) return 0;
+    if (t.includes(k)) return 1;
+    if (norm(FAMILY[p.family]).includes(k) || p.name.includes(k)) return 2;
+    if (norm(p.idea).includes(k)) return 3;
+    return -1;
+  };
+  return plates.map((p) => [p, rank(p)]).filter(([, r]) => r >= 0).sort((a, b) => a[1] - b[1]).map(([p]) => p);
+}
+/** 名稱裡打到的字標出來 */
+function Hit({ text, q }) {
+  const i = q ? norm(text).indexOf(norm(q.trim())) : -1;
+  if (i < 0) return text;
+  const n = q.trim().length;
+  return <>{text.slice(0, i)}<mark>{text.slice(i, i + n)}</mark>{text.slice(i + n)}</>;
+}
+
 const open = (name) => window.open(`/wall?plate=${encodeURIComponent(name)}`, "_blank", "noopener");
 
 export default function WallPlates() {
   const { data: settings, setData: setSettings, loading, error } = useLoader(fetchPlannerSettings, []);
   const [filter, setFilter] = useState("");
+  const [query, setQuery] = useState("");
+  const [sugOpen, setSugOpen] = useState(false);
+  const [active, setActive] = useState(-1);
+  const listId = useId();
   const [saving, setSaving] = useState(false);
   const plates = useMemo(() => PLATE_CATALOG.filter((p) => p.name !== "title"), []);
   const off = useMemo(() => new Set((settings?.values?.wall_plates_off || "").split(",").filter(Boolean)), [settings]);
@@ -42,7 +69,12 @@ export default function WallPlates() {
 
   if (loading) return <Loading />;
   if (error) return <ErrorBox error={error} />;
-  const shown = plates.filter((p) => !filter || (filter === "off" ? off.has(p.name) : filter === "couple" ? p.couple : filter === "bilingual" ? p.bilingual : p.family === filter));
+  const byChip = plates.filter((p) => !filter || (filter === "off" ? off.has(p.name) : filter === "couple" ? p.couple : filter === "bilingual" ? p.bilingual : p.family === filter));
+  const shown = searchPlates(byChip, query);
+  // 建議清單：打一個字就跳，最多 8 個（照上面的分類一起篩）
+  const sugs = query.trim() ? shown.slice(0, 8) : [];
+  const showSug = sugOpen && sugs.length > 0;
+  const pick = (p) => { setQuery(p.title); setSugOpen(false); setActive(-1); };
   const onCount = plates.filter((p) => !off.has(p.name)).length;
 
   return (
@@ -71,6 +103,40 @@ export default function WallPlates() {
         ))}
         {off.size > 0 && <button type="button" className={`btn btn-sm ${filter === "off" ? "btn-primary" : "btn-ghost"}`} onClick={() => setFilter("off")}>已關掉 {off.size}</button>}
       </div>
+
+      <div className="wp-search" onKeyDown={(e) => e.key === "Escape" && setSugOpen(false)}>
+        <div className="seatviewer-search">
+          <Search size={16} />
+          <input
+            type="text" value={query} placeholder="搜尋版面：打一個字就好，例如「狗」「籃球」「雨」"
+            role="combobox" aria-autocomplete="list" aria-expanded={showSug} aria-controls={showSug ? listId : undefined}
+            aria-activedescendant={showSug && active >= 0 ? `${listId}-${active}` : undefined}
+            onChange={(e) => { setQuery(e.target.value); setSugOpen(true); setActive(-1); }}
+            onFocus={() => setSugOpen(true)}
+            onBlur={() => setSugOpen(false)}
+            onKeyDown={(e) => {
+              if (!showSug) return;
+              if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); setActive((i) => Math.max(0, Math.min(sugs.length - 1, i + (e.key === "ArrowDown" ? 1 : -1)))); }
+              if (e.key === "Enter") { e.preventDefault(); if (sugs[active]) pick(sugs[active]); else setSugOpen(false); }
+            }}
+          />
+          {query && <button type="button" className="seatviewer-search-clear" aria-label="清除搜尋" onMouseDown={(e) => e.preventDefault()} onClick={() => { setQuery(""); setActive(-1); }}><X size={14} /></button>}
+        </div>
+        {showSug && (
+          <ul id={listId} className="ui-select-menu" role="listbox" aria-label="符合的版面">
+            {sugs.map((p, i) => (
+              <li key={p.name} id={`${listId}-${i}`} role="option" aria-selected={active === i}
+                className={`ui-select-option wp-sug${active === i ? " active" : ""}`}
+                onMouseDown={(e) => { e.preventDefault(); pick(p); }}>
+                <img src={`/wall-thumbs/${p.name}.jpg`} alt="" loading="lazy" />
+                <span className="wp-sug-text"><span className="wp-sug-title"><Hit text={p.title} q={query} /></span><span className="wp-sug-idea">{p.idea}</span></span>
+                <span className="pill pill-groom">{FAMILY[p.family] || p.family}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+      {query.trim() && <div className="wp-search-count">找到 {shown.length} 個版面{shown.length === 0 ? "，換個字試試看" : ""}</div>}
 
       <div className="wp-grid">
         {shown.map((p) => {

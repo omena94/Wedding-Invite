@@ -1608,6 +1608,20 @@ tbody tr:last-child td { border-bottom: none; }
 .wp-idea { font-size: 12.5px; color: var(--text-muted); line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .wp-meta { display: flex; align-items: center; gap: 6px; margin-top: auto; padding-top: 6px; }
 .wp-toggle { margin-left: auto; }
+/* 版面快速搜尋（2026-10-01 新人要求：打一個字就跳建議） */
+.wp-search { position: relative; max-width: 520px; margin: 16px 0 10px; }
+.wp-search .seatviewer-search { background: #fff; }
+.wp-search .seatviewer-search:focus-within { border-color: var(--milk-tea-500); box-shadow: 0 0 0 3px rgba(166, 124, 82, 0.15); }
+.wp-search .seatviewer-search input, .wp-search .seatviewer-search input:focus { border: none; box-shadow: none; outline: none; background: transparent; padding: 4px 0; border-radius: 0; }
+.wp-search .ui-select-menu { max-height: 380px; }
+.wp-sug { justify-content: flex-start; gap: 10px; }
+.wp-sug img { width: 64px; height: 36px; object-fit: cover; border-radius: 6px; background: #111; flex: none; }
+.wp-sug-text { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.wp-sug-title { font-weight: 600; color: var(--milk-tea-900); }
+.wp-sug-title mark { background: #fdf3d6; color: inherit; border-radius: 3px; padding: 0 1px; }
+.wp-sug-idea { font-size: 12px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wp-sug .pill { flex: none; }
+.wp-search-count { font-size: 13px; color: var(--text-muted); margin: -2px 0 10px; }
 /* 婚宴 → 菜單（2026-09-29） */
 .menu-summary { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; align-self: end; padding-bottom: 18px; }
 .menu-files { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
