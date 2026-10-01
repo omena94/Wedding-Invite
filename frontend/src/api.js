@@ -257,13 +257,18 @@ export async function downloadGuestPhotosZip() {
   const a = document.createElement("a"); a.href = url; a.download = "wedding-day-photos.zip"; document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 5000);
 }
-// 現場留言與大螢幕（2026-09-28）：留言管理、大螢幕輪詢、背景歌單；都要 wall 鑰匙
+// 現場留言與大螢幕（2026-09-28）：留言管理、大螢幕輪詢、背景歌單。
+// 2026-10-01 鑰匙拆兩把：wall（當天操作：留言、開關、遙控、播放）、wall_setup（歌單與版面設定）
 const WALL = `${P}/wall`;
 export const fetchWallMessages = () => request(`${WALL}/messages`, { auth: true });
 export const createWallMessage = (data) => request(`${WALL}/messages`, { method: "POST", body: data, auth: true });
 export const updateWallMessage = (id, data) => request(`${WALL}/messages/${id}`, { method: "PATCH", body: data, auth: true });
 export const deleteWallMessage = (id) => request(`${WALL}/messages/${id}`, { method: "DELETE", auth: true });
 // 大螢幕每兩秒問一次：{messages, count, open, moderation, songs_rev}
+export const fetchWallOptions = () => request(`${WALL}/options`, { auth: true });
+export const saveWallOptions = (data) => request(`${WALL}/options`, { method: "PUT", body: data, auth: true });
+export const fetchWallPlates = () => request(`${WALL}/plates`, { auth: true });
+export const saveWallPlates = (data) => request(`${WALL}/plates`, { method: "PUT", body: data, auth: true });
 export const fetchWallFeed = () => request(`${WALL}/feed`, { auth: true });
 export const fetchWallSongs = () => request(`${WALL}/songs`, { auth: true });
 // 大螢幕遙控（2026-09-30）：手機看大螢幕回報的狀態 {state, age, online}、送指令（大螢幕每秒來拿）

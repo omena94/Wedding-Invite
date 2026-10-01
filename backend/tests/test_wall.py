@@ -475,3 +475,36 @@ def test_duck_level(setup):
     assert _feed(c)["duck"] == 20
     _on(db, "wall_duck", "500")
     assert _feed(c)["duck"] == 90
+
+
+def test_split_keys(setup):
+    """2026-10-01 鑰匙拆成 wall（當天操作）與 wall_setup（歌單與版面）：幫手只拿 wall 時能審留言、切開關、播大螢幕，但改不到歌單與版面。"""
+    c, db, _ = setup
+    song = c.post("/api/planner/wall/songs", files={"file": ("x.mp3", b"ID3" * 20, "audio/mpeg")}, headers=COUPLE).json()
+    # 存過權限表之後才有的 wall_setup：新人自動拿到
+    c.patch("/api/planner/settings", json={"role_permissions": json.dumps({"couple": ["settings", "wall"], "helper": ["wall"], "known": ["settings", "wall"]})}, headers=COUPLE)
+    assert "wall_setup" in c.get("/api/admin/me", headers=COUPLE).json()["permissions"]
+    assert "wall_setup" not in c.get("/api/admin/me", headers=HELPER).json()["permissions"]
+    # 幫手（只有 wall）：開關、留言、大螢幕要讀的歌單與音檔、存節拍都可以
+    assert c.put("/api/planner/wall/options", json={"open": True, "moderation": True}, headers=HELPER).json() == {"open": True, "moderation": True}
+    assert c.get("/api/planner/wall/options", headers=HELPER).status_code == 200
+    assert c.get("/api/planner/wall/songs", headers=HELPER).status_code == 200
+    assert c.get(f"/api/planner/wall/songs/{song['id']}/audio", headers=HELPER).status_code == 200
+    # 改歌、刪歌、排順序、上傳、版面都不行
+    assert c.patch(f"/api/planner/wall/songs/{song['id']}", json={"title": "改"}, headers=HELPER).status_code == 403
+    assert c.delete(f"/api/planner/wall/songs/{song['id']}", headers=HELPER).status_code == 403
+    assert c.post("/api/planner/wall/songs/reorder", json={"ids": [song["id"]]}, headers=HELPER).status_code == 403
+    assert c.get("/api/planner/wall/plates", headers=HELPER).status_code == 403
+    assert c.put("/api/planner/wall/plates", json={"pace": "fast"}, headers=HELPER).status_code == 403
+    # 新人：版面設定照舊存在設定表，大螢幕的 feed 讀得到；名稱格式不對要擋
+    r = c.put("/api/planner/wall/plates", json={"pace": "fast", "off": ["sparkler", "sparkler", "vinyl"]}, headers=COUPLE).json()
+    assert r == {"off": ["sparkler", "vinyl"], "pace": "fast"}
+    assert _feed(c)["plates_off"] == ["sparkler", "vinyl"] and _feed(c)["pace"] == "fast"
+    assert c.put("/api/planner/wall/plates", json={"off": ["Bad Name"]}, headers=COUPLE).status_code == 400
+    assert c.put("/api/planner/wall/plates", json={"pace": "turbo"}, headers=COUPLE).status_code == 400
+    # 只有 wall_setup 的人：能弄歌單與版面，但不能管留言
+    c.patch("/api/planner/settings", json={"role_permissions": json.dumps({"couple": ["settings", "wall", "wall_setup"], "helper": ["wall_setup"]})}, headers=COUPLE)
+    assert c.patch(f"/api/planner/wall/songs/{song['id']}", json={"title": "改"}, headers=HELPER).status_code == 200
+    assert c.get("/api/planner/wall/plates", headers=HELPER).status_code == 200
+    assert c.get("/api/planner/wall/messages", headers=HELPER).status_code == 403
+    assert c.put("/api/planner/wall/options", json={"open": False}, headers=HELPER).status_code == 403

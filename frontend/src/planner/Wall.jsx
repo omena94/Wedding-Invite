@@ -1,14 +1,14 @@
-// 後台「現場留言」（2026-09-28）：賓客在 /wish 寫的祝福、會場大螢幕（/wall）的開關與 QR code、背景歌單。
-// 只有有 wall 鑰匙的人看得到；開關跟當天照片一樣存在設定表（wall_open、wall_moderation）。
+// 後台「大螢幕」的「留言」分頁（2026-09-28 原「現場留言」頁；2026-10-01 併進 WallHub）：賓客在 /wish 寫的祝福、開關、/wish 的 QR code。
+// 要 wall 鑰匙；開關存在設定表（wall_open、wall_moderation），走 /api/planner/wall/options，不需要「設定」權限。
+// 歌單搬到「歌單」分頁，「手機遙控」與「開啟大螢幕」按鈕搬到 WallHub 的頁首。
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import qrcode from "qrcode-generator";
-import { Check, Download, MessageSquareHeart, Monitor, Plus, QrCode, Smartphone, Trash2 } from "lucide-react";
+import { Check, Download, MessageSquareHeart, Plus, QrCode, Trash2 } from "lucide-react";
 import {
-  createWallMessage, deleteWallMessage, fetchPlannerSettings, fetchWallMessages, savePlannerSettings, updateWallMessage,
+  createWallMessage, deleteWallMessage, fetchWallMessages, fetchWallOptions, saveWallOptions, updateWallMessage,
 } from "../api.js";
 import Toggle from "../components/Toggle.jsx";
-import WallSongs from "./WallSongs.jsx";
-import { Empty, ErrorBox, Loading, Modal, PageHead, confirmDelete, toastErr, toastOk, useLoader } from "./ui.jsx";
+import { Empty, ErrorBox, Loading, Modal, confirmDelete, toastErr, toastOk, useLoader } from "./ui.jsx";
 
 const TEXT_MAX = 60; // 跟後端、/wish 一致
 const NAME_MAX = 20;
@@ -31,14 +31,13 @@ function fmtTime(iso) {
 
 export default function Wall() {
   const { data, setData, loading, error } = useLoader(fetchWallMessages, []);
-  const { data: settings, setData: setSettings, error: settingsError } = useLoader(fetchPlannerSettings, []);
+  const { data: settings, setData: setSettings, error: settingsError } = useLoader(fetchWallOptions, []); // { open, moderation }
   const [saving, setSaving] = useState(false);
   const [filter, setFilter] = useState("");
   const [addName, setAddName] = useState(COUPLE_NAME);
   const [addText, setAddText] = useState("");
   const [adding, setAdding] = useState(false);
   const [working, setWorking] = useState(null); // 正在改哪一則（按鈕先鎖住，避免連點）
-  const [remoteQr, setRemoteQr] = useState(false); // 「手機遙控」的 QR code 視窗
   // 每次改動就 +1：改動途中送出去的輪詢，回來時已經過時，丟掉才不會畫面跳回舊狀態
   const gen = useRef(0);
 
@@ -85,7 +84,7 @@ export default function Wall() {
 
   const toggleSetting = async (key, on, okText) => {
     setSaving(true);
-    try { setSettings(await savePlannerSettings({ [key]: on ? "1" : "0" })); toastOk(okText); } catch (e) { toastErr(e); } finally { setSaving(false); }
+    try { setSettings(await saveWallOptions({ [key]: on })); toastOk(okText); } catch (e) { toastErr(e); } finally { setSaving(false); }
   };
 
   const items = useMemo(() => data?.items || [], [data]);
@@ -97,34 +96,27 @@ export default function Wall() {
 
   if (loading) return <Loading />;
   if (error) return <ErrorBox error={error} />;
-  const open = settings?.values?.wall_open === "1";
-  const moderation = settings?.values?.wall_moderation === "1";
+  const open = !!settings?.open;
+  const moderation = !!settings?.moderation;
   const shown = filter ? items.filter((m) => m.status === filter) : items;
   const wishUrl = `${location.origin}/wish`;
 
   return (
     <div>
-      <PageHead title="現場留言" sub="賓客掃 QR code 到 /wish 留言，會即時出現在會場大螢幕上。大螢幕請用會場電腦登入後開啟。"
-        actions={<>
-          <button type="button" className="btn btn-ghost" onClick={() => setRemoteQr(true)}><Smartphone size={15} /> 手機遙控</button>
-          <button type="button" className="btn btn-primary" onClick={() => window.open("/wall", "_blank", "noopener")}><Monitor size={15} /> 開啟大螢幕</button>
-        </>} />
-      {remoteQr && <RemoteQr url={`${location.origin}/planner/wall-remote`} onClose={() => setRemoteQr(false)} />}
-
       <div className="wall-top">
         <div className="panel">
           <div className="panel-head"><div className="panel-title"><MessageSquareHeart size={18} /> 開關</div></div>
-          {settingsError ? <div className="muted-cell" style={{ fontSize: 13 }}>要有「設定」權限才能切換開關，請新人到設定頁開放。</div> : (
+          {settingsError ? <ErrorBox error={settingsError} /> : (
             <div className="pl-switch-list">
-              <div className="pl-switch" onClick={() => !saving && settings && toggleSetting("wall_open", !open, open ? "已關閉賓客留言" : "已開放賓客留言")}>
-                <Toggle checked={open} disabled={saving || !settings} onChange={(v) => toggleSetting("wall_open", v, v ? "已開放賓客留言" : "已關閉賓客留言")} label="開放賓客留言" />
+              <div className="pl-switch" onClick={() => !saving && settings && toggleSetting("open", !open, open ? "已關閉賓客留言" : "已開放賓客留言")}>
+                <Toggle checked={open} disabled={saving || !settings} onChange={(v) => toggleSetting("open", v, v ? "已開放賓客留言" : "已關閉賓客留言")} label="開放賓客留言" />
                 <div>
                   <div className="pl-list-title">開放賓客留言（/wish） <span className={`pill ${open ? "pill-yes" : "pill-no"}`}>{open ? "開放中" : "關閉"}</span></div>
                   <div className="pl-list-sub">賓客不用登入就能寫；關著的時候只有登入的人能試寫。</div>
                 </div>
               </div>
-              <div className="pl-switch" onClick={() => !saving && settings && toggleSetting("wall_moderation", !moderation, moderation ? "新留言會直接上螢幕" : "新留言要先審核")}>
-                <Toggle checked={moderation} disabled={saving || !settings} onChange={(v) => toggleSetting("wall_moderation", v, v ? "新留言要先審核" : "新留言會直接上螢幕")} label="留言先審核再上螢幕" />
+              <div className="pl-switch" onClick={() => !saving && settings && toggleSetting("moderation", !moderation, moderation ? "新留言會直接上螢幕" : "新留言要先審核")}>
+                <Toggle checked={moderation} disabled={saving || !settings} onChange={(v) => toggleSetting("moderation", v, v ? "新留言要先審核" : "新留言會直接上螢幕")} label="留言先審核再上螢幕" />
                 <div>
                   <div className="pl-list-title">留言先審核再上螢幕 <span className={`pill ${moderation ? "pill-warn" : "pill-yes"}`}>{moderation ? "先審核" : "直接上螢幕"}</span></div>
                   <div className="pl-list-sub">開著時新留言要按「通過」才會出現；關著時送出就直接上螢幕，不妥的可以隨時隱藏。</div>
@@ -197,7 +189,6 @@ export default function Wall() {
         )}
       </div>
 
-      <WallSongs />
     </div>
   );
 }
@@ -219,8 +210,8 @@ function qrPath(qr) {
   return d;
 }
 
-// 手機遙控頁的 QR code（2026-09-30）：幫手用手機相機掃，登入後就能遙控大螢幕
-function RemoteQr({ url, onClose }) {
+// 手機遙控頁的 QR code（2026-09-30）：幫手用手機相機掃，登入後就能遙控大螢幕。WallHub 頁首的「手機遙控」用
+export function RemoteQr({ url, onClose }) {
   const qr = useMemo(() => makeQr(url), [url]);
   const size = qr.getModuleCount() + QUIET * 2;
   return (
@@ -233,8 +224,8 @@ function RemoteQr({ url, onClose }) {
         <div className="wall-qr-side">
           <div className="wall-qr-url">{url}</div>
           <div className="helper-text">
-            用手機相機掃，登入後台（新人密碼，或有「現場留言」權限的幫手密碼）就是遙控器：切歌、拖進度、插播、講話模式。
-            也可以在手機後台的選單點「大螢幕遙控」。會場電腦的大螢幕要先按「開始播放」。
+            用手機相機掃，登入後台（新人密碼，或有「大螢幕：當天操作」權限的幫手密碼）就是遙控器：切歌、拖進度、插播、講話模式。
+            也可以在手機後台的選單點「大螢幕」，再切到「遙控」。會場電腦的大螢幕要先按「開始播放」。
           </div>
         </div>
       </div>

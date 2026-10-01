@@ -41,7 +41,7 @@
 - 型別檢查：`npx tsc --noEmit -p src/wall`（只看自己的檔：`| grep scenes/你的版面`）。
 - 截圖工具會印出 `SCENE ERRORS` 與瀏覽器錯誤——一定要看。
 
-### 後台「大螢幕版面」頁（新增或拿掉版面後要做的事）
+### 後台「大螢幕」的「版面」分頁（新增或拿掉版面後要做的事）
 
 - `node scripts/wall-catalog.mjs`：從 `docs/wall/CATALOG.md` 重新產生 `src/wall/plateCatalog.ts`（中文名稱、系列、亮暗、點子；只列 scenes/ 裡有的檔）。
 - `node scripts/wall-render.mjs thumbs`（或 `--names a,b` 只拍幾個）：重拍 `public/wall-thumbs/<名字>.jpg` 縮圖。版面改過樣子也要重拍。
@@ -67,7 +67,7 @@
     - 兩行歌詞的位置、大小是畫面設計的一部分（字幕條、雙語招牌、對照的兩頁），不是事後硬塞；有原文時不能擠到留言或右下角 HUD。
     - 沒翻譯的歌：只有一行，版面要一樣好看（原文那一格收起來或換成裝飾，不要留一個空框）。
     - 驗收：`node scripts/wall-render.mjs ko --scene <名字>`，**有主打留言那一格也要看到原文**；再看一般（沒翻譯）的五種情境。
-    - 後台「大螢幕版面」有「雙語」篩選（wall-catalog.mjs 讀版面檔的 `bilingual: true`）。
+    - 後台「大螢幕」的「版面」分頁有「雙語」篩選（wall-catalog.mjs 讀版面檔的 `bilingual: true`）。
     - 既有版面的雙語普查（2026-09-30）：`node scripts/wall-render.mjs bi --scene a,b`，會拍兩格「有翻譯＋主打留言」
       （版面還沒標 bilingual 也照樣畫原文，靠 `params.keepSub`，只有檢查工具會帶），並量原文在畫面上多大、有沒有壓到 HUD。
       通過的已經加上 `bilingual: true`（最早的 9 個版面在自己的檔裡只宣告 `spec = { bilingual: true }`，排程參數仍在 PLATES）。

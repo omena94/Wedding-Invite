@@ -27,8 +27,8 @@ from ..database import get_db
 from ..models import WallCommand, WallMessage, WallScreen, WallSong
 from ..permissions import require_perm
 from ..security import optional_staff
-from ..stage import (WALL_DUCK_KEY, WALL_MODERATION_KEY, WALL_OPEN_KEY, WALL_PACE_KEY, WALL_PLATES_OFF_KEY, WALL_REMOTE_LOCK_KEY, get_setting, is_on,
-                     set_setting)
+from ..stage import (WALL_DUCK_KEY, WALL_MODERATION_KEY, WALL_OPEN_KEY, WALL_PACE_KEY, WALL_PLATES_OFF_KEY, WALL_REMOTE_LOCK_KEY, clean_plates_off,
+                     get_setting, is_on, set_setting)
 from ..storage import LocalStore
 
 router = APIRouter(tags=["wall"])
@@ -144,8 +144,12 @@ def post_wall_message(payload: GuestMessageIn, request: Request, db: Session = D
     return {"id": row.id, "status": row.status}
 
 
-# ---------------- 後台與大螢幕（要 wall 鑰匙） ----------------
+# ---------------- 後台與大螢幕 ----------------
+# 2026-10-01 鑰匙拆成兩把：wall＝當天操作（開大螢幕播放、留言、開關、遙控），wall_setup＝歌單與版面設定。
+# 幫手當天只要 wall，就不會誤刪歌、改到歌詞。大螢幕播放要讀歌單、音檔，也會把算好的節拍存回來，所以那幾支兩把都能用。
 Perm = Depends(require_perm("wall"))
+Setup = Depends(require_perm("wall_setup"))
+Either = Depends(require_perm("wall", "wall_setup"))
 
 
 def _get_msg(db: Session, msg_id: int) -> WallMessage:
@@ -271,12 +275,12 @@ def _parse_filename(name: str) -> tuple[str, str]:
     return "", stem
 
 
-@router.get("/api/planner/wall/songs", dependencies=[Perm])
+@router.get("/api/planner/wall/songs", dependencies=[Either])
 def list_wall_songs(db: Session = Depends(get_db)):
     return {"items": [_song_out(s) for s in _songs(db)]}
 
 
-@router.post("/api/planner/wall/songs", status_code=201, dependencies=[Perm])
+@router.post("/api/planner/wall/songs", status_code=201, dependencies=[Setup])
 async def upload_wall_song(
     file: UploadFile = File(...),
     title: str = Form(default=""),
@@ -315,7 +319,7 @@ class ReorderIn(BaseModel):
     ids: list[StrictInt]
 
 
-@router.post("/api/planner/wall/songs/reorder", dependencies=[Perm])
+@router.post("/api/planner/wall/songs/reorder", dependencies=[Setup])
 def reorder_wall_songs(payload: ReorderIn, db: Session = Depends(get_db)):
     """照給的順序排；沒列到的接在後面、維持原本先後（兩個分頁同時操作時不會把歌弄丟）。"""
     songs = _songs(db)
@@ -356,7 +360,7 @@ def _finite(value: Any, label: str, lo: float, hi: float) -> float:
     return v
 
 
-@router.patch("/api/planner/wall/songs/{song_id}", dependencies=[Perm])
+@router.patch("/api/planner/wall/songs/{song_id}", dependencies=[Setup])
 def update_wall_song(song_id: int, payload: SongPatch, db: Session = Depends(get_db)):
     s = _get_song(db, song_id)
     fields = payload.model_fields_set
@@ -415,7 +419,7 @@ class AnalysisIn(BaseModel):
     data: dict[str, Any]
 
 
-@router.put("/api/planner/wall/songs/{song_id}/analysis", dependencies=[Perm])
+@router.put("/api/planner/wall/songs/{song_id}/analysis", dependencies=[Either])
 def save_wall_song_analysis(song_id: int, payload: AnalysisIn, db: Session = Depends(get_db)):
     """節拍分析在瀏覽器算（伺服器不用裝音訊套件），算完整包存回來，下次開大螢幕就不用重算。"""
     s = _get_song(db, song_id)
@@ -435,7 +439,7 @@ def save_wall_song_analysis(song_id: int, payload: AnalysisIn, db: Session = Dep
     return _song_out(s)
 
 
-@router.get("/api/planner/wall/songs/{song_id}/analysis", dependencies=[Perm])
+@router.get("/api/planner/wall/songs/{song_id}/analysis", dependencies=[Either])
 def get_wall_song_analysis(song_id: int, db: Session = Depends(get_db)):
     s = _get_song(db, song_id)
     if not s.analysis_json:
@@ -445,7 +449,7 @@ def get_wall_song_analysis(song_id: int, db: Session = Depends(get_db)):
     return Response(content=f'{head[:-1]},"data":{s.analysis_json}}}', media_type="application/json")
 
 
-@router.get("/api/planner/wall/songs/{song_id}/audio", dependencies=[Perm])
+@router.get("/api/planner/wall/songs/{song_id}/audio", dependencies=[Either])
 def wall_song_audio(song_id: int, db: Session = Depends(get_db)):
     s = _get_song(db, song_id)
     store = _song_store()
@@ -455,7 +459,7 @@ def wall_song_audio(song_id: int, db: Session = Depends(get_db)):
     return StreamingResponse(store.stream(s.stored_name), media_type=s.content_type or "application/octet-stream", headers=headers)
 
 
-@router.delete("/api/planner/wall/songs/{song_id}", status_code=204, dependencies=[Perm])
+@router.delete("/api/planner/wall/songs/{song_id}", status_code=204, dependencies=[Setup])
 def delete_wall_song(song_id: int, db: Session = Depends(get_db)):
     s = _get_song(db, song_id)
     try:
@@ -672,3 +676,58 @@ def set_wall_duck(payload: DuckIn, db: Session = Depends(get_db)):
     set_setting(db, WALL_DUCK_KEY, str(payload.level))
     db.commit()
     return {"level": payload.level}
+
+
+# ---------------- 開關與版面設定（2026-10-01） ----------------
+# 原本都走 /api/planner/settings（要「設定」鑰匙），有大螢幕權限的幫手反而切不了；改成各自跟著大螢幕的鑰匙走。
+class OptionsIn(BaseModel):
+    open: StrictBool | None = None
+    moderation: StrictBool | None = None
+
+
+def _options(db: Session) -> dict:
+    return {"open": is_on(db, WALL_OPEN_KEY), "moderation": is_on(db, WALL_MODERATION_KEY)}
+
+
+@router.get("/api/planner/wall/options", dependencies=[Perm])
+def get_wall_options(db: Session = Depends(get_db)):
+    return _options(db)
+
+
+@router.put("/api/planner/wall/options", dependencies=[Perm])
+def set_wall_options(payload: OptionsIn, db: Session = Depends(get_db)):
+    """開放賓客留言、留言先審核：當天現場的人要能切，所以跟留言管理同一把鑰匙。"""
+    if payload.open is not None:
+        set_setting(db, WALL_OPEN_KEY, "1" if payload.open else "0")
+    if payload.moderation is not None:
+        set_setting(db, WALL_MODERATION_KEY, "1" if payload.moderation else "0")
+    db.commit()
+    return _options(db)
+
+
+class PlatesIn(BaseModel):
+    off: list[StrictStr] | None = None
+    pace: StrictStr | None = None
+
+
+def _plates(db: Session) -> dict:
+    return {"off": [x for x in (get_setting(db, WALL_PLATES_OFF_KEY) or "").split(",") if x.strip()],
+            "pace": get_setting(db, WALL_PACE_KEY) or "normal"}
+
+
+@router.get("/api/planner/wall/plates", dependencies=[Setup])
+def get_wall_plates(db: Session = Depends(get_db)):
+    return _plates(db)
+
+
+@router.put("/api/planner/wall/plates", dependencies=[Setup])
+def set_wall_plates(payload: PlatesIn, db: Session = Depends(get_db)):
+    """關掉的版面、換版面的節奏；大螢幕下一次輪詢 feed 就照新的排。"""
+    if payload.pace is not None:
+        if payload.pace not in ("fast", "normal", "slow"):
+            raise HTTPException(400, "節奏只能是快、中、慢")
+        set_setting(db, WALL_PACE_KEY, payload.pace)
+    if payload.off is not None:
+        set_setting(db, WALL_PLATES_OFF_KEY, clean_plates_off(",".join(payload.off)))
+    db.commit()
+    return _plates(db)

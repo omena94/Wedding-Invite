@@ -1,6 +1,5 @@
 """籌備後台 API（僅限新人）：設定、總覽、廠商、報價、花費、付款、待辦、備忘、活動環節、檔案。"""
 import mimetypes
-import re
 import uuid
 from pathlib import Path
 
@@ -57,6 +56,7 @@ from ..stage import (
     PHASE2_KEY,
     banquet_estimate,
     banquet_params,
+    clean_plates_off,
     get_all,
     get_setting,
     parse_dt,
@@ -235,11 +235,7 @@ def patch_settings(values: dict[str, str], db: Session = Depends(get_db)):
         if key == "wall_pace" and value not in ("", "fast", "normal", "slow"):
             raise HTTPException(400, "節奏只能是快、中、慢")
         if key == "wall_plates_off":
-            # 只留像版面名稱的東西（小寫英文、數字），避免奇怪的字串進設定表
-            names = [x.strip() for x in value.split(",") if x.strip()]
-            if len(names) > 300 or any(not re.fullmatch(r"[a-z0-9]{1,40}", n) for n in names):
-                raise HTTPException(400, "版面名稱格式不正確")
-            value = ",".join(dict.fromkeys(names))
+            value = clean_plates_off(value)
         if key == PHASE2_KEY and value and parse_dt(value) is None:
             raise HTTPException(400, "第二階段開放時間格式不正確")
         set_setting(db, key, value)

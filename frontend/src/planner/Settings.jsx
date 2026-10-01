@@ -31,7 +31,8 @@ const PERM_ROWS = [
   ["files", "文件庫"],
   ["photos", "婚紗照"],
   ["guest_photos", "當天照片（賓客上傳的原檔：看、下載、刪除、開關）"],
-  ["wall", "現場留言：大螢幕播放、留言管理、歌單"],
+  ["wall", "大螢幕：當天操作（開大螢幕播放、留言審核與開關、手機遙控）"],
+  ["wall_setup", "大螢幕：歌單與版面設定（加歌、改歌詞、版面開關、換版面節奏）"],
   ["settings", "設定（含這張權限表）"],
 ];
 const DEFAULT_PERMS = { couple: PERM_ROWS.map(([k]) => k), helper: ["guests_view", "guests_edit", "seating_view", "gifts_view", "gifts_pickup"] };

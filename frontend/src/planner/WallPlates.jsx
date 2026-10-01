@@ -1,12 +1,12 @@
-// 大螢幕版面一覽（2026-09-28 新人要求：在後台看所有版面的樣子、不喜歡的關掉、調整換版面的節奏）。
+// 大螢幕版面一覽（2026-09-28 新人要求：在後台看所有版面的樣子、不喜歡的關掉、調整換版面的節奏）。2026-10-01 起是 WallHub 的「版面」分頁，要 wall_setup 鑰匙。
 // 縮圖是 scripts/wall-render.mjs thumbs 拍好的靜態圖（public/wall-thumbs/）；按「預覽」開新分頁，
 // 大螢幕用真的歌單與留言只播這個版面（/wall?plate=名字，← → 換下一個）。
-// 關掉的版面存在設定 wall_plates_off（逗號分隔），節奏存在 wall_pace；大螢幕每兩秒問一次就會照新的設定排。
+// 關掉的版面存在設定 wall_plates_off（逗號分隔），節奏存在 wall_pace（走 /api/planner/wall/plates）；大螢幕每兩秒問一次就會照新的設定排。
 import { useId, useMemo, useState } from "react";
 import { LayoutGrid, Play, Search, X } from "lucide-react";
-import { fetchPlannerSettings, savePlannerSettings } from "../api.js";
+import { fetchWallPlates, saveWallPlates } from "../api.js";
 import Toggle from "../components/Toggle.jsx";
-import { ErrorBox, Loading, PageHead, toastErr, toastOk, useLoader } from "./ui.jsx";
+import { ErrorBox, Loading, toastErr, toastOk, useLoader } from "./ui.jsx";
 import { PLATE_CATALOG } from "../wall/plateCatalog";
 
 const FAMILY = {
@@ -45,7 +45,7 @@ function Hit({ text, q }) {
 const open = (name) => window.open(`/wall?plate=${encodeURIComponent(name)}`, "_blank", "noopener");
 
 export default function WallPlates() {
-  const { data: settings, setData: setSettings, loading, error } = useLoader(fetchPlannerSettings, []);
+  const { data: settings, setData: setSettings, loading, error } = useLoader(fetchWallPlates, []); // { off: [...], pace }
   const [filter, setFilter] = useState("");
   const [query, setQuery] = useState("");
   const [sugOpen, setSugOpen] = useState(false);
@@ -53,18 +53,18 @@ export default function WallPlates() {
   const listId = useId();
   const [saving, setSaving] = useState(false);
   const plates = useMemo(() => PLATE_CATALOG.filter((p) => p.name !== "title"), []);
-  const off = useMemo(() => new Set((settings?.values?.wall_plates_off || "").split(",").filter(Boolean)), [settings]);
-  const pace = settings?.values?.wall_pace || "normal";
+  const off = useMemo(() => new Set(settings?.off || []), [settings]);
+  const pace = settings?.pace || "normal";
   const families = useMemo(() => [...new Set(plates.map((p) => p.family))], [plates]);
 
   const save = async (values, okText) => {
     setSaving(true);
-    try { setSettings(await savePlannerSettings(values)); if (okText) toastOk(okText); } catch (e) { toastErr(e); } finally { setSaving(false); }
+    try { setSettings(await saveWallPlates(values)); if (okText) toastOk(okText); } catch (e) { toastErr(e); } finally { setSaving(false); }
   };
   const toggle = (name, on) => {
     const next = new Set(off);
     if (on) next.delete(name); else next.add(name);
-    save({ wall_plates_off: [...next].join(",") }, on ? "這個版面會出現在大螢幕" : "這個版面不會再出現");
+    save({ off: [...next] }, on ? "這個版面會出現在大螢幕" : "這個版面不會再出現");
   };
 
   if (loading) return <Loading />;
@@ -79,14 +79,16 @@ export default function WallPlates() {
 
   return (
     <div>
-      <PageHead title="大螢幕版面" sub={`共 ${plates.length} 個版面，現場會播 ${onCount} 個。點縮圖或「預覽」會開新分頁，用你們的歌單實際播這個版面（← → 換上一個／下一個）；不喜歡的把「要播」關掉。`}
-        actions={<button type="button" className="btn btn-primary" onClick={() => open(plates[0]?.name)}><Play size={15} /> 從第一個開始預覽</button>} />
+      <div className="wall-tab-intro">
+        <div className="pl-sub">共 {plates.length} 個版面，現場會播 {onCount} 個。點縮圖或「預覽」會開新分頁，用你們的歌單實際播這個版面（← → 換上一個／下一個）；不喜歡的把「要播」關掉。</div>
+        <button type="button" className="btn btn-primary" onClick={() => open(plates[0]?.name)}><Play size={15} /> 從第一個開始預覽</button>
+      </div>
 
       <div className="panel">
         <div className="panel-head"><div className="panel-title"><LayoutGrid size={18} /> 換版面的節奏</div></div>
         <div className="wp-pace">
           {PACE.map(([k, label, hint]) => (
-            <button key={k} type="button" disabled={saving} className={`btn ${pace === k ? "btn-primary" : "btn-ghost"}`} onClick={() => pace !== k && save({ wall_pace: k }, `節奏改成「${label}」`)}>
+            <button key={k} type="button" disabled={saving} className={`btn ${pace === k ? "btn-primary" : "btn-ghost"}`} onClick={() => pace !== k && save({ pace: k }, `節奏改成「${label}」`)}>
               <span>{label}</span><small>{hint}</small>
             </button>
           ))}

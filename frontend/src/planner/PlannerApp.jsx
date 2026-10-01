@@ -3,8 +3,8 @@ import { useEffect, useState } from "react";
 import { BrowserRouter, NavLink, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import {
   Users, Wallet, CalendarDays, FolderOpen,
-  Settings as SettingsIcon, LogOut, Lock, LogIn, Home as HomeIcon, Armchair, Images, Gift, NotebookPen, PartyPopper, Camera, Monitor, ExternalLink, MessageSquareHeart, LayoutGrid,
-  ChevronDown, ClipboardList, Sparkles, UtensilsCrossed, Smartphone, Backpack,
+  Settings as SettingsIcon, LogOut, Lock, LogIn, Home as HomeIcon, Armchair, Images, Gift, NotebookPen, PartyPopper, Camera, Monitor, ExternalLink,
+  ChevronDown, ClipboardList, Sparkles, UtensilsCrossed, Backpack, MonitorPlay,
 } from "lucide-react";
 import { adminLogin, clearStash, clearToken, getRole, getStashedCouple, getToken, restoreCouple, setRole, setToken, stashCouple, switchRole, fetchMe } from "../api.js";
 import { toastErr } from "./ui.jsx";
@@ -16,9 +16,7 @@ import SettingsPage from "./Settings.jsx";
 import Seating from "./Seating.jsx";
 import Photos from "./Photos.jsx";
 import GuestPhotos from "./GuestPhotos.jsx";
-import Wall from "./Wall.jsx";
-import WallPlates from "./WallPlates.jsx";
-import WallRemote from "./WallRemote.jsx";
+import WallHub from "./WallHub.jsx";
 import Gifts from "./Gifts.jsx";
 import Memos from "./Memos.jsx";
 import Program from "./Program.jsx";
@@ -51,9 +49,8 @@ const NAV = [
   { to: "/files", label: "文件庫", icon: FolderOpen, perm: ["files"], group: "prep" },
   { to: "/program", label: "活動環節", icon: PartyPopper, perm: ["program"], group: "day" }, // 2026-09-09 婚禮當天流程與點子，只在後台
   { to: "/packing", label: "當天要帶的東西", icon: Backpack, perm: ["packing"], group: "day" }, // 2026-10-01 物品清單：分類、誰帶、已備妥
-  { to: "/wall", label: "現場留言", icon: MessageSquareHeart, perm: ["wall"], group: "day" }, // 2026-09-28 賓客在 /wish 留言、會場大螢幕、歌單
-  { to: "/wall-plates", label: "大螢幕版面", icon: LayoutGrid, perm: ["wall"], group: "day" }, // 2026-09-28 所有版面的縮圖、預覽、開關、換版面節奏
-  { to: "/wall-remote", label: "大螢幕遙控", icon: Smartphone, perm: ["wall"], group: "day" }, // 2026-09-30 幫手用手機切歌、插播、講話模式
+  // 2026-10-01 原「現場留言」「大螢幕版面」「大螢幕遙控」合成一頁，裡面分留言／歌單／版面／遙控（?tab=）
+  { to: "/wall", label: "大螢幕", icon: MonitorPlay, perm: ["wall", "wall_setup"], group: "day" },
   { to: "/day-photos", label: "當天照片", icon: Camera, perm: ["guest_photos"], group: "day" }, // 2026-09-27 賓客上傳的原檔
   { to: "/photos", label: "婚紗照", icon: Images, perm: ["photos"] }, // 2026-09-28 新人要求改名
   { to: "/settings", label: "設定", icon: SettingsIcon, perm: ["settings"] },
@@ -112,9 +109,10 @@ export default function PlannerApp() {
             <Route path="/files" element={<Allowed ok={can("files")} home={home}><Files /></Allowed>} />
             <Route path="/photos" element={<Allowed ok={can("photos")} home={home}><Photos /></Allowed>} />
             <Route path="/day-photos" element={<Allowed ok={can("guest_photos")} home={home}><GuestPhotos /></Allowed>} />
-            <Route path="/wall" element={<Allowed ok={can("wall")} home={home}><Wall /></Allowed>} />
-            <Route path="/wall-plates" element={<Allowed ok={can("wall")} home={home}><WallPlates /></Allowed>} />
-            <Route path="/wall-remote" element={<Allowed ok={can("wall")} home={home}><WallRemote /></Allowed>} />
+            <Route path="/wall" element={<Allowed ok={can("wall", "wall_setup")} home={home}><WallHub /></Allowed>} />
+            {/* 舊網址（書籤、印出來的遙控 QR code）轉到對應的分頁 */}
+            <Route path="/wall-plates" element={<Navigate to="/wall?tab=plates" replace />} />
+            <Route path="/wall-remote" element={<Navigate to="/wall?tab=remote" replace />} />
             <Route path="/settings" element={<Allowed ok={can("settings")} home={home}><SettingsPage /></Allowed>} />
             <Route path="*" element={<Navigate to={home} replace />} />
           </Routes>
@@ -159,10 +157,11 @@ function Shell({ role, can, onLogout, children }) {
     <NavLink key={to + (search || "")} to={to + (search || "")} className={() => (isOn(n) ? "active" : undefined)}>
       <Icon size={16} /> {label}
     </NavLink>,
-    // 2026-09-28 新人要求：任何一頁都能直接開大螢幕（/wall 是獨立頁面，用新分頁開，後台照樣留著）；放在「現場留言」正下方
-    to === "/wall" && (
+    // 2026-09-28 新人要求：任何一頁都能直接開大螢幕（/wall 是獨立頁面，用新分頁開，後台照樣留著）；放在後台「大螢幕」正下方。
+    // 播放要「當天操作」鑰匙，只有歌單權限的人不顯示
+    to === "/wall" && can("wall") && (
       <a key="wall-screen" href="/wall" target="_blank" rel="noopener" className="pl-nav-ext">
-        <Monitor size={16} /> 大螢幕 <ExternalLink size={12} />
+        <Monitor size={16} /> 開啟大螢幕 <ExternalLink size={12} />
       </a>
     ),
   ]; };

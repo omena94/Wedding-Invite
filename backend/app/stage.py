@@ -9,8 +9,10 @@
   wall_moderation  現場留言先審核：開著時新留言是 pending，新人按「通過」才會上大螢幕
   info_*         婚禮資訊頁的文案（見 INFO_KEYS）
 """
+import re
 from datetime import datetime, timedelta, timezone
 
+from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from .models import Setting
@@ -252,3 +254,11 @@ def public_stage(db: Session, preview: bool = False) -> dict:
         "child_free_below": bp["child_free_below"],
         "child_half_below": bp["child_half_below"],
     }
+
+
+def clean_plates_off(value: str) -> str:
+    """大螢幕關掉的版面（逗號分隔）：只留像版面名稱的東西（小寫英文、數字），避免奇怪的字串進設定表。"""
+    names = [x.strip() for x in (value or "").split(",") if x.strip()]
+    if len(names) > 300 or any(not re.fullmatch(r"[a-z0-9]{1,40}", n) for n in names):
+        raise HTTPException(400, "版面名稱格式不正確")
+    return ",".join(dict.fromkeys(names))

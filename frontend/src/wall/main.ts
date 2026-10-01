@@ -6,7 +6,7 @@
 //  - 被新人隱藏的留言：小卡馬上收、主打它的窗格在下一拍切走。
 //  - 一首接一首（歌單順序，播完從頭；可以隨機播放），下一首在背景先下載、分析好。歌單是空的就先無聲地跑留言。
 //  - 操作列（2026-09-30）：進度條可以拖拉跳到任何時間；旁邊的歌單面板看下一首與待播清單，可以「現在播」「插播」。
-//  - 手機遙控（2026-09-30）：每秒把播放狀態回報給後台、拿走手機按的指令（後台「大螢幕遙控」）；講話模式把音樂慢慢調小聲。
+//  - 手機遙控（2026-09-30）：每秒把播放狀態回報給後台、拿走手機按的指令（後台「大螢幕」的「遙控」分頁）；講話模式把音樂慢慢調小聲。
 //  - 開發模式 ?dev=1：不連後端，用 dev/fixtures 的假留言與本機的測試音檔（見 vite.config.js 的 wall-dev），
 //    加上 ?export=1 給截圖腳本（scripts/wall-render.mjs）用。
 import { Engine, SCENES, type SongRuntime } from './engine/engine';
@@ -574,7 +574,7 @@ function updateUi() {
   const others = remote.screens - 1;
   $('ui-remote-text').textContent =
     remote.locked === 'mine' ? `手機遙控已鎖定在這台，別台大螢幕搶不走${others > 0 ? `（另外 ${others} 台是備用）` : ''}`
-    : remote.locked === 'other' ? '備用畫面：手機遙控已鎖定在另一台大螢幕。要換到這台，請到後台「大螢幕遙控」按「強制解除鎖定」'
+    : remote.locked === 'other' ? '備用畫面：手機遙控已鎖定在另一台大螢幕。要換到這台，請到後台「大螢幕」的「遙控」分頁按「強制解除鎖定」'
     : !remote.leader ? `備用畫面：手機遙控的是另一台大螢幕（共 ${remote.screens} 台開著）`
     : others > 0 ? `另外還開著 ${others} 台大螢幕，手機遙控的是這台（還沒鎖定）`
     : '手機遙控的是這台（還沒鎖定：別台按「開始播放」會接走）';
@@ -981,7 +981,7 @@ const gate = $<HTMLDivElement>('gate');
 function showLogin(msg = '') {
   gate.innerHTML = `<form id="login" class="gate-card" autocomplete="off">
     <p class="gate-eyebrow">OUR WEDDING · 大螢幕</p><h1>請先登入</h1>
-    <p class="gate-sub">用後台的新人或幫手密碼登入（需要「現場留言」權限）。</p>
+    <p class="gate-sub">用後台的新人或幫手密碼登入（需要「大螢幕：當天操作」權限）。</p>
     <input id="pw" type="password" placeholder="密碼" autofocus />
     <button type="submit">登入</button><p class="gate-err">${msg}</p></form>`;
   $('login').addEventListener('submit', async (e) => {
@@ -994,7 +994,7 @@ function showLogin(msg = '') {
 function showStart() {
   gate.innerHTML = `<div class="gate-card">
     <p class="gate-eyebrow">ALAN &amp; OMENA · 2027.03.13</p><h1>大螢幕準備好了</h1>
-    <p class="gate-sub">按「開始播放」後會進入全螢幕。滑鼠移動會出現操作列：進度條（可以拖拉）、上一首／下一首、歌單（插播、隨機播放）、講話模式、音量、音畫同步。也可以用手機開後台的「大螢幕遙控」操作；婚禮當天請在會場這台按操作列的「鎖定遙控在這台」，別台大螢幕就搶不走手機遙控。<br/>空白鍵暫停、F 全螢幕、Shift＋← → 倒退／快轉 10 秒、L 歌單、M 講話模式、↑↓ 音量、[ ] 音畫同步。</p>
+    <p class="gate-sub">按「開始播放」後會進入全螢幕。滑鼠移動會出現操作列：進度條（可以拖拉）、上一首／下一首、歌單（插播、隨機播放）、講話模式、音量、音畫同步。也可以用手機開後台「大螢幕」的「遙控」分頁操作；婚禮當天請在會場這台按操作列的「鎖定遙控在這台」，別台大螢幕就搶不走手機遙控。<br/>空白鍵暫停、F 全螢幕、Shift＋← → 倒退／快轉 10 秒、L 歌單、M 講話模式、↑↓ 音量、[ ] 音畫同步。</p>
     ${SOFT_GL ? `<p class="gate-warn">${SOFT_GL_TIP}</p>` : ''}
     <button id="go" type="button">開始播放</button><p id="gate-status" class="gate-status">${statusLine.text}</p></div>`;
   $('go').addEventListener('click', async () => {
@@ -1030,7 +1030,7 @@ async function boot() {
       playlist = (await fetchSongs()).filter((s) => s.enabled).sort((a, b) => a.sort_order - b.sort_order || a.id - b.id);
     } catch (e) {
       if ((e as HttpError).status === 401) return showLogin('登入已過期，請重新登入');
-      if ((e as HttpError).status === 403) return showLogin('這個帳號沒有「現場留言」的權限，請新人到設定頁開放');
+      if ((e as HttpError).status === 403) return showLogin('這個帳號沒有「大螢幕：當天操作」的權限，請新人到設定頁開放');
       setStatus('連不上伺服器，稍後會自動重試', false);
     }
     setInterval(() => void pollFeed(), 2000);

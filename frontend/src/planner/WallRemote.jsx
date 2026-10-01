@@ -1,4 +1,4 @@
-// 後台「大螢幕遙控」（2026-09-30）：幫手用手機看會場大螢幕現在播什麼，切歌、拖進度、插播、隨機播放、講話模式，
+// 後台「大螢幕」的「遙控」分頁（2026-09-30；2026-10-01 併進 WallHub，舊網址 /planner/wall-remote 會轉過來）：幫手用手機看會場大螢幕現在播什麼，切歌、拖進度、插播、隨機播放、講話模式，
 // 不用跑去會場電腦，操作列也不會出現在投影畫面上。
 // 大螢幕每秒回報一次狀態、順便拿走這裡按的指令（後端 routers/wall.py 的 remote/*），所以按下去大約一兩秒後生效；
 // 在那之前畫面先照「按下去的樣子」顯示（pending），大螢幕回報跟上了就改用真的狀態。
@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { ListMusic, Lock, Mic, MicOff, Minus, MonitorSmartphone, Pause, Play, Plus, SkipBack, SkipForward, Wifi, WifiOff } from "lucide-react";
 import { fetchWallRemote, forceUnlockWallRemote, saveWallDuck, sendWallRemote } from "../api.js";
 import Toggle from "../components/Toggle.jsx";
-import { PageHead, confirmAsk, toastErr, toastOk } from "./ui.jsx";
+import { confirmAsk, toastErr, toastOk } from "./ui.jsx";
 
 const mmss = (x) => { const v = Math.max(0, Math.floor(x || 0)); return `${Math.floor(v / 60)}:${String(v % 60).padStart(2, "0")}`; };
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
@@ -98,7 +98,7 @@ export default function WallRemote() {
   let conn;
   if (err) conn = { cls: "off", icon: WifiOff, text: `連不上伺服器：${err}` };
   else if (!snap) conn = { cls: "wait", icon: Wifi, text: "連線中…" };
-  else if (!st) conn = { cls: "off", icon: WifiOff, text: "還沒有大螢幕連線。請在會場電腦開啟大螢幕（後台「現場留言」→「開啟大螢幕」）並按「開始播放」。" };
+  else if (!st) conn = { cls: "off", icon: WifiOff, text: "還沒有大螢幕連線。請在會場電腦開啟大螢幕（後台「大螢幕」→「開啟大螢幕」）並按「開始播放」。" };
   else if (!online && locked) conn = { cls: "off", icon: WifiOff, text: `鎖定的那台大螢幕沒有連線（最後一次回報是 ${ago(snap.age ?? 0)}前），其他大螢幕不會接手。請在那台電腦重新打開大螢幕（同一個瀏覽器會自動接回鎖定）；那台壞了的話，按下面「強制解除鎖定」改用別台。` };
   else if (!online) conn = { cls: "off", icon: WifiOff, text: `大螢幕沒有連線（最後一次回報是 ${ago(snap.age ?? 0)}前）。請確認會場電腦的大螢幕還開著、網路正常。` };
   else if (!st.started) conn = { cls: "wait", icon: Wifi, text: "大螢幕已經打開，等現場按「開始播放」後就能遙控。" };
@@ -109,7 +109,6 @@ export default function WallRemote() {
 
   return (
     <div className="wr">
-      <PageHead title="大螢幕遙控" sub="用手機操作會場大螢幕：切歌、拖進度、插播、講話模式。按下去大約一兩秒後生效。" />
       <div className={`wr-conn ${conn.cls}`}><ConnIcon size={16} /> <span>{conn.text}</span></div>
       {/* 同時開了好幾台大螢幕（2026-09-30）：只有一台照手機做，要讓人知道控制的是哪一台、怎麼換 */}
       {online && snap.screens > 1 && (

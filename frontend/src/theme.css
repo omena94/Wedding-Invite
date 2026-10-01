@@ -1130,6 +1130,10 @@ tbody tr:last-child td { border-bottom: none; }
 .memo-a { color: var(--text-muted); font-size: 12.5px; margin-top: 2px; white-space: pre-wrap; word-break: break-word; }
 .memo-link { margin-top: 4px; display: flex; gap: 6px; flex-wrap: wrap; }
 .memo-add { margin-top: 6px; }
+/* 後台「大螢幕」的分頁列與分頁開頭的說明（2026-10-01） */
+.wall-tabs { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 0 0 20px; }
+.wall-tab-intro { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+.wall-tab-intro .pl-sub { flex: 1; min-width: 240px; margin: 0; }
 /* 當天要帶的東西（2026-10-01） */
 .packing-progress { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; font-size: 13px; color: var(--milk-tea-900); }
 .packing-qty { margin-left: 6px; color: var(--text-muted); font-size: 12px; }
