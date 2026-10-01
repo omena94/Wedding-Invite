@@ -22,6 +22,7 @@ import Memos from "./Memos.jsx";
 import Program from "./Program.jsx";
 import Packing from "./Packing.jsx";
 import GameEdit from "./GameEdit.jsx";
+import SegmentEdit from "./SegmentEdit.jsx";
 
 import { PlannerContext } from "./context.js";
 import { Loading } from "./ui.jsx";
@@ -105,6 +106,8 @@ export default function PlannerApp() {
             <Route path="/program" element={<Allowed ok={can("program")} home={home}><Program /></Allowed>} />
             <Route path="/program/games/new" element={<Allowed ok={can("program")} home={home}><GameEdit /></Allowed>} />
             <Route path="/program/games/:id" element={<Allowed ok={can("program")} home={home}><GameEdit /></Allowed>} />
+            <Route path="/program/segments/new" element={<Allowed ok={can("program")} home={home}><SegmentEdit /></Allowed>} />
+            <Route path="/program/segments/:id" element={<Allowed ok={can("program")} home={home}><SegmentEdit /></Allowed>} />
             <Route path="/packing" element={<Allowed ok={can("packing")} home={home}><Packing /></Allowed>} />
             <Route path="/files" element={<Allowed ok={can("files")} home={home}><Files /></Allowed>} />
             <Route path="/photos" element={<Allowed ok={can("photos")} home={home}><Photos /></Allowed>} />
