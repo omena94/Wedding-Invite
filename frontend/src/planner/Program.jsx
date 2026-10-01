@@ -2,10 +2,10 @@
 // 下半是點子庫（先把想法記下來，決定了再標採用、指到某個環節）。
 import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { ArrowDown, ArrowUp, ChevronDown, Clock, Gamepad2, Lightbulb, Pencil, Plus, Trash2 } from "lucide-react";
+import { ChevronDown, Gamepad2, Lightbulb, Pencil, Plus, Trash2 } from "lucide-react";
 import Select from "../components/Select.jsx";
 import {
-  deleteGame, deleteIdea, deleteSegment, fetchGames, fetchIdeas, fetchSegments, reorderSegments, updateIdea, updateSegment,
+  deleteGame, deleteIdea, deleteSegment, fetchGames, fetchIdeas, fetchSegments, updateIdea, updateSegment,
 } from "../api.js";
 import { WEDDING_MINUTES, WEDDING_TIME_FROM, WEDDING_TIME_TO } from "../constants.js";
 import { IDEA_PILL, IDEA_STATUS, SEG_STATUS, toMin, toOptions } from "./programShared.js";
@@ -43,19 +43,7 @@ export default function Program() {
     try { await deleteGame(g.id); reloadGames(); reload(); } catch (e) { toastErr(e); }
   };
 
-  const move = async (idx, dir) => {
-    const ids = segments.map((s) => s.id);
-    const j = idx + dir;
-    if (j < 0 || j >= ids.length) return;
-    [ids[idx], ids[j]] = [ids[j], ids[idx]];
-    try { await reorderSegments(ids); reload(); } catch (e) { toastErr(e); }
-  };
-  // 依時間排序：有時間的照時間，未定時間的維持原相對順序排在後面
-  const sortByTime = async () => {
-    const timed = segments.filter((x) => x.start_time).sort((a, b) => toMin(a.start_time) - toMin(b.start_time));
-    const untimed = segments.filter((x) => !x.start_time);
-    try { await reorderSegments([...timed, ...untimed].map((x) => x.id)); reload(); } catch (e) { toastErr(e); }
-  };
+  // 2026-10-01 起環節由後端照開始時間自動排（未定時間的排最後），不再有上下箭頭與「依時間排序」
   const removeSegment = async (s) => {
     if (!(await confirmDelete(s.title))) return;
     try { await deleteSegment(s.id); reload(); reloadIdeas(); reloadGames(); } catch (e) { toastErr(e); }
@@ -81,7 +69,7 @@ export default function Program() {
       <div className="panel">
         <div className="panel-title" style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap", gap: 8 }}>
           <span>環節流程 <span className="muted-cell" style={{ fontSize: 12.5, fontWeight: 400, letterSpacing: 0 }}>婚禮 {WEDDING_TIME_FROM}～{WEDDING_TIME_TO}，共 {WEDDING_MINUTES / 60} 小時</span></span>
-          {total > 0 && <span className="muted-cell" style={{ fontSize: 12.5, fontWeight: 400, display: "inline-flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>已排 {segments.length} 個環節 · 合計約 {total} 分鐘{total > WEDDING_MINUTES ? <span className="pill pill-no" style={{ marginLeft: 6 }}>超過 {total - WEDDING_MINUTES} 分鐘</span> : <span style={{ marginLeft: 4 }}>· 還剩 {WEDDING_MINUTES - total} 分鐘</span>}<button className="btn btn-ghost btn-sm" onClick={sortByTime} title="有時間的照時間排，未定時間的排後面"><Clock size={12} /> 依時間排序</button></span>}
+          {total > 0 && <span className="muted-cell" style={{ fontSize: 12.5, fontWeight: 400, display: "inline-flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>已排 {segments.length} 個環節 · 合計約 {total} 分鐘{total > WEDDING_MINUTES ? <span className="pill pill-no" style={{ marginLeft: 6 }}>超過 {total - WEDDING_MINUTES} 分鐘</span> : <span style={{ marginLeft: 4 }}>· 還剩 {WEDDING_MINUTES - total} 分鐘</span>}<span>· 照開始時間自動排，未定時間的排在最後</span></span>}
         </div>
         {loading ? <Loading /> : error ? <ErrorBox error={error} /> : !segments || segments.length === 0 ? (
           <Empty>還沒有環節。先從進場、致詞、敬酒、遊戲、送客這些開始排，時間之後再填也可以</Empty>
@@ -139,8 +127,6 @@ export default function Program() {
                       )}
                     </div>
                     <div className="row-actions tl-actions">
-                      <button className="btn btn-ghost btn-sm" title="往上" disabled={idx === 0} onClick={() => move(idx, -1)}><ArrowUp size={13} /></button>{" "}
-                      <button className="btn btn-ghost btn-sm" title="往下" disabled={idx === segments.length - 1} onClick={() => move(idx, 1)}><ArrowDown size={13} /></button>{" "}
                       <button className="btn btn-ghost btn-sm" title="編輯" onClick={() => navigate(`/program/segments/${s.id}`)}><Pencil size={13} /></button>{" "}
                       <button className="btn btn-ghost btn-sm" title="刪除" onClick={() => removeSegment(s)}><Trash2 size={13} /></button>
                     </div>

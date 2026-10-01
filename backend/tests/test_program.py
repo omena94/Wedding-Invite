@@ -47,8 +47,16 @@ def test_segments_order_and_reorder(client):
     assert client.post(S, json={"title": "壞時間", "start_time": "25:00"}).status_code == 422
     assert client.post(S, json={"title": "  "}).status_code == 422
 
-    r = client.post(S + "/reorder", json={"ids": [c["id"], a["id"]]})
-    assert [s["title"] for s in r.json()] == ["第一次敬酒", "新人進場", "證婚儀式"]
+    # 2026-10-01 起自動照開始時間排：有時間的照時間，未定的排最後（彼此照原本順序）
+    d = client.post(S, json={"title": "切蛋糕", "start_time": "12:05"}).json()
+    assert [s["title"] for s in client.get(S).json()] == ["切蛋糕", "新人進場", "證婚儀式", "第一次敬酒"]
+    client.patch(f"{S}/{c['id']}", json={"start_time": "13:00"})
+    client.patch(f"{S}/{d['id']}", json={"start_time": "12:45"})
+    assert [s["title"] for s in client.get(S).json()] == ["新人進場", "切蛋糕", "第一次敬酒", "證婚儀式"]
+    # 舊的手動排序只影響未定時間的那幾個
+    client.post(S, json={"title": "送客"})
+    r = client.post(S + "/reorder", json={"ids": [b["id"]]})
+    assert [s["title"] for s in client.get(S).json()][-2:] == ["證婚儀式", "送客"]
 
     r = client.patch(f"{S}/{b['id']}", json={"status": "confirmed", "note": "牧師先上台\n戒指交給花童"})
     assert r.json()["status"] == "confirmed" and "花童" in r.json()["note"]

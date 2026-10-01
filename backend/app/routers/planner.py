@@ -5,7 +5,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
-from sqlalchemy import func, select, update
+from sqlalchemy import case, func, or_, select, update
 from sqlalchemy.orm import Session, selectinload
 
 from ..config import settings
@@ -986,9 +986,11 @@ def _idea_out(i: ProgramIdea) -> dict:
 
 
 def _segments_ordered(db: Session) -> list[ProgramSegment]:
-    # 先照手動順序，再照時間（未定時間的排最後），最後照建立順序
+    # 2026-10-01 新人要求：系統自動照開始時間排，不用再手動調順序。
+    # 未定時間的排最後（彼此之間照原本的順序、再照建立順序）；"HH:MM" 字串直接比大小就是時間先後
+    untimed = case((or_(ProgramSegment.start_time.is_(None), ProgramSegment.start_time == ""), 1), else_=0)
     return db.scalars(
-        select(ProgramSegment).order_by(ProgramSegment.sort_order.asc(), ProgramSegment.id.asc())
+        select(ProgramSegment).order_by(untimed, ProgramSegment.start_time.asc(), ProgramSegment.sort_order.asc(), ProgramSegment.id.asc())
     ).all()
 
 
