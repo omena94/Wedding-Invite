@@ -483,6 +483,20 @@ function tick() {
   requestAnimationFrame(tick);
 }
 
+/**
+ * 背景換歌（2026-10-01 新人：切到別的視窗，歌播完不會換下一首）：視窗被切走、縮小時瀏覽器停掉 requestAnimationFrame，
+ * tick 不跑，音樂卻照播到完。所以 <audio> 的 ended／timeupdate 與每半秒的計時器也檢查一次。
+ * 畫面有在跑的時候交給 tick（它的 t 扣掉了輸出延遲，切歌的時間點跟平常一樣），只有畫面停了才看音樂本身的時間。
+ */
+function songEndWatch() {
+  if (!playing || silent || !cur || switching) return;
+  if (player.el.ended) { void nextSong(); return; }
+  if (performance.now() - lastFrame > 300 && player.el.currentTime >= cur.endAt - 0.03) void nextSong();
+}
+player.el.addEventListener('ended', songEndWatch);
+player.el.addEventListener('timeupdate', songEndWatch);
+setInterval(songEndWatch, 500);
+
 // ------------------------------------------------------------------ 操作列（滑鼠一動就出現，三秒不動就藏起來）
 // 2026-09-30：上面加一條可以拖拉的進度條；右邊的歌單面板（L 開關）跟著操作列一起出現與收起。
 const ui = $<HTMLDivElement>('ui');

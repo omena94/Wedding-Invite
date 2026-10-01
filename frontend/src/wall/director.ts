@@ -104,8 +104,16 @@ export class Director {
 
   /** 每一格呼叫：時間軸上 t 之後至少要排到 t + 6 秒。 */
   update(t: number) {
-    const tl = this.engine.timeline;
+    const tl = this.engine.timeline, dur = this.song.audio.duration;
     let end = tl.length ? Math.max(...tl.map((e) => e.end)) : this.startAt;
+    if (end < t) {
+      // 時間軸落在現在之後（2026-10-01 新人：切到別的視窗再回來就一直黑屏）：視窗被切走、縮小時瀏覽器停掉畫面更新，
+      // 音樂照播，切回來時間一下跳很遠。原本從落後的地方一個一個補排，補排的窗格都已經播完、馬上被 gc 清掉，
+      // 時間軸空了又從歌的開頭重排，永遠追不上，整首歌都沒有版面。改成當作拖進度條：直接從現在開始排。
+      if (t >= dur) return; // 歌已經播完、正在換下一首：沒東西要排
+      this.seek(t);
+      end = t;
+    }
     let guard = 0;
     while (end < Math.min(this.song.audio.duration, t + 6) && guard++ < 4) {
       const e = this.plan(end);

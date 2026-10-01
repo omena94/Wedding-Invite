@@ -205,11 +205,15 @@ export class Engine {
 
   /** 釋放 t 之前已經播完的窗格。 */
   gc(t: number) {
-    for (const e of this.timeline.filter((x) => x.end < t - 1)) {
+    // 現在這格的場景還沒建好時（切回視窗、時間一下跳很遠，導演才剛從現在排），最後一個建好的窗格先留著，
+    // 讓 composite() 拿它撐場，不然會黑一下才出現新版面
+    const covered = this.timeline.some((e) => t >= e.start && t < e.end && this.loaded.get(e.id)?.scene);
+    const keep = covered ? undefined : this.timeline.filter((e) => e.start <= t && this.loaded.get(e.id)?.scene).pop();
+    for (const e of this.timeline.filter((x) => x.end < t - 1 && x !== keep)) {
       this.loaded.get(e.id)?.scene?.dispose();
       this.loaded.delete(e.id);
     }
-    this.timeline = this.timeline.filter((x) => x.end >= t - 1);
+    this.timeline = this.timeline.filter((x) => x.end >= t - 1 || x === keep);
   }
 
   private frameFor(e: TimelineEntry, t: number, dt: number, seeked: boolean, preroll: boolean, under: THREE.Texture | null, tin: number, tout: number): Frame {
@@ -291,10 +295,12 @@ export class Engine {
       const sceneSeeked = seeked || rec.lastT < 0 || Math.abs(t - rec.lastT) > 0.25;
       if (s.stateful && sceneSeeked) {
         s.reset();
-        const from = Math.max(e.start, t - s.prerollMax);
+        // 撐場的窗格（已經結束、t 在它後面）只預跑到它的最後一格，跟下面實際畫的時間一致
+        const te = Math.min(t, e.end - 1e-4);
+        const from = Math.max(e.start, te - s.prerollMax);
         const step = 1 / 60;
         let first = true;
-        for (let pt = from; pt < t - step * 0.5; pt += step) {
+        for (let pt = from; pt < te - step * 0.5; pt += step) {
           s.render(this.frameFor(e, pt, first ? 0 : step, first, true, null, 1, 0), rt);
           first = false;
         }
