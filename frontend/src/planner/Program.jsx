@@ -5,14 +5,12 @@ import { Link, useNavigate } from "react-router-dom";
 import { ArrowDown, ArrowUp, ChevronDown, Clock, Gamepad2, Lightbulb, Pencil, Plus, Trash2 } from "lucide-react";
 import Select from "../components/Select.jsx";
 import {
-  createIdea, deleteGame, deleteIdea, deleteSegment, fetchGames, fetchIdeas, fetchSegments, reorderSegments, updateIdea, updateSegment,
+  deleteGame, deleteIdea, deleteSegment, fetchGames, fetchIdeas, fetchSegments, reorderSegments, updateIdea, updateSegment,
 } from "../api.js";
 import { WEDDING_MINUTES, WEDDING_TIME_FROM, WEDDING_TIME_TO } from "../constants.js";
-import { SEG_STATUS, toMin, toOptions } from "./programShared.js";
-import { Empty, ErrorBox, Field, Loading, Modal, PageHead, confirmDelete, toastErr, useLoader } from "./ui.jsx";
+import { IDEA_PILL, IDEA_STATUS, SEG_STATUS, toMin, toOptions } from "./programShared.js";
+import { Empty, ErrorBox, Loading, PageHead, confirmDelete, toastErr, useLoader } from "./ui.jsx";
 
-const IDEA_STATUS = { idea: "想法", adopted: "採用", dropped: "不採用" };
-const IDEA_PILL = { idea: "pill-groom", adopted: "pill-yes", dropped: "pill-no" };
 
 const fmtMin = (n) => `${String(Math.floor(n / 60)).padStart(2, "0")}:${String(n % 60).padStart(2, "0")}`;
 // 時間軸用：有開始時間與長度就算得出結束時間；相鄰兩個都有時間才算空檔／重疊
@@ -25,7 +23,7 @@ export default function Program() {
   const [gameOpen, setGameOpen] = useState({});
   const [open, setOpen] = useState({});
   const [ideaFilter, setIdeaFilter] = useState("all");
-  const [modal, setModal] = useState(null); // { type: "idea", item?, defaults? }（遊戲、環節都改用獨立頁面）
+  // 遊戲、環節、點子的新增／編輯都是獨立頁面（2026-10-01 起不再用彈窗）
   const navigate = useNavigate();
 
   const ideasBySegment = useMemo(() => {
@@ -40,12 +38,10 @@ export default function Program() {
   }, [games]);
   const ideaList = useMemo(() => (ideas || []).filter((i) => ideaFilter === "all" || i.status === ideaFilter), [ideas, ideaFilter]);
 
-  const close = () => setModal(null);
   const removeGame = async (g) => {
     if (!(await confirmDelete(g.name))) return;
     try { await deleteGame(g.id); reloadGames(); reload(); } catch (e) { toastErr(e); }
   };
-  const savedIdea = () => { close(); reloadIdeas(); reload(); };
 
   const move = async (idx, dir) => {
     const ids = segments.map((s) => s.id);
@@ -78,7 +74,7 @@ export default function Program() {
     <div>
       <PageHead title="活動環節" sub="婚禮當天的流程與每個環節的細節；先把點子記下來，決定了再放進環節"
         actions={<>
-          <button className="btn btn-ghost" onClick={() => setModal({ type: "idea" })}><Lightbulb size={15} /> 記個點子</button>{" "}
+          <button className="btn btn-ghost" onClick={() => navigate("/program/ideas/new")}><Lightbulb size={15} /> 記個點子</button>{" "}
           <button className="btn btn-primary" onClick={() => navigate("/program/segments/new")}><Plus size={15} /> 新增環節</button>
         </>} />
 
@@ -138,7 +134,7 @@ export default function Program() {
                               {linked.map((i) => <div key={i.id} className="prog-idea"><span className={`pill ${IDEA_PILL[i.status]}`}>{IDEA_STATUS[i.status]}</span><span>{i.content}</span></div>)}
                             </div>
                           )}
-                          <button className="btn btn-ghost btn-sm" style={{ marginTop: 8 }} onClick={() => setModal({ type: "idea", defaults: { segment_id: String(s.id) } })}><Lightbulb size={12} /> 給這個環節記點子</button>
+                          <button className="btn btn-ghost btn-sm" style={{ marginTop: 8 }} onClick={() => navigate(`/program/ideas/new?segment=${s.id}`)}><Lightbulb size={12} /> 給這個環節記點子</button>
                         </div>
                       )}
                     </div>
@@ -217,7 +213,7 @@ export default function Program() {
                   <Select compact value={i.status} onChange={(v) => setIdeaStatus(i, v)} aria-label="點子狀態" options={toOptions(IDEA_STATUS)} />
                   {i.segment_title && <span className="pill pill-groom">環節 · {i.segment_title}</span>}
                   <span className="row-actions" style={{ marginLeft: "auto" }}>
-                    <button className="btn btn-ghost btn-sm" title="編輯" onClick={() => setModal({ type: "idea", item: i })}><Pencil size={13} /></button>{" "}
+                    <button className="btn btn-ghost btn-sm" title="編輯" onClick={() => navigate(`/program/ideas/${i.id}`)}><Pencil size={13} /></button>{" "}
                     <button className="btn btn-ghost btn-sm" title="刪除" onClick={() => removeIdea(i)}><Trash2 size={13} /></button>
                   </span>
                 </div>
@@ -227,43 +223,6 @@ export default function Program() {
         )}
       </div>
 
-      {modal?.type === "idea" && <IdeaModal initial={modal.item} defaults={modal.defaults} segments={segments || []} onClose={close} onSaved={savedIdea} />}
     </div>
-  );
-}
-
-function Footer({ onClose, onSave, busy }) {
-  return (
-    <>
-      <button type="button" className="btn btn-ghost" onClick={onClose} disabled={busy}>取消</button>
-      <button type="button" className="btn btn-primary" onClick={onSave} disabled={busy}>{busy ? "儲存中…" : "儲存"}</button>
-    </>
-  );
-}
-
-function IdeaModal({ initial, defaults, segments, onClose, onSaved }) {
-  const isNew = !initial?.id;
-  const [f, setF] = useState({ content: "", status: "idea", segment_id: "", ...(defaults || {}), ...(initial || {}), ...(initial?.segment_id ? { segment_id: String(initial.segment_id) } : {}) });
-  const [busy, setBusy] = useState(false);
-  const set = (k, v) => setF((x) => ({ ...x, [k]: v }));
-  const save = async () => {
-    if (!f.content.trim()) return toastErr(new Error("請填點子內容"));
-    setBusy(true);
-    try {
-      const body = { content: f.content.trim(), status: f.status };
-      if (f.segment_id) body.segment_id = parseInt(f.segment_id, 10); else if (!isNew) body.clear_segment = true;
-      onSaved(isNew ? await createIdea(body) : await updateIdea(initial.id, body));
-    } catch (e) { toastErr(e); } finally { setBusy(false); }
-  };
-  return (
-    <Modal title={isNew ? "記個點子" : "編輯點子"} onClose={onClose} footer={<Footer onClose={onClose} onSave={save} busy={busy} />}>
-      <Field label="點子" required><textarea rows={4} value={f.content} onChange={(e) => set("content", e.target.value)} autoFocus placeholder="例如：進場改走側門、用成長影片開場、抽捧花改成搶捧花…" /></Field>
-      <div className="form-group grid-2">
-        <Field label="狀態"><Select value={f.status} onChange={(v) => set("status", v)} options={toOptions(IDEA_STATUS)} aria-label="狀態" /></Field>
-        <Field label="用在哪個環節" hint="還沒決定可以先不選">
-          <Select value={f.segment_id || ""} onChange={(v) => set("segment_id", v)} options={[{ value: "", label: "先不指定" }, ...segments.map((s) => ({ value: String(s.id), label: s.title }))]} aria-label="用在哪個環節" />
-        </Field>
-      </div>
-    </Modal>
   );
 }

@@ -2,6 +2,8 @@
 import { WEDDING_TIME_FROM, WEDDING_TIME_TO } from "../constants.js";
 
 export const SEG_STATUS = { draft: "規劃中", confirmed: "已確定" };
+export const IDEA_STATUS = { idea: "想法", adopted: "採用", dropped: "不採用" };
+export const IDEA_PILL = { idea: "pill-groom", adopted: "pill-yes", dropped: "pill-no" };
 export const toOptions = (map) => Object.entries(map).map(([value, label]) => ({ value, label }));
 
 // 時間選項：婚禮時段 12:00～15:00 每 5 分鐘（不用原生 time 輸入）
