@@ -4,7 +4,7 @@ import { BrowserRouter, NavLink, Navigate, Route, Routes, useLocation } from "re
 import {
   Users, Wallet, CalendarDays, FolderOpen,
   Settings as SettingsIcon, LogOut, Lock, LogIn, Home as HomeIcon, Armchair, Images, Gift, NotebookPen, PartyPopper, Camera, Monitor, ExternalLink, MessageSquareHeart, LayoutGrid,
-  ChevronDown, ClipboardList, Sparkles, UtensilsCrossed, Smartphone,
+  ChevronDown, ClipboardList, Sparkles, UtensilsCrossed, Smartphone, Backpack,
 } from "lucide-react";
 import { adminLogin, clearStash, clearToken, getRole, getStashedCouple, getToken, restoreCouple, setRole, setToken, stashCouple, switchRole, fetchMe } from "../api.js";
 import { toastErr } from "./ui.jsx";
@@ -22,6 +22,7 @@ import WallRemote from "./WallRemote.jsx";
 import Gifts from "./Gifts.jsx";
 import Memos from "./Memos.jsx";
 import Program from "./Program.jsx";
+import Packing from "./Packing.jsx";
 import GameEdit from "./GameEdit.jsx";
 
 import { PlannerContext } from "./context.js";
@@ -49,6 +50,7 @@ const NAV = [
   { to: "/memos", label: "筆記", icon: NotebookPen, perm: ["notes"], group: "prep" }, // 2026-09-10 原「備忘」改為筆記：標題、內容、主題、已處理、釘選
   { to: "/files", label: "文件庫", icon: FolderOpen, perm: ["files"], group: "prep" },
   { to: "/program", label: "活動環節", icon: PartyPopper, perm: ["program"], group: "day" }, // 2026-09-09 婚禮當天流程與點子，只在後台
+  { to: "/packing", label: "當天要帶的東西", icon: Backpack, perm: ["packing"], group: "day" }, // 2026-10-01 物品清單：分類、誰帶、已備妥
   { to: "/wall", label: "現場留言", icon: MessageSquareHeart, perm: ["wall"], group: "day" }, // 2026-09-28 賓客在 /wish 留言、會場大螢幕、歌單
   { to: "/wall-plates", label: "大螢幕版面", icon: LayoutGrid, perm: ["wall"], group: "day" }, // 2026-09-28 所有版面的縮圖、預覽、開關、換版面節奏
   { to: "/wall-remote", label: "大螢幕遙控", icon: Smartphone, perm: ["wall"], group: "day" }, // 2026-09-30 幫手用手機切歌、插播、講話模式
@@ -106,6 +108,7 @@ export default function PlannerApp() {
             <Route path="/program" element={<Allowed ok={can("program")} home={home}><Program /></Allowed>} />
             <Route path="/program/games/new" element={<Allowed ok={can("program")} home={home}><GameEdit /></Allowed>} />
             <Route path="/program/games/:id" element={<Allowed ok={can("program")} home={home}><GameEdit /></Allowed>} />
+            <Route path="/packing" element={<Allowed ok={can("packing")} home={home}><Packing /></Allowed>} />
             <Route path="/files" element={<Allowed ok={can("files")} home={home}><Files /></Allowed>} />
             <Route path="/photos" element={<Allowed ok={can("photos")} home={home}><Photos /></Allowed>} />
             <Route path="/day-photos" element={<Allowed ok={can("guest_photos")} home={home}><GuestPhotos /></Allowed>} />

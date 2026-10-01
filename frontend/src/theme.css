@@ -1130,6 +1130,12 @@ tbody tr:last-child td { border-bottom: none; }
 .memo-a { color: var(--text-muted); font-size: 12.5px; margin-top: 2px; white-space: pre-wrap; word-break: break-word; }
 .memo-link { margin-top: 4px; display: flex; gap: 6px; flex-wrap: wrap; }
 .memo-add { margin-top: 6px; }
+/* 當天要帶的東西（2026-10-01） */
+.packing-progress { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; font-size: 13px; color: var(--milk-tea-900); }
+.packing-qty { margin-left: 6px; color: var(--text-muted); font-size: 12px; }
+.packing-done { text-decoration: line-through; }
+.packing-owner-picks { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+.packing-owner-picks .pill { cursor: pointer; }
 .memo-block { margin-top: 10px; padding-top: 8px; border-top: 1px dashed var(--border-soft); }
 .pl-month .memo-list { margin-top: 4px; margin-bottom: 8px; }
 /* 待辦列的內容區撐滿，底下的備忘列才不會只跟文字一樣寬 */
@@ -1138,6 +1144,11 @@ tbody tr:last-child td { border-bottom: none; }
 @media (max-width: 560px) {
   .memo-row { flex-wrap: wrap; }
   .memo-row .row-actions { width: 100%; text-align: right; }
+}
+/* 當天要帶的東西在手機上最常用：操作鈕留在同一行，清單才不會拉得很長 */
+@media (max-width: 560px) {
+  .packing-list .memo-row { flex-wrap: nowrap; }
+  .packing-list .memo-row .row-actions { width: auto; white-space: nowrap; }
 }
 
 /* 活動環節：左邊時間、中間名稱與細節、右邊操作 */

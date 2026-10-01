@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session, selectinload
 from ..config import settings
 from ..database import get_db
 from ..models import (
-    Expense, FileAsset, GiftOrder, Memo, MenuItem, Payment, ProgramGame, ProgramIdea, ProgramSegment, Quote, Rsvp, Task, Vendor,
+    Expense, FileAsset, GiftOrder, Memo, MenuItem, PackingItem, Payment, ProgramGame, ProgramIdea, ProgramSegment, Quote, Rsvp, Task, Vendor,
     VendorCategory,
 )
 from ..schemas import (
@@ -33,6 +33,10 @@ from ..schemas import (
     MenuItemIn,
     MenuItemPatch,
     MenuReorder,
+    PackingBulk,
+    PackingItemIn,
+    PackingItemPatch,
+    PackingPresetIn,
     PaymentIn,
     PaymentPatch,
     QuoteIn,
@@ -1416,3 +1420,71 @@ def import_menu(payload: MenuImport, db: Session = Depends(get_db)):
         db.add(MenuItem(**it.model_dump(), sort_order=start + i))
     db.commit()
     return {"count": len(payload.items), "items": [_menu_out(m) for m in _menu_all(db)]}
+
+
+# ---------------------------------------------------------------------
+# 婚禮當天要帶的東西（2026-10-01，鑰匙 packing）：分類、數量、誰帶、備註、已備妥
+# ---------------------------------------------------------------------
+def _packing_out(p: PackingItem) -> dict:
+    return {"id": p.id, "category": p.category, "name": p.name, "qty": p.qty, "owner": p.owner,
+            "note": p.note, "packed": bool(p.packed), "sort_order": p.sort_order}
+
+
+def _packing_all(db: Session) -> list[PackingItem]:
+    return db.scalars(select(PackingItem).order_by(PackingItem.sort_order.asc(), PackingItem.id.asc())).all()
+
+
+@router.get("/packing")
+def list_packing(db: Session = Depends(get_db)):
+    return [_packing_out(p) for p in _packing_all(db)]
+
+
+@router.post("/packing", status_code=201)
+def create_packing_item(payload: PackingItemIn, db: Session = Depends(get_db)):
+    # 新的一樣放最後；分類分組交給前端，所以只要整體順序
+    last = db.scalar(select(func.max(PackingItem.sort_order))) or 0
+    p = PackingItem(**payload.model_dump(), sort_order=last + 1)
+    db.add(p)
+    db.commit()
+    return _packing_out(p)
+
+
+@router.patch("/packing/{item_id}")
+def update_packing_item(item_id: int, payload: PackingItemPatch, db: Session = Depends(get_db)):
+    p = _get_or_404(db, PackingItem, item_id, "這樣東西")
+    for k, v in payload.model_dump(exclude_unset=True).items():
+        if v is not None:  # 帶 null 一律當作不改，避免把必填欄位清掉
+            setattr(p, k, v)
+    db.commit()
+    return _packing_out(p)
+
+
+@router.delete("/packing/{item_id}", status_code=204)
+def delete_packing_item(item_id: int, db: Session = Depends(get_db)):
+    p = _get_or_404(db, PackingItem, item_id, "這樣東西")
+    db.delete(p)
+    db.commit()
+    return None
+
+
+@router.post("/packing/import", status_code=201)
+def import_packing(payload: PackingPresetIn, db: Session = Depends(get_db)):
+    """帶入常用清單：同分類裡名稱一樣的就略過，按兩次也不會變兩份。"""
+    have = {(p.category, p.name) for p in _packing_all(db)}
+    start = db.scalar(select(func.max(PackingItem.sort_order))) or 0
+    added = 0
+    for it in payload.items:
+        if (it.category, it.name) in have:
+            continue
+        have.add((it.category, it.name))
+        added += 1
+        db.add(PackingItem(**it.model_dump(), sort_order=start + added))
+    db.commit()
+    return {"added": added, "items": [_packing_out(p) for p in _packing_all(db)]}
+
+
+@router.post("/packing/bulk")
+def bulk_packing(payload: PackingBulk, db: Session = Depends(get_db)):
+    db.execute(update(PackingItem).values(packed=payload.packed))
+    db.commit()
+    return [_packing_out(p) for p in _packing_all(db)]

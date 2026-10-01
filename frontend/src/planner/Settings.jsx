@@ -27,6 +27,7 @@ const PERM_ROWS = [
   ["calendar", "行事曆"],
   ["notes", "筆記"],
   ["program", "活動環節"],
+  ["packing", "當天要帶的東西（清單、勾已備妥）"],
   ["files", "文件庫"],
   ["photos", "婚紗照"],
   ["guest_photos", "當天照片（賓客上傳的原檔：看、下載、刪除、開關）"],

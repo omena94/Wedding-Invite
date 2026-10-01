@@ -633,3 +633,19 @@ class MenuItem(Base):
     status: Mapped[str] = mapped_column(String(20), default="discussing")  # discussing / confirmed / change
     note: Mapped[str] = mapped_column(String(500), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class PackingItem(Base):
+    """婚禮當天要帶的東西（2026-10-01）：一樣東西一列，分類、數量、誰負責帶、備註，前一晚收好就勾「已備妥」。
+    只是給自己對照的清單，不跟花費、喜餅等其他資料連動。"""
+    __tablename__ = "packing_items"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    category: Mapped[str] = mapped_column(String(50), default="其他")   # 新娘、新郎、證件與禮金…自由輸入
+    name: Mapped[str] = mapped_column(String(120))
+    qty: Mapped[int] = mapped_column(Integer, default=1)
+    owner: Mapped[str] = mapped_column(String(50), default="")         # 誰負責帶（伴娘、媽媽…），空 = 還沒指定
+    note: Mapped[str] = mapped_column(String(500), default="")
+    packed: Mapped[bool] = mapped_column(Boolean, default=False)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

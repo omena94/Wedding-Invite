@@ -356,6 +356,13 @@ export const updateMenuItem = (id, data) => request(`${P}/menu/${id}`, { method:
 export const deleteMenuItem = (id) => request(`${P}/menu/${id}`, { method: "DELETE", auth: true });
 export const reorderMenu = (ids) => request(`${P}/menu/reorder`, { method: "POST", body: { ids }, auth: true });
 export const importMenu = (items, replace = false) => request(`${P}/menu/import`, { method: "POST", body: { items, replace }, auth: true });
+// 婚禮當天要帶的東西（2026-10-01）
+export const fetchPacking = () => request(`${P}/packing`, { auth: true });
+export const createPackingItem = (data) => request(`${P}/packing`, { method: "POST", body: data, auth: true });
+export const updatePackingItem = (id, data) => request(`${P}/packing/${id}`, { method: "PATCH", body: data, auth: true });
+export const deletePackingItem = (id) => request(`${P}/packing/${id}`, { method: "DELETE", auth: true });
+export const importPacking = (items) => request(`${P}/packing/import`, { method: "POST", body: { items }, auth: true });
+export const bulkPacking = (packed) => request(`${P}/packing/bulk`, { method: "POST", body: { packed }, auth: true });
 export const fetchFiles = (params = {}) => request(`${P}/files${qs(params)}`, { auth: true });
 export function uploadFile(file, fields = {}) {
   const fd = new FormData();

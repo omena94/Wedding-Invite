@@ -740,3 +740,50 @@ class MenuImport(BaseModel):
     """一次匯入一整份（例如飯店寄來的版本）；replace=True 會先清掉現有的。"""
     items: list[MenuItemIn] = Field(min_length=1, max_length=500)
     replace: bool = False
+
+
+class PackingItemIn(BaseModel):
+    """婚禮當天要帶的東西（2026-10-01）。"""
+    category: str = Field(default="其他", min_length=1, max_length=50)
+    name: str = Field(min_length=1, max_length=120)
+    qty: int = Field(default=1, ge=1, le=9999)
+    owner: str = Field(default="", max_length=50)
+    note: str = Field(default="", max_length=500)
+    packed: bool = False
+
+    @field_validator("category", "name", "owner", "note")
+    @classmethod
+    def _strip(cls, v: str, info) -> str:
+        v = v.strip()
+        if not v and info.field_name in ("category", "name"):  # 長度在去空白前檢查，這裡再擋「只有空格」
+            raise ValueError("不可空白")
+        return v
+
+
+class PackingItemPatch(BaseModel):
+    category: str | None = Field(default=None, min_length=1, max_length=50)
+    name: str | None = Field(default=None, min_length=1, max_length=120)
+    qty: int | None = Field(default=None, ge=1, le=9999)
+    owner: str | None = Field(default=None, max_length=50)
+    note: str | None = Field(default=None, max_length=500)
+    packed: bool | None = None
+
+    @field_validator("category", "name", "owner", "note")
+    @classmethod
+    def _strip(cls, v: str | None, info) -> str | None:
+        if not isinstance(v, str):
+            return v
+        v = v.strip()
+        if not v and info.field_name in ("category", "name"):
+            raise ValueError("不可空白")
+        return v
+
+
+class PackingPresetIn(BaseModel):
+    """一次帶入多樣（常用清單）；名稱已經有的會略過，不會重複。"""
+    items: list[PackingItemIn] = Field(min_length=1, max_length=300)
+
+
+class PackingBulk(BaseModel):
+    """全部勾掉／全部取消（例如演練完要重來一次）。"""
+    packed: bool
