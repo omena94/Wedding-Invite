@@ -1911,6 +1911,11 @@ body:has(.guest-page)::after { display: none; }
   body:has(.container-photos.guest-page)::after { width: min(1120px, 86vw); border-radius: 560px 560px 0 0; }
   .guest-nav a { font-size: 13.5px; }
 }
+/* 第二階段（/details）的拱門跟著頁面捲（2026-10-01 新人要求）：改成貼著 body（position: relative）放，
+   從頁首框住標題、一路延伸到頁尾，不再固定在畫面上讓內容從裡面滑過去。其他賓客頁維持固定 */
+@media (min-width: 900px) {
+  body:has(.guest-page.guest-details)::after { position: absolute; }
+}
 /* 婚禮當天的座位地圖：入口、路線同一個玫瑰色（路線從入口長出來），不可通行區改成淡淡的紙色；下方抽屜用卡紙 */
 .seatviewer .seat-entrance-body { fill: rgba(154, 67, 95, .07); stroke: #9a435f; }
 .seatviewer .seat-entrance-door { stroke: #9a435f; }

@@ -119,7 +119,7 @@ export default function DetailsForm() {
   };
 
   return (
-    <div className="container guest-page">
+    <div className="container guest-page guest-details">
       <GuestHeader title="入席 ‧ 共赴美好時光" subtitle="核對邀請資訊，確認同行人數與特殊飲食需求" brush/>
 
       <>{stageError?<LoadError error={stageError} retry={retry}/>:!stage&&<div className="loading" role="status">讀取回覆開放時間…</div>}</>
