@@ -21,6 +21,7 @@ import { Director } from './director';
 import { applyTheme, pickTheme } from './themes';
 import { loadSong, type LoadedSong } from './songs';
 import { fetchFeed, fetchSongs, getToken, lockRemote, login, saveDuckLevel, syncRemote, unlockRemote, HttpError, type RemoteCommand, type SongRow } from './net';
+import { connectLive, wallLiveUrl } from '../live.js';
 import { buildLyrics } from './lyrics/build';
 import { loadText } from './engine/type';
 import { DEV_LIVE, DEV_MESSAGES, dummyLrc, dummyKoLrc } from './dev/fixtures';
@@ -444,6 +445,39 @@ async function pollFeed(initial = false) {
   }
 }
 
+// ------------------------------------------------------------------ 推播
+// 推播（../live.js）連著時：留言、歌單、版面變了伺服器才叫這裡抓 feed，手機按的指令直接推過來；
+// 輪詢只剩保險（feed 每 30 秒、遙控每 5 秒心跳）。推播斷了就自動回到原本的 feed 每 2 秒、遙控每 1 秒。
+let liveOn = false;
+const feedEvery = () => (liveOn ? 30000 : 2000);
+const syncEvery = () => (liveOn ? 5000 : 1000);
+let feedBusy = false, feedAgain = false, feedAt = 0;
+/** 抓一次 feed；正在抓就等這次抓完再抓一次（一口氣進來好幾則留言時，請求不會疊在一起）。 */
+async function refreshFeed() {
+  if (feedBusy) { feedAgain = true; return; }
+  feedBusy = true;
+  try {
+    do { feedAgain = false; feedAt = performance.now(); await pollFeed(); } while (feedAgain);
+  } finally { feedBusy = false; }
+}
+function onLive(e: { t: string; cmd?: RemoteCommand }) {
+  if (e.t === 'ready') { void refreshFeed(); void remoteSync(); } // 剛連上（或重連）：補抓斷線期間漏掉的
+  else if (e.t === 'feed') void refreshFeed();
+  else if (e.t === 'remote') void remoteSync(); // 鎖定變了：馬上 sync 拿新的 leader／locked
+  // 剛打開還沒 sync 過（remoteAfter < 0）不做，跟 sync 一樣不補做打開前按的
+  else if (e.t === 'cmd' && e.cmd && remoteAfter >= 0) void queueRemote([e.cmd]).then(() => setTimeout(() => void remoteSync(), 120));
+}
+function startLive() {
+  // 預覽、匯出不接推播，照原本輪詢
+  if (REMOTE) connectLive(wallLiveUrl('wall', remoteClient), { token: getToken, onEvent: onLive, onStatus: (on: boolean) => { liveOn = on; } });
+  feedAt = performance.now(); // boot 剛抓過
+  setInterval(() => {
+    const now = performance.now();
+    if (now - feedAt >= feedEvery()) void refreshFeed();
+    if (REMOTE && remoteClient && (remote.claim || now - remoteAt >= syncEvery() || remoteChanged(remoteState()))) void remoteSync();
+  }, 500);
+}
+
 // ------------------------------------------------------------------ 每一格
 let lastFrame = performance.now(), fpsAcc = 0, fpsN = 0, fps = 60;
 // 長時間播放的健康檢查（測試腳本讀；開發者工具的主控台也可以打 __wallStats() 看）：貼圖、幾何有沒有越積越多
@@ -738,7 +772,7 @@ function setDuck(on: boolean) {
 }
 
 // ------------------------------------------------------------------ 手機遙控（2026-09-30）
-// 每秒 POST 一次：回報播放狀態（手機遙控頁顯示），拿走手機按的指令照順序做。
+// 手機按的指令平常由推播直接送來（見上面「推播」）；remote/sync 回報播放狀態（手機遙控頁顯示），也順便拿走推播漏掉的指令。
 // 還沒按「開始播放」只回報、不做指令（現場還沒準備好）；備用畫面伺服器不給指令。
 let remoteClient = ''; // 這個分頁的代號，boot 時 pickRemoteClient 決定
 const SS_CLIENT = 'wall_remote_client', LS_LOCKED = 'wall_remote_lock_client';
@@ -810,13 +844,41 @@ function remoteState() {
     messages: pool.count, status: statusLine.text, ok: statusLine.ok, softGL: !!SOFT_GL,
   };
 }
+// 回報的節奏：狀態變了才送（加上定時心跳）。播放時間每秒都在走，手機會自己從上次回報往前推算，
+// 所以時間只在跟推算差太多（拖了進度、卡住）時才算變了
+let remoteAt = 0, sentKey = '', sentT = 0, sentTAt = 0, sentMoving = false;
+function markSent(s: ReturnType<typeof remoteState>) {
+  sentKey = JSON.stringify({ ...s, t: 0 });
+  sentT = s.t; sentTAt = performance.now(); sentMoving = s.playing && !s.silent && !!s.song;
+}
+function remoteChanged(s: ReturnType<typeof remoteState>) {
+  if (JSON.stringify({ ...s, t: 0 }) !== sentKey) return true;
+  if (!s.song) return false; // 沒有歌（無聲播留言）手機不顯示進度
+  const expect = sentT + (sentMoving ? (performance.now() - sentTAt) / 1000 : 0);
+  return Math.abs(s.t - expect) > 1.5;
+}
+// 同一個指令可能推播送一次、sync 又拿到一次：每個編號只做一次，照收到的順序一個做完再做下一個
+const doneCmds = new Set<number>();
+let cmdChain: Promise<void> = Promise.resolve();
+function queueRemote(cs: RemoteCommand[]) {
+  for (const c of cs) {
+    if (doneCmds.has(c.id)) continue;
+    doneCmds.add(c.id);
+    if (doneCmds.size > 500) doneCmds.delete(doneCmds.values().next().value!);
+    cmdChain = cmdChain.then(() => runRemote(c)).catch(() => {});
+  }
+  return cmdChain;
+}
 async function remoteSync() {
   if (!REMOTE || remoteBusy || !remoteClient) return;
   remoteBusy = true;
+  remoteAt = performance.now();
   let did = false;
   try {
     const claim = remote.claim;
-    const r = await syncRemote({ client: remoteClient, after: remoteAfter, state: remoteState(), claim });
+    const state = remoteState();
+    const r = await syncRemote({ client: remoteClient, after: remoteAfter, state, claim });
+    markSent(state);
     if (claim) remote.claim = false;
     const first = remoteAfter < 0;
     remoteAfter = Math.max(remoteAfter, r.seq);
@@ -827,8 +889,9 @@ async function remoteSync() {
     // 記住「這台電腦鎖定過的代號」，瀏覽器整個關掉重開也接得回來；後台強制解除了就忘掉
     if (locked === 'mine') ls.set(LS_LOCKED, remoteClient);
     else if (ls.get(LS_LOCKED) === remoteClient) ls.set(LS_LOCKED, '');
-    if (!first) for (const c of r.commands) { await runRemote(c); did = true; }
-  } catch { /* 斷線：下一秒再試 */ }
+    const fresh = r.commands.filter((c) => !doneCmds.has(c.id)); // 推播已經送來做過的不再做
+    if (!first && fresh.length) { await queueRemote(fresh); did = true; }
+  } catch { /* 斷線：下一輪再試 */ }
   remoteBusy = false;
   // 做完指令馬上再回報一次，手機上很快就看到結果
   if (did) setTimeout(() => void remoteSync(), 120);
@@ -1047,8 +1110,8 @@ async function boot() {
       if ((e as HttpError).status === 403) return showLogin('這個帳號沒有「大螢幕：當天操作」的權限，請新人到設定頁開放');
       setStatus('連不上伺服器，稍後會自動重試', false);
     }
-    setInterval(() => void pollFeed(), 2000);
-    if (REMOTE) { remoteClient = await pickRemoteClient(); setInterval(() => void remoteSync(), 1000); }
+    if (REMOTE) remoteClient = await pickRemoteClient();
+    startLive();
   }
   if (EXPORT) { setupExport(); return; }
   bindUi();

@@ -2,9 +2,11 @@
 
 賓客端 /wish：不用登入寫一句祝福，後台開關 wall_open 開著才收（登入者不受開關限制，可先試）。
 wall_moderation 開著時新留言先是 pending，新人在後台按「通過」才上螢幕；關著就直接上螢幕，不妥的再隱藏。
-大螢幕 /wall 要登入（有 wall 鑰匙），每兩秒輪詢 /api/planner/wall/feed，所以 feed 要夠便宜。
+大螢幕 /wall 要登入（有 wall 鑰匙），平常靠推播（live.py）知道留言、歌單變了才抓 /api/planner/wall/feed；
+推播斷線時退回每兩秒輪詢，所以 feed 還是要夠便宜。
 大螢幕的背景歌單也在這裡：音檔存主機的 uploads/wall/，節拍分析在瀏覽器算好後整包存回來。
 """
+import asyncio
 import json
 import math
 import re
@@ -21,7 +23,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from .. import guest_access
+from .. import guest_access, live
 from ..config import settings
 from ..database import get_db
 from ..models import WallCommand, WallMessage, WallScreen, WallSong
@@ -141,6 +143,8 @@ def post_wall_message(payload: GuestMessageIn, request: Request, db: Session = D
     row = WallMessage(name=name, text=text, status=status, source="guest", ip_hash=ip_hash, device_hash=device_hash, created_at=now, updated_at=now)
     db.add(row)
     db.commit()
+    if status == "show":  # 待審核的還不會上螢幕，大螢幕不用抓
+        _feed_changed()
     return {"id": row.id, "status": row.status}
 
 
@@ -150,6 +154,11 @@ def post_wall_message(payload: GuestMessageIn, request: Request, db: Session = D
 Perm = Depends(require_perm("wall"))
 Setup = Depends(require_perm("wall_setup"))
 Either = Depends(require_perm("wall", "wall_setup"))
+
+
+def _feed_changed() -> None:
+    """大螢幕會看到的東西（上螢幕的留言、歌單、版面、開關、講話音量）變了：推播叫大螢幕馬上抓一次 feed。"""
+    live.publish({"t": "feed"})
 
 
 def _get_msg(db: Session, msg_id: int) -> WallMessage:
@@ -180,6 +189,7 @@ def create_wall_message(payload: CoupleMessageIn, db: Session = Depends(get_db))
     row = WallMessage(name=_clean_name(payload.name), text=_clean_text(payload.text), status="show", source="couple", created_at=now, updated_at=now)
     db.add(row)
     db.commit()
+    _feed_changed()
     return _msg_out(row)
 
 
@@ -202,6 +212,7 @@ def update_wall_message(msg_id: int, payload: MessagePatch, db: Session = Depend
         m.text = _clean_text(payload.text)
     m.updated_at = _now()
     db.commit()
+    _feed_changed()
     return _msg_out(m)
 
 
@@ -209,6 +220,7 @@ def update_wall_message(msg_id: int, payload: MessagePatch, db: Session = Depend
 def delete_wall_message(msg_id: int, db: Session = Depends(get_db)):
     db.delete(_get_msg(db, msg_id))
     db.commit()
+    _feed_changed()
     return Response(status_code=204)
 
 
@@ -312,6 +324,7 @@ async def upload_wall_song(
     )
     db.add(row)
     db.commit()
+    await asyncio.to_thread(_feed_changed)  # 這支是 async：連 Redis 不要卡住整個 worker
     return _song_out(row)
 
 
@@ -332,6 +345,7 @@ def reorder_wall_songs(payload: ReorderIn, db: Session = Depends(get_db)):
             s.sort_order = pos
             s.updated_at = now
     db.commit()
+    _feed_changed()
     return {"items": [_song_out(s) for s in order]}
 
 
@@ -409,6 +423,7 @@ def update_wall_song(song_id: int, payload: SongPatch, db: Session = Depends(get
         s.end_at = _finite(payload.end_at, "結束時間", 0, 24 * 3600)
     s.updated_at = _now()
     db.commit()
+    _feed_changed()
     return _song_out(s)
 
 
@@ -436,6 +451,7 @@ def save_wall_song_analysis(song_id: int, payload: AnalysisIn, db: Session = Dep
     s.bpm = _finite(payload.bpm, "BPM", 0, 1000)
     s.updated_at = _now()
     db.commit()
+    _feed_changed()
     return _song_out(s)
 
 
@@ -468,15 +484,17 @@ def delete_wall_song(song_id: int, db: Session = Depends(get_db)):
         pass  # 檔案已經不在也沒關係，紀錄照樣刪
     db.delete(s)
     db.commit()
+    _feed_changed()
     return Response(status_code=204)
 
 
 # ---------------- 手機遙控（2026-09-30） ----------------
-# 幫手在手機後台按的指令先存進 wall_commands；大螢幕每秒 POST 一次 remote/sync：
-# 回報自己的播放狀態（手機遙控頁顯示用），同時拿走還沒做的指令。
+# 幫手在手機後台按的指令先存進 wall_commands，再推播給接收遙控的那台（live.py）；
+# 大螢幕定時 POST remote/sync 回報播放狀態（推播給手機遙控頁），也順便拿走推播漏掉的指令。
+# 推播連著時大螢幕只在狀態變了、或每 5 秒心跳一次才 sync；推播斷了才退回每秒一次。
 REMOTE_ACTIONS = ("play", "pause", "next", "prev", "seek", "now", "insert", "cancel", "shuffle", "reshuffle", "volume", "duck")
 REMOTE_TTL = 30       # 秒：大螢幕剛打開（或斷線很久）時，不要把很久以前按的指令一次補做
-REMOTE_ONLINE = 8     # 秒：超過這麼久沒回報，手機上就顯示「沒有連線」
+REMOTE_ONLINE = 15    # 秒：超過這麼久沒回報，手機上就顯示「沒有連線」（推播時大螢幕 5 秒心跳一次，漏兩次還不算斷線）
 REMOTE_STATE_MAX = 64 * 1024
 
 
@@ -528,6 +546,10 @@ def wall_remote_command(payload: RemoteCommandIn, db: Session = Depends(get_db))
     row = WallCommand(action=payload.action, args_json=json.dumps(args), created_at=now)
     db.add(row)
     db.commit()
+    # 鎖定的那台斷線也照樣推給它（別台不接手，跟 sync 一樣）；一台都沒有就等大螢幕連上後 sync 自己拿
+    to = _leader(db, _online_screens(db, now)) if live.enabled() else ""
+    if to:
+        live.publish({"t": "cmd", "to": to, "cmd": {"id": row.id, "action": row.action, "args": args}})
     return {"id": row.id}
 
 
@@ -592,30 +614,63 @@ def wall_remote_sync(payload: RemoteSyncIn, db: Session = Depends(get_db)):
         rows = db.scalars(select(WallCommand).where(WallCommand.id > payload.after, WallCommand.created_at >= now - timedelta(seconds=REMOTE_TTL))
                           .order_by(WallCommand.id)).all()
         commands = [{"id": r.id, "action": r.action, "args": json.loads(r.args_json or "{}")} for r in rows]
+    _publish_state(db, now, screens)
     return {"seq": max([seq, *[c["id"] for c in commands]]), "commands": commands, "leader": leader, "screens": len(screens),
             "locked": ("mine" if lock == client else "other") if lock else ""}
 
 
-@router.get("/api/planner/wall/remote/state", dependencies=[Perm])
-def wall_remote_state(db: Session = Depends(get_db)):
-    """手機遙控頁每秒一次：接收遙控那台的狀態、隔了幾秒、算不算連線中、同時開著幾台。
-    都斷線了就拿最後回報的那台，手機才能顯示「最後一次回報是幾秒前」。"""
-    now = _now()
-    screens = _online_screens(db, now)
+def _remote_snapshot(db: Session, now: datetime, screens: list[WallScreen] | None = None) -> dict:
+    """手機遙控頁顯示的：接收遙控那台的狀態、隔了幾秒、算不算連線中、同時開著幾台。
+    都斷線了就拿最後回報的那台，手機才能顯示「最後一次回報是幾秒前」。
+    online_s 給手機自己算「多久沒回報就算斷線」：推播來的狀態不會每秒更新 online，要手機自己看時間。"""
+    if screens is None:
+        screens = _online_screens(db, now)
     lock = _remote_lock(db)
     if lock:
         row = db.get(WallScreen, lock)  # 鎖定的那台斷線超過一小時，列會被清掉：照「沒有連線」顯示
     else:
         row = screens[0] if screens else db.scalars(select(WallScreen).order_by(WallScreen.seen_at.desc()).limit(1)).first()
-    base = {"screens": len(screens), "locked": bool(lock), "duck_level": _duck_level(db)}
+    base = {"screens": len(screens), "locked": bool(lock), "duck_level": _duck_level(db), "online_s": REMOTE_ONLINE}
     if row is None:
         return {"state": None, "age": None, "online": False, "client": lock, **base}
     age = max(0.0, (now - _aware(row.seen_at)).total_seconds())
     return {"state": json.loads(row.state_json or "{}"), "age": round(age, 2), "online": age < REMOTE_ONLINE, "client": row.client, **base}
 
 
+def _publish_state(db: Session, now: datetime | None = None, screens: list[WallScreen] | None = None) -> None:
+    """把手機遙控頁要顯示的推過去：大螢幕回報了、鎖定或講話音量變了。"""
+    if live.enabled():
+        live.publish({"t": "state", "snap": _remote_snapshot(db, now or _now(), screens)})
+
+
+@router.get("/api/planner/wall/remote/state", dependencies=[Perm])
+def wall_remote_state(db: Session = Depends(get_db)):
+    """手機遙控頁：推播連上時補抓一次，推播斷了才每秒問。"""
+    return _remote_snapshot(db, _now())
+
+
+@router.get("/api/planner/wall/live", dependencies=[Perm])
+async def wall_live(kind: str = "wall", client: str = "", db: Session = Depends(get_db)):
+    """推播（SSE）：kind=wall 是大螢幕（收指令、留言／歌單變了、鎖定變了），kind=remote 是手機遙控頁（收大螢幕的播放狀態）。
+    回 503 表示推播暫時不能用（Redis 斷了），前端照原本的方式輪詢。"""
+    if kind not in ("wall", "remote"):
+        raise HTTPException(400, "kind 只能是 wall 或 remote")
+    # 驗完身分就把資料庫連線還回去：get_db 要等串流結束才關，一條推播會開好幾個小時，連線池會被佔光
+    await asyncio.to_thread(db.close)
+    if not await live.hub.ensure():
+        raise HTTPException(503, "即時連線暫時不能用，會自動改用一般連線")
+    accept = live.wall_accept(client.strip()[:40]) if kind == "wall" else live.remote_accept
+    return StreamingResponse(live.stream(accept), media_type="text/event-stream", headers=live.SSE_HEADERS)
+
+
 class RemoteLockIn(BaseModel):
     client: StrictStr
+
+
+def _lock_changed(db: Session) -> None:
+    """鎖定變了：大螢幕馬上 sync 一次拿新的 leader／locked，手機遙控頁更新鎖定的提示。"""
+    live.publish({"t": "remote"})
+    _publish_state(db)
 
 
 @router.post("/api/planner/wall/remote/lock", dependencies=[Perm])
@@ -629,6 +684,7 @@ def wall_remote_lock(payload: RemoteLockIn, db: Session = Depends(get_db)):
         raise HTTPException(409, "遙控已經鎖定在另一台大螢幕。要換到這台，請到後台「大螢幕遙控」按「強制解除鎖定」")
     set_setting(db, WALL_REMOTE_LOCK_KEY, client)
     db.commit()
+    _lock_changed(db)
     return {"locked": client}
 
 
@@ -640,6 +696,7 @@ def wall_remote_unlock(payload: RemoteLockIn, db: Session = Depends(get_db)):
         raise HTTPException(409, "遙控鎖定在另一台大螢幕，這台不能解除")
     set_setting(db, WALL_REMOTE_LOCK_KEY, "")
     db.commit()
+    _lock_changed(db)
     return {"locked": ""}
 
 
@@ -648,6 +705,7 @@ def wall_remote_force_unlock(db: Session = Depends(get_db)):
     """後台「強制解除鎖定」：鎖定的那台電腦壞了、打不開時用。解除後回到「最後按開始播放的那台」接收遙控。"""
     set_setting(db, WALL_REMOTE_LOCK_KEY, "")
     db.commit()
+    _lock_changed(db)
     return {"locked": ""}
 
 
@@ -675,6 +733,8 @@ def set_wall_duck(payload: DuckIn, db: Session = Depends(get_db)):
         raise HTTPException(400, f"講話模式的音量要在 0～{DUCK_MAX}% 之間")
     set_setting(db, WALL_DUCK_KEY, str(payload.level))
     db.commit()
+    _feed_changed()  # 大螢幕從 feed 拿講話音量
+    _publish_state(db)
     return {"level": payload.level}
 
 
@@ -702,6 +762,7 @@ def set_wall_options(payload: OptionsIn, db: Session = Depends(get_db)):
     if payload.moderation is not None:
         set_setting(db, WALL_MODERATION_KEY, "1" if payload.moderation else "0")
     db.commit()
+    _feed_changed()
     return _options(db)
 
 
@@ -730,4 +791,5 @@ def set_wall_plates(payload: PlatesIn, db: Session = Depends(get_db)):
     if payload.off is not None:
         set_setting(db, WALL_PLATES_OFF_KEY, clean_plates_off(",".join(payload.off)))
     db.commit()
+    _feed_changed()
     return _plates(db)

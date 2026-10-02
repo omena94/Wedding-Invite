@@ -10,6 +10,7 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
+from . import live
 from .config import FRONTEND_DIST, settings
 from .database import init_db
 from .routers import admin, gifts, photos, planner, public, rsvp, seating, guest_photos, wall
@@ -25,6 +26,7 @@ def _startup():
         raise RuntimeError('請在 backend/.env 設定至少 32 字元的隨機 SECRET_KEY，供後台登入與賓客回覆連結簽章使用')
     init_db()  # 自動建立資料表
     settings.upload_path  # 確保上傳目錄存在
+    live.install_shutdown_hook()  # 關機時先請推播連線斷線，部署才不會卡在等它們結束
 
 
 # ---- API 路由 ----

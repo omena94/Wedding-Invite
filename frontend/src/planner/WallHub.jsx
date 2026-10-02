@@ -16,7 +16,7 @@ const TABS = [
   { key: "messages", label: "留言", perm: "wall", sub: "賓客掃 QR code 到 /wish 留言，會即時出現在會場大螢幕上。大螢幕請用會場電腦登入後開啟。" },
   { key: "songs", label: "歌單", perm: "wall_setup", sub: "大螢幕播的歌：上傳音檔、對歌詞、排順序。大螢幕照這裡的順序播。" },
   { key: "plates", label: "版面", perm: "wall_setup", sub: "大螢幕的各種畫面：先預覽，不喜歡的關掉，也可以調整換版面的節奏。" },
-  { key: "remote", label: "遙控", perm: "wall", sub: "用手機操作會場大螢幕：切歌、拖進度、插播、講話模式。按下去大約一兩秒後生效。" },
+  { key: "remote", label: "遙控", perm: "wall", sub: "用手機操作會場大螢幕：切歌、拖進度、插播、講話模式。按下去馬上生效（網路不穩時要等一兩秒）。" },
 ];
 
 export default function WallHub() {

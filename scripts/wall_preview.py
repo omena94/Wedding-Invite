@@ -44,7 +44,7 @@ def main():
     db_file = folder / "preview.sqlite3"
     fresh = not db_file.exists()
     os.environ.update(
-        DATABASE_URL="sqlite:///" + db_file.as_posix(), REDIS_URL="redis://127.0.0.1:1/0",
+        DATABASE_URL="sqlite:///" + db_file.as_posix(), REDIS_URL="redis://127.0.0.1:1/0", LIVE_LOCAL="true",  # 單一程序：推播在記憶體裡轉
         SECRET_KEY="local-wall-preview-isolated-secret-key-2026-only", ADMIN_PASSWORD="preview-wedding-only",
         HELPER_PASSWORD="preview-helper-only", TELEGRAM_BOT_TOKEN="", TELEGRAM_CHAT_ID="", SMTP_USER="", SMTP_PASSWORD="",
         UPLOAD_DIR=str(folder / "uploads"), S3_BUCKET="",

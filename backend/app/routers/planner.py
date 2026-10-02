@@ -8,6 +8,7 @@ from fastapi.responses import FileResponse
 from sqlalchemy import case, func, or_, select, update
 from sqlalchemy.orm import Session, selectinload
 
+from .. import live
 from ..config import settings
 from ..database import get_db
 from ..models import (
@@ -240,6 +241,8 @@ def patch_settings(values: dict[str, str], db: Session = Depends(get_db)):
             raise HTTPException(400, "第二階段開放時間格式不正確")
         set_setting(db, key, value)
     db.commit()
+    if any(k.startswith("wall_") for k in values):  # 留言開關、版面、節奏：大螢幕的 feed 會變，推播叫它馬上抓
+        live.publish({"t": "feed"})
     return {"values": get_all(db), "stage": public_stage(db)}
 
 

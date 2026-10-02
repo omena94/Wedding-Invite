@@ -18,6 +18,8 @@ class Settings(BaseSettings):
 
     database_url: str = "postgresql+pg8000://postgres:postgres@localhost:5432/wedding"
     redis_url: str = "redis://localhost:6379/0"
+    # 大螢幕推播（live.py）沒有 Redis 時改在記憶體裡轉：只有單一程序（本機預覽）才正確，正式站（兩個 worker）不要開
+    live_local: bool = False
     # 新人（完整權限）密碼
     admin_password: str = "change-me"
     # 幫手密碼（招待、伴郎伴娘）：只能看賓客名單與報到，看不到預算與合約。留空 = 不啟用

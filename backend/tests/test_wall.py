@@ -27,8 +27,11 @@ def setup(monkeypatch, tmp_path):
     Base.metadata.create_all(engine)
     db = Session(engine, expire_on_commit=False)
     app.dependency_overrides[get_db] = lambda: db
-    from app import config
+    from app import config, live
     monkeypatch.setattr(config.settings, "upload_dir", str(tmp_path))
+    # 推播不連 Redis（本機可能剛好有在跑）：當作推播不能用，這裡測的是原本的輪詢；推播在 test_wall_live.py
+    monkeypatch.setattr(live, "_redis", lambda: None)
+    monkeypatch.setattr(live, "hub", live.Hub())
     c = TestClient(app)
     yield c, db, tmp_path
     app.dependency_overrides.clear()
@@ -347,7 +350,7 @@ def test_remote_control(setup):
 
 def test_remote_two_screens(setup):
     """同時開兩台大螢幕（2026-09-30）：只有最後按「開始播放」的那台拿到指令、手機看到那台的狀態與台數；
-    只是打開沒按開始的不會搶走遙控；備用那台可以按「改由這台接收遙控」搶回來；關掉的那台 8 秒後不算。"""
+    只是打開沒按開始的不會搶走遙控；備用那台可以按「改由這台接收遙控」搶回來；關掉的那台 15 秒後不算。"""
     c, db, _ = setup
     def sync(client, after, started=True, claim=False):
         body = {"client": client, "after": after, "state": {"started": started, "song": {"title": client}}, "claim": claim}
@@ -388,7 +391,7 @@ def test_remote_two_screens(setup):
     assert ra["leader"] is True and ra["commands"] == []
     a = ra["seq"]
     assert sync("laptop", b)["leader"] is False
-    # 筆電關掉：超過 8 秒沒回報就不算，手機只看到一台
+    # 筆電關掉：超過 15 秒（REMOTE_ONLINE）沒回報就不算，手機只看到一台
     from datetime import datetime, timedelta, timezone
     from app.models import WallScreen
     db.get(WallScreen, "laptop").seen_at = datetime.now(timezone.utc) - timedelta(seconds=20)
@@ -396,10 +399,10 @@ def test_remote_two_screens(setup):
     s = state()
     assert s["screens"] == 1 and s["online"] is True and s["client"] == "hall"
     # 會場那台也斷線：手機顯示最後回報的那台、沒有連線
-    db.get(WallScreen, "hall").seen_at = datetime.now(timezone.utc) - timedelta(seconds=12)
+    db.get(WallScreen, "hall").seen_at = datetime.now(timezone.utc) - timedelta(seconds=20)
     db.commit()
     s = state()
-    assert s["screens"] == 0 and s["online"] is False and s["client"] == "hall" and s["age"] >= 11
+    assert s["screens"] == 0 and s["online"] is False and s["client"] == "hall" and s["age"] >= 19
 
 
 def test_remote_lock(setup):

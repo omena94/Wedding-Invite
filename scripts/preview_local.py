@@ -11,7 +11,7 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'backend'))
 
 def main():
     with tempfile.TemporaryDirectory(prefix='wedding-preview-') as folder:
-        os.environ.update(DATABASE_URL='sqlite:///'+(Path(folder)/'preview.sqlite3').as_posix(), REDIS_URL='redis://127.0.0.1:1/0', SECRET_KEY='local-preview-isolated-secret-key-2026-only', ADMIN_PASSWORD='preview-wedding-only', HELPER_PASSWORD='preview-helper-only', TELEGRAM_BOT_TOKEN='',TELEGRAM_CHAT_ID='',SMTP_USER='',SMTP_PASSWORD='',UPLOAD_DIR=folder)
+        os.environ.update(DATABASE_URL='sqlite:///'+(Path(folder)/'preview.sqlite3').as_posix(), REDIS_URL='redis://127.0.0.1:1/0', LIVE_LOCAL='true', SECRET_KEY='local-preview-isolated-secret-key-2026-only', ADMIN_PASSWORD='preview-wedding-only', HELPER_PASSWORD='preview-helper-only', TELEGRAM_BOT_TOKEN='',TELEGRAM_CHAT_ID='',SMTP_USER='',SMTP_PASSWORD='',UPLOAD_DIR=folder)
         from app.database import init_db,SessionLocal,engine
         from app.models import Rsvp,SeatObject,SeatAssignment
         from app.stage import set_setting

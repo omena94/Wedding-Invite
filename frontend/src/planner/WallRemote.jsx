@@ -1,11 +1,12 @@
 // 後台「大螢幕」的「遙控」分頁（2026-09-30；2026-10-01 併進 WallHub，舊網址 /planner/wall-remote 會轉過來）：幫手用手機看會場大螢幕現在播什麼，切歌、拖進度、插播、隨機播放、講話模式，
 // 不用跑去會場電腦，操作列也不會出現在投影畫面上。
-// 大螢幕每秒回報一次狀態、順便拿走這裡按的指令（後端 routers/wall.py 的 remote/*），所以按下去大約一兩秒後生效；
-// 在那之前畫面先照「按下去的樣子」顯示（pending），大螢幕回報跟上了就改用真的狀態。
+// 這裡按的指令存到後端（routers/wall.py 的 remote/*）再推播給大螢幕，大螢幕做完回報的狀態也推播回來，平常按下去馬上生效；
+// 推播斷線時退回輪詢，大約一兩秒後生效。在大螢幕回報之前，畫面先照「按下去的樣子」顯示（pending），回報跟上了就改用真的狀態。
 import { useEffect, useRef, useState } from "react";
 import { ListMusic, Lock, Mic, MicOff, Minus, MonitorSmartphone, Pause, Play, Plus, SkipBack, SkipForward, Wifi, WifiOff } from "lucide-react";
-import { fetchWallRemote, forceUnlockWallRemote, saveWallDuck, sendWallRemote } from "../api.js";
+import { fetchWallRemote, forceUnlockWallRemote, getToken, saveWallDuck, sendWallRemote } from "../api.js";
 import Toggle from "../components/Toggle.jsx";
+import { connectLive, wallLiveUrl } from "../live.js";
 import { confirmAsk, toastErr, toastOk } from "./ui.jsx";
 
 const mmss = (x) => { const v = Math.max(0, Math.floor(x || 0)); return `${Math.floor(v / 60)}:${String(v % 60).padStart(2, "0")}`; };
@@ -20,24 +21,53 @@ export default function WallRemote() {
   const [now, setNow] = useState(Date.now());
   const [pending, setPending] = useState({}); // 按下去還沒反映的：{ playing|duck|duckLevel|shuffle|volume|seek: { value, at } }
   const [sent, setSent] = useState(null); // 「已送出」提示：{ text, at }
+  const [liveOn, setLiveOn] = useState(false); // 推播通著：按下去馬上生效
 
-  // 每秒問一次大螢幕的狀態（一個問完才問下一個，網路慢也不會疊起來）；畫面每 0.25 秒更新播放時間
+  // 大螢幕的狀態：推播通著時大螢幕一回報就推過來，這裡只每 10 秒保險問一次；推播斷了就退回每秒問（一個問完才問下一個）。
+  // 手機切到背景（鎖螢幕、切 App）就整個停掉、回來再接上，不白白佔著伺服器。畫面每 0.25 秒更新播放時間
   useEffect(() => {
-    let alive = true, timer = 0;
+    let alive = true, timer = 0, conn = null, on = false, last = 0;
     const poll = async () => {
+      last = Date.now();
       try {
         const r = await fetchWallRemote();
         if (alive) { setSnap({ ...r, at: Date.now() }); setErr(""); }
       } catch (e) { if (alive) setErr(e.message || "連不上伺服器"); }
-      if (alive) timer = setTimeout(poll, 1000);
     };
-    poll();
+    const loop = async () => {
+      if (!document.hidden && (!on || Date.now() - last >= 10000)) await poll();
+      if (alive) timer = setTimeout(loop, 1000);
+    };
+    const connect = () => {
+      if (conn || document.hidden) return;
+      conn = connectLive(wallLiveUrl("remote"), {
+        token: getToken,
+        onEvent: (e) => {
+          if (!alive) return;
+          if (e.t === "ready") void poll(); // 剛連上：先補抓一次目前的
+          else if (e.t === "state") { last = Date.now(); setSnap({ ...e.snap, at: Date.now() }); setErr(""); }
+        },
+        onStatus: (v) => { on = v; if (alive) setLiveOn(v); },
+      });
+    };
+    const onVisible = () => {
+      if (document.hidden) { conn?.close(); conn = null; }
+      else { connect(); void poll(); }
+    };
+    connect();
+    loop();
+    document.addEventListener("visibilitychange", onVisible);
     const tick = setInterval(() => setNow(Date.now()), 250);
-    return () => { alive = false; clearTimeout(timer); clearInterval(tick); };
+    return () => {
+      alive = false; clearTimeout(timer); clearInterval(tick); conn?.close();
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, []);
 
   const st = snap?.state || null;
-  const online = !!(snap?.online && st);
+  // 回報之後過了多久：播放時間往前推算、判斷大螢幕斷線都用它（推播來的狀態不會自己變舊，要自己看時間；online_s 是伺服器的標準）
+  const since = snap ? (snap.age ?? 0) + (now - snap.at) / 1000 : 0;
+  const online = !!(snap?.online && st) && since < (snap.online_s ?? 8);
   const ready = online && !!st.started;
   const live = (key, actual) => {
     const p = pending[key];
@@ -50,7 +80,6 @@ export default function WallRemote() {
   // 講話模式的音量是存在伺服器的設定：大螢幕沒連線也能先調好
   const duckLevel = live("duckLevel", snap?.duck_level ?? 20);
   // 播放時間：大螢幕回報的時間，加上回報之後過了多久（播放中才往前走）
-  const since = snap ? (snap.age ?? 0) + (now - snap.at) / 1000 : 0;
   let tShow = st ? Math.min(st.end || Infinity, st.t + (st.playing && !st.silent ? since : 0)) : 0;
   // 剛拖了進度條：大螢幕還沒跳過去之前，先顯示拖到的位置
   const sp = pending.seek;
@@ -63,7 +92,7 @@ export default function WallRemote() {
     if (optimistic) setPending((p) => ({ ...p, [optimistic[0]]: { value: optimistic[1], at: Date.now() } }));
     try {
       await sendWallRemote(action, args);
-      setSent({ text: `已送出「${ACTION_LABEL[action] || action}」，大螢幕一兩秒內會照做`, at: Date.now() });
+      setSent({ text: `已送出「${ACTION_LABEL[action] || action}」，大螢幕${liveOn ? "馬上" : "一兩秒內"}會照做`, at: Date.now() });
     } catch (e) {
       toastErr(e);
       if (optimistic) setPending((p) => { const n = { ...p }; delete n[optimistic[0]]; return n; });
@@ -99,8 +128,8 @@ export default function WallRemote() {
   if (err) conn = { cls: "off", icon: WifiOff, text: `連不上伺服器：${err}` };
   else if (!snap) conn = { cls: "wait", icon: Wifi, text: "連線中…" };
   else if (!st) conn = { cls: "off", icon: WifiOff, text: "還沒有大螢幕連線。請在會場電腦開啟大螢幕（後台「大螢幕」→「開啟大螢幕」）並按「開始播放」。" };
-  else if (!online && locked) conn = { cls: "off", icon: WifiOff, text: `鎖定的那台大螢幕沒有連線（最後一次回報是 ${ago(snap.age ?? 0)}前），其他大螢幕不會接手。請在那台電腦重新打開大螢幕（同一個瀏覽器會自動接回鎖定）；那台壞了的話，按下面「強制解除鎖定」改用別台。` };
-  else if (!online) conn = { cls: "off", icon: WifiOff, text: `大螢幕沒有連線（最後一次回報是 ${ago(snap.age ?? 0)}前）。請確認會場電腦的大螢幕還開著、網路正常。` };
+  else if (!online && locked) conn = { cls: "off", icon: WifiOff, text: `鎖定的那台大螢幕沒有連線（最後一次回報是 ${ago(since)}前），其他大螢幕不會接手。請在那台電腦重新打開大螢幕（同一個瀏覽器會自動接回鎖定）；那台壞了的話，按下面「強制解除鎖定」改用別台。` };
+  else if (!online) conn = { cls: "off", icon: WifiOff, text: `大螢幕沒有連線（最後一次回報是 ${ago(since)}前）。請確認會場電腦的大螢幕還開著、網路正常。` };
   else if (!st.started) conn = { cls: "wait", icon: Wifi, text: "大螢幕已經打開，等現場按「開始播放」後就能遙控。" };
   else conn = { cls: "ok", icon: Wifi, text: `大螢幕連線中 · 留言 ${st.messages ?? 0} 則${st.ok === false && st.status ? ` · ${st.status}` : ""}` };
   const ConnIcon = conn.icon;
