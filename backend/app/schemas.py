@@ -361,9 +361,37 @@ class SeatRenameIn(BaseModel):
 
 
 class SeatAutoAssignIn(BaseModel):
-    keep_groups: bool = True    # 同一組盡量坐同一桌
-    by_side: bool = True        # 男方從第一桌往後填、女方從最後一桌往前填
-    clear_first: bool = False   # 先清空目前的安排
+    # 同一組一律整組優先（放不下才拆），舊版前端送來的 keep_groups 會被忽略
+    by_side: bool = True        # 男女方分開坐：男方從第一桌往後、女方從最後一桌往前，同桌盡量不混
+    clear_first: bool = False   # 先清空目前的安排（標了「排定」的桌子不清）
+
+
+SeatRuleKind = Literal["together", "apart", "near", "far"]
+
+
+class SeatRuleIn(BaseModel):
+    """排位規則：together 一定同桌 / apart 不要同桌 / near 坐附近 / far 離遠一點。成員是賓客組（rsvp）。"""
+    kind: SeatRuleKind
+    rsvp_ids: list[int] = Field(min_length=2, max_length=30)
+    note: str = Field(default="", max_length=100)
+
+
+class SeatRulePatch(BaseModel):
+    kind: SeatRuleKind | None = None
+    rsvp_ids: list[int] | None = Field(default=None, min_length=2, max_length=30)
+    note: str | None = Field(default=None, max_length=100)
+
+
+class SeatGuestsPatch(BaseModel):
+    """一次設定好幾組賓客的圈子或座位需求（沒帶的欄位不動；圈子給空字串 = 移出圈子）。"""
+    rsvp_ids: list[int] = Field(min_length=1, max_length=1000)
+    circle: str | None = Field(default=None, max_length=30)
+    seat_need: Literal["", "main", "front", "door"] | None = None
+
+
+class SeatCircleRename(BaseModel):
+    name: str = Field(min_length=1, max_length=30)
+    to: str = Field(default="", max_length=30)  # 空 = 解散這個圈子（成員改回沒有圈子）
 
 
 class SeatCanvasIn(BaseModel):

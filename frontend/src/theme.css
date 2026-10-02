@@ -1933,3 +1933,121 @@ body:has(.guest-page)::after { display: none; }
 /* 婚禮資訊頁的日期地點跟首頁同一組字型（中文宋體）：全形括號「（週六）」才不會被系統字型撐開 */
 .guest-page .event-details-card { font-family: "Plus Jakarta Sans", "Noto Serif TC", serif; }
 .seatviewer .seat-text-entrance { paint-order: stroke fill; stroke: #fbf8f4; stroke-width: 4px; stroke-linejoin: round; } /* 路線起點的圓點跟字同色，字加一圈紙色描邊才讀得到 */
+
+/* 座位圖的排位規則：規則、圈子、座位需求、檢查。沿用 theme.css 的變數與 pill 的配色（好 = 綠、要處理 = 紅、建議 = 黃），class 一律 xp-sr- 開頭 */
+.xp-sr { display: flex; flex-direction: column; gap: 6px; }
+.xp-sr-intro { margin: 0 0 4px; }
+.xp-sr-sec { padding: 10px 0 12px; border-top: 1px dashed var(--border-soft); }
+.xp-sr-sec:first-of-type { border-top: none; padding-top: 2px; }
+.xp-sr-sec-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.xp-sr-sec-hint { margin: -2px 0 8px; }
+.xp-sr-empty { font-size: 12.5px; color: var(--text-muted); line-height: 1.6; padding: 10px 12px; border: 1px dashed var(--border-soft); border-radius: 12px; }
+
+/* 一列（圈子、座位需求） */
+.xp-sr-row { display: flex; align-items: center; gap: 6px; padding: 6px 4px 6px 10px; margin-bottom: 4px; border: 1px solid var(--border-soft); border-radius: 10px; background: #fff; }
+.xp-sr-row-main { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 6px; border: none; background: none; font: inherit; font-size: 13px; color: var(--milk-tea-900); text-align: left; cursor: pointer; padding: 2px 0; }
+.xp-sr-row-main strong { font-weight: 600; white-space: nowrap; }
+.xp-sr-row-sub { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+
+/* 一條規則 */
+.xp-sr-rule { border: 1px solid var(--border-soft); border-left: 3px solid var(--sage-accent); border-radius: 10px; padding: 8px 10px 6px; margin-bottom: 6px; background: #fff; }
+.xp-sr-rule.tone-bad { border-left-color: var(--rose-accent); }
+.xp-sr-rule-main { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 13px; color: var(--milk-tea-900); }
+.xp-sr-rule-names { font-weight: 500; line-height: 1.5; }
+.xp-sr-off { color: var(--text-muted); text-decoration: line-through; }
+.xp-sr-note { font-size: 12px; color: var(--text-muted); margin-top: 3px; }
+.xp-sr-rule-foot { display: flex; align-items: center; justify-content: space-between; margin-top: 4px; }
+.xp-sr-rule-acts { display: inline-flex; gap: 2px; }
+.xp-sr-rule-acts .btn-sm { padding: 4px 7px; }
+.xp-sr-kindpill { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 999px; font-size: 11.5px; font-weight: 600; white-space: nowrap; background: #eaf1ea; color: #4c6b4e; }
+.xp-sr-kindpill.tone-bad { background: #f6eaea; color: #9e5a54; }
+.xp-sr-status { display: inline-flex; align-items: center; gap: 4px; font-size: 11.5px; color: var(--text-muted); }
+.xp-sr-status.s-ok { color: #4c6b4e; }
+.xp-sr-status.s-broken { color: #9e5a54; font-weight: 600; }
+
+/* 規則種類：四張卡片二選一 */
+.xp-sr-kinds { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-bottom: 14px; }
+.xp-sr-kind { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; text-align: left; font: inherit; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--border-soft); background: var(--bg-card-subtle); cursor: pointer; transition: border-color .15s, background .15s; }
+.xp-sr-kind:hover { border-color: var(--milk-tea-300); }
+.xp-sr-kind-name { display: inline-flex; align-items: center; gap: 5px; font-size: 14px; font-weight: 600; color: var(--milk-tea-900); }
+.xp-sr-kind-hint { font-size: 12px; color: var(--text-muted); line-height: 1.5; }
+.xp-sr-kind.on.tone-good { border-color: var(--sage-accent); background: #eef4ee; box-shadow: 0 0 0 2px rgba(130, 149, 132, 0.2); }
+.xp-sr-kind.on.tone-bad { border-color: var(--rose-accent); background: #f9efed; box-shadow: 0 0 0 2px rgba(195, 139, 124, 0.2); }
+.xp-sr-kind.on.tone-good .xp-sr-kind-name { color: #4c6b4e; }
+.xp-sr-kind.on.tone-bad .xp-sr-kind-name { color: #9e5a54; }
+
+/* 分段按鈕（座位需求） */
+.xp-sr-seg { display: inline-flex; flex-wrap: wrap; gap: 2px; padding: 2px; border: 1px solid var(--border-soft); border-radius: 999px; background: var(--bg-card); }
+.xp-sr-seg button { display: inline-flex; align-items: center; gap: 4px; border: none; background: none; font: inherit; font-size: 12.5px; color: var(--text-muted); padding: 5px 12px; border-radius: 999px; cursor: pointer; }
+.xp-sr-seg button.on { background: var(--milk-tea-700); color: #fff; font-weight: 600; }
+
+/* 選賓客 */
+.xp-sr-pick { border: 1px solid var(--border-soft); border-radius: 12px; background: #fff; overflow: hidden; }
+.xp-sr-chosen { display: flex; flex-wrap: wrap; gap: 4px; padding: 8px 10px; min-height: 38px; align-items: center; background: var(--milk-tea-50); border-bottom: 1px solid var(--border-soft); font-size: 12.5px; }
+.xp-sr-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
+.xp-sr-chip { display: inline-flex; align-items: center; gap: 3px; padding: 3px 9px; border-radius: 999px; border: 1px solid var(--border-soft); background: #fff; font: inherit; font-size: 12px; color: var(--milk-tea-900); cursor: pointer; }
+.xp-sr-chosen .xp-sr-chip, .xp-sr-chip.on { background: var(--milk-tea-700); border-color: var(--milk-tea-700); color: #fff; }
+.xp-sr-pick-bar { display: flex; gap: 6px; padding: 8px 10px; align-items: center; }
+.xp-sr-pick-bar input { flex: 1 1 auto; min-width: 0; }
+.xp-sr-pick-bar > div { flex: 0 0 140px; }
+.xp-sr-pick-list { max-height: 260px; overflow-y: auto; padding: 0 6px 6px; }
+.xp-sr-pick-row { display: flex; width: 100%; padding: 6px 6px; border-radius: 8px; }
+.xp-sr-pick-row:hover { background: var(--milk-tea-50); }
+.xp-sr-pick-row .ui-check-label { display: flex; flex: 1; justify-content: space-between; gap: 8px; min-width: 0; }
+.xp-sr-pick-name { font-weight: 500; color: var(--milk-tea-900); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.xp-sr-pick-meta { font-size: 11.5px; color: var(--text-muted); white-space: nowrap; }
+.xp-sr-pick-none { padding: 10px; font-size: 12.5px; }
+.xp-sr-warnline { color: #8a6117; }
+.xp-sr-addrow { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.xp-sr-add.tone-good { color: #4c6b4e; }
+.xp-sr-add.tone-bad { color: #9e5a54; }
+
+/* 檢查 */
+.xp-sr-ihead { font-size: 12.5px; font-weight: 700; margin: 4px 0 2px; }
+.xp-sr-ihead.no { color: #9e5a54; }
+.xp-sr-ihead.warn { color: #8a6117; margin-top: 10px; }
+.xp-sr-issue { display: flex; align-items: flex-start; gap: 7px; width: 100%; text-align: left; font: inherit; font-size: 12.5px; line-height: 1.55; padding: 8px 10px; border-radius: 10px; border: 1px solid #eedad7; background: #fbf3f2; color: #7d4741; cursor: pointer; }
+.xp-sr-issue svg { flex: 0 0 auto; margin-top: 2px; }
+.xp-sr-issue.warn { border-color: #f0e2c2; background: #fdf8ec; color: #6f4f15; }
+.xp-sr-issue:hover { filter: brightness(0.98); border-color: var(--milk-tea-500); }
+.xp-sr-allgood { display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; padding: 30px 12px; color: #5f7a63; }
+
+/* 賓客卡片：圈子、需求、規則數；選到桌子時這組放這桌合不合適 */
+.xp-sr-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.xp-sr-tag { display: inline-flex; align-items: center; gap: 3px; padding: 1px 7px; border-radius: 999px; font-size: 11px; background: #fff; border: 1px solid var(--border-soft); color: var(--milk-tea-700); }
+.xp-sr-tag.need { background: #fbf1dc; border-color: #f0e2c2; color: #8a6117; }
+.xp-sr-tag.rule { background: var(--milk-tea-50); }
+.xp-sr-fits { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
+.xp-sr-fit { display: inline-flex; align-items: center; gap: 3px; padding: 2px 7px; border-radius: 8px; font-size: 11.5px; line-height: 1.4; }
+.xp-sr-fit.good { background: #eaf1ea; color: #4c6b4e; }
+.xp-sr-fit.bad { background: #f6eaea; color: #9e5a54; font-weight: 600; }
+.se-group.xp-sr-misfit { border-color: #e8c9c4; }
+
+/* 摘要列：檢查結果、剛剛的動作違反了規則 */
+.xp-sr-sumpill { border: none; cursor: pointer; font: inherit; font-size: 11.5px; }
+.xp-sr-alert { display: inline-flex; align-items: center; gap: 6px; padding: 4px 6px 4px 10px; border-radius: 999px; background: #f6eaea; color: #9e5a54; font-size: 12px; font-weight: 600; animation: xp-sr-pop .25s ease-out; }
+.xp-sr-alert button { border: none; background: #fff; color: #9e5a54; border-radius: 999px; padding: 1px 9px; font: inherit; font-size: 11.5px; cursor: pointer; }
+@keyframes xp-sr-pop { from { transform: translateY(-3px); opacity: 0; } to { transform: none; opacity: 1; } }
+
+/* 平面圖：有問題的桌子描紅（一定要處理）或描黃（建議），選到的桌子、拖放目標的藍框優先 */
+.se-canvas-seat .seat-obj.issue-no:not(.selected):not(.drop-target) .seat-body { fill: #f8e1dd; stroke: #c0645a; stroke-width: 3.5; stroke-dasharray: none; }
+.se-canvas-seat .seat-obj.issue-warn:not(.selected):not(.drop-target) .seat-body { fill: #fbf0d6; stroke: #d4a64a; stroke-width: 3; stroke-dasharray: 7 4; }
+.seat-issue-badge circle { fill: #c0645a; stroke: #fff; stroke-width: 2; }
+.seat-issue-badge.warn circle { fill: #d4a64a; }
+.seat-issue-badge text { fill: #fff; font-weight: 800; font-family: "Plus Jakarta Sans", sans-serif; }
+.se-canvas-seat .seat-obj.kept .seat-count { fill: var(--milk-tea-700); }
+
+/* 一鍵安排的視窗：會照哪些條件排 */
+.xp-sr-autolist { margin: 0 0 12px; padding-left: 20px; font-size: 13px; line-height: 1.75; color: var(--text-body); }
+.xp-sr-wrap { white-space: normal; line-height: 1.5; padding: 6px 12px; }
+
+/* 座位表：排定這桌、這桌的組成與問題 */
+.xp-sr-tp { padding: 0 12px 6px; display: flex; flex-direction: column; gap: 4px; }
+.xp-sr-tp-mix { font-size: 12px; color: var(--text-muted); }
+.xp-sr-tp .xp-sr-issue { padding: 5px 8px; font-size: 12px; }
+
+@media (max-width: 520px) {
+  .xp-sr-kinds { grid-template-columns: 1fr; }
+  .xp-sr-pick-bar { flex-wrap: wrap; }
+  .xp-sr-pick-bar > div { flex: 1 1 100%; }
+}

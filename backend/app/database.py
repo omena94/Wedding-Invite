@@ -79,6 +79,9 @@ def init_db() -> None:
                 "ALTER TABLE wall_songs ADD COLUMN IF NOT EXISTS lyrics_done BOOLEAN NOT NULL DEFAULT FALSE",
                 # 2026-09-30 大螢幕歌詞的中文翻譯（韓文歌：中文大字、原文在下面）
                 "ALTER TABLE wall_songs ADD COLUMN IF NOT EXISTS lyrics_trans TEXT NOT NULL DEFAULT ''",
+                # 2026-10-02 排位規則：賓客的圈子與座位需求（規則本身是新表 seat_rules，create_all 會建）
+                "ALTER TABLE rsvps ADD COLUMN IF NOT EXISTS circle VARCHAR(30) NOT NULL DEFAULT ''",
+                "ALTER TABLE rsvps ADD COLUMN IF NOT EXISTS seat_need VARCHAR(10) NOT NULL DEFAULT ''",
                 "ALTER TABLE seat_objects ADD COLUMN IF NOT EXISTS hall_id INTEGER REFERENCES seat_halls(id) ON DELETE CASCADE",
                 "CREATE INDEX IF NOT EXISTS ix_seat_objects_hall_id ON seat_objects (hall_id)",
                 "ALTER TABLE seat_assignments ADD COLUMN IF NOT EXISTS hall_id INTEGER REFERENCES seat_halls(id) ON DELETE CASCADE",

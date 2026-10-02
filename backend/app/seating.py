@@ -63,6 +63,17 @@ def ensure_halls(db: Session) -> SeatHall:
     return next(h for h in halls if h.is_active)
 
 
+def table_sort_key(label: str) -> tuple:
+    """桌名排序：主桌最前面，其他照「數字的大小」排（2 在 10 前面），沒有數字的照字排在後面。"""
+    import re
+
+    label = label or ""
+    if "主桌" in label:
+        return (0, 0, label)
+    m = re.search(r"\d+", label)
+    return (1, int(m.group()), label) if m else (2, 0, label)
+
+
 def active_hall(db: Session) -> SeatHall:
     """賓客查桌、幫手帶位用的那一廳。"""
     hall = db.scalars(select(SeatHall).where(SeatHall.is_active.is_(True)).order_by(SeatHall.id.asc())).first()
@@ -209,39 +220,47 @@ def load_objects(db: Session, hall_id: int) -> list[SeatObject]:
     ).all()
 
 
-def build_layout(db: Session, hall: SeatHall) -> dict:
-    """給籌備後台：這一廳的物件（含誰坐哪）+ 賓客清單（每個人在這一廳有沒有位子）+ 摘要 + 所有廳的清單。"""
+def build_layout(db: Session, hall: SeatHall, with_rules: bool = False) -> dict:
+    """給籌備後台：這一廳的物件（含誰坐哪）+ 賓客清單（每個人在這一廳有沒有位子）+ 摘要 + 所有廳的清單。
+    with_rules：再加上排位規則、圈子、檢查結果。只給能排座位的人——規則備註常是「前任」這種私事，
+    幫手帶位的唯讀畫面不帶。"""
     prune(db)
     objects = load_objects(db, hall.id)
     seated = {}  # (rsvp_id, person_no) -> {object_id, seat_index, label}
+    by_rsvp: dict[int, dict[int, int]] = {}  # rsvp_id -> {桌 id: 坐了幾位}（檢查規則用）
     for o in objects:
         for a in o.assignments:
             seated[(a.rsvp_id, a.person_no)] = {"object_id": o.id, "seat_index": a.seat_index, "label": o.label}
+            at = by_rsvp.setdefault(a.rsvp_id, {})
+            at[o.id] = at.get(o.id, 0) + 1
     guests = []
     people_total = 0
-    for r in db.scalars(
+    rsvps = db.scalars(
         select(Rsvp).where(Rsvp.attending.is_(True), Rsvp.is_test.is_(False)).order_by(Rsvp.side.asc(), Rsvp.created_at.asc())
-    ).all():
+    ).all()
+    for r in rsvps:
         persons = []
         for p in persons_for(r):
             key = (r.id, p["person_no"])
             persons.append({**p, "seat": seated.get(key)})
         people_total += len(persons)
-        guests.append(
-            {
-                "rsvp_id": r.id,
-                "name": r.name,
-                "side": r.side,
-                "phone": normalize_phone(r.phone or ""),  # 預覽地圖找人可輸入電話（2026-09-10）
-                "adult_count": r.adult_count,
-                "child_count": r.child_count,
-                "table_no": r.table_no,
-                "persons": persons,
-                "unassigned": sum(1 for p in persons if not p["seat"]),
-            }
-        )
+        g = {
+            "rsvp_id": r.id,
+            "name": r.name,
+            "side": r.side,
+            "phone": normalize_phone(r.phone or ""),  # 預覽地圖找人可輸入電話
+            "adult_count": r.adult_count,
+            "child_count": r.child_count,
+            "table_no": r.table_no,
+            "persons": persons,
+            "unassigned": sum(1 for p in persons if not p["seat"]),
+        }
+        if with_rules:
+            g["circle"] = r.circle or ""
+            g["seat_need"] = r.seat_need or ""
+        guests.append(g)
     seats_total = sum(seat_count(o) for o in objects)
-    return {
+    out = {
         "hall": hall_out(hall),
         "halls": [hall_out(h) for h in list_halls(db)],
         "canvas": canvas_size(hall),
@@ -255,6 +274,11 @@ def build_layout(db: Session, hall: SeatHall) -> dict:
             "tables": sum(1 for o in objects if o.kind in ("round", "rect")),
         },
     }
+    if with_rules:
+        from .seat_rules import layout_extras  # seat_rules 也用到這裡的函式，放這裡才不會互相 import
+
+        out.update(layout_extras(db, objects, list(rsvps), by_rsvp, complete=bool(seated) and people_total == len(seated)))
+    return out
 
 
 def public_map(db: Session, hall: SeatHall | None = None) -> dict:

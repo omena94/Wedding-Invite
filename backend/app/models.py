@@ -104,6 +104,11 @@ class Rsvp(Base):
     table_no: Mapped[int | None] = mapped_column(Integer, nullable=True)
     admin_note: Mapped[str] = mapped_column(String(300), default="")
     is_test: Mapped[bool] = mapped_column(Boolean, default=False)  # 測試資料，不計入統計/匯出
+    # ===== 排座位（只給能排座位的人看，幫手帶位的畫面不帶出去）=====
+    # 圈子：大學同學、公司同事、爸爸的朋友…同一圈子盡量同桌、至少坐隔壁桌，檢查時才找得出「同桌沒有認識的人」
+    circle: Mapped[str] = mapped_column(String(30), default="")
+    # 座位需求：main 主桌 / front 靠近舞台（重要長輩）/ door 靠近入口（行動不便、帶小嬰兒、要早走）；空 = 沒有
+    seat_need: Mapped[str] = mapped_column(String(10), default="")
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
@@ -326,6 +331,31 @@ class SeatAssignment(Base):
 
     obj: Mapped["SeatObject"] = relationship(back_populates="assignments")
     rsvp: Mapped["Rsvp"] = relationship()
+
+
+class SeatRule(Base):
+    """排位規則：幾組賓客之間 together 一定同桌 / apart 不要同桌 / near 坐附近（同桌或隔壁桌）/ far 離遠一點。
+    規則跟著人走、不分廳：訂婚宴與結婚宴各排一廳時都要遵守。成員存 rsvp id 清單，賓客被刪掉時讀取端會清掉；
+    備註常是「前任」「兩家有心結」這種私事，只給能排座位的人看。"""
+    __tablename__ = "seat_rules"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    kind: Mapped[str] = mapped_column(String(10), default="together")
+    rsvp_ids_json: Mapped[str] = mapped_column(Text, default="[]")
+    note: Mapped[str] = mapped_column(String(100), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    @property
+    def rsvp_ids(self) -> list[int]:
+        try:
+            data = json.loads(self.rsvp_ids_json or "[]")
+        except (ValueError, TypeError):
+            return []
+        out: list[int] = []
+        for x in data if isinstance(data, list) else []:
+            if isinstance(x, int) and x not in out:
+                out.append(x)
+        return out
 
 
 class Task(Base):

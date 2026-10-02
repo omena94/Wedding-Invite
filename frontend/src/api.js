@@ -342,6 +342,14 @@ export const renameAssignment = (id, display_name) =>
 export const unassignSeat = (id) => request(`${SE}/assign/${id}`, { method: "DELETE", auth: true });
 export const clearAllSeats = (hall = null) => request(`${SE}/assignments${qs({ hall })}`, { method: "DELETE", auth: true });
 export const autoAssignSeats = (opts, hall = null) => request(`${SE}/auto-assign${qs({ hall })}`, { method: "POST", body: opts, auth: true });
+// 排位規則（一定同桌／不要同桌／坐附近／離遠一點）、圈子、座位需求；都回傳這一廳最新的版面（含檢查結果）
+export const createSeatRule = (data, hall = null) => request(`${SE}/rules${qs({ hall })}`, { method: "POST", body: data, auth: true });
+export const updateSeatRule = (id, data, hall = null) => request(`${SE}/rules/${id}${qs({ hall })}`, { method: "PATCH", body: data, auth: true });
+export const deleteSeatRule = (id, hall = null) => request(`${SE}/rules/${id}${qs({ hall })}`, { method: "DELETE", auth: true });
+// data: { rsvp_ids, circle?, seat_need? }（沒帶的不動；circle 給空字串 = 移出圈子）
+export const setSeatGuests = (data, hall = null) => request(`${SE}/guests${qs({ hall })}`, { method: "PATCH", body: data, auth: true });
+// 圈子改名（改成已有的名字 = 合併）；to 給空字串 = 解散
+export const renameSeatCircle = (name, to, hall = null) => request(`${SE}/circles/rename${qs({ hall })}`, { method: "POST", body: { name, to }, auth: true });
 
 // ===== 照片相簿 =====
 export const fetchPlannerPhotos = () => request(`${P}/photos`, { auth: true });

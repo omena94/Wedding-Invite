@@ -7,7 +7,7 @@ import Swal from "sweetalert2";
 import {
   AlignCenterHorizontal, AlignCenterVertical, AlignEndHorizontal, AlignEndVertical, AlignHorizontalDistributeCenter, AlignStartHorizontal, AlignStartVertical, AlignVerticalDistributeCenter,
   Armchair, ArrowDownToLine, ArrowUpToLine, BoxSelect, Building2, Circle, Copy, DoorClosed, Eraser, Expand, Eye, GripVertical, Grid3x3, Image as ImageIcon, Lock, LockOpen, Maximize2, Minus, PencilRuler, Plus, Printer, Shrink,
-  RectangleHorizontal, Redo2, Square, SquareDashedMousePointer, Star, Tag, Trash2, Type, Undo2, UserRound, Users, Wand2, X, ZoomIn, ZoomOut,
+  RectangleHorizontal, Redo2, SlidersHorizontal, Square, SquareDashedMousePointer, TriangleAlert, Star, Tag, Trash2, Type, Undo2, UserRound, Users, Wand2, X, ZoomIn, ZoomOut,
 } from "lucide-react";
 import {
   assignGroup, assignSeat, autoAssignSeats, clearAllSeats, clearSeatObject, createSeatHall, createSeatHallFromPreset, createSeatObject,
@@ -23,6 +23,8 @@ import { navigationGrid, routeToSeat } from "../seating/navigation.js";
 import SeatResult from "../seating/SeatResult.jsx";
 import SeatViewer from '../seating/SeatViewer.jsx';
 import { usePlanner } from "./context.js";
+import { FitHints, GuestSeatModal, GuestTags, IssuesPanel, RulesPanel, TableRuleBar } from "./seatRules.jsx";
+import { fitHints, ruleIndex } from "../seating/ruleHints.js";
 import { ErrorBox, Field, Loading, Modal, NumberInput, PageHead, confirmDelete, toInt, toastErr, toastOk, useLoader } from "./ui.jsx";
 
 const GRID = 10;
@@ -88,6 +90,12 @@ export default function Seating() {
   const flash = (msg, undoFn = null) => { setHint({ text: msg, undo: undoFn }); clearTimeout(hintTimer.current); hintTimer.current = setTimeout(() => setHint(null), undoFn ? 6000 : 2500); };
   const [marquee, setMarquee] = useState(null);       // 拖曳中的框 {x, y, w, h}（畫布座標）
   const [autoModal, setAutoModal] = useState(false);
+  // 排位規則：右側分頁（賓客／排位規則／檢查）、正在設定的那組賓客、從檢查點過來要標亮的座位、剛剛的動作讓哪條規則沒做到
+  const [panelTab, setPanelTab] = useState("guests");
+  const [seatSettings, setSeatSettings] = useState(null);
+  const [focusSeats, setFocusSeats] = useState(null);
+  const [ruleAlert, setRuleAlert] = useState(null);
+  const [circleFilter, setCircleFilter] = useState(""); // 賓客清單只看某個圈子；"-" = 還沒分圈子
 
   const containerRef = useRef(null);
   const drag = useRef(null);
@@ -449,7 +457,7 @@ export default function Seating() {
     if (d.type === "pan") {
       if (d.moved) return;
       if (d.tap) { tableClick(byIdRef.current[d.tap]); return; } // 點到桌子
-      setSelected(new Set()); setSeatSel(null); setPicked([]); // 點空白處 = 取消桌子與人的選取（2026-09-11）
+      setSelected(new Set()); setSeatSel(null); setPicked([]); setFocusSeats(null); // 點空白處 = 取消桌子與人的選取（2026-09-11）
       return;
     }
     if (d.type === "marquee") {
@@ -488,7 +496,8 @@ export default function Seating() {
       setDragChip(null);
       setDropTarget(null);
       if (!d.moved) {
-        // 點一下（不管已入座或未安排）：切換選取，不跳提示（2026-09-09 新人要求可多選、不要每按一次就提示）
+        // 點一下（不管已入座或未安排）：切換選取，不跳提示（2026-09-09 新人要求可多選、不要每按一次就提示）。
+        // 只在這裡切換；名單的人不要再掛 onClick，不然一次點擊切兩次等於沒選
         togglePick(d.person);
         return;
       }
@@ -668,11 +677,6 @@ export default function Seating() {
         async () => { for (const it of items) { const cur = seatOf(it.person); if (cur) setLayout(await unassignSeat(cur.id)); } });
     } catch (e) { toastErr(e); }
   };
-  // 賓客清單點已入座的人：切換選取（未安排的人由 pointer 事件處理）
-  const seatedClick = (g, p) => {
-    if (readonly || !p.seat) return;
-    togglePick({ rsvp_id: g.rsvp_id, person_no: p.person_no, name: p.name });
-  };
   const rename = async (a) => {
     const r = await Swal.fire({ title: "顯示名稱", input: "text", inputValue: a.display_name, inputPlaceholder: a.auto_name, showCancelButton: true, confirmButtonText: "儲存", cancelButtonText: "取消", confirmButtonColor: "#B28F70", inputAttributes: { maxlength: 60 } });
     if (!r.isConfirmed) return;
@@ -684,7 +688,8 @@ export default function Seating() {
     try { await clearSeatObject(o.id); load(); } catch (e) { toastErr(e); }
   };
   const clearEverything = async () => {
-    const r = await Swal.fire({ icon: "warning", title: "清空所有座位指定？", text: "桌椅會保留，只是大家都變成未安排。", showCancelButton: true, confirmButtonText: "清空", cancelButtonText: "取消", confirmButtonColor: "#9E5A54" });
+    const kept = tables.filter((o) => o.meta?.keep_seats).length;
+    const r = await Swal.fire({ icon: "warning", title: "清空所有座位指定？", text: kept ? `桌椅會保留，只是大家都變成未安排；標了「排定」的 ${kept} 桌不會清。` : "桌椅會保留，只是大家都變成未安排。", showCancelButton: true, confirmButtonText: "清空", cancelButtonText: "取消", confirmButtonColor: "#9E5A54" });
     if (!r.isConfirmed) return;
     try { setLayout(await clearAllSeats(hallId)); } catch (e) { toastErr(e); }
   };
@@ -766,10 +771,11 @@ export default function Seating() {
     const byPhone = qDigits.length >= 4 && qDigits.length === q.replace(/[\s-]/g, "").length;
     if (q) g = g.filter((x) => x.name.toLowerCase().includes(q) || x.persons.some((p) => (p.name || "").toLowerCase().includes(q)) || (byPhone && (x.phone || "").includes(qDigits)));
     if (sideFilter) g = g.filter((x) => x.side === sideFilter);
+    if (circleFilter) g = g.filter((x) => (circleFilter === "-" ? !x.circle : x.circle === circleFilter));
     if (onlyUnassigned) g = g.filter((x) => x.unassigned > 0);
     // 還沒安排完的排前面，排好的沉下去，找下一組要排的不用捲
     return [...g].sort((a, b) => (b.unassigned > 0) - (a.unassigned > 0));
-  }, [layout, search, sideFilter, onlyUnassigned]);
+  }, [layout, search, sideFilter, circleFilter, onlyUnassigned]);
 
   // 搜尋框有字時，畫布上符合的人也一起標亮（不用再 Ctrl+F 找）
   const searchSeats = useMemo(() => {
@@ -790,8 +796,53 @@ export default function Seating() {
   const highlightSeats = useMemo(() => {
     const set = new Set(searchSeats);
     if (seatSel) set.add(`${seatSel.object_id}:${seatSel.seat_index}`);
+    focusSeats?.forEach((k) => set.add(k));
     return set;
-  }, [searchSeats, seatSel]);
+  }, [searchSeats, seatSel, focusSeats]);
+  const focusTables = useMemo(() => new Set([...(focusSeats || [])].map((k) => +k.split(":")[0])), [focusSeats]);
+
+  // ---------- 排位規則 ----------
+  // 判斷都在後端，每個動作回來的版面都帶最新的檢查；幫手的唯讀畫面沒有規則（issues 是 null）
+  const ruleIdx = useMemo(() => ruleIndex(layout), [layout]);
+  const issues = layout?.issues || null;
+  // 平面圖上哪幾桌有問題：同一桌有「規則沒做到」就描紅，只有建議就描黃
+  const issueTables = useMemo(() => {
+    const m = {};
+    (issues || []).forEach((i) => i.object_ids.forEach((id) => { if (m[id] !== "no") m[id] = i.level; }));
+    return m;
+  }, [issues]);
+  // 剛剛的動作讓規則沒做到（例如把前任放進同一桌）：摘要列跳一行提醒。第一次載入、換廳不跳
+  const seenIssues = useRef(null);
+  const alertTimer = useRef(null);
+  useEffect(() => {
+    if (!issues) return;
+    const keys = new Set(issues.filter((i) => i.level === "no").map((i) => i.key));
+    const prev = seenIssues.current;
+    seenIssues.current = { hall: hallId, keys };
+    if (!prev || prev.hall !== hallId) return;
+    const fresh = issues.find((i) => i.level === "no" && !prev.keys.has(i.key));
+    if (!fresh) {
+      setRuleAlert((cur) => (cur && keys.has(cur.key) ? cur : null)); // 已經改好了就收起來
+      return;
+    }
+    setRuleAlert(fresh);
+    clearTimeout(alertTimer.current);
+    alertTimer.current = setTimeout(() => setRuleAlert(null), 9000);
+  }, [issues, hallId]);
+  // 從「檢查」點一個問題：選到那一桌、平面圖移過去，相關的人亮起來（點空白處取消）
+  const focusIssue = (issue) => {
+    const keys = new Set();
+    objects.forEach((o) => (o.assignments || []).forEach((a) => { if (issue.rsvp_ids.includes(a.rsvp_id)) keys.add(`${o.id}:${a.seat_index}`); }));
+    setFocusSeats(keys);
+    const o = byId[issue.object_ids[0]];
+    if (!o) return;
+    setSelected(new Set([o.id]));
+    setSeatSel(null);
+    const r = containerRef.current?.getBoundingClientRect();
+    if (!r) return;
+    const { cx, cy } = center(o);
+    setView((v) => { const zoom = Math.max(v.zoom, 0.7); return { zoom, x: r.width / 2 - cx * zoom, y: r.height / 2 - cy * zoom }; });
+  };
   // 路線健康檢查（2026-09-22 新人把入口拖到廳外的禁止區，預覽路線全部消失卻沒提示）：
   // 每桌算一次路線，有算不出來的就在摘要列標出來。拖曳中不算，放開後 layout 變了才重算
   const routeIssue = useMemo(() => {
@@ -853,6 +904,20 @@ export default function Seating() {
         <span className={s.unassigned ? "pill pill-warn" : "pill pill-yes"}>未安排 {s.unassigned}</span>
         {s.seats_total < s.people_total && <span className="pill pill-no">座位不夠：還差 {s.people_total - s.seats_total} 個</span>}
         {routeIssue && <span className={`pill pill-${routeIssue.kind}`} title="賓客頁「我的座位」與預覽的路線都靠這個算">路線：{routeIssue.text}</span>}
+        {issues && (s.assigned > 0 || issues.length > 0) && (() => {
+          const no = issues.filter((i) => i.level === "no").length;
+          const warn = issues.length - no;
+          return (
+            <button type="button" className={`pill xp-sr-sumpill ${no ? "pill-no" : warn ? "pill-warn" : "pill-yes"}`} onClick={() => setPanelTab("issues")} title="排位規則與座位的檢查，點開看細節">
+              {no ? `規則沒做到 ${no} 項` : warn ? `檢查：建議調整 ${warn} 項` : "檢查：沒有問題"}
+            </button>
+          );
+        })()}
+        {ruleAlert && (
+          <span className="xp-sr-alert" role="status"><TriangleAlert size={13} />{ruleAlert.text}
+            <button type="button" onClick={() => { focusIssue(ruleAlert); setPanelTab("issues"); setRuleAlert(null); }}>看看</button>
+          </span>
+        )}
       </div>
       {!readonly && (
         <div className="se-toolbar">
@@ -941,7 +1006,7 @@ export default function Seating() {
               {grid && !seatMode && <rect x="0" y="0" width={layout.canvas.w} height={layout.canvas.h} fill="url(#se-grid)" style={{ pointerEvents: "none" }} />}
               {objects.map((o) => (
                 <g key={o.id} onPointerDown={(e) => onObjPointerDown(e, o)} style={{ cursor: seatMode ? (isTable(o) ? "pointer" : "default") : "move" }}>
-                  <ObjectShape o={o} selected={selected.has(o.id)} showNames={showNames || selected.has(o.id) || searchTables.has(o.id) || [...pickedSeats].some((k) => k.startsWith(`${o.id}:`))} interactive labelPlan={labelPlan}
+                  <ObjectShape o={o} selected={selected.has(o.id)} showNames={showNames || selected.has(o.id) || searchTables.has(o.id) || focusTables.has(o.id) || [...pickedSeats].some((k) => k.startsWith(`${o.id}:`))} interactive labelPlan={labelPlan} issue={seatMode ? issueTables[o.id] : undefined}
                     highlightSeats={highlightSeats} pickedSeats={pickedSeats} capacity={seatMode} dropTarget={dropTarget === o.id}
                     onSeatPointerDown={onSeatPointerDown} onSeatPointerUp={onSeatPointerUp} />
                 </g>
@@ -958,7 +1023,9 @@ export default function Seating() {
         {seatMode ? (
           <aside className="se-panel se-panel-seat">
             {selectedTable && (
-              <TablePanel o={selectedTable} seatSel={seatSel && seatSel.object_id === selectedTable.id ? seatSel : null} readonly={readonly} picked={picked} tables={tables}
+              <TablePanel o={selectedTable} issues={(issues || []).filter((i) => i.object_ids.includes(selectedTable.id))} guestOf={ruleIdx.guests}
+                onKeep={issues ? (v) => saveObject(selectedTable.id, { meta: { ...selectedTable.meta, keep_seats: v } }, true) : null} onFocusIssue={focusIssue}
+                seatSel={seatSel && seatSel.object_id === selectedTable.id ? seatSel : null} readonly={readonly} picked={picked} tables={tables}
                 onClose={() => { setSelected(new Set()); setSeatSel(null); }}
                 onPickSeat={(i) => setSeatSel((cur) => (cur && cur.object_id === selectedTable.id && cur.seat_index === i ? null : { object_id: selectedTable.id, seat_index: i }))}
                 onPlacePicked={(i) => picked.length && place(picked[0], selectedTable.id, i)}
@@ -966,13 +1033,26 @@ export default function Seating() {
                 onPreview={(a) => setPreview({ rsvp_id: a.rsvp_id, name: a.display_name })}
                 onClear={() => clearTable(selectedTable)} />
             )}
+            {issues && (
+              <div className="se-tabs" role="tablist">
+                <button type="button" role="tab" aria-selected={panelTab === "guests"} className={panelTab === "guests" ? "active" : ""} onClick={() => setPanelTab("guests")}>賓客</button>
+                <button type="button" role="tab" aria-selected={panelTab === "rules"} className={panelTab === "rules" ? "active" : ""} onClick={() => setPanelTab("rules")}>排位規則{layout.rules?.length ? ` ${layout.rules.length}` : ""}</button>
+                <button type="button" role="tab" aria-selected={panelTab === "issues"} className={panelTab === "issues" ? "active" : ""} onClick={() => setPanelTab("issues")}>檢查{issues.length ? ` ${issues.length}` : ""}</button>
+              </div>
+            )}
             <div className="se-panel-body">
-              <GuestPanel guests={guests} search={search} setSearch={setSearch} sideFilter={sideFilter} setSideFilter={setSideFilter} onlyUnassigned={onlyUnassigned} setOnlyUnassigned={setOnlyUnassigned}
-                picked={picked} readonly={readonly} table={selectedTable} byId={byId} onSeatedClick={seatedClick}
-                onPersonPointerDown={onPersonPointerDown} onPersonPointerMove={onPointerMove} onPersonPointerUp={onPointerUp}
-                onGroupPointerDown={onGroupPointerDown}
-                onAddGroup={(g) => groupToTable(g, selectedTable)} onMoveGroup={(g) => groupToTable(g, selectedTable, true)}
-                onPreview={(g) => setPreview({ rsvp_id: g.rsvp_id, name: g.name })} />
+              {issues && panelTab === "rules" ? <RulesPanel layout={layout} hall={hallId} onLayout={setLayout} />
+                : issues && panelTab === "issues" ? <IssuesPanel issues={issues} onFocus={focusIssue} />
+                : (
+                  <GuestPanel guests={guests} search={search} setSearch={setSearch} sideFilter={sideFilter} setSideFilter={setSideFilter} onlyUnassigned={onlyUnassigned} setOnlyUnassigned={setOnlyUnassigned}
+                    circles={issues ? layout.circles || [] : []} circleFilter={circleFilter} setCircleFilter={setCircleFilter} ruleIdx={issues ? ruleIdx : null}
+                    onSettings={(g) => setSeatSettings(g)}
+                    picked={picked} readonly={readonly} table={selectedTable} byId={byId}
+                    onPersonPointerDown={onPersonPointerDown} onPersonPointerMove={onPointerMove} onPersonPointerUp={onPointerUp}
+                    onGroupPointerDown={onGroupPointerDown}
+                    onAddGroup={(g) => groupToTable(g, selectedTable)} onMoveGroup={(g) => groupToTable(g, selectedTable, true)}
+                    onPreview={(g) => setPreview({ rsvp_id: g.rsvp_id, name: g.name })} />
+                )}
             </div>
           </aside>
         ) : (
@@ -995,42 +1075,64 @@ export default function Seating() {
           onLayout={(l) => { setLayout(l); if (l.hall && l.hall.id !== hallId) switchHall(l.hall.id); }} />
       )}
       {preview && <PreviewModal rsvpId={preview.rsvp_id} name={preview.name} hall={hallId} onClose={() => setPreview(null)} />}
+      {seatSettings && <GuestSeatModal group={seatSettings} layout={layout} hall={hallId} onClose={() => setSeatSettings(null)} onLayout={setLayout} />}
       {autoModal && (
-        <AutoAssignModal summary={s} hall={hallId} onClose={() => setAutoModal(false)}
-          onDone={(l) => { setAutoModal(false); setLayout(l); toastOk(l.left_over ? `已安排 ${l.placed} 位，還有 ${l.left_over} 位沒位子（座位不夠）` : `已安排 ${l.placed} 位`); }} />
+        <AutoAssignModal summary={s} layout={layout} hall={hallId} onClose={() => setAutoModal(false)}
+          onDone={(l) => {
+            setAutoModal(false);
+            setLayout(l);
+            const bad = (l.issues || []).filter((i) => i.level === "no").length;
+            if (bad) setPanelTab("issues");
+            toastOk(`${l.left_over ? `已安排 ${l.placed} 位，還有 ${l.left_over} 位沒位子（座位不夠）` : `已安排 ${l.placed} 位`}${bad ? `；有 ${bad} 項規則沒做到，請看「檢查」` : ""}`);
+          }} />
       )}
     </div>
   );
 }
 
-/* ---------- 一鍵安排 ---------- */
-function AutoAssignModal({ summary, hall, onClose, onDone }) {
-  const [keepGroups, setKeepGroups] = useState(true);
+/* ---------- 一鍵安排：照排位規則、圈子、座位需求排（細節在後端 seat_rules.py） ---------- */
+function AutoAssignModal({ summary, layout, hall, onClose, onDone }) {
   const [bySide, setBySide] = useState(true);
   const [clearFirst, setClearFirst] = useState(false);
   const [busy, setBusy] = useState(false);
   const run = async () => {
     setBusy(true);
     try {
-      onDone(await autoAssignSeats({ keep_groups: keepGroups, by_side: bySide, clear_first: clearFirst }, hall));
+      onDone(await autoAssignSeats({ by_side: bySide, clear_first: clearFirst }, hall));
     } catch (e) {
       toastErr(e);
     } finally {
       setBusy(false);
     }
   };
-  const toPlace = clearFirst ? summary.people_total : summary.unassigned;
+  const objects = layout.objects || [];
+  const guests = layout.guests || [];
+  const kept = objects.filter((o) => o.meta?.keep_seats && o.seats > 0);
+  const keptPeople = kept.reduce((n, o) => n + (o.assignments || []).length, 0);
+  const hasMain = objects.some((o) => (o.label || "").includes("主桌") && o.seats > 0 && !o.meta?.keep_seats);
+  const mainMarked = guests.some((g) => g.seat_need === "main");
+  const rules = (layout.rules || []).length;
+  const circles = (layout.circles || []).length;
+  const needs = guests.filter((g) => g.seat_need).length;
+  const toPlace = clearFirst ? summary.people_total - keptPeople : summary.unassigned;
   return (
     <Modal title="一鍵安排座位" onClose={onClose}
       footer={<><button type="button" className="btn btn-ghost" onClick={onClose} disabled={busy}>取消</button><button type="button" className="btn btn-primary" onClick={run} disabled={busy || toPlace === 0}>{busy ? "安排中…" : `安排 ${toPlace} 位`}</button></>}>
-      <div className="helper-text" style={{ marginBottom: 12 }}>
-        會把還沒有位子的人依序填進空位；桌子依名稱排序（A1、A2…），排完可以再手動微調。目前座位 {summary.seats_total}、出席 {summary.people_total} 人。
+      <div className="helper-text" style={{ marginBottom: 8 }}>
+        把還沒有位子的人放進空位，照下面這些條件排；排完可以再手動調整，沒做到的會列在「檢查」。目前座位 {summary.seats_total}、出席 {summary.people_total} 人。
       </div>
+      <ul className="xp-sr-autolist">
+        <li>同一組（一家人）坐同一桌、坐連號</li>
+        <li>{rules ? `照你們設的 ${rules} 條規則：一定同桌、不要同桌、坐附近、離遠一點` : "還沒設規則：可以在右邊「排位規則」設定誰跟誰一定同桌、不要同桌"}</li>
+        <li>{circles ? `同圈子（${circles} 個）坐同一桌，坐不下就坐隔壁桌` : "還沒分圈子：分了之後同學、同事會被排在一起，不會有人落單"}</li>
+        {needs > 0 && <li>主桌、靠近舞台、靠近入口的需求（{needs} 組）</li>}
+        {kept.length > 0 && <li>標了「排定」的 {kept.length} 桌不會動</li>}
+      </ul>
       <div className="pl-switch-list">
-        <Checkbox checked={keepGroups} onChange={setKeepGroups}>同一組盡量坐同一桌（先找放得下整組的桌子，放不下才拆）</Checkbox>
-        <Checkbox checked={bySide} onChange={setBySide}>男方從第一桌往後填、女方從最後一桌往前填（兩邊自然分開）</Checkbox>
-        <Checkbox checked={clearFirst} onChange={setClearFirst}>先清空目前所有安排再重排</Checkbox>
+        <Checkbox checked={bySide} onChange={setBySide}>{SIDE_LABEL.groom}、{SIDE_LABEL.bride}親友分開坐（各坐一邊，同一桌盡量不混）</Checkbox>
+        <Checkbox checked={clearFirst} onChange={setClearFirst}>先清空目前的安排再重排{kept.length ? "（排定的桌子不清）" : ""}</Checkbox>
       </div>
+      {hasMain && !mainMarked && <div className="pill pill-warn xp-sr-wrap" style={{ marginTop: 12 }}>還沒有人標「主桌」：一鍵安排會把主桌空著留給家人。可以在「排位規則」的座位需求標主桌，或自己手動排。</div>}
       {summary.seats_total < summary.people_total && <div className="pill pill-no" style={{ marginTop: 12 }}>座位不夠：還差 {summary.people_total - summary.seats_total} 個，會有人排不進去</div>}
     </Modal>
   );
@@ -1079,7 +1181,7 @@ function Handles({ o, zoom, onPointerDown }) {
 }
 
 /* ---------- 右側（排位模式）：賓客卡片，一組一張；按「加入」或整組拖到桌上 ---------- */
-function GuestPanel({ guests, search, setSearch, sideFilter, setSideFilter, onlyUnassigned, setOnlyUnassigned, picked, readonly, table, byId, onSeatedClick, onPersonPointerDown, onPersonPointerMove, onPersonPointerUp, onGroupPointerDown, onAddGroup, onMoveGroup, onPreview }) {
+function GuestPanel({ guests, search, setSearch, sideFilter, setSideFilter, circles = [], circleFilter, setCircleFilter, ruleIdx, onSettings, onlyUnassigned, setOnlyUnassigned, picked, readonly, table, byId, onPersonPointerDown, onPersonPointerMove, onPersonPointerUp, onGroupPointerDown, onAddGroup, onMoveGroup, onPreview }) {
   const where = (p) => (p.seat ? `${p.seat.label || KIND_LABEL[byId[p.seat.object_id]?.kind] || "桌"} · ${p.seat.seat_index + 1} 號` : "未安排");
   const tname = table ? tableName(table) : "";
   const free = table ? freeSeats(table).length : 0;
@@ -1087,6 +1189,12 @@ function GuestPanel({ guests, search, setSearch, sideFilter, setSideFilter, only
     <div>
       <input type="text" placeholder="搜尋姓名或電話…" value={search} onChange={(e) => setSearch(e.target.value)} style={{ marginBottom: 8 }} />
       <div style={{ marginBottom: 8 }}><Select compact aria-label="篩選親友方" value={sideFilter} onChange={setSideFilter} options={[{ value: "", label: "全部親友" }, { value: "groom", label: "男方親友" }, { value: "bride", label: "女方親友" }]} /></div>
+      {circles.length > 0 && (
+        <div style={{ marginBottom: 8 }}>
+          <Select compact aria-label="篩選圈子" value={circleFilter} onChange={setCircleFilter}
+            options={[{ value: "", label: "全部圈子" }, ...circles.map((c) => ({ value: c.name, label: `${c.name}（${c.groups} 組）` })), { value: "-", label: "還沒分圈子" }]} />
+        </div>
+      )}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
         <Checkbox checked={onlyUnassigned} onChange={setOnlyUnassigned}>只看未安排</Checkbox>
         <span className="muted-cell" style={{ fontSize: 12 }}>{guests.length} 組</span>
@@ -1101,22 +1209,27 @@ function GuestPanel({ guests, search, setSearch, sideFilter, setSideFilter, only
       {guests.length === 0 && <div className="empty-state" style={{ padding: 20 }}>沒有符合的賓客</div>}
       {guests.map((g) => {
         const allHere = table && g.unassigned === 0 && g.persons.every((p) => p.seat && p.seat.object_id === table.id);
+        // 選了一張桌子：這組放這桌合不合適（規則、同圈子）；已經整組坐這桌的就不用提示了
+        const hints = ruleIdx && table && !allHere ? fitHints(g, table, ruleIdx) : [];
         return (
-          <div className={`se-group${g.unassigned ? "" : " done"}`} key={g.rsvp_id}>
+          <div className={`se-group${g.unassigned ? "" : " done"}${hints.some((h) => h.tone === "bad") ? " xp-sr-misfit" : ""}`} key={g.rsvp_id}>
             <div className={`se-group-head${readonly ? "" : " draggable"}`} title={readonly ? undefined : "按住這一列拖到平面圖的桌子上，整組入座"}
               onPointerDown={(e) => onGroupPointerDown(e, g)} onPointerMove={onPersonPointerMove} onPointerUp={onPersonPointerUp} onPointerCancel={onPersonPointerUp}>
               <span className="se-group-name">{!readonly && <GripVertical size={13} className="se-grip" />}{g.name} <span className={`pill ${g.side === "bride" ? "pill-bride" : "pill-groom"}`}>{SIDE_LABEL[g.side] || g.side}</span></span>
               <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
                 <span className={`muted-cell${g.unassigned ? "" : " se-group-ok"}`} style={{ fontWeight: 400, fontSize: 12 }}>{g.persons.length - g.unassigned}/{g.persons.length}</span>
+                {ruleIdx && !readonly && <button type="button" className="btn btn-ghost btn-sm" title="排位設定：圈子、座位需求、跟誰一定同桌／不要同桌" onPointerDown={(e) => e.stopPropagation()} onClick={() => onSettings(g)}><SlidersHorizontal size={13} /></button>}
                 <button type="button" className="btn btn-ghost btn-sm" title="看他在 /seat 查到的畫面" onPointerDown={(e) => e.stopPropagation()} onClick={() => onPreview(g)}><Eye size={13} /></button>
               </span>
             </div>
+            {ruleIdx && <GuestTags g={g} ruleCount={ruleIdx.rulesOf.get(g.rsvp_id)?.length || 0} />}
+            <FitHints hints={hints} />
             {g.persons.map((p) => {
               const isPicked = picked.some((x) => x.rsvp_id === g.rsvp_id && x.person_no === p.person_no);
               return (
                 <div key={p.person_no} className={`se-person${p.seat ? " seated" : ""}${isPicked ? " picked" : ""}`}
                   onPointerDown={(e) => onPersonPointerDown(e, { rsvp_id: g.rsvp_id, person_no: p.person_no, name: p.name, seat: p.seat })}
-                  onClick={() => p.seat && onSeatedClick && onSeatedClick(g, p)} title={!readonly ? "點一下選取（可多選），再點桌子或椅子放入；也可以直接拖到桌子上" : undefined}
+                  title={!readonly ? "點一下選取（可多選），再點桌子或椅子放入；也可以直接拖到桌子上" : undefined}
                   onPointerMove={onPersonPointerMove} onPointerUp={onPersonPointerUp} onPointerCancel={onPersonPointerUp}>
                   <span>{p.is_child ? "👶 " : ""}{p.name}</span>
                   <span className="where">{where(p)}</span>
@@ -1147,7 +1260,7 @@ function GuestPanel({ guests, search, setSearch, sideFilter, setSideFilter, only
 }
 
 /* ---------- 右側（排位模式）：這桌的座位表。點一列展開動作；抓左邊的把手上下拖可以換座號 ---------- */
-function TablePanel({ o, seatSel, readonly, picked, tables, onClose, onPickSeat, onPlacePicked, onUnseat, onRename, onMove, onSwap, onPreview, onClear }) {
+function TablePanel({ o, issues = [], guestOf, onKeep, onFocusIssue, seatSel, readonly, picked, tables, onClose, onPickSeat, onPlacePicked, onUnseat, onRename, onMove, onSwap, onPreview, onClear }) {
   const names = Object.fromEntries((o.assignments || []).map((a) => [a.seat_index, a]));
   const taken = (o.assignments || []).length;
   const [dragRow, setDragRow] = useState(null); // {from, over}
@@ -1190,6 +1303,7 @@ function TablePanel({ o, seatSel, readonly, picked, tables, onClose, onPickSeat,
           <button type="button" className="btn btn-ghost btn-sm" onClick={onClose} title="關閉座位表"><X size={14} /></button>
         </span>
       </div>
+      {!readonly && onKeep && <TableRuleBar o={o} issues={issues} guestOf={guestOf} onKeep={onKeep} onFocusIssue={onFocusIssue} />}
       {!readonly && <div className="helper-text se-tablepanel-hint">點一列可以移到別桌、改名或移除；抓住 <GripVertical size={11} style={{ verticalAlign: -1 }} /> 上下拖可以換座號。</div>}
       <ul className="se-trows" ref={listRef}>
         {Array.from({ length: o.seats }, (_, i) => {

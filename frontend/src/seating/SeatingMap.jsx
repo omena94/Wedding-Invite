@@ -47,7 +47,7 @@ export default function SeatingMap({ layout, highlightIds, highlightSeats, showN
 // labelPlan：planLabels 算好的名字位置（Map "oid:idx" → placement）；沒給就用預設的外側位置
 // pickedSeats：後台「選到的人」所在的椅子（Set<"oid:idx">），用對比色標出來，跟搜尋標亮（金色）、桌子選取（外框）分開
 // capacity：後台排位模式用，桌名下面標「已坐/總位」，坐滿的桌子換色；dropTarget：拖人經過時整桌亮起
-export function ObjectShape({ o, highlighted, highlightSeats, showNames, interactive, selected, onSeatPointerDown, onSeatPointerUp, seatNames, dimNames, seatClass, labelPlan, pickedSeats, capacity, dropTarget }) {
+export function ObjectShape({ o, highlighted, highlightSeats, showNames, interactive, selected, onSeatPointerDown, onSeatPointerUp, seatNames, dimNames, seatClass, labelPlan, pickedSeats, capacity, dropTarget, issue }) {
   const { cx, cy, w, h } = center(o);
   const seats = seatPositions(o);
   // seatNames 給的是 {index: {name, mine, side}}；編輯器則直接用 assignments
@@ -57,7 +57,9 @@ export function ObjectShape({ o, highlighted, highlightSeats, showNames, interac
   const isTable = (o.kind === "round" || o.kind === "rect") && o.seats > 0;
   const takenCount = (o.assignments || []).length;
   const cls = ["seat-obj", `seat-${o.kind}`, highlighted ? "hi" : "", selected ? "selected" : "", o.meta?.locked ? "locked" : "",
-    capacity && isTable ? (takenCount >= o.seats ? "full" : takenCount ? "partial" : "vacant") : "", dropTarget ? "drop-target" : ""].filter(Boolean).join(" ");
+    capacity && isTable ? (takenCount >= o.seats ? "full" : takenCount ? "partial" : "vacant") : "", dropTarget ? "drop-target" : "",
+    // 排位規則的檢查：issue = "no"（規則沒做到）/ "warn"（建議調整）；排定 = 一鍵安排與清空都不動這桌
+    issue ? `issue-${issue}` : "", capacity && isTable && o.meta?.keep_seats ? "kept" : ""].filter(Boolean).join(" ");
   const rot = o.rotation ? `rotate(${o.rotation} ${cx} ${cy})` : undefined;
   const fontSize = o.kind === "label" ? Math.max(11, Math.min(28, h * 0.5)) : o.kind === "stage" ? 16 : 13;
   // 入口的字要讓開左邊的門
@@ -102,9 +104,20 @@ export function ObjectShape({ o, highlighted, highlightSeats, showNames, interac
       {/* 排位模式：桌名下面寫「已坐/總位」，不用打開也知道還剩幾位 */}
       {capacity && isTable && (
         <text x={cx} y={cy + 9} className="seat-count" textAnchor="middle" dominantBaseline="middle" fontSize="11" transform={rot}>
-          {takenCount >= o.seats ? `滿 ${takenCount}/${o.seats}` : `${takenCount}/${o.seats}`}
+          {o.meta?.keep_seats ? "排定 " : ""}{takenCount >= o.seats ? `滿 ${takenCount}/${o.seats}` : `${takenCount}/${o.seats}`}
         </text>
       )}
+      {/* 排位規則有問題的桌子：桌面上一個驚嘆號（椅子會擋住桌緣，只描邊看不出來） */}
+      {issue && isTable && (() => {
+        const bx = o.kind === "round" ? cx + w * 0.3 : o.x + w - 12;
+        const by = o.kind === "round" ? cy - w * 0.3 : o.y + 12;
+        return (
+          <g className={`seat-issue-badge ${issue}`} transform={o.kind === "round" ? undefined : rot} pointerEvents="none">
+            <circle cx={bx} cy={by} r={9} />
+            <text x={bx} y={by + 0.5} textAnchor="middle" dominantBaseline="middle" fontSize="12">!</text>
+          </g>
+        );
+      })()}
       {/* 椅子 */}
       {seats.map((p, i) => {
         const a = names[i];

@@ -3,7 +3,7 @@
 2026-09-10 起座位圖分「廳」：每一廳有自己的畫布、桌椅、座位指定與底圖。
 大部分端點用 ?hall= 指定廳，沒帶就是「正式使用」的那一廳（賓客查桌看的那一廳）。
 """
-import re
+import json
 import uuid
 from pathlib import Path
 
@@ -14,12 +14,14 @@ from sqlalchemy.orm import Session, selectinload
 
 from ..config import settings
 from ..database import get_db
-from ..models import Rsvp, SeatAssignment, SeatHall, SeatObject
+from ..models import Rsvp, SeatAssignment, SeatHall, SeatObject, SeatRule
 from ..schemas import (
     SeatAssignGroupIn,
     SeatAssignIn,
     SeatAutoAssignIn,
     SeatCanvasIn,
+    SeatCircleRename,
+    SeatGuestsPatch,
     SeatHallIn,
     SeatHallPatch,
     SeatObjectIn,
@@ -27,8 +29,11 @@ from ..schemas import (
     SeatObjectPatch,
     SeatPresetIn,
     SeatRenameIn,
+    SeatRuleIn,
+    SeatRulePatch,
     SeatSwapIn,
 )
+from .. import seat_rules
 from ..seat_presets import PRESETS, install_fixtures, install_preset, preset_list
 from ..seating import (
     assignment_out,
@@ -51,6 +56,11 @@ router = APIRouter(prefix="/api/planner/seating", tags=["seating"], dependencies
 HallQuery = Query(default=None, description="哪一廳；不填 = 正式使用的那一廳")
 BG_EXT = {".jpg", ".jpeg", ".png", ".webp"}
 BG_MAX_PX = 2400  # 底圖長邊縮到這個大小就夠看了，畫布縮放才不會卡
+
+
+def _layout(db: Session, hall: SeatHall) -> dict:
+    """排座位的人看到的版面：一律帶排位規則與檢查結果，每個動作回來都是最新的檢查。"""
+    return build_layout(db, hall, with_rules=True)
 
 
 def _obj(db: Session, object_id: int) -> SeatObject:
@@ -109,7 +119,7 @@ def create_hall(payload: SeatHallIn, db: Session = Depends(get_db)):
             db.add(SeatObject(hall_id=hall.id, kind=o.kind, label=o.label, x=o.x, y=o.y, w=o.w, h=o.h, rotation=o.rotation,
                               seats=o.seats, meta_json=o.meta_json, z_order=o.z_order, note=o.note))
     db.commit()
-    return build_layout(db, hall)
+    return _layout(db, hall)
 
 
 @router.get("/halls/presets")
@@ -124,7 +134,7 @@ def create_hall_from_preset(payload: SeatPresetIn, db: Session = Depends(get_db)
     if payload.key not in PRESETS:
         raise HTTPException(404, "沒有這個範本")
     hall = install_preset(db, payload.key)
-    return build_layout(db, hall)
+    return _layout(db, hall)
 
 
 @router.post("/halls/{hall_id}/fixtures")
@@ -134,7 +144,7 @@ def reset_fixtures(hall_id: int, payload: SeatPresetIn, db: Session = Depends(ge
     if payload.key not in PRESETS:
         raise HTTPException(404, "沒有這個範本")
     n = install_fixtures(db, hall, payload.key)
-    layout = build_layout(db, hall)
+    layout = _layout(db, hall)
     layout["placed"] = n
     return layout
 
@@ -158,7 +168,7 @@ def update_hall(hall_id: int, payload: SeatHallPatch, db: Session = Depends(get_
         for h in list_halls(db):
             h.is_active = h.id == hall.id
     db.commit()
-    return build_layout(db, hall)
+    return _layout(db, hall)
 
 
 @router.delete("/halls/{hall_id}")
@@ -177,7 +187,7 @@ def delete_hall(hall_id: int, db: Session = Depends(get_db)):
     if was_active:
         rest[0].is_active = True
     db.commit()
-    return build_layout(db, hall_or_active(db, rest[0].id))
+    return _layout(db, hall_or_active(db, rest[0].id))
 
 
 @router.post("/halls/{hall_id}/background")
@@ -238,7 +248,7 @@ def get_background(hall_id: int, db: Session = Depends(get_db)):
 # ---------------- 整張圖 ----------------
 @router.get("")
 def get_layout(hall: int | None = HallQuery, db: Session = Depends(get_db)):
-    return build_layout(db, hall_or_active(db, hall))
+    return _layout(db, hall_or_active(db, hall))
 
 
 @router.patch("/canvas")
@@ -372,7 +382,7 @@ def assign(payload: SeatAssignIn, db: Session = Depends(get_db)):
             )
         )
     db.commit()
-    return build_layout(db, hall)
+    return _layout(db, hall)
 
 
 @router.post("/assign-group")
@@ -414,7 +424,7 @@ def assign_group(payload: SeatAssignGroupIn, db: Session = Depends(get_db)):
         db.add(SeatAssignment(hall_id=hall.id, object_id=o.id, seat_index=idx, rsvp_id=r.id, person_no=p["person_no"]))
         placed += 1
     db.commit()
-    layout = build_layout(db, hall)
+    layout = _layout(db, hall)
     layout["placed"] = placed
     layout["left_over"] = len(pending) - placed
     return layout
@@ -429,7 +439,7 @@ def swap_seats(payload: SeatSwapIn, db: Session = Depends(get_db)):
     if not (0 <= payload.a < n and 0 <= payload.b < n):
         raise HTTPException(400, "這張桌子沒有這個座位")
     if payload.a == payload.b:
-        return build_layout(db, hall)
+        return _layout(db, hall)
     by_idx = {a.seat_index: a for a in o.assignments}
     x, y = by_idx.get(payload.a), by_idx.get(payload.b)
     if not x and not y:
@@ -446,91 +456,16 @@ def swap_seats(payload: SeatSwapIn, db: Session = Depends(get_db)):
     else:
         y.seat_index = payload.a
     db.commit()
-    return build_layout(db, hall)
-
-
-def _natural_key(label: str):
-    """A2 排在 A10 前面：把數字段轉成整數比較。"""
-    return [int(p) if p.isdigit() else p.lower() for p in re.split(r"(\d+)", label or "")]
-
-
-def _pick_run(free: list[int], k: int, n: int) -> list[int]:
-    """從空位裡挑 k 個盡量相連的位子（座位是繞桌一圈，所以頭尾算相連）。"""
-    if k >= len(free):
-        return list(free)
-    fs = set(free)
-    for start in free:
-        run = [(start + j) % n for j in range(k)]
-        if all(x in fs for x in run):
-            return run
-    return list(free[:k])
+    return _layout(db, hall)
 
 
 @router.post("/auto-assign")
 def auto_assign(payload: SeatAutoAssignIn, hall: int | None = HallQuery, db: Session = Depends(get_db)):
-    """一鍵安排：把這一廳還沒有位子的人依序填進空位。
-    - 桌子依名稱（自然排序）再依位置排；單張椅子排最後
-    - keep_groups：整組先找放得下的桌，放不下才拆
-    - by_side：男方從第一桌往後填，女方從最後一桌往前填，兩邊自然分開
-    """
+    """一鍵安排：把這一廳還沒有位子的人放進空位，照排位規則、圈子、座位需求排（細節見 seat_rules.py）。
+    標了「排定」的桌子不動；排完回傳的版面裡就有檢查結果，沒做到的會列出來。"""
     h = hall_or_active(db, hall)
-    if payload.clear_first:
-        for o in load_objects(db, h.id):
-            for a in list(o.assignments):
-                db.delete(a)
-        db.commit()
-
-    objects = [o for o in load_objects(db, h.id) if seat_count(o) > 0]
-    tables = sorted(
-        [o for o in objects if o.kind in ("round", "rect")],
-        key=lambda o: (_natural_key(o.label), o.y, o.x),
-    ) + sorted([o for o in objects if o.kind == "chair"], key=lambda o: (o.y, o.x))
-    free = {o.id: sorted(set(range(seat_count(o))) - {a.seat_index for a in o.assignments}) for o in tables}
-    size = {o.id: seat_count(o) for o in tables}
-
-    seated = {
-        (a.rsvp_id, a.person_no)
-        for a in db.scalars(select(SeatAssignment).where(SeatAssignment.hall_id == h.id)).all()
-    }
-    groups = []
-    for r in db.scalars(
-        select(Rsvp).where(Rsvp.attending.is_(True), Rsvp.is_test.is_(False)).order_by(Rsvp.created_at.asc())
-    ).all():
-        pending = [p for p in persons_for(r) if (r.id, p["person_no"]) not in seated]
-        if pending:
-            groups.append((r, pending))
-    # 大組先放比較容易整組同桌
-    groups.sort(key=lambda g: (-len(g[1]), g[0].id))
-
-    placed = 0
-    left_over = 0
-    for r, pending in groups:
-        order = tables if not (payload.by_side and r.side == "bride") else list(reversed(tables))
-        remaining = list(pending)
-        if payload.keep_groups:
-            fit = next((o for o in order if len(free[o.id]) >= len(remaining)), None)
-            if fit is not None:
-                run = _pick_run(free[fit.id], len(remaining), size[fit.id])
-                for p, idx in zip(remaining, run):
-                    db.add(SeatAssignment(hall_id=h.id, object_id=fit.id, seat_index=idx, rsvp_id=r.id, person_no=p["person_no"]))
-                    free[fit.id].remove(idx)
-                placed += len(remaining)
-                remaining = []
-        for o in order:
-            if not remaining:
-                break
-            if not free[o.id]:
-                continue
-            take = min(len(free[o.id]), len(remaining))
-            run = _pick_run(free[o.id], take, size[o.id])
-            for p, idx in zip(remaining[:take], run):
-                db.add(SeatAssignment(hall_id=h.id, object_id=o.id, seat_index=idx, rsvp_id=r.id, person_no=p["person_no"]))
-                free[o.id].remove(idx)
-            remaining = remaining[take:]
-            placed += take
-        left_over += len(remaining)
-    db.commit()
-    layout = build_layout(db, h)
+    placed, left_over = seat_rules.auto_assign(db, h, by_side=payload.by_side, clear_first=payload.clear_first)
+    layout = _layout(db, h)
     layout["placed"] = placed
     layout["left_over"] = left_over
     return layout
@@ -543,7 +478,7 @@ def rename_assignment(assignment_id: int, payload: SeatRenameIn, db: Session = D
         raise HTTPException(404, "找不到這個座位指定")
     a.display_name = payload.display_name.strip()
     db.commit()
-    return build_layout(db, hall_or_active(db, a.hall_id))
+    return _layout(db, hall_or_active(db, a.hall_id))
 
 
 @router.delete("/assign/{assignment_id}")
@@ -553,15 +488,93 @@ def unassign(assignment_id: int, hall: int | None = HallQuery, db: Session = Dep
     if a:
         db.delete(a)
         db.commit()
-    return build_layout(db, hall_or_active(db, hall_id))
+    return _layout(db, hall_or_active(db, hall_id))
 
 
 @router.delete("/assignments")
 def clear_all(hall: int | None = HallQuery, db: Session = Depends(get_db)):
-    """清空這一廳所有座位指定（桌椅保留）。"""
+    """清空這一廳所有座位指定（桌椅保留）。標了「排定」的桌子（通常是手排好的主桌）不清，要清請在那一桌按清空。"""
     h = hall_or_active(db, hall)
     for o in load_objects(db, h.id):
+        if o.meta.get("keep_seats"):
+            continue
         for a in list(o.assignments):
             db.delete(a)
     db.commit()
-    return build_layout(db, h)
+    return _layout(db, h)
+
+
+# ---------------- 排位規則：誰跟誰同桌、不同桌、坐附近、離遠一點；圈子；座位需求 ----------------
+def _rule(db: Session, rule_id: int) -> SeatRule:
+    r = db.get(SeatRule, rule_id)
+    if not r:
+        raise HTTPException(404, "找不到這條規則（可能已經刪掉了）")
+    return r
+
+
+def _members(db: Session, kind: str, ids: list[int], skip_id: int | None = None) -> list[int]:
+    try:
+        ids = seat_rules.clean_members(db, ids)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    conflict = seat_rules.find_conflict(db, kind, ids, skip_id)
+    if conflict:
+        raise HTTPException(409, conflict)
+    return ids
+
+
+@router.post("/rules", status_code=201)
+def create_rule(payload: SeatRuleIn, hall: int | None = HallQuery, db: Session = Depends(get_db)):
+    ids = _members(db, payload.kind, payload.rsvp_ids)
+    db.add(SeatRule(kind=payload.kind, rsvp_ids_json=json.dumps(ids), note=payload.note.strip()))
+    db.commit()
+    return _layout(db, hall_or_active(db, hall))
+
+
+@router.patch("/rules/{rule_id}")
+def update_rule(rule_id: int, payload: SeatRulePatch, hall: int | None = HallQuery, db: Session = Depends(get_db)):
+    r = _rule(db, rule_id)
+    kind = payload.kind or r.kind
+    if payload.kind is not None or payload.rsvp_ids is not None:
+        ids = _members(db, kind, payload.rsvp_ids if payload.rsvp_ids is not None else r.rsvp_ids, skip_id=r.id)
+        r.kind, r.rsvp_ids_json = kind, json.dumps(ids)
+    if payload.note is not None:
+        r.note = payload.note.strip()
+    db.commit()
+    return _layout(db, hall_or_active(db, hall))
+
+
+@router.delete("/rules/{rule_id}")
+def delete_rule(rule_id: int, hall: int | None = HallQuery, db: Session = Depends(get_db)):
+    db.delete(_rule(db, rule_id))
+    db.commit()
+    return _layout(db, hall_or_active(db, hall))
+
+
+@router.patch("/guests")
+def set_guests(payload: SeatGuestsPatch, hall: int | None = HallQuery, db: Session = Depends(get_db)):
+    """一次設定好幾組賓客的圈子或座位需求。"""
+    ids = list(dict.fromkeys(payload.rsvp_ids))
+    rows = db.scalars(select(Rsvp).where(Rsvp.id.in_(ids))).all()
+    if len(rows) < len(ids):
+        raise HTTPException(404, "有幾位賓客找不到（可能被刪掉了），請重新整理再試一次")
+    for r in rows:
+        if payload.circle is not None:
+            r.circle = payload.circle.strip()
+        if payload.seat_need is not None:
+            r.seat_need = payload.seat_need
+    db.commit()
+    return _layout(db, hall_or_active(db, hall))
+
+
+@router.post("/circles/rename")
+def rename_circle(payload: SeatCircleRename, hall: int | None = HallQuery, db: Session = Depends(get_db)):
+    """圈子改名（改成已經有的名字就是兩個圈子合併）；改成空的就是解散，成員改回沒有圈子。"""
+    old, new = payload.name.strip(), payload.to.strip()
+    rows = db.scalars(select(Rsvp).where(Rsvp.circle == old)).all()
+    if not rows:
+        raise HTTPException(404, f"沒有叫「{old}」的圈子")
+    for r in rows:
+        r.circle = new
+    db.commit()
+    return _layout(db, hall_or_active(db, hall))
