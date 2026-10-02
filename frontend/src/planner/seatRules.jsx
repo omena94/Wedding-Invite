@@ -4,8 +4,8 @@
 // 規則的備註常是「前任」這種私事，只有能排座位的人看得到（幫手帶位的唯讀畫面拿不到這些資料）。
 import { useMemo, useState } from "react";
 import Swal from "sweetalert2";
-import { ArrowLeftRight, Ban, CircleCheck, Crown, DoorOpen, Heart, Pencil, Plus, Star, Trash2, TriangleAlert, Users, X } from "lucide-react";
-import { createSeatRule, deleteSeatRule, renameSeatCircle, setSeatGuests, updateSeatRule } from "../api.js";
+import { ArrowLeftRight, Ban, CircleCheck, Crown, DoorOpen, Heart, Pencil, Pin, Plus, Star, Trash2, TriangleAlert, Users, X } from "lucide-react";
+import { createSeatRule, deleteSeatRule, renameSeatCircle, setGuestPin, setSeatGuests, setTablePins, updateSeatRule } from "../api.js";
 import { Checkbox } from "../components/Toggle.jsx";
 import Select from "../components/Select.jsx";
 import { Field, Modal, confirmDelete, toastErr } from "./ui.jsx";
@@ -24,6 +24,14 @@ export const NEEDS = {
 };
 const STATUS = { ok: "做到了", broken: "沒做到", pending: "還有人沒排", idle: "不到兩組出席" };
 const sideName = (s) => ({ groom: "男方", bride: "女方", other: "共同" })[s] || s;
+
+// 可以指定的桌子（圓桌、長桌），照桌名排：主桌最前面、2 在 10 前面
+const tablesOf = (layout) => (layout.objects || [])
+  .filter((o) => (o.kind === "round" || o.kind === "rect") && o.seats > 0)
+  .sort((a, b) => ((b.label || "").includes("主桌") - (a.label || "").includes("主桌")) || (a.label || "").localeCompare(b.label || "", "zh-Hant", { numeric: true }));
+const tableLabel = (o) => o?.label || "沒有名字的桌子";
+// 指定到這桌的賓客組（照名單順序）
+const pinnedTo = (layout, tableId) => (layout.guests || []).filter((g) => layout.pins?.[g.rsvp_id] === tableId);
 
 // 存檔：成功就把後端回傳的版面交出去（裡面有最新的檢查），失敗跳錯誤
 function useSaver(onLayout) {
@@ -208,18 +216,73 @@ function NeedModal({ need: initial, layout, hall, onClose, onLayout }) {
   );
 }
 
+/* ---------- 指定桌次：這桌一定坐哪幾組（tableId 沒給就先選桌） ---------- */
+function PinModal({ tableId, layout, hall, onClose, onLayout }) {
+  const tables = tablesOf(layout);
+  const [tid, setTid] = useState(tableId ?? tables[0]?.id ?? null);
+  const [ids, setIds] = useState(() => pinnedTo(layout, tid).map((g) => g.rsvp_id));
+  const [busy, run] = useSaver(onLayout);
+  const table = tables.find((t) => t.id === tid);
+  const guests = layout.guests || [];
+  const people = guests.filter((g) => ids.includes(g.rsvp_id)).reduce((n, g) => n + g.persons.length, 0);
+  const over = table && people > table.seats;
+  // 原本指定到別桌的，存了會改到這桌（一組人在一廳只指定一桌）
+  const moving = guests.filter((g) => ids.includes(g.rsvp_id) && layout.pins?.[g.rsvp_id] && layout.pins[g.rsvp_id] !== tid);
+  const labelOf = (id) => tableLabel(tables.find((t) => t.id === id));
+  const switchTable = (v) => { const t = +v; setTid(t); setIds(pinnedTo(layout, t).map((g) => g.rsvp_id)); };
+  const save = async () => {
+    if (await run(() => setTablePins(tid, ids))) onClose();
+  };
+  if (!tables.length) {
+    return (
+      <Modal title="指定桌次" onClose={onClose} footer={<button type="button" className="btn btn-primary" onClick={onClose}>知道了</button>}>
+        <div className="helper-text">這一廳還沒有桌子。先到「編輯場地」擺好桌子，再回來指定。</div>
+      </Modal>
+    );
+  }
+  return (
+    <Modal title={tableId ? `指定坐「${tableLabel(table)}」的賓客` : "指定桌次"} onClose={busy ? undefined : onClose} wide
+      footer={<>
+        <button type="button" className="btn btn-ghost" onClick={onClose} disabled={busy}>取消</button>
+        <button type="button" className="btn btn-primary" onClick={save} disabled={busy || !tid || over}>{busy ? "儲存中…" : over ? "坐不下" : "儲存"}</button>
+      </>}>
+      {!tableId && (
+        <Field label="哪一桌">
+          <Select value={String(tid ?? "")} onChange={switchTable} aria-label="哪一桌"
+            options={tables.map((t) => ({ value: String(t.id), label: `${tableLabel(t)}（${t.seats} 位${pinnedTo(layout, t.id).length ? `・已指定 ${pinnedTo(layout, t.id).length} 組` : ""}）` }))} />
+        </Field>
+      )}
+      <div className={`helper-text xp-sr-capline${over ? " over" : ""}`}>
+        一鍵安排會最先把他們放進這桌。這桌 {table?.seats || 0} 位，選了 {people} 位{over ? "，坐不下，請少選幾組或分到別桌" : ""}。
+      </div>
+      <GuestChecklist guests={guests} value={ids} onChange={setIds} />
+      {moving.length > 0 && <div className="helper-text xp-sr-warnline">{moving.map((g) => `${g.name}（原本指定「${labelOf(layout.pins[g.rsvp_id])}」）`).join("、")} 會改指定到這桌。</div>}
+    </Modal>
+  );
+}
+
 /* ---------- 一組賓客的排位設定：圈子、座位需求、跟誰有關係 ---------- */
 export function GuestSeatModal({ group, layout, hall, onClose, onLayout }) {
   const [circle, setCircle] = useState(group.circle || "");
   const [need, setNeed] = useState(group.seat_need || "");
+  const pinNow = layout.pins?.[group.rsvp_id] ? String(layout.pins[group.rsvp_id]) : "";
+  const [pin, setPin] = useState(pinNow);
   const [ruleEdit, setRuleEdit] = useState(null); // { rule } 或 { preset: { kind, ids } }
   const [busy, run] = useSaver(onLayout);
   const circles = layout.circles || [];
+  const tables = tablesOf(layout);
   const mine = (layout.rules || []).filter((r) => r.members.some((m) => m.rsvp_id === group.rsvp_id));
-  const dirty = circle.trim() !== (group.circle || "") || need !== (group.seat_need || "");
+  const traitsDirty = circle.trim() !== (group.circle || "") || need !== (group.seat_need || "");
+  const dirty = traitsDirty || pin !== pinNow;
   const save = async () => {
     if (!dirty) return onClose();
-    if (await run(() => setSeatGuests({ rsvp_ids: [group.rsvp_id], circle: circle.trim(), seat_need: need }, hall))) onClose();
+    const ok = await run(async () => {
+      let l = null;
+      if (traitsDirty) l = await setSeatGuests({ rsvp_ids: [group.rsvp_id], circle: circle.trim(), seat_need: need }, hall);
+      if (pin !== pinNow) l = await setGuestPin(group.rsvp_id, pin ? +pin : null, hall);
+      return l;
+    });
+    if (ok) onClose();
   };
   const removeRule = async (r) => {
     if (!(await confirmDelete(`${RULE_KINDS[r.kind].label}：${r.members.map((m) => m.name).join("、")}`))) return;
@@ -229,8 +292,14 @@ export function GuestSeatModal({ group, layout, hall, onClose, onLayout }) {
     <Modal title={`排位設定 — ${group.name}`} onClose={busy ? undefined : onClose} wide
       footer={<>
         <button type="button" className="btn btn-ghost" onClick={onClose} disabled={busy}>{dirty ? "取消" : "關閉"}</button>
-        {dirty && <button type="button" className="btn btn-primary" onClick={save} disabled={busy}>{busy ? "儲存中…" : "儲存圈子與需求"}</button>}
+        {dirty && <button type="button" className="btn btn-primary" onClick={save} disabled={busy}>{busy ? "儲存中…" : "儲存"}</button>}
       </>}>
+      {tables.length > 0 && (
+        <Field label="指定桌次" hint={pin ? "一鍵安排會最先把這組放進這桌；被搬到別桌時「檢查」會提醒。" : "一定要坐哪一桌就選起來（例如雙方家長坐主桌）；沒指定就照規則和圈子排。"}>
+          <Select value={pin} onChange={setPin} aria-label="指定桌次"
+            options={[{ value: "", label: "不指定" }, ...tables.map((t) => ({ value: String(t.id), label: `${tableLabel(t)}（${t.seats} 位）` }))]} />
+        </Field>
+      )}
       <Field label="圈子" hint="同一個圈子的人會盡量坐同一桌；點一下選，或打一個新的。">
         {circles.length > 0 && (
           <div className="xp-sr-chips">
@@ -302,6 +371,7 @@ export function RulesPanel({ layout, hall, onLayout }) {
   const circles = layout.circles || [];
   const guests = layout.guests || [];
   const noCircle = guests.filter((g) => !g.circle).length;
+  const pinTables = tablesOf(layout).map((t) => ({ t, groups: pinnedTo(layout, t.id) })).filter((x) => x.groups.length);
   const removeRule = async (r) => {
     if (!(await confirmDelete(`${RULE_KINDS[r.kind].label}：${r.members.map((m) => m.name).join("、")}`))) return;
     await run(() => deleteSeatRule(r.id, hall));
@@ -315,7 +385,24 @@ export function RulesPanel({ layout, hall, onLayout }) {
   };
   return (
     <div className="xp-sr">
-      <p className="helper-text xp-sr-intro">把「誰跟誰要坐一起、誰跟誰不能坐一起」寫下來：一鍵安排會照著排；你們自己排的時候，沒做到的會在「檢查」提醒。</p>
+      <p className="helper-text xp-sr-intro">把「誰坐哪一桌、誰跟誰要坐一起、誰跟誰不能坐一起」寫下來：一鍵安排會照著排；你們自己排的時候，沒做到的會在「檢查」提醒。</p>
+
+      <section className="xp-sr-sec">
+        <div className="xp-sr-sec-head">
+          <span className="pl-list-title">指定桌次</span>
+          <button type="button" className="btn btn-primary btn-sm" onClick={() => setModal({ type: "pin" })}><Pin size={13} /> 指定桌次</button>
+        </div>
+        {pinTables.length === 0 && <div className="xp-sr-empty">例如：雙方家長坐主桌、公司同事坐 A3。也可以在平面圖點一張桌子，從座位表上方指定。</div>}
+        {pinTables.map(({ t, groups }) => (
+          <div className="xp-sr-row" key={t.id}>
+            <button type="button" className="xp-sr-row-main" onClick={() => setModal({ type: "pin", tableId: t.id })} title="修改這桌指定給誰">
+              <Pin size={13} /> <strong>{tableLabel(t)}</strong>
+              <span className="muted-cell xp-sr-row-sub">{groups.map((g) => g.name).join("、")}</span>
+            </button>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setModal({ type: "pin", tableId: t.id })}>修改</button>
+          </div>
+        ))}
+      </section>
 
       <section className="xp-sr-sec">
         <div className="xp-sr-sec-head">
@@ -363,6 +450,7 @@ export function RulesPanel({ layout, hall, onLayout }) {
 
       {modal?.type === "rule" && <RuleModal rule={modal.rule} layout={layout} hall={hall} onClose={() => setModal(null)} onLayout={onLayout} />}
       {modal?.type === "circle" && <CircleModal circle={modal.circle} layout={layout} hall={hall} onClose={() => setModal(null)} onLayout={onLayout} />}
+      {modal?.type === "pin" && <PinModal tableId={modal.tableId} layout={layout} hall={hall} onClose={() => setModal(null)} onLayout={onLayout} />}
       {modal?.type === "need" && <NeedModal need={modal.need} layout={layout} hall={hall} onClose={() => setModal(null)} onLayout={onLayout} />}
     </div>
   );
@@ -406,11 +494,12 @@ export function IssuesPanel({ issues, onFocus }) {
 }
 
 /* ---------- 賓客卡片上的小標籤：圈子、座位需求、有幾條規則 ---------- */
-export function GuestTags({ g, ruleCount }) {
+export function GuestTags({ g, ruleCount, pinLabel }) {
   const need = NEEDS[g.seat_need];
-  if (!g.circle && !need && !ruleCount) return null;
+  if (!g.circle && !need && !ruleCount && !pinLabel) return null;
   return (
     <div className="xp-sr-tags">
+      {pinLabel && <span className="xp-sr-tag pin" title="指定桌次"><Pin size={11} />指定 {pinLabel}</span>}
       {g.circle && <span className="xp-sr-tag" title="圈子">{g.circle}</span>}
       {need && <span className="xp-sr-tag need" title={need.hint}><need.Icon size={11} />{need.label}</span>}
       {ruleCount > 0 && <span className="xp-sr-tag rule" title="跟別組有排位規則">規則 {ruleCount}</span>}
@@ -419,7 +508,9 @@ export function GuestTags({ g, ruleCount }) {
 }
 
 /* ---------- 座位表上方：排定這桌、這桌坐了哪些圈子、這桌的問題 ---------- */
-export function TableRuleBar({ o, issues, guestOf, onKeep, onFocusIssue }) {
+export function TableRuleBar({ o, issues, guestOf, onKeep, onFocusIssue, layout, hall, onLayout }) {
+  const [pinOpen, setPinOpen] = useState(false);
+  const pinned = layout ? pinnedTo(layout, o.id) : [];
   // 依人數算每個圈子（一眼看出這桌是不是都認識）；整場都沒分圈子就不顯示
   const mix = {};
   (o.assignments || []).forEach((a) => {
@@ -431,6 +522,14 @@ export function TableRuleBar({ o, issues, guestOf, onKeep, onFocusIssue }) {
   return (
     <div className="xp-sr-tp">
       <Checkbox checked={!!o.meta?.keep_seats} onChange={onKeep}>排定這桌（一鍵安排、清空座位都不會動它）</Checkbox>
+      {layout && o.kind !== "chair" && (
+        <div className="xp-sr-tp-pin">
+          <Pin size={12} />
+          {pinned.length ? <span>指定這桌：{pinned.map((g) => g.name).join("、")}</span> : <span className="muted-cell">還沒指定誰一定坐這桌</span>}
+          <button type="button" className="pl-linkbtn" onClick={() => setPinOpen(true)}>{pinned.length ? "修改" : "指定…"}</button>
+        </div>
+      )}
+      {pinOpen && <PinModal tableId={o.id} layout={layout} hall={hall} onClose={() => setPinOpen(false)} onLayout={onLayout} />}
       {showMix && <div className="xp-sr-tp-mix">這桌：{parts.map(([c, n]) => `${c} ${n}`).join("・")}</div>}
       {issues.map((i) => (
         <button type="button" key={i.key} className={`xp-sr-issue ${i.level}`} onClick={() => onFocusIssue(i)}><TriangleAlert size={13} /><span>{i.text}</span></button>

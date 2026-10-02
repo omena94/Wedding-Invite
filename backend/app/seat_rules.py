@@ -20,7 +20,7 @@ from itertools import combinations
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .models import Rsvp, SeatAssignment, SeatHall, SeatObject, SeatRule
+from .models import Rsvp, SeatAssignment, SeatHall, SeatObject, SeatPin, SeatRule
 from .seating import load_objects, persons_for, seat_count, table_sort_key
 
 RULE_LABEL = {"together": "一定同桌", "apart": "不要同桌", "near": "坐附近", "far": "離遠一點"}
@@ -32,6 +32,8 @@ CONFLICTS = {frozenset(("together", "apart")), frozenset(("together", "far")), f
 FRONT_SHARE = 0.34  # 名次在前三分之一，算「靠近舞台／入口」
 
 # 一鍵安排的分數：正的是想要、負的是不想要，只有相對大小有意義。
+W_PIN = 5000            # 指定桌次：新人親手指定這組坐這桌，比什麼都優先
+W_PIN_ADJ = 400         # 指定的那桌坐不下時，剩下的人坐隔壁桌
 W_APART = -1000         # 不要同桌：幾乎等於禁止（真的沒有別的位子才會違反，違反了檢查會列出來）
 W_FAR_SAME = -400
 W_FAR_ADJ = -150
@@ -152,6 +154,26 @@ def load_rules(db: Session) -> list[SeatRule]:
     return keep
 
 
+def load_pins(db: Session, hall_id: int) -> dict[int, int]:
+    """這一廳的指定桌次：rsvp id → 桌 id。外鍵會在桌子刪掉時一起刪；這裡再對一次桌子還在這一廳，保險。"""
+    rows = db.execute(
+        select(SeatPin.rsvp_id, SeatPin.object_id)
+        .join(SeatObject, SeatObject.id == SeatPin.object_id)
+        .where(SeatPin.hall_id == hall_id, SeatObject.hall_id == hall_id)
+    ).all()
+    return {rid: oid for rid, oid in rows}
+
+
+def pin_overflow(db: Session, obj: SeatObject, rsvp_ids: list[int]) -> str | None:
+    """指定到這桌的人比座位多就擋下：不然一鍵安排怎麼排都做不到，只會一直被檢查說沒做到。"""
+    rows = db.scalars(select(Rsvp).where(Rsvp.id.in_(rsvp_ids))).all() if rsvp_ids else []
+    people = sum(len(persons_for(r)) for r in rows if r.attending and not r.is_test)
+    cap = seat_count(obj)
+    if people > cap:
+        return f"{table_name(obj)}只有 {cap} 個位子，指定的 {len(rows)} 組共 {people} 位，坐不下；請分到兩桌指定"
+    return None
+
+
 def clean_members(db: Session, ids: list[int]) -> list[int]:
     """去掉重複、確認每一組都是這場婚禮的賓客（不是測試資料）。不夠兩組就擋下。"""
     ids = list(dict.fromkeys(int(i) for i in ids))
@@ -229,7 +251,8 @@ def circles_out(rsvps: list[Rsvp]) -> list[dict]:
 
 
 # ---------------- 檢查 ----------------
-def check(geo: Geo, rsvps: list[Rsvp], rules: list[SeatRule], seated: dict[int, dict[int, int]], complete: bool) -> tuple[list[dict], dict[int, str]]:
+def check(geo: Geo, rsvps: list[Rsvp], rules: list[SeatRule], seated: dict[int, dict[int, int]], complete: bool,
+          pins: dict[int, int] | None = None) -> tuple[list[dict], dict[int, str]]:
     """這一廳現在的安排哪裡沒做到。seated：rsvp id → {桌 id: 坐了幾位}。
     回傳（問題清單, 每條規則的狀態）。問題分兩級：no 規則沒做到（一定要處理）、warn 建議調整（看新人自己判斷）。
     complete = 每個人都有位子了：桌子太空這種事要排完才準，排到一半每桌都還空空的。"""
@@ -298,11 +321,26 @@ def check(geo: Geo, rsvps: list[Rsvp], rules: list[SeatRule], seated: dict[int, 
         else:
             status[rule.id] = "ok" if len(placed) == len(members) else "pending"
 
-    # 同一組被拆到不同桌（一組比最大的桌子還多人就沒辦法，不提醒）
+    # 指定桌次：新人親手指定的，有人沒坐在那一桌就是沒做到
+    pin_broken = set()
+    for rid, tid in (pins or {}).items():
+        r, at = by_id.get(rid), seated.get(rid) or {}
+        if r is None or tid not in geo.by_id:
+            continue
+        away = sorted((t for t in at if t != tid), key=lambda t: geo.order.get(t, 0))
+        if not away:
+            continue
+        pin_broken.add(rid)
+        where = "、".join(tname(t) for t in away)
+        text = (f"{r.name} 指定坐{tname(tid)}，有 {sum(at[t] for t in away)} 位坐在{where}" if tid in at
+                else f"{r.name} 指定坐{tname(tid)}，現在坐{where}")
+        add("no", "pin", text, [tid, *away], [rid], f"pin:{rid}")
+
+    # 同一組被拆到不同桌（一組比最大的桌子還多人就沒辦法，不提醒；指定桌次沒做到的上面已經講過）
     biggest = max((seat_count(o) for o in geo.tables), default=0)
     for r in rsvps:
         at = seated.get(r.id) or {}
-        if len(at) > 1 and len(persons_for(r)) <= biggest:
+        if len(at) > 1 and len(persons_for(r)) <= biggest and r.id not in pin_broken:
             tids = sorted(at, key=lambda t: geo.order.get(t, 0))
             add("warn", "split", f"{r.name} 這組 {sum(at.values())} 位分在{'、'.join(tname(t) for t in tids)}", tids, [r.id], f"split:{r.id}")
 
@@ -356,16 +394,18 @@ def check(geo: Geo, rsvps: list[Rsvp], rules: list[SeatRule], seated: dict[int, 
             elif cap >= 6 and 0 < n <= cap / 2:
                 add("warn", "sparse", f"{tname(o.id)}只坐 {n} 位（{cap} 人桌）：喜宴多半依桌計價，可以考慮併到別桌", [o.id], [], f"sparse:{o.id}")
 
-    order = ["apart", "together", "far", "near", "need", "split", "alone", "sparse"]
+    order = ["apart", "together", "pin", "far", "near", "need", "split", "alone", "sparse"]
     issues.sort(key=lambda x: (x["level"] != "no", order.index(x["kind"])))
     return issues, status
 
 
-def layout_extras(db: Session, objects: list[SeatObject], rsvps: list[Rsvp], seated: dict[int, dict[int, int]], complete: bool) -> dict:
+def layout_extras(db: Session, objects: list[SeatObject], rsvps: list[Rsvp], seated: dict[int, dict[int, int]], complete: bool,
+                  hall_id: int | None = None) -> dict:
     """排位規則相關的資料，併進後台的座位圖版面：規則、圈子、檢查結果、桌子遠近。"""
     rules = load_rules(db)
     geo = Geo(objects)
-    issues, status = check(geo, rsvps, rules, seated, complete)
+    pins = load_pins(db, hall_id) if hall_id is not None else {}
+    issues, status = check(geo, rsvps, rules, seated, complete, pins)
     # 規則的成員可能有人改成不出席：名字還是要顯示，所以另外撈
     member_ids = {i for r in rules for i in r.rsvp_ids}
     by_id = {r.id: r for r in rsvps}
@@ -377,6 +417,7 @@ def layout_extras(db: Session, objects: list[SeatObject], rsvps: list[Rsvp], sea
         "circles": circles_out(rsvps),
         "issues": issues,
         "geo": geo.out(),
+        "pins": {str(rid): oid for rid, oid in pins.items()},  # 指定桌次：rsvp id → 桌 id（這一廳）
     }
 
 
@@ -401,6 +442,7 @@ class _Unit:
         self.persons = persons
         self.movable = movable  # 一桌坐不下被拆開放的，第二輪不再搬動
         self.table: int | None = None
+        self.pin: int | None = None  # 指定桌次（由 _Planner._unit 填）
         members = [by_id[i] for i in rids]
         self.need = max((m.seat_need or "" for m in members), key=lambda n: NEED_RANK.get(n, 0))
         # 多數決；平手取排在前面的那組（不用 set，字串的 hash 每次啟動不同，結果會不固定）
@@ -422,7 +464,8 @@ class _Planner:
     分數 = 這份人坐某桌的單獨分數（主桌、靠舞台、靠入口、桌序）＋ 跟每一組已經坐好的人之間的分數（規則、圈子、男女方）。
     兩兩之間的分數是對稱的，所以搬一份人只要重算這份人自己的分數，就是整體分數的變化。"""
 
-    def __init__(self, geo: Geo, rsvps: list[Rsvp], rules: list[SeatRule], fixed: list[tuple[int, int, int, int]], locked: set[int], by_side: bool):
+    def __init__(self, geo: Geo, rsvps: list[Rsvp], rules: list[SeatRule], fixed: list[tuple[int, int, int, int]], locked: set[int], by_side: bool,
+                 pins: dict[int, int] | None = None):
         self.geo = geo
         self.by_side = by_side
         self.by_id = {r.id: r for r in rsvps}
@@ -448,7 +491,15 @@ class _Planner:
             for a in ms:
                 self.partners[a].extend((b, rule.kind) for b in ms if b != a)
         self.left_over = 0
+        self.pins = pins or {}
         self.circle_left: dict[str, int] = defaultdict(int)  # 每個圈子還有幾位沒放（第一輪用）
+
+    def _unit(self, rids: list[int], persons: list[tuple[int, int]], movable: bool = True) -> _Unit:
+        u = _Unit(rids, persons, self.by_id, movable)
+        u.pin = next((self.pins[r] for r in rids if r in self.pins), None)
+        if u.pin is not None:
+            u.movable = False  # 指定桌次的放下去就不搬：第二輪的搬動、整桌對調都跳過它
+        return u
 
     # ----- 狀態 -----
     def _add(self, rid: int, tid: int, n: int) -> None:
@@ -488,6 +539,8 @@ class _Planner:
     def unary(self, u: _Unit, tid: int) -> float:
         g = self.geo
         sc = 0.0
+        if u.pin is not None:
+            sc += W_PIN if tid == u.pin else W_PIN_ADJ if tid in g.adj.get(u.pin, ()) else 0
         if tid in g.main:
             sc += W_MAIN_YES if u.need == "main" else W_MAIN_RESERVED
         elif u.need == "main":
@@ -590,7 +643,7 @@ class _Planner:
 
     def place_split(self, u: _Unit, placed: list[_Unit]) -> None:
         """整份放不下：一定同桌串起來的先拆回一組一組；一組還是放不下就照人拆，盡量坐隔壁桌。"""
-        parts = [_Unit([rid], [p for p in u.persons if p[0] == rid], self.by_id) for rid in u.rids] if len(u.rids) > 1 else [u]
+        parts = [self._unit([rid], [p for p in u.persons if p[0] == rid]) for rid in u.rids] if len(u.rids) > 1 else [u]
         for part in sorted(parts, key=lambda x: -x.size):
             tid = self.best_table(part)
             if tid is not None:
@@ -605,7 +658,7 @@ class _Planner:
                     break
 
                 def split_score(t, persons=persons, part=part):
-                    chunk = _Unit(part.rids, persons[: self.free(t)], self.by_id)
+                    chunk = self._unit(part.rids, persons[: self.free(t)])
                     sc = self.score(chunk, t) + 3 * min(self.free(t), len(persons))
                     if any(t2 in self.geo.adj[t] for rid in part.rids for t2 in self.where.get(rid, {})):
                         sc += W_TOGETHER_ADJ
@@ -613,7 +666,7 @@ class _Planner:
 
                 t = max(cands, key=split_score)
                 k = min(self.free(t), len(persons))
-                chunk = _Unit(part.rids, persons[:k], self.by_id, movable=False)
+                chunk = self._unit(part.rids, persons[:k], movable=False)
                 self.put(chunk, t)
                 placed.append(chunk)
                 persons = persons[k:]
@@ -725,7 +778,7 @@ class _Planner:
         clusters: dict[int, list[int]] = defaultdict(list)
         for rid in pending:  # pending 照回覆先後排好了，同一份裡也照這個順序坐
             clusters[find(rid)].append(rid)
-        units = [_Unit(rids, [(rid, pno) for rid in rids for pno in pending[rid]], self.by_id) for rids in clusters.values()]
+        units = [self._unit(rids, [(rid, pno) for rid in rids for pno in pending[rid]]) for rids in clusters.values()]
 
         for u in units:
             self.circle_left[u.circle] += u.size
@@ -742,7 +795,8 @@ class _Planner:
             # 有位置需求、有人不能同桌的散客接著放，最後才是沒有限制的。
             # 同一個圈子裡，夥伴已經坐好的、有位置需求的先放（例如親戚裡的阿公阿嬤要靠舞台），同圈子的再跟過去，
             # 整個圈子就會長在夥伴旁邊、舞台前面
-            p = 0 if u.need == "main" else 1 if anchored else 2 if u.circle else 3 if (u.need or kinds & {"apart", "far"}) else 4
+            # 指定桌次的最先放，指定的桌才不會先被別人坐走
+            p = -1 if u.pin is not None else 0 if u.need == "main" else 1 if anchored else 2 if u.circle else 3 if (u.need or kinds & {"apart", "far"}) else 4
             return (p, circle_rank.get(u.circle, len(circle_rank)), not linked, not u.need, -u.size, u.rids[0])
 
         placed: list[_Unit] = []
@@ -783,7 +837,7 @@ def auto_assign(db: Session, hall: SeatHall, *, by_side: bool, clear_first: bool
         todo = [p["person_no"] for p in persons_for(r) if (r.id, p["person_no"]) not in seated]
         if todo:
             pending[r.id] = todo
-    planner = _Planner(geo, rsvps, load_rules(db), fixed, locked, by_side)
+    planner = _Planner(geo, rsvps, load_rules(db), fixed, locked, by_side, load_pins(db, hall.id))
     units = planner.run(pending)
     # 座號：同一份的人坐連號（一家人、一定同桌的坐在一起）；人多的先挑，比較容易挑到連號
     placed = 0

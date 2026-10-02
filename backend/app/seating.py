@@ -277,7 +277,7 @@ def build_layout(db: Session, hall: SeatHall, with_rules: bool = False) -> dict:
     if with_rules:
         from .seat_rules import layout_extras  # seat_rules 也用到這裡的函式，放這裡才不會互相 import
 
-        out.update(layout_extras(db, objects, list(rsvps), by_rsvp, complete=bool(seated) and people_total == len(seated)))
+        out.update(layout_extras(db, objects, list(rsvps), by_rsvp, complete=bool(seated) and people_total == len(seated), hall_id=hall.id))
     return out
 
 

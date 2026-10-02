@@ -350,6 +350,9 @@ export const deleteSeatRule = (id, hall = null) => request(`${SE}/rules/${id}${q
 export const setSeatGuests = (data, hall = null) => request(`${SE}/guests${qs({ hall })}`, { method: "PATCH", body: data, auth: true });
 // 圈子改名（改成已有的名字 = 合併）；to 給空字串 = 解散
 export const renameSeatCircle = (name, to, hall = null) => request(`${SE}/circles/rename${qs({ hall })}`, { method: "POST", body: { name, to }, auth: true });
+// 指定桌次：這張桌子指定給哪幾組（整份換掉）；某一組在這一廳指定坐哪一桌（object_id 給 null = 取消）
+export const setTablePins = (object_id, rsvp_ids) => request(`${SE}/tables/${object_id}/pins`, { method: "PUT", body: { rsvp_ids }, auth: true });
+export const setGuestPin = (rsvp_id, object_id, hall = null) => request(`${SE}/guests/${rsvp_id}/pin${qs({ hall })}`, { method: "PUT", body: { object_id }, auth: true });
 
 // ===== 照片相簿 =====
 export const fetchPlannerPhotos = () => request(`${P}/photos`, { auth: true });

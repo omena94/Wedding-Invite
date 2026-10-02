@@ -358,6 +358,18 @@ class SeatRule(Base):
         return out
 
 
+class SeatPin(Base):
+    """指定桌次：這組賓客在這一廳一定坐這張桌子（雙方家長坐主桌、同事坐公司那桌）。
+    跟著廳走：訂婚宴、結婚宴各一廳時各自指定；桌子或賓客刪掉，指定跟著消失。"""
+    __tablename__ = "seat_pins"
+    __table_args__ = (UniqueConstraint("hall_id", "rsvp_id", name="uq_seat_pin_hall"),)  # 一組人在一廳只指定一桌
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    hall_id: Mapped[int] = mapped_column(ForeignKey("seat_halls.id", ondelete="CASCADE"), index=True)
+    object_id: Mapped[int] = mapped_column(ForeignKey("seat_objects.id", ondelete="CASCADE"), index=True)
+    rsvp_id: Mapped[int] = mapped_column(ForeignKey("rsvps.id", ondelete="CASCADE"), index=True)
+
+
 class Task(Base):
     """行事曆上的一件事（2026-09-10 起「籌備進度」改為行事曆：只有標題、日期、時間、主題、備註、完成）。
     kind / assignee / vendor_id 是舊欄位，畫面已不用，保留只為了舊資料。"""

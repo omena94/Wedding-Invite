@@ -2017,6 +2017,11 @@ body:has(.guest-page)::after { display: none; }
 .xp-sr-tag { display: inline-flex; align-items: center; gap: 3px; padding: 1px 7px; border-radius: 999px; font-size: 11px; background: #fff; border: 1px solid var(--border-soft); color: var(--milk-tea-700); }
 .xp-sr-tag.need { background: #fbf1dc; border-color: #f0e2c2; color: #8a6117; }
 .xp-sr-tag.rule { background: var(--milk-tea-50); }
+.xp-sr-tag.pin { background: var(--milk-tea-700); border-color: var(--milk-tea-700); color: #fff; }
+.xp-sr-tp-pin { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; font-size: 12.5px; color: var(--milk-tea-900); }
+.xp-sr-tp-pin .pl-linkbtn { padding: 0; }
+.xp-sr-capline { margin: -6px 0 10px; }
+.xp-sr-capline.over { color: #9e5a54; font-weight: 600; }
 .xp-sr-fits { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
 .xp-sr-fit { display: inline-flex; align-items: center; gap: 3px; padding: 2px 7px; border-radius: 8px; font-size: 11.5px; line-height: 1.4; }
 .xp-sr-fit.good { background: #eaf1ea; color: #4c6b4e; }

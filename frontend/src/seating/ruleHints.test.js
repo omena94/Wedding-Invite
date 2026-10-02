@@ -18,11 +18,12 @@ const layout = {
     { id: 3, kind: 'far', members: [{ rsvp_id: 1 }, { rsvp_id: 5 }] },
   ],
   objects: [
-    { id: 10, kind: 'round', assignments: [{ rsvp_id: 2 }, { rsvp_id: 4 }] },
+    { id: 10, kind: 'round', label: 'A1', assignments: [{ rsvp_id: 2 }, { rsvp_id: 4 }] },
     { id: 11, kind: 'round', assignments: [{ rsvp_id: 5 }] },
-    { id: 12, kind: 'round', assignments: [{ rsvp_id: 3 }] },
+    { id: 12, kind: 'round', label: '主桌', assignments: [{ rsvp_id: 3 }] },
   ],
   geo: { adj: { 10: [11], 11: [10, 12], 12: [11] }, main: [12] },
+  pins: { 5: 12 },
 };
 const idx = ruleIndex(layout);
 const me = layout.guests[0];
@@ -48,4 +49,13 @@ test('標了主桌的人點到主桌會說這是主桌；沒有規則的人沒�
   assert.deepEqual(fitHints(layout.guests[5], table(12), idx), [{ tone: 'good', text: '這是主桌' }]);
   assert.deepEqual(fitHints({ rsvp_id: 99, name: '路人' }, table(10), idx), []);
   assert.deepEqual(fitHints(me, null, idx), []);
+});
+
+test('指定桌次：點到指定的那桌是好的，點到別桌就提醒指定坐哪一桌，而且排最前面', () => {
+  const pinned = layout.guests[4]; // 老同事指定坐主桌（12）
+  assert.equal(fitHints(pinned, table(12), idx)[0].text, '指定坐這桌');
+  const hints = fitHints(pinned, table(10), idx);
+  assert.deepEqual(hints[0], { tone: 'bad', text: '指定坐「主桌」' });
+  assert.equal(idx.pinLabel(5), '主桌');
+  assert.equal(idx.pinLabel(1), '');
 });

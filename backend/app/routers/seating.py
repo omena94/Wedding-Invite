@@ -14,13 +14,14 @@ from sqlalchemy.orm import Session, selectinload
 
 from ..config import settings
 from ..database import get_db
-from ..models import Rsvp, SeatAssignment, SeatHall, SeatObject, SeatRule
+from ..models import Rsvp, SeatAssignment, SeatHall, SeatObject, SeatPin, SeatRule
 from ..schemas import (
     SeatAssignGroupIn,
     SeatAssignIn,
     SeatAutoAssignIn,
     SeatCanvasIn,
     SeatCircleRename,
+    SeatGuestPinIn,
     SeatGuestsPatch,
     SeatHallIn,
     SeatHallPatch,
@@ -32,6 +33,7 @@ from ..schemas import (
     SeatRuleIn,
     SeatRulePatch,
     SeatSwapIn,
+    SeatTablePinsIn,
 )
 from .. import seat_rules
 from ..seat_presets import PRESETS, install_fixtures, install_preset, preset_list
@@ -578,3 +580,60 @@ def rename_circle(payload: SeatCircleRename, hall: int | None = HallQuery, db: S
         r.circle = new
     db.commit()
     return _layout(db, hall_or_active(db, hall))
+
+
+# ---------------- 指定桌次：這組一定坐這一桌 ----------------
+def _attending(db: Session, ids: list[int]) -> list[int]:
+    ids = list(dict.fromkeys(ids))
+    found = set(db.scalars(select(Rsvp.id).where(Rsvp.id.in_(ids), Rsvp.attending.is_(True), Rsvp.is_test.is_(False))).all()) if ids else set()
+    if len(found) < len(ids):
+        raise HTTPException(404, "有幾組賓客找不到（可能被刪掉或改成不出席了），請重新整理再試一次")
+    return ids
+
+
+def _pin_table(db: Session, object_id: int) -> SeatObject:
+    o = _obj(db, object_id)
+    if seat_count(o) <= 0:
+        raise HTTPException(400, "這個物件沒有座位，不能指定給賓客")
+    return o
+
+
+@router.put("/tables/{object_id}/pins")
+def set_table_pins(object_id: int, payload: SeatTablePinsIn, db: Session = Depends(get_db)):
+    """這張桌子指定給哪幾組（整份換掉）。原本指定到這一廳別桌的人，改指定到這桌。"""
+    o = _pin_table(db, object_id)
+    hall = _hall_of(db, o)
+    ids = _attending(db, payload.rsvp_ids)
+    err = seat_rules.pin_overflow(db, o, ids)
+    if err:
+        raise HTTPException(409, err)
+    for p in db.scalars(select(SeatPin).where(SeatPin.hall_id == hall.id)).all():
+        if p.object_id == o.id or p.rsvp_id in ids:
+            db.delete(p)
+    db.flush()
+    for rid in ids:
+        db.add(SeatPin(hall_id=hall.id, object_id=o.id, rsvp_id=rid))
+    db.commit()
+    return _layout(db, hall)
+
+
+@router.put("/guests/{rsvp_id}/pin")
+def set_guest_pin(rsvp_id: int, payload: SeatGuestPinIn, hall: int | None = HallQuery, db: Session = Depends(get_db)):
+    """一組賓客在這一廳指定坐哪一桌；object_id 給 null 就是取消指定。"""
+    _attending(db, [rsvp_id])
+    if payload.object_id is None:
+        h = hall_or_active(db, hall)
+    else:
+        o = _pin_table(db, payload.object_id)
+        h = _hall_of(db, o)
+        others = [p.rsvp_id for p in db.scalars(select(SeatPin).where(SeatPin.object_id == o.id)).all() if p.rsvp_id != rsvp_id]
+        err = seat_rules.pin_overflow(db, o, others + [rsvp_id])
+        if err:
+            raise HTTPException(409, err)
+    for p in db.scalars(select(SeatPin).where(SeatPin.hall_id == h.id, SeatPin.rsvp_id == rsvp_id)).all():
+        db.delete(p)
+    db.flush()
+    if payload.object_id is not None:
+        db.add(SeatPin(hall_id=h.id, object_id=payload.object_id, rsvp_id=rsvp_id))
+    db.commit()
+    return _layout(db, h)

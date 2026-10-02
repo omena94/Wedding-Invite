@@ -302,3 +302,55 @@ def test_auto_assign_realistic_wedding(s):
     # 再按一次一鍵安排（沒有人要排了）什麼都不會變
     again = s.c.post(f"{P}/auto-assign", json={"by_side": True}, headers=s.h).json()
     assert again["placed"] == 0 and again["summary"] == l["summary"]
+
+
+def test_pin_guests_to_a_table(s):
+    t1, t2, t3, t4 = (s.table(str(i + 1), x=i * 200, seats=6) for i in range(4))
+    boss = s.guest("老闆夫婦", adults=2, circle="公司同事")
+    work = [s.guest(f"同事{i}", adults=2, circle="公司同事") for i in range(2)]
+    uni = [s.guest(f"同學{i}", adults=2, circle="大學同學") for i in range(3)]
+    # 4 號桌指定給老闆夫婦
+    l = s.c.put(f"{P}/tables/{t4}/pins", json={"rsvp_ids": [boss]}, headers=s.h).json()
+    assert l["pins"] == {str(boss): t4}
+    # 指定的人比座位多：擋下
+    r = s.c.put(f"{P}/tables/{t1}/pins", json={"rsvp_ids": uni + [boss]}, headers=s.h)
+    assert r.status_code == 409 and "坐不下" in r.json()["detail"]
+    # 沒有座位的物件不能指定
+    stage = s.c.post(f"{P}/objects", json={"kind": "stage", "label": "舞台", "x": 0, "y": -300, "w": 200, "h": 80}, headers=s.h).json()["id"]
+    assert s.c.put(f"{P}/tables/{stage}/pins", json={"rsvp_ids": [boss]}, headers=s.h).status_code == 400
+    # 從賓客那邊指定：同學0 坐 1 號桌
+    l = s.c.put(f"{P}/guests/{uni[0]}/pin", json={"object_id": t1}, headers=s.h).json()
+    assert l["pins"] == {str(boss): t4, str(uni[0]): t1}
+    # 一鍵安排：指定的一定坐在那桌；同事跟著老闆、同學跟著同學0
+    l = s.c.post(f"{P}/auto-assign", json={"by_side": False}, headers=s.h).json()
+    assert l["left_over"] == 0
+    assert _table_of(l, boss) == {t4} and _table_of(l, uni[0]) == {t1}
+    assert all(_table_of(l, w) == {t4} for w in work), "同事坐老闆那桌"
+    assert [i for i in l["issues"] if i["level"] == "no"] == []
+    # 手動把指定的人搬走：馬上是「沒做到」
+    l = s.c.post(f"{P}/assign-group", json={"object_id": t2, "rsvp_id": uni[0], "move_all": True}, headers=s.h).json()
+    pin = next(i for i in l["issues"] if i["kind"] == "pin")
+    assert pin["level"] == "no" and "指定坐「1」" in pin["text"] and pin["rsvp_ids"] == [uni[0]]
+    # 取消指定：問題也跟著消失
+    l = s.c.put(f"{P}/guests/{uni[0]}/pin", json={"object_id": None}, headers=s.h).json()
+    assert str(uni[0]) not in l["pins"] and "pin" not in _kinds(l)
+    # 整桌換掉：4 號桌不指定任何人
+    l = s.c.put(f"{P}/tables/{t4}/pins", json={"rsvp_ids": []}, headers=s.h).json()
+    assert l["pins"] == {}
+    # 桌子刪掉，指定跟著消失
+    s.c.put(f"{P}/tables/{t3}/pins", json={"rsvp_ids": [boss]}, headers=s.h)
+    assert s.c.delete(f"{P}/objects/{t3}", headers=s.h).status_code == 204
+    assert s.layout()["pins"] == {}
+
+
+def test_pins_belong_to_a_hall(s):
+    t1 = s.table("1")
+    a = s.guest("王家", adults=2)
+    s.c.put(f"{P}/tables/{t1}/pins", json={"rsvp_ids": [a]}, headers=s.h)
+    hall = s.layout()["hall"]["id"]
+    # 複製出另一廳（例如訂婚宴）：桌子複製過去，指定不會跟著過去，各廳各自指定
+    other = s.c.post(f"{P}/halls", json={"name": "訂婚宴", "copy_from": hall}, headers=s.h).json()
+    assert other["hall"]["id"] != hall and other["pins"] == {}
+    assert s.c.get(f"{P}?hall={hall}", headers=s.h).json()["pins"] == {str(a): t1}
+    # 幫手的唯讀座位圖不帶指定
+    assert "pins" not in s.c.get("/api/admin/seating", headers=s.world.helper).json()

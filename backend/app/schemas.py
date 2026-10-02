@@ -389,6 +389,15 @@ class SeatGuestsPatch(BaseModel):
     seat_need: Literal["", "main", "front", "door"] | None = None
 
 
+class SeatTablePinsIn(BaseModel):
+    """這張桌子指定給哪幾組（整份換掉；空 = 這桌不指定任何人）。"""
+    rsvp_ids: list[int] = Field(default_factory=list, max_length=200)
+
+
+class SeatGuestPinIn(BaseModel):
+    object_id: int | None = None  # 這組指定坐哪一桌；None = 取消這一廳的指定
+
+
 class SeatCircleRename(BaseModel):
     name: str = Field(min_length=1, max_length=30)
     to: str = Field(default="", max_length=30)  # 空 = 解散這個圈子（成員改回沒有圈子）

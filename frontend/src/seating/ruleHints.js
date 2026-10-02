@@ -19,7 +19,11 @@ export function ruleIndex(layout) {
       tablesOf.get(a.rsvp_id).add(o.id);
     }
   }
-  return { guests, rulesOf, tablesOf, adj: layout?.geo?.adj || {}, main: new Set(layout?.geo?.main || []) };
+  // 指定桌次：rsvp id → 桌 id（這一廳），桌名用來寫「指定坐「A3」」
+  const pins = new Map(Object.entries(layout?.pins || {}).map(([rid, oid]) => [+rid, oid]));
+  const labels = new Map((layout?.objects || []).map((o) => [o.id, o.label || "沒有名字的桌子"]));
+  const pinLabel = (rid) => (pins.has(rid) ? labels.get(pins.get(rid)) || "" : "");
+  return { guests, rulesOf, tablesOf, adj: layout?.geo?.adj || {}, main: new Set(layout?.geo?.main || []), pins, labels, pinLabel };
 }
 
 const names = (idx, ids) => ids.map((i) => idx.guests.get(i)?.name).filter(Boolean).join("、");
@@ -34,6 +38,11 @@ export function fitHints(g, table, idx) {
   const isNear = (rid) => [...(idx.tablesOf.get(rid) || [])].some((t) => around.has(t));
   const bad = [];
   const good = [];
+  // 指定桌次是新人親手定的，放最前面
+  if (idx.pins?.has(g.rsvp_id)) {
+    if (idx.pins.get(g.rsvp_id) === table.id) good.push("指定坐這桌");
+    else bad.push(`指定坐「${idx.pinLabel(g.rsvp_id)}」`);
+  }
   for (const r of idx.rulesOf.get(g.rsvp_id) || []) {
     const others = r.members.map((m) => m.rsvp_id).filter((id) => id !== g.rsvp_id);
     if (r.kind === "apart") {

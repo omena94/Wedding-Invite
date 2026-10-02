@@ -1025,6 +1025,7 @@ export default function Seating() {
             {selectedTable && (
               <TablePanel o={selectedTable} issues={(issues || []).filter((i) => i.object_ids.includes(selectedTable.id))} guestOf={ruleIdx.guests}
                 onKeep={issues ? (v) => saveObject(selectedTable.id, { meta: { ...selectedTable.meta, keep_seats: v } }, true) : null} onFocusIssue={focusIssue}
+                ruleCtx={issues ? { layout, hall: hallId, onLayout: setLayout } : null}
                 seatSel={seatSel && seatSel.object_id === selectedTable.id ? seatSel : null} readonly={readonly} picked={picked} tables={tables}
                 onClose={() => { setSelected(new Set()); setSeatSel(null); }}
                 onPickSeat={(i) => setSeatSel((cur) => (cur && cur.object_id === selectedTable.id && cur.seat_index === i ? null : { object_id: selectedTable.id, seat_index: i }))}
@@ -1114,6 +1115,7 @@ function AutoAssignModal({ summary, layout, hall, onClose, onDone }) {
   const rules = (layout.rules || []).length;
   const circles = (layout.circles || []).length;
   const needs = guests.filter((g) => g.seat_need).length;
+  const pins = Object.keys(layout.pins || {}).length;
   const toPlace = clearFirst ? summary.people_total - keptPeople : summary.unassigned;
   return (
     <Modal title="一鍵安排座位" onClose={onClose}
@@ -1122,6 +1124,7 @@ function AutoAssignModal({ summary, layout, hall, onClose, onDone }) {
         把還沒有位子的人放進空位，照下面這些條件排；排完可以再手動調整，沒做到的會列在「檢查」。目前座位 {summary.seats_total}、出席 {summary.people_total} 人。
       </div>
       <ul className="xp-sr-autolist">
+        {pins > 0 && <li>指定桌次的 {pins} 組最先放進指定的桌</li>}
         <li>同一組（一家人）坐同一桌、坐連號</li>
         <li>{rules ? `照你們設的 ${rules} 條規則：一定同桌、不要同桌、坐附近、離遠一點` : "還沒設規則：可以在右邊「排位規則」設定誰跟誰一定同桌、不要同桌"}</li>
         <li>{circles ? `同圈子（${circles} 個）坐同一桌，坐不下就坐隔壁桌` : "還沒分圈子：分了之後同學、同事會被排在一起，不會有人落單"}</li>
@@ -1222,7 +1225,7 @@ function GuestPanel({ guests, search, setSearch, sideFilter, setSideFilter, circ
                 <button type="button" className="btn btn-ghost btn-sm" title="看他在 /seat 查到的畫面" onPointerDown={(e) => e.stopPropagation()} onClick={() => onPreview(g)}><Eye size={13} /></button>
               </span>
             </div>
-            {ruleIdx && <GuestTags g={g} ruleCount={ruleIdx.rulesOf.get(g.rsvp_id)?.length || 0} />}
+            {ruleIdx && <GuestTags g={g} ruleCount={ruleIdx.rulesOf.get(g.rsvp_id)?.length || 0} pinLabel={ruleIdx.pinLabel(g.rsvp_id)} />}
             <FitHints hints={hints} />
             {g.persons.map((p) => {
               const isPicked = picked.some((x) => x.rsvp_id === g.rsvp_id && x.person_no === p.person_no);
@@ -1260,7 +1263,7 @@ function GuestPanel({ guests, search, setSearch, sideFilter, setSideFilter, circ
 }
 
 /* ---------- 右側（排位模式）：這桌的座位表。點一列展開動作；抓左邊的把手上下拖可以換座號 ---------- */
-function TablePanel({ o, issues = [], guestOf, onKeep, onFocusIssue, seatSel, readonly, picked, tables, onClose, onPickSeat, onPlacePicked, onUnseat, onRename, onMove, onSwap, onPreview, onClear }) {
+function TablePanel({ o, issues = [], guestOf, onKeep, onFocusIssue, ruleCtx, seatSel, readonly, picked, tables, onClose, onPickSeat, onPlacePicked, onUnseat, onRename, onMove, onSwap, onPreview, onClear }) {
   const names = Object.fromEntries((o.assignments || []).map((a) => [a.seat_index, a]));
   const taken = (o.assignments || []).length;
   const [dragRow, setDragRow] = useState(null); // {from, over}
@@ -1303,7 +1306,7 @@ function TablePanel({ o, issues = [], guestOf, onKeep, onFocusIssue, seatSel, re
           <button type="button" className="btn btn-ghost btn-sm" onClick={onClose} title="關閉座位表"><X size={14} /></button>
         </span>
       </div>
-      {!readonly && onKeep && <TableRuleBar o={o} issues={issues} guestOf={guestOf} onKeep={onKeep} onFocusIssue={onFocusIssue} />}
+      {!readonly && onKeep && <TableRuleBar o={o} issues={issues} guestOf={guestOf} onKeep={onKeep} onFocusIssue={onFocusIssue} {...ruleCtx} />}
       {!readonly && <div className="helper-text se-tablepanel-hint">點一列可以移到別桌、改名或移除；抓住 <GripVertical size={11} style={{ verticalAlign: -1 }} /> 上下拖可以換座號。</div>}
       <ul className="se-trows" ref={listRef}>
         {Array.from({ length: o.seats }, (_, i) => {
