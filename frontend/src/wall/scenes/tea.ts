@@ -5,7 +5,7 @@
 //  - 主打留言用毛筆寫在小箋上：從第一拍起一個字一個字寫出來（筆順方向斜斜掃過、墨還濕的時候邊緣暈一點），署名在最後一行下面。
 //  - 歌詞印在茶籤上（逐字跟唱，比留言小一級）。
 //  - 沒有留言：小箋上是正在唱的歌詞（焦點），茶籤上是邀請；純音樂又沒有留言：小箋上寫邀請，茶籤上是歌名。
-// v2（2026-09-29「留言尺寸與版面比例標準 v2」）：原本半個畫面大的杯墊縮成右邊一張 820×400 的小箋（字 40～60 px、署名 26～32、
+// v2（「留言尺寸與版面比例標準 v2」）：原本半個畫面大的杯墊縮成右邊一張 820×400 的小箋（字 40～60 px、署名 26～32、
 // 歌詞 40～52）；空出來的左半邊是茶盤（深色木框、一條條竹片、片與片之間濕濕的縫），而且照拍子一直有事：
 //  - 每一拍：三只杯子的茶湯從中間漾出一圈漣漪（音樂把桌子震得微微晃）；
 //  - 倒完茶之後每個小節線：擱回去的壺嘴滴下一滴茶，在茶盤的竹片上濺開一圈；熱氣照小節線冒一陣；
@@ -318,7 +318,7 @@ export default class Tea extends Scene {
     this.cam.set(this.pose((s + e) / 2));
     this.kMat = this.cam.toScreen(BOX.x + BOX.w / 2, BOX.y + BOX.h / 2).scale;
     this.kTag = this.cam.toScreen(TAG.x + TAG.w / 2, TAG.y + TAG.h / 2).scale;
-    await loadText(`${m?.text ?? ''}${m ? (m.couple ? '—— 新郎新娘' : m.name) : ''}——一位賓客${INVITE}${FORTUNE}${song.title}${song.artist}♪·FROM THE COUPLE · 新人`);
+    await loadText(`${m?.text ?? ''}${m ? (m.couple ? '—— 新人' : m.name) : ''}——一位賓客${INVITE}${FORTUNE}${song.title}${song.artist}♪·FROM THE COUPLE · 新人`);
     const c = this.page.ctx;
     const k = this.kMat;
     let items: MaskItem[] = [];

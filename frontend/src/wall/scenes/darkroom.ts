@@ -9,7 +9,7 @@
 // 液面的法線讓相紙的字稍微折射晃動、浪峰反射安全燈的光。
 // 鏡頭：開燈時從比較斜、比較遠的地方落定（第一拍），之後慢慢推近；右上角是失焦的安全燈（前景虛化）。
 // 歌詞：放大機投在檯面上的一小塊光，字是亮的（逐字跟唱）。沒有留言時，歌詞改成顯影在相紙上（唱到哪顯到哪）。
-// 2026-09-29 照「留言尺寸與版面比例標準 v2」：相紙（場景）照樣大，但線稿佔左邊大半、留言只是相紙右側的一段手寫說明
+// 照「留言尺寸與版面比例標準 v2」：相紙（場景）照樣大，但線稿佔左邊大半、留言只是相紙右側的一段手寫說明
 // （螢幕上 40～60 px、寫字的範圍 ≤ 860×430）；每個小節線竹夾伸進盤子撥一下相紙（相紙被推一下再彈回），
 // 對焦從線稿慢慢移到留言；右下角 HUD 那一塊壓暗、不放道具。
 import * as THREE from 'three';
@@ -20,7 +20,7 @@ import { rgba } from '../engine/palette';
 import { clamp, ease, prog, hash, lerp } from '../engine/util';
 import type { Line } from '../engine/lyrics';
 import { fillWithHearts } from '../engine/motifs';
-import { lyricAt, lyricSubOf, subGap, subSizeFor, beatAfter, COUPLE_ZH, DATE_DOTS } from './_motifs';
+import { lyricAt, lyricSubOf, subGap, subSizeFor, beatAfter, COUPLE_ZH, DATE_DOTS, joinBits, fitPx } from './_motifs';
 import { lyricV2 } from './_v2';
 import { layoutRows, drawRows, darkInk, type RowsLayout, type KaraokeInk } from './_t4';
 import { winBeats, winBars, blit, no3 } from './_t8';
@@ -334,13 +334,14 @@ export default class Darkroom extends Scene {
       // 投在檯面上的歌詞比留言（在畫面上的大小）小一點（v2：40～52）
       this.lyrSize = lyricV2(b.fit.size * this.k);
     } else if (this.instrumental) {
-      // 純音樂、沒有留言：相紙上是新人的名字與日期
+      // 純音樂、沒有留言：相紙上是新人的名字與日期（名字很長就縮字，不超出寫字的範圍；還沒定日期就只有名字）
       c.save();
-      c.font = font(F.ming(900), 60 / this.k); c.fillStyle = rgba('ink', 1);
-      const nm = COUPLE_ZH;
-      c.fillText(nm, TXT.x, TXT.y + TXT.h * 0.5);
-      c.font = font(F.mono(500), 26 / this.k); c.letterSpacing = '8px'; c.fillStyle = rgba('ink', 0.8);
-      c.fillText(DATE_DOTS, TXT.x + 6, TXT.y + TXT.h * 0.5 + 60 / this.k);
+      c.font = font(F.ming(900), fitPx(COUPLE_ZH, F.ming(900), 60 / this.k, TXT.w)); c.fillStyle = rgba('ink', 1);
+      c.fillText(COUPLE_ZH, TXT.x, TXT.y + TXT.h * 0.5);
+      if (DATE_DOTS) {
+        c.font = font(F.mono(500), 26 / this.k); c.letterSpacing = '8px'; c.fillStyle = rgba('ink', 0.8);
+        c.fillText(DATE_DOTS, TXT.x + 6, TXT.y + TXT.h * 0.5 + 60 / this.k);
+      }
       c.restore();
     }
     this.print.upload();
@@ -355,9 +356,9 @@ export default class Darkroom extends Scene {
     vg.addColorStop(0, rgba('ink', 0)); vg.addColorStop(1, rgba('ink', 0.1));
     c.fillStyle = vg; c.fillRect(IMG.x, IMG.y, IMG.w, IMG.h);
     drawGlasses(c, ILL.x, ILL.y, ILL.s, this.seed);
-    // 白邊上的小字（很淡）：編號與日期；沒有留言時換成邀請
+    // 白邊上的小字（很淡）：編號與日期（還沒定日期就只有編號）；沒有留言時右邊再加邀請
     c.font = font(F.mono(500), 21); c.letterSpacing = '4px'; c.fillStyle = rgba('ink', 0.5);
-    c.fillText(`${this.msg ? no3(this.msg.n) : 'No.000'}  ·  ${DATE_DOTS}`, IMG.x, PH - 17);
+    c.fillText(joinBits('  ·  ', this.msg ? no3(this.msg.n) : 'No.000', DATE_DOTS), IMG.x, PH - 17);
     c.letterSpacing = '0px';
     if (!this.msg) {
       c.font = font(F.hei(500), 21); c.textAlign = 'right';

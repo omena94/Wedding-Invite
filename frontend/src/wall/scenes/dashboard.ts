@@ -6,9 +6,9 @@
 //  - 歌詞在中控螢幕上（比留言小一級，逐字跟唱），像車上的音樂播放器；沒有留言時歌詞改投影在擋風玻璃上當主角，
 //    螢幕上寫「目的地：尚未設定」與邀請。純音樂：HUD 顯示歌名。
 //  - 左邊轉速表跟著音樂的能量（大鼓一踩指針就往上甩），右邊的速度表單位是 BPM；中間的雙黃燈按鈕跟著拍子閃（在慶祝）。
-// 2026-09-29 依「MV 融合原則」：留言改成擋風玻璃上的投影（場景裡的東西，不再是導航螢幕裡的卡片），
-// 導航地圖、里程、紅區標籤、限速這些介面元素拿掉；路會轉彎，鏡頭跟著小節線輕輕顛一下。
-// 同日「留言尺寸與版面比例標準 v2」：投影縮到 40～60 px、放在擋風玻璃左上（≤ 840 × 290），讓路當主視覺；
+// 依「MV 融合原則」：留言是擋風玻璃上的投影（場景裡的東西，不是導航螢幕裡的卡片），
+// 沒有導航地圖、里程、紅區標籤、限速這些介面元素；路會轉彎，鏡頭跟著小節線輕輕顛一下。
+// 「留言尺寸與版面比例標準 v2」：投影縮到 40～60 px、放在擋風玻璃左上（≤ 840 × 290），讓路當主視覺；
 // 補上每兩小節一輛對向來車（車燈由遠而近、擦身而過時整個車廂亮一下）。
 import * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
@@ -210,7 +210,7 @@ export default class Dashboard extends Scene {
     let bpm = au.bpm || 100;
     while (bpm > 220) bpm /= 2;
     this.bpm = Math.round(bpm);
-    this.sig = m ? (m.couple ? '—— 新郎新娘' : signature(m.name)) : '';
+    this.sig = m ? (m.couple ? '—— 新人' : signature(m.name)) : '';
     await loadText(`${m?.text ?? ''}${this.sig}${INVITE}${song.title}${song.artist}目的地幸福剩餘公尺尚未設定心跳`);
     const c = this.layer.ctx;
     const beat = au.beatPeriod(s);

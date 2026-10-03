@@ -1,4 +1,4 @@
-// 雙螺旋（暗）：一到三條橫躺的 DNA 雙股螺旋，兩股是兩個人（紙白的一股是宣文、訊號色的一股是孟庭），
+// 雙螺旋（暗）：一到三條橫躺的 DNA 雙股螺旋，兩股是兩個人（紙白的一股是新郎、訊號色的一股是新娘），
 // 每一格鹼基對上坐著主打留言的一個字。
 // MV 版：鏡頭從左前方斜斜看過去（右邊比較遠），整個窗格慢慢繞到比較正面；小字只剩上面的「mRNA」與下面一行註腳。
 //  - 開場時整條都是扭著的（每一拍「喀」地擰一下再彈回來）。
@@ -6,8 +6,8 @@
 //    攤平成一條正對鏡頭的梯子，那一格的鹼基對換成留言的字（燒紅、冷卻成紙白）。字永遠坐在攤平的梯子上，所以讀得清楚。
 //    一行推完換下一行；推完的右邊繼續扭著轉。
 //  - 上面是「mRNA 轉錄中」：歌詞照跟唱規則逐字亮，底下一條波浪的 RNA 跟著唱到的地方長出去。
-//  - 歌詞比留言小一級；左下一行註腳「鹼基配對：A–T、G–C、宣–孟」。
-//  - 沒有留言：歌詞放大成焦點，螺旋小小地寫著「宣文♥孟庭」，下面一行邀請。純音樂：轉錄欄寫樣本歌曲。
+//  - 歌詞比留言小一級；左下一行註腳「鹼基配對：A–T、G–C、{新郎}–{新娘}」（兩人的名字，這一場執行時才知道）。
+//  - 沒有留言：歌詞放大成焦點，螺旋小小地寫著「{新郎}♥{新娘}」，下面一行邀請。純音樂：轉錄欄寫樣本歌曲。
 // 畫法：CPU 算 3D 點、自己投影（輕微透視），前後兩批 LineBatch（後面的先畫、字在中間、前面的最後畫），字用 Canvas2D。
 import * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
@@ -19,7 +19,7 @@ import { clamp, ease, lerp, prog, smoothstep, TAU } from '../engine/util';
 import { fitText } from '../engine/text';
 import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 } from './_v2';
 import { Lyrics } from '../engine/lyrics';
-import { sparkHead, sparkParticles, lyricAt, drawLyric, layoutLyric, lyricSubOf, beatAfter, signature, COUPLE_ZH } from './_motifs';
+import { sparkHead, sparkParticles, lyricAt, drawLyric, layoutLyric, lyricSubOf, beatAfter, signature, NAME_A, NAME_B } from './_motifs';
 import { stagger, mono, tag } from './_t11';
 
 /** 右下角 HUD（QR、留言數）那一塊的背景要乾淨：線畫到那裡就淡掉。 */
@@ -44,7 +44,7 @@ const LYR_N = { x: 124, y: 330, w: 1560, size: lyricV2(null) };
 const YAW = [0.14, 0.05] as const;
 const FAM_MSG = F.hand(700);
 const INVITE = '掃描右下角 QR code，把你的祝福編進我們的基因。';
-const FOOT = '鹼基配對：A–T、G–C、宣–孟　·　相容性 100.0%';
+const FOOT = `鹼基配對：A–T、G–C、${NAME_A}–${NAME_B}　·　相容性 100.0%`;
 
 const BG = () => new FSPass(/* glsl */ `
   uniform float k; uniform float t; uniform float kick;
@@ -91,8 +91,8 @@ export default class Dna extends Scene {
   override async init() {
     const { audio: au, lyrics, song } = this.ctx;
     const s = this.ctx.start, e = this.ctx.end, m = this.msg;
-    const text = m ? m.text : COUPLE_ZH.replace(/\s*&\s*/, '♥');
-    this.sig = m ? (m.couple ? '—— 新郎新娘' : signature(m.name)) : '';
+    const text = m ? m.text : `${NAME_A}♥${NAME_B}`;
+    this.sig = m ? (m.couple ? '—— 新人' : signature(m.name)) : '';
     await loadText(`${text}${this.sig}${INVITE}${FOOT}${song.title}${song.artist}mRNA轉錄中樣本歌曲▸`);
     const c = this.layer.ctx;
 

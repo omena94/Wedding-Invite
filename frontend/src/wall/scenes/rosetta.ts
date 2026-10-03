@@ -16,7 +16,7 @@ import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, lerp, noise1 } from '../engine/util';
 import { fitText } from '../engine/text';
 import type { Line } from '../engine/lyrics';
-import { lyricAt, drawLyric, layoutLyric, drawLyricSub, subStyleFor, subGap, lyricSubOf, COUPLE_EN, COUPLE_ZH, WEDDING_DATE, type LyricLayout, type LyricStyle } from './_motifs';
+import { lyricAt, drawLyric, layoutLyric, drawLyricSub, subStyleFor, subGap, lyricSubOf, COUPLE_EN, COUPLE_ZH, HAS_LATIN_NAMES, DATE, fitPx, type LyricLayout, type LyricStyle } from './_motifs';
 import { INVITE_SMALL } from './_t19';
 import { barsIn } from './_t1';
 import { placeBlock, drawBlock, sigOf, fitV2 } from './_t22';
@@ -38,12 +38,23 @@ const T_LBL = '展品 No.';
 const T_LBL2 = '祝福碑　花崗岩　雙語銘文';
 const T_FOOT = '＊本展品禁止觸摸，但歡迎祝福。';
 const ZH_NUM = '〇一二三四五六七八九';
-/** 立碑日期：二〇二七年三月十三日　立 */
+/**
+ * 碑尾的落款：「二〇二七年五月二十日　立」。還沒定日期就落「全體賓客　敬立」——這是一塊祝福碑，
+ * 碑文本來就是大家寫的，碑尾不會空著、也不會出現假的日期。
+ */
 const STELE_DATE = (() => {
-  const [y, m, d] = String(WEDDING_DATE).split('-').map(Number);
+  if (!DATE) return '全體賓客　敬立';
   const small = (n: number) => (n <= 10 ? (n === 10 ? '十' : ZH_NUM[n]!) : n < 20 ? `十${ZH_NUM[n % 10]}` : `${ZH_NUM[Math.floor(n / 10)]}十${n % 10 ? ZH_NUM[n % 10] : ''}`);
-  return `${String(y).split('').map((c) => ZH_NUM[Number(c)]).join('')}年${small(m!)}月${small(d!)}日　立`;
+  return `${Array.from(DATE.yyyy).map((c) => ZH_NUM[Number(c)]).join('')}年${small(DATE.m)}月${small(DATE.d)}日　立`;
 })();
+/**
+ * 純音樂時碑文的第二行（另一種文字）：英文名；沒有英文名時 COUPLE_EN 就是中文、跟上一行重複，改刻一句通用的英文，
+ * 「兩種文字的碑」照樣成立。
+ */
+const STELE_EN = HAS_LATIN_NAMES ? COUPLE_EN : 'JUST MARRIED';
+/** 純音樂碑文的字級：名字可能很長，放不下碑面就縮（刻痕遮罩與填色兩張圖要用同一個字級）。 */
+const steleZhPx = () => fitPx(COUPLE_ZH, F.ming(900), 56, TXW, 14);
+const steleEnPx = () => fitPx(STELE_EN, F.serif(600, true), 40, TXW, 4);
 
 // ---------------------------------------------------------------- 花崗岩的雜訊（整晚只烤一次）
 /** 烤的範圍：石碑座標 x 從 BKX 起 BKW 寬、y 從 0 到 BKH（更長的碑文就重複）。 */
@@ -180,7 +191,7 @@ export default class Rosetta extends Scene {
   override async init() {
     const { audio: au, start: s, end: e, lyrics, live } = this.ctx;
     const m = this.msg;
-    await preloadPair(this.ctx, `${m ? m.text + sigOf(m) : ''}${INVITE_SMALL}${T_TITLE}${T_LBL}${T_LBL2}${T_FOOT}${STELE_DATE}${COUPLE_ZH}${COUPLE_EN}FROM THE COUPLE · 新人0123456789${live.count}`);
+    await preloadPair(this.ctx, `${m ? m.text + sigOf(m) : ''}${INVITE_SMALL}${T_TITLE}${T_LBL}${T_LBL2}${T_FOOT}${STELE_DATE}${COUPLE_ZH}${STELE_EN}FROM THE COUPLE · 新人0123456789${live.count}`);
     this.bilingual = hasSubIn(this.ctx);
     this.bars = barsIn(au, s, e);
     this.tLight = s + Math.min(0.5, au.beatPeriod(s) * 0.9);
@@ -285,8 +296,9 @@ export default class Rosetta extends Scene {
       }
       // 純音樂：碑文是新人的名字；碑尾是立碑日期
       if (!lyrics.has) {
-        mc.font = font(F.ming(900), 56); mc.letterSpacing = '14px'; mc.fillText(COUPLE_ZH, SCX + 7, FIRST_V + 90 - sc);
-        mc.font = font(F.serif(600, true), 40); mc.letterSpacing = '4px'; mc.fillText(COUPLE_EN, SCX + 2, FIRST_V + 160 - sc); mc.letterSpacing = '0px';
+        const zp = steleZhPx(), ep = steleEnPx();
+        mc.font = font(F.ming(900), zp); mc.letterSpacing = `${(14 * zp) / 56}px`; mc.fillText(COUPLE_ZH, SCX + (7 * zp) / 56, FIRST_V + 90 - sc);
+        mc.font = font(F.serif(600, true), ep); mc.letterSpacing = `${(4 * ep) / 40}px`; mc.fillText(STELE_EN, SCX + (2 * ep) / 40, FIRST_V + 160 - sc); mc.letterSpacing = '0px';
       }
       if (dv < H + 40) { mc.font = font(F.ming(700), 26); mc.letterSpacing = '6px'; mc.fillText(STELE_DATE, SCX + 3, dv + 24); mc.letterSpacing = '0px'; }
       mc.restore();
@@ -314,8 +326,9 @@ export default class Rosetta extends Scene {
       }
     }
     if (!lyrics.has) {
-      fc.textAlign = 'center'; fc.font = font(F.ming(900), 56); fc.letterSpacing = '14px'; fc.fillStyle = rgba('bone', 0.85 * prog(t, s + 0.4, s + 1.4));
-      fc.fillText(COUPLE_ZH, SCX + 7, FIRST_V + 90 - sc); fc.letterSpacing = '0px';
+      const zp = steleZhPx();
+      fc.textAlign = 'center'; fc.font = font(F.ming(900), zp); fc.letterSpacing = `${(14 * zp) / 56}px`; fc.fillStyle = rgba('bone', 0.85 * prog(t, s + 0.4, s + 1.4));
+      fc.fillText(COUPLE_ZH, SCX + (7 * zp) / 56, FIRST_V + 90 - sc); fc.letterSpacing = '0px';
       fc.font = font(F.mono(500), 18); fc.fillStyle = rgba('bone', 0.5 * prog(t, s + 0.8, s + 1.8)); fc.letterSpacing = '4px';
       fc.fillText(`♪  ${song.title}`, SCX, FIRST_V + 230 - sc); fc.letterSpacing = '0px'; fc.textAlign = 'left';
     }

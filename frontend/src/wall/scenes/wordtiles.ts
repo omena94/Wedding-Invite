@@ -16,7 +16,7 @@ import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, hash, lerp } from '../engine/util';
 import { fitText } from '../engine/text';
 import { Lyrics, type Line, type Word } from '../engine/lyrics';
-import { beatAfter, lyricSubOf, drawHeart, COUPLE_EN, COUPLE_ZH } from './_motifs';
+import { beatAfter, lyricSubOf, drawHeart, COUPLE_EN, COUPLE_ZH, NAME_A, NAME_B, NAME_A_EN, NAME_B_EN, HAS_LATIN_NAMES, fitPx } from './_motifs';
 import { INVITE_SMALL, paperSignal } from './_t19';
 import { barsIn, beatsIn, makeCanvas, freeCanvas } from './_t1';
 import { placeBlock, drawBlock, sigOf, fitV2 } from './_t22';
@@ -42,6 +42,12 @@ const BONUS_AT: [number, number, number][] = [[3, 3, 1], [7, 5, 2], [5, 1, 3], [
 const PAD = { x: 1340, y: 108, w: 500, h: 690, rot: 0.03 };
 const PM = { x: 34, y: 250, w: 432, h: 380 };
 
+/**
+ * 純音樂時盤上拼的名字：上面一排中文、下面一排英文名（沒有英文名就只有中文那排，不重複拼一次）。
+ * 兩個名字之間空一格（不拼「&」：牌子上只有字母與數字）。
+ */
+const NAMES_ZH = `${NAME_A} ${NAME_B}`;
+const NAMES_EN = !HAS_LATIN_NAMES ? '' : NAME_A_EN && NAME_B_EN ? `${NAME_A_EN} ${NAME_B_EN}` : COUPLE_EN;
 const T_PAD = '計分表 · SCORE';
 const T_ROUND = '本局得分';
 const T_BEST = '最佳單字';
@@ -162,7 +168,8 @@ export default class WordTiles extends Scene {
     c.strokeStyle = rgba('sepia', 0.22); c.lineWidth = 1;
     for (const y of [74, 134, 192]) { c.beginPath(); c.moveTo(24, y); c.lineTo(PAD.w - 24, y); c.stroke(); }
     c.beginPath(); c.moveTo(PAD.w - 150, 74); c.lineTo(PAD.w - 150, 192); c.stroke();
-    c.font = font(F.hand(700), 28); c.fillStyle = rgba('sepia', 0.85);
+    // 名字在「∞」那一欄的左邊：名字很長就縮字，不會寫進分數欄
+    c.font = font(F.hand(700), fitPx(COUPLE_ZH, F.hand(700), 28, PAD.w - 150 - 34 - 16)); c.fillStyle = rgba('sepia', 0.85);
     c.fillText(COUPLE_ZH, 34, 116);
     c.font = font(F.hand(700), 34); c.textAlign = 'center'; c.fillText('∞', PAD.w - 86, 118); c.textAlign = 'left';
     c.font = font(F.hei(500), 16); c.letterSpacing = '3px'; c.fillStyle = rgba('sepia', 0.6);
@@ -214,9 +221,9 @@ export default class WordTiles extends Scene {
       void sub;
       return out;
     };
-    const mainC = cells(line ? mainOnly(line) : null, COUPLE_ZH, false);
+    const mainC = cells(line ? mainOnly(line) : null, NAMES_ZH, false);
     const subL = line && this.bilingual ? lyricSubOf(line) : null;
-    const subC = subL ? cells(subL, '', true) : !line ? cells(null, COUPLE_EN, true) : [];
+    const subC = subL ? cells(subL, '', true) : !line && NAMES_EN ? cells(null, NAMES_EN, true) : [];
     // 折排：每排最多 COLS 格；折在空白的地方（一個字太長就硬折）
     const rowsOf = (cs: typeof mainC) => {
       const rows: (typeof mainC)[] = [];

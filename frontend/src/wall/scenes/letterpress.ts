@@ -1,5 +1,5 @@
 // 活版印刷（亮）：一台小印刷機的版台，一個連續的鏡頭。
-// 2026-09-29 依「留言尺寸與版面比例標準 v2」重做（原本是「版台特寫 → 硬切到滿版的紙」，紙太大、字太大）：
+// 依「留言尺寸與版面比例標準 v2」構圖（舊版是「版台特寫 → 硬切到滿版的紙」，紙太大、字太大）：
 //  - 場景是主視覺：左邊是鎖在鐵框裡的一版鉛字（反字、金屬、字面凸起，旁邊塞著木頭填料），側光把字面照出立體；
 //    墨輥在拍點上從上往下滾過，滾過的字面沾上黑亮的墨；左上角一片圓形的墨盤慢慢轉、每一拍轉一格。
 //    壓印之後每一小節墨輥再滾一次（替下一張上墨），畫面一直有事件。
@@ -17,7 +17,7 @@ import { FSPass, Layer2D, W, H } from '../engine/gl';
 import { F, font, loadText, layout } from '../engine/type';
 import { rgba } from '../engine/palette';
 import { clamp, ease, prog, hash, pulse, lerp } from '../engine/util';
-import { lyricAt, COUPLE_ZH, DATE_DOTS, heartPoints, lyricSubOf, subSizeFor, subGap } from './_motifs';
+import { lyricAt, COUPLE_ZH, NAME_A, NAME_B, DATE_DOTS, joinBits, fitPx, heartPoints, lyricSubOf, subSizeFor, subGap } from './_motifs';
 import { grid, layoutRows, drawRows, type KaraokeInk } from './_t4';
 import { PlaneCam, camUniforms, CAM_GLSL, msgBlockV2, INVITE, type MsgBlock, type Rect } from './_t14';
 import { lyricV2 } from './_v2';
@@ -32,7 +32,8 @@ const PAD = { x: 50, y: 44 };
 const FAM_MSG = F.ming(900);
 const FAM_SIG = F.ming(700);
 const FAM_LYR = F.archivo(100, 700);
-const COLOPHON = `活版印刷 · ${COUPLE_ZH} · ${DATE_DOTS}`;
+/** 版權頁那一行：還沒定日期就只有「活版印刷 · 名字」。 */
+const COLOPHON = joinBits(' · ', '活版印刷', COUPLE_ZH, DATE_DOTS);
 
 const BG = () => new FSPass(/* glsl */ `
   ${CAM_GLSL}
@@ -218,8 +219,8 @@ export default class Letterpress extends Scene {
     const gr = grid(au, s, e);
     this.hasLyrics = lyrics.linesIn(s, e).length > 0;
     this.subOn = lyrics.linesIn(s - 1, e + 1).some((l) => !!lyricSubOf(l));
-    const names = COUPLE_ZH.replace(/\s*&\s*/, ' ♥ ');
-    await loadText(`${m?.text ?? ''}${m ? (m.couple ? '—— 新郎新娘' : m.name) : ''}${names}${INVITE}${COLOPHON}FROM THE COUPLE${song.title}${song.artist}——一位賓客`);
+    const names = `${NAME_A} ♥ ${NAME_B}`;
+    await loadText(`${m?.text ?? ''}${m ? (m.couple ? '—— 新人' : m.name) : ''}${names}${INVITE}${COLOPHON}FROM THE COUPLE${song.title}${song.artist}——一位賓客`);
 
     // ---- 壓印的時間：第一個離開頭至少一拍半的小節線；太晚（超過窗格四成）就改用一拍半之後的拍點
     let tImp = gr.bars.find((b) => b - s >= gr.beat * 1.45) ?? Infinity;
@@ -270,7 +271,8 @@ export default class Letterpress extends Scene {
       this.bh = b.box[3];
     } else {
       // 沒有留言：卡片上印新人的名字（只有幾個字，可以到 72 px）與一行邀請（也排進版裡、一起印），歌詞在紙條上當焦點
-      const size = 72 / k, inv = 26 / k;
+      // 名字很長（「歐陽承恩 ♥ 司馬以晴」）就縮字：版與卡片的寬度都跟著名字，太寬鏡頭會拉得很遠、整個場景變小
+      const size = fitPx(names, FAM_MSG, 72 / k, 600 / k), inv = 26 / k;
       push(names, 0, size * 0.9, FAM_MSG, size, rgba('sepia'));
       push(INVITE, 0, size * 0.9 + inv * 2.6, FAM_SIG, inv, rgba('blood'));
       c.font = font(FAM_MSG, size);
@@ -451,8 +453,12 @@ export default class Letterpress extends Scene {
     }
     if (t >= this.tImp) {
       // 卡片左上角：版權頁一行很小的字（第二色）；沒有留言時名字下面一行邀請
-      c.font = font(F.hei(500), 16 / this.k); c.letterSpacing = '4px'; c.fillStyle = rgba('blood', 0.8);
-      c.fillText(this.msg?.couple ? `FROM THE COUPLE · ${COLOPHON}` : COLOPHON, cd[0] + PAD.x, cd[1] + PAD.y * 0.62);
+      // 名字長、卡片窄（短留言）時縮字，不印到卡片外的木頭上；這張圖層只有 W 寬（紙面座標），
+      // 長留言時卡片右半邊在圖層外面，所以也不能超過圖層的右緣（不然後半截會被切掉）
+      const colo = this.msg?.couple ? `FROM THE COUPLE · ${COLOPHON}` : COLOPHON;
+      const cs = fitPx(colo, F.hei(500), 16 / this.k, Math.min(cd[2] - PAD.x * 2, W - 24 - (cd[0] + PAD.x)), 4);
+      c.font = font(F.hei(500), cs); c.letterSpacing = `${(4 * cs * this.k) / 16}px`; c.fillStyle = rgba('blood', 0.8);
+      c.fillText(colo, cd[0] + PAD.x, cd[1] + PAD.y * 0.62);
       c.letterSpacing = '0px';
     }
     u.lyr!.value = L.upload();

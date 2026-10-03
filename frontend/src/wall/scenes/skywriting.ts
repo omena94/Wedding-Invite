@@ -1,7 +1,8 @@
 // 飛機拉煙寫字（亮、雙語）：晴朗的午後，一片暖暖的天空，兩架小螺旋槳飛機在天上拉白煙寫字。
 //  - 大飛機在上面寫中文、小飛機在下面寫原文（小一號）：唱到哪裡、飛機就飛到哪裡，煙從機尾噴出來變成字（逐字跟唱：
 //    字在唱的那一刻被寫出來、唱完就完整了；飛機尾巴噴煙的地方帶一點訊號色的陽光）。寫好的字慢慢被風吹散：越舊越糊、往右飄、變淡，
-//    下一句開始時上一句很快散掉。沒有翻譯的歌：只有大飛機（小飛機不出場，不留空的一排）。純音樂：兩架飛機寫新人的名字與日期。
+//    下一句開始時上一句很快散掉。沒有翻譯的歌：只有大飛機（小飛機不出場，不留空的一排）。純音樂：大飛機寫新人的名字、
+//    小飛機寫日期（還沒定日期就寫英文名，兩樣都沒有就只有大飛機）。
 //  - 主打留言：左下草地上兩根竹竿撐著的一面布條（麥克筆寫的大字），布條一直被風吹得起伏。照「留言尺寸與版面比例標準 v2」：
 //    字 40～60、署名 26～32、布條 ≤ 860 × 430。
 //  - 一直在動：雲慢慢飄、雲影掃過地面；每個小節線飛機晃一下機翼、噴一團大一點的煙；右邊機庫旁的風向袋每一拍被風吹起來；
@@ -15,7 +16,7 @@ import { F, font, loadText } from '../engine/type';
 import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, hash, lerp, TAU } from '../engine/util';
 import { lyricSubOf, type Line } from '../engine/lyrics';
-import { beatAfter, drawHeart, COUPLE_ZH, DATE_DOTS } from './_motifs';
+import { beatAfter, drawHeart, COUPLE_ZH, COUPLE_EN, HAS_LATIN_NAMES, DATE_DOTS, fitPx } from './_motifs';
 import { sigOf, layMsgV2, winBars, lastBefore, type MsgLay, type Rect } from './_t23';
 import { lyricV2 } from './_v2';
 import { B5_TEXT, B5_INVITE, subPx, layBilingual, glyphProgress, glyphTimes, type BGlyph } from './_b5';
@@ -144,9 +145,11 @@ export default class Skywriting extends Scene {
     };
     lines.forEach((ln, i) => this.lines.push(build(ln, i, lines[i + 1])));
     if (!lines.length) {
-      // 純音樂：每四小節重寫一次新人的名字與日期（舊的被風吹散，飛機繞回來再寫）
+      // 純音樂：每四小節重寫一次新人的名字與日期（舊的被風吹散，飛機繞回來再寫）。
+      // 煙字是 Canvas2D 的字模，中文、英文都寫得出來；小飛機那排沒有東西可寫時就不出場
       const fakes: Line[] = [];
-      for (let t0 = this.tOn; t0 < e - beat * 2; t0 += bar * 4) fakes.push(fakeLine(COUPLE_ZH, DATE_DOTS, t0, beat));
+      const second = DATE_DOTS || (HAS_LATIN_NAMES ? COUPLE_EN : '');
+      for (let t0 = this.tOn; t0 < e - beat * 2; t0 += bar * 4) fakes.push(fakeLine(COUPLE_ZH, second, t0, beat));
       fakes.forEach((fk, i) => this.lines.push(build(fk, i, fakes[i + 1])));
     }
     this.hasSub = this.lines.some((l) => l.sub.length);
@@ -179,7 +182,9 @@ export default class Skywriting extends Scene {
       g.fillText(lay.sig.text, lay.sig.x, lay.sig.y);
       g.restore();
     } else {
-      g.fillStyle = rgba('sepia', 0.92); g.font = font(FAM_MSG, 46); g.fillText(`給 ${COUPLE_ZH}`, pad.x, pad.t + 50);
+      // 「給 新人」：名字長的話縮字，不寫出布條
+      const to = `給 ${COUPLE_ZH}`;
+      g.fillStyle = rgba('sepia', 0.92); g.font = font(FAM_MSG, fitPx(to, FAM_MSG, 46, w - pad.x * 2)); g.fillText(to, pad.x, pad.t + 50);
       g.font = font(F.hei(500), 21); g.fillStyle = rgba('sepia', 0.6); g.letterSpacing = '2px'; g.fillText(B5_INVITE, pad.x, pad.t + 100); g.letterSpacing = '0px';
     }
     this.bannerCv = cv;
@@ -445,18 +450,20 @@ function tint(src: HTMLCanvasElement, color: string) {
 
 /** 純音樂用的假歌詞行：主行（名字）半拍寫一個字、副行（日期）接在後面。 */
 function fakeLine(main: string, sub: string, t0: number, beat: number): Line {
+  // k：已經寫了幾個半拍。英文字母一個只給四分之一拍（英文名一個字母一個字母寫，照中文的速度會寫到下一輪還沒寫完）
   let k = 0;
   const mk = (text: string): Line => {
     const chars = Array.from(text);
     const words = chars.map((ch, j) => {
       const st = t0 + k * beat * 0.5;
-      if (ch.trim()) k++;
-      return { w: ch, start: st, end: st + beat * 0.45, line: 0, index: j, gi: 0, o: chars.slice(0, j).join('').length };
+      const step = /[A-Za-z]/.test(ch) ? 0.5 : 1;
+      if (ch.trim()) k += step;
+      return { w: ch, start: st, end: st + beat * 0.45 * step, line: 0, index: j, gi: 0, o: chars.slice(0, j).join('').length };
     }).filter((w) => w.w.trim());
     return { i: 0, text, start: t0, end: t0 + k * beat * 0.5, words };
   };
   const line = mk(main);
-  line.sub = mk(sub);
+  if (sub) line.sub = mk(sub);
   return line;
 }
 

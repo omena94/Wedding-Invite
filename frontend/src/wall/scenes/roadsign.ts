@@ -16,7 +16,7 @@ import { F, font, loadText } from '../engine/type';
 import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, hash, pulse } from '../engine/util';
 import { fitText } from '../engine/text';
-import { lyricAt, layoutLyric, drawLyric, drawHeart, COUPLE_ZH, lyricSubOf, type LyricStyle } from './_motifs';
+import { lyricAt, layoutLyric, drawLyric, drawHeart, COUPLE_ZH, DATE_MMDD, fitPx, lyricSubOf, type LyricStyle } from './_motifs';
 import { T16_INVITE, T16_TEXT, sigOf, winBars, winBeats } from './_t16';
 import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 } from './_v2';
 import { LineBatch } from '../engine/lines';
@@ -48,6 +48,8 @@ const FAM_LYR = F.hei(700);
 /** 路邊的小路牌：牌面 5.6 × 2.1 m、底下兩根 3.2 m 的柱子，立在右邊路肩外（世界 x = 9 m）；落定距離時的畫面大小。 */
 const KPM = FL / D0;
 const SMALL = { w: Math.round(5.6 * KPM), h: Math.round(2.1 * KPM), post: Math.round(3.2 * KPM), x: 9 };
+/** 門架大路牌右上角的出口編號。 */
+const EXIT_NO = `EXIT ${DATE_MMDD || '99'}`;
 const SMALL_TEXT: [string, string][] = [['幸福', '2 km'], ['永遠', '出口 ↗'], ['喜宴', '1 km'], ['白頭偕老', '直走']];
 
 const ROAD = () => new FSPass(/* glsl */ `
@@ -269,7 +271,7 @@ export default class RoadSign extends Scene {
     // 這個窗格有原文副行（韓文歌；有主打留言的窗格，引擎給的歌詞本來就沒有原文）：LED 看板加高
     if (lyrics.linesIn(s - 1, e).some((l) => lyricSubOf(l))) this.ledRect = LEDR_SUB;
     const sig = m ? sigOf(m) : '';
-    await loadText(`${T16_TEXT}${m?.text ?? ''}${sig}${song.title}${song.artist}${lyrics.linesIn(s - 1, e).map((l) => l.text + (l.sub?.text ?? '')).join('')}${SMALL_TEXT.flat().join('')}往幸福出口EXIT 0313↗→`);
+    await loadText(`${T16_TEXT}${m?.text ?? ''}${sig}${song.title}${song.artist}${lyrics.linesIn(s - 1, e).map((l) => l.text + (l.sub?.text ?? '')).join('')}${SMALL_TEXT.flat().join('')}往幸福出口${EXIT_NO}↗→`);
     const beat = au.beatPeriod(s);
     this.bp = beat;
     this.bars = winBars(au, s, e);
@@ -335,11 +337,11 @@ export default class RoadSign extends Scene {
       const sy = top + (fit.lines.length - 1) * fit.lineHeight + fit.size * 0.3 + ss * 1.3;
       const ph = Math.min(r.h, sy + 30);
       this.plate(c, r.w, ph, 5);
-      // 右上角的出口編號小牌（婚禮日期）
+      // 右上角的出口編號小牌（婚禮日期的月日；還沒定日期是「久久」的 99）
       c.fillStyle = rgba('bone', 0.9);
       roundRect(c, r.w - 168, 20, 128, 30, 5); c.fill();
       c.font = font(F.hei(700), 18); c.fillStyle = mixRgba('blood', 'ink', 0.5); c.textAlign = 'center'; c.letterSpacing = '2px';
-      c.fillText('EXIT 0313', r.w - 104, 41);
+      c.fillText(EXIT_NO, r.w - 104, 41);
       c.letterSpacing = '0px'; c.textAlign = 'left';
       c.font = font(FAM_SIGN, fit.size); c.fillStyle = rgba('bone', 0.97);
       fit.lines.forEach((ln, i) => fillHearts(c, ln, box.x, top + i * fit.lineHeight, fit.size));
@@ -353,7 +355,8 @@ export default class RoadSign extends Scene {
       c.fillText('往 幸福', 44, 74);
       c.font = font(F.hei(700), 54); c.textAlign = 'right';
       c.fillText('↗', r.w - 40, 78);
-      c.font = font(F.hei(500), 22); c.fillStyle = rgba('bone', 0.7);
+      // 出口名是新人的名字：名字很長就縮字，不會碰到左邊的「往 幸福」
+      c.font = font(F.hei(500), fitPx(`${COUPLE_ZH} 出口`, F.hei(500), 22, 420)); c.fillStyle = rgba('bone', 0.7);
       c.fillText(`${COUPLE_ZH} 出口`, r.w - 110, 64);
       c.textAlign = 'left';
       c.font = font(F.hei(500), 20); c.fillStyle = rgba('bone', 0.66); c.letterSpacing = '2px';

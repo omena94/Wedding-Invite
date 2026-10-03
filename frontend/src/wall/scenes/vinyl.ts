@@ -10,7 +10,7 @@
 //    留言是整個畫面最大、最清楚的字；沒有留言時是一張寫著邀請的卡（焦點交給歌詞）。
 //  - 純音樂（這個窗格沒有人唱）：溝紋改刻留言（短的）或新人的名字，唱針用閱讀的速度讀過去；卡片改成唱片的製作名單。
 //  - 轉速依 BPM 選 33⅓ 或 45（印在標籤上）。
-// v2（2026-09-29「留言尺寸與版面比例標準 v2」）：紙卡上的留言在畫面上 40～60 px（依字數）、署名 26～32，
+// v2（「留言尺寸與版面比例標準 v2」）：紙卡上的留言在畫面上 40～60 px（依字數）、署名 26～32，
 // 紙卡在畫面上 ≤ 430 高；溝紋上的歌詞 40～52（不比留言大）。字級都照相機在那一點的放大率換成桌面字級。
 // 補的動畫是唱盤自己的東西：轉盤邊緣一圈頻閃點（真的唱盤校轉速用的），旁邊一盞小頻閃燈每一拍閃一下，
 // 點在頻閃下看起來幾乎不動、照拍子一格一格往前爬。
@@ -22,11 +22,11 @@ import { F, font, layout, loadText } from '../engine/type';
 import { LIN, rgba } from '../engine/palette';
 import { clamp, ease, lerp, prog, pulse, noise1, TAU } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
-import { sparkHead, sparkParticles, beatAfter, signature, drawHeart, lyricSubOf, subSizeFor, subGap, COUPLE_EN, COUPLE_ZH, DATE_DOTS } from './_motifs';
+import { sparkHead, sparkParticles, beatAfter, signature, drawHeart, lyricSubOf, subSizeFor, subGap, COUPLE_EN, COUPLE_ZH, HAS_LATIN_NAMES, INITIAL_A, INITIAL_B, DATE, DATE_DOTS, DATE_MMDD, joinBits, fitPx } from './_motifs';
 import { Lyrics, type Line, type Word } from '../engine/lyrics';
 import { V2, msgMaxFor, lyricV2, sigV2, fitClauses as fitClausesV2 } from './_v2';
 import { FRAG_VINYL, FRAG_DOF } from './vinyl-glsl';
-// 最早的版面：排程參數在 director.ts 的 PLATES；這裡只宣告雙語（2026-09-30 雙語普查通過：有翻譯＋主打留言時中文、原文、留言三樣都清楚）
+// 最早的版面：排程參數在 director.ts 的 PLATES；這裡只宣告雙語（雙語普查通過：有翻譯＋主打留言時中文、原文、留言三樣都清楚）
 export const spec: PlateSpecDecl = { bilingual: true };
 
 
@@ -409,13 +409,13 @@ export default class Vinyl extends Scene {
 
   /**
    * 沒有歌詞也沒有（刻得下的）留言：刻新人的名字與日期，用閒置轉速一路讀過去。
-   * 旁邊的紙卡上有留言時，名字只是配角（小一號、暗一點）。
+   * 旁邊的紙卡上有留言時，名字只是配角（小一號、暗一點）。英文名、日期沒有就省掉那一段（不重複刻中文、不留空的「·」）。
    */
   private buildNames(minSz: number): [number, number][] {
     const { start, end } = this.ctx;
     const second = this.cardKind === 'msg';
     const size = this.sz = second ? Math.max(minSz * 0.86, 44) : this.sz;
-    const unit = `${COUPLE_EN.toUpperCase()}  ·  ${COUPLE_ZH}  ·  ${DATE_DOTS}  ·  `;
+    const unit = `${joinBits('  ·  ', HAS_LATIN_NAMES ? COUPLE_EN.toUpperCase() : '', COUPLE_ZH, DATE_DOTS)}  ·  `;
     const x0 = R0 * 2, x1 = x0 + this.vIdle * (end - start);
     this.glyphs.push(...tile(unit, FAM_LYRIC, size, 0, x1 + R0 * 2, second ? 0.45 : 1));
     this.sung.push([start, end]);
@@ -517,7 +517,8 @@ export default class Vinyl extends Scene {
     c.beginPath(); c.arc(R, R, R * 0.78, 0, TAU); c.stroke();
     // 外圈的環狀小字：一圈剛好排滿
     const rpmTxt = this.rpm === 45 ? '45' : '33⅓';
-    const ring = `SIDE A  ·  ${DATE_DOTS}  ·  ${COUPLE_EN.toUpperCase()}  ·  ${rpmTxt} RPM  ·  STEREO  ·  `;
+    // 沒定日期就少一段；沒有英文名時 COUPLE_EN 是中文（Canvas2D 的字，照樣排得上圓環）
+    const ring = `${joinBits('  ·  ', 'SIDE A', DATE_DOTS, COUPLE_EN.toUpperCase(), `${rpmTxt} RPM`, 'STEREO')}  ·  `;
     const fam = F.mono(500), fs = 12.5, rr = R * 0.855;
     c.font = font(fam, fs);
     const unitW = c.measureText(ring).width, circ = TAU * rr;
@@ -561,10 +562,13 @@ export default class Vinyl extends Scene {
     c.font = font(F.mono(500), 11);
     c.letterSpacing = '2px';
     c.fillStyle = ink(0.7);
-    c.fillText('AO-0313  ·  STEREO', R, R + 52);
+    // 唱片編號：新人縮寫＋婚禮的月日（還沒定日期就是 LIVE）
+    c.fillText(`${INITIAL_A}${INITIAL_B}-${DATE_MMDD || 'LIVE'}  ·  STEREO`, R, R + 52);
     c.letterSpacing = '0px';
-    c.font = font(F.hei(500), 11);
-    c.fillText(`℗ 2027  ${COUPLE_ZH}  婚禮現場錄音`, R, R + 74);
+    // 出品：名字長短不一，照標籤內圈在這個高度的寬度縮字
+    const credit = joinBits('  ', DATE ? `℗ ${DATE.yyyy}` : '℗', COUPLE_ZH, '婚禮現場錄音');
+    c.font = font(F.hei(500), fitPx(credit, F.hei(500), 11, 250));
+    c.fillText(credit, R, R + 74);
     drawHeart(c, R, R + 102, 16);
     c.textAlign = 'left';
     // 軸心的孔（shader 裡畫金屬軸）

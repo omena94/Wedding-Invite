@@ -235,7 +235,7 @@ export function msgBlock(c: CanvasRenderingContext2D, m: Msg, family: string, bo
   let sigSize = sigMax, fit = fitMsg(c, text, family, box.w, box.h - sigSize * 1.7, { min: o.min ?? 44, max: o.max ?? 130, lineHeight: o.lineHeight ?? 1.3, maxLines: o.maxLines ?? 5 });
   sigSize = clamp(Math.round(fit.size * 0.45), sigMin, sigMax);
   fit = fitMsg(c, text, family, box.w, box.h - sigSize * 1.7, { min: o.min ?? 44, max: o.max ?? 130, lineHeight: o.lineHeight ?? 1.3, maxLines: o.maxLines ?? 5 });
-  const sigText = o.sigText ?? (m.couple ? '—— 新郎新娘' : signature(m.name));
+  const sigText = o.sigText ?? (m.couple ? '—— 新人' : signature(m.name));
   c.font = font(family, fit.size);
   const widths = fit.lines.map((l) => c.measureText(l).width);
   const maxW = Math.max(...widths);
@@ -279,7 +279,7 @@ export function msgBlockV2(c: CanvasRenderingContext2D, m: Msg, family: string, 
   let sigSize = sigOf(fit.size * k);
   fit = fitOnce(sigSize);
   sigSize = sigOf(fit.size * k);
-  const sigText = o.sigText ?? (m.couple ? '—— 新郎新娘' : signature(m.name));
+  const sigText = o.sigText ?? (m.couple ? '—— 新人' : signature(m.name));
   c.font = font(family, fit.size);
   const widths = fit.lines.map((l) => c.measureText(l).width);
   const maxW = Math.max(...widths);

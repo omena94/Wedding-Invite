@@ -26,7 +26,7 @@ import { LIN } from '../engine/palette';
 import { F, font, layout, loadText, fitSize, measure } from '../engine/type';
 import { fitText, type FitResult } from '../engine/text';
 import { clamp, ease, prog, pulse, hash, lerp } from '../engine/util';
-import { lyricAt, lyricSubOf, layoutLyric, drawLyric, signature, heartPoints, COUPLE_EN, COUPLE_ZH, subSizeFor, subStyleFor, subGap, type LyricStyle, type LyricLayout } from './_motifs';
+import { lyricAt, lyricSubOf, layoutLyric, drawLyric, signature, heartPoints, COUPLE_EN, COUPLE_ZH, fitPx, subSizeFor, subStyleFor, subGap, type LyricStyle, type LyricLayout } from './_motifs';
 import type { Line } from '../engine/lyrics';
 import { grid, stagger, pad3, type Grid } from './_t2';
 import { homography, applyH, type P2 } from './_t11';
@@ -45,7 +45,7 @@ const CAM = { rz: -0.06, tilt: 0.4, yaw: 0.1, D: 2300, Z0: 0.74, Z1: 0.78, cx: 7
 const STUB_C = { x: (PERF + TW) / 2, y: TH / 2 };
 /** 韓文歌時歌詞條往上長多少（票面 px）：邀請的最後一行約在 y 466，NOW PLAYING 那條線移到 491，中間還留一點空。 */
 const KO_UP = 72;
-/** 有留言又有原文的窗格（雙語 2026-09-30）：歌詞條往上長多少；留言的框跟著矮這麼多（留言照 v2 重新找字級）。 */
+/** 有留言又有原文的窗格（雙語版面）：歌詞條往上長多少；留言的框跟著矮這麼多（留言照 v2 重新找字級）。 */
 const KO_UP_MSG = 76;
 const RECT: P2[] = [{ x: 0, y: 0 }, { x: TW, y: 0 }, { x: TW, y: TH }, { x: 0, y: TH }];
 
@@ -203,7 +203,9 @@ export default class Ticket extends Scene {
     // ---- 主票左上：一行 mono 小字＋歌名的盲壓（沒上墨，只靠光影）
     const x0 = 52, x1 = PERF - 32;
     const hdr = m?.couple ? `HOSTED BY ${COUPLE_EN.toUpperCase()}` : 'LIVE · ONE NIGHT ONLY · 喜宴場';
-    text(hdr, x0, 66, F.mono(500), 15, SMALL(0.55), { track: 4 });
+    // 新人的英文名可能很長（沒有英文名時是中文）：一行放不下主票的寬度就縮字，字距跟著縮
+    const hs = fitPx(hdr, F.mono(500), 15, x1 - x0, 4);
+    text(hdr, x0, 66, F.mono(500), hs, SMALL(0.55), { track: (4 * hs) / 15 });
     const tf = F.archivo(100, 900);
     let title = song.title || '今晚的歌';
     let ts = Math.min(46, fitSize(title, tf, x1 - x0, 46));
@@ -532,7 +534,7 @@ export default class Ticket extends Scene {
 }
 
 /**
- * 原文副行照「螢幕」字級重排（2026-09-30 雙語）：歌詞條在畫面上只有 K 倍大、又斜放，照票面 px 排的原文上了螢幕只剩 18 px。
+ * 原文副行照「螢幕」字級重排（雙語版面）：歌詞條在畫面上只有 K 倍大、又斜放，照票面 px 排的原文上了螢幕只剩 18 px。
  * 中文不動，原文換成 max(36, subSizeFor(中文的螢幕字級)) ÷ K，太長就折行、不再縮。
  */
 function stripSub(c: CanvasRenderingContext2D, line: Line, st: LyricStyle, lay: LyricLayout, K: number): LyricLayout {

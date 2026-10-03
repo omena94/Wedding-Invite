@@ -6,7 +6,7 @@
 //    每撞一下就亮出下一段（兩秒多一點全亮），檯面中間的一串燈也一格一格往上亮。署名在留言最後一行下面。
 //  - 背箱下緣的顯示板就是歌詞（逐字跟唱，比留言小一級）。
 //  - 沒有留言：歌詞放大到玻璃上當焦點，顯示板一小行「INSERT COIN」與邀請。純音樂：歌名。
-//  - 配角都很安靜：檯面只有線稿、淡淡的 Alan & Omena，燈罩平常是暗的；背箱沒有標題列。
+//  - 配角都很安靜：檯面只有線稿、淡淡的新人名字，燈罩平常是暗的；背箱沒有標題列。
 // 手法：檯面是一張平面（漆面木紋＋畫好的線稿貼圖＋燈罩在 shader 裡畫），彈柱、拍子、擋板、邊欄是簡單的立體零件，
 // 鋼珠是假環境反射；火花是 2D 的 LineBatch（碰撞點投影到螢幕上）；背箱是一張 Canvas 小圖層（每格重畫歌詞）。
 import * as THREE from 'three';
@@ -17,7 +17,7 @@ import { F, font, loadText } from '../engine/type';
 import { LIN, rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, lerp, prog, pulse, hash } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
-import { lyricAt, layoutLyric, drawLyric, signature, sparkParticles, drawHeart, COUPLE_ZH } from './_motifs';
+import { lyricAt, layoutLyric, drawLyric, signature, sparkParticles, drawHeart, COUPLE_ZH, COUPLE_EN, fitPx } from './_motifs';
 import { blit, winBeats, INVITE, T8_TEXT, camMove } from './_t8';
 import { V2, msgMaxFor, lyricV2, sigV2, fitClauses } from './_v2';
 import { playfieldMaterial, solidMaterial, ballMaterial, MAX_LAMPS } from './pinball-gl';
@@ -47,7 +47,7 @@ const DISP = { x: 18, y: 304, w: 824, h: 62 }; // 背箱裡：顯示板（歌詞
 const GPAD = 36;
 /** 鏡頭往下平移（px）：背箱比較高，檯面整個往下移一點，遠端才不會被蓋住。 */
 const VIEW_DY = -46;
-const TEXT = `${T8_TEXT}${COUPLE_ZH}（）♪`;
+const TEXT = `${T8_TEXT}${COUPLE_ZH}${COUPLE_EN}（）♪`;
 
 const toW = (u: number, v: number, y = 0) => new THREE.Vector3(u, y, v - TL);
 
@@ -263,10 +263,11 @@ export default class Pinball extends Scene {
       c.beginPath(); c.moveTo(X(sx * 300), 820); c.lineTo(X(sx * 300), 1030); c.lineTo(X(sx * 175), 1098); c.stroke();
       c.beginPath(); c.moveTo(X(sx * 262), 840); c.lineTo(X(sx * 262), 1010); c.lineTo(X(sx * 168), 1062); c.stroke();
     }
-    // 中間淡淡的 Alan & Omena、兩支拍子中間的小愛心（其他標籤都拿掉：檯面是場景，不是資訊）
+    // 中間淡淡的新人名字、兩支拍子中間的小愛心（其他標籤都拿掉：檯面是場景，不是資訊）。
+    // 名字是執行時才知道的（可能很長、可能沒有英文名而是中文）：Canvas 的字族接了中文備援，縮到檯面寬度以內
     c.textAlign = 'center';
-    c.font = font(F.serif(600, true), 40); c.fillStyle = rgba('bone', 0.22);
-    c.fillText('Alan & Omena', X(0), 625);
+    c.font = font(F.serif(600, true), fitPx(COUPLE_EN, F.serif(600, true), 40, TW - 140)); c.fillStyle = rgba('bone', 0.22);
+    c.fillText(COUPLE_EN, X(0), 625);
     drawHeart(c, X(0), 1150, 26, rgba('rose', 0.55));
     c.textAlign = 'left';
     L.upload();

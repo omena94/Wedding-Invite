@@ -3,11 +3,18 @@
 // 這裡按的指令存到後端（routers/wall.py 的 remote/*）再推播給大螢幕，大螢幕做完回報的狀態也推播回來，平常按下去馬上生效；
 // 推播斷線時退回輪詢，大約一兩秒後生效。在大螢幕回報之前，畫面先照「按下去的樣子」顯示（pending），回報跟上了就改用真的狀態。
 import { useEffect, useRef, useState } from "react";
-import { ListMusic, Lock, Mic, MicOff, Minus, MonitorSmartphone, Pause, Play, Plus, SkipBack, SkipForward, Wifi, WifiOff } from "lucide-react";
-import { fetchWallRemote, forceUnlockWallRemote, getToken, saveWallDuck, sendWallRemote } from "../api.js";
+import { Link } from "react-router-dom";
+import { Clapperboard, ListMusic, Lock, Mic, MicOff, Minus, MonitorSmartphone, Pause, Play, Plus, SkipBack, SkipForward, Wifi, WifiOff } from "lucide-react";
+import {
+  fetchWallContent, fetchWallRemote, fetchWallScenes, forceUnlockWallRemote, getToken, saveWallContent, saveWallDuck, saveWallSceneContent,
+  sendWallRemote, switchWallScene,
+} from "../api.js";
 import Toggle from "../components/Toggle.jsx";
 import { connectLive, wallLiveUrl } from "../live.js";
-import { confirmAsk, toastErr, toastOk } from "./ui.jsx";
+import { usePlanner } from "./context.js";
+import { chooseAsk, confirmAsk, toastErr, toastOk } from "./ui.jsx";
+import { PRESETS, presetOf } from "./WallContent.jsx";
+import { contentLabel } from "./WallScenes.jsx";
 
 const mmss = (x) => { const v = Math.max(0, Math.floor(x || 0)); return `${Math.floor(v / 60)}:${String(v % 60).padStart(2, "0")}`; };
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
@@ -22,6 +29,7 @@ export default function WallRemote() {
   const [pending, setPending] = useState({}); // 按下去還沒反映的：{ playing|duck|duckLevel|shuffle|volume|seek: { value, at } }
   const [sent, setSent] = useState(null); // 「已送出」提示：{ text, at }
   const [liveOn, setLiveOn] = useState(false); // 推播通著：按下去馬上生效
+  const [scenes, setScenes] = useState(null); // 場合清單 {items, active, rev}
 
   // 大螢幕的狀態：推播通著時大螢幕一回報就推過來，這裡只每 10 秒保險問一次；推播斷了就退回每秒問（一個問完才問下一個）。
   // 手機切到背景（鎖螢幕、切 App）就整個停掉、回來再接上，不白白佔著伺服器。畫面每 0.25 秒更新播放時間
@@ -63,6 +71,14 @@ export default function WallRemote() {
       document.removeEventListener("visibilitychange", onVisible);
     };
   }, []);
+
+  // 場合：打開時抓一次；有人切了場合、後台改了場合（推播來的狀態帶著 scene、scenes_rev）就重抓
+  const sceneKey = snap ? JSON.stringify([snap.scene, snap.scenes_rev]) : "";
+  useEffect(() => {
+    let alive = true;
+    fetchWallScenes().then((d) => { if (alive) setScenes(d); }).catch(() => {});
+    return () => { alive = false; };
+  }, [sceneKey]);
 
   const st = snap?.state || null;
   // 回報之後過了多久：播放時間往前推算、判斷大螢幕斷線都用它（推播來的狀態不會自己變舊，要自己看時間；online_s 是伺服器的標準）
@@ -139,7 +155,7 @@ export default function WallRemote() {
   return (
     <div className="wr">
       <div className={`wr-conn ${conn.cls}`}><ConnIcon size={16} /> <span>{conn.text}</span></div>
-      {/* 同時開了好幾台大螢幕（2026-09-30）：只有一台照手機做，要讓人知道控制的是哪一台、怎麼換 */}
+      {/* 同時開了好幾台大螢幕：只有一台照手機做，要讓人知道控制的是哪一台、怎麼換 */}
       {online && snap.screens > 1 && (
         <div className="wr-conn wait"><MonitorSmartphone size={16} />
           {locked
@@ -148,13 +164,13 @@ export default function WallRemote() {
               用不到的請關掉；要改控制另一台，在那台的操作列按「改由這台接收遙控」。</span>}
         </div>
       )}
-      {/* 大螢幕那台瀏覽器沒開硬體加速（2026-10-01）：畫面用 CPU 模擬，會很卡，請現場的人去開 */}
+      {/* 大螢幕那台瀏覽器沒開硬體加速：畫面用 CPU 模擬，會很卡，請現場的人去開 */}
       {online && st.softGL && (
         <div className="wr-conn off"><WifiOff size={16} />
           <span>大螢幕那台電腦的瀏覽器沒有開「硬體加速」，畫面會卡、很吃電腦。請在那台的瀏覽器設定（Edge：edge://settings/system）打開「使用圖形加速」，重新啟動瀏覽器後再開大螢幕。</span>
         </div>
       )}
-      {/* 鎖定遙控（2026-10-01）：新人怕婚禮當天遙控被別台大螢幕搶走 */}
+      {/* 鎖定遙控：婚禮當天別台電腦開了大螢幕也搶不走遙控，播放不會突然換一台 */}
       {locked ? (
         <div className="wr-conn ok wr-lock"><Lock size={16} />
           <span>遙控已鎖定在一台大螢幕，別台搶不走。要換電腦：在鎖定的那台操作列按「解除鎖定」；那台壞了才用這裡的強制解除。</span>
@@ -163,6 +179,8 @@ export default function WallRemote() {
       ) : snap?.state && (
         <div className="helper-text wr-lock-tip">婚禮當天建議在會場電腦的大螢幕操作列按「鎖定遙控在這台」，之後別台大螢幕就搶不走手機遙控。</div>
       )}
+
+      <RemoteScenes scenes={scenes} setScenes={setScenes} playing={ready && !!st.song} />
 
       <div className="panel wr-now">
         <div className="wr-label">{song?.ins ? "現在播放（插播）" : "現在播放"}</div>
@@ -189,7 +207,7 @@ export default function WallRemote() {
           <small>{duck ? "講完了按一下，音樂慢慢恢復" : "主持人、致詞要講話時按一下：音樂慢慢調小聲，畫面照跑"}</small>
         </span>
       </button>
-      {/* 講話時音樂剩幾 %（新人 2026-09-30 要可以自己設）：五個百分點一格，0 = 完全靜音；講話模式開著時改，大螢幕兩秒內跟上 */}
+      {/* 講話時音樂剩幾 %（每個場地音響不同，由新人自己設）：五個百分點一格，0 = 完全靜音；講話模式開著時改，大螢幕兩秒內跟上 */}
       <div className="panel wr-opts wr-duck-level">
         <div className="wr-row">
           <span className="wr-row-label">講話時音樂剩</span>
@@ -214,6 +232,8 @@ export default function WallRemote() {
         </div>
       </div>
 
+      <RemoteContent scenes={scenes} setScenes={setScenes} />
+
       <div className="panel">
         <div className="panel-head"><div className="panel-title"><ListMusic size={18} /> 待播清單</div></div>
         {queue.length === 0 ? <div className="helper-text">{ready ? "歌單是空的。" : "大螢幕連線、開始播放後就會出現。"}</div> : (
@@ -235,6 +255,121 @@ export default function WallRemote() {
           </ol>
         )}
         <div className="helper-text">「現在播」：馬上切過去；「插播」：排在下一首。播完都會回到原本的順序，插播過的歌這一輪不會再播。</div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * 場合：婚禮當天流程走到哪，按一下就把大螢幕整組換成那個場合的歌與畫面（場合在「場合」分頁由新人自己排）。
+ * 按了選「馬上換」（音樂淡出、從那個場合的第一首開始）或「這首播完換」（排著，大螢幕這首播完自己換）。
+ * 切換存在伺服器（routers/wall_scenes.py），大螢幕從 feed 看到就換；大螢幕還沒開也可以先切，開了就照著播。
+ */
+function RemoteScenes({ scenes, setScenes, playing }) {
+  const { can } = usePlanner();
+  const [busy, setBusy] = useState(false);
+  if (!scenes) return null;
+  const items = scenes.items || [];
+  const active = scenes.active || { id: null, next: null };
+  const cur = items.find((s) => s.id === active.id) || null;
+  const queued = active.next ? (active.next.id == null ? { name: "不指定場合" } : items.find((s) => s.id === active.next.id)) : null;
+
+  const go = async (id, when, okText) => {
+    setBusy(true);
+    try {
+      const r = await switchWallScene(id, when);
+      setScenes((d) => (d ? { ...d, active: r.active } : d));
+      toastOk(okText);
+    } catch (e) { toastErr(e); } finally { setBusy(false); }
+  };
+  // 換場合會馬上打斷現在的歌：手機上容易誤觸，先問一次，順便讓人選「這首播完換」
+  const pick = async (s) => {
+    const name = s ? `「${s.name}」` : "不指定場合";
+    const again = (s?.id ?? null) === active.id;
+    const duck = s?.duck ? "，音樂調小聲（講話模式）" : "";
+    const what = s
+      ? `${s.song_ids.length ? `換成這個場合的 ${s.song_ids.length} 首歌` : "不換歌"}${duck}，畫面：${contentLabel(s.content)}。`
+      : "照整份歌單播、畫面照「內容」分頁。";
+    const r = await chooseAsk({
+      title: again ? `重新開始${name}？` : `換到${name}？`,
+      text: again ? "從這個場合的第一首重新播。" : `大螢幕會${what}`,
+      confirmText: again ? "重新開始" : "馬上換",
+      denyText: playing && !again ? "這首播完換" : "",
+    });
+    if (r === "confirm") go(s?.id ?? null, "now", again ? `${name}重新開始` : `大螢幕換到${name}`);
+    else if (r === "deny") go(s?.id ?? null, "end", `這首播完換到${name}`);
+  };
+
+  return (
+    <div className="panel wr-scenes">
+      <div className="wr-row">
+        <span className="wr-row-label"><Clapperboard size={15} /> 場合</span>
+        <span className="wr-scene-now">{cur ? <>現在是<b>「{cur.name}」</b></> : items.length ? "現在沒有指定場合（照歌單播）" : ""}</span>
+      </div>
+      {queued && (
+        <div className="wr-conn wait wr-queued">
+          <span>這首播完換到<b>「{queued.name}」</b></span>
+          <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={() => go(active.next.id, "now", `大螢幕換到「${queued.name}」`)}>馬上換</button>
+          <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={() => go(null, "cancel", "已取消")}>取消</button>
+        </div>
+      )}
+      {items.length === 0 ? (
+        <div className="helper-text" style={{ margin: 0 }}>
+          還沒有設定場合。先把流程（進場、用餐、敬酒…）各放什麼歌、什麼畫面排好，當天在這裡按一下就整組換過去。
+          {can("wall_setup") && <> <Link to="/wall?tab=scenes">到「場合」分頁設定</Link></>}
+        </div>
+      ) : (
+        <>
+          <div className="wr-scene-grid">
+            {items.map((s) => (
+              <button key={s.id} type="button" disabled={busy} className={`wr-scene${s.id === active.id ? " on" : ""}${active.next?.id === s.id ? " queued" : ""}`} onClick={() => pick(s)}>
+                <b>{s.name}</b>
+                <small>{[s.song_ids.length ? `${s.song_ids.length} 首` : "不換歌", s.duck && "講話模式"].filter(Boolean).join(" · ")}</small>
+              </button>
+            ))}
+            <button type="button" disabled={busy || (!cur && !queued)} className={`wr-scene wr-scene-none${!cur ? " on" : ""}`} onClick={() => pick(null)}>
+              <b>不指定場合</b><small>照整份歌單播</small>
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+/**
+ * 畫面放什麼（跟「內容」分頁的組合一樣）：當天想換就在手機上切，例如進場時只放照片、用餐時打開留言。
+ * 不經過大螢幕的遙控指令，直接改設定；大螢幕下一次問 feed（推播通著時馬上）就照新的排。
+ * 現在的場合有自己的「畫面放什麼」就改那個場合的（大螢幕照場合的設定放），沒有就改「內容」分頁的。
+ */
+function RemoteContent({ scenes, setScenes }) {
+  const [c, setC] = useState(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { fetchWallContent().then(setC).catch(() => {}); }, []);
+  if (!c) return null;
+  const scene = scenes?.items?.find((s) => s.id === scenes.active?.id) || null;
+  const own = scene?.content || null;
+  const cur = presetOf(own || c);
+  const pick = async (p) => {
+    setBusy(true);
+    try {
+      if (own) setScenes(await saveWallSceneContent(scene.id, { ...p.set, ...(own.mix ? { mix: own.mix } : {}) }));
+      else setC(await saveWallContent(p.set));
+      toastOk(`大螢幕改成「${p.label}」`);
+    } catch (e) { toastErr(e); } finally { setBusy(false); }
+  };
+  const hint = cur ? PRESETS.find((p) => p.key === cur).hint : "現在是自己調的組合（細項在「內容」分頁）";
+  return (
+    <div className="panel wr-opts">
+      <div className="wr-row"><span className="wr-row-label">畫面放什麼</span></div>
+      <div className="wr-content">
+        {PRESETS.map((p) => (
+          <button key={p.key} type="button" disabled={busy} className={`btn btn-sm ${cur === p.key ? "btn-primary" : "btn-ghost"}`} onClick={() => cur !== p.key && pick(p)}>{p.label}</button>
+        ))}
+      </div>
+      <div className="helper-text" style={{ margin: 0 }}>
+        {hint}。按了大螢幕幾秒內就換。
+        {scene && (own ? `改的是「${scene.name}」這個場合的畫面。` : `「${scene.name}」跟「內容」分頁一樣，改的是「內容」分頁（其他沒設畫面的場合也會跟著變）。`)}
       </div>
     </div>
   );

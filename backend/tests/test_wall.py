@@ -130,7 +130,7 @@ def test_moderation_hide_and_couple_add(setup):
     r = c.patch(f"/api/planner/wall/messages/{mid}", json={"status": "show"}, headers=COUPLE)
     assert r.status_code == 200 and r.json()["status"] == "show"
     f = _feed(c)
-    assert [m["text"] for m in f["messages"]] == ["要先審核"] and set(f["messages"][0]) == {"id", "name", "text", "created_at"}
+    assert [m["text"] for m in f["messages"]] == ["要先審核"] and set(f["messages"][0]) == {"id", "name", "text", "source", "created_at"}
     # 隱藏 → 從螢幕消失
     assert c.patch(f"/api/planner/wall/messages/{mid}", json={"status": "hide"}, headers=COUPLE).json()["status"] == "hide"
     assert _feed(c)["messages"] == []

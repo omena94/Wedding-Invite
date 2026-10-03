@@ -1,12 +1,12 @@
 // 捷運路線圖（亮）：月台牆上的一張路線圖海報（鋁框、白磁磚牆），鏡頭斜斜地沿著牆慢慢移過去，有一點景深。
-//  - 兩條線：宣文線（訊號色的暗部）從左上、孟庭線（墨色）從左下開過來，列車一拍前進一站（落在拍點、回彈一下），
+//  - 兩條線，各用一位新人的名字命名：「承恩線」（訊號色的暗部）從左上、「以晴線」（墨色）從左下開過來，列車一拍前進一站（落在拍點、回彈一下），
 //    在小節線上同時開進中間的「轉乘站」——兩條線從這裡合成一條並排的雙色線，一路開往右邊的終點站「永遠」。
 //  - 畫面的焦點＝主打留言：兩班車在轉乘站會合的那一刻，海報上方的空白處一行一行「印」出留言（思源宋體），
 //    一條細細的引線從轉乘站拉上去，像路線圖上的車站說明；署名在最後一行下面。
 //  - 歌詞（比留言小一級）是合併線上的站名：一句歌詞排在線的上方，每個詞組底下一個車站圓點，
 //    合併後的列車跟著歌聲一站一站往前開（唱到哪、車開到哪，經過的站點塗滿），字照跟唱規則亮。
 //  - 沒有主打留言：歌詞放大印在上方當主角，下面一行小字邀請；純音樂：線上是小小的歌名，列車一拍一站往前開。
-//  - 小字只有三小群：線名（宣文線、孟庭線）、轉乘站名、終點站名。
+//  - 小字只有三小群：線名（兩位新人的名字＋「線」）、轉乘站名、終點站名。
 // 手法：不會變的路線圖（紙、線、站、留言）在 init() 畫一次成一張 Canvas；會變的（列車、歌詞、印字的遮蓋、站點）每格畫在
 // 另一張；兩張合成進一張離屏圖，再用單應矩陣把它當成牆上的一張海報拍（透視、景深、鋁框、磁磚牆、玻璃反光）。
 import * as THREE from 'three';
@@ -17,11 +17,15 @@ import { rgba, mixRgba, LIN } from '../engine/palette';
 import { clamp, ease, prog, pulse, polylineLengths, pointAtLength, TAU, type V2 } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
 import { Lyrics, type Line } from '../engine/lyrics';
-import { lyricAt, layoutLyric, drawLyric, beatAfter, drawHeart, COUPLE_ZH, lyricSubOf, subSizeFor, subStyleFor, subGap, type LyricStyle, type LyricLayout } from './_motifs';
+import { lyricAt, layoutLyric, drawLyric, beatAfter, drawHeart, COUPLE_ZH, NAME_A, NAME_B, DATE_DOT, joinBits, fitPx, lyricSubOf, subSizeFor, subStyleFor, subGap, type LyricStyle, type LyricLayout } from './_motifs';
 import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 as STD } from './_v2';
 import { T16_INVITE, T16_TEXT, sigOf, winBeats, winBars } from './_t16';
 
 export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'city', paper: true, energy: [0.1, 0.85], bars: [4, 8] };
+
+/** 兩條線的線名（新人的名字＋「線」）與海報標題帶右邊的小字（還沒定日期就只寫 ROUTE MAP）。 */
+const LINE_NAME_A = `${NAME_A}線`, LINE_NAME_B = `${NAME_B}線`;
+const ROUTE_TAG = joinBits(' · ', 'ROUTE MAP', DATE_DOT);
 
 // ---------------------------------------------------------------- 海報上的配置（海報座標 = 1920 × 1080）
 /** 轉乘站、兩條線（各有幾個站）、合併線、終點。 */
@@ -151,7 +155,7 @@ export default class Metro extends Scene {
     const s = this.ctx.start, e = this.ctx.end, m = this.msg;
     this.hasLyrics = lyrics.linesIn(s, e).length > 0;
     const sig = m ? sigOf(m) : '';
-    await loadText(`${T16_TEXT}${m?.text ?? ''}${sig}${song.title}${song.artist}${lyrics.linesIn(s - 1, e).map((l) => l.text).join('')}${COUPLE_ZH}宣文線孟庭線轉乘站祝福終點站永遠開往本站可轉乘幸福捷運路線圖ROUTE MAP·2027.03.13`);
+    await loadText(`${T16_TEXT}${m?.text ?? ''}${sig}${song.title}${song.artist}${lyrics.linesIn(s - 1, e).map((l) => l.text).join('')}${COUPLE_ZH}${LINE_NAME_A}${LINE_NAME_B}轉乘站祝福終點站永遠開往本站可轉乘幸福捷運路線圖${ROUTE_TAG}`);
     const beat = au.beatPeriod(s);
     this.tFirst = beatAfter(au, s + Math.min(0.2, beat * 0.4));
     this.beats = winBeats(au, s - 2, e);
@@ -230,7 +234,7 @@ export default class Metro extends Scene {
     c.font = font(F.hei(700), 22); c.letterSpacing = '6px'; c.fillStyle = rgba('paper', 0.92); c.textBaseline = 'alphabetic';
     c.fillText('幸福捷運　路線圖', 60, 42);
     c.font = font(F.mono(500), 16); c.letterSpacing = '4px'; c.fillStyle = rgba('paper', 0.6); c.textAlign = 'right';
-    c.fillText('ROUTE MAP · 2027.03.13', W - 60, 40);
+    c.fillText(ROUTE_TAG, W - 60, 40);
     c.letterSpacing = '0px'; c.textAlign = 'left';
     // 其他幾條線（淡淡的灰）：路線圖才像真的，也讓空的地方有東西；不標站名
     const other = rgba('ash', 0.35);
@@ -253,11 +257,13 @@ export default class Metro extends Scene {
     roundRect(c, T.x - 26, T.y - 40, 52, 80, 26); c.fill(); c.stroke();
     // 小字：線名（線頭）、轉乘站名、終點站名
     c.textBaseline = 'alphabetic';
-    const label = (txt: string, x: number, y: number, col: string, size = 22, align: CanvasTextAlign = 'left') => {
-      c.font = font(F.hei(700), size); c.letterSpacing = '3px'; c.fillStyle = col; c.textAlign = align; c.fillText(txt, x, y); c.letterSpacing = '0px'; c.textAlign = 'left';
+    // 線名是新人的名字，長短不一定：超過 maxW 就縮字（字距跟著縮），不會伸到線的轉彎處
+    const label = (txt: string, x: number, y: number, col: string, size = 22, align: CanvasTextAlign = 'left', maxW = 600) => {
+      const px = fitPx(txt, F.hei(700), size, maxW, 3);
+      c.font = font(F.hei(700), px); c.letterSpacing = `${(3 * px) / size}px`; c.fillStyle = col; c.textAlign = align; c.fillText(txt, x, y); c.letterSpacing = '0px'; c.textAlign = 'left';
     };
-    label('宣文線', 110, 272, colA);
-    label('孟庭線', 110, 962, colB);
+    label(LINE_NAME_A, 110, 272, colA, 22, 'left', 380);
+    label(LINE_NAME_B, 110, 962, colB, 22, 'left', 380);
     label('轉乘站　祝福', T.x - 40, T.y + 84, rgba('sepia', 0.72), 20);
     label('終點站　永遠', MERGE.x1 + 12, MERGE.y + 58, rgba('sepia', 0.72), 20, 'right');
   }
@@ -336,7 +342,7 @@ export default class Metro extends Scene {
         let y0 = big ? this.lyrPos.y - (lay.rows.length - 1) * lay.size * 1.14 * 0.5 : this.lyrPos.y - (lay.rows.length - 1) * lay.size * (st.lineHeight ?? 1.18);
         // 韓文原文副行在中文下面：下面那行邀請是畫好的（LYR_BIG.y + 90），原文最後一排的基線最低到它上面 44 px（原文放大到 38 之後要多留一點），放不下整組往上移
         if (big && lay.sub) y0 = Math.min(y0, LYR_BIG.y + 46 - (lay.height - lay.size));
-        // 雙語（2026-09-30）：有留言時歌詞排在合併線上方，原文接在中文下面會壓到線與站點：整組往上，原文最後一排的基線放在原本中文的位置
+        // 雙語：有留言時歌詞排在合併線上方，原文接在中文下面會壓到線與站點：整組往上，原文最後一排的基線放在原本中文的位置
         if (!big && lay.sub) y0 = LYR.y - (lay.height - lay.size);
         c.save(); c.translate(this.lyrPos.x, y0);
         drawLyric(c, ly.line, t, st, lay, ly.k);
@@ -466,7 +472,7 @@ export default class Metro extends Scene {
 }
 
 /**
- * 原文副行（2026-09-30 雙語）：海報斜斜地貼在牆上、鏡頭又離得有點遠，照海報 px 排的 32 px 原文在畫面上只剩 26。
+ * 原文副行（雙語）：海報斜斜地貼在牆上、鏡頭又離得有點遠，照海報 px 排的 32 px 原文在畫面上只剩 26。
  * 原文至少排 SUB_MIN 海報 px、不再縮（太長就折行）；中文不動。
  */
 const SUB_MIN = 38;

@@ -25,7 +25,7 @@ import { rgba, mixRgba, LIN } from '../engine/palette';
 import { clamp, ease, lerp, prog, pulse, mulberry32 } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
 import type { Lyrics } from '../engine/lyrics';
-import { lyricAt, drawLyric, layoutLyric, lyricSubOf, subGap, subSizeFor, subStyleFor, sparkHead, sparkParticles, COUPLE_ZH, WEDDING_DATE, type LyricLayout, type LyricStyle } from './_motifs';
+import { lyricAt, drawLyric, layoutLyric, lyricSubOf, subGap, subSizeFor, subStyleFor, sparkHead, sparkParticles, COUPLE_ZH, NAME_A, NAME_B, DATE, joinBits, type LyricLayout, type LyricStyle } from './_motifs';
 import { grid, stagger, paperLyric, mono, FAST_TEX_GLSL, type Grid } from './_t2';
 import { V2, msgMaxFor, lyricV2, sigV2, fitClauses } from './_v2';
 import { vFit, vColumn, vPlace, vDrawUnit, BR, type VLayout, type VPlaced } from './menu-vert';
@@ -63,13 +63,15 @@ const DESSERTS = ['甜甜蜜蜜', '圓圓滿滿'];
 const INVITE_V = ['本道需現點：', '掃描右下角', 'QR code，', '寫下你的祝福'].join(BR);
 const FIXED = `喜宴菜單伴宴歌曲純音樂主廚推薦新人特製已上囍一位賓客上菜${INVITE_V}${[...OPENERS, ...MAINS, FRUIT, ...DESSERTS].join('')}〇一二三四五六七八九十年月日`;
 
-/** 婚禮日期寫成直排的國字：二〇二七年三月十三日。 */
+/** 婚禮日期寫成直排的國字：二〇二七年五月二十日（還沒定日期是空字串，標題欄就只寫名字）。 */
 function cnDate(): string {
+  if (!DATE) return '';
   const D = '〇一二三四五六七八九';
-  const [y = '2027', m = '3', d = '13'] = String(WEDDING_DATE).split('-');
   const num = (n: number) => (n <= 10 ? (n === 10 ? '十' : D[n]!) : n < 20 ? '十' + D[n - 10]! : D[Math.floor(n / 10)]! + '十' + (n % 10 ? D[n % 10]! : ''));
-  return `${Array.from(y).map((ch) => D[+ch]!).join('')}年${num(+m)}月${num(+d)}日`;
+  return `${Array.from(DATE.yyyy).map((ch) => D[+ch]!).join('')}年${num(DATE.m)}月${num(DATE.d)}日`;
 }
+/** 標題欄裡新人名字那一欄最長多高（卡片座標）：從 y 182 往下，要停在落款的「囍」章（y ≈ 542 起）上面。 */
+const WHO_H = 340;
 
 // ---------------------------------------------------------------- 3D：桌巾與卡紙（模組層共用）
 const VERT = /* glsl */ `
@@ -428,7 +430,7 @@ export default class Menu extends Scene {
     this.sigText = m ? (m.couple ? `—— ${m.name || COUPLE_ZH}` : `—— ${m.name || '一位賓客'} 特製`) : '—— 主廚';
     const lyr = lyrics.linesIn(s - 0.5, e + 0.5).map((l) => l.text).join('');
     this.lyrUp = !m && lyrics.linesIn(s - 0.5, e + 0.5).some((l) => lyricSubOf(l)) ? 64 : 0;
-    await loadText(`${FIXED}${COUPLE_ZH}${txt}${this.sigText}${song.title}${lyr}${cnDate()}`);
+    await loadText(`${FIXED}${COUPLE_ZH}${txt}${this.sigText}${song.title}${lyr}${cnDate()}＆`);
 
     // ---- 主打留言：直排大字（英文為主就橫排），在留言範圍裡找最大字級、置中
     const pre = this.pre.ctx;
@@ -445,6 +447,17 @@ export default class Menu extends Scene {
     const mMax = (m ? msgMaxFor(txt) : 50) / k, mMin = V2.msgMin / k;
     let sigSize = sigV2(m ? msgMaxFor(txt) : 44) / k;
     while (sigSize > V2.sigMin / k && !sigFits(this.sigText, sigSize)) sigSize -= 2;
+    // 新人的署名是兩個人的全名，可能很長：截成「司馬…」會少掉一個人，先換緊湊的寫法（全形＆、不留空白、拿掉破折號），
+    // 再小一點點（不小於署名下限的八成），真的還放不下才截
+    if (m?.couple && !sigFits(this.sigText, sigSize)) {
+      const alts = [`—— ${NAME_A}＆${NAME_B}`, `${NAME_A}＆${NAME_B}`];
+      const alt = alts.find((a) => sigFits(a, sigSize));
+      if (alt) this.sigText = alt;
+      else {
+        this.sigText = alts[1]!;
+        while (sigSize > (V2.sigMin * 0.8) / k && !sigFits(this.sigText, sigSize)) sigSize -= 2;
+      }
+    }
     if (m && !sigFits(this.sigText, sigSize)) {
       let name = Array.from(m.name || '一位賓客');
       const mk = () => (m.couple ? `—— ${name.join('')}…` : `—— ${name.join('')}… 特製`);
@@ -545,7 +558,10 @@ export default class Menu extends Scene {
       for (const p of vPlace(l, x + l.pitch / 2, y)) vDrawUnit(c, p.u, p.x, p.y, fam, size);
     };
     col('喜宴菜單', F.ming(700), 26, TITLE.cx + 10, 178, rgba('sepia', 0.62));
-    col(`${COUPLE_ZH}　${cnDate()}`, F.hei(500), 16, TITLE.cx - 26, 182, rgba('sepia', 0.42));
+    // 名字可能很長、日期可能很長（十二月二十二日）：整欄放不下就縮字，不壓到最後蓋的「囍」章
+    const who = joinBits('　', COUPLE_ZH, cnDate());
+    const whoPx = Math.max(10, Math.min(16, Math.floor((16 * WHO_H) / Math.max(1, vColumn(who, F.hei(500), 16).height))));
+    col(who, F.hei(500), whoPx, TITLE.cx - 26, 182, rgba('sepia', 0.42));
     for (const d of this.dishes) col(d.name, DISH_F, DISH.size, d.cx, DISH.top, rgba('sepia', 0.55));
   }
 

@@ -4,29 +4,31 @@
 import type { AudioData } from '../engine/audio';
 import { fmtTime } from '../lyrics/lrc';
 import type { RawMessage } from '../pool';
+import { COUPLE_ZH, NAME_A, NAME_A_EN, NAME_B, NAME_B_EN } from '../wedding';
 
 export const DEV_MESSAGES: RawMessage[] = [
-  { id: 1, name: '宣文 & 孟庭', text: '謝謝大家今天來，吃飽喝足、玩得開心！', source: 'couple' },
-  { id: 2, name: '小安', text: '新婚快樂！！！' },
-  { id: 3, name: '阿哲', text: '從大學看你們吵吵鬧鬧到現在，終於等到這一天，要一直這麼幸福下去喔 💕' },
+  // 新人自己的留言署名用這一場的名字（示範新人，或截圖工具 --site 給的）
+  { id: 1, name: COUPLE_ZH, text: '謝謝大家今天來，吃飽喝足、玩得開心！', source: 'couple' },
+  { id: 2, name: '林佳穎', text: '新婚快樂！！！' },
+  { id: 3, name: '陳柏宇', text: '從大學看你們吵吵鬧鬧到現在，終於等到這一天，要一直這麼幸福下去喔 💕' },
   { id: 4, name: '', text: '百年好合 早生貴子 🎉🎉' },
-  { id: 5, name: 'Jessica', text: 'Congrats Alan & Omena! So happy for you two ❤️' },
-  { id: 6, name: '大舅', text: '祝福你們相親相愛，白頭偕老。' },
+  { id: 5, name: 'Jessica', text: `Congrats ${NAME_A_EN || NAME_A} & ${NAME_B_EN || NAME_B}! So happy for you two ❤️` },
+  { id: 6, name: '王怡君', text: '祝福你們相親相愛，白頭偕老。' },
   { id: 7, name: '同事 Kevin', text: '恭喜恭喜～下週上班記得發喜糖' },
-  { id: 8, name: '孟庭的高中同學們', text: '孟庭今天超美！宣文要好好照顧我們家的公主，不然我們會找你算帳 😤' },
+  { id: 8, name: '新娘的高中同學們', text: '今天的新娘超美！新郎要好好照顧我們家的公主，不然我們會找你算帳 😤' },
   { id: 9, name: 'Mia', text: '🥰🥰🥰' },
   { id: 10, name: '阿嬤', text: '乖孫結婚了，阿嬤足歡喜！' },
-  { id: 11, name: '小胖', text: '今天的牛排好好吃，祝你們永遠甜蜜，像今天的甜點一樣' },
+  { id: 11, name: '張家豪', text: '今天的牛排好好吃，祝你們永遠甜蜜，像今天的甜點一樣' },
   { id: 12, name: 'Leo', text: '新婚愉快，早日脫離蜜月期開始吵架（誤）' },
-  { id: 13, name: '宣文的室友', text: '恭喜你終於不用再自己煮泡麵了！' },
+  { id: 13, name: '新郎的室友', text: '恭喜你終於不用再自己煮泡麵了！' },
   { id: 14, name: '', text: '要幸福喔！' },
-  { id: 15, name: '雅婷', text: '謝謝你們讓我見證這麼美好的一天，希望你們每天都像今天一樣開心、每一年都比前一年更愛對方。' },
+  { id: 15, name: '黃冠廷', text: '謝謝你們讓我見證這麼美好的一天，希望你們每天都像今天一樣開心、每一年都比前一年更愛對方。' },
   { id: 16, name: 'Ken', text: 'Cheers! 🥂 To love, laughter and happily ever after.' },
   { id: 17, name: '表妹', text: '姐姐姐夫新婚快樂，記得帶我去度蜜月（開玩笑的）' },
   { id: 18, name: '老闆', text: '祝兩位永結同心，家庭事業兩得意。' },
-  // 2026-09-28 正式站踩到的樣子（自己編的，不是真的賓客留言）：自己換行、愛心穿插、名字三個字，
-  // 會排成四行——版面只留三行的位置，署名就被字蓋住了。QA 的 K 情境用它。
-  { id: 19, name: '姜小姐', text: '寶貝不管怎樣你開心最重要❤️\n我們永遠是你的娘家你的後盾❤️\n要一直幸福下去喔❤️❤️❤️' },
+  // 最容易排壞的樣子：賓客自己換行、愛心穿插、名字三個字，會排成四行——
+  // 版面如果只留三行的位置，署名就會被字蓋住。QA 的 K 情境用它。
+  { id: 19, name: '吳思穎', text: '親愛的不管怎樣你開心最重要❤️\n我們永遠是你最強的後援會❤️\n要一直幸福下去喔❤️❤️❤️' },
 ];
 
 /** 模擬現場新留言（/wall?dev=1&sim=1 每隔幾秒丟一則進來）。 */

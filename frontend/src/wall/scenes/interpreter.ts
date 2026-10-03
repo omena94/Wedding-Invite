@@ -12,11 +12,11 @@ import * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
 import { FSPass, Layer2D, W, H } from '../engine/gl';
 import { LineBatch } from '../engine/lines';
-import { F, font } from '../engine/type';
+import { F, font, measure } from '../engine/type';
 import { LIN, rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, hash, lerp, noise1 } from '../engine/util';
 import { fitText } from '../engine/text';
-import { lyricAt, beatAfter, barAfter, COUPLE_ZH, type LyricStyle } from './_motifs';
+import { lyricAt, beatAfter, barAfter, COUPLE_ZH, fitPx, type LyricStyle } from './_motifs';
 import { INVITE_SMALL } from './_t19';
 import { barsIn } from './_t1';
 import { placeBlock, drawBlock, sigOf, fitV2 } from './_t22';
@@ -46,7 +46,8 @@ const HEAD_L = '原文 SOURCE';
 const HEAD_R = '中文 INTERPRETATION';
 const HEAD_ZH = '同步字幕 LIVE CAPTION';
 const CARD_T = '與會來賓 · GUEST';
-const CARD_R = '第一屆 宣文 & 孟庭 婚姻國際研討會';
+/** 桌牌色帶右邊：這一場新人的研討會（名字是執行時的值，長短不一，畫的時候放不下就縮字）。 */
+const CARD_R = `第一屆 ${COUPLE_ZH} 婚姻國際研討會`;
 const VU_T = ['來源', '口譯'];
 const REST_T = '本段為純音樂，口譯員稍作休息。';
 
@@ -268,9 +269,14 @@ export default class Interpreter extends Scene {
     c.fillRect(x0, y0, CARD.w, CARD.h);
     c.fillStyle = rgba('bone', 0.35); c.fillRect(x0, y0, CARD.w, 2);
     c.fillStyle = mixRgba('signal', 'ink', 0.45); c.fillRect(x0 + 18, y0 + 18, CARD.w - 36, 44);
+    const cardL = m?.couple ? 'FROM THE COUPLE · 新人' : CARD_T;
     c.font = font(F.hei(500), 16); c.letterSpacing = '4px'; c.fillStyle = rgba('bone', 0.9);
-    c.fillText(m?.couple ? 'FROM THE COUPLE · 新人' : CARD_T, x0 + 36, y0 + 46);
-    c.textAlign = 'right'; c.letterSpacing = '2px'; c.fillStyle = rgba('bone', 0.62);
+    c.fillText(cardL, x0 + 36, y0 + 46);
+    // 右邊那句含新人的名字：只用左邊標籤以外的寬度（中間留 28 px），名字長就縮字，不壓到標籤
+    const rW = CARD.w - 72 - 28 - measure(cardL, F.hei(500), 16, 4);
+    const rz = fitPx(CARD_R, F.hei(500), 16, rW, 2);
+    c.font = font(F.hei(500), rz);
+    c.textAlign = 'right'; c.letterSpacing = `${(2 * rz) / 16}px`; c.fillStyle = rgba('bone', 0.62);
     c.fillText(CARD_R, x0 + CARD.w - 36, y0 + 46);
     c.textAlign = 'left'; c.letterSpacing = '0px';
     if (m) {

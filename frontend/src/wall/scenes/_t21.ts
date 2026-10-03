@@ -22,10 +22,10 @@ export const HUD = { x: 1360, y: 830 };
 /** 沒有留言時的邀請（整批一致的說法）。 */
 export const T21_INVITE = '掃描右下角 QR code，把你的祝福寫上大螢幕';
 /** 這批版面固定會出現的字（標籤、數字、符號）。 */
-export const T21_TEXT = `${T21_INVITE}${COUPLE_ZH}${DATE_DOTS}一位賓客新郎新娘新人No.0123456789·—…♥♪（）()&:/.-ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz`;
+export const T21_TEXT = `${T21_INVITE}${COUPLE_ZH}${DATE_DOTS}一位賓客新人新人No.0123456789·—…♥♪（）()&:/.-ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz`;
 
-/** 署名：新人自己的留言寫「新郎新娘」。 */
-export const sigOf = (m: Msg) => (m.couple ? '—— 新郎新娘' : signature(m.name));
+/** 署名：新人自己的留言寫「新人」。 */
+export const sigOf = (m: Msg) => (m.couple ? '—— 新人' : signature(m.name));
 
 /** 把這個窗格會畫到的字都載好（留言、署名、歌詞、歌名、版面自己的字）。 */
 export async function loadAll(ctx: SceneCtx, extra = ''): Promise<void> {

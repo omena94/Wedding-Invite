@@ -22,7 +22,7 @@ export const T17_INVITE = '掃描右下角 QR code，把祝福寫上大螢幕';
 /** 這批固定會出現、但不是寫死在各版面檔裡的字（數字、符號、署名用字），init 時一起載。 */
 export const T17_TEXT = `${T17_INVITE}${COUPLE_ZH}一位賓客新人—♥·0123456789`;
 
-/** 署名：新人的留言寫「—— 宣文 & 孟庭」，其他照 signature()。 */
+/** 署名：新人的留言寫「—— 新人的名字」（COUPLE_ZH），其他照 signature()。 */
 export const sigOf = (m: Msg | null) => (m ? (m.couple ? `—— ${COUPLE_ZH}` : signature(m.name)) : '');
 
 // ---------------------------------------------------------------- 一格一個字

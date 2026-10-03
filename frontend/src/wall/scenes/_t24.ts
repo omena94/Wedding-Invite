@@ -3,7 +3,7 @@
 // three.js 三角柱、three.js 滾動的罐子），共用的只有：
 //  - 這一格要顯示哪一句歌詞：正在唱的；兩句之間先放下一句（淡淡的），窗格裡沒有下一句就留著剛唱完的——
 //    畫面上放歌詞的物件（杯套、招牌、價格標籤）才不會突然空掉；
-//  - 署名字串（新人的留言寫「新郎新娘」）。
+//  - 署名字串（新人的留言寫「新人」）。
 // （三面翻與販賣機的抗鋸齒目標用引擎的 sharedMSAA()：全引擎共用一張，不要各批各留一張。）
 import type { Lyrics, Line } from '../engine/lyrics';
 import type { Msg } from '../engine/scene';
@@ -16,8 +16,8 @@ export type P2 = { x: number; y: number };
 /** 右下角 HUD（QR）：字不要進到 x ≥ 1360 且 y ≥ 830。 */
 export const HUD = { x: 1360, y: 830 };
 
-/** 署名：新人自己的留言寫「—— 新郎新娘」，其他照 signature()。 */
-export const sigOf = (m: Msg) => (m.couple ? '—— 新郎新娘' : signature(m.name));
+/** 署名：新人自己的留言寫「—— 新人」，其他照 signature()。 */
+export const sigOf = (m: Msg) => (m.couple ? '—— 新人' : signature(m.name));
 
 /**
  * 這一格要放的歌詞行：

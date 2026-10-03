@@ -6,9 +6,9 @@
 //    沒有留言：紙條寫「銘謝惠顧」與邀請。新人的留言標「新人特別獎」。
 //  - 機台上方的燈箱＝歌詞（逐字跟唱），燈箱邊的燈泡、機台兩側的燈條跟著拍子跑；夾住、放開的時候按鈕亮。
 // 手法：3D 只畫玻璃窗那一塊（小張的 MSAA 目標，省顯示記憶體），機台外殼、控制台、紙條用 Canvas2D 疊上去。
-// 2026-09-29 依「MV 融合原則」：紙條飛到鏡頭前面、放大成畫面的焦點（真的紙：影子、撕邊、微微歪），
+// 依「MV 融合原則」：紙條飛到鏡頭前面、放大成畫面的焦點（真的紙：影子、撕邊、微微歪），
 // 紙條落下時後面的機台暗下來（對焦到紙條上）；歌詞小一級；拿掉「今日獎品」框、READY、CREDIT、取物口標籤與編號。
-// 同日「留言尺寸與版面比例標準 v2」：機台是主視覺，紙條縮到 ≤ 628 × 430、飛到機台右邊，留言 40～60 px；
+// 「留言尺寸與版面比例標準 v2」：機台是主視覺，紙條縮到 ≤ 628 × 430、飛到機台右邊，留言 40～60 px；
 // 夾完之後爪子進入「待機展示」：每個小節線甩到一個新的位置停住（強烈緩動、有慣性的晃）。
 import * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
@@ -84,7 +84,7 @@ export default class ClawMachine extends Scene {
   override async init() {
     const { audio: au, song, lyrics } = this.ctx;
     const s = this.ctx.start, e = this.ctx.end, m = this.msg;
-    this.sig = m ? (m.couple ? '—— 新郎新娘' : signature(m.name)) : '';
+    this.sig = m ? (m.couple ? '—— 新人' : signature(m.name)) : '';
     await loadText(`${m?.text ?? ''}${this.sig}${LOSE}${INVITE}${FOOT}${song.title}恭喜獲得獎品新人特別獎今日每次都中一則祝福取物口投幣一次＝一輩子祝福夾夾樂`);
     const rig = this.rig;
     // ---- 要夾哪一顆：第二、三層、靠前面中間的幾顆裡面挑（每個窗格不一樣）

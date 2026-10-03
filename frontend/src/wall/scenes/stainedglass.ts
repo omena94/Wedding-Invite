@@ -1,5 +1,5 @@
 // 彩繪玻璃（暗）：幽暗的禮拜堂，一扇圓拱的大彩繪玻璃窗，光從窗外透進來。
-// 2026-09-29 依「留言尺寸與版面比例標準 v2」重做構圖：
+// 依「留言尺寸與版面比例標準 v2」重做構圖：
 //  - 場景是主視覺：窗的上半部是一個「玫瑰窗」（中心圓、八瓣花、十六格外圈、一圈石頭窗櫺），拍點上由內往外一圈一圈亮起來；
 //    亮完之後每一拍外圈有一格被陽光照亮（繞著圈走），每一小節一道陽光從窗上斜斜掃過；周圍的彩色碎玻璃也一圈圈亮起。
 //    空氣裡有光柱與灰塵，窗外的光像有雲飄過一樣慢慢變，大鼓時光柱亮一下。
@@ -20,7 +20,7 @@ import { F, font, loadText } from '../engine/type';
 import { LIN, rgba } from '../engine/palette';
 import { clamp, ease, prog, hash } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
-import { lyricAt, lyricSubOf, subSizeFor, subGap, COUPLE_ZH, fillWithHearts } from './_motifs';
+import { lyricAt, lyricSubOf, subSizeFor, subGap, NAME_A, NAME_B, fillWithHearts } from './_motifs';
 import { grid, stagger, layoutRows, drawRows, type KaraokeInk } from './_t4';
 import { PlaneCam, camUniforms, CAM_GLSL, msgBlockV2, INVITE, type MsgBlock, type Rect } from './_t14';
 import { lyricV2 } from './_v2';
@@ -283,8 +283,8 @@ export default class StainedGlass extends Scene {
     const c = this.paint.ctx;
     const gr = grid(au, s, e);
     this.hasLyrics = lyrics.linesIn(s, e).length > 0;
-    const names = COUPLE_ZH.replace(/\s*&\s*/, ' ♥ ');
-    await loadText(`${m?.text ?? ''}${m ? (m.couple ? '—— 新郎新娘' : m.name) : ''}${names}${INVITE}${song.title}${song.artist}——一位賓客`);
+    const names = `${NAME_A} ♥ ${NAME_B}`;
+    await loadText(`${m?.text ?? ''}${m ? (m.couple ? '—— 新人' : m.name) : ''}${names}${INVITE}${song.title}${song.artist}——一位賓客`);
     // 題字玻璃在第一拍亮（光由左往右掃過）；玫瑰窗同時從中心開始，之後一拍亮一圈
     this.paneT = gr.b0;
     this.sweep = clamp(gr.beat * 0.9, 0.3, 0.6);
@@ -308,7 +308,8 @@ export default class StainedGlass extends Scene {
       this.lyrSize = lyricV2(null) / k;
       this.pane = [CX - 400, 560, 800, PANE_Y1 - 560];
       this.avoid = [this.cam.screenRect(this.pane, 10)];
-      if (!this.hasLyrics) this.names = fitText(this.glyph.ctx, names, FAM_LYR, 700, 120, { min: 40, max: 60 / k, maxLines: 1 });
+      // 名字只畫一行（題字玻璃那一塊）：名字長就縮到 20 px 為止，不要折行（第二行不會畫出來）
+      if (!this.hasLyrics) this.names = fitText(this.glyph.ctx, names, FAM_LYR, 700, 120, { min: 20, max: 60 / k, maxLines: 1 });
     }
   }
 

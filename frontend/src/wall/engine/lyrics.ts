@@ -4,7 +4,7 @@
 //  - pdoom 的歌詞是英文，「字」之間一定有空白；婚禮歌單有中文、韓文，中文一個字就是一個 Word、中間沒有空白。
 //    所以每個 Word 多記一個 o（在整行文字裡的起始位置），lineCharProgress 改用它算，不再假設空白。
 //  - 歌詞來源是後台的 LRC（lyrics/build.ts 轉成這個格式），沒有 load()。
-//  - 有中文翻譯的歌（韓文歌，2026-09-30）：每行的 text／words 是中文（照原文唱的進度亮），原文掛在 sub，
+//  - 有中文翻譯的歌（韓文歌）：每行的 text／words 是中文（照原文唱的進度亮），原文掛在 sub，
 //    版面在中文下面小一號畫原文（`_motifs.ts` 的 drawLyric／lyricOnPath 自動畫；自己畫歌詞的版面用 lyricSubOf）。
 import { smart } from './type';
 

@@ -5,8 +5,9 @@
 //  - 每 2 秒拉一次留言：新留言下一拍就在畫面角落跳出小卡；導演排下一個窗格時也會優先主打新留言。
 //  - 被新人隱藏的留言：小卡馬上收、主打它的窗格在下一拍切走。
 //  - 一首接一首（歌單順序，播完從頭；可以隨機播放），下一首在背景先下載、分析好。歌單是空的就先無聲地跑留言。
-//  - 操作列（2026-09-30）：進度條可以拖拉跳到任何時間；旁邊的歌單面板看下一首與待播清單，可以「現在播」「插播」。
-//  - 手機遙控（2026-09-30）：每秒把播放狀態回報給後台、拿走手機按的指令（後台「大螢幕」的「遙控」分頁）；講話模式把音樂慢慢調小聲。
+//  - 操作列：進度條可以拖拉跳到任何時間；旁邊的歌單面板看下一首與待播清單，可以「現在播」「插播」。
+//  - 手機遙控：每秒把播放狀態回報給後台、拿走手機按的指令（後台「大螢幕」的「遙控」分頁）；講話模式把音樂慢慢調小聲。
+//  - 場合（進場、用餐、敬酒…）：手機切場合時換成那個場合的歌（現在這首淡出）、版面、配色、講話模式（見下面「場合」）。
 //  - 開發模式 ?dev=1：不連後端，用 dev/fixtures 的假留言與本機的測試音檔（見 vite.config.js 的 wall-dev），
 //    加上 ?export=1 給截圖腳本（scripts/wall-render.mjs）用。
 import { Engine, SCENES, type SongRuntime } from './engine/engine';
@@ -20,11 +21,14 @@ import { MessagePool } from './pool';
 import { Director } from './director';
 import { applyTheme, pickTheme } from './themes';
 import { loadSong, type LoadedSong } from './songs';
-import { fetchFeed, fetchSongs, getToken, lockRemote, login, saveDuckLevel, syncRemote, unlockRemote, HttpError, type RemoteCommand, type SongRow } from './net';
+import { fetchFeed, fetchPhoto, fetchSongs, fetchWallPhotos, getToken, lockRemote, login, saveDuckLevel, switchScene, syncRemote, unlockRemote, DEFAULT_CONTENT, HttpError, type Feed, type RemoteCommand, type SceneFeed, type SongRow, type WallContent } from './net';
+import { PhotoPool } from './photos';
 import { connectLive, wallLiveUrl } from '../live.js';
+import { COUPLE_EN, COUPLE_ZH, CREDIT, DATE_DOT, joinBits } from './wedding';
 import { buildLyrics } from './lyrics/build';
 import { loadText } from './engine/type';
 import { DEV_LIVE, DEV_MESSAGES, dummyLrc, dummyKoLrc } from './dev/fixtures';
+import { DEV_PHOTOS, devPhoto } from './dev/photos';
 import { analyzeArrayBuffer } from './analysis/client';
 
 const Q = new URLSearchParams(location.search);
@@ -34,6 +38,7 @@ const EXPORT = Q.has('export');
 const PREVIEW = EXPORT ? null : Q.get('plate');
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
+document.title = `大螢幕 | ${COUPLE_ZH}`;
 const canvas = $<HTMLCanvasElement>('c');
 canvas.width = PW;
 canvas.height = PH;
@@ -45,7 +50,8 @@ const live: LiveInfo = {
   get count() { return pool.count; },
   url: wishUrl,
   shortUrl: `${location.host}/wish`,
-  // 新人要求右下角有個小時鐘（2026-09-28），12 小時制加 AM／PM 賓客一看就知道是時間。
+  credit: CREDIT,
+  // 右下角有個小時鐘：會場裡很多人想知道幾點了，12 小時制加 AM／PM 賓客一看就知道是時間。
   // 截圖／驗收模式固定時間，同一格畫兩次才會一樣
   get clock() {
     if (EXPORT) return '7:30 PM';
@@ -55,7 +61,7 @@ const live: LiveInfo = {
 };
 const engine = new Engine(canvas, live);
 engine.debug = DEV;
-// 瀏覽器沒開「硬體加速」（2026-10-01 新人電腦的 Edge 就是關的）：WebGL 改用 CPU 模擬顯示卡（WARP、SwiftShader），
+// 瀏覽器沒開「硬體加速」（不少電腦的 Edge 預設就是關的）：WebGL 改用 CPU 模擬顯示卡（WARP、SwiftShader），
 // 光是大螢幕就吃掉整台電腦六成 CPU、畫面也會卡。偵測到就在開始畫面、操作列、手機遙控頁提醒怎麼打開。
 const SOFT_GL = (() => {
   try {
@@ -66,7 +72,12 @@ const SOFT_GL = (() => {
   } catch { return ''; }
 })();
 const SOFT_GL_TIP = '這個瀏覽器沒有開「硬體加速」，畫面是用 CPU 模擬顯示卡畫的，會很吃電腦也會卡。請到瀏覽器設定（Edge：edge://settings/system，Chrome：chrome://settings/system）打開「使用圖形加速」，按「重新啟動」後再開大螢幕。';
-const director = new Director(engine, pool);
+// 照片（新人在後台打開「照片」時）：開發模式用程式畫的假照片（dev/photos.ts），不連後端
+const photoPool = new PhotoPool(DEV ? devPhotoBlob : fetchPhoto);
+const director = new Director(engine, pool, photoPool);
+// 預覽照片版面、但這場婚禮還沒放照片：用示範照片（不是任何人的照片）
+let sampleN = 0;
+director.samplePhoto = () => devPhoto(++sampleN);
 // 截圖／驗收要可重現：同一首歌每次排一樣；現場每次播都重新洗牌
 director.fixedSeed = EXPORT;
 
@@ -138,13 +149,23 @@ class Player {
     } else this.el.volume = Math.min(1, v);
   }
 
+  /** 換場合時把現在這首淡出（不要一下子切掉）：sec 秒內降到 0；換下一首時 load 會把音量設回來。 */
+  fadeOut(sec: number): Promise<void> {
+    if (!this.gain || !this.ctx || this.el.paused || this.el.ended) return Promise.resolve();
+    const g = this.gain.gain, now = this.ctx.currentTime;
+    g.cancelScheduledValues(now);
+    g.setValueAtTime(g.value, now);
+    g.linearRampToValueAtTime(0, now + sec);
+    return new Promise((r) => setTimeout(r, sec * 1000));
+  }
+
   async play() { this.unlock(); await this.ctx?.resume(); await this.el.play(); }
   pause() { this.el.pause(); }
   get paused() { return this.el.paused; }
 
   /**
    * 畫面該畫的歌曲時間：音樂時間（用 performance.now 補平）扣掉輸出延遲，加上手動微調。
-   * 2026-10-01 平滑：瀏覽器更新 currentTime 的時間點不規律，直接跟著它，畫面時間每隔一陣子就被拉一下
+   * 平滑：瀏覽器更新 currentTime 的時間點不規律，直接跟著它，畫面時間每隔一陣子就被拉一下
    * （這格只走 2 毫秒、下一格補 11 毫秒），歌詞移動看起來一頓一頓的。改成畫面時鐘照實際經過的時間走，
    * 每 1/60 秒修正跟音樂差距的一成（約兩三百毫秒內追上，肉眼看不出快慢）；差超過 0.1 秒（拖進度、換歌、電腦卡住）才直接對齊。
    * 修正量照經過的時間算、不照格數：畫面不鎖每秒 60 格，144Hz 螢幕一秒畫的格數多一倍多，追的快慢要一樣。
@@ -165,7 +186,7 @@ class Player {
   }
 }
 const player = new Player();
-// 講話模式的音量（%）：新人可以自己設（2026-09-30），存在伺服器，feed 每兩秒帶回來；預設兩成，現場還聽得到有音樂、不會蓋過講話
+// 講話模式的音量（%）：新人可以自己設，存在伺服器，feed 每兩秒帶回來；預設兩成，現場還聽得到有音樂、不會蓋過講話
 let duckLevel = 20;
 let duckSetAt = -Infinity; // 這台電腦剛改過：幾秒內不要被還沒存好之前的 feed 蓋回去
 
@@ -192,7 +213,108 @@ function startSilent() {
 }
 let silentStart = 0;
 
-// ------------------------------------------------------------------ 播放順序、插播、隨機播放（2026-09-30）
+// ------------------------------------------------------------------ 場合（迎賓、新人進場、證婚致詞、用餐、敬酒…）
+// 新人在後台把當天流程分成幾個場合，每個場合自己的歌、版面、配色、講話模式。手機遙控切場合時伺服器的 scene_seq 加一，
+// 這裡看到就換：挑了歌的場合換成它的歌、從第一首開始（現在這首先淡出）；沒挑歌的（致詞）不換歌，只換畫面與講話模式。
+// 畫面放什麼、換版面節奏伺服器已經合併在 feed 的 content、pace，照原本的方式套用。
+// 「這首播完再換」與「歌都播過一輪之後換到…」由接收遙控的那台在歌播完時跟伺服器換（sceneHandoff），好幾台開著也只換一次。
+// 版面預覽、開發、截圖模式不管場合（照整份歌單）。
+const SCENES_ON = REMOTE;
+let scene: SceneFeed | null = null;
+let sceneSeq = -1;
+let sceneNext: { id: number | null } | null = null;
+let sceneList: { id: number; name: string }[] = [];
+/** 現在的歌是哪個場合的（沒挑歌的場合沿用上一個）；null = 整份歌單（「歌單」分頁開著「要播」的）。 */
+let musicScene: SceneFeed | null = null;
+/** 這個場合播過的歌：都播過一輪才照「播完之後」換場合。 */
+const scenePlayed = new Set<number>();
+/** 歌播完時剛跟伺服器換了場合：等 feed 帶新場合來（幾百毫秒）再播，不要先播一首舊場合的歌。 */
+let handoff: { seq: number; at: number } | null = null;
+/** 後台的整份歌單（含沒開「要播」的：場合挑了照樣播）。 */
+let allSongs: SongRow[] = [];
+
+/** 要播的歌：場合挑的照場合的順序；沒有場合照歌單（開著「要播」的）。 */
+function songsFor(ms: SceneFeed | null): SongRow[] {
+  if (!ms) return allSongs.filter((s) => s.enabled).sort((a, b) => a.sort_order - b.sort_order || a.id - b.id);
+  const byId = new Map(allSongs.map((s) => [s.id, s]));
+  return ms.songs.map((id) => byId.get(id)).filter((s): s is SongRow => !!s);
+}
+const songsKey = (rows: SongRow[]) => rows.map((r) => `${r.id}@${r.updated_at}`).join();
+
+/**
+ * 套用 feed 帶來的場合。回傳 'restart' = 換成另一份歌（要從第一首重新開始）。
+ * 比較早發出去、比較晚回來的 feed（切換編號比較小）不理，免得切回去。
+ */
+function applyScene(f: Feed, initial: boolean): 'restart' | '' {
+  if (!SCENES_ON) return '';
+  const s = f.scene ?? null, seq = f.scene_seq ?? 0;
+  if (seq < sceneSeq) return '';
+  const switched = seq > sceneSeq;
+  const themeWas = scene?.theme ?? '';
+  sceneSeq = seq; scene = s; sceneNext = f.scene_next ?? null; sceneList = f.scenes ?? [];
+  const only = s?.plates ?? [];
+  if (only.join() !== [...director.only].join()) { director.only = new Set(only); if (!initial) replanSoon(); }
+  // 配色改了：已經準備好的下一首要照新的配色重新準備
+  if ((s?.theme ?? '') !== themeWas) { next = null; nextFor = -1; }
+  if (switched) {
+    scenePlayed.clear();
+    // 講話模式跟著場合：致詞的場合自動調小聲，換到別的場合恢復（剛打開大螢幕時只在需要時打開）
+    if (!initial || s?.duck) setDuck(!!s?.duck);
+    // 沒挑歌的場合接著播原本的歌；切回「不指定場合」時回到整份歌單；切到挑了歌的（同一個也算）從第一首開始
+    const ms = s && s.songs.length ? s : s ? musicScene : null;
+    if (ms !== musicScene || (ms && ms === s)) {
+      musicScene = ms;
+      shuffle = ms ? ms.shuffle : readNum('wall_shuffle', 0) === 1;
+      return 'restart';
+    }
+    return '';
+  }
+  // 同一個場合，後台改了它的歌：照新的清單接下去（不重新開始）
+  if (s && musicScene && s.id === musicScene.id && s.songs.length) musicScene = s;
+  return '';
+}
+
+/** 換成新場合的歌，從第一首開始（fade：現在這首先淡出）。要在 transition 裡呼叫。 */
+async function startSceneMusic(fade: boolean) {
+  next = null; nextFor = -1;
+  if (fade && playing && cur && !silent) await player.fadeOut(1.5);
+  if (!playlist.length) { startSilent(); return; }
+  initOrder();
+  pos = 0;
+  await playPos();
+}
+let sceneJob = 0;
+/** 手機切了場合：等正在進行的換歌做完再換（連按好幾次只做最後一次）。 */
+async function queueSceneMusic() {
+  const job = ++sceneJob;
+  while (switching) await new Promise((r) => setTimeout(r, 50));
+  if (job !== sceneJob) return;
+  await transition(() => startSceneMusic(true));
+}
+/**
+ * 這首播完（或按了下一首）要不要換場合：手機排了「這首播完換」，或這個場合的歌都播過一輪、設了「播完之後換到…」。
+ * 只有接收遙控的那台去跟伺服器換（帶著它看到的場合與編號，中間有人切過就不換）。換好了回 true，接著抓 feed、照新場合播；
+ * 沒換（斷線、別人搶先切了、這台是備用）回 false，照原本的順序播下一首。
+ */
+async function sceneHandoff(): Promise<boolean> {
+  if (!SCENES_ON || !remote.leader || remote.locked === 'other') return false;
+  let target: number | null | undefined;
+  if (sceneNext) target = sceneNext.id;
+  else if (scene?.after != null && musicScene?.id === scene.id && playlist.length && playlist.every((s) => scenePlayed.has(s.id))) target = scene.after;
+  if (target === undefined) return false;
+  try {
+    const r = await Promise.race([
+      switchScene({ id: target, when: 'now', expect_from: scene?.id ?? null, expect_seq: sceneSeq }),
+      new Promise<never>((_, no) => setTimeout(() => no(new Error('timeout')), 5000)),
+    ]);
+    if (!r.applied) return false;
+    handoff = { seq: r.active.seq, at: performance.now() };
+    void refreshFeed();
+    return true;
+  } catch { return false; }
+}
+
+// ------------------------------------------------------------------ 播放順序、插播、隨機播放
 // order 是這一晚的播放順序，pos 是現在播到第幾個。後面永遠至少排好一整輪（隨機播放時下一輪先洗好），
 // 歌單面板看到的待播清單就是真的會播的順序，下一首也才能先在背景準備。
 // 插播（面板上的「插播」「現在播」）：把那首搬到現在這首的正後面、標成插播，其他歌的先後不變，
@@ -274,8 +396,10 @@ function initOrder(startId?: number) {
 }
 
 function prepare(id: number, prevTheme: string): Promise<LoadedSong | null> {
-  const row = rowById(id);
-  if (!row) return Promise.resolve(null);
+  const found = rowById(id);
+  if (!found) return Promise.resolve(null);
+  // 場合指定了配色：這個場合的歌都用它（沒指定照每首歌自己的）
+  const row = scene?.theme ? { ...found, theme: scene.theme } : found;
   return loadSong(row, indexOfSong(id) + 1, playlist.length, prevTheme, (s) => setStatus(s), devLoadOpts(row)).catch((e) => {
     console.error('song load failed', e);
     setStatus(`「${row.title}」讀不到：${(e as Error).message}，跳過`, false);
@@ -313,6 +437,7 @@ async function playPos() {
     if (s) {
       silent = false;
       cur = s;
+      scenePlayed.add(id);
       nextFor = -1; next = null;
       await player.load(s);
       startRuntime(s.runtime, s.startAt);
@@ -326,8 +451,12 @@ async function playPos() {
 }
 function nextSong() {
   return transition(async () => {
+    // 剛跟伺服器換了場合：等 feed 帶新場合的歌來；等太久（斷線）就照原本的順序播
+    if (handoff && sceneSeq < handoff.seq && performance.now() - handoff.at < 5000) return;
+    handoff = null;
     if (!playlist.length) return startSilent();
     if (!cur) initOrder();
+    if (await sceneHandoff()) return;
     pos++;
     await playPos();
   });
@@ -374,7 +503,8 @@ function cancelInsert(j: number) {
 }
 function setShuffle(on: boolean) {
   shuffle = on;
-  saveNum('wall_shuffle', on ? 1 : 0);
+  // 場合的隨機播放是後台設的：在場合裡臨時切只算這一次，不記成這台電腦的預設
+  if (!musicScene) saveNum('wall_shuffle', on ? 1 : 0);
   rebuildAhead();
   refreshNext();
 }
@@ -391,16 +521,41 @@ function seekTo(x: number) {
 }
 
 // ------------------------------------------------------------------ 留言
-// 2026-09-28 新人：「親友的留言要直接結合在模板裡，不要放一堆卡，不要太突兀」。
+// 親友的留言要融在版面裡（MV 融合原則），一直跳小卡會很亂、很突兀。
 // 所以不再跳即時小卡：新留言排進主打（pool.nextHero 新留言優先），還沒開始的窗格馬上重排，
 // 下一個窗格的版面就會用它當主角（版面自己的方式：星座、報紙頭條、信紙…）。
-pool.onArrive = () => {
-  const au = engine.song?.audio;
-  if (!au) return;
-  // 快開始的窗格（2.5 秒內）已經在準備了，留著；之後的重排
+pool.onArrive = () => replanSoon();
+/** 之後的窗格重排（快開始的窗格 2.5 秒內已經在準備了，留著）：新留言、或新人切了要放的內容。 */
+function replanSoon() {
+  if (!engine.song?.audio) return;
   const next = engine.timeline.filter((e) => e.start > t).sort((a, b) => a.start - b.start)[0];
   engine.drop(next && next.start - t < 2.5 ? next.start + 0.01 : t + 0.01);
-};
+}
+
+// ------------------------------------------------------------------ 新人選的內容（歌詞、賓客留言、照片）
+let content: WallContent = DEFAULT_CONTENT;
+let photosRev = '';
+/**
+ * 套用 feed 帶來的內容設定。回傳「賓客留言剛被打開或關掉」：這時 feed 的留言整批換掉（關掉時只剩新人自己寫的話），
+ * 留言池要整批重來，不能把重新出現的舊留言當成新留言，一則一則插隊。
+ */
+async function applyContent(f: Feed): Promise<boolean> {
+  const c = f.content ?? DEFAULT_CONTENT;
+  const changed = JSON.stringify(c) !== JSON.stringify(content);
+  const flip = c.messages !== content.messages;
+  content = c;
+  engine.lyricsOff = !c.lyrics;
+  engine.qrOff = !c.messages;
+  director.content = c;
+  photoPool.captions = c.captions;
+  if (c.photos && f.photos_rev && f.photos_rev !== photosRev) {
+    try { await photoPool.sync(DEV ? DEV_PHOTOS.map((p, i) => ({ id: i + 1, caption: p.caption, album: p.album, fx: p.fx, fy: p.fy, w: p.w, h: p.h, lum: p.lum ?? null, tone: p.tone ?? '' })) : (await fetchWallPhotos()).items); photosRev = f.photos_rev; }
+    catch { /* 下次 feed 再試 */ }
+  }
+  // 切換馬上看得到：已經排好、還沒開始的窗格照新的內容重排
+  if (changed) replanSoon();
+  return flip;
+}
 pool.onRemove = (id) => {
   // 主打這則的窗格：下一拍切走（之後的窗格重排）
   const au = engine.song?.audio;
@@ -420,22 +575,28 @@ async function pollFeed(initial = false) {
   try {
     const f = await fetchFeed();
     feedFails = 0;
-    await pool.sync(f.messages, initial);
+    const flip = await applyContent(f);
+    await pool.sync(f.messages, initial || flip);
     director.off = new Set(f.plates_off ?? []);
     director.pace = f.pace ?? 'normal';
     if (f.duck !== undefined && performance.now() - duckSetAt > 5000) setDuckLevel(f.duck, false);
     if (f.songs_rev !== songsRev) {
       songsRev = f.songs_rev;
-      const rows = (await fetchSongs()).filter((s) => s.enabled).sort((a, b) => a.sort_order - b.sort_order || a.id - b.id);
-      const changed = rows.map((r) => `${r.id}@${r.updated_at}`).join() !== playlist.map((r) => `${r.id}@${r.updated_at}`).join();
-      playlist = rows;
-      if (changed && !initial) {
-        // 歌改過（歌詞、配色…）：已經準備好的下一首要重新準備
+      allSongs = await fetchSongs();
+    }
+    const act = applyScene(f, initial);
+    const rows = songsFor(musicScene);
+    const changed = songsKey(rows) !== songsKey(playlist);
+    playlist = rows;
+    if (!initial) {
+      if (act === 'restart') void queueSceneMusic();
+      else if (changed) {
+        // 歌改過（歌詞、配色…）、場合的歌改了：已經準備好的下一首要重新準備
         next = null; nextFor = -1;
         if (silent && playlist.length) { initOrder(); void transition(async () => { pos = 0; await playPos(); }); }
         else if (playlist.length) { syncOrder(); refreshNext(); }
-        updateUi();
-      }
+      } else if (nextFor < 0 && cur && !switching) refreshNext(); // 場合的配色改了：下一首照新的配色準備
+      updateUi();
     }
     if (!statusLine.ok) setStatus('連線正常', true);
   } catch (e) {
@@ -487,11 +648,14 @@ let lastFrame = performance.now(), fpsAcc = 0, fpsN = 0, fps = 60;
   messages: pool.count, errors: engine.errors.length, fps,
   // 接下來的播放順序（歌的 id，i = 插播）：測試插播、隨機播放用
   queue: order.slice(pos, pos + 10).map((e) => `${e.id}${e.ins ? 'i' : ''}`).join(' '),
+  scene: scene?.name ?? '',
+  // 音樂本身的時間（視窗被切走、畫面停了的時候 t 不會動，看這個知道歌有沒有在播）
+  audioT: player.el.currentTime, paused: player.el.paused, ended: player.el.ended,
   // 實際輸出的音量倍數（講話模式會降到兩成）
   gain: player.gain?.gain.value ?? player.el.volume, ducked: player.ducked, volume: player.volume,
 });
 
-// 每次螢幕更新都畫一格，不鎖每秒 60 格（2026-10-01 新人要求：120／144Hz 螢幕上看起來更順）。
+// 每次螢幕更新都畫一格，不鎖每秒 60 格（120／144Hz 螢幕上看起來更順）。
 // 版面的畫面只由歌曲時間 t 決定，畫得多只是更順、不會變快；交給版面的 dt 是這格跟上一格差了幾秒的歌曲時間。
 let lastT = 0;
 function tick() {
@@ -518,7 +682,7 @@ function tick() {
 }
 
 /**
- * 背景換歌（2026-10-01 新人：切到別的視窗，歌播完不會換下一首）：視窗被切走、縮小時瀏覽器停掉 requestAnimationFrame，
+ * 背景換歌（會場電腦切到別的視窗時，歌播完也要換下一首）：視窗被切走、縮小時瀏覽器停掉 requestAnimationFrame，
  * tick 不跑，音樂卻照播到完。所以 <audio> 的 ended／timeupdate 與每半秒的計時器也檢查一次。
  * 畫面有在跑的時候交給 tick（它的 t 扣掉了輸出延遲，切歌的時間點跟平常一樣），只有畫面停了才看音樂本身的時間。
  */
@@ -532,7 +696,7 @@ player.el.addEventListener('timeupdate', songEndWatch);
 setInterval(songEndWatch, 500);
 
 // ------------------------------------------------------------------ 操作列（滑鼠一動就出現，三秒不動就藏起來）
-// 2026-09-30：上面加一條可以拖拉的進度條；右邊的歌單面板（L 開關）跟著操作列一起出現與收起。
+// 上面一條可以拖拉的進度條；右邊的歌單面板（L 開關）跟著操作列一起出現與收起。
 const ui = $<HTMLDivElement>('ui');
 const queueEl = $<HTMLElement>('queue');
 const debugEl = $<HTMLPreElement>('debug');
@@ -574,7 +738,33 @@ function drawSeek() {
 }
 
 /** 歌單面板：現在播放、下一首、之後一整輪的待播清單（就是真的會播的順序）。 */
+// 歌單面板上的場合按鈕：投影畫面上看得到操作列，誤觸一次不該換掉，所以要按兩下（四秒內）
+let sceneArm: { id: number | null; at: number } | null = null;
+function renderScenes() {
+  const el = $('q-scenes');
+  el.hidden = !SCENES_ON || !sceneList.length;
+  if (el.hidden) return;
+  const armed = sceneArm && performance.now() - sceneArm.at < 4000 ? sceneArm : null;
+  const all: { id: number | null; name: string }[] = [...sceneList, { id: null, name: '不指定' }];
+  el.innerHTML = `<small>場合${sceneNext ? `　·　這首播完換到「${esc(sceneList.find((x) => x.id === sceneNext!.id)?.name ?? '不指定')}」` : ''}</small><div class="q-scene-btns">`
+    + all.map((x) => {
+      const on = (scene?.id ?? null) === x.id, arm = !!armed && armed.id === x.id;
+      return `<button type="button" data-scene="${x.id ?? ''}" class="${on ? 'on' : ''}${arm ? ' arm' : ''}">${arm ? `再按一次：換到「${esc(x.name)}」` : esc(x.name)}</button>`;
+    }).join('') + '</div>';
+}
+async function clickScene(raw: string) {
+  const id = raw === '' ? null : Number(raw);
+  if (!sceneArm || sceneArm.id !== id || performance.now() - sceneArm.at >= 4000) {
+    sceneArm = { id, at: performance.now() };
+    setTimeout(updateUi, 4100);
+    return;
+  }
+  sceneArm = null;
+  try { await switchScene({ id, when: 'now' }); void refreshFeed(); }
+  catch (e) { setStatus(`場合沒有換成：${(e as Error).message}`, false); }
+}
 function renderQueue() {
+  renderScenes();
   $('q-shuffle').textContent = shuffle ? '隨機播放：開' : '隨機播放：關';
   $('q-shuffle').classList.toggle('on', shuffle);
   $('q-reshuffle').hidden = !shuffle;
@@ -607,7 +797,8 @@ function toggleQueue(on = !showQueue) {
 function setStatus(s: string, ok = true) { statusLine.text = s; statusLine.ok = ok; updateUi(); const g = document.getElementById('gate-status'); if (g) g.textContent = s; }
 function updateUi() {
   const info = cur?.runtime.info;
-  $('ui-song').textContent = silent ? '（歌單是空的：先無聲播放留言）' : info ? `${info.index}/${info.count}　${info.title}${info.artist ? ' — ' + info.artist : ''}` : '—';
+  const where = scene ? `【${scene.name}】　` : '';
+  $('ui-song').textContent = silent ? `${where}（歌單是空的：先無聲播放留言）` : info ? `${where}${info.index}/${info.count}　${info.title}${info.artist ? ' — ' + info.artist : ''}` : '—';
   const nx = playlist.length && cur && !silent ? order[pos + 1] : undefined;
   const nxRow = nx ? rowById(nx.id) : undefined;
   $('ui-next').textContent = nxRow ? `下一首：${nxRow.title}${nx!.ins ? '（插播）' : ''}` : '';
@@ -700,6 +891,7 @@ function bindUi() {
     if (b.id === 'q-shuffle') setShuffle(!shuffle);
     else if (b.id === 'q-reshuffle') { rebuildAhead(); refreshNext(); }
     else if (b.id === 'q-close') toggleQueue(false);
+    else if (b.dataset.scene !== undefined) void clickScene(b.dataset.scene);
     else if (!switching) {
       let j = Number(b.dataset.j);
       const id = Number(b.dataset.id);
@@ -771,7 +963,7 @@ function setDuck(on: boolean) {
   updateUi();
 }
 
-// ------------------------------------------------------------------ 手機遙控（2026-09-30）
+// ------------------------------------------------------------------ 手機遙控
 // 手機按的指令平常由推播直接送來（見上面「推播」）；remote/sync 回報播放狀態（手機遙控頁顯示），也順便拿走推播漏掉的指令。
 // 還沒按「開始播放」只回報、不做指令（現場還沒準備好）；備用畫面伺服器不給指令。
 let remoteClient = ''; // 這個分頁的代號，boot 時 pickRemoteClient 決定
@@ -923,7 +1115,7 @@ async function runRemote(c: RemoteCommand) {
 }
 
 // ------------------------------------------------------------------ 版面預覽（/wall?plate=名字）
-// 2026-09-28 新人要在後台看每個版面的樣子：用真的歌單、真的留言播，只是導演每個窗格都用指定的版面。
+// 新人要在後台看每個版面的樣子：用真的歌單、真的留言播，只是導演每個窗格都用指定的版面。
 // 左上角標出現在是哪個版面，← → 或標籤上的按鈕換上一個／下一個（清單順序跟後台一樣）。
 const previewList = PLATE_CATALOG.map((p) => p.name).filter((n) => n !== 'title' && SCENES.includes(n));
 let previewIdx = -1;
@@ -976,12 +1168,25 @@ async function devInit() {
     instrumental: false, theme: Q.get('theme') ?? '', start_at: 0, end_at: 0, updated_at: 'dev',
   }));
   await pool.sync(DEV_MESSAGES, true);
+  // 開發用：&lyrics=0、&messages=0、&photos=1、&mix=photos 模擬新人在後台選的內容
+  const devContent: WallContent = {
+    ...DEFAULT_CONTENT, lyrics: Q.get('lyrics') !== '0', messages: Q.get('messages') !== '0', photos: Q.get('photos') === '1',
+    mix: (['all', 'photos', 'even', 'messages'] as const).find((m) => m === Q.get('mix')) ?? 'even',
+  };
+  if (!devContent.messages) await pool.sync(DEV_MESSAGES.filter((m) => m.source === 'couple'), true);
+  await applyContent({ content: devContent, photos_rev: 'dev' } as Feed);
   // 開發用：看導演排了什麼（測試新留言有沒有排進下一個窗格）
-  (window as any).__wallDbg = { t: () => t, timeline: () => engine.timeline.map((e) => ({ scene: e.scene, start: e.start, end: e.end, msg: e.params?.message?.id ?? null })) };
+  (window as any).__wallDbg = { t: () => t, timeline: () => engine.timeline.map((e) => ({ scene: e.scene, start: e.start, end: e.end, msg: e.params?.message?.id ?? null, photo: e.params?.photo?.n ?? null, photos: e.params?.photos?.map((x: { n: number }) => x.n) ?? null })) };
   if (Q.has('sim')) {
     let k = 0;
     setInterval(() => { const m = DEV_LIVE[k % DEV_LIVE.length]!; k++; void pool.sync([...DEV_MESSAGES, ...DEV_LIVE.slice(0, k).map((x, i) => ({ ...x, id: 100 + i }))]); void m; }, 9000);
   }
+}
+
+/** 開發模式的照片池：第 id 張假照片轉成 JPEG（跟正式站一樣走 Blob → 解碼）。 */
+async function devPhotoBlob(id: number): Promise<Blob> {
+  const { image } = await devPhoto(id).load();
+  return new Promise((res, rej) => (image as HTMLCanvasElement).toBlob((b) => (b ? res(b) : rej(new Error('toBlob'))), 'image/jpeg', 0.9));
 }
 
 // ------------------------------------------------------------------ 截圖／匯出（?dev=1&export=1，給 scripts/wall-render.mjs）
@@ -993,6 +1198,8 @@ function setupExport() {
     width: PW, height: PH,
     errors: engine.errors,
     scenes: SCENES,
+    /** 版面檔宣告的排程參數（縮圖工具讀 thumbAt）。 */
+    spec: (name: string) => engine.specs.get(name) ?? null,
     songs: () => devSongs.map((s) => s.file),
     /**
      * 準備一首測試歌：song = 測試音檔檔名（沒給就第一首）；scene = 整首都用這個版面（沒給就讓導演排）；
@@ -1022,7 +1229,17 @@ function setupExport() {
       startRuntime({ info: { id: d?.id ?? 0, title: d?.title ?? '測試', artist: d?.artist ?? '', index: 1, count: Math.max(1, devSongs.length), theme }, audio, lyrics }, 0);
       if (o.scene) {
         const msg = o.message ? pool.all.find((m) => m.id === o.message) ?? pool.all[0] : pool.all[(hash(o.from ?? 0) * pool.count) | 0];
-        engine.add({ id: `x-${o.scene}`, scene: o.scene, start: o.from ?? 0, end: o.to ?? audio.duration, params: { seed: 1, energy: audio.energyAt((o.from ?? 0) + 2), message: msg, messages: pool.all.slice(), ...(o.params ?? {}) } });
+        // 照片版面：有指定 message 才放主打留言（測「照片＋留言＋歌詞」），沒指定就是註解；
+        // params.photo 給數字（第幾張假照片）或 {n, caption, fx, fy}（caption: null = 沒有註解；fx, fy 換焦點，測往焦點推）
+        const isPhoto = !!engine.specs.get(o.scene)?.photo;
+        const prm: Record<string, any> = { ...(o.params ?? {}) };
+        if (typeof prm.photo === 'number') prm.photo = devPhoto(prm.photo);
+        else if (prm.photo && typeof prm.photo === 'object' && !('load' in prm.photo)) prm.photo = devPhoto(prm.photo.n ?? 1, { caption: prm.photo.caption, fx: prm.photo.fx, fy: prm.photo.fy });
+        else if (isPhoto && !prm.photo) prm.photo = devPhoto(1);
+        // 一次放好幾張的照片版面：接著放後面幾張假照片（直的橫的混著）
+        const k = engine.specs.get(o.scene)?.photos ?? 1;
+        if (isPhoto && k > 1 && !prm.photos) prm.photos = [prm.photo, ...Array.from({ length: k - 1 }, (_, i) => devPhoto(prm.photo.n + 1 + i))];
+        engine.add({ id: `x-${o.scene}`, scene: o.scene, start: o.from ?? 0, end: o.to ?? audio.duration, params: { seed: 1, energy: audio.energyAt((o.from ?? 0) + 2), message: isPhoto && !o.message ? null : msg, messages: pool.all.slice(), ...prm } });
       } else {
         // 導演把整首歌排完（截圖任何時間點都有窗格）
         for (let tt = 0; tt < audio.duration; tt += 4) director.update(tt);
@@ -1055,22 +1272,45 @@ void wakeLock;
 
 // ------------------------------------------------------------------ 開機
 const gate = $<HTMLDivElement>('gate');
+/** 開始畫面上方那一行小字：新人的名字與日期（還沒定日期就只有名字）。 */
+const EYEBROW = esc(joinBits(' · ', COUPLE_EN.toUpperCase(), DATE_DOT));
+/**
+ * 登入：用後台的新人或幫手密碼（需要「大螢幕：當天操作」權限）。在同一個瀏覽器登入過後台的話，
+ * token（跟後台同一個 localStorage key）大螢幕直接沿用，不用再登入一次。
+ */
 function showLogin(msg = '') {
   gate.innerHTML = `<form id="login" class="gate-card" autocomplete="off">
-    <p class="gate-eyebrow">OUR WEDDING · 大螢幕</p><h1>請先登入</h1>
+    <p class="gate-eyebrow">${EYEBROW || '大螢幕'}</p><h1>請先登入</h1>
     <p class="gate-sub">用後台的新人或幫手密碼登入（需要「大螢幕：當天操作」權限）。</p>
-    <input id="pw" type="password" placeholder="密碼" autofocus />
-    <button type="submit">登入</button><p class="gate-err">${msg}</p></form>`;
+    <input id="pw" type="password" autocomplete="current-password" placeholder="密碼" autofocus />
+    <button type="submit">登入</button><p class="gate-err">${esc(msg)}</p></form>`;
   $('login').addEventListener('submit', async (e) => {
     e.preventDefault();
-    try { await login(($('pw') as HTMLInputElement).value); location.reload(); }
-    catch (err) { showLogin((err as Error).message || '登入失敗'); }
+    const pw = ($('pw') as HTMLInputElement).value;
+    if (!pw) return showLogin('請輸入密碼');
+    try {
+      await login(pw);
+      location.reload();
+    } catch (err) { showLogin((err as Error).message || '登入失敗'); }
   });
 }
 
+/** 開機時後端回的錯誤：要重新登入、沒有權限的，換成登入畫面並回傳 true。 */
+function gateFor(e: unknown): boolean {
+  const st = (e as HttpError).status;
+  if (st === 401) { showLogin('登入已過期，請重新登入'); return true; }
+  if (st === 403) { showLogin('這個帳號沒有「大螢幕：當天操作」的權限，請新人到設定頁開放'); return true; }
+  return false;
+}
+
+// 還在登入畫面時，在另一個分頁登入了後台（token 變了）：重新整理，用新的 token 開機
+window.addEventListener('storage', (e) => {
+  if (e.key === 'wedding_admin_token' && e.newValue && !started && document.getElementById('login')) location.reload();
+});
+
 function showStart() {
   gate.innerHTML = `<div class="gate-card">
-    <p class="gate-eyebrow">ALAN &amp; OMENA · 2027.03.13</p><h1>大螢幕準備好了</h1>
+    <p class="gate-eyebrow">${EYEBROW}</p><h1>大螢幕準備好了</h1>
     <p class="gate-sub">按「開始播放」後會進入全螢幕。滑鼠移動會出現操作列：進度條（可以拖拉）、上一首／下一首、歌單（插播、隨機播放）、講話模式、音量、音畫同步。也可以用手機開後台「大螢幕」的「遙控」分頁操作；婚禮當天請在會場這台按操作列的「鎖定遙控在這台」，別台大螢幕就搶不走手機遙控。<br/>空白鍵暫停、F 全螢幕、Shift＋← → 倒退／快轉 10 秒、L 歌單、M 講話模式、↑↓ 音量、[ ] 音畫同步。</p>
     ${SOFT_GL ? `<p class="gate-warn">${SOFT_GL_TIP}</p>` : ''}
     <button id="go" type="button">開始播放</button><p id="gate-status" class="gate-status">${statusLine.text}</p></div>`;
@@ -1091,23 +1331,32 @@ function showStart() {
 
 async function boot() {
   if (!DEV && !getToken()) return showLogin();
-  gate.innerHTML = `<div class="gate-card"><h1>準備中…</h1><p id="gate-status" class="gate-status">載入字型與畫面</p></div>`;
+  gate.innerHTML = `<div class="gate-card"><h1>準備中…</h1><p id="gate-status" class="gate-status">確認登入</p></div>`;
+  // 先問一次後端：登入過期、沒有權限時馬上說清楚，不用先等字型與兩百個版面載完
+  let feed: Feed | null = null;
+  if (!DEV) {
+    try { feed = await fetchFeed(); }
+    catch (e) { if (gateFor(e)) return; }
+  }
+  setStatus('載入字型與畫面');
   // 開發／截圖用：&only=a,b 只載這幾個版面（版面有兩百個，全部載入 QA 會很慢）
   await engine.init(DEV && Q.get('only') ? Q.get('only')!.split(',') : undefined);
   if (engine.errors.length) console.error(engine.errors.join('\n'));
   if (DEV) await devInit();
   else {
     try {
-      const f = await fetchFeed();
+      const f = feed ?? await fetchFeed();
+      await applyContent(f);
       await pool.sync(f.messages, true);
       director.off = new Set(f.plates_off ?? []);
       director.pace = f.pace ?? 'normal';
       if (f.duck !== undefined) duckLevel = f.duck;
       songsRev = f.songs_rev;
-      playlist = (await fetchSongs()).filter((s) => s.enabled).sort((a, b) => a.sort_order - b.sort_order || a.id - b.id);
+      allSongs = await fetchSongs();
+      applyScene(f, true);
+      playlist = songsFor(musicScene);
     } catch (e) {
-      if ((e as HttpError).status === 401) return showLogin('登入已過期，請重新登入');
-      if ((e as HttpError).status === 403) return showLogin('這個帳號沒有「大螢幕：當天操作」的權限，請新人到設定頁開放');
+      if (gateFor(e)) return;
       setStatus('連不上伺服器，稍後會自動重試', false);
     }
     if (REMOTE) remoteClient = await pickRemoteClient();

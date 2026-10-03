@@ -7,7 +7,7 @@
 //  - 主打留言刻在底座的銘牌上。銘牌在圖上很小，所以照技術插圖的慣例畫一個圈、拉兩條引線到右邊的「圖二　放大圖」：
 //    放大的銅牌上，第一拍開始一個字一個字刻上去（剛刻的是訊號色的暗部，冷卻成墨色），署名在最後一行下面。
 //  - 沒有留言：銅牌寫「此處保留給你的祝福」與邀請。純音樂：弧線上寫歌名。
-// 2026-09-29「留言尺寸與版面比例標準 v2」：節拍器放大成主視覺，留言縮到 40～60 px、放在右邊的放大圖裡（≤ 700 × 400）；
+// 「留言尺寸與版面比例標準 v2」：節拍器放大成主視覺，留言縮到 40～60 px、放在右邊的放大圖裡（≤ 700 × 400）；
 // 補上擒縱輪、報小節的鈴、發條鑰匙這些會動的零件。
 import * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
@@ -158,7 +158,7 @@ export default class Metronome extends Scene {
     while (bpm < 40) bpm *= 2;
     this.bpm = Math.round(bpm);
     this.wDist = wDistOf(this.bpm);
-    this.sig = m ? (m.couple ? '—— 新郎新娘' : signature(m.name)) : '';
+    this.sig = m ? (m.couple ? '—— 新人' : signature(m.name)) : '';
     this.title = song.title;
     await loadText(`${m?.text ?? ''}${this.sig}${EMPTY}${INVITE}${song.title}節拍器正視圖底座銘牌放大新人致詞敬贈`);
     const c = this.layer.ctx;

@@ -6,7 +6,7 @@
 //  - 歌詞寫在一張食譜卡上：第一個鏡頭貼在烤箱門的左下角，第二個鏡頭放在蛋糕旁邊（逐字跟唱，比留言小一級）。
 //  - 沒有留言：蛋糕上擠的是正在唱的歌詞（唱到哪擠到哪，還沒唱的字是淡淡的鉛筆草稿），食譜卡上是邀請；
 //    純音樂又沒有留言：蛋糕上擠邀請。窗格太短（兩小節）就直接從出爐開始。
-// v2（2026-09-29「留言尺寸與版面比例標準 v2」）：
+// v2（「留言尺寸與版面比例標準 v2」）：
 //  - 烤箱縮到畫面左邊（右下角 HUD 底下是乾淨的磁磚牆），右邊牆上的掛桿掛著隔熱手套、打蛋器、刮刀，
 //    照拍子輪流被震得晃一下（烤箱在「轟轟」地烤）；計時器照拍子倒數、蛋糕一拍一拍膨起來。
 //  - 出爐的蛋糕：巧克力字擠在蛋糕的左邊（留言 40～60 px、署名 26～32，整塊 ≤ 860×430），
@@ -310,7 +310,7 @@ export default class Baking extends Scene {
     const k = (this.kBox = this.cam.toScreen(BOX.x + BOX.w / 2, BOX.y + BOX.h / 2).scale);
     this.kCard2 = this.cam.toScreen(CARD2.x, CARD2.y).scale;
     const lines = m ? [] : lyrics.linesIn(s - 4, e).filter((l) => l.end > s - 1.5);
-    await loadText(`${m?.text ?? ''}${m ? (m.couple ? '—— 新郎新娘' : m.name) : ''}——一位賓客${INVITE}${lines.map((l) => l.text).join('')}${song.title}♪叮！0123456789:BAKE·°C食譜FROM THE COUPLE · 新人`);
+    await loadText(`${m?.text ?? ''}${m ? (m.couple ? '—— 新人' : m.name) : ''}——一位賓客${INVITE}${lines.map((l) => l.text).join('')}${song.title}♪叮！0123456789:BAKE·°C食譜FROM THE COUPLE · 新人`);
     const c = this.layer.ctx;
     const t0 = beatAfter(au, this.tDing + 0.05);
     const dur = Math.min(gr.bar * 1.4, Math.max(gr.beat * 2, (e - t0) * 0.45));

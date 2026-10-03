@@ -4,7 +4,7 @@
 //    （翻牌是真的立體：上半片繞著轉軸往鏡頭倒下來、過了 90° 看到背面，落到底還會彈一下，倒下來的那片在下半片投影子）。
 //    大牌是暗的（深色的字），讓出焦點給留言；小節線那一拍的「1」是訊號色。
 //  - 大牌下面一排黑色小牌是歌詞（40～52，比留言小）：一句在唱之前翻上來（三成亮），唱到的字亮成訊號色、往前彈一下，唱完變紙白。
-//    韓文歌有中文翻譯時（2026-09-30）：歌詞那排是中文，下面再一排小一號的牌翻原文（跟著原文自己的逐字時間，唱到就變白、不用訊號色、不彈）。
+//    韓文歌有中文翻譯時：歌詞那排是中文，下面再一排小一號的牌翻原文（跟著原文自己的逐字時間，唱到就變白、不用訊號色、不彈）。
 //  - 右邊一塊奶油色的牌（≤ 630 × 430）：主打留言（思源宋體、墨色的字），第一拍之後一個詞組一拍「啪、啪」翻上來；
 //    最後一列下面一排小一號的牌是署名。沒有留言：翻上邀請（小一點）。
 import * as THREE from 'three';
@@ -13,7 +13,7 @@ import { FSPass, Layer2D, W, H } from '../engine/gl';
 import { F, font, loadText } from '../engine/type';
 import { rgba } from '../engine/palette';
 import { ease, lerp, prog, pulse, hash } from '../engine/util';
-import { beatAfter, barAfter, signature, lyricSubOf, subSizeFor, COUPLE_EN, DATE_DOTS } from './_motifs';
+import { beatAfter, barAfter, signature, lyricSubOf, subSizeFor, COUPLE_EN, DATE_DOTS, joinBits, fitPx } from './_motifs';
 import { GlyphAtlas, cuePages, windowLines, flipAt, settle, cueCol, cueState, bestCellWrap, COL, type Flip, type GlyphReq, type CuePage } from './_t7';
 import { msgMaxFor, lyricV2, sigV2, V2 } from './_v2';
 import { CardBatch, boxMaterial, decalMaterial, WALL_FRAG } from './flipclock-gl';
@@ -164,11 +164,16 @@ export default class Flipclock extends Scene {
     let bottom = MB.y + fit.rows.length * fit.py - (fit.py - fit.ch);
     if (sig) {
       // 署名：留言最後一列下面、小一號的一排牌（v2 的署名字級），靠右對齊留言
-      const k = cellOf(Math.round(sigV2(this.msgPx) / GB));
-      const x1 = MB.x + width * fit.px - (fit.px - fit.cw);
-      Array.from(sig).forEach((ch, i) => {
+      // 署名可能很長（新人的留言署名是兩個人的全名）：一排放不進留言牌的寬度就把牌縮小；
+      // 留言很短時署名比留言寬，整排往右推到貼齊牌的右緣，不要伸出牌的左邊去壓到大翻牌
+      const sc = Array.from(sig);
+      let h = Math.round(sigV2(this.msgPx) / GB), k = cellOf(h);
+      while (h > 24 && sc.length * k.px - (k.px - k.cw) > MB.w) k = cellOf(--h);
+      const sigW = sc.length * k.px - (k.px - k.cw);
+      const x1 = Math.max(MB.x + width * fit.px - (fit.px - fit.cw), MB.x + Math.min(sigW, MB.w));
+      sc.forEach((ch, i) => {
         const g = this.big.get(bigFam, ch);
-        const u: Unit = { x: x1 - (sig.length - i) * k.px + (k.px - k.cw) + k.cw / 2, y: bottom + 12 + k.ch / 2, w: k.cw, h: k.ch, evs: [], g0: -1, c0: COL.ASH, lights: [] };
+        const u: Unit = { x: x1 - (sc.length - i) * k.px + (k.px - k.cw) + k.cw / 2, y: bottom + 12 + k.ch / 2, w: k.cw, h: k.ch, evs: [], g0: -1, c0: COL.ASH, lights: [] };
         if (g >= 0) u.evs.push({ tl: this.sigTime + i * 0.04, g, c: COL.ASH, k: 0, d: 0.13 });
         this.cream.push(u);
       });
@@ -384,8 +389,11 @@ export default class Flipclock extends Scene {
     c.font = font(F.hei(500), 17); c.letterSpacing = '5px';
     c.fillText('小節', BIGU.xs[0]! - HB.x, BIGU.y - 16 - HB.y);
     c.fillText('拍', BIGU.xs[2]! - HB.x, BIGU.y - 16 - HB.y);
-    c.font = font(F.mono(500), 14); c.letterSpacing = '5px'; c.fillStyle = rgba('ash', 0.45);
-    c.fillText(`FLIP · CLOCK  ·  ${COUPLE_EN.toUpperCase()}  ·  ${DATE_DOTS}`, BIGU.xs[0]! - HB.x, HB.h - 22);
+    // 銘文：名字可能很長、日期可能還沒定（沒日期就不留「 · 」）；放不下就縮字，免得伸進右下角 HUD 那一帶
+    const ins = joinBits('  ·  ', 'FLIP · CLOCK', COUPLE_EN.toUpperCase(), DATE_DOTS);
+    const px = fitPx(ins, F.mono(500), 14, 1000, 5);
+    c.font = font(F.mono(500), px); c.letterSpacing = `${(5 * px) / 14}px`; c.fillStyle = rgba('ash', 0.45);
+    c.fillText(ins, BIGU.xs[0]! - HB.x, HB.h - 22);
     c.letterSpacing = '0px';
     this.ctx.renderer.initTexture(this.lab.upload());
   }

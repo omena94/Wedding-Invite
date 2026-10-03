@@ -18,7 +18,7 @@ import { F, font, loadText } from '../engine/type';
 import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, hash, lerp, TAU } from '../engine/util';
 import { lyricSubOf } from '../engine/lyrics';
-import { beatAfter, drawHeart, COUPLE_ZH, DATE_DOTS } from './_motifs';
+import { beatAfter, drawHeart, COUPLE_ZH, DATE_DOTS, fitPx } from './_motifs';
 import { sigOf, layMsgV2, winBars, lastBefore, type MsgLay, type Rect } from './_t23';
 import { V2, lyricV2 } from './_v2';
 import { B5_TEXT, B5_INVITE, subPx, lineSlots, slotProgress, type BSlot } from './_b5';
@@ -179,9 +179,12 @@ export default class StringLights extends Scene {
       this.configs.push({ wires: build(mainS[i]!, subS[i] ?? null), t0: ln.start - 0.35, t1: nx ? Math.min(ln.end + 1.2, nx.start - 0.35) : ln.end + 1.2 });
     });
     if (!lines.length) {
-      // 純音樂：上串新人的名字、下串日期，半拍亮一顆
+      // 純音樂：上串新人的名字、下串日期，半拍亮一顆（還沒定日期：下串全是一般的暖光小燈，不留空的燈泡）
+      const slotsOf = (text: string) => Array.from(text).map((ch) => ({ ch: ch.trim() ? ch : '', word: null as never, k: 0, n: 1 }));
+      // 名字很長時整串排不進字的那一段：把上串的燈泡縮小到放得下
+      while (this.wsize[0]! > 24 && rowWidth(c, slotsOf(COUPLE_ZH), this.wsize[0]!) > zoneW) this.wsize[0] = this.wsize[0]! - 1;
       const fix = (wi: number, text: string, t0: number) => {
-        const bs = placeRow(c, Array.from(text).map((ch) => ({ ch: ch.trim() ? ch : '', word: null as never, k: 0, n: 1 })), this.wsize[wi]!);
+        const bs = placeRow(c, slotsOf(text), this.wsize[wi]!);
         bs.forEach((b, i) => (b.t0 = t0 + i * beat * 0.5));
         return bs.filter((b) => b.kind !== 'plain');
       };
@@ -278,7 +281,9 @@ export default class StringLights extends Scene {
       this.sigT = (this.lineT[n - 1] ?? this.tOn) + beat;
     } else {
       tg.fillStyle = paint;
-      tg.font = font(FAM_MSG, 46); tg.fillText(`給 ${COUPLE_ZH}`, 48, 92);
+      // 沒有留言：牌子寫「給 新人」＋邀請；名字很長就縮字，不超出 600 寬的木牌（左右各留 48）
+      const to = `給 ${COUPLE_ZH}`;
+      tg.font = font(FAM_MSG, fitPx(to, FAM_MSG, 46, 600 - 96)); tg.fillText(to, 48, 92);
       tg.font = font(F.hei(500), 21); tg.fillStyle = rgba('bone', 0.62); tg.letterSpacing = '2px';
       tg.fillText(B5_INVITE, 48, 146);
       this.lineT = [this.tOn + beat * 0.5];

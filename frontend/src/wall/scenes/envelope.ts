@@ -1,4 +1,4 @@
-// 信封與郵票（亮版面）：桌上散著好幾封寄給新人的信（信封正面：郵票、郵戳、手寫的「宣文 & 孟庭 收」），
+// 信封與郵票（亮版面）：桌上散著好幾封寄給新人的信（信封正面：郵票、郵戳、手寫的「新人名字 收」），
 // 最上面這一封翻在背面、封口是一顆點綴色的愛心封蠟。一個窗格的動作全部落在拍點上（窗格短就半拍一步）：
 //  - 切進來：信封「丟」到信堆上（從大一點、高一點的地方落下，影子收回來），落在第一個拍點；
 //  - 下一拍：到達戳「碰」地蓋在信封背面（喜宴郵局、婚禮日期）；
@@ -8,9 +8,9 @@
 //  - 最後一個小節線：信紙右上角蓋一個「已讀」的小章。
 // 歌詞寫在信封下半部（封口下面）：信紙抽出來的時候信封跟著往下，歌詞一直都在，照跟唱規則逐字亮。
 // 沒有留言：信紙寫邀請；新人的留言：信是新人寫給大家的（「親愛的各位：」）。
-// MV 化（2026-09-28）：焦點是抽出來的信紙上手寫的留言；背景的信堆失焦、變淡；信紙的信頭小字拿掉。
+// MV 化：焦點是抽出來的信紙上手寫的留言；背景的信堆失焦、變淡；信紙的信頭小字拿掉。
 // 鏡頭從斜上方看著桌上的信（透視、景深、一盞燈），信紙抽出來時鏡頭跟著往上、慢慢推近。
-// v2（2026-09-29 留言尺寸與版面比例標準 v2＋場景多元化）：傍晚的郵局分信台：舊木頭的桌面，後面是一整面木頭的信件分類格，
+// v2（留言尺寸與版面比例標準 v2＋場景多元化）：傍晚的郵局分信台：舊木頭的桌面，後面是一整面木頭的信件分類格，
 // 一盞小茶蠟燭（火焰跟著大鼓跳、照亮旁邊一圈）。信封與信紙很大（它們就是場景），信紙上的留言 40～60 px、署名 26～32 px
 // 在留言下面、歌詞比留言小；每兩小節在小節線上有一封信被塞進後面的某一格（格子裡的信越來越多）。
 // 畫法：信堆（背景的信封）、信封本體、封口的外側與內襯、封蠟、信紙都在開場畫成離屏畫布；每格只是把它們放到對的位置
@@ -22,7 +22,7 @@ import { F, font, loadText } from '../engine/type';
 import { mixRgba, rgba } from '../engine/palette';
 import { clamp, ease, hash, lerp, mulberry32, prog, pulse, frameIdx, TAU } from '../engine/util';
 import type { FitResult } from '../engine/text';
-import { lyricAt, drawLyric, layoutLyric, beatAfter, heartPoints, fillWithHearts, COUPLE_ZH, DATE_DOTS } from './_motifs';
+import { lyricAt, drawLyric, layoutLyric, beatAfter, heartPoints, fillWithHearts, COUPLE_ZH, DATE_DOT, fitPx } from './_motifs';
 import { msgMaxFor, lyricV2, sigV2, V2 } from './_v2';
 import {
   sigInk, ink, paper, paperLyric, makeCanvas, freeCanvas, shadowSprite, drawShadow, barsIn, ensureBake, themeKey, inkStamp, arcText, fitMsg, yieldFrame,
@@ -50,7 +50,17 @@ const LMSG = { x: 50, y: 80, w: 900, h: 346 };
 /** 歌詞（信封座標）。 */
 const LYR = { x: 60, base: 436, maxW: 920 };
 
-const TEXT = '親愛的各位宣文孟庭收喜宴會場第桌到達喜宴郵局寄件人一位賓客已讀掃描右下角把祝福寫上大螢幕間奏中本曲為純音樂請自行哼唱此刻正在播放的歌';
+/**
+ * 信封正面手寫的收件人「承恩 & 以晴 收」：名字可能很長，寫不下就縮字。
+ * 從 x = -170 寫到右緣（信封寬 820、置中，右邊留 30 的邊），郵票、郵戳在上面，不會碰到。
+ */
+const TO = `${COUPLE_ZH} 收`;
+/** 量字要等字型載好（init 裡才呼叫）：模組載入時量到的是備援字型的寬度。 */
+const toPx = () => fitPx(TO, F.hand(700), 44, 410 - 30 + 170);
+/** 日戳上的日期；還沒定日期就蓋「TODAY」（日戳中間不會空一格）。 */
+const STAMP_DATE = DATE_DOT || 'TODAY';
+
+const TEXT = '親愛的各位收喜宴會場第桌到達喜宴郵局寄件人一位賓客已讀掃描右下角把祝福寫上大螢幕間奏中本曲為純音樂請自行哼唱此刻正在播放的歌';
 
 export default class Envelope extends Scene {
   layer = this.track(new Layer2D(W, H, undefined, { fast: true }));
@@ -147,7 +157,7 @@ export default class Envelope extends Scene {
       drawPostmark(c, w / 2 - 170, -h / 2 + 110, rnd);
       // 手寫的收件人、寄件人
       c.fillStyle = ink(0.55);
-      c.font = font(F.hand(700), 44); c.fillText(`${COUPLE_ZH} 收`, -170, 40);
+      c.font = font(F.hand(700), toPx()); c.fillText(TO, -170, 40);
       c.font = font(F.hand(400), 26); c.fillText(`喜宴會場　第 ${1 + Math.floor(rnd() * 20)} 桌`, -150, 92);
       c.font = font(F.hand(400), 24); c.fillStyle = ink(0.4);
       c.fillText(others[i] ? `寄件人：${others[i]}` : '寄件人：一位賓客', -w / 2 + 40, -h / 2 + 56);
@@ -165,7 +175,7 @@ export default class Envelope extends Scene {
       drawPostage(c, 410 - 150, -230 + 30, 110, 132, 1);
       drawPostmark(c, 410 - 170, -230 + 110, rnd);
       c.fillStyle = ink(0.6);
-      c.font = font(F.hand(700), 44); c.fillText(`${COUPLE_ZH} 收`, -170, 40);
+      c.font = font(F.hand(700), toPx()); c.fillText(TO, -170, 40);
     }
     // ---- 信封背面（本體）：紙、兩邊與下面摺進來的縫線、到達戳的位置空著
     const b = (this.body = makeCanvas(ENV.w, ENV.h, 1.25));
@@ -254,7 +264,7 @@ export default class Envelope extends Scene {
       arcText(sc, '喜宴郵局 · WEDDING POST', 68, -Math.PI / 2, F.hei(700), 16, 3, true);
       arcText(sc, '到達 ARRIVED', 68, Math.PI / 2, F.mono(600), 15, 3, false);
       sc.textAlign = 'center';
-      sc.font = font(F.mono(600), 21); sc.fillText(DATE_DOTS.split(' · ').join('.'), 0, 8);
+      sc.font = font(F.mono(600), 21); sc.fillText(STAMP_DATE, 0, 8);
       sc.fillRect(-60, -20, 120, 2); sc.fillRect(-60, 22, 120, 2);
     }, 1.25, 0.5);
     this.read = inkStamp(160, 110, this.seed + 8, (sc) => {
@@ -547,7 +557,7 @@ function drawPostmark(c: Ctx2, x: number, y: number, rnd: () => number) {
   c.strokeStyle = ink(0.55); c.fillStyle = ink(0.55); c.lineWidth = 2;
   c.beginPath(); c.arc(0, 0, 56, 0, TAU); c.stroke();
   c.textAlign = 'center';
-  c.font = font(F.mono(600), 15); c.fillText(DATE_DOTS.split(' · ').join('.'), 0, 6);
+  c.font = font(F.mono(600), 15); c.fillText(STAMP_DATE, 0, 6);
   c.font = font(F.hei(700), 13); c.fillText('喜宴郵局', 0, -22); c.fillText('12', 0, 32);
   c.textAlign = 'left';
   c.lineWidth = 2.2;

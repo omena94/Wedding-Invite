@@ -17,7 +17,7 @@ import { F, font, layout, loadText, measure } from '../engine/type';
 import { rgba, LIN } from '../engine/palette';
 import { clamp, ease, prog, lerp, hash, springStep, TAU } from '../engine/util';
 import type { Line } from '../engine/lyrics';
-import { lyricAt, beatAfter, signature, drawMessage, COUPLE_ZH, lyricSubOf, subSizeFor, subGap } from './_motifs';
+import { lyricAt, beatAfter, signature, drawMessage, COUPLE_ZH, fitPx, lyricSubOf, subSizeFor, subGap } from './_motifs';
 import { paperSignal, singColor, glyphProgress, fitLine, fitV2, slowPush, no3, INVITE_SMALL, type Rect, SYMBOLS } from './_t20';
 import { lyricV2, sigV2, msgMaxFor, V2 } from './_v2';
 
@@ -173,10 +173,12 @@ export default class Sailboat extends Scene {
     }
     drawMessage(c, fit, MSG_FAM, x0, top + tagH + fit.size * 0.9, { color: rgba('sepia', 0.95) });
     if (m) {
-      c.font = font(MSG_FAM, sigSize);
-      const sw = measure(sigText, MSG_FAM, sigSize);
+      // 署名可能很長（新人的名字「歐陽承恩 & 司馬以晴」、長的賓客署名）：放不進帆上那一塊就縮字
+      const sgPx = fitPx(sigText, MSG_FAM, sigSize, bw);
+      c.font = font(MSG_FAM, sgPx);
+      const sw = measure(sigText, MSG_FAM, sgPx);
       c.fillStyle = paperSignal(0.95);
-      c.fillText(sigText, Math.max(x0 + fit.width - sw, pad.l), top + tagH + fit.height + 16 + sigSize * 0.9);
+      c.fillText(sigText, Math.max(x0 + fit.width - sw, pad.l), top + tagH + fit.height + 16 + sgPx * 0.9);
     } else {
       c.font = font(F.hei(500), 24); c.letterSpacing = '1px'; c.fillStyle = rgba('sepia', 0.75);
       const iw = measure(INVITE_SMALL, F.hei(500), 24) + 20;

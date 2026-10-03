@@ -14,7 +14,7 @@ import { FSPass, W, H } from '../engine/gl';
 import { F, font, loadText } from '../engine/type';
 import { clamp, ease, prog, hash, lerp, pulse } from '../engine/util';
 import { type Line } from '../engine/lyrics';
-import { lyricAt, lyricSubOf, subSizeFor, COUPLE_ZH, DATE_DOTS } from './_motifs';
+import { lyricAt, lyricSubOf, subSizeFor, joinBits, fitPx, COUPLE_ZH, DATE_DOTS } from './_motifs';
 import { V2, lyricV2 } from './_v2';
 import {
   T25_TEXT, T25_INVITE, sigOf, winBars, winBeats, stagger, layMsg, layMsgV2, msgGlyphs, glyphMask, glyphStates, MASK_GLSL,
@@ -42,7 +42,7 @@ const MSG_BOX = { x: 214, y: 744, w: 732, h: 214 };
 /** 塔身右下一扇拱窗（裡面點著燈），給空出來的牆一點生氣；不放到右下角 QR 底下。 */
 const WINDOW = { x: 1150, y: 706, w: 96, h: 200 };
 /** 鐘面一圈的字的資料貼圖範圍（1.25 倍解析度，鏡頭推近也清楚）。 */
-// 雙語（2026-09-30）：原文刻在外面石圈的下半圈，遮罩範圍要包到石圈外緣
+// 雙語：原文刻在外面石圈的下半圈，遮罩範圍要包到石圈外緣
 const RING_RECT: Rect = [CLK.x - R_STONE, CLK.y - R_STONE, R_STONE * 2, R_STONE * 2];
 /** 原文那一圈的半徑（石圈 R_BEZ～R_STONE 的中間）。 */
 const R_SUB = (R_BEZ + R_STONE) / 2;
@@ -59,7 +59,8 @@ const FAM_MSG = F.ming(900);
 const FAM_SMALL = F.ming(700);
 const FAM_NUM = F.serif(600);
 const NUMERALS = ['XII', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI'];
-const HEAD = `本鐘每一小節敲響一次　·　為 ${COUPLE_ZH} 報時　·　${DATE_DOTS}`;
+// 還沒定日期就只寫前兩段（joinBits 連分隔符號一起省掉）
+const HEAD = joinBits('　·　', '本鐘每一小節敲響一次', `為 ${COUPLE_ZH} 報時`, DATE_DOTS);
 const EMPTY_HEAD = `本鐘為 ${COUPLE_ZH} 報時`;
 
 const BG = () => new FSPass(/* glsl */ `
@@ -457,7 +458,9 @@ export default class ClockTower extends Scene {
     // ---- 銅牌：上面一行刻進去的小字（標 64）、留言（浮雕，依序擦亮）、署名
     const c = document.createElement('canvas').getContext('2d')!;
     const items: MaskGlyph[] = [];
-    const small = (text: string, y: number, size: number) => {
+    const small = (text: string, y: number, size0: number) => {
+      // 這一行有新人的名字與日期，長短每一場不一樣：放不進銅牌的字框就縮字
+      const size = fitPx(text, FAM_SMALL, size0, MSG_BOX.w);
       const w = measure(text, FAM_SMALL, size);
       let x = PLQ.x + PLQ.w / 2 - w / 2;
       for (const ch of Array.from(text)) { const cw = measure(ch, FAM_SMALL, size); if (ch.trim()) items.push({ ch, x, y, w: cw, size, family: FAM_SMALL, idx: 250, tag: 64 }); x += cw; }
@@ -487,7 +490,7 @@ export default class ClockTower extends Scene {
     lines.forEach((ln, li) => {
       const { items: ri, size } = ringGlyphs(lineUnits(ln), FAM_LYR, this.lyrSize, V2.lyrMin);
       // 韓文歌：原文刻在外面的石圈下半圈（從 6 點往兩邊，由左往右讀；同一種鎏金的字，淡兩成）。
-      // 雙語（2026-09-30）：原本原文是鐘面裡面再一圈、也分上下兩段，中文上下兩弧夾著原文兩弧，四段交錯讀不順，指針也會掃過原文
+      // 雙語：原本原文是鐘面裡面再一圈、也分上下兩段，中文上下兩弧夾著原文兩弧，四段交錯讀不順，指針也會掃過原文
       const sub = subs[li];
       let all = ri.slice(0, MAXG);
       if (sub) {

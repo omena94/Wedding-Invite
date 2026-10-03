@@ -83,7 +83,7 @@ export default function Photos() {
             <div className="section-header-title"><Images size={18} /> 美好回憶整理中</div>
           </div>
           <p style={{ fontSize: 14, lineHeight: 1.8 }}>目前尚無公開的照片，甜蜜畫面正在悄悄準備中 <Sparkles size={15} className="wish-sparkle" aria-hidden="true"/></p>
-          {stage.preview && <p className="helper-text">（管理員請至「照片」管理頁上傳，並勾選「設為公開」即可在此顯示）</p>}
+          {stage.preview && <p className="helper-text">（管理員請至後台「婚紗照」上傳，相簿設成「賓客看得到」、照片設為公開，就會在這裡顯示）</p>}
           <div className="receipt-actions"><a className="btn" href="/">回首頁</a></div>
         </section>
       ) : (

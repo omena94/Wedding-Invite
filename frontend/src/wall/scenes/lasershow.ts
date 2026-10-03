@@ -2,7 +2,7 @@
 // 中文在上、原文小一號在下。台下是一整排舉手的觀眾剪影，跟著拍子上下。
 //  - 字是雷射畫的線：每一句開始時，雷射從左到右很快地把字「描」出來（投影機到正在描的地方有一束光），描完之後字是亮的外框＋很淡的填色。
 //    唱到的字是訊號色（最亮、有光暈），唱完是暖白，還沒唱的只剩暗暗的外框；原文比較安靜（唱到、唱完都是暖白）。
-//    沒有翻譯的歌：只有中文一行。純音樂：雷射畫新人的名字與日期，每四小節重畫一次。
+//    沒有翻譯的歌：只有中文一行。純音樂：雷射畫新人的名字與日期（還沒定日期就只有名字一行），每四小節重畫一次。
 //  - 一直在動：投影機兩邊各有一把扇形的光束，每一拍掃到另一邊（強烈的緩動）；每個小節線光束的顏色換一次（訊號色一家子輪流），
 //    換顏色的那一下全場閃一下。觀眾的手在拍點往上舉；天花板的燈架上一排小燈跟著拍子跑。
 //  - 主打留言：舞台左邊燈架上掛的一塊 LED 條屏（黑底、一顆一顆的燈），留言是琥珀色的 LED 字，第一拍起一行一行從左掃到右亮起來。
@@ -14,11 +14,11 @@ import * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
 import { FSPass, Layer2D, W, H } from '../engine/gl';
 import { LineBatch } from '../engine/lines';
-import { F, font, loadText } from '../engine/type';
+import { F, font, loadText, measure } from '../engine/type';
 import { LIN, rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, lerp, TAU } from '../engine/util';
 import { lyricSubOf, type Line } from '../engine/lyrics';
-import { beatAfter, drawHeart, COUPLE_ZH, DATE_DOTS } from './_motifs';
+import { beatAfter, drawHeart, fitPx, COUPLE_ZH, DATE_DOTS } from './_motifs';
 import { sigOf, layMsgV2, winBars, lastBefore, type MsgLay, type Rect } from './_t23';
 import { lyricV2 } from './_v2';
 import { B5_TEXT, B5_INVITE, subPx, layBilingual, glyphProgress, type BGlyph } from './_b5';
@@ -145,7 +145,10 @@ export default class LaserShow extends Scene {
     const pad = { x: 40, t: 34, b: 30 };
     let w: number, h: number;
     if (lay) { const [bx, by, bw, bh] = lay.box; w = Math.min(800, Math.max(460, bx + bw + pad.x * 2)); h = Math.min(400, by + bh + pad.t + pad.b); }
-    else { w = 560; h = 136; }
+    else {
+      // 沒有留言：「給 新人」一行。名字長短每一場不一樣：屏先加寬（最多跟有留言時一樣 800），還放不下再縮字
+      w = Math.min(800, Math.max(560, measure(`給 ${COUPLE_ZH}`, FAM_LED, 56) + pad.x * 2)); h = 136;
+    }
     w = Math.round(w / PITCH) * PITCH; h = Math.round(h / PITCH) * PITCH;
     this.led = { x: LED.x, y: LED.y + Math.max(0, 300 - h) * 0.5, w, h };
     const S = 1;
@@ -162,7 +165,7 @@ export default class LaserShow extends Scene {
       const last = this.ledRows[n - 1]!;
       this.ledRows.push({ y: pad.t + lay.sig.y - lay.sig.size * 1.05, h: lay.sig.size * 1.4, t: last.t + beat });
     } else {
-      tg.fillStyle = '#fff'; tg.font = font(FAM_LED, 56); tg.fillText(`給 ${COUPLE_ZH}`, 0, 58);
+      tg.fillStyle = '#fff'; tg.font = font(FAM_LED, fitPx(`給 ${COUPLE_ZH}`, FAM_LED, 56, w - pad.x * 2)); tg.fillText(`給 ${COUPLE_ZH}`, 0, 58);
       this.ledRows = [{ y: 0, h, t: this.tOn + beat * 0.25 }];
     }
     tg.restore();
@@ -339,7 +342,8 @@ function fakeLine(main: string, sub: string, t0: number, beat: number): Line {
     return { i: 0, text, start: t0, end: t0 + k * beat * 0.5, words };
   };
   const line = mk(main);
-  line.sub = mk(sub);
+  // 還沒定日期（sub 是空字串）就不掛第二行，不然會排出一行空的原文
+  if (sub) line.sub = mk(sub);
   return line;
 }
 

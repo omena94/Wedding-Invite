@@ -2,7 +2,7 @@
 //  - 歌詞寫在一盞一盞紙河燈上，河燈從左邊（上游）順流漂進來，排成兩排：後面一排是大一點的河燈，每盞一個中文字；
 //    前面一排是小一號的河燈，寫原文（韓文一盞一個字、英文一盞一個詞）。字是墨寫在燈紙上的，燈裡的燭火一亮，字就從紙上浮出來：
 //    唱到的那盞燭火燒成訊號色（最亮），唱完的是暖光，還沒唱的燈還沒點、暗暗的。一整排慢慢往右漂、上下浮；唱完之後加速漂出畫面，
-//    下一句的河燈接著從左邊漂進來。沒有翻譯的歌：只有後面一排（前面一排收起來，不留空燈）。純音樂：河燈寫新人的名字與日期。
+//    下一句的河燈接著從左邊漂進來。沒有翻譯的歌：只有後面一排（前面一排收起來，不留空燈）。純音樂：河燈寫新人的名字與日期（還沒定日期就只有名字那一排）。
 //  - 主打留言：左下最大的那盞河燈（木框、四面燈紙），正面的燈紙上用毛筆寫著留言，第一拍燭火點著、一行一行亮出來。
 //    照「留言尺寸與版面比例標準 v2」：字 40～60、署名 26～32、燈（含木框）≤ 860 × 430。
 //  - 一直在動：每盞燈的倒影是水面上一條晃動的光；每個小節線其中一盞燈的底下盪開一圈漣漪；遠處一直有沒寫字的小河燈漂過；
@@ -12,11 +12,11 @@
 import * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
 import { FSPass, Layer2D, W, H } from '../engine/gl';
-import { F, font, loadText } from '../engine/type';
+import { F, font, loadText, measure } from '../engine/type';
 import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, hash, TAU } from '../engine/util';
 import { lyricSubOf, type Line } from '../engine/lyrics';
-import { beatAfter, drawHeart, COUPLE_ZH, DATE_DOTS } from './_motifs';
+import { beatAfter, drawHeart, fitPx, COUPLE_ZH, DATE_DOTS } from './_motifs';
 import { sigOf, layMsgV2, winBars, lastBefore, type MsgLay, type Rect } from './_t23';
 import { V2, lyricV2 } from './_v2';
 import { B5_TEXT, B5_INVITE, subPx, lineSlots, slotProgress, groupSlots, type BSlot } from './_b5';
@@ -171,7 +171,7 @@ export default class RiverLanterns extends Scene {
       // 純音樂：每四小節漂來一排新人的名字與日期（半拍點亮一盞）
       for (let t0 = this.tOn - 1.2; t0 < e - beat; t0 += bar * 4) {
         const f = fakeLine(COUPLE_ZH, DATE_DOTS, t0 + 1.3, beat);
-        this.fleets.push(build(lineSlots(f), lineSlots(f.sub!), t0, Math.min(t0 + bar * 4 - 1.3, e + 2), t0 + 1.3, true));
+        this.fleets.push(build(lineSlots(f), f.sub ? lineSlots(f.sub) : null, t0, Math.min(t0 + bar * 4 - 1.3, e + 2), t0 + 1.3, true));
       }
     }
     const b = this.big;
@@ -184,7 +184,10 @@ export default class RiverLanterns extends Scene {
     const pad = { x: 50, t: 46, b: 40 };
     let fw: number, fh: number;
     if (lay) { const [bx, by, bw, bh] = lay.box; fw = Math.min(760, Math.max(440, bx + bw + pad.x * 2)); fh = Math.min(360, by + bh + pad.t + pad.b); }
-    else { fw = 560; fh = 170; }
+    else {
+      // 沒有留言：「給 新人」一行。名字長短每一場不一樣：燈先加寬（最多跟有留言時一樣 760），還放不下再縮字
+      fw = Math.min(760, Math.max(560, measure(`給 ${COUPLE_ZH}`, FAM_MSG, 46) + pad.x * 2)); fh = 170;
+    }
     const side = 34, top = 26, base = 22;
     const w = fw + side + 20, h = fh + top + base + 20;
     this.big = { x: BIG.x, y: BIG.water - h + 10, w, h };
@@ -224,7 +227,7 @@ export default class RiverLanterns extends Scene {
       ink.g.font = font(lay.sig.family, lay.sig.size); ink.g.fillStyle = mixRgba('sepia', 'ink', 0.2, 0.85);
       ink.g.fillText(lay.sig.text, lay.sig.x, lay.sig.y);
     } else {
-      ink.g.fillStyle = mixRgba('sepia', 'ink', 0.4); ink.g.font = font(FAM_MSG, 46); ink.g.fillText(`給 ${COUPLE_ZH}`, 0, 46);
+      ink.g.fillStyle = mixRgba('sepia', 'ink', 0.4); ink.g.font = font(FAM_MSG, fitPx(`給 ${COUPLE_ZH}`, FAM_MSG, 46, fw - pad.x * 2)); ink.g.fillText(`給 ${COUPLE_ZH}`, 0, 46);
       ink.g.font = font(F.hei(500), 20); ink.g.fillStyle = mixRgba('sepia', 'ink', 0.2, 0.8); ink.g.letterSpacing = '2px'; ink.g.fillText(B5_INVITE, 0, 94); ink.g.letterSpacing = '0px';
     }
     ink.g.restore();
@@ -493,7 +496,8 @@ function fakeLine(main: string, sub: string, t0: number, beat: number): Line {
     return { i: 0, text, start: t0, end: t0 + k * beat * 0.5, words };
   };
   const line = mk(main);
-  line.sub = mk(sub);
+  // 還沒定日期（sub 是空字串）就不掛前面那一排，不然會漂來一排空的河燈
+  if (sub) line.sub = mk(sub);
   return line;
 }
 

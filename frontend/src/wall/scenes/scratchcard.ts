@@ -20,7 +20,7 @@ import { F, font, loadText } from '../engine/type';
 import { LIN, rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, hash, lerp, prog, pulse, TAU } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
-import { lyricAt, signature, drawHeart, sparkParticles, WEDDING_DATE, lyricSubOf, layoutLyric, drawLyric, subStyleFor, subSizeFor, subGap, type LyricStyle } from './_motifs';
+import { lyricAt, signature, drawHeart, sparkParticles, DATE_MMDD, lyricSubOf, layoutLyric, drawLyric, subStyleFor, subSizeFor, subGap, type LyricStyle } from './_motifs';
 import { grid, stagger, drawFit, layoutRows, drawRows, paperInk, Stage, docRT, camDist, type Grid, type RowsStyle, type P2, type V3 } from './_t4';
 import { msgMaxFor, lyricV2, sigV2, V2, fitClauses } from './_v2';
 
@@ -37,7 +37,7 @@ const LYR = { x: CB.x + 34, y: 96, w: CB.w - 68, h: 206 }; // 本期主題曲
 const CELL = { x: CB.x + 40, y: 322, w: 156, h: 116, gap: 10 };
 const cellRect = (i: number, C: typeof CELL = CELL) => ({ x: C.x + (i % 3) * (C.w + C.gap), y: C.y + Math.floor(i / 3) * (C.h + C.gap), w: C.w, h: C.h });
 /**
- * 雙語（2026-09-30）：有原文的窗格九宮格每格矮 SUB_CELL_DH（三排往下讓），「本期主題曲」那一格多出 3 × SUB_CELL_DH，
+ * 雙語：有原文的窗格九宮格每格矮 SUB_CELL_DH（三排往下讓），「本期主題曲」那一格多出 3 × SUB_CELL_DH，
  * 中文＋原文兩段才放得下（原本框高固定，原文被擠到 24 px）。刮漆的範圍（panels）跟著每個窗格自己的格子走。
  */
 const SUB_CELL_DH = 26;
@@ -57,7 +57,8 @@ const SIG_K = 1.5; // 署名佔的高度 = 署名字級 × SIG_K（含間距）
 
 // 符號（♪ ∞ ☑ → 之類）不在打包時掃的中文範圍裡，要跟中文一起預載，不然第一次畫會用備援字型（確定性也會不過）
 const TEXT = '♪∞☑☐→·—♥%＄$幸福刮刮卡第期幸運九宮格中獎機率本期主題曲恭喜中獎一輩子這一格留給你掃描右下角寫下想對新人說的話純音樂新人';
-const PERIOD = WEDDING_DATE.slice(5).replace('-', '');
+/** 期數：婚禮的月日（「0520」）；還沒定日期就是第 001 期。 */
+const PERIOD = DATE_MMDD || '001';
 
 // ---------------------------------------------------------------- 卡面的印刷（shader）
 const PRINT_BG = () => new FSPass(/* glsl */ `

@@ -72,6 +72,11 @@
       .q-main small { color: #a1978a; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
       .q-acts { display: flex; gap: 4px; flex-shrink: 0; }
       .q-tip { margin: 0; line-height: 1.5; }
+      /* 場合按鈕：按兩下才換（投影畫面上誤觸一次不會換掉） */
+      #q-scenes { display: flex; flex-direction: column; gap: 6px; }
+      #q-scenes small { color: #a1978a; font-size: 12px; }
+      .q-scene-btns { display: flex; flex-wrap: wrap; gap: 6px; }
+      #queue .q-scene-btns button.arm { border-color: #ffb547; background: rgba(255, 181, 71, .2); color: #ffb547; }
       /* 版面預覽（/wall?plate=）：左上角標出現在的版面，左右按鈕換版面 */
       #preview-tag { position: fixed; top: 14px; left: 14px; z-index: 30; display: flex; align-items: center; gap: 10px; max-width: min(760px, 70vw);
         padding: 8px 10px; border-radius: 12px; background: rgba(12, 10, 9, 0.72); color: #f2ebdf; font: 14px/1.4 "Noto Sans TC", system-ui, sans-serif; }
@@ -125,6 +130,7 @@
     </div>
     <aside id="queue" aria-label="歌單">
       <div class="q-head"><b>歌單</b><button id="q-shuffle" type="button" title="打亂順序播放（這台電腦會記住）">隨機播放：關</button><button id="q-reshuffle" type="button" hidden>重新洗牌</button><button id="q-close" type="button" title="收起歌單（L）">✕</button></div>
+      <div id="q-scenes" hidden></div>
       <div id="q-now"></div>
       <ol id="q-list"></ol>
       <p class="q-tip">「現在播」：馬上切過去，播完照原本的順序。「插播」：排在下一首，播完回到原本的順序。</p>

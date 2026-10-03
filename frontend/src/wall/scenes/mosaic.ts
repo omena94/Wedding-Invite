@@ -1,7 +1,7 @@
 // 祝福牆（照 pdoom dense 的「文字壓力」）：全部留言排成一整面暗暗的字牆，鏡頭推進去、停在主打留言上，
 // 仙女棒的火花沿著它上方的引線跑過去，把字一個個點燃、冷卻成清清楚楚的紙白字，停到讀得完，然後拉開，
 // 最後拉回整面牆。讀過的留言在牆上留著暖暖的餘溫。
-// 2026-09-28 MV 融合原則：一個焦點——主打留言是整個窗格最大、最亮、停最久的東西；牆退成背景紋理
+// MV 融合原則：一個焦點——主打留言是整個窗格最大、最亮、停最久的東西；牆退成背景紋理
 // （背景格子的字壓在主打一半以下、停住時牆變暗、虛焦、主打那一塊被淡淡照亮），不放計數器、編號、框線這類介面。
 //  - 牆（mosaic-wall.ts）在 init() 預先畫成一張資料貼圖；每一格只有一個全螢幕 shader 在上面移動鏡頭
 //    （景深：推近時牆失焦、變暗；移動快時有動態模糊），點亮的那則另外用 Canvas2D 清晰地畫在上面。
@@ -10,7 +10,7 @@
 //  - 歌詞在畫面下緣（電影字幕的位置），牆在那裡暗下來讓字清楚；比主打小一級。
 //  - 窗格很長才順便停第二則（主打先、停最久）；沒有主打留言時才輪流停兩三則。
 //  - 節拍：推進緩進小節線、落地那一拍點火；大鼓讓整面牆微微一亮、hi-hat 讓零星的格子閃一下，點火時一圈光從主打往外擴散。
-// v2（2026-09-29「留言尺寸與版面比例標準 v2」）：主打停住時在畫面左邊一塊 ≤ 830×430（留言 40～60 px、署名 26～32），
+// v2（「留言尺寸與版面比例標準 v2」）：主打停住時在畫面左邊一塊 ≤ 830×430（留言 40～60 px、署名 26～32），
 // 歌詞 40～52（不比主打大）；背景牆上的留言跟著主打縮小（上限是主打的 0.42 倍，停住時畫面上約 18 px）——是紋理，不是第二個焦點。
 import * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
@@ -24,7 +24,7 @@ import { sparkHead, sparkParticles, lyricAt, drawLyric, layoutLyric, drawHeart, 
 import { V2, msgMaxFor, lyricV2, sigV2, fitClauses } from './_v2';
 import { layoutWall, drawWall, heroHeader, heroLabel, HERO_PAD, HERO_LABEL, HERO_SIG, HERO_RULE_Y, HERO_LABEL_SIZE, type HeroSpec, type WallLayout } from './mosaic-wall';
 import { CamPath, constrain, worldToScreen, zoomOf, type View } from './mosaic-path';
-// 最早的版面：排程參數在 director.ts 的 PLATES；這裡只宣告雙語（2026-09-30 雙語普查通過：有翻譯＋主打留言時中文、原文、留言三樣都清楚）
+// 最早的版面：排程參數在 director.ts 的 PLATES；這裡只宣告雙語（雙語普查通過：有翻譯＋主打留言時中文、原文、留言三樣都清楚）
 export const spec: PlateSpecDecl = { bilingual: true };
 
 

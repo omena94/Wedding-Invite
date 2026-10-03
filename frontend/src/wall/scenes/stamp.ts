@@ -8,7 +8,7 @@
 //    接下來兩個小節線信封右邊再「砰、砰」蓋上兩個橡皮章（限時專送、永久保存）。
 //  - 版畫是活的：天空的放射刻線很慢地轉，兩朵刻線畫的雲從左往右飄過太陽。
 //  - 留言標準 v2：郵票本身還是很大（它就是場景），寫字的那一塊 630×420、字 40～60；版畫放寬，當郵票的主角。
-//  - 沒有留言：郵票上印新人的名字與日期（比歌詞小），邊紙的歌詞放大是主角；信封上一行小字邀請。
+//  - 沒有留言：郵票上印新人的名字與日期（比歌詞小；名字很長會縮字或折行，沒定日期就只印名字、郵戳中間改蓋囍），邊紙的歌詞放大是主角；信封上一行小字邀請。
 // 手法：信封、郵票的紙與齒孔、版畫、油墨都在一個 shader（PlaneCam：信封是空間裡的平面）。郵票上的字是 init() 畫好的資料貼圖
 // （_t25 glyphMask，依序印出）；郵票的框與小字、郵戳各是一張 init 畫一次的 Canvas；邊紙的歌詞是每格重畫的一張。
 import * as THREE from 'three';
@@ -18,7 +18,7 @@ import { F, font, loadText } from '../engine/type';
 import { rgba } from '../engine/palette';
 import { clamp, ease, prog, lerp, pulse } from '../engine/util';
 import type { Line } from '../engine/lyrics';
-import { lyricAt, layoutLyric, drawLyric, COUPLE_ZH, DATE_DOTS, lyricSubOf, type LyricStyle } from './_motifs';
+import { lyricAt, layoutLyric, drawLyric, COUPLE_ZH, DATE_DOTS, DATE_DOT, lyricSubOf, type LyricStyle } from './_motifs';
 import { V2, lyricV2 } from './_v2';
 import { PlaneCam, camUniforms, CAM_GLSL } from './_t14';
 import {
@@ -52,7 +52,8 @@ const FAM_MSG = F.ming(900);
 const FAM_LYR = F.archivo(100, 800);
 const COUNTRY = '愛情郵政　·　LOVE POST';
 const PM_TOP = '幸福郵局', PM_BOT = '永遠有效';
-const PLATE = 'A 0313';
+/** 郵票框角落的版號（印刷用的編號，中性的就好）。 */
+const PLATE = 'A 01';
 
 const BG = () => new FSPass(/* glsl */ `
   uniform float t;
@@ -216,7 +217,7 @@ export default class Stamp extends Scene {
     const { audio: au, lyrics, song } = this.ctx;
     const s = this.ctx.start, e = this.ctx.end, m = this.msg;
     const lines = lyrics.linesIn(s - 0.5, e + 0.5);
-    await loadText(`${T25_TEXT}${COUNTRY}${PM_TOP}${PM_BOT}${PLATE}∞郵資${RUBBER.map((r) => r.text).join('')}${m?.text ?? ''}${m ? sigOf(m) : ''}${lines.map((l) => l.text).join('')}${song.title}`);
+    await loadText(`${T25_TEXT}${COUNTRY}${PM_TOP}${PM_BOT}${PLATE}∞郵資囍${RUBBER.map((r) => r.text).join('')}${m?.text ?? ''}${m ? sigOf(m) : ''}${lines.map((l) => l.text).join('')}${song.title}`);
     const bar = au.timeOfBar(au.barAt(s) + 1) - au.timeOfBar(au.barAt(s));
     const beat = au.beatPeriod(s);
     this.tFirst = winBeats(au, s + 0.1, e)[0] ?? s + 0.2;
@@ -288,8 +289,10 @@ export default class Stamp extends Scene {
       });
     };
     arc(PM_TOP, true); arc(PM_BOT, false);
-    p.font = font(F.mono(600), 26); p.textAlign = 'center';
-    p.fillText(DATE_DOTS.replace(/ · /g, '.'), cx, cy + 9);
+    // 中間是婚禮的日期；還沒定日期就蓋一個「囍」（郵戳中間不能空著）
+    p.textAlign = 'center';
+    if (DATE_DOT) { p.font = font(F.mono(600), 26); p.fillText(DATE_DOT, cx, cy + 9); }
+    else { p.font = font(F.hei(900), 52); p.fillText('囍', cx, cy + 19); }
     p.textAlign = 'left';
     p.lineWidth = 4;
     for (let i = 0; i < 5; i++) {

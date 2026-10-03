@@ -1,11 +1,12 @@
 // 記分板（暗）：夜裡球場的大記分板，從看台左下方仰望（真的 3D 透視），鏡頭整個窗格慢慢往前推。
 // 整塊板子是一面 LED：內容先用 Canvas2D 畫在「板面座標」上，shader 再用單應矩陣把它貼到螢幕上、蓋上一顆一顆的燈珠
 // （沒亮的燈珠也看得到），所以字有 LED 的顆粒，但字形完整、讀得清楚。板子外面是夜空、遠處照明燈的散景、前景看台的剪影。
-// MV 版（新人要一個焦點）：板子上只有三樣東西——
+// MV 版（一個畫面只有一個焦點）：板子上只有三樣東西——
 //  - 中間最大：主打留言（本場最佳）。第一拍起 LED 一個字一個字打出來（訊號色游標），打完署名。新人的留言標「新人致詞」。
-//    沒有留言：中間改成歌詞（大字逐字跟唱），下排慢慢捲一行邀請。韓文歌有中文翻譯時（2026-09-30）：中文下面小一號打原文
+//    沒有留言：中間改成歌詞（大字逐字跟唱），下排慢慢捲一行邀請。韓文歌有中文翻譯時：中文下面小一號打原文
 //    （原文自己的逐字時間，唱到、唱完都是白色、淡一點、不發光），兩行一起在主畫面裡置中。
-//  - 上排小小的比分：宣文 13：13 孟庭（婚禮是 13 號）。每兩小節一方在小節線進球（名字變 GOAL! 閃一拍、數字往上捲），
+//  - 上排小小的比分：{新郎} 20：20 {新娘}（從婚禮那天是幾號開始算；還沒定日期就從 0：0 開始）。
+//    每兩小節一方在小節線進球（名字變 GOAL! 閃一拍、數字往上捲），
 //    另一方兩拍後在小鼓上扳平——比分永遠平手，底下一行小字「平手（預計永遠如此）」。
 //  - 下排：歌詞跑馬燈（比留言小一級）。新的一句從右邊推進來、停住逐字跟唱；太長的句子跟著唱到的字捲。
 //  開場燈珠由上往下一列列亮起、結尾閃兩下關掉。
@@ -17,7 +18,7 @@ import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, lerp, prog, pulse, hash } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
 import { Lyrics, type Line } from '../engine/lyrics';
-import { lyricAt, layoutLyric, beatAfter, signature, fillWithHearts, WEDDING_DATE, lyricSubOf, drawLyricSub, subStyleFor, subGap, type LyricLayout, type LyricStyle } from './_motifs';
+import { lyricAt, layoutLyric, beatAfter, signature, fillWithHearts, DATE, NAME_A, NAME_B, fitPx, lyricSubOf, drawLyricSub, subStyleFor, subGap, type LyricLayout, type LyricStyle } from './_motifs';
 import { stagger, homography, type P2 } from './_t11';
 import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 } from './_v2';
 import { LineBatch } from '../engine/lines';
@@ -43,7 +44,10 @@ const CAM = { cx: 680, cy: 396, z0: 2980, z1: 2780 };
 const DIG = { w: 48, h: 82, th: 10 };
 const FAM_MSG = F.ming(700);
 const FAM_LYR = F.archivo(87.5, 800);
-const [, , WED_DAY] = String(WEDDING_DATE).split('-').map(Number) as [number, number, number];
+/** 比分從婚禮那天是幾號開始（還沒定日期就從 0 開始）。 */
+const WED_DAY = DATE?.d ?? 0;
+/** 比分兩邊的名字（左新郎、右新娘）。 */
+const SIDES = [NAME_A, NAME_B] as const;
 const TIE = '平手（預計永遠如此）';
 const INVITE = '掃描右下角 QR code，把你的祝福送上記分板';
 
@@ -224,8 +228,8 @@ export default class Scoreboard extends Scene {
     // 下排捲動的小字：有留言沒歌詞時捲歌名；沒有留言時捲邀請
     this.marquee = m ? `♪ ${song.title}${song.artist ? ' — ' + song.artist : ''}　　　` : `${INVITE}　　　`;
     this.head = m?.couple ? '新人致詞' : '本場最佳';
-    this.sig = m ? (m.couple ? '—— 新郎新娘' : signature(m.name)) : '';
-    await loadText(`${m?.text ?? ''}${this.sig}${this.head}${this.marquee}${TIE}${INVITE}${song.title}宣文孟庭領先暫時`);
+    this.sig = m ? (m.couple ? '—— 新人' : signature(m.name)) : '';
+    await loadText(`${m?.text ?? ''}${this.sig}${this.head}${this.marquee}${TIE}${INVITE}${song.title}領先暫時`);
 
     // ---- 時間：第一拍起逐字打出留言（兩小節內、也不超過窗格的四成）
     const beat = au.beatPeriod(s);
@@ -338,7 +342,7 @@ export default class Scoreboard extends Scene {
     if (lb.count) lb.render(this.ctx.renderer, out);
   }
 
-  /** 上排小小的比分：宣文 13：13 孟庭；進球的一方名字變 GOAL! 閃一拍、數字往上捲。底下一行小字。 */
+  /** 上排小小的比分：{新郎} 20：20 {新娘}；進球的一方名字變 GOAL! 閃一拍、數字往上捲。底下一行小字。 */
   private scoreRow(c: CanvasRenderingContext2D, hc: CanvasRenderingContext2D, t: number, score: number[], last: Goal | null) {
     const au = this.ctx.audio, beat = au.beatPeriod(t);
     const cx = MAIN.cx, y = 26;
@@ -372,8 +376,9 @@ export default class Scoreboard extends Scene {
         c.font = font(F.archivo(75, 900), 56); c.fillStyle = blink ? rgba('signal') : rgba('bone', 0.75);
         c.fillText('GOAL!', nx, y + 70);
       } else {
-        c.font = font(F.hei(900), 56); c.fillStyle = rgba('bone', 0.78);
-        c.fillText(side === 0 ? '宣文' : '孟庭', nx, y + 68);
+        // 名字長短不一：照數字外側到板子邊的寬度縮字
+        c.font = font(F.hei(900), fitPx(SIDES[side], F.hei(900), 56, 540)); c.fillStyle = rgba('bone', 0.78);
+        c.fillText(SIDES[side], nx, y + 68);
       }
     }
     // 冒號（一拍閃一次）
@@ -384,14 +389,14 @@ export default class Scoreboard extends Scene {
     c.textAlign = 'center';
     c.font = font(F.hei(500), 32); c.letterSpacing = '4px';
     c.fillStyle = tied ? rgba('ash', 0.75) : rgba('signal', 0.8);
-    c.fillText(tied ? TIE : `${last && last.team === 0 ? '宣文' : '孟庭'} 領先（暫時）`, cx, y + 124);
+    c.fillText(tied ? TIE : `${SIDES[last && last.team === 0 ? 0 : 1]} 領先（暫時）`, cx, y + 124);
     c.letterSpacing = '0px'; c.textAlign = 'left';
   }
 
   /** 主畫面：留言逐字打出來（訊號色游標，剛打的字先是訊號色、0.3 秒變紙白），打完署名。 */
   private message(c: CanvasRenderingContext2D, hc: CanvasRenderingContext2D, t: number) {
     const fit = this.fit!;
-    // 左上角一行小字：本場最佳（新人：新人致詞）
+    // 左上角一行小字：本場最佳（新人自己的留言標「新人致詞」）
     c.font = font(F.hei(700), 32); c.letterSpacing = '6px'; c.fillStyle = rgba('signal', 0.8 * prog(t, this.tFirst, this.tFirst + 0.2));
     c.textAlign = 'center';
     c.fillText(`★ ${this.head} ★`, MAIN.cx, MAIN.y + 4);

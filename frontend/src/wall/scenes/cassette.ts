@@ -18,7 +18,7 @@ import { LIN, rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, lerp, prog, hash, TAU } from '../engine/util';
 import { fitText, phrases, type FitResult } from '../engine/text';
 import { Lyrics, type Word } from '../engine/lyrics';
-import { beatAfter, barAfter, signature, lyricAt, sparkHead, COUPLE_ZH, DATE_DOTS, lyricSubOf, layoutLyric, subStyleFor, subSizeFor, subGap } from './_motifs';
+import { beatAfter, barAfter, signature, lyricAt, sparkHead, COUPLE_ZH, DATE_DOTS, joinBits, lyricSubOf, layoutLyric, subStyleFor, subSizeFor, subGap } from './_motifs';
 import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 } from './_v2';
 import { fillWithHearts } from '../engine/motifs';
 import { layoutWordRows } from './_t7';
@@ -287,7 +287,8 @@ export default class Cassette extends Scene {
     c.font = font(F.hei(500), 14); c.letterSpacing = '2px'; c.fillStyle = rgba('sepia', 0.5);
     c.fillText(NOTE, LABEL.x + 30, LABEL.y + LABEL.h - 18);
     c.font = font(F.mono(500), 13); c.letterSpacing = '4px'; c.textAlign = 'right';
-    c.fillText(`SIDE A  ·  LOVE MIX  ·  ${DATE_DOTS}`, LABEL.x + LABEL.w - 30, LABEL.y + LABEL.h - 18);
+    // 還沒定日期就只寫「SIDE A · LOVE MIX」（不留多的分隔點）
+    c.fillText(joinBits('  ·  ', 'SIDE A', 'LOVE MIX', DATE_DOTS), LABEL.x + LABEL.w - 30, LABEL.y + LABEL.h - 18);
     c.textAlign = 'left'; c.letterSpacing = '0px';
     // 窗：挖空（捲軸從下面露出來），蓋一層很淡的玻璃與一道斜的反光
     c.save();

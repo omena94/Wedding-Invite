@@ -21,6 +21,7 @@ import { SHARED as GLYPHS_SHARED, SCENES as GLYPHS } from 'virtual:wall-glyphs';
 import { loadStrokeFonts } from './stroke';
 import { LIN } from './palette';
 import { warmShaders } from './warm';
+import { WEDDING_GLYPHS } from '../wedding';
 
 export interface TimelineEntry {
   /** 窗格的唯一代號（例如 `s3-w12-sparkler`）。 */
@@ -75,11 +76,17 @@ export class Engine {
   lastPost: PostParams = { ...DEFAULT_POST };
   /** Suppress the HUD (captions, crop marks) — used when rendering plate thumbnails. */
   hudOff = false;
+  /**
+   * 新人在後台選的內容（main.ts 照 feed 設）：lyricsOff = 不顯示歌詞（版面拿到空的歌詞，照純音樂畫）；
+   * qrOff = 不放賓客留言（右下角沒有 QR 與留言數）。在窗格建立時才讀，切換後下一個窗格生效。
+   */
+  lyricsOff = false;
+  qrOff = false;
 
   constructor(public canvas: HTMLCanvasElement, live: LiveInfo) {
     this.live = live;
     // preserveDrawingBuffer 只有截圖工具（?export，用 canvas.toDataURL 抓畫面）要；現場播放關掉，
-    // 瀏覽器每格不用多留一份畫面，顯示卡少一次整張複製（2026-10-01 省效能）
+    // 瀏覽器每格不用多留一份畫面，顯示卡少一次整張複製（省效能）
     const keep = typeof location !== 'undefined' && new URLSearchParams(location.search).has('export');
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, alpha: false, preserveDrawingBuffer: keep, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(1);
@@ -105,6 +112,9 @@ export class Engine {
   /** 載字型、所有版面模組、後製與 HUD。開機時呼叫一次。 */
   async init(only?: string[]) {
     await Promise.all([loadFonts(), loadStrokeFonts()]);
+    // 新人的名字、日期是每一場婚禮自己的（執行時才知道），打包時的字型預載掃不到：很多版面都會印，
+    // 字也不多，開機一律等它載好（現場也等），任何版面第一格就是對的字型，同一格畫兩次才會一樣。
+    await loadText(WEDDING_GLYPHS, 15000);
     // only：只載指定的版面（加上片頭卡與保底的 karaoke），開發截圖用
     const names = only ? SCENES.filter((n) => n === 'title' || n === 'karaoke' || only.includes(n)) : SCENES;
     await Promise.all(names.map(async (name) => {
@@ -174,8 +184,11 @@ export class Engine {
           // 雙語版面（spec.bilingual）是照「留言＋中文＋原文」三樣都放得下設計的，有留言也照樣給原文。
           // params.keepSub：**只給檢查用**（wall-render.mjs 的 --keep-sub 與 bi 模式）：還沒標 bilingual 的版面，看它有留言時畫原文會不會擠。
           // 現場的窗格不會帶這個參數（導演不排），所以正式播放的行為不變。
+          // 不顯示歌詞（後台關掉）：給空的歌詞。照片窗格也照常跟唱（新人開了歌詞，照片窗格就要唱）；
+          // 照片窗格有主字（留言或註解）時歌詞是下面一行字幕，原文副行收起來（跟有主打留言的一般版面一樣）
           renderer: this.renderer, audio: this.song.audio,
-          lyrics: e.params?.message && !this.specs.get(e.scene)?.bilingual && !e.params?.keepSub ? this.song.lyrics.withoutSub() : this.song.lyrics, comp: this.comp, W, H,
+          lyrics: this.lyricsOff ? Lyrics.empty()
+            : (e.params?.message || e.params?.photo?.caption) && !this.specs.get(e.scene)?.bilingual && !e.params?.keepSub ? this.song.lyrics.withoutSub() : this.song.lyrics, comp: this.comp, W, H,
           id: e.id, params: e.params, start: e.start, end: e.end, song: this.song.info, live: this.live,
         };
         const s = new cls(ctx);
@@ -257,7 +270,7 @@ export class Engine {
       this.comp.draw(r, this.sumRT.texture, this.avgRT, { mode: 'replace', opacity: 1 / samples, premult: false });
       outTex = this.avgRT.texture;
     }
-    const hudTex = this.hud.draw(t, { opacity: this.hudOff ? 0 : post.hud, frame: post.frame, qr: post.qr, paper: post.paper, audio: this.song.audio });
+    const hudTex = this.hud.draw(t, { opacity: this.hudOff ? 0 : post.hud, frame: post.frame, qr: this.qrOff ? 0 : post.qr, paper: post.paper, audio: this.song.audio });
     this.post.render(r, outTex, hudTex, this.finalRT, post, t);
     this.lastPost = post;
     if (toScreen) {

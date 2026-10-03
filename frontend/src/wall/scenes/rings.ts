@@ -2,7 +2,7 @@
 //  - 開場：兩只戒指分開、各自慢慢轉，棚燈的長條反光在金屬上滑過。
 //  - 第一個小節線（窗格短就第一拍）：白金戒一個俐落的弧線飛過去，跟金戒「扣」在一起（叮——火花一閃、畫面一震）。
 //  - 接著鏡頭推進金戒的內圈：內圈是霧面的金，主打留言就刻在內圈上（宋體、沿著圓弧、刻痕下緣有一條亮邊），
-//    最後一行刻署名與婚禮日期。鏡頭停在能讀完整句的位置，之後很慢地飄；每個小節線一道反光掃過戒面。
+//    最後一行刻署名與婚禮日期（還沒定日期就只刻署名）。鏡頭停在能讀完整句的位置，之後很慢地飄；每個小節線一道反光掃過戒面。
 //  - 歌詞在戒指上方的黑暗裡（比留言小一級，逐字跟唱）。
 //  - 沒有留言：內圈刻的是新人的名字與日期（戒指本來就該刻的），歌詞放大當主角。
 // 畫法：兩只戒指是「兩個圓柱夾一段」的實心環，光線與它的交點用解析解算（不用光線步進，便宜又準），
@@ -15,7 +15,7 @@ import { LineBatch } from '../engine/lines';
 import { F, font } from '../engine/type';
 import { rgba } from '../engine/palette';
 import { clamp, ease, prog, pulse, hash, noise1, lerp, frameIdx } from '../engine/util';
-import { sparkHead, sparkParticles, lyricAt, drawLyric, layoutLyric, beatAfter, COUPLE_EN, COUPLE_ZH, DATE_DOTS, type LyricStyle } from './_motifs';
+import { sparkHead, sparkParticles, lyricAt, drawLyric, layoutLyric, beatAfter, joinBits, fitPx, COUPLE_EN, COUPLE_ZH, HAS_LATIN_NAMES, DATE_DOTS, type LyricStyle } from './_motifs';
 import { preloadText, INVITE_SMALL } from './_t19';
 import { barsIn } from './_t1';
 import { placeBlock, drawBlock, sigOf, fitV2, T22_TEXT, type Rect } from './_t22';
@@ -230,7 +230,7 @@ export default class Rings extends Scene {
     const col = rgba('bone');
     if (m) {
       const fam = F.ming(700);
-      const sig = `${sigOf(m)}  ·  ${DATE_DOTS}`;
+      const sig = joinBits('  ·  ', sigOf(m), DATE_DOTS);
       // 留言標準 v2：畫面上 40～60 px（依字數），刻字圖層上的字級 = 畫面字級 ÷ sTex；
       // 寬度只用內圈中間約 ±0.75 弧度（畫面上約 700 px）：再往兩邊內壁斜得太厲害
       const S = this.sTex;
@@ -241,11 +241,19 @@ export default class Rings extends Scene {
       drawBlock(c, blk, pl, fam, sig, { color: col, sigColor: col, heart: HEART_MASK });
       this.msgScreen = blk.fit.size * S;
     } else {
-      // 沒有留言：刻新人的名字與日期（戒指本來就該刻的）；焦點是歌詞，刻字比歌詞小
-      const S = this.sTex;
+      // 沒有留言：刻新人的名字與日期（戒指本來就該刻的）；焦點是歌詞，刻字比歌詞小。
+      // 大字是英文名（沒有英文名就是中文名，下面那行只剩日期，不重複刻兩次）；名字長就縮字，
+      // 寬度跟留言一樣只用內圈中間畫面上約 700 px 的一段
+      const S = this.sTex, maxW = 700 / S;
+      const big = HAS_LATIN_NAMES ? COUPLE_EN : COUPLE_ZH, bigFam = HAS_LATIN_NAMES ? F.serif(600, true) : F.ming(700);
+      const small = HAS_LATIN_NAMES ? joinBits('  ', COUPLE_ZH, DATE_DOTS) : DATE_DOTS;
       c.textAlign = 'center'; c.fillStyle = col;
-      c.font = font(F.serif(600, true), 48 / S); c.fillText(COUPLE_EN, cx, TH / 2 - 6 / S);
-      c.font = font(F.ming(700), 26 / S); c.letterSpacing = `${8 / S}px`; c.fillText(`${COUPLE_ZH}  ${DATE_DOTS}`, cx + 4 / S, TH / 2 + 40 / S);
+      c.font = font(bigFam, fitPx(big, bigFam, (HAS_LATIN_NAMES ? 48 : 44) / S, maxW));
+      c.fillText(big, cx, small ? TH / 2 - 6 / S : TH / 2 + 14 / S);
+      if (small) {
+        const s0 = 26 / S, tr = 8 / S, sz = fitPx(small, F.ming(700), s0, maxW, tr);
+        c.font = font(F.ming(700), sz); c.letterSpacing = `${(tr * sz) / s0}px`; c.fillText(small, cx + 4 / S, TH / 2 + 40 / S);
+      }
       c.letterSpacing = '0px'; c.textAlign = 'left';
     }
     L.upload();

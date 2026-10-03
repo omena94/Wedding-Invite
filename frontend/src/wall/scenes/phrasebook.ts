@@ -314,14 +314,14 @@ export default class Phrasebook extends Scene {
 
     // 車票：第一拍從書底下被抽出來（往下、往左一點），只有在動的時候重畫
     const q = ease.outCubic(prog(t, this.pullT - 0.05, this.pullT + 0.5));
-    const qq = Math.round(q * 400) / 400;
-    if (qq !== this.ticketQ) {
-      this.ticketQ = qq;
+    const qStep = Math.round(q * 400) / 400;
+    if (qStep !== this.ticketQ) {
+      this.ticketQ = qStep;
       const c = this.ticketL.ctx;
       this.ticketL.clear();
       c.save();
-      c.translate(TK.x - 30 * (1 - qq), TK.y - 250 * (1 - qq));
-      c.rotate(TK.rot * (0.4 + 0.6 * qq));
+      c.translate(TK.x - 30 * (1 - qStep), TK.y - 250 * (1 - qStep));
+      c.rotate(TK.rot * (0.4 + 0.6 * qStep));
       c.save(); c.filter = 'blur(6px)'; c.fillStyle = rgba('ink', 0.18); c.fillRect(6, 10, TK.w, TK.h); c.restore();
       if (this.ticket) c.drawImage(this.ticket, 0, 0, TK.w, TK.h);
       c.restore();

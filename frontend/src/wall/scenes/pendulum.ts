@@ -1,5 +1,5 @@
 // 雙擺（亮）：攤開的實驗筆記本。左頁是方格紙，上面一支筆被兩個擺推著畫「諧振圖」（harmonograph）——
-// 甲擺（宣文）推 x、乙擺（孟庭）推 y，頻率比 2:3、3:2、2:1 或 1:2（乙擺稍微走音一點，圖形才會一圈圈轉出花樣），振幅慢慢衰減，
+// 甲擺（名牌寫新郎的名字）推 x、乙擺（新娘）推 y，頻率比 2:3、3:2、2:1 或 1:2（乙擺稍微走音一點，圖形才會一圈圈轉出花樣），振幅慢慢衰減，
 // 一圈一圈往內收。頻率以小節為單位：甲擺的兩端都落在拍點上，筆在拍點「甩」到最遠再回頭。
 //  - 剛畫的線是訊號色的暗部（濕墨），一秒內乾成咖啡色；每個小節線在軌跡上打一個小點與小節號。
 // MV 版：焦點是右頁的主打留言（大大的手寫字，一個字一個字寫上去，濕墨一秒內乾），鏡頭整個窗格慢慢往前推。
@@ -17,7 +17,7 @@ import { clamp, ease, prog, pulse, hash, TAU } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
 import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 } from './_v2';
 import { Lyrics } from '../engine/lyrics';
-import { lyricAt, layoutLyric, beatAfter, signature, fillWithHearts, DATE_DOTS, lyricSubOf, drawLyricSub } from './_motifs';
+import { lyricAt, layoutLyric, beatAfter, signature, fillWithHearts, NAME_A, NAME_B, DATE_DOTS, joinBits, fitPx, lyricSubOf, drawLyricSub } from './_motifs';
 import { Paper, stagger, mono, tag } from './_t11';
 
 export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'science', paper: true, energy: [0, 0.65], bars: [6, 16], weight: 1 };
@@ -67,8 +67,8 @@ export default class Pendulum extends Scene {
   override async init() {
     const { audio: au, lyrics, song } = this.ctx;
     const s = this.ctx.start, e = this.ctx.end, m = this.msg;
-    const sig = m ? (m.couple ? '—— 新郎新娘' : signature(m.name)) : '';
-    await loadText(`${m?.text ?? ''}${sig}${CONCL}${INVITE}${song.title}${song.artist}實驗紀錄兩擺耦合甲擺乙擺宣文孟庭本實驗配樂`);
+    const sig = m ? (m.couple ? '—— 新人' : signature(m.name)) : '';
+    await loadText(`${m?.text ?? ''}${sig}${CONCL}${INVITE}${song.title}${song.artist}實驗紀錄兩擺耦合甲擺乙擺新人親筆本實驗配樂`);
     const c = this.layer.ctx;
     // ---- 擺的參數：頻率比、乙擺的相位、一點點走音（圖形才會慢慢轉）
     const [fx, fy] = RATIOS[Math.floor(hash(this.seed, 1) * RATIOS.length)]!;
@@ -132,7 +132,8 @@ export default class Pendulum extends Scene {
     c.strokeStyle = rgba('sepia', 0.2); c.lineWidth = 1;
     c.beginPath(); c.moveTo(CEN.x - AMP.x - 30, CEN.y); c.lineTo(CEN.x + AMP.x + 30, CEN.y); c.moveTo(CEN.x, CEN.y - AMP.y - 30); c.lineTo(CEN.x, CEN.y + AMP.y + 30); c.stroke();
     // 右頁抬頭：一行小字（小字第一群）
-    mono(c, `LAB NOTEBOOK  ·  兩擺耦合實驗${m?.couple ? '  ·  新人親筆' : ''}  ·  ${DATE_DOTS}`, NB.x, 118, { size: 15, tracking: 3, color: rgba('sepia', 0.5) });
+    // 還沒定日期就連分隔點一起省掉
+    mono(c, joinBits('  ·  ', 'LAB NOTEBOOK', '兩擺耦合實驗', m?.couple && '新人親筆', DATE_DOTS), NB.x, 118, { size: 15, tracking: 3, color: rgba('sepia', 0.5) });
   }
 
   override render(f: Frame, out: THREE.WebGLRenderTarget): PostOverrides {
@@ -200,7 +201,7 @@ export default class Pendulum extends Scene {
   private pendulums(c: CanvasRenderingContext2D, t: number) {
     const p = this.pen(t);
     // v2：留言變小之後，右頁上半讓給兩個大大的擺（場景是主角）；擺錘拖一點殘影，看得出在甩
-    const items: [number, number, string, number][] = [[NB.x + 150, p.ax, '甲擺　宣文', 0], [NB.x + 530, p.ay, '乙擺　孟庭', 1]];
+    const items: [number, number, string, number][] = [[NB.x + 150, p.ax, `甲擺　${NAME_A}`, 0], [NB.x + 530, p.ay, `乙擺　${NAME_B}`, 1]];
     for (const [px, a, name, i] of items) {
       const py = 168, len = 190, th = a * 0.38;
       const bx = px + Math.sin(th) * len, by = py + Math.cos(th) * len;
@@ -219,7 +220,8 @@ export default class Pendulum extends Scene {
       c.beginPath(); c.moveTo(px, py); c.lineTo(bx, by); c.stroke();
       c.fillStyle = i === 0 ? rgba('sepia') : rgba('blood');
       c.beginPath(); c.arc(bx, by, 15, 0, TAU); c.fill();
-      tag(c, name, px + 36, py + 26, { size: 17, color: rgba('sepia', 0.6), tracking: 2 });
+      // 名牌：名字長就縮字（甲擺的不能碰到乙擺的支架，乙擺的不能超出右頁）
+      tag(c, name, px + 36, py + 26, { size: fitPx(name, F.hei(500), 17, 250, 2), color: rgba('sepia', 0.6), tracking: 2 });
     }
   }
 
@@ -242,7 +244,7 @@ export default class Pendulum extends Scene {
     if (m && t >= this.sigT) {
       c.save(); c.globalAlpha *= prog(t, this.sigT, this.sigT + 0.3);
       c.font = font(F.hand(400), this.sigSize); c.fillStyle = rgba('sepia', 0.75); c.textAlign = 'right';
-      fillWithHearts(c, m.couple ? '—— 新郎新娘' : signature(m.name), NB.x + NB.w, this.sigY);
+      fillWithHearts(c, m.couple ? '—— 新人' : signature(m.name), NB.x + NB.w, this.sigY);
       c.restore();
     }
     // 結論：一行小小的手寫（小字第三群）

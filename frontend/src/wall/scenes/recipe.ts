@@ -23,7 +23,7 @@ import { rgba } from '../engine/palette';
 import { clamp, ease, lerp, prog, pulse, hash, mulberry32 } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
 import type { Line } from '../engine/lyrics';
-import { layoutLyric, drawLyric, fillWithHearts, signature, lyricSubOf, subSizeFor, subGap, type LyricStyle, type LyricLayout } from './_motifs';
+import { layoutLyric, drawLyric, fillWithHearts, signature, lyricSubOf, subSizeFor, subGap, NAME_A, NAME_B, fitPx, type LyricStyle, type LyricLayout } from './_motifs';
 import { grid, windowLines, stagger, paperLyric, FAST_TEX_GLSL, type Grid } from './_t2';
 import { V2, msgMaxFor, lyricV2, sigV2, fitClauses } from './_v2';
 import { homography, applyH } from './_t11';
@@ -50,6 +50,8 @@ const ING = { x: 48, label: 124, base0: 172, dy: 48, size: 24 };
 const STEPS = { label: 364, base0: 412 };
 /** 大字的地方：有留言是秘方，沒留言是歌詞（或邀請）。 */
 const BIG = { x: 340, y: 150, w: 790, h: 390, label: 124 };
+/** 材料一項最寬多少（方框後面到大字區左緣，留一點空）：有一組材料是新人的名字，長的名字縮字。 */
+const ING_W = BIG.x - ING.x - 28 - 14;
 /** 下緣的「作法」：有留言時歌詞在這裡（中等大小）。右界收在 1100：鏡頭推近後也不會碰到右下角的 QR 區。 */
 const BAND = { x: 48, label: 606, base: 678, maxX: 1100 };
 /** 有留言又有原文的窗格：作法欄往上挪多少（大字區的下緣也收一樣多，署名不會碰到作法欄）。 */
@@ -59,11 +61,11 @@ const MAX_STAINS = 8;
 /** 鏡頭整個窗格推近多少（一個小節一段，在小節線緩停）。 */
 const PUSH = 0.065;
 
-/** 材料清單（溫柔的玩笑），一窗格用一組。 */
+/** 材料清單（溫柔的玩笑），一窗格用一組；第一組的主角是這一場的新人（名字執行時才知道）。 */
 const INGREDIENTS = [
-  ['宣文 1 位', '孟庭 1 位', '芃芃與 QQ 各 1 隻', '親友的祝福 一大把'],
+  [`${NAME_A} 1 位`, `${NAME_B} 1 位`, '回憶 一整罐', '親友的祝福 一大把'],
   ['耐心 2 杯', '笑聲 1 大匙', '包容 適量', '擁抱 不限量'],
-  ['默契 少許', '晚安 每天 1 句', '網球 1 顆（狗狗的）', '親友的祝福 一大把'],
+  ['默契 少許', '晚安 每天 1 句', '小驚喜 不定時', '親友的祝福 一大把'],
 ];
 /** 新人的留言：新人請大家吃的那一份。 */
 const COUPLE_ING = ['好菜 一整桌', '好歌 一整晚', '來賓 全體', '謝謝 說不完'];
@@ -387,7 +389,7 @@ export default class Recipe extends Scene {
     const g = this.g = grid(au, s, e);
     const m = this.msg;
     this.lines = windowLines(lyrics, s, e, 0.35, 0.8);
-    // 雙語（2026-09-30）：有留言時歌詞在卡片下緣的作法欄，原文接在下面會掉出卡片、被咖啡漬蓋住：作法欄整段往上 BAND_UP
+    // 雙語：有留言時歌詞在卡片下緣的作法欄，原文接在下面會掉出卡片、被咖啡漬蓋住：作法欄整段往上 BAND_UP
     if (m && this.lines.some((l) => lyricSubOf(l))) this.bandUp = BAND_UP;
     this.items = m?.couple ? COUPLE_ING : INGREDIENTS[Math.floor(hash(this.seed, 5) * INGREDIENTS.length)]!;
     // 大字寫什麼：留言；沒有留言但有歌詞 → 大字給歌詞；兩個都沒有 → 大字寫邀請
@@ -406,7 +408,7 @@ export default class Recipe extends Scene {
     this.items.forEach((it, i) => {
       const y = ING.base0 + i * ING.dy;
       this.handBox(fc, ING.x, y - 16, 16, 11 + i);
-      fc.font = font(HAND, ING.size); fc.fillStyle = rgba('sepia', 0.6);
+      fc.font = font(HAND, fitPx(it, HAND, ING.size, ING_W)); fc.fillStyle = rgba('sepia', 0.6);
       fc.fillText(it, ING.x + 28, y);
     });
     // 大字（F.hand 700，另一個人的筆跡），愛心用點綴色；整塊（含署名）在大字區裡垂直置中
@@ -664,10 +666,10 @@ export default class Recipe extends Scene {
   /** 材料：一拍一項由左往右寫出來，方框接著打勾。 */
   private drawItems(c: CanvasRenderingContext2D, t: number) {
     const dur = Math.min(0.3, this.g.beat * 0.7);
-    c.font = font(HAND, ING.size);
     this.items.forEach((it, i) => {
       const t0 = this.itemT[i]!;
       if (t < t0) return;
+      c.font = font(HAND, fitPx(it, HAND, ING.size, ING_W));
       const y = ING.base0 + i * ING.dy;
       const w = 28 + c.measureText(it).width + 8;
       const v = prog(t, t0, t0 + dur, ease.outCubic);
@@ -725,7 +727,7 @@ export default class Recipe extends Scene {
   private subLay(c: CanvasRenderingContext2D, line: Line, st: LyricStyle, lay: LyricLayout) {
     const sub = lyricSubOf(line);
     if (!sub) return null;
-    // 雙語（2026-09-30）：原文至少 36 螢幕 px（卡片斜放在檯面上會壓扁一點）、不再縮，太長就折行
+    // 雙語：原文至少 36 螢幕 px（卡片斜放在檯面上會壓扁一點）、不再縮，太長就折行
     const k = this.k, ss = Math.max(36, subSizeFor(lay.size * k)) / k;
     const sl = layoutLyric(c, sub, { ...st, size: ss, minSize: ss, tracking: (st.tracking ?? 0) * 0.5 });
     const dy = lay.rows[lay.rows.length - 1]!.y + subGap(lay.size * k, sl.size * k) / k;

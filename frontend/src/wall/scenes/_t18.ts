@@ -5,7 +5,7 @@
 //  - 「揭曉」的時間：每個版面都有一個「那一下」（籤掉出來、鞭炮炸完、倒數歸零、蓋子打開、溫度計爆表），
 //    要在第一個拍點之後一兩小節內發生（留言才來得及讀完），而且最好落在小節線上；
 //  - 一些小常數（HUD 區、邀請的說法）。
-//  - 2026-09-29「留言尺寸與版面比例標準 v2」：留言與署名的排版（v2Block），字級照 _v2.ts 的數字。
+//  - 「留言尺寸與版面比例標準 v2」：留言與署名的排版（v2Block），字級照 _v2.ts 的數字。
 import type { AudioData } from '../engine/audio';
 import type { Msg, SceneCtx } from '../engine/scene';
 import { font, loadText } from '../engine/type';
@@ -19,7 +19,7 @@ import { V2, msgMaxFor, sigV2, fitClauses } from './_v2';
 export const HUD = { x: 1360, y: 830 };
 
 /** 這批版面固定會出現的字（符號、數字、拉丁字也要先載，不然第一格會用系統字）。 */
-export const T18_TEXT = '掃描右下角把你的祝福寫上大螢幕一位賓客新郎新娘新人留言第籤上上解曰虛位以待幸福東南西北度純音樂間奏中'
+export const T18_TEXT = '掃描右下角把你的祝福寫上大螢幕一位賓客新人新人留言第籤上上解曰虛位以待幸福東南西北度純音樂間奏中'
   + '0123456789０１２３４５６７８９°·—…（）()：:，。！？♥NSEW℃ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
 
 /** 窗格會用到的字一次載好（留言、署名、窗格裡的歌詞、歌名，加上版面自己的字）。 */
@@ -59,7 +59,7 @@ export function v2Block(c: CanvasRenderingContext2D, m: Msg, family: string, box
   o: { align?: 'left' | 'center'; sigFamily: string; k?: number; lineHeight?: number; maxLines?: number; sigText?: string }): MsgBlock & { screen: number } {
   const k = o.k ?? 1, lh = o.lineHeight ?? 1.3;
   const text = m.text;
-  const sigText = o.sigText ?? (m.couple ? '—— 新郎新娘' : signature(m.name));
+  const sigText = o.sigText ?? (m.couple ? '—— 新人' : signature(m.name));
   const fitIn = (h: number): FitResult => {
     const opt = { min: V2.msgMin * k, max: msgMaxFor(text) * k, lineHeight: lh, maxLines: o.maxLines ?? 6 };
     return fitClauses(c, text, family, box.w, h, opt) ?? fitText(c, text, family, box.w, h, opt);

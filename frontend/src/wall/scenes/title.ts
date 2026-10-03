@@ -1,19 +1,21 @@
 // 片頭卡：每首歌開頭的「歌名卡」（params.kind = 'song'），和提醒大家掃 QR 的「邀請卡」（'invite'）。
 // 照 pdoom 的書擋（open 的 TikZ 紙、outro 的 Regenerate）：只有這裡出現裁切角標，像一張張的圖版封面。
-// 2026-09-28 依「MV 融合原則」重做：片頭卡是電影的片名卡，不是介面——
+// 照「MV 融合原則」：片頭卡是電影的片名卡，不是介面——
 //  - 歌名卡只有一個焦點：歌名（大、靠左、一個字一個字在拍點上升起），下面一條仙女棒畫的細線與歌手（典雅斜體）；
 //    小字只剩最上面一列（左：第幾首，右：新人與日期）。角落的小 QR 照常由引擎畫，歌名卡不再自己放一個大 QR 搶焦點。
 //  - 邀請卡的焦點是大 QR：像一張放在光裡的紙卡（紙色底、陰影），仙女棒沿著外框畫一圈；左邊兩行大字告訴大家要做什麼。
 //  - 背景是很淡的製圖格線＋一團慢慢飄的柔光（有空氣、不是死黑），整個窗格鏡頭很慢地推近。
+//  - 新人的名字、日期是每一場不一樣的執行時資料（../wedding.ts）：名字可能很長、可能還沒定日期，
+//    所以右上那列與邀請卡的說明都在 init 量好字級（太長就縮、說明太長就折兩行），沒日期就連分隔點一起省掉。
 import * as THREE from 'three';
 import { Scene, shared, type Frame, type PostOverrides } from '../engine/scene';
 import { FSPass, Layer2D, W, H } from '../engine/gl';
 import { LineBatch } from '../engine/lines';
-import { F, font } from '../engine/type';
+import { F, font, measure } from '../engine/type';
 import { rgba } from '../engine/palette';
 import { clamp, ease, lerp, prog } from '../engine/util';
 import { fitText } from '../engine/text';
-import { sparkHead, sparkParticles, drawQR, COUPLE_EN, COUPLE_ZH, DATE_DOTS, lyricAt, drawLyric, layoutLyric, barAfter } from './_motifs';
+import { sparkHead, sparkParticles, drawQR, COUPLE_EN, NAME_A, NAME_B, DATE_DOTS, joinBits, fitPx, lyricAt, drawLyric, layoutLyric, barAfter } from './_motifs';
 
 const BG = () => new FSPass(/* glsl */ `
   uniform float t; uniform float k; uniform vec2 lp; uniform float li;
@@ -37,6 +39,10 @@ const X = 160;
 const TOP_Y = 150;
 /** 邀請卡的大 QR（右邊、比左邊的大字還搶眼：它才是要大家做的事）。 */
 const QR = { x: 1176, y: 196, size: 548 };
+/** 右上那列小字（新人與日期）：mono 17 px、字距 5 px；名字太長時縮字（不能跟左邊那列撞在一起）。 */
+const CREDIT = { size: 17, tracking: 5 };
+/** 邀請卡說明那句（手寫 34 px）：左邊界到 QR 外框之前；縮到 28 px 還放不下就在逗號後折成兩行。 */
+const NOTE = { size: 34, min: 28, maxW: QR.x - 16 - 40 - X };
 
 export default class Title extends Scene {
   layer = this.track(new Layer2D(W, H, undefined, { fast: true }));
@@ -47,6 +53,12 @@ export default class Title extends Scene {
   titleFit = { size: 120, lines: [''], lineHeight: 140, width: 0, height: 0 };
   titleY = 400;
   tFirstBar = 0;
+  /** 右上「新人 · 日期」：字串與字級（沒日期就只有名字，不留多餘的分隔點）。 */
+  credit = joinBits('  ·  ', COUPLE_EN.toUpperCase(), DATE_DOTS);
+  creditSize = CREDIT.size;
+  /** 邀請卡的說明：一行或兩行（名字很長時）與字級。 */
+  note: string[] = [];
+  noteSize = NOTE.size;
 
   override init() {
     const { audio: au, song } = this.ctx;
@@ -57,6 +69,18 @@ export default class Title extends Scene {
       // 歌名＋細線＋歌手這一整塊放在畫面偏上的中線（下面留給歌詞）：字面頂約 0.75 em、細線在最後一行下 58、歌手再下 78
       const block = fit.size * 0.75 + (fit.lines.length - 1) * fit.lineHeight + 58 + (song.artist ? 96 : 0);
       this.titleY = Math.max(TOP_Y + 110 + fit.size * 0.75, 490 - block / 2 + fit.size * 0.75);
+      // 右上的新人與日期：從畫面右邊界往左，最多到左邊那列「NO.xx / xx · NOW PLAYING」之後留 60 px
+      const eyebrowW = measure(this.eyebrow(), F.mono(500), CREDIT.size, CREDIT.tracking);
+      this.creditSize = fitPx(this.credit, F.mono(500), CREDIT.size, W - 2 * X - eyebrowW - 60, CREDIT.tracking);
+    } else {
+      // 說明那句用兩個名字組（不要拆 COUPLE_ZH 的「&」：新人可能填了別的寫法）
+      const one = `寫下想對${NAME_A}和${NAME_B}說的話，幾秒後就會出現在這裡。`;
+      const size = fitPx(one, F.hand(400), NOTE.size, NOTE.maxW);
+      if (size >= NOTE.min) { this.note = [one]; this.noteSize = size; }
+      else {
+        this.note = [`寫下想對${NAME_A}和${NAME_B}說的話，`, '幾秒後就會出現在這裡。'];
+        this.noteSize = Math.max(18, fitPx(this.note[0]!, F.hand(400), NOTE.size, NOTE.maxW));
+      }
     }
   }
 
@@ -103,13 +127,19 @@ export default class Title extends Scene {
     return { frame, qr: this.kind === 'invite' ? 0 : 1, bloom: 0.6, vignette: 0.5, zoom: 1 + 0.028 * ease.inOutQuad(f.p) };
   }
 
+  /** 左上那列小字：第幾首。 */
+  private eyebrow() {
+    const { song } = this.ctx;
+    return `NO.${String(song.index).padStart(2, '0')} / ${String(song.count).padStart(2, '0')}  ·  NOW PLAYING`;
+  }
+
   /** 歌名卡。回傳仙女棒筆尖（畫線中），沒在畫是 null。 */
   private drawSong(c: CanvasRenderingContext2D, t: number, beat: number): { x: number; y: number } | null {
     const { song, audio: au } = this.ctx;
     const s = this.ctx.start, b0 = this.tFirstBar;
     c.textBaseline = 'alphabetic';
     // 最上面一列小字：左邊第幾首（mono 打字出來），右邊新人與日期（像圖版的出版資訊）
-    const eyebrow = `NO.${String(song.index).padStart(2, '0')} / ${String(song.count).padStart(2, '0')}  ·  NOW PLAYING`;
+    const eyebrow = this.eyebrow();
     const n = Math.floor(eyebrow.length * prog(t, s + 0.05, s + 0.6));
     c.font = font(F.mono(500), 17);
     c.letterSpacing = '5px';
@@ -117,7 +147,11 @@ export default class Title extends Scene {
     c.fillText(eyebrow.slice(0, n), X, TOP_Y);
     c.textAlign = 'right';
     c.fillStyle = rgba('ash', 0.55 * prog(t, s + 0.3, s + 1));
-    c.fillText(`${COUPLE_EN.toUpperCase()}  ·  ${DATE_DOTS}`, W - X, TOP_Y);
+    // 字級照名字長短縮過（init），字距跟著等比例縮；canvas 的字距也加在最後一個字後面，右對齊時往右補回來
+    const tr = (CREDIT.tracking * this.creditSize) / CREDIT.size;
+    c.font = font(F.mono(500), this.creditSize);
+    c.letterSpacing = `${tr}px`;
+    c.fillText(this.credit, W - X + tr, TOP_Y);
     c.textAlign = 'left';
     c.letterSpacing = '0px';
     // 歌名：每個字從下面升起，一拍一拍錯開（太長就壓在兩拍內）
@@ -195,13 +229,15 @@ export default class Title extends Scene {
     const ka = prog(t, b0 + beat * 2, b0 + beat * 3, ease.outCubic);
     c.save();
     c.globalAlpha *= ka;
-    c.font = font(F.hand(400), 34);
+    c.font = font(F.hand(400), this.noteSize);
     c.fillStyle = rgba('bone', 0.7);
-    c.fillText(`寫下想對${COUPLE_ZH.replace(' & ', '和')}說的話，幾秒後就會出現在這裡。`, X, 660);
+    // 名字很長時說明折成兩行，留言數那行跟著往下讓
+    this.note.forEach((ln, i) => c.fillText(ln, X, 660 + i * this.noteSize * 1.3));
+    const dy = (this.note.length - 1) * this.noteSize * 1.3;
     c.font = font(F.mono(500), 18);
     c.letterSpacing = '4px';
     c.fillStyle = rgba('signal', 0.85);
-    c.fillText(live.count > 0 ? `已收到 ${String(live.count).padStart(3, '0')} 則祝福` : '第一則祝福，等你來寫', X, 712);
+    c.fillText(live.count > 0 ? `已收到 ${String(live.count).padStart(3, '0')} 則祝福` : '第一則祝福，等你來寫', X, 712 + dy);
     c.letterSpacing = '0px';
     c.restore();
     return this.qrCard(c, t, b0, beat);

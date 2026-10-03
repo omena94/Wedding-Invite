@@ -3,7 +3,7 @@
 //    （沒亮的 LED 暗暗的一格一格，點距 3 px；輸出縮小時點的對比自動降低，不會出現疊紋）。
 //  - 主視覺（左邊）：待機畫面的小遊戲——方塊一拍掉一塊（落在拍點上，像俄羅斯方塊），在井裡一格一格拼出一顆像素愛心；
 //    正在掉的那塊是熱的訊號色，落地閃一下；拼完的那一拍整顆愛心亮成點綴色，之後每一拍跳一下。窗格短的時候愛心已經拼了一部分。
-//  - 右上：HIGH SCORES 只剩三列小字。第一名永遠是「宣文 & 孟庭」9,999,999；主打留言的署名那列，分數跟著方塊一塊一塊加，
+//  - 右上：HIGH SCORES 只剩三列小字。第一名永遠是新人（COUPLE_ZH）9,999,999；主打留言的署名那列，分數跟著方塊一塊一塊加，
 //    愛心拼完的那一拍剛好是 1,314,520（一生一世我愛你）。
 //  - 右邊：主打留言（NEW RECORD，v2 字級），一段一段亮起來，署名在最後一行下面。沒有留言：INSERT COIN 閃著＋一行邀請。
 //  - 下方三分之一：歌詞（逐字跟唱：唱到的字整個字變訊號色、唱完紙白、還沒唱三成亮；比留言小）。
@@ -18,7 +18,7 @@ import { LIN, rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, lerp, prog, hash } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
 import { Lyrics } from '../engine/lyrics';
-import { lyricAt, layoutLyric, type LyricStyle, beatAfter, COUPLE_ZH, lyricSubOf, subStyleFor, subSizeFor, subGap } from './_motifs';
+import { lyricAt, layoutLyric, type LyricStyle, beatAfter, COUPLE_ZH, fitPx, lyricSubOf, subStyleFor, subSizeFor, subGap } from './_motifs';
 import { DEC_GLSL, winBeats, INVITE, T8_TEXT, Stage, camMove, type StageCam } from './_t8';
 import { V2, msgMaxFor, lyricV2, sigV2, fitClauses } from './_v2';
 
@@ -235,7 +235,8 @@ export default class Arcade extends Scene {
       c.textAlign = 'right';
       c.fillText(sc.toLocaleString('en-US'), snap(RX + 330), y);
       c.textAlign = 'left';
-      c.font = font(F.hei(500), 40);
+      // 名字是執行時才知道的（新人的名字可能很長，例如「歐陽承恩 & 司馬以晴」）：放不下就縮字，不超出板子右緣
+      c.font = font(F.hei(500), fitPx(name, F.hei(500), 40, RX + RW - snap(RX + 380)));
       c.fillText(name, snap(RX + 380), y);
     });
     if (!m) {

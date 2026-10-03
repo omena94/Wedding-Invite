@@ -17,15 +17,16 @@ export const HEX = {
   rose: '#F0788A', // 點綴色：只給愛心
   paper: '#F1E7D8', // 亮版面的紙（預設奶茶色）
   sepia: '#3B2C20', // 紙上的墨（深咖啡，亮版面的字與線）
-  // 固定色（不跟主題換）：芃芃、QQ 是橘色的博美，換到薰衣草主題也不能變紫色的狗
-  fur: '#E0944F', // 博美的橘毛
+  // 固定色（不跟主題換）：實物本來的顏色——芃芃、QQ 是橘色的博美，換到薰衣草主題也不能變紫色的狗；
+  // 原木桌、紅紙也一樣。不發光。
+  fur: '#E0944F', // 博美的橘毛；暖橘：原木、牛皮紙、茶色
   cream: '#F4E4CA', // 淺奶油色的毛、白胸口
-  collar: '#C8453B', // QQ 的紅項圈
+  collar: '#C8453B', // QQ 的紅項圈；正紅：春聯、紅紙
   ball: '#D8E24A', // 黃綠色網球（狗狗最愛的那顆）
   denim: '#58789A', // 牛仔褲
-  gingham: '#86A98B', // 孟庭的綠格紋上衣
+  gingham: '#86A98B', // 孟庭的綠格紋上衣；灰綠：桌墊、絨布
   leash: '#4F86C6', // 遛狗的藍色牽繩
-  // 2026-09-28 新人給了參考照（只看、不放進影片）：孟庭是紅棕色長髮；QQ 耳朵與額頭有深色毛尖；芃芃臉是杏橘色
+  // 新人給了參考照（只看、不放進影片）：孟庭是紅棕色長髮；QQ 耳朵與額頭有深色毛尖；芃芃臉是杏橘色
   auburn: '#8E4B30', // 孟庭的紅棕色頭髮
   sable: '#4A3B33', // QQ 耳朵、額頭的深灰黑毛尖
   apricot: '#E3A566', // 芃芃臉頰、額頭的杏橘色
@@ -67,7 +68,7 @@ export function rgba(key: PaletteKey | string, a = 1): string {
 /**
  * 色票名、#hex 或 rgb()/rgba() 字串 → [r, g, b]。
  * mixRgba 的結果再拿去混色（例如 mixRgba(mixRgba('ink2', 'bone', 0.1), 'signal', 0.05)）很常見；
- * 以前只認色票名與 #hex，傳 rgba(...) 字串會變成純黑（2026-09-29 firstdance、concert 踩到）。
+ * 以前只認色票名與 #hex，傳 rgba(...) 字串會變成純黑。
  */
 function toRgb(c: PaletteKey | string): number[] {
   if (/^rgba?\(/i.test(c)) return (c.match(/[\d.]+/g) ?? ['0', '0', '0']).slice(0, 3).map(Number);

@@ -16,7 +16,7 @@ import { Layer2D, W, H } from '../engine/gl';
 import { F, font, loadText } from '../engine/type';
 import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, hash, TAU } from '../engine/util';
-import { lyricAt, beatAfter, drawHeart, COUPLE_ZH, DATE_DOTS, lyricSubOf, layoutLyric, subStyleFor, subGap, drawLyricSub, type LyricStyle } from './_motifs';
+import { lyricAt, beatAfter, drawHeart, COUPLE_ZH, fitPx, lyricSubOf, layoutLyric, subStyleFor, subGap, drawLyricSub, type LyricStyle } from './_motifs';
 import { layoutRows, drawRows, darkInk } from './_t4';
 import { T23_INVITE, T23_TEXT, sigOf, layMsgV2, stagger, type MsgLay, type Rect } from './_t23';
 import { V2, lyricV2 } from './_v2';
@@ -129,7 +129,7 @@ export default class Carousel extends Scene {
     const lines = lyrics.linesIn(s - 1, e + 1);
     this.hasLyr = lines.length > 0;
     const sig = m ? sigOf(m) : '';
-    await loadText(`${T23_TEXT}${m?.text ?? ''}${sig}${song.title}${lines.map((l) => l.text).join('')}${DATE_DOTS}`);
+    await loadText(`${T23_TEXT}${m?.text ?? ''}${sig}${song.title}${lines.map((l) => l.text).join('')}`);
     const beat = au.beatPeriod(s);
     this.tOn = beatAfter(au, s + Math.min(0.15, beat * 0.3));
     const bar = au.timeOfBar(au.barAt(this.tOn) + 1) - this.tOn;
@@ -429,7 +429,9 @@ export default class Carousel extends Scene {
       }
     } else {
       // 沒有留言：花邊上是新人的名字，名牌上是歌詞（主角）
-      c.font = font(F.ming(700), 40); c.fillStyle = rgba('bone', 0.75); c.textAlign = 'center'; c.letterSpacing = '8px';
+      // 名字長短每一場不一樣：照花邊的寬度（跟歌詞一樣 1180）縮字，字距跟著縮
+      const nPx = fitPx(COUPLE_ZH, F.ming(700), 40, 1180, 8);
+      c.font = font(F.ming(700), nPx); c.fillStyle = rgba('bone', 0.75); c.textAlign = 'center'; c.letterSpacing = `${(8 * nPx) / 40}px`;
       c.fillText(COUPLE_ZH, CX, rimY + 14);
       c.letterSpacing = '0px';
       // 句子之間的空檔：上一句留在名牌上（淡一點），名牌不要突然空掉
@@ -449,7 +451,7 @@ export default class Carousel extends Scene {
         if (sub) { c.translate(0, lastY + gap); c.textAlign = 'left'; drawLyricSub(c, sub, t, sst, L2.size, c.globalAlpha * ly.k); }
         c.restore();
       } else if (!this.hasLyr) {
-        c.font = font(F.hand(700), 60); c.fillStyle = rgba('bone', 0.9);
+        c.font = font(F.hand(700), fitPx(COUPLE_ZH, F.hand(700), 60, MSG_BOX.w - 40)); c.fillStyle = rgba('bone', 0.9);
         c.fillText(COUPLE_ZH, MX, MSG_BOX.y + 130);
       }
       c.font = font(F.hei(500), 22); c.fillStyle = rgba('ash', 0.75); c.letterSpacing = '3px';

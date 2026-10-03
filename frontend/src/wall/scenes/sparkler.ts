@@ -3,12 +3,12 @@
 // 剛寫好的字是燒紅的（訊號色、會發光），約一秒冷卻成紙白；寫完再用同一支筆簽名。
 // 上方是「信頭」：正在唱的那行歌詞（逐字跟唱，比留言小一級），下面一條細線跟著大鼓呼吸。
 // 沒有留言的窗格：仙女棒改成跟著歌聲寫歌詞（唱到哪寫到哪），信頭放歌名。
-// 2026-09-28 依「MV 融合原則」調整：
+// 依「MV 融合原則」調整：
 //  - 仙女棒是真的光源：筆尖附近的信紙被照亮（暖暖的一團光，橫線在光裡比較清楚），寫完光慢慢熄掉——
 //    暗房間裡只有一支仙女棒在寫字，畫面自然只有一個焦點。
 //  - 留言可以用整個寬度（右邊不用再替即時小卡留空）；信紙的橫線與邊線在四周淡出，不是一個方框。
 //  - 拿掉角落的編號（只剩新人留言的小標）；鏡頭整個窗格慢慢推近。
-// v2（2026-09-29「留言尺寸與版面比例標準 v2」）：
+// v2（「留言尺寸與版面比例標準 v2」）：
 //  - 信紙縮成左邊一張 860×430 的暗色紙（留言 40～60 px、署名 26～32、信頭的歌詞 40～52，不比留言大）；
 //    沒有留言時仙女棒寫的歌詞也是 40～52。
 //  - 空出來的畫面是一個夜裡的陽台（場景是主視覺，一直在動）：上方一串失焦的小燈泡（跟 hi-hat 一閃一閃、在風裡輕輕晃），
@@ -26,7 +26,7 @@ import { fitText, type FitResult } from '../engine/text';
 import { Lyrics, type Line } from '../engine/lyrics';
 import { sparkHead, sparkParticles, lyricAt, drawLyric, layoutLyric, lyricSubOf, drawLyricSub, beatAfter, barAfter, signature, drawHeart } from './_motifs';
 import { V2, msgMaxFor, lyricV2, sigV2, fitClauses } from './_v2';
-// 最早的版面：排程參數在 director.ts 的 PLATES；這裡只宣告雙語（2026-09-30 雙語普查通過：有翻譯＋主打留言時中文、原文、留言三樣都清楚）
+// 最早的版面：排程參數在 director.ts 的 PLATES；這裡只宣告雙語（雙語普查通過：有翻譯＋主打留言時中文、原文、留言三樣都清楚）
 export const spec: PlateSpecDecl = { bilingual: true };
 
 

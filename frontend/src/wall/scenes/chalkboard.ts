@@ -1,12 +1,13 @@
 // 黑板（暗）：放學後的教室，一面黑板，粉筆字。
-// 2026-09-29 依「留言尺寸與版面比例標準 v2」重做構圖：
+// 依「留言尺寸與版面比例標準 v2」構圖：
 //  - 場景是主視覺：黑板右半邊，一本正經的老師在拍點上畫一張「幸福指數 vs. 時間」的圖（冷面笑話）：先畫座標軸，
 //    再用彩色粉筆（訊號色）一段一段畫出一條有起有落、一路往上的曲線，畫到「今天」打一個點；之後每一小節往「未來」多畫一段虛線。
 //    寫字的地方掉粉筆灰，黑板上有以前擦過的白霧。
 //  - 留言用粉筆寫在左邊（霞鶩文楷，40～60 px，照 _v2），拍點上一個字一個字寫出來，愛心用玫瑰色粉筆；署名在最後一行下面（26～32 px）。
 //  - 歌詞是黑板最上面一行（像今天的課名，40～52 px、比留言小），逐字寫：還沒唱的是淡淡的、唱到的字用彩色粉筆（訊號色）、唱完是白粉筆。
 //    換句時板擦從左到右擦過去，留下一道擦過的白霧，新的一句再寫上去。
-//  - 右上角是台灣教室黑板一定有的：「3月13日（六）」「值日生　宣文　孟庭」（小、淡）。
+//  - 右上角是台灣教室黑板一定有的：婚禮那天的「5月20日（四）」與「值日生　（兩位新人的名字）」（小、淡）。
+//    還沒定日期就只寫值日生；名字很長時縮字，不會伸進歌詞那一行。
 //  - 沒有留言：歌詞放大寫在左邊（52 px、最多兩行），下面一行小小的邀請；純音樂又沒有留言：左邊寫邀請。
 //  - 黑板的下緣、粉筆槽都在右下角 HUD 的上面（HUD 底下是乾淨的牆）。最後半拍板擦斜斜地把整面黑板擦掉（下一堂課）。
 //    鏡頭像坐在第一排往上看，切進來時從左邊搖過來落定、慢慢推近。
@@ -19,7 +20,7 @@ import { LineBatch } from '../engine/lines';
 import { F, font, loadText } from '../engine/type';
 import { LIN, rgba } from '../engine/palette';
 import { clamp, ease, prog, hash, lerp } from '../engine/util';
-import { lyricAt, WEDDING_DATE, COUPLE_ZH, lyricSubOf, layoutLyric, subStyleFor, subSizeFor, subGap, drawLyric, type LyricStyle } from './_motifs';
+import { lyricAt, DATE, NAME_A, NAME_B, fitPx, lyricSubOf, layoutLyric, subStyleFor, subSizeFor, subGap, drawLyric, type LyricStyle } from './_motifs';
 import { grid, stagger, layoutRows, drawRows, type KaraokeInk } from './_t4';
 import { PlaneCam, camUniforms, CAM_GLSL, orderMask, lineItems, msgBlockV2, INVITE, type OrderMask, type MsgBlock, type MaskItem, type Rect, type P2 } from './_t14';
 import { lyricV2 } from './_v2';
@@ -43,11 +44,12 @@ const FAM = F.hand(700);
 const MAXC = 80;
 const MS = 0.5;
 
-// 婚禮那天是星期幾（右邊那一欄）：用 UTC 算，每台電腦都一樣
-const [Y, M, D] = String(WEDDING_DATE).split('-').map(Number) as [number, number, number];
-const WEEK = '日一二三四五六'[new Date(Date.UTC(Y, M - 1, D)).getUTCDay()]!;
-const DATE_TXT = `${M}月${D}日（${WEEK}）`;
-const NAMES = COUPLE_ZH.split(/\s*&\s*/);
+// 婚禮那天是星期幾（右邊那一欄）：用 UTC 算，每台電腦都一樣。還沒定日期是空字串，那一行整個不寫
+const WEEK = DATE ? '日一二三四五六'[new Date(Date.UTC(DATE.y, DATE.m - 1, DATE.d)).getUTCDay()]! : '';
+const DATE_TXT = DATE ? `${DATE.m}月${DATE.d}日（${WEEK}）` : '';
+const DUTY_TXT = `值日生　${NAME_A}　${NAME_B}`;
+/** 右上角那一欄最寬多寬（黑板 px）：歌詞那一行最右到 LYR_S.x + LYR_S.w，名字再長也不能伸過去。 */
+const DUTY_MAXW = DUTY_R - (LYR_S.x + LYR_S.w) - 30;
 
 const BG = () => new FSPass(/* glsl */ `
   ${CAM_GLSL}
@@ -184,7 +186,7 @@ export default class Chalkboard extends Scene {
     const c = this.lyr.ctx;
     const gr = grid(au, s, e);
     this.hasLyrics = lyrics.linesIn(s, e).length > 0;
-    await loadText(`${m?.text ?? ''}${m ? (m.couple ? '—— 新郎新娘' : m.name) : ''}${INVITE}${DATE_TXT}值日生${NAMES.join('')}幸福指數時間今天未來${song.title}${song.artist}——一位賓客`);
+    await loadText(`${m?.text ?? ''}${m ? (m.couple ? '—— 新人' : m.name) : ''}${INVITE}${DATE_TXT}${DUTY_TXT}幸福指數時間今天未來${song.title}${song.artist}——一位賓客`);
     // 鏡頭在留言那一塊的縮放（窗格中間的姿勢）：畫在黑板上的字級要除以它，畫面上才是標準的大小
     this.cam.set(this.pose((s + e) / 2));
     const k = (this.k = this.cam.toScreen(MSG_BOX.x + MSG_BOX.w / 2, MSG_BOX.y + MSG_BOX.h / 2).scale);
@@ -289,8 +291,9 @@ export default class Chalkboard extends Scene {
     c.textAlign = 'right';
     c.fillStyle = rgba('bone', 0.55);
     c.font = font(FAM, 24 * ks);
-    c.fillText(DATE_TXT, DUTY_R, 128);
-    c.fillText(`值日生　${NAMES.join('　')}`, DUTY_R, 128 + 34 * ks);
+    if (DATE_TXT) c.fillText(DATE_TXT, DUTY_R, 128);
+    c.font = font(FAM, fitPx(DUTY_TXT, FAM, 24 * ks, DUTY_MAXW));
+    c.fillText(DUTY_TXT, DUTY_R, DATE_TXT ? 128 + 34 * ks : 128);
     c.textAlign = 'left';
     this.drawGraph(c, t);
 
@@ -309,7 +312,7 @@ export default class Chalkboard extends Scene {
       // 原文（韓文歌）：同一支白粉筆寫在中文正下方。字級照螢幕 px 算（黑板座標要除以 k），整組一起置中、一起被板擦擦掉
       const sub = lyricSubOf(line), kk = this.k, ms = lay.size * kk;
       const sst: LyricStyle = { family: FAM, size: ms, maxWidth: lz.w * kk, align: 'left', sung: ink.sung, unsung: ink.unsung };
-      // 雙語（2026-09-30）：粉筆字的字面小、黑板又是斜斜地往上看，原文至少排 SUB_MIN 螢幕 px；太長就折行、不再縮
+      // 雙語：粉筆字的字面小、黑板又是斜斜地往上看，原文至少排 SUB_MIN 螢幕 px；太長就折行、不再縮
       const sPx = Math.max(SUB_MIN, subSizeFor(ms));
       const sLay = sub ? layoutLyric(c, sub, { ...subStyleFor(sst, ms), size: sPx, minSize: sPx }) : null;
       const sGap = sLay ? subGap(ms, sLay.size) / kk : 0;

@@ -6,13 +6,15 @@
 //        [--params '{"kind":"invite"}'] [--theme rose] [--popup 5@3.2] [--no-lyrics] [--win-from 0 --win-to 12] [--out ../wall-out/sparkler]
 //   node scripts/wall-render.mjs sheet  --scene slam --from 20 --to 32 --n 12 --cols 4 --out ../wall-out/slam.png
 //   node scripts/wall-render.mjs perf   --scene stars --from 20 [--n 180]
-//   node scripts/wall-render.mjs timeline [--song x.mp3]      （印出導演排出來的時間軸）
+//   node scripts/wall-render.mjs timeline [--song x.mp3] [--query 'photos=1&mix=all']  （印出導演排出來的時間軸；--query 模擬新人選的內容，見 main.ts 的 devContent）
 //   node scripts/wall-render.mjs ko --scene a,b,c              （韓文歌原文副行驗收，每個版面一張 wall-out/ko/<版面>.jpg）
 //   node scripts/wall-render.mjs bi --scene a,b,c              （雙語普查：有翻譯＋有主打留言時三樣是不是都清楚，wall-out/bi/<版面>.jpg＋.json；加 --full 另存全尺寸 <版面>-1.jpg、-2.jpg；
 //        加 --sung 改在句子唱完後量原文字級：淡的還沒唱的字會量小）
 //   stills／sheet 加 --ko：用韓文佔位歌詞＋中文翻譯（中文大字、韓文原文小字在下面）。
 //   stills／sheet／ko 加 --keep-sub：有主打留言的窗格也畫原文（params.keepSub，只給檢查用：看還沒標 bilingual 的版面三樣擠不擠）。
 //   不給 --scene：讓導演排整首歌（跟現場一樣）。
+//   node scripts/wall-render.mjs qa --scene still              （照片版面（spec 有 photo: true）自動換成照片的情境；也可以寫 photoqa）
+//   node scripts/wall-render.mjs thumbs [--names a,b]   （後台版面清單的縮圖 → public/wall-thumbs/）
 //
 // 測試音檔：環境變數 WALL_DEV_AUDIO_DIR 指到一個放 mp3（可附同名 .lrc）的資料夾；沒有的話用無聲的假節拍。
 // Chrome 用本機安裝的（playwright-core 的 channel: 'chrome'）。
@@ -34,9 +36,13 @@ mkdirSync(CACHE, { recursive: true });
 
 // 好幾個人（或助手）可能同時在截圖：port 隨機起跳，被占用就往後找
 // Windows 會保留一段一段的 port（Hyper-V），碰到就 EACCES，不是「被占用」：換一個隨機 port 再試
+const UNSAFE_PORTS = new Set([5060, 5061, 6000, 6566, 6665, 6666, 6667, 6668, 6669, 6679, 6697]);
 let server;
 for (let k = 0; ; k++) {
-  server = await createServer({ root: ROOT, logLevel: 'error', server: { port: 5400 + Math.floor(Math.random() * 3000), strictPort: false, hmr: false } });
+  // Chrome 會擋一些 port（ERR_UNSAFE_PORT，例如 IRC 的 6665～6669），抽到就換一個
+  let port;
+  do port = 5400 + Math.floor(Math.random() * 3000); while (UNSAFE_PORTS.has(port));
+  server = await createServer({ root: ROOT, logLevel: 'error', server: { port, strictPort: false, hmr: false } });
   try { await server.listen(); break; } catch (e) { await server.close(); if (k >= 8 || !/EACCES|EADDRINUSE/.test(String(e?.code ?? e))) throw e; }
 }
 const url = (server.resolvedUrls?.local?.[0] ?? `http://localhost:${server.config.server.port}/`).replace(/\/$/, '');
@@ -59,7 +65,9 @@ try {
     : [];
   const onlyList = mode === 'thumbs' ? thumbNames.join(',') : opt('scene');
   const only = onlyList && !argv.includes('--all-scenes') ? `&only=${encodeURIComponent(onlyList)}` : '';
-  await page.goto(`${url}/wall.html?dev=1&export=1${scale ? `&scale=${scale}` : ''}${only}`);
+  // --query：多帶網址參數（例如 photos=1&mix=all&messages=0，模擬新人在後台選的內容）
+  const extraQ = opt('query') ? `&${opt('query').replace(/^[?&]/, '')}` : '';
+  await page.goto(`${url}/wall.html?dev=1&export=1${scale ? `&scale=${scale}` : ''}${only}${extraQ}`);
   await page.waitForFunction(() => window.__wall?.ready || window.__wall?.error, null, { timeout: 180000 });
   const err = await page.evaluate(() => window.__wall.error);
   if (err) throw new Error(`大螢幕開不起來：\n${err}\n${logs.join('\n')}`);
@@ -87,7 +95,13 @@ try {
   const sceneErrors = await page.evaluate(() => window.__wall.errors);
 
   if (mode === 'timeline') {
-    for (const e of info.timeline) console.log(`${e.start.toFixed(2).padStart(7)} – ${e.end.toFixed(2).padStart(7)}  ${e.scene}  (${e.id})`);
+    // 主打留言、照片（第幾張假照片）也印出來：檢查照片窗格有沒有輪流放註解與留言
+    const dbg = await page.evaluate(() => window.__wallDbg?.timeline() ?? []);
+    for (const e of info.timeline) {
+      const d = dbg.find((x) => x.scene === e.scene && Math.abs(x.start - e.start) < 1e-3);
+      const extra = d ? `${d.photo != null ? `  照片 ${d.photos ? d.photos.join('+') : d.photo}` : ''}${d.msg != null ? `  留言 #${d.msg}` : ''}` : '';
+      console.log(`${e.start.toFixed(2).padStart(7)} – ${e.end.toFixed(2).padStart(7)}  ${e.scene}  (${e.id})${extra}`);
+    }
   } else if (mode === 'stills') {
     const out = path.resolve(opt('out', path.join(ROOT, '..', 'wall-out', opt('scene') ?? 'director')));
     mkdirSync(out, { recursive: true });
@@ -126,7 +140,7 @@ try {
     mkdirSync(path.dirname(out), { recursive: true });
     writeFileSync(out, Buffer.from(b64, 'base64'));
     console.log(out);
-  } else if (mode === 'qa') {
+  } else if (mode === 'qa' || mode === 'photoqa') {
     // 標準驗收：同一個版面跑十一種情境（長短留言、英文、只有愛心、沒留言、純音樂、慢歌、2 小節、新人留言、四行多愛心），
     // 加確定性檢查（同一個時間點畫兩次要一模一樣）與效能，拼成一張總表 wall-out/qa/<版面>.jpg，數字寫在 <版面>.json。
     // 需要標準測試音檔資料夾（Test Band - Fast Pop.mp3、Test Band - Slow Ballad.mp3）。
@@ -134,7 +148,26 @@ try {
     if (!scene) throw new Error('qa 要指定 --scene');
     const FAST = 'Test Band - Fast Pop.mp3', SLOW = 'Test Band - Slow Ballad.mp3';
     if (!songs.includes(FAST) || !songs.includes(SLOW)) throw new Error(`qa 需要標準測試音檔（${FAST}、${SLOW}）`);
-    const cases = [
+    // 照片版面（版面檔的 spec 有 photo: true，或 photoqa 模式）換一組照片的情境：各種尺寸、方向；主字是註解或賓客留言（長短、英文）＋歌詞跟唱、
+    // 只有歌詞、兩樣都沒有；焦點在角落（太陽畫在焦點上，看鏡頭有沒有往那裡推）；慢歌、短窗格、長窗格。
+    // params.photo：第幾張假照片（src/wall/dev/photos.ts），{n, caption: null} = 那張但沒有註解，{n, fx, fy} = 換焦點；message：主打第幾則假留言
+    const sceneSrc = path.join(ROOT, 'src', 'wall', 'scenes', `${scene}.ts`);
+    const photoPlate = mode === 'photoqa' || (existsSync(sceneSrc) && /\bphoto:\s*true/.test(readFileSync(sceneSrc, 'utf8')));
+    const PHOTO_CASES = [
+      { label: 'A 橫 3:2＋短註解＋歌詞・章節開頭・燭光金・9 小節', song: FAST, params: { photo: 1 }, theme: 'gold', from: 20, to: 36.4, t: [20.15, 20.6, 23.5, 27, 31, 36.1] },
+      { label: 'B 直 2:3＋長留言＋歌詞・玫瑰', song: FAST, message: 3, params: { photo: 2 }, theme: 'rose', from: 40, to: 49.3, t: [40.2, 41, 44, 47, 49] },
+      { label: 'C 手機直拍 9:16・沒註解只唱歌詞・香檳', song: FAST, params: { photo: 3 }, theme: 'champagne', from: 60, to: 71, t: [60.5, 63, 66, 70.7] },
+      { label: 'D 舊照片 640×480＋註解＋歌詞・鼠尾草', song: FAST, params: { photo: 4 }, theme: 'sage', from: 76, to: 83.3, t: [76.2, 77, 80, 83] },
+      { label: 'E 16:9＋英文留言＋歌詞・珊瑚', song: FAST, message: 5, params: { photo: 5 }, theme: 'coral', from: 90, to: 98, t: [90.3, 92, 95, 97.8] },
+      { label: 'F 60 字長註解＋歌詞・薰衣草', song: FAST, params: { photo: 6 }, theme: 'lilac', from: 106, to: 117, t: [106.3, 107.5, 110, 116.7] },
+      { label: 'G 短留言・純音樂（沒歌詞）・焦點在左上', song: FAST, message: 2, params: { photo: { n: 1, fx: 0.18, fy: 0.24 } }, theme: 'gold', from: 20, to: 32, t: [20.3, 23, 27, 31.7], lrc: '' },
+      { label: 'H 慢歌・直式＋註解＋歌詞', song: SLOW, params: { photo: 2 }, theme: 'gold', from: 20, to: 40, t: [20.3, 26, 32, 39.6] },
+      { label: 'I 3 秒短窗格＋英文註解', song: FAST, params: { photo: 5 }, theme: 'coral', from: 50, to: 53.2, t: [50.1, 51.5, 53.1] },
+      { label: 'J 長窗格 16 秒・沒註解唱歌詞・焦點在右邊', song: FAST, params: { photo: { n: 5, caption: null, fx: 0.84, fy: 0.5 } }, theme: 'rose', from: 120, to: 136, t: [120.3, 124, 128, 132, 135.8] },
+      { label: 'K 最長 60 字留言＋歌詞・直式・鼠尾草', song: FAST, message: 15, params: { photo: 2 }, theme: 'sage', from: 140, to: 156, t: [140.4, 143, 148, 155.7] },
+      { label: 'L 沒註解也沒歌詞（純音樂）', song: FAST, params: { photo: { n: 1, caption: null } }, theme: 'gold', from: 20, to: 32, t: [20.3, 25, 31.7], lrc: '' },
+    ];
+    const cases = photoPlate ? PHOTO_CASES : [
       { label: 'A 長留言・燭光金・9 小節', song: FAST, message: 3, theme: 'gold', from: 20, to: 36.4, t: [20.3, 21.5, 23.5, 27, 31, 36.1] },
       { label: 'B 短留言・珊瑚・4 小節', song: FAST, message: 2, theme: 'coral', from: 40, to: 47.3, t: [40.3, 42, 44.5, 47] },
       { label: 'C 英文留言・玫瑰', song: FAST, message: 5, theme: 'rose', from: 60, to: 71, t: [60.5, 63, 66, 70.7] },
@@ -145,7 +178,7 @@ try {
       { label: 'H 慢歌', song: SLOW, message: 3, theme: 'gold', from: 20, to: 40, t: [21, 26, 32, 39.6] },
       { label: 'I 2 小節', song: FAST, message: 3, theme: 'coral', from: 50, to: 53.64, t: [50.2, 51.5, 53.4] },
       { label: 'J 新人留言', song: FAST, message: 1, theme: 'gold', from: 20, to: 36.4, t: [23, 27] },
-      // 正式站踩過：四行、愛心穿插的留言，署名被字蓋住（2026-09-28）
+      // 最容易排壞的：四行、愛心穿插的留言，版面只留三行的位置時署名會被字蓋住
       { label: 'K 四行＋很多愛心・香檳', song: FAST, message: 19, theme: 'champagne', from: 60, to: 74, t: [63, 67, 73.5] },
     ];
     // --params '{"variant":2}'：每個情境都帶這些參數（測變化款）；輸出檔名加上 --tag（預設 v2 這種）
@@ -165,7 +198,8 @@ try {
     for (const [ri, cs] of cases.entries()) {
       const cf = path.join(CACHE, `${cs.song.replace(/[^\w.-]+/g, '_')}.json`);
       analyses[cs.song] ??= existsSync(cf) ? JSON.parse(readFileSync(cf, 'utf8')) : null;
-      const inf = await page.evaluate((o) => window.__wall.setup(o), { song: cs.song, scene, message: cs.message, params: { ...extra, ...(cs.params ?? {}) }, theme: cs.theme, analysis: analyses[cs.song], from: cs.from, to: cs.to, ...(cs.lrc !== undefined ? { lrc: cs.lrc } : {}) });
+      const so = { song: cs.song, scene, message: cs.message, params: { ...extra, ...(cs.params ?? {}) }, theme: cs.theme, analysis: analyses[cs.song], from: cs.from, to: cs.to, ...(cs.lrc !== undefined ? { lrc: cs.lrc } : {}) };
+      const inf = await page.evaluate((o) => window.__wall.setup(o), so);
       analyses[cs.song] ??= inf.analysis;
       for (const [id, at] of cs.popups ?? []) await page.evaluate(([i, a]) => window.__wall.popup(i, a, true), [id, at]);
       for (const [i, t] of cs.t.entries()) {
@@ -189,9 +223,17 @@ try {
         await page.evaluate((tt) => window.__wall.still(tt), cs.t[4]);
         await page.evaluate((tt) => window.__wall.still(tt), t0);
         const b = await grab();
-        report.deterministic = a === b;
+        // 再從頭建一次這個窗格、直接畫 t0（窗格剛建好的第一格）：版面如果偷偷依賴「上一格」的狀態
+        // （例如鏡頭用了上一次算出來的焦距），第一格會跟畫過幾格之後不一樣，現場切版面、拖進度時會跳一下
+        await page.evaluate((o) => window.__wall.setup(o), { ...so, analysis: analyses[cs.song] });
+        await page.evaluate((tt) => window.__wall.still(tt), t0);
+        const c = await grab();
+        const fresh = c === a;
+        report.deterministic = a === b && fresh;
         // 不一樣時記下差在哪裡（範圍、像素數、最大差），查原因用
         if (!report.deterministic) {
+          const db = a !== b ? b : c;
+          if (!fresh) console.log('窗格剛建好的第一格跟畫過幾格之後不一樣（版面依賴上一格的狀態？）');
           report.detDiff = await page.evaluate(async ([da, db]) => {
             const load = async (u) => { const im = new Image(); im.src = u; await im.decode(); const cv = new OffscreenCanvas(im.width, im.height); const c = cv.getContext('2d'); c.drawImage(im, 0, 0); return c.getImageData(0, 0, im.width, im.height); };
             const A = await load(da), B = await load(db);
@@ -201,11 +243,13 @@ try {
               if (d) { n++; max = Math.max(max, d); const p = i / 4, x = p % A.width, y = Math.floor(p / A.width); x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
             }
             return { pixels: n, maxDiff: max, box: [x0, y0, x1, y1] };
-          }, [a, b]);
+          }, [a, db]);
           console.log('確定性差異：', JSON.stringify(report.detDiff));
           // GPU 的捨入雜訊：零星幾十個像素、只差 1～2 階（255 階裡），肉眼看不出來，連最簡單的 karaoke 都偶爾會有。
+          // 高對比的邊多的版面（照片＋字）、或好幾個人同時在跑截圖時，只差 1 階的像素會到一兩百個，一樣看不出來。
           // 這種當成通過（記在 json 的 detNoise）；超過就是版面真的不確定（字型換了、狀態沒重設…），差異會大很多
-          if (report.detDiff.pixels <= 60 && report.detDiff.maxDiff <= 2) { report.deterministic = true; report.detNoise = true; }
+          const { pixels: dp, maxDiff: dm } = report.detDiff;
+          if ((dp <= 60 && dm <= 2) || (dp <= 300 && dm <= 1)) { report.deterministic = true; report.detNoise = true; }
         }
         report.perf = +(await page.evaluate(([f, n]) => window.__wall.perf(f, n), [cs.t[2], 240])).toFixed(2);
       }
@@ -232,9 +276,13 @@ try {
     let ok = 0;
     for (const name of thumbNames) {
       try {
-        const inf = await page.evaluate((o) => window.__wall.setup(o), { song: FAST, scene: name, message: 3, theme: 'gold', analysis: an, from: 20, to: 36.4, params: name === 'title' ? { kind: 'song' } : undefined });
+        // 照片版面的縮圖放第 1 張假照片的註解（不放賓客留言：後台挑版面時看的是照片怎麼擺）
+        const isPhoto = await page.evaluate((n) => !!window.__wall.spec?.(n)?.photo, name);
+        const inf = await page.evaluate((o) => window.__wall.setup(o), { song: FAST, scene: name, message: isPhoto ? undefined : 3, theme: 'gold', analysis: an, from: 20, to: 36.4, params: name === 'title' ? { kind: 'song' } : undefined });
         an ??= inf.analysis;
-        await page.evaluate((tt) => window.__wall.still(tt), name === 'title' ? 22 : 31);
+        // 版面可以指定縮圖在窗格的哪裡拍（spec.thumbAt，0..1）；預設在後段（31 秒）
+        const at = await page.evaluate((n) => window.__wall.spec?.(n)?.thumbAt ?? null, name);
+        await page.evaluate((tt) => window.__wall.still(tt), name === 'title' ? 22 : at != null ? 20 + Math.min(0.98, Math.max(0.02, at)) * 16.4 : 31);
         const b64 = await page.evaluate(async () => {
           const cv = new OffscreenCanvas(480, 270);
           cv.getContext('2d').drawImage(document.getElementById('c'), 0, 0, 480, 270);
@@ -263,7 +311,7 @@ try {
     console.log(`平均每格 ${ms.toFixed(2)} ms；CPU 取樣前 25 名（self time）：`);
     for (const [k, v] of [...self].sort((a, b) => b[1] - a[1]).slice(0, 25)) console.log(`${(100 * v / total).toFixed(1).padStart(5)}%  ${k}`);
   } else if (mode === 'ko') {
-    // 韓文歌驗收（2026-09-30）：中文主行＋韓文原文副行。每個版面 6 格（一格 960×540，副行的字才看得清楚）拼成
+    // 韓文歌驗收：中文主行＋韓文原文副行。每個版面 6 格（一格 960×540，副行的字才看得清楚）拼成
     // wall-out/ko/<版面>.jpg：快歌沒留言 3 格、慢歌沒留言 2 格、有主打留言 1 格（有留言時副行要收起來、只剩中文）。
     // 時間點挑「有副行的句子唱到一半」。--scene 可以給好幾個（逗號分隔），同一個瀏覽器一次跑完。
     // --plain：同樣的時間點改用一般（沒有翻譯）的佔位歌詞，拿來跟改版前逐像素比，確認一般的歌畫面沒變。
@@ -320,7 +368,7 @@ try {
       console.log(`${f}  （${shots.length} 格${errs.length ? `，錯誤 ${errs.length} 個` : ''}）`);
     }
   } else if (mode === 'bi') {
-    // 雙語普查（2026-09-30）：有翻譯的歌只排雙語版面（spec.bilingual），現有的版面要一個一個看「主打留言＋中文＋原文」三樣同時出現時
+    // 雙語普查：有翻譯的歌只排雙語版面（spec.bilingual），現有的版面要一個一個看「主打留言＋中文＋原文」三樣同時出現時
     // 是不是都清楚、不擠、不壓 HUD。每個版面兩格：長留言（3，燭光金）、四行多愛心（K，19，香檳），時間點挑「有原文的句子唱到一半、
     // 留言已經寫完」。用 params.keepSub 讓有留言的窗格也畫原文，再把同一格「不畫原文」（現在正式播放的樣子）畫一次比對，
     // 差異的範圍 = 原文（加上因為原文而移動的東西）：框在圖上（青色虛線），寫進 json（box、面積、有沒有進右下角 HUD）。

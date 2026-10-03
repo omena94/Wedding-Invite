@@ -1,5 +1,5 @@
 // 磁力線（亮）：理化課本那張「條形磁鐵與鐵粉」的實驗，做成一張會動的圖版。
-// 左邊一塊磁鐵（宣文）、右邊一塊（孟庭），N 對 S：異極相吸。紙上撒滿鐵粉（細細的短線），
+// 左邊一塊磁鐵（新郎）、右邊一塊（新娘），底下各寫一個名字，N 對 S：異極相吸。紙上撒滿鐵粉（細細的短線），
 //  - 一開始鐵粉亂撒；每個拍點「輕敲一下紙面」（大鼓時鐵粉跳一下），敲一次就更順著磁力線排好一點——
 //    像真的做這個實驗時那樣，幾拍之後整張紙都是從 N 流到 S 的弧線。
 //  - 每個小節線兩塊磁鐵往中間挪一步（outExpo：一下子滑過去、停住），磁力線跟著重新排列。
@@ -8,7 +8,7 @@
 //  - 標準 v2：磁鐵與磁力線是主視覺（佔上面三分之二）；鐵粉字在下方三分之一，字級照標準（40～60），署名在最後一行下面。
 //  - 一個小小的指南針（磁針）放在磁場裡，每個小節線換一個位置（一下子滑過去），磁針晃兩下、停在磁場的方向。
 //  - 歌詞是上方的抬頭（逐字跟唱，亮版面：訊號色的暗部＋螢光筆）；左下一行冷面註腳。
-//  - 沒有留言：鐵粉聚成「宣文♥孟庭」，下面一行邀請。純音樂：抬頭寫本實驗的配樂（歌名）。
+//  - 沒有留言：鐵粉聚成新人的名字「A♥B」，下面一行邀請。純音樂：抬頭寫本實驗的配樂（歌名）。
 // 畫法：紙（_t11 的共用紙）→ 背景的鐵粉（全螢幕 shader，每個 9 px 的格子一根，方向由兩塊磁鐵的四個磁極算）
 // → 組成字的鐵粉（LineBatch，一根一段）→ 磁鐵與文字（Canvas2D）。
 import * as THREE from 'three';
@@ -20,7 +20,7 @@ import { LIN, rgba } from '../engine/palette';
 import { clamp, ease, prog, lerp, hash, mulberry32, springStep, TAU } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
 import { V2, msgMaxFor, lyricV2, sigV2, fitClauses } from './_v2';
-import { lyricAt, beatAfter, signature, fillWithHearts, COUPLE_ZH } from './_motifs';
+import { lyricAt, beatAfter, signature, fillWithHearts, NAME_A, NAME_B, fitPx } from './_motifs';
 import { Paper, stagger, pad3, mono, tag, type Rect } from './_t11';
 import { paperLyric, lyricLine, lyricRows, subDepth, glyphPoints, type GlyphPts } from './_t12';
 
@@ -169,9 +169,9 @@ export default class Magnet extends Scene {
   override async init() {
     const { audio: au, lyrics, song } = this.ctx;
     const s = this.ctx.start, e = this.ctx.end, m = this.msg;
-    const text = m ? m.text : COUPLE_ZH.replace(/\s*&\s*/, '♥');
-    this.sig = m ? (m.couple ? '—— 新郎新娘' : signature(m.name)) : '';
-    await loadText(`${text}${this.sig}${INVITE}${FOOT}${song.title}${song.artist}宣文孟庭磁力線觀察本實驗配樂對齊度異極相吸FIG. 7　兩塊條形磁鐵之間的磁力線 MAGNETIC FIELD · N → S No. mm %`);
+    const text = m ? m.text : `${NAME_A}♥${NAME_B}`;
+    this.sig = m ? (m.couple ? '—— 新人' : signature(m.name)) : '';
+    await loadText(`${text}${this.sig}${INVITE}${FOOT}${song.title}${song.artist}磁力線觀察本實驗配樂對齊度異極相吸FIG. 7　兩塊條形磁鐵之間的磁力線 MAGNETIC FIELD · N → S No. mm %`);
     const c = this.layer.ctx;
     this.fam = m ? FAM_MSG : FAM_NONE;
     // 字級照標準 v2（依字數的上限，往下找），可用高度先扣掉署名那一行
@@ -322,8 +322,8 @@ export default class Magnet extends Scene {
     const L = this.layer, c = L.ctx;
     L.clear();
     c.globalAlpha = vis;
-    this.drawMagnet(c, aN - MAG.len, '宣文', t);
-    this.drawMagnet(c, bS, '孟庭', t);
+    this.drawMagnet(c, aN - MAG.len, NAME_A, t);
+    this.drawMagnet(c, bS, NAME_B, t);
     this.drawCompass(c, t, poles);
     this.lyric(c, t);
     const m = this.msg;
@@ -429,7 +429,9 @@ export default class Magnet extends Scene {
     c.fillStyle = rgba('paper'); c.fillText('S', x + w / 4, y + h / 2 + 2);
     c.fillStyle = rgba('sepia'); c.fillText('N', x + (3 * w) / 4, y + h / 2 + 2);
     c.textBaseline = 'alphabetic';
-    c.font = font(F.hei(500), 22); c.letterSpacing = '3px'; c.fillStyle = rgba('sepia', 0.7);
+    // 名字每一場不一樣：長的名字縮字，不超出磁鐵左右各 20 px
+    const ns = fitPx(name, F.hei(500), 22, w + 40, 3);
+    c.font = font(F.hei(500), ns); c.letterSpacing = `${(3 * ns) / 22}px`; c.fillStyle = rgba('sepia', 0.7);
     c.fillText(name, x + w / 2, y + h + 44);
     c.letterSpacing = '0px';
     c.restore();

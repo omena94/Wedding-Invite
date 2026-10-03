@@ -16,7 +16,7 @@ import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, hash, lerp, noise1, frameIdx } from '../engine/util';
 import { fitText } from '../engine/text';
 import type { Line } from '../engine/lyrics';
-import { lyricAt, drawLyric, layoutLyric, drawLyricSub, lyricSubOf, subGap, beatAfter, COUPLE_ZH, type LyricStyle } from './_motifs';
+import { lyricAt, drawLyric, layoutLyric, drawLyricSub, lyricSubOf, subGap, beatAfter, COUPLE_ZH, COUPLE_EN, fitPx, type LyricStyle } from './_motifs';
 import { INVITE_SMALL } from './_t19';
 import { barsIn, beatsIn as beatsOf } from './_t1';
 import { placeBlock, drawBlock, sigOf, fitV2 } from './_t22';
@@ -82,8 +82,13 @@ const PITCH = -0.95, FOC = 1600;
 const KC = { x: 650 - W / 2, y: 450, z: 2250 };
 
 const T_FILE = 'lyrics_譯.txt';
-/** 純音樂時一拍打一個字。 */
-const IDLE = Array.from('ALAN & OMENA  ');
+/**
+ * 純音樂時一拍打一個字：打新人的名字（有英文名打英文大寫；沒有就打中文，一個字按一顆鍵）。
+ * 名字長短每一場不一樣，字級照「整個名字放進編輯器」縮（init 算的 idlePx）；打完一輪下一拍換新的一行重打（不會捲掉半個名字）。
+ */
+const IDLE_TEXT = COUPLE_EN.toUpperCase();
+const IDLE = Array.from(`${IDLE_TEXT}  `);
+const IDLE_FAM = F.archivo(100, 700);
 const T_TODO = '待辦：';
 
 // ---------------------------------------------------------------- 牆與桌面（整晚共用）
@@ -204,6 +209,8 @@ export default class Keyboard extends Scene {
   tOn = 0;
   st: LyricStyle = { family: F.archivo(100, 700), size: V2.lyrMax, minSize: V2.lyrMin, maxWidth: ED.w, align: 'left', active: rgba('signal'), sung: rgba('bone', 0.95), unsung: rgba('bone', 0.2), lineHeight: 1.14 };
   avoid: Rect[] = [];
+  /** 純音樂時打名字的字級（init 量：字型載好之後量才準，量的結果有全域快取）。 */
+  idlePx = 48;
   private R = new THREE.Matrix3();
   private m4 = new THREE.Matrix4();
 
@@ -212,6 +219,7 @@ export default class Keyboard extends Scene {
     const m = this.msg;
     await preloadPair(this.ctx, `${m ? m.text + sigOf(m) : ''}${INVITE_SMALL}${KEYS_TEXT}${T_FILE}${T_TODO}${COUPLE_ZH}FROM THE COUPLE · 新人□☑UTF-8雙語中原行·`);
     await loadText(KEYS_TEXT);
+    this.idlePx = fitPx(IDLE_TEXT, IDLE_FAM, 48, ED.w - 40);
     this.bilingual = hasSubIn(this.ctx);
     const B = au.beatPeriod(s + 0.1);
     this.tOn = beatAfter(au, s + Math.min(0.3, B * 0.6));
@@ -386,11 +394,13 @@ export default class Keyboard extends Scene {
         // 一拍打一個字：新人的名字
         let n = 0;
         for (const bt of this.beatT) if (t >= bt) n++;
-        const typed = Array.from({ length: n }, (_, i) => IDLE[i % IDLE.length]).join('').slice(-28);
-        c.font = font(F.archivo(100, 700), 48); c.fillStyle = rgba('bone', 0.92);
-        c.fillText(typed, ED.x, ED.y);
-        caret = { x: ED.x + c.measureText(typed).width, y: ED.y };
-        caretSize = 48;
+        c.font = font(IDLE_FAM, this.idlePx); c.fillStyle = rgba('bone', 0.92);
+        // 這一輪打到第幾個字（打完一輪先停在完整的名字，下一拍換一行重打）
+        const k = n === 0 ? 0 : ((n - 1) % IDLE.length) + 1;
+        const tx = IDLE.slice(0, k).join('');
+        c.fillText(tx, ED.x, ED.y);
+        caret = { x: ED.x + c.measureText(tx).width, y: ED.y };
+        caretSize = this.idlePx;
       }
     }
     // 游標：打字時一直亮，停下來就一閃一閃

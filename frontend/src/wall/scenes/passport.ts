@@ -1,6 +1,6 @@
-// 護照蓋章頁（亮版面）：一本「愛的護照」攤開在桌上，頁上有幾個這些年去過的地方（夜市、海邊、狗狗公園、羽球館…）的舊章，
+// 護照蓋章頁（亮版面）：一本「愛的護照」攤開在桌上，頁上有幾個兩個人常去的地方（夜市、海邊、咖啡店、早餐店…）的舊章，
 // 形狀、墨色各不同、有的缺墨，疊在一起的地方墨會疊色（multiply，像真的蓋在紙上）。
-// MV 化（2026-09-28）：焦點是左頁的大簽證章與裡面手寫的留言；鏡頭從斜上方看著攤開的護照（透視、景深、一盞燈），慢慢推近；
+// MV 化：焦點是左頁的大簽證章與裡面手寫的留言；鏡頭從斜上方看著攤開的護照（透視、景深、一盞燈），慢慢推近；
 // 舊章淡淡的、少少的，右頁新蓋的章在畫面邊緣（失焦），只是節奏。頁首、頁碼、微縮字、英文標籤都拿掉了。
 //  - 第一個拍點：「祝福簽證 BLESSING VISA」大章「碰」地砸在左頁（畫面震一下），承辦人接著用筆（仙女棒的火花當筆尖）
 //    在章裡把主打留言一個字一個字寫進去，最後簽上持有人（留言署名）。
@@ -10,7 +10,7 @@
 // 沒有留言：大章是「候補簽證」，章裡寫邀請；新人的留言：章是「新人簽發」。
 // 畫法：整個跨頁（紙、底紋、浮水印、頁碼、打孔的護照號碼、原本就有的章）開場畫在一張離屏畫布上；
 // 落下的章直接 multiply 疊進另一張「現在的跨頁」畫布（倒轉時間就從底圖重畫），每格只 drawImage 一次再畫會動的東西。
-// v2（2026-09-29 留言尺寸與版面比例標準 v2＋場景多元化）：夜裡一盞暖黃的燈，護照攤在打開的皮革行李箱上，底下墊著一張舊旅行地圖、
+// v2（留言尺寸與版面比例標準 v2＋場景多元化）：夜裡一盞暖黃的燈，護照攤在打開的皮革行李箱上，底下墊著一張舊旅行地圖、
 // 旁邊散著幾張舊票根。護照很大（它就是場景），簽證章裡寫留言的那一塊照 v2：留言 40～60 px、持有人（署名）26～32 px 在留言下面、
 // 歌詞比留言小。地圖上每兩小節在小節線上多插一根大頭針、紅線從上一站畫過去（這些年一起去過的地方，一站一站連起來）；
 // 右頁每兩拍（慢歌四拍）蓋一個新章、最後一個小節線蓋愛心章。
@@ -24,7 +24,7 @@ import { F, font, layout, loadText, measure, type TextLayout } from '../engine/t
 import { mixRgba, rgba } from '../engine/palette';
 import { clamp, ease, hash, lerp, mulberry32, prog, pulse, frameIdx, fbm2, TAU } from '../engine/util';
 import type { FitResult } from '../engine/text';
-import { lyricAt, drawLyric, layoutLyric, beatAfter, sparkHead, sparkParticles, heartPoints, COUPLE_ZH, DATE_DOTS, lyricSubOf, subSizeFor, subStyleFor, subGap, type LyricLayout, type LyricStyle } from './_motifs';
+import { lyricAt, drawLyric, layoutLyric, beatAfter, sparkHead, sparkParticles, heartPoints, COUPLE_ZH, DATE, DATE_DOT, lyricSubOf, subSizeFor, subStyleFor, subGap, type LyricLayout, type LyricStyle } from './_motifs';
 import type { Line } from '../engine/lyrics';
 import { msgMaxFor, lyricV2, sigV2, V2 } from './_v2';
 import {
@@ -59,9 +59,9 @@ const toDesk = (u: number, v: number): [number, number] => [SPREAD.x + K * (Math
 
 const TEXT = '簽證入境紀錄祝福簽證候補簽證新人簽發持有人有效期限永久入境次數無限官員註記入境時播放的歌曲間奏中本曲為純音樂請自行哼唱掃描右下角把祝福寫上大螢幕全體賓客一位賓客愛的護照永遠核准入境出境';
 
-/** 章的地點（這些年一起去過的地方；都是自己編的，不是真的關口）。 */
+/** 章的地點（情侶常去、任何一對都可能去過的地方；都是自己編的，不是真的關口）。 */
 const PLACES: [string, string][] = [
-  ['夜市', 'NIGHT MARKET'], ['海邊', 'SEASIDE'], ['狗狗公園', 'DOG PARK'], ['羽球館', 'COURT No.7'], ['咖啡店', 'CAFÉ'],
+  ['夜市', 'NIGHT MARKET'], ['海邊', 'SEASIDE'], ['遊樂園', 'FUNFAIR'], ['書店', 'BOOKSHOP'], ['咖啡店', 'CAFÉ'],
   ['阿嬤家', "GRANDMA'S"], ['蜜月島', 'HONEYMOON IS.'], ['喜宴港', 'BANQUET PORT'], ['月老關', 'MOON GATE'], ['甜蜜市', 'SWEET CITY'],
   ['心動鎮', 'HEARTBEAT'], ['早餐店', 'BRUNCH'], ['山上', 'THE HILLS'], ['電影院', 'CINEMA'], ['廚房', 'KITCHEN'], ['沙發', 'THE SOFA'],
 ];
@@ -189,7 +189,8 @@ export default class Passport extends Scene {
     // 舊章的墨：大多是低彩度的墨色、鉛灰，偶爾一個訊號色（訊號色留給焦點）
     const inkK: InkKey = (['sepia', 'graphite', 'blood', 'graphite', 'sig', 'sepia'] as InkKey[])[Math.floor(rnd() * 6)]!;
     const col = inkK === 'sig' ? sigInk(0.95) : inkK === 'blood' ? rgba('blood', 0.9) : inkK === 'graphite' ? rgba('graphite', 0.95) : ink(0.88);
-    const year = 2016 + Math.floor(rnd() * 11);
+    // 舊章是婚禮之前十年內蓋的（年份照婚禮那年往回推，章上的日期才不會比婚禮還晚）；還沒定日期就用 2016～2026
+    const year = (DATE ? DATE.y - 11 : 2016) + Math.floor(rnd() * 11);
     const date = `${year}.${String(1 + Math.floor(rnd() * 12)).padStart(2, '0')}.${String(1 + Math.floor(rnd() * 28)).padStart(2, '0')}`;
     const inOut = rnd() < 0.6 ? ['入境', 'ARRIVED'] : ['出境', 'DEPARTED'];
     const sz = 200 + rnd() * 60;
@@ -289,8 +290,9 @@ export default class Passport extends Scene {
     c.font = font(F.hei(700), 18); c.letterSpacing = '10px';
     c.fillText('簽證', 40, 48);
     c.letterSpacing = '0px';
-    // 右頁外緣打孔的護照號碼（點陣的小洞，看得到底下的桌面）
-    const serial = `AO${DATE_DOTS.split(' · ').join('').slice(2)}${String(this.msg?.n ?? 0).padStart(3, '0')}`;
+    // 右頁外緣打孔的護照號碼（點陣的小洞，看得到底下的桌面）：婚禮日期 yymmdd ＋ 留言編號；
+    // 還沒定日期的新人用 5201314（我愛你一生一世）頂著，號碼長度差不多
+    const serial = `${DATE ? DATE.yyyy.slice(2) + DATE.mm + DATE.dd : '5201314'}${String(this.msg?.n ?? 0).padStart(3, '0')}`;
     c.save();
     c.globalCompositeOperation = 'destination-out';
     let yy = 150;
@@ -470,9 +472,9 @@ export default class Passport extends Scene {
       c.fillStyle = ink(0.3); for (let yy = 8; yy < 150; yy += 14) { c.beginPath(); c.arc(290, yy, 3, 0, TAU); c.fill(); }
       c.restore();
     };
-    const [yy = '2027'] = DATE_DOTS.split(' · ');
-    stub(...mapPt([1480, 700]), 0.22, '台北 → 花蓮', `TRAIN · ${Number(yy) - 5}.08.12`);
-    stub(...mapPt([20, 40]), -0.12, '電影院 7 廳', `ADMIT TWO · ${Number(yy) - 7}`);
+    // 票根上的年份照婚禮那年往回推（幾年前一起去的）；還沒定日期就不印年份
+    stub(...mapPt([1480, 700]), 0.22, '台北 → 花蓮', DATE ? `TRAIN · ${DATE.y - 5}.08.12` : 'TRAIN · SEAT 12A');
+    stub(...mapPt([20, 40]), -0.12, '電影院 7 廳', DATE ? `ADMIT TWO · ${DATE.y - 7}` : 'ADMIT TWO');
     stub(...mapPt([-60, 760]), 0.16, '渡輪 · 蜜月島', 'ONE WAY → 永遠');
     return mp;
   }
@@ -584,7 +586,7 @@ export default class Passport extends Scene {
 // ------------------------------------------------------------------ 章的樣子
 /** 印章的章身（俯視）：木頭色的圓角方塊、側邊暗一點、中間一個圓握把（跟主題的墨色與紙色混出來）。 */
 /**
- * 原文副行照「螢幕」字級重排（2026-09-30 雙語普查）：subSizeFor 的 32～56 是螢幕 px，紙在畫面上只有 S 倍大，
+ * 原文副行照「螢幕」字級重排（雙語普查時發現）：subSizeFor 的 32～56 是螢幕 px，紙在畫面上只有 S 倍大，
  * 照紙面座標排的原文上了螢幕只剩 26 px。中文不動，原文換成 subSizeFor(中文的螢幕字級) ÷ S，drawLyric 照這個排版畫。
  * 鏡頭斜斜地看著桌面，字在畫面上會被壓扁一成左右，所以原文至少排 35 螢幕 px（量起來約 31），太長就折行、不再縮。
  */
@@ -692,14 +694,12 @@ function drawHeartStamp(c: Ctx2) {
   c.textAlign = 'center';
   c.font = font(F.hei(900), 50); c.letterSpacing = '10px'; c.fillText('永遠', 6, 8);
   c.font = font(F.mono(600), 15); c.letterSpacing = '4px'; c.fillText('FOREVER', 3, 38);
-  c.fillText(DATE_DOTS.split(' · ').join('.'), 3, 60);
+  if (DATE_DOT) c.fillText(DATE_DOT, 3, 60);
   c.textAlign = 'left'; c.letterSpacing = '0px';
 }
 
-/** 5×7 點陣（打孔的護照號碼用）：只要 A、O 與數字。 */
+/** 5×7 點陣（打孔的護照號碼用）：號碼只有數字。 */
 const DOTS: Record<string, string[]> = {
-  A: ['01110', '10001', '10001', '11111', '10001', '10001', '10001'],
-  O: ['01110', '10001', '10001', '10001', '10001', '10001', '01110'],
   '0': ['01110', '10011', '10101', '10101', '11001', '10001', '01110'],
   '1': ['00100', '01100', '00100', '00100', '00100', '00100', '01110'],
   '2': ['01110', '10001', '00001', '00110', '01000', '10000', '11111'],

@@ -18,7 +18,7 @@ import { FSPass, Layer2D, W, H } from '../engine/gl';
 import { F, font, loadText } from '../engine/type';
 import { rgba } from '../engine/palette';
 import { clamp, ease, prog, hash, lerp, pulse, polylineLengths, pointAtLength, type V2 } from '../engine/util';
-import { lyricAt, layoutLyric, drawLyric, drawHeart, type LyricStyle } from './_motifs';
+import { lyricAt, layoutLyric, drawLyric, drawHeart, DATE, type LyricStyle } from './_motifs';
 import { V2 as SZ, lyricV2 } from './_v2';
 import { PlaneCam, camUniforms, CAM_GLSL } from './_t14';
 import {
@@ -43,10 +43,13 @@ const ROUTE: V2[] = [
 ];
 const FAM_MSG = F.hand(700);
 const FAM_LYR = F.archivo(100, 800);
-const PEAK = '幸福山　▲ 2027 m';
+/**
+ * 山頂的標高：婚禮那一年（冷面的彩蛋，走到山頂就是結婚那年）；還沒定日期就用 1314 m（一生一世）。
+ * 登山口的海拔：線頭旁的小字從這裡一拍一拍往上跳到山頂。
+ */
+const ALT0 = 380, ALT1 = DATE?.y ?? 1314;
+const PEAK = `幸福山　▲ ${ALT1} m`;
 const LEGEND = '等高距 20 m　·　計曲線 100 m　·　比例尺 1 : 25,000';
-/** 登山口的海拔（線頭旁的小字從這裡往上跳到山頂的 2027 m）。 */
-const ALT0 = 380, ALT1 = 2027;
 
 const BG = () => new FSPass(/* glsl */ `
   uniform float t;
@@ -275,7 +278,7 @@ export default class Topo extends Scene {
     c.fillStyle = rgba('blood'); c.beginPath(); c.arc(head.x, head.y, 9 + 3 * pr, 0, Math.PI * 2); c.fill();
     c.strokeStyle = rgba('blood', 0.5 * pr); c.lineWidth = 2;
     c.beginPath(); c.arc(head.x, head.y, 14 + 26 * (1 - pr), 0, Math.PI * 2); c.stroke();
-    // 線頭旁邊的海拔（冷面的讀數：一拍跳一次，走到山頂正好 2027 m）
+    // 線頭旁邊的海拔（冷面的讀數：一拍跳一次，走到山頂正好是山頂的標高）
     if (t >= this.tFirst && sl < full - 1) {
       const alt = Math.round((ALT0 + (ALT1 - ALT0) * (sl / full)) / 10) * 10;
       c.font = font(F.mono(500), 18); c.fillStyle = rgba('sepia', 0.62);

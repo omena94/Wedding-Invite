@@ -3,7 +3,7 @@
 // 爬完的筆畫尾端捲一個小鬚，葉子在拍點上一批一批展開。藤蔓在牆上有一道淡淡的影子（陽光是真的光）。
 // 有留言：藤蔓在第一拍之後一個字一個字長成留言，署名（手寫）最後淡入；歌詞是牆下緣陰影裡的一行字。
 // 沒有留言：藤蔓長成歌詞——還沒唱的字是牆上淡淡的鉛筆線，唱到的字藤蔓正好從頭爬到尾（那個字唱完、藤蔓也長完）。
-// 2026-09-29 照「留言尺寸與版面比例標準 v2」：字縮到 40～60 px（寫在畫面右側 ≤ 840×420 的範圍），
+// 照「留言尺寸與版面比例標準 v2」：字縮到 40～60 px（寫在畫面右側 ≤ 840×420 的範圍），
 // 牆上多了一株真的藤蔓當主角——從左邊牆腳爬上來、沿著牆頂橫過去，垂下幾條鬚（小節線上被風吹得晃），
 // 葉子在拍點展開、每個小節線開一朵小花；寫字的藤從主藤垂下來接到每一行的開頭。
 // 手法：牆與光影是 shader；藤蔓、影子、葉子、小鬚是 LineBatch；署名與字幕是 Canvas。
@@ -16,7 +16,7 @@ import { LIN, rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, hash, lerp } from '../engine/util';
 import type { Line, Word } from '../engine/lyrics';
 import { heartPoints, drawHeart } from '../engine/motifs';
-import { lyricAt, beatAfter, COUPLE_ZH, lyricSubOf, layoutLyric, subStyleFor, subGap, drawLyricSub, type LyricStyle } from './_motifs';
+import { lyricAt, beatAfter, COUPLE_ZH, NAME_A, NAME_B, fitPx, lyricSubOf, layoutLyric, subStyleFor, subGap, drawLyricSub, type LyricStyle } from './_motifs';
 import { lyricV2, V2 } from './_v2';
 import { layoutRows, drawRows, paperInk } from './_t4';
 import { winBeats, winBars } from './_t8';
@@ -187,7 +187,9 @@ export default class Vines extends Scene {
         }
       });
     } else {
-      this.addText(c, COUPLE_ZH.replace(/\s*&\s*/, ' ♥ '), 64, 0, LYR.y, [], Infinity);
+      // 純音樂又沒有留言：藤蔓長成新人的名字（中間一顆愛心）；名字是執行時才知道的，太長就縮到歌詞那一塊的寬
+      const names = `${NAME_A} ♥ ${NAME_B}`;
+      this.addText(c, names, fitPx(names, FAM_V, 64, LYR.maxW), 0, LYR.y, [], Infinity);
       const us = this.units;
       const wsum = us.reduce((m, u) => Math.max(m, u.x + u.size), 0);
       const sh = LYR.cx - wsum / 2;

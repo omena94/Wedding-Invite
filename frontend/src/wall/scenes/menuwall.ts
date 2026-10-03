@@ -18,7 +18,7 @@ import { F, font } from '../engine/type';
 import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, hash, lerp, pulse } from '../engine/util';
 import type { Line } from '../engine/lyrics';
-import { drawHeart, COUPLE_ZH, DATE_DOTS } from './_motifs';
+import { drawHeart, NAME_A, NAME_B, DATE_DOTS } from './_motifs';
 import { V2, lyricV2 } from './_v2';
 import { loadB3, layoutBi, paintBi, msgBlock, drawMsgBlock, B3_INVITE, type BiLayout, type MsgBlock, type Rect } from './_b3';
 
@@ -155,11 +155,15 @@ export default class MenuWall extends Scene {
       drawMsgBlock(c, mb, { color: mixRgba('ink', 'sepia', 0.3), sigColor: rgba('blood', 0.85) });
       c.restore();
     } else {
-      const [a, b] = COUPLE_ZH.split(/\s*&\s*/) as [string, string];
-      c.font = font(F.hand(700), 48); c.fillStyle = mixRgba('ink', 'sepia', 0.3);
-      const wa = c.measureText(a).width;
-      c.fillText(a, sx + 24, sy + 100); drawHeart(c, sx + 24 + wa + 34, sy + 84, 30); c.fillText(b, sx + 24 + wa + 68, sy + 100);
-      c.font = font(F.mono(500), 16); c.letterSpacing = '5px'; c.fillStyle = rgba('sepia', 0.65); c.fillText(DATE_DOTS, sx + 26, sy + 140); c.letterSpacing = '0px';
+      // 新人的名字，中間一顆愛心。名字是執行時才知道的：太長就整組照比例縮（愛心與間距一起縮），不超出點菜單；
+      // 還沒定日期就不寫日期那一行，名字往下挪一點補位
+      const fam = F.hand(700), a = NAME_A, b = NAME_B;
+      c.font = font(fam, 48);
+      const k = Math.min(1, (SLIP.w - 48) / (c.measureText(a).width + c.measureText(b).width + 68));
+      c.font = font(fam, Math.floor(48 * k * 2) / 2); c.fillStyle = mixRgba('ink', 'sepia', 0.3);
+      const wa = c.measureText(a).width, ny = sy + (DATE_DOTS ? 100 : 118);
+      c.fillText(a, sx + 24, ny); drawHeart(c, sx + 24 + wa + 34 * k, ny - 16 * k, 30 * k); c.fillText(b, sx + 24 + wa + 68 * k, ny);
+      if (DATE_DOTS) { c.font = font(F.mono(500), 16); c.letterSpacing = '5px'; c.fillStyle = rgba('sepia', 0.65); c.fillText(DATE_DOTS, sx + 26, sy + 140); c.letterSpacing = '0px'; }
       c.font = font(F.hand(700), 30); c.fillStyle = mixRgba('ink', 'sepia', 0.35); c.fillText('今日推薦：你的一句祝福', sx + 24, sy + 214);
       c.font = font(F.hei(500), 18); c.fillStyle = rgba('sepia', 0.75); c.fillText(B3_INVITE, sx + 24, sy + 262);
     }

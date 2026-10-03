@@ -8,7 +8,7 @@
 //  - 歌詞是入射的白光：左上角，逐字跟唱。左下一行註腳。
 //  - 標準 v2：留言字級 40～60、署名 26～32；光路裡飄著細細的灰塵（只有被光照到的地方看得見），畫面一直有空氣在動。
 //  - 稜鏡每轉一下（小節線），玻璃裡的反射就在上面的牆上投出一小道彩虹，跟著滑到新的位置（outExpo），亮一下再穩住。
-//  - 沒有留言：色帶上是「宣文♥孟庭」與一行邀請。純音樂：入射光寫歌名。
+//  - 沒有留言：色帶上是新人的名字（「承恩 ♥ 以晴」）與一行邀請。純音樂：入射光寫歌名。
 // 畫法：光路、稜鏡、透鏡、色帶全部在一個全螢幕 shader 裡算（扇形用「這個像素在第幾條光線上」反推）；字是 Canvas2D。
 import * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
@@ -17,7 +17,7 @@ import { F, font, loadText } from '../engine/type';
 import { HEX, rgba } from '../engine/palette';
 import { clamp, ease, prog, lerp, hash, TAU } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
-import { lyricAt, beatAfter, signature, fillWithHearts, COUPLE_ZH } from './_motifs';
+import { lyricAt, beatAfter, signature, fillWithHearts, NAME_A, NAME_B } from './_motifs';
 import { stagger, pad3, mono, tag, type Rect } from './_t11';
 import { lyricLine, lyricRows, subLift } from './_t12';
 import { V2, msgMaxFor, lyricV2, sigV2, fitClauses } from './_v2';
@@ -227,11 +227,11 @@ export default class Prism extends Scene {
   override async init() {
     const { audio: au, lyrics, song } = this.ctx;
     const s = this.ctx.start, e = this.ctx.end, m = this.msg;
-    const text = m ? m.text : COUPLE_ZH.replace(/\s*&\s*/, ' ♥ ');
-    this.sig = m ? (m.couple ? '—— 新郎新娘' : signature(m.name)) : '';
-    await loadText(`${text}${this.sig}${INVITE}${FOOT}${song.title}${song.artist}入射光出射光稜鏡折射率色散宣文孟庭FIG. 1 · No. 入射角 ° n = 出射光 色 nm ABCF`);
+    const text = m ? m.text : `${NAME_A} ♥ ${NAME_B}`;
+    this.sig = m ? (m.couple ? '—— 新人' : signature(m.name)) : '';
+    await loadText(`${text}${this.sig}${INVITE}${FOOT}${song.title}${song.artist}入射光出射光稜鏡折射率色散FIG. 1 · No. 入射角 ° n = 出射光 色 nm ABCF`);
     const c = this.layer.ctx;
-    // 標準 v2：字級依字數的上限往下找（沒有留言時「宣文 ♥ 孟庭」照短句算）；行距 1.5 是色帶的寬度
+    // 標準 v2：字級依字數的上限往下找（沒有留言時新人的名字照短句算，名字很長就折成兩條色帶）；行距 1.5 是色帶的寬度
     const fo = { min: V2.msgMin, max: msgMaxFor(text), lineHeight: 1.5, maxLines: 5 };
     const fit = this.fit = fitClauses(c, text, FAM_MSG, TB.w, 400, fo) ?? fitText(c, text, FAM_MSG, TB.w, 400, fo);
     this.lyrSize = lyricV2(m ? fit.size : null);

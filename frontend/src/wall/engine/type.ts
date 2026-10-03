@@ -120,7 +120,7 @@ export async function loadFonts(): Promise<void> {
   ]);
   await document.fonts.ready;
   // 介面上固定會出現的中文先載好
-  await loadText('掃描留言給新人祝福第則首歌現正播放新郎新娘宣文孟庭百年好合永浴愛河早生貴子核准登記表姓名內容日期簽章謝謝大家♥０１２３４５６７８９');
+  await loadText('掃描留言給新人祝福第則首歌現正播放新郎新娘百年好合永浴愛河早生貴子核准登記表姓名內容日期簽章謝謝大家♥０１２３４５６７８９');
 }
 
 /** CJK 字族與要準備的字重（loadText 用）。 */
@@ -171,7 +171,7 @@ export interface TextLayout {
 }
 
 let measureCtx: CanvasRenderingContext2D | null = null;
-// 量字寬的快取（2026-10-01 省效能）：版面建好時一次排所有的字，layout 每個字都要量一次前綴（字數平方次 measureText），
+// 量字寬的快取（省效能）：版面建好時一次排所有的字，layout 每個字都要量一次前綴（字數平方次 measureText），
 // 同一句歌詞又會被好幾個窗格、好幾種字級反覆排，一個版面 init 光量字就要三、四十毫秒，換版面那格會卡一下。
 // 字型載好（字形子集一批批進來）量到的寬度會變，所以每載完一批就整個清掉；太多就從最舊的丟。
 type LayoutNums = { chars: string[]; xs: number[]; ws: number[]; width: number; ascent: number; descent: number };

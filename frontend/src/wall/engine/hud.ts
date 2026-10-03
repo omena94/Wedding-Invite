@@ -36,7 +36,7 @@ export class Hud {
   private sig = '';
   private song: SongInfo | null = null;
   /**
-   * 新祝福進來時留言數的特效（2026-09-29 新人：「數字要有特效跟動畫，讓大家都知道有多人填寫了」）。
+   * 新祝福進來時留言數的特效：數字要有動畫，讓全場都看得到「又有人留言了」，帶動更多人掃 QR。
    * 用自己累積的秒數，不用歌曲時間：換歌時歌曲時間會歸零，特效演到一半不能斷掉。
    */
   private shownN = -1;
@@ -96,7 +96,29 @@ export class Hud {
     c.restore();
   }
 
-  /** 右下角：QR code，左邊是小時鐘、兩行說明與留言數（留言數的數字放大，2026-09-28 新人要求）。 */
+  /**
+   * 商業版的業者署名（「由 晴光婚攝 提供」）：QR 左邊那欄，網址與留言數之間。
+   * 這是業者買商業版的理由之一（賓客頁頁尾也有），放在 QR 旁邊，賓客抬頭找 QR 時就會看到。
+   * 不放到 QR 底下的邊界：那裡離畫面底邊太近，電視的 overscan 會切掉（HUD 其他東西都離邊緣 36px 以上）。
+   * 業者名稱很長時先縮字（最小 13px），還放不下才截斷加「…」，不會超出 HUD_SAFE。
+   */
+  private creditLine(c: CanvasRenderingContext2D, text: string, xr: number, base: number, ink: boolean) {
+    const maxW = xr - HUD_SAFE.x - 10;
+    c.save();
+    c.fillStyle = ink ? rgba('sepia', 0.7) : rgba('bone', 0.62);
+    let size = 16;
+    c.font = font(F.hei(500), size);
+    while (size > 13 && c.measureText(text).width > maxW) c.font = font(F.hei(500), --size);
+    // 截斷時只截業者名字，「由…提供」留著，才看得出這是署名
+    const m = /^(由 )(.+)( 提供)$/.exec(text);
+    const [head, name, tail] = m ? [m[1], m[2], m[3]] : ['', text, ''];
+    let n = name, s = text;
+    while (n.length > 1 && c.measureText(s).width > maxW) { n = n.slice(0, -1); s = `${head}${n}…${tail}`; }
+    c.fillText(s, xr, base);
+    c.restore();
+  }
+
+  /** 右下角：QR code，左邊是小時鐘、兩行說明與留言數（留言數的數字放大，遠處也看得到有多少祝福）。 */
   private qrBlock(c: CanvasRenderingContext2D, k: number, ink: boolean) {
     c.save();
     c.globalAlpha *= k;
@@ -105,7 +127,7 @@ export class Hud {
     c.textAlign = 'right';
     c.textBaseline = 'alphabetic';
     const tx = x - 22;
-    // 小時鐘：最上面一行，「7:30」大一點、「PM」小一點（12 小時制，新人說這樣賓客才會直覺是時間）
+    // 小時鐘：最上面一行，「7:30」大一點、「PM」小一點（12 小時制加 AM／PM，賓客一看就知道是時間）
     if (this.live.clock) {
       const [hm, ap] = this.live.clock.split(' ');
       c.fillStyle = ink ? rgba('sepia', 0.7) : rgba('bone', 0.68);
@@ -124,6 +146,7 @@ export class Hud {
     c.font = font(F.mono(500), 17);
     c.fillStyle = ink ? rgba('sepia', 0.7) : rgba('bone', 0.62);
     c.fillText(this.live.shortUrl, tx, y + 94);
+    if (this.live.credit) this.creditLine(c, this.live.credit, tx, y + 125, ink);
     // 留言數：「已收到」「則祝福」小字，中間的數字放大（訊號色，像儀器讀數）
     const n = this.live.count;
     const base = y + QR_SIZE - 2;

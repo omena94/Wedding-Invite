@@ -1,15 +1,15 @@
 // 愛情統一發票（亮版面）：桌上兩張感熱紙。
 //  - 左邊是「祝福證明聯」：切進來時從畫面上方一格一格「吐」下來（十六分音符一格，像收銀機的印表機），
-//    表頭、期別（116年03-04月）、發票號碼 AO-20270313（婚禮日期）、隨機碼、賣方（新人）買方（留言署名）、條碼，
+//    表頭、期別（婚禮日期的民國年、雙月）、發票號碼（新人縮寫＋婚禮日期，例如 EI-yyyymmdd）、隨機碼、賣方（新人）買方（留言署名）、條碼，
 //    下面「品名」是主打留言，金額「∞」。剛印好的字是熱的（紙上的訊號色），一秒內冷卻成墨色。
 //  - 對獎：落定之後，號碼下面的八格「本期特別獎」一拍開一個號碼（數字先亂跳、落在拍點上），開出來的號碼跟發票號碼一樣，
 //    上面那一位就劃一條訊號色的線；八個都對中的下一拍，「中獎」章砸下去：特別獎，獎金一輩子的幸福。
 //  - 右邊是「交易明細」：一台小印表機，歌詞一行一行從出紙口印出來（一行一個品項，×1 ∞），整條紙跟著往上推；
 //    剛印的那行先淡淡出現（三成的墨），唱到的字變熱（訊號色）、唱完冷卻成墨色——感熱紙本來就是「加熱才顯色」，剛好就是跟唱。
 // 純音樂：明細改成每個小節印一行「♪ 第 N 小節 ×1 ∞」。沒有留言：品名印邀請。新人的留言：賣方買方都是新人。
-// MV 化（2026-09-28）：焦點是發票上手寫的留言（整張發票最大的字）；對獎號碼、明細是配角，發票上的細項（日期時間、隨機碼、
+// MV 化：焦點是發票上手寫的留言（整張發票最大的字）；對獎號碼、明細是配角，發票上的細項（日期時間、隨機碼、
 // 賣方買方）都拿掉了。鏡頭從斜上方看著收銀台（透視、景深、一盞燈），明細紙條只看得到最新的兩行，更上面的往遠處淡出去。
-// v2（2026-09-29 留言尺寸與版面比例標準 v2＋場景多元化）：巷口小店的收銀台，白天、日光燈的冷白光，磨石子檯面；
+// v2（留言尺寸與版面比例標準 v2＋場景多元化）：巷口小店的收銀台，白天、日光燈的冷白光，磨石子檯面；
 // 櫃台後面是一排排貨架（失焦的遠景），日光燈管偶爾閃一下。發票很大地擺在檯面左邊，寫留言的「品名」那一塊照 v2：
 // 留言 40～60 px、署名 26～32 px 緊接在下面、明細的歌詞比留言小。右邊是感熱印表機一直吐明細、找零盤，
 // 每兩小節一枚銅板在小節線上被彈起來轉、越轉越慢再倒進盤裡。
@@ -22,7 +22,7 @@ import { mixRgba, rgba } from '../engine/palette';
 import { clamp, ease, hash, lerp, prog, pulse, frameIdx } from '../engine/util';
 import type { FitResult } from '../engine/text';
 import type { Line } from '../engine/lyrics';
-import { lyricAt, drawLyric, layoutLyric, beatAfter, fillWithHearts, COUPLE_ZH, DATE_DOTS, type LyricLayout } from './_motifs';
+import { lyricAt, drawLyric, layoutLyric, beatAfter, fillWithHearts, joinBits, COUPLE_ZH, INITIAL_A, INITIAL_B, DATE, type LyricLayout } from './_motifs';
 import { msgMaxFor, lyricV2, sigV2, V2 } from './_v2';
 import {
   sigInk, ink, paper, heatInk, paperLyric, makeCanvas, freeCanvas, shadowSprite, drawShadow, drawBarcode, barsIn, ensureBake, themeKey, inkStamp, fitMsg, yieldFrame,
@@ -52,6 +52,19 @@ const COIN = { x: 1600, y: 470, r: 42 };
 const TRAY = { x: 1640, y: 560, r: 150 };
 const ROW_GAP = 26;
 
+/**
+ * 發票號碼：兩個英文字母＋八位數字（真的統一發票就是這個格式，對獎的八格也照這個）。
+ * 字母是新人的英文縮寫（不是英文字母時用 WD＝wedding）；數字是婚禮日期，還沒定日期就用 05201314（我愛你一生一世）。
+ */
+const INV_PREFIX = /^[A-Za-z]$/.test(INITIAL_A) && /^[A-Za-z]$/.test(INITIAL_B) ? `${INITIAL_A}${INITIAL_B}`.toUpperCase() : 'WD';
+const INV_DIGITS = DATE ? `${DATE.yyyy}${DATE.mm}${DATE.dd}` : '05201314';
+/** 期別「116年05-06月」：婚禮日期的民國年、雙月；還沒定日期是空字串（表頭只印「祝福證明聯」）。 */
+const INV_PERIOD = (() => {
+  if (!DATE || DATE.y <= 1911) return '';
+  const m0 = DATE.m % 2 ? DATE.m : DATE.m - 1;
+  return `${DATE.y - 1911}年${String(m0).padStart(2, '0')}-${String(m0 + 1).padStart(2, '0')}月`;
+})();
+
 const TEXT = '愛情統一發票祝福證明聯年月格式隨機碼總計賣方買方品名數量單價金額本期特別獎號碼開獎中對中獎獎金一輩子的幸福交易明細本曲純音樂第小節一位賓客全體賓客掃描右下角把祝福寫上大螢幕新人明細機出紙口間奏';
 
 /** 明細紙條上的一段（表頭或一行歌詞）。 */
@@ -72,12 +85,11 @@ export default class Invoice extends Scene {
   artKey = '';
   sh = shadowSprite(SLIP.w, SLIP.h, 16, 4);
   buyer = '';
-  seller = COUPLE_ZH;
   body = '';
   fit: FitResult | null = null;
-  /** 期別：婚禮日期的民國年、雙月。 */
-  period = '';
-  digits = '20270313';
+  /** 期別（見 INV_PERIOD）、發票號碼的八位數字（對獎的號碼）。 */
+  period = INV_PERIOD;
+  digits = INV_DIGITS;
   blocks: Block[] = [];
 
   // 時間
@@ -99,10 +111,6 @@ export default class Invoice extends Scene {
     const m = this.msg;
     this.buyer = m ? (m.couple ? COUPLE_ZH : m.name || '一位賓客') : '全體賓客';
     this.body = m ? m.text : '掃描右下角 QR code，把祝福寫上大螢幕。';
-    const [yy = '2027', mm = '03'] = DATE_DOTS.split(' · ');
-    const mo = Number(mm), m0 = mo % 2 ? mo : mo - 1;
-    this.period = `${Number(yy) - 1911}年${String(m0).padStart(2, '0')}-${String(m0 + 1).padStart(2, '0')}月`;
-    this.digits = DATE_DOTS.split(' · ').join('').slice(0, 8);
     const lines = lyrics.linesIn(s - 40, e + 1);
     await loadText(TEXT + this.buyer + this.body + this.period + COUPLE_ZH + (song.title ?? '') + lines.map((l) => l.text).join(''));
     const B = (this.B = au.beatPeriod(s + 0.1));
@@ -189,10 +197,10 @@ export default class Invoice extends Scene {
     c.fillStyle = ink(0.75);
     c.font = font(F.hei(900), 28); c.letterSpacing = '8px'; c.fillText('愛情統一發票', W2 + 4, 62);
     c.fillStyle = ink(0.5);
-    c.font = font(F.hei(500), 18); c.letterSpacing = '4px'; c.fillText('祝福證明聯 · ' + this.period, W2 + 2, 100);
+    c.font = font(F.hei(500), 18); c.letterSpacing = '4px'; c.fillText(joinBits(' · ', '祝福證明聯', this.period), W2 + 2, 100);
     c.letterSpacing = '0px';
     c.fillStyle = ink(0.85);
-    c.font = font(F.archivo(100, 900), NUM.size); c.fillText('AO-' + this.digits, W2, NUM.base);
+    c.font = font(F.archivo(100, 900), NUM.size); c.fillText(`${INV_PREFIX}-${this.digits}`, W2, NUM.base);
     // 對獎的八個空格
     const bw = 8 * BOX.w + 7 * BOX.gap, bx = W2 - bw / 2;
     c.strokeStyle = ink(0.4); c.lineWidth = 1.3; c.setLineDash([5, 4]);
@@ -408,8 +416,8 @@ export default class Invoice extends Scene {
     const bw = 8 * BOX.w + 7 * BOX.gap, bx = W2 - bw / 2;
     c.textAlign = 'center';
     c.font = font(F.archivo(100, 900), NUM.size);
-    const numW = measure(`AO-${this.digits}`, F.archivo(100, 900), NUM.size);
-    const nx0 = W2 - numW / 2 + measure('AO-', F.archivo(100, 900), NUM.size);
+    const numW = measure(`${INV_PREFIX}-${this.digits}`, F.archivo(100, 900), NUM.size);
+    const nx0 = W2 - numW / 2 + measure(`${INV_PREFIX}-`, F.archivo(100, 900), NUM.size);
     for (let i = 0; i < 8; i++) {
       const dt = this.digitT[i]!;
       const cx = bx + i * (BOX.w + BOX.gap) + BOX.w / 2;

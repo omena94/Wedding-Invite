@@ -13,11 +13,11 @@ import * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
 import { FSPass, Layer2D, W, H } from '../engine/gl';
 import { LineBatch } from '../engine/lines';
-import { F, font, loadText } from '../engine/type';
+import { F, font, loadText, measure } from '../engine/type';
 import { LIN, rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, hash, lerp, TAU } from '../engine/util';
 import { lyricSubOf, type Line } from '../engine/lyrics';
-import { beatAfter, drawHeart, COUPLE_ZH, DATE_DOTS } from './_motifs';
+import { beatAfter, drawHeart, COUPLE_ZH, DATE_DOTS, fitPx } from './_motifs';
 import { sigOf, layMsgV2, winBars, lastBefore, type MsgLay, type Rect } from './_t23';
 import { lyricV2 } from './_v2';
 import { B5_TEXT, B5_INVITE, subPx, layBilingual, glyphProgress, type BGlyph } from './_b5';
@@ -98,6 +98,9 @@ export default class Fireflies extends Scene {
   pavCv: HTMLCanvasElement | null = null;
   boardCv: HTMLCanvasElement | null = null;
   board = { x: 0, y: 0, w: 0, h: 0 };
+  /** 沒有留言時木匾上刻的字與字級（字級照木匾寬算，見 drawBoard）。 */
+  toName = `給 ${COUPLE_ZH}`;
+  toPx = 44;
   lineT: number[] = [];
   sigT = Infinity;
   avoid: Rect[] = [];
@@ -194,7 +197,7 @@ export default class Fireflies extends Scene {
       this.swarms.push(build(ln, ln.start - 1.5, t1, false));
     });
     if (!lines.length) {
-      // 純音樂：每四小節排一次新人的名字與日期
+      // 純音樂：每四小節排一次新人的名字與日期（還沒定日期就只排名字一行；名字很長時 layBilingual 會縮字、折成兩排）
       for (let t0 = this.tOn - 1.2; t0 < e - beat; t0 += bar * 4) {
         const fk = fakeLine(COUPLE_ZH, DATE_DOTS, t0 + 1.2, beat);
         this.swarms.push(build(fk, t0, Math.min(t0 + bar * 4 - 1.2, e + 2), true));
@@ -251,7 +254,12 @@ export default class Fireflies extends Scene {
     const pad = { x: 50, t: 44, b: 36 };
     let w: number, h: number;
     if (lay) { const [bx, by, bw, bh] = lay.box; w = Math.min(800, Math.max(440, bx + bw + pad.x * 2)); h = Math.min(400, by + bh + pad.t + pad.b); }
-    else { w = 560; h = 170; }
+    else {
+      // 沒有留言：木匾刻「給 新人的名字」＋一行邀請。名字是執行時才知道的：木匾跟著字變寬（最寬 800），還放不下就縮字
+      const nw = measure(this.toName, FAM_MSG, 44), iw = measure(B5_INVITE, F.hei(500), 20, 2);
+      w = Math.min(800, Math.max(560, Math.max(nw, iw) + pad.x * 2)); h = 170;
+      this.toPx = fitPx(this.toName, FAM_MSG, 44, w - pad.x * 2);
+    }
     const cx = (PAV.x0 + PAV.x1) / 2;
     this.board = { x: cx - w / 2, y: PAV.beam + 70, w, h };
     const S = 2, cv = document.createElement('canvas');
@@ -279,7 +287,7 @@ export default class Fireflies extends Scene {
         for (const ln of lay.lines) fillHearts(g, ln.text, ln.x, ln.y, lay.fit.size, color === rgba('ink', 0.7));
         g.font = font(lay.sig.family, lay.sig.size); g.fillText(lay.sig.text, lay.sig.x, lay.sig.y);
       } else {
-        g.font = font(FAM_MSG, 44); g.fillText(`給 ${COUPLE_ZH}`, 0, 46);
+        g.font = font(FAM_MSG, this.toPx); g.fillText(this.toName, 0, 46);
         g.font = font(F.hei(500), 20); g.letterSpacing = '2px'; g.fillText(B5_INVITE, 0, 94); g.letterSpacing = '0px';
       }
       g.restore();
@@ -467,7 +475,8 @@ function fakeLine(main: string, sub: string, t0: number, beat: number): Line {
     return { i: 0, text, start: t0, end: t0 + k * beat * 0.5, words };
   };
   const line = mk(main);
-  line.sub = mk(sub);
+  // 第二行（日期）是空的就不掛：空的原文行會排出一個沒有字的第二排
+  if (sub) line.sub = mk(sub);
   return line;
 }
 

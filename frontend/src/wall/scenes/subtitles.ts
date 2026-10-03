@@ -1,11 +1,11 @@
 // 老電影雙語字幕（雙語・批次 B1，暗）：坐在老戲院的中間幾排，銀幕在放一部黑白的愛情片——只有空鏡頭
-// （海上的月亮、雨夜的窗、下雪的路燈、黃昏的屋頂、火車窗外的電線桿；大螢幕只有新人的紙偶版面才畫人），
+// （海上的月亮、雨夜的窗、下雪的路燈、黃昏的屋頂、火車窗外的電線桿；不拍人，哪一對新人的婚禮放起來都像自己的片子），
 // 每個小節線硬切一個鏡頭（接片跳一下），片子一秒 24 格、會晃、會閃、有刮痕和灰塵，放映光裡飄著灰塵。
 //  - 兩行歌詞是銀幕下緣的雙語字幕：中文大（黑體、照歌聲逐字亮）、原文小一號在正下方（原文自己的逐字時間、比較安靜）。
 //    字幕那一帶的片子壓暗（很寬的柔邊，不是字幕條）。沒有翻譯的歌只有一行中文，貼在同一條基線上，不留空位。
 //  - 主打留言是「片頭的標題卡」：疊在片子左上的一段宋體字，上下兩道細的雙線、中間一顆菱形花飾，署名在最後一行下面；
 //    第一個拍點切進來（老片的字卡一閃就在），整個窗格都在。標題卡後面的片子壓暗一點。
-//  - 沒有留言：左上角一行小小的片頭字「ALAN & OMENA 出品」＋邀請，焦點是字幕。
+//  - 沒有留言：左上角一行小小的片頭字「新人的名字 出品」（例如「ETHAN & IVY 出品」）＋邀請，焦點是字幕。
 //  - 拍子：小節線換鏡頭；火車的電線桿一拍經過一根、屋頂的窗在拍點一扇扇亮、雨滴在拍點開始流；大鼓時燈亮一下、小鼓時片門晃一下。
 //  - 標準 v2：留言 40～60 px、標題卡的字區 ≤ 700×370（在銀幕的左上）；中文字幕 40～52、原文 32～40（_b1.ts）。
 //    右下角 HUD 底下只有暗的椅背。
@@ -15,7 +15,7 @@ import { FSPass, Layer2D, W, H } from '../engine/gl';
 import { F, font, loadText } from '../engine/type';
 import { rgba } from '../engine/palette';
 import { clamp, ease, prog, hash, mulberry32 } from '../engine/util';
-import { lyricAt, beatAfter, signature, COUPLE_EN, lyricSubOf, fillWithHearts, type LyricStyle } from './_motifs';
+import { lyricAt, beatAfter, signature, COUPLE_EN, fitPx, lyricSubOf, fillWithHearts, type LyricStyle } from './_motifs';
 import { V2, lyricV2 } from './_v2';
 import { biLayout, drawBi, fitMsgV2, type BiLay, type MsgFit } from './_b1';
 import { FRAG_SUBTITLES, SCR } from './subtitles-glsl';
@@ -161,7 +161,9 @@ export default class Subtitles extends Scene {
     if (!this.msg) {
       c.save();
       c.globalAlpha *= cardK * 0.9;
-      c.font = font(F.serif(600), 28); c.letterSpacing = '8px'; c.fillStyle = rgba('bone', 0.8);
+      // 名字可能很長：放不下銀幕的寬度就縮字（字距跟著縮）
+      const px = fitPx(PRESENTS, F.serif(600), 28, SCR.x1 - SCR.x0 - 160, 8);
+      c.font = font(F.serif(600), px); c.letterSpacing = `${(8 * px) / 28}px`; c.fillStyle = rgba('bone', 0.8);
       c.fillText(PRESENTS, SCR.x0 + 80, 170);
       c.font = font(F.hei(500), 24); c.letterSpacing = '2px'; c.fillStyle = rgba('bone', 0.6);
       c.fillText(INVITE, SCR.x0 + 80, 214);

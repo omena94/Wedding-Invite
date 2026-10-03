@@ -14,7 +14,7 @@ import { FSPass, Layer2D, W, H } from '../engine/gl';
 import { F, font, loadText } from '../engine/type';
 import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, lerp, hash, noise1 } from '../engine/util';
-import { lyricAt, beatAfter, fillWithHearts, DATE_DOTS } from './_motifs';
+import { lyricAt, beatAfter, fillWithHearts } from './_motifs';
 import { Paper, stagger, pad3, mono, tag, type Rect } from './_t11';
 import { paperLyric, lyricLine, lyricRows } from './_t12';
 import { V2, msgMaxFor, lyricV2, sigV2, fitClauses } from './_v2';
@@ -193,7 +193,7 @@ export default class Microscope extends Scene {
   override async init() {
     const { audio: au, lyrics, song } = this.ctx;
     const s = this.ctx.start, e = this.ctx.end, m = this.msg;
-    this.sig = m ? (m.couple ? '採集者：新郎新娘' : `採集者：${m.name || '一位賓客'}`) : '';
+    this.sig = m ? (m.couple ? '採集者：新人' : `採集者：${m.name || '一位賓客'}`) : '';
     await loadText(`${m?.text ?? ''}${this.sig}${INVITE}${FOOT}${song.title}${song.artist}標本待採集觀察紀錄染色玫瑰紅活體祝福樣本倍率代個細胞全部是愛心分裂中播放SPECIMEN No.（新人自備）：400× · 第 µm 觀察時播放`);
     const beat = this.beat = au.beatPeriod(s);
     this.tFirst = beatAfter(au, s + Math.min(0.2, beat * 0.4));

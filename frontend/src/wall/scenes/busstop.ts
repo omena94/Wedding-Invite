@@ -14,11 +14,11 @@
 import * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
 import { FSPass, Layer2D, W, H } from '../engine/gl';
-import { F, font } from '../engine/type';
+import { F, font, measure } from '../engine/type';
 import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, hash, lerp, pulse } from '../engine/util';
 import { Lyrics, type Line } from '../engine/lyrics';
-import { lyricSubOf, drawHeart, COUPLE_ZH, DATE_DOTS } from './_motifs';
+import { lyricSubOf, drawHeart, NAME_A, NAME_B, DATE_DOTS } from './_motifs';
 import { V2, lyricV2 } from './_v2';
 import { loadB3, layoutBi, paintLay, msgBlock, drawMsgBlock, B3_INVITE, SUB_RATIO, SUB_MIN, type BiLayout, type MsgBlock, type Rect } from './_b3';
 
@@ -255,11 +255,15 @@ export default class BusStop extends Scene {
       drawMsgBlock(c, mb, { color: mixRgba('ink', 'sepia', 0.35), sigColor: rgba('blood', 0.9) });
       c.restore();
     } else {
-      const [a, b] = COUPLE_ZH.split(/\s*&\s*/) as [string, string];
-      c.font = font(F.hand(700), 52); c.fillStyle = mixRgba('ink', 'sepia', 0.35);
-      const wa = c.measureText(a).width;
-      c.fillText(a, 34, 130); drawHeart(c, 34 + wa + 40, 112, 36); c.fillText(b, 34 + wa + 80, 130);
-      c.font = font(F.mono(500), 18); c.letterSpacing = '6px'; c.fillStyle = rgba('sepia', 0.7); c.fillText(DATE_DOTS, 36, 178); c.letterSpacing = '0px';
+      // 新人的名字「A ♥ B」一行：名字長短每一場不一樣，照紙條的寬縮字（愛心與間距跟著字級縮）
+      const w52 = measure(`${NAME_A}${NAME_B}`, F.hand(700), 52) + 80;
+      const sz = Math.min(52, Math.floor(((52 * (NOTE.w - 34 * 2)) / w52) * 2) / 2);
+      const gap = (80 * sz) / 52;
+      c.font = font(F.hand(700), sz); c.fillStyle = mixRgba('ink', 'sepia', 0.35);
+      const wa = c.measureText(NAME_A).width;
+      c.fillText(NAME_A, 34, 130); drawHeart(c, 34 + wa + gap / 2, 130 - sz * 0.35, (36 * sz) / 52); c.fillText(NAME_B, 34 + wa + gap, 130);
+      // 日期（還沒定日期就不印，下面那幾行照原位，紙條上不留空行）
+      if (DATE_DOTS) { c.font = font(F.mono(500), 18); c.letterSpacing = '6px'; c.fillStyle = rgba('sepia', 0.7); c.fillText(DATE_DOTS, 36, 178); c.letterSpacing = '0px'; }
       c.font = font(F.hand(700), 30); c.fillStyle = mixRgba('ink', 'sepia', 0.35);
       c.fillText('等車的時候，', 34, 270); c.fillText('寫一句祝福給新人吧', 34, 318);
       c.font = font(F.hei(500), 20); c.fillStyle = rgba('sepia', 0.75); c.fillText(B3_INVITE, 34, 370);

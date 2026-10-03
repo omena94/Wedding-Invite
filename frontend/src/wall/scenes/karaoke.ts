@@ -1,10 +1,10 @@
 // 保底版面：最單純的逐字跟唱＋主打留言（照 pdoom-video 的 starter 版面 karaoke.ts 改的），任何歌都能用。
 // 也是寫新版面的範本：一個全螢幕 shader 畫底、一個 Canvas2D 層畫字、一個加亮的 LineBatch 畫火花。
-// 2026-09-28 依「MV 融合原則」重做：像暗場舞台上的一段獨白——
+// 依「MV 融合原則」重做：像暗場舞台上的一段獨白——
 //  - 有主打留言時，留言就是焦點：手寫字、靠左，第一個拍點後一個字一個字寫出來、署名；
 //    歌詞退到下面一行（比留言小一級），照跟唱規則，仙女棒的火花跟著唱到的字。
 //  - 沒有留言：歌詞是焦點。沒有歌詞（純音樂）也沒有留言：一句邀請。
-// v2（2026-09-29「留言尺寸與版面比例標準 v2」）：
+// v2（「留言尺寸與版面比例標準 v2」）：
 //  - 留言 40～60 px（依字數，TREATMENT 的表）、署名 26～32、歌詞 40～52（不比留言大），都在畫面左邊；
 //    留言區約 800 寬、不到 430 高，不再撐滿半個畫面。
 //  - 空出來的右半邊是一個真的舞台（場景是主視覺，一直在動）：暗紅的絨布幕在風裡輕輕擺、
@@ -21,7 +21,7 @@ import { ease, hash, prog, pulse, clamp } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
 import { sparkHead, sparkParticles, lyricAt, drawLyric, layoutLyric, drawMessage, signature, beatAfter, msgChars, type LyricStyle } from './_motifs';
 import { V2, msgMaxFor, lyricV2, sigV2, fitClauses } from './_v2';
-// 最早的版面：排程參數在 director.ts 的 PLATES；這裡只宣告雙語（2026-09-30 雙語普查通過：有翻譯＋主打留言時中文、原文、留言三樣都清楚）
+// 最早的版面：排程參數在 director.ts 的 PLATES；這裡只宣告雙語（雙語普查通過：有翻譯＋主打留言時中文、原文、留言三樣都清楚）
 export const spec: PlateSpecDecl = { bilingual: true };
 
 

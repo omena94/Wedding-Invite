@@ -17,7 +17,7 @@ import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, hash, lerp } from '../engine/util';
 import { fitText } from '../engine/text';
 import { Lyrics, type Line, type Word } from '../engine/lyrics';
-import { beatAfter, lyricSubOf, subSizeFor, COUPLE_EN, COUPLE_ZH, type LyricStyle } from './_motifs';
+import { beatAfter, lyricSubOf, subSizeFor, COUPLE_EN, COUPLE_ZH, HAS_LATIN_NAMES, type LyricStyle } from './_motifs';
 import { INVITE_SMALL, paperSignal } from './_t19';
 import { barsIn, makeCanvas, freeCanvas } from './_t1';
 import { placeBlock, drawBlock, sigOf, fitV2 } from './_t22';
@@ -214,7 +214,9 @@ export default class HangulBlocks extends Scene {
     const fake = (str: string) => Array.from(str.replace(/\s/g, '')).map((ch) => ({ text: ch, word: null as Word | null, gap: false }));
     const mainT = line ? toks(mainOnly(line)) : fake(COUPLE_ZH);
     const subLine = line && this.bilingual ? lyricSubOf(line) : null;
-    const subT = subLine ? toks(subLine) : !line ? COUPLE_EN.split(/\s+/).map((w, i) => ({ text: w, word: null as Word | null, gap: i > 0 })) : null;
+    // 純音樂的英文名那一排：沒有英文名時 COUPLE_EN 就是中文名，再疊一排一樣的字沒有意義，只疊中文那排
+    const enT = !line && HAS_LATIN_NAMES && COUPLE_EN !== COUPLE_ZH ? COUPLE_EN.split(/\s+/).map((w, i) => ({ text: w, word: null as Word | null, gap: i > 0 })) : null;
+    const subT = subLine ? toks(subLine) : enT;
     // 一塊積木的寬：中文、韓文一個字是正方形；英文單字照字寬
     const sizeOf = (tok: { text: string }, fs: number) => {
       c.font = font(F.archivo(100, 800), fs);

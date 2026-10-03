@@ -14,7 +14,7 @@ export const T16_INVITE = '掃描右下角 QR code，把你的祝福傳上大螢
 /** 這批版面固定會出現的字（init 時一次載好：數字、符號、拉丁字也要，沒載好第一格會用系統字頂替）。 */
 export const T16_TEXT = `${T16_INVITE}一位賓客新人留言第則純音樂間奏0123456789·—…：:%kmKM♪()（）`;
 
-/** 署名：新人自己的留言署「宣文 & 孟庭」（不再另外放一個 FROM THE COUPLE 標籤，少一群小字）。 */
+/** 署名：新人自己的留言署新人的名字（COUPLE_ZH）（不再另外放一個 FROM THE COUPLE 標籤，少一群小字）。 */
 export const sigOf = (m: Msg) => (m.couple ? `—— ${COUPLE_ZH}` : signature(m.name));
 
 /** No.042 */

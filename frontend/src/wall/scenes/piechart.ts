@@ -210,7 +210,7 @@ export default class PieChart extends Scene {
       const want = 0.25 - (sl.frac + next) / 2;
       this.rotTo = want - Math.round(want);
     }
-    this.sig = m ? (m.couple ? '—— 新郎新娘' : signature(m.name)) : '';
+    this.sig = m ? (m.couple ? '—— 新人' : signature(m.name)) : '';
     const capText = m ? m.text : EMPTY_CAP;
     await loadText(`${capText}${this.sig}${CATS.map((c) => c.name).join('')}${FOOT}${song.title}${song.artist}今晚的祝福組成則祝福圖說目前還沒有留言可以統計（）0123456789?`);
 

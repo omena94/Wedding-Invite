@@ -17,7 +17,7 @@ import { FSPass, Layer2D, W, H } from '../engine/gl';
 import { F, font, loadText } from '../engine/type';
 import { rgba } from '../engine/palette';
 import { clamp, ease, prog } from '../engine/util';
-import { lyricAt, lyricSubOf, subSizeFor, subGap, beatAfter, drawHeart, COUPLE_ZH, DATE_DOTS } from './_motifs';
+import { lyricAt, lyricSubOf, subSizeFor, subGap, beatAfter, drawHeart, COUPLE_ZH, DATE_DOTS, fitPx } from './_motifs';
 import { layoutRows, drawRows, darkInk, type RowsLayout } from './_t4';
 import { T23_INVITE, T23_TEXT, sigOf, layMsgV2, lastBefore, winBeats, winBars, type MsgLay, type Rect } from './_t23';
 import { V2, lyricV2 } from './_v2';
@@ -27,6 +27,8 @@ export const spec: PlateSpecDecl = { group: 'type', family: 'instrument', paper:
 
 // ---------------------------------------------------------------- 舞台（畫面座標，y 向下）
 const BD = { x: 960, y: 614, r: 360, hoop: 26 };
+/** 鼓皮上緣那一排名字最寬多寬：字頂（離圓心約 300 px）的弦長扣掉一點邊。 */
+const NAME_MAXW = 290;
 /** 鼓皮上可以印字的範圍（圓裡面的矩形）。 */
 const HEAD_BOX = { x: 660, y: 402, w: 600, h: 428 };
 const SN = { x: 432, y: 546, rx: 150, ry: 34, h: 118 };
@@ -408,8 +410,10 @@ export default class DrumKit extends Scene {
       const L = this.txt, c = L.ctx;
       L.clear();
       const ly = lyricAt(lyrics, t);
-      // 鼓皮上面一圈像團名一樣印著新人的名字（小），中間是正在唱的歌詞（主角）
-      c.font = font(F.ming(700), 40); c.fillStyle = rgba('bone', 0.55); c.textAlign = 'center'; c.letterSpacing = '6px';
+      // 鼓皮上面一圈像團名一樣印著新人的名字（小），中間是正在唱的歌詞（主角）。
+      // 那一排離圓心很遠、鼓皮在那裡只剩約 300 px 寬：名字長就縮字（字距跟著縮），字角不會印到鼓框外
+      const np = fitPx(COUPLE_ZH, F.ming(700), 40, NAME_MAXW, 6);
+      c.font = font(F.ming(700), np); c.fillStyle = rgba('bone', 0.55); c.textAlign = 'center'; c.letterSpacing = `${(6 * np) / 40}px`;
       c.fillText(COUPLE_ZH, BD.x, BD.y - BD.r + 92);
       c.font = font(F.mono(500), 18); c.letterSpacing = '5px'; c.fillStyle = rgba('bone', 0.35);
       c.fillText(DATE_DOTS, BD.x, BD.y + BD.r - 64);

@@ -3,7 +3,7 @@
 //  - 兩行歌詞就是螢幕右半邊的「下一站」：中文大字（站名的樣子）、下面原文小一號（像站名的外語標示），各照自己的逐字時間亮
 //    （還沒唱淡灰、唱到訊號色、唱完深墨；原文唱到就轉深墨、淡一點）。換句時新的一句從右邊滑進來（像螢幕換頁）。
 //    沒有翻譯：只有中文，垂直置中在同一塊（不留空排）。純音樂：「下一站 永遠 Forever」。
-//  - 螢幕左半邊是路線圖：宣文與孟庭的「婚禮線」，相遇 → 約會 → 在一起 → 求婚 → 今天 → 永遠；每一拍點亮一顆小站點（列車記號往前一格），
+//  - 螢幕左半邊是路線圖：兩位新人的「婚禮線」，相遇 → 約會 → 在一起 → 求婚 → 今天 → 永遠；每一拍點亮一顆小站點（列車記號往前一格），
 //    每個小節線到一站（那一站的圈亮成訊號色、跳一下）。
 //  - 主打留言是右上車廂廣告框裡的海報（手寫字，40～60 px，留言區約 600×380），署名在最後一行下面；沒有留言：海報是邀請。
 //  - 一直在動：窗外遠山、樹與人家、田埂照遠近不同速度往後流；電線桿每一拍刷過車窗；每兩小節對向來一班車「唰」地擦身而過；
@@ -14,11 +14,11 @@
 import * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
 import { FSPass, Layer2D, W, H } from '../engine/gl';
-import { F, font } from '../engine/type';
+import { F, font, measure } from '../engine/type';
 import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, hash, lerp, pulse } from '../engine/util';
 import type { Line } from '../engine/lyrics';
-import { drawHeart, COUPLE_ZH, DATE_DOTS } from './_motifs';
+import { drawHeart, NAME_A, NAME_B, DATE_DOTS } from './_motifs';
 import { V2, lyricV2 } from './_v2';
 import { loadB3, layoutBi, paintBi, msgBlock, drawMsgBlock, B3_INVITE, type BiLayout, type MsgBlock, type Rect } from './_b3';
 import { subRect } from './_t6';
@@ -236,11 +236,13 @@ export default class TrainLCD extends Scene {
       drawMsgBlock(c, mb, { color: mixRgba('ink', 'sepia', 0.35), sigColor: rgba('blood', 0.9) });
       c.restore();
     } else {
-      const [a, b] = COUPLE_ZH.split(/\s*&\s*/) as [string, string];
-      c.font = font(F.hand(700), 56); c.fillStyle = mixRgba('ink', 'sepia', 0.35);
+      // 沒有留言：海報上是「名字 ♥ 名字」與日期。名字很長就整組（字、愛心、間距）一起縮，留在海報裡；還沒定日期就不寫日期
+      const a = NAME_A, b = NAME_B, fam = F.hand(700);
+      const k = Math.min(1, (P.w - 72) / (measure(a, fam, 56) + measure(b, fam, 56) + 84));
+      c.font = font(fam, 56 * k); c.fillStyle = mixRgba('ink', 'sepia', 0.35);
       const wa = c.measureText(a).width;
-      c.fillText(a, P.x + 36, P.y + 150); drawHeart(c, P.x + 36 + wa + 42, P.y + 131, 38); c.fillText(b, P.x + 36 + wa + 84, P.y + 150);
-      c.font = font(F.mono(500), 18); c.letterSpacing = '6px'; c.fillStyle = rgba('sepia', 0.7); c.fillText(DATE_DOTS, P.x + 38, P.y + 198); c.letterSpacing = '0px';
+      c.fillText(a, P.x + 36, P.y + 150); drawHeart(c, P.x + 36 + wa + 42 * k, P.y + 150 - 19 * k, 38 * k); c.fillText(b, P.x + 36 + wa + 84 * k, P.y + 150);
+      if (DATE_DOTS) { c.font = font(F.mono(500), 18); c.letterSpacing = '6px'; c.fillStyle = rgba('sepia', 0.7); c.fillText(DATE_DOTS, P.x + 38, P.y + 198); c.letterSpacing = '0px'; }
       c.font = font(F.hand(700), 30); c.fillStyle = mixRgba('ink', 'sepia', 0.35); c.fillText('這個車廂的廣告位，留給你的祝福', P.x + 36, P.y + 282);
       c.font = font(F.hei(500), 20); c.fillStyle = rgba('sepia', 0.75); c.fillText(B3_INVITE, P.x + 36, P.y + 330);
     }

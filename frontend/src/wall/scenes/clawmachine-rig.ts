@@ -79,7 +79,7 @@ export interface Prong { hinge: THREE.Group; hook: THREE.Group }
 
 /** 扭蛋堆的位置（整晚固定，種子亂數）：兩層半，取物口那一塊空著。 */
 function pile() {
-  const rnd = mulberry32(20270313);
+  const rnd = mulberry32(0xc1a3);
   const out: { p: THREE.Vector3; q: THREE.Quaternion; top: [number, number, number] }[] = [];
   const add = (x: number, y: number, z: number) => {
     const q = new THREE.Quaternion().setFromEuler(new THREE.Euler((rnd() - 0.5) * 2.4, rnd() * 6.28, (rnd() - 0.5) * 2.4));

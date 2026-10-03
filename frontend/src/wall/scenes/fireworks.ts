@@ -11,7 +11,7 @@
 //    唱完的下一拍在天上炸成那段詞（天上的字永遠是已經唱過的，不會跑在歌聲前面）。
 //  - 沒有留言也沒有歌詞（間奏）：炸出新人的名字、愛心（點綴色，只有這裡）、日期，水面上寫一句邀請大家掃 QR。
 // 克制：火藥是細線與火星（pdoom 的 sparkParticles 那種），不是發光的星雲；只有訊號色會發光，字本身是銳利的紙白。
-// v2（2026-09-29「留言尺寸與版面比例標準 v2」）：天上的留言照 v2 字級（40～60 px，依字數）、放在夜空左邊一塊 ≤ 800 寬，
+// v2（「留言尺寸與版面比例標準 v2」）：天上的留言照 v2 字級（40～60 px，依字數）、放在夜空左邊一塊 ≤ 800 寬，
 // 署名 26～32；水面上的歌詞 40～52（不比留言大）。空出來的右半邊夜空一直有煙火：留言停在天上的時候，
 // 每個小節在右邊放一發中型的（落在小節線），不再只有遠方低空的小煙火。沒有留言時天上的歌詞煙火也收小（≤ 80 px）。
 import * as THREE from 'three';
@@ -23,11 +23,11 @@ import { HEX, rgba } from '../engine/palette';
 import { clamp, ease, hash, lerp, mulberry32, prog, pulse } from '../engine/util';
 import { fitText, readSeconds } from '../engine/text';
 import type { Line, Word } from '../engine/lyrics';
-import { sparkHead, sparkParticles, lyricAt, drawLyric, layoutLyric, lyricSubOf, subSizeFor, subGap, beatAfter, barAfter, signature, COUPLE_EN, COUPLE_ZH, DATE_DOTS, type LyricStyle } from './_motifs';
+import { sparkHead, sparkParticles, lyricAt, drawLyric, layoutLyric, lyricSubOf, subSizeFor, subGap, beatAfter, barAfter, signature, COUPLE_EN, COUPLE_ZH, DATE_DOTS, HAS_LATIN_NAMES, type LyricStyle } from './_motifs';
 import { V2, msgMaxFor, lyricV2, sigV2, fitClauses } from './_v2';
 import { HZ, SKY_PASS, drawSkyline, type Light } from './fireworks-sky';
 import { type Shell, type SkyGlyph, type Kind, sampleStars, planGlyphs, rocketAt, drawRocket, drawCrown, drawComets, drawStars, drawEmbers, expand, drawGlyphHeart } from './fireworks-shells';
-// 最早的版面：排程參數在 director.ts 的 PLATES；這裡只宣告雙語（2026-09-30 雙語普查通過：有翻譯＋主打留言時中文、原文、留言三樣都清楚）
+// 最早的版面：排程參數在 director.ts 的 PLATES；這裡只宣告雙語（雙語普查通過：有翻譯＋主打留言時中文、原文、留言三樣都清楚）
 export const spec: PlateSpecDecl = { bilingual: true };
 
 
@@ -295,8 +295,10 @@ export default class Fireworks extends Scene {
     // ---------------------------------------------------------------- 間奏（沒有留言也沒有歌詞）：新人的名字、愛心、日期
     if (!this.msg && !lyricLines.length) {
       this.invite = true;
+      // 沒有英文名時 COUPLE_EN 就是中文名，跟後面那一發重複：改放一句通用的英文。還沒定日期：日期那一發換成一發柳樹煙火
       const items: ({ text: string; fam: string; max: number } | Kind)[] = [
-        { text: COUPLE_EN, fam: F.serif(600, true), max: 190 }, 'heart', { text: DATE_DOTS, fam: F.serif(600), max: 150 },
+        { text: HAS_LATIN_NAMES ? COUPLE_EN : 'JUST MARRIED', fam: F.serif(600, true), max: 190 }, 'heart',
+        DATE_DOTS ? { text: DATE_DOTS, fam: F.serif(600), max: 150 } : 'willow',
         'willow', { text: COUPLE_ZH, fam: F.ming(900), max: 170 }, 'ring', 'peony',
       ];
       let k = 0;

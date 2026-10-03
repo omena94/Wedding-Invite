@@ -246,6 +246,15 @@ class FileAsset(Base):
     album: Mapped[str] = mapped_column(String(50), default="")
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
     thumb_name: Mapped[str] = mapped_column(String(80), default="")
+    # 照片在會場大螢幕用的資訊：長寬（照 EXIF 轉正後；0 = 還沒算）挑適合的版面；
+    # 焦點（0..1，左上原點；空的 = 新人沒設定，大螢幕用預設）裁切與慢推繞著它，臉才不會被裁掉；
+    # 平均亮度（0..1；空的 = 還沒算）與色調（#rrggbb）讓暗的照片配亮的版面、版面的光跟著照片的顏色
+    img_w: Mapped[int] = mapped_column(Integer, default=0)
+    img_h: Mapped[int] = mapped_column(Integer, default=0)
+    focus_x: Mapped[float | None] = mapped_column(Float, nullable=True)
+    focus_y: Mapped[float | None] = mapped_column(Float, nullable=True)
+    lum: Mapped[float | None] = mapped_column(Float, nullable=True)
+    tone: Mapped[str] = mapped_column(String(7), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     vendor: Mapped["Vendor | None"] = relationship(back_populates="files")
@@ -639,6 +648,31 @@ class WallSong(Base):
     end_at: Mapped[float] = mapped_column(Float, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+class WallScene(Base):
+    """大螢幕的場合（迎賓、新人進場、用餐、敬酒、送客…）：每個場合自己的歌、畫面放什麼、版面、配色。
+    婚禮當天在手機遙控切場合，大螢幕就換成那個場合的歌與畫面。每對新人的流程不一樣，所以場合全部由新人自己
+    新增、改名、排順序，不寫死；常見的流程只是範本（wall_scenes.TEMPLATES）。現在是哪個場合存在設定 wall_scene。"""
+    __tablename__ = "wall_scenes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(40))
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    # 歌的 id（JSON 陣列，照播放順序）；空的 = 不換歌，接著播原本的（致詞、證婚只要把音樂調小聲）
+    song_ids: Mapped[str] = mapped_column(Text, default="[]")
+    shuffle: Mapped[bool] = mapped_column(Boolean, default=False)
+    # 畫面放什麼（JSON：lyrics、messages、photos、mix）；空字串 = 跟「內容」分頁一樣
+    content_json: Mapped[str] = mapped_column(Text, default="")
+    # 只用這幾個版面（逗號分隔）；空字串 = 照「版面」分頁開著的
+    plates: Mapped[str] = mapped_column(Text, default="")
+    pace: Mapped[str] = mapped_column(String(10), default="")    # 空 = 照「版面」分頁的節奏
+    theme: Mapped[str] = mapped_column(String(20), default="")   # 空 = 每首歌自己的配色
+    duck: Mapped[bool] = mapped_column(Boolean, default=False)   # 切過來時自動開講話模式
+    # 歌都播過一輪之後換到哪個場合（新人進場曲播完自動回到用餐）；空的 = 重複播這些歌
+    after_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
 class WallCommand(Base):
     """大螢幕遙控（2026-09-30）：手機後台按的指令排在這裡，大螢幕每秒來拿一次。
     正式站有好幾個 uvicorn worker，所以放資料庫、不放記憶體；一小時前的會被清掉。"""

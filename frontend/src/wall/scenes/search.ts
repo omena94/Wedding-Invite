@@ -3,8 +3,8 @@
 //  - 歌詞是打進搜尋框的字：唱到哪打到哪，還沒唱的部分是淡淡的「自動完成」灰字（三成），正在唱的字是訊號色的暗部；
 //    游標跟著拍子閃。換下一句前整句先被「全選」反白一下，再被新的一句取代。
 //  - 搜尋框下面的第一個建議就是主打留言：手寫字、整個畫面最大，署名在右下；每個小節線這一列的底色輕輕亮一下（被選中）。
-//    下面兩列很小很淡的冷面建議（「芃芃 QQ 可以當花童嗎」），每唱一個新字就重洗一次，像真的自動完成。
-//  - 純音樂：搜尋框一拍打一個字「今晚最想對新人說的話」。沒有留言：第一個建議是邀請（小一點），焦點讓給歌詞。
+//    下面兩列很小很淡的冷面建議（「花童 要幾歲比較好」「〈新人的名字〉 怎麼認識的」），每唱一個新字就重洗一次，像真的自動完成。
+//  - 純音樂：搜尋框一拍打一個字「今晚最想送給新人的話」。沒有留言：第一個建議是邀請（小一點），焦點讓給歌詞。
 //  - 鏡頭：慢慢推近，每個小節線緩一下；主打出現時多推一點。
 // v2（留言尺寸標準）：筆電本身是場景、可以大；補的動畫跟「打字搜尋」有關：歌詞唱一個字，鍵盤上就有一顆鍵被按下去
 // （鍵帽往下、底下透出一點訊號色的背光），每個小節線按一下 Enter（主打那一列同時被選中亮一下）。
@@ -19,7 +19,7 @@ import { LIN, rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, pulse, hash } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
 import { Lyrics, type Line } from '../engine/lyrics';
-import { layoutLyric, drawLyric, lyricAt, drawHeart, fillWithHearts, signature, COUPLE_ZH, lyricSubOf, subSizeFor, subGap, type LyricStyle, type LyricLayout } from './_motifs';
+import { layoutLyric, drawLyric, lyricAt, drawHeart, fillWithHearts, signature, COUPLE_ZH, NAME_A, NAME_B, lyricSubOf, subSizeFor, subGap, type LyricStyle, type LyricLayout } from './_motifs';
 import { grid, windowLines, rrect, lastOf, renderStage, bodyMaterial, screenMaterial, tableMaterial, backdropMaterial, slab, setV3, mixV, projScale, fitMsgV2, type Grid } from './_t5';
 import { V2, lyricV2, sigV2 } from './_v2';
 
@@ -37,12 +37,11 @@ const QUERY: LyricStyle = { family: F.archivo(75, 700), size: 80, minSize: 70, m
 /** 沒有留言時歌詞是焦點：打大一點。 */
 const QUERY_BIG: LyricStyle = { ...QUERY, size: 104, minSize: 76 };
 const NPRESS = 8; // 鍵盤上同時在「按」的鍵最多幾顆
-const INSTR_QUERY = '今晚最想對新人說的話';
-const [GROOM, BRIDE] = COUPLE_ZH.split(/\s*&\s*/) as [string, string];
-/** 冷面的自動完成建議（{kw} 會換成正在打的那句的開頭）。 */
+const INSTR_QUERY = '今晚最想送給新人的話';
+/** 冷面的自動完成建議（{kw} 會換成正在打的那句的開頭）。新人的名字是執行時才知道的；建議那一列很寬，長的名字也放得下。 */
 const SUGGEST = [
-  '{kw} 歌詞', '新婚快樂 怎麼說比較有誠意', '喜餅 什麼時候發', `${GROOM} ${BRIDE} 怎麼認識的`, '婚禮 感動到哭 正常嗎',
-  '芃芃 QQ 可以當花童嗎', '一輩子 有多長', '永遠 的 近義詞', '捧花 怎麼接比較準',
+  '{kw} 歌詞', '新婚快樂 怎麼說比較有誠意', '喜餅 什麼時候發', `${NAME_A} ${NAME_B} 怎麼認識的`, '婚禮 感動到哭 正常嗎',
+  '花童 要幾歲比較好', '一輩子 有多長', '永遠 的 近義詞', '捧花 怎麼接比較準',
 ];
 
 // 鍵盤：鋁的底上一格一格的深色鍵、一塊觸控板（會被景深糊掉，所以簡單就好）

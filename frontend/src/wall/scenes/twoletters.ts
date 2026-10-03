@@ -15,7 +15,7 @@ import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, lerp, hash, TAU } from '../engine/util';
 import type { FitResult } from '../engine/text';
 import { Lyrics, lyricSubOf, type Line } from '../engine/lyrics';
-import { lyricAt, layoutLyric, drawLyric, beatAfter, subSizeFor, COUPLE_ZH, type LyricStyle, type LyricLayout } from './_motifs';
+import { lyricAt, layoutLyric, drawLyric, beatAfter, subSizeFor, fitPx, isLatin, COUPLE_ZH, INITIAL_A, INITIAL_B, type LyricStyle, type LyricLayout } from './_motifs';
 import { lyricV2, sigV2, msgMaxFor, V2 } from './_v2';
 import { fitMsgB2, sigOf, windowLines, linesText, inkSignal, mainOnly, lyricBlock, penOnEdge, INVITE, B2_SYMBOLS, no3, offCanvas, type Rect } from './_b2';
 
@@ -35,6 +35,9 @@ const ZH_FAM = F.hand(700);
 const SUB_FAM = F.hand(700);
 const MSG_FAM = F.hand(700);
 const SIG_FAM = F.hand(400);
+/** 信頭與封蠟上的花押：新人的縮寫「E & I」；縮寫不是拉丁字母（只有中文名）時用明體（斜體襯線字族沒有中文）。 */
+const MONO = `${INITIAL_A} & ${INITIAL_B}`;
+const MONO_FAM = isLatin(MONO) ? F.serif(600, true) : F.ming(700);
 const NO_MSG = '信封背面還空著，掃描右下角 QR code，寫一句附言給新人。';
 /** 鉛筆的譯註（冷面、溫柔）：一句寫完之後，有時候寫在譯本右邊。 */
 const NOTES: string[][] = [['語氣再', '溫柔一點'], ['原文', '更可愛'], ['這句', '押韻了！'], ['直譯太硬', '改意譯'], ['念起來', '很順 ✓'], ['這裡要', '慢慢讀']];
@@ -66,7 +69,7 @@ interface Glyph { ch: string; x: number; y: number; t: number }
 interface Pen { x: number; y: number; ang: number; a: number }
 /** 譯本的筆往右、航空信的筆往左，都幾乎是平的（躺在兩句之間的空裡）。 */
 const PEN_R = 0.05, PEN_L = Math.PI - 0.05;
-/** 還沒描墨的鉛筆草稿：中灰鉛筆、0.55（2026-09-30 主導者：草稿要能先讀到整句）。 */
+/** 還沒描墨的鉛筆草稿：中灰鉛筆、0.55（草稿要能先讀到整句，描墨才有「照著寫」的感覺）。 */
 const PENCIL = mixRgba('graphite', 'ash', 0.3, 0.55);
 
 export default class Twoletters extends Scene {
@@ -109,7 +112,7 @@ export default class Twoletters extends Scene {
     const text = m ? m.text : NO_MSG;
     const sigText = m ? sigOf(m) : '';
     await loadText(text + sigText + NO_MSG + INVITE + [...NOTES, ...NOTES1].flat().join('') + INST_LETTER.join('') + song.title + song.artist + linesText(lines) + COUPLE_ZH
-      + 'P.S.PARAVIONAIRMAIL航空給譯本原文A&O第頁' + B2_SYMBOLS);
+      + 'P.S.PARAVIONAIRMAIL航空給譯本原文第頁' + MONO + B2_SYMBOLS);
 
     // ---- 信封背面的附言（逐字寫）
     const c = this.live.ctx;
@@ -207,14 +210,14 @@ export default class Twoletters extends Scene {
     return cv;
   }
 
-  /** 譯本的信紙：米色、淡淡的橫線、信頭的「A&O」、右邊鉛筆欄的細線。 */
+  /** 譯本的信紙：米色、淡淡的橫線、信頭的花押（新人縮寫）、右邊鉛筆欄的細線。 */
   private makeZhPaper() {
     const S = this.zh;
     const { cv, c } = offCanvas(S.w, S.h);
     c.fillStyle = mixRgba('paper', 'bone', 0.3, 1);
     c.fillRect(0, 0, S.w, S.h);
-    c.font = font(F.serif(600, true), 26); c.fillStyle = mixRgba('signal', 'blood', 0.5, 0.7); c.textAlign = 'center';
-    c.fillText('A & O', S.w / 2, 62);
+    c.font = font(MONO_FAM, fitPx(MONO, MONO_FAM, 26, S.w - 2 * MX)); c.fillStyle = mixRgba('signal', 'blood', 0.5, 0.7); c.textAlign = 'center';
+    c.fillText(MONO, S.w / 2, 62);
     c.font = font(F.mono(500), 12); c.letterSpacing = '4px'; c.fillStyle = rgba('sepia', 0.4);
     c.fillText(this.bi ? '譯本 · TRANSLATION' : 'LETTER', S.w / 2, 86);
     c.letterSpacing = '0px'; c.textAlign = 'left';
@@ -521,8 +524,10 @@ export default class Twoletters extends Scene {
     c.fill();
     c.strokeStyle = mixRgba('blood', 'ink', 0.3, 0.6); c.lineWidth = 2;
     c.beginPath(); c.arc(0, 0, 24, 0, TAU); c.stroke();
-    c.font = font(F.serif(600, true), 22); c.fillStyle = mixRgba('blood', 'ink', 0.35, 0.85); c.textAlign = 'center';
-    c.fillText('A&O', 0, 7);
+    // 封蠟上的縮寫要在內圈（直徑 48）裡：中文縮寫比較寬，放不下就縮字
+    const seal = `${INITIAL_A}&${INITIAL_B}`;
+    c.font = font(MONO_FAM, fitPx(seal, MONO_FAM, 22, 40)); c.fillStyle = mixRgba('blood', 'ink', 0.35, 0.85); c.textAlign = 'center';
+    c.fillText(seal, 0, 7);
     c.restore();
     void au;
   }

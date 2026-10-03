@@ -4,7 +4,7 @@
 //    一排新的便利貼從左到右一口氣疊上去蓋住上一句，照跟唱規則上色（還沒唱三成、正在唱訊號色的暗部、唱完墨色）。
 //  - 主打留言：第一拍貼上左下那張最大的；之後每拍在右邊貼一張別人的短留言（沒有就貼冷面的待辦：「☑ 吃飽了」），
 //    貼滿四格以後，每個小節線再往上疊一張。
-//  - 右邊一條（即時小卡的位置）只有幾張裝飾用的便利貼（愛心、日期、∞），被小卡蓋住沒關係。
+//  - 右邊一條（即時小卡的位置）只有幾張裝飾用的便利貼（愛心、日期〔還沒定日期就寫新人的縮寫〕、∞），被小卡蓋住沒關係。
 //  - 純音樂：上面那排寫歌名。沒有留言：最大那張是邀請（掃右下角 QR，把祝福貼上來）。
 // 畫法：牆與便利貼都是一個 three.js 場景（透視鏡頭）。便利貼是一個 instanced mesh（每張兩個實例：先畫影子再畫紙，
 // 照順序疊），紙上的字取自兩張 Canvas2D：不會變的（留言、裝飾）在 init() 畫一次，歌詞那一條每格重畫。
@@ -17,7 +17,7 @@ import { LIN, rgba } from '../engine/palette';
 import { clamp, ease, lerp, prog, hash, pulse, mulberry32 } from '../engine/util';
 import { fitText } from '../engine/text';
 import type { Line } from '../engine/lyrics';
-import { layoutLyric, drawLyric, drawHeart, fillWithHearts, signature, DATE_DOTS, lyricSubOf, subSizeFor, subGap, type LyricStyle, type LyricLayout } from './_motifs';
+import { layoutLyric, drawLyric, drawHeart, fillWithHearts, signature, DATE_DOTS, INITIALS, fitPx, lyricSubOf, subSizeFor, subGap, type LyricStyle, type LyricLayout } from './_motifs';
 import { grid, windowLines, renderStage, projScale, fitMsgV2, type Grid } from './_t5';
 import { V2, lyricV2, sigV2 } from './_v2';
 
@@ -37,7 +37,7 @@ const BAND_H = ROW.w / ROW.n; // 跟一張便利貼一樣高，字才不會被�
 const LY: LyricStyle = { family: F.archivo(100, 700), size: 60, minSize: 50, maxWidth: ROW.w - 60, align: 'center', lineHeight: 1.1 };
 const SLAP = 0.15; // 貼上去要幾秒
 
-const TODO = ['☑ 找到座位', '☑ 吃飽了', '☐ 跟新人合照', '☐ 寫一句祝福', '記得：拿喜餅', '新郎 好帥', '新娘 好美', '芃芃 QQ 很乖'];
+const TODO = ['☑ 找到座位', '☑ 吃飽了', '☐ 跟新人合照', '☐ 寫一句祝福', '記得：拿喜餅', '新郎 好帥', '新娘 好美', '☐ 搶到捧花'];
 
 // ---------------------------------------------------------------- 三維場景（整晚共用）
 const NOTE_VERT = /* glsl */ `
@@ -282,12 +282,12 @@ export default class StickyNotes extends Scene {
     R.cam.updateMatrixWorld();
   }
 
-  /** 右邊裝飾：愛心、日期、∞。 */
+  /** 右邊裝飾：愛心、日期（還沒定日期就寫縮寫，不留一張空白的便利貼）、∞。 */
   private decorCell(c: CanvasRenderingContext2D, x: number, y: number, s: number, i: number) {
     c.save(); c.beginPath(); c.rect(x, y, s, s); c.clip();
     if (i === 0) drawHeart(c, x + s / 2, y + s / 2 + 6, s * 0.46);
     else if (i === 1) {
-      const d = DATE_DOTS.replace(/ /g, '');
+      const d = DATE_DOTS ? DATE_DOTS.replace(/ /g, '') : INITIALS;
       const fit = fitText(c, d, F.hand(700), s - 40, 60, { min: 20, max: 40, maxLines: 1 });
       c.font = font(F.hand(700), fit.size); c.fillStyle = rgba('sepia', 0.85); c.textAlign = 'center';
       c.fillText(d, x + s / 2, y + s / 2 + fit.size * 0.35); c.textAlign = 'left';
@@ -317,8 +317,10 @@ export default class StickyNotes extends Scene {
     const top = y + Math.max(34, (s - block) * 0.45);
     fit.lines.forEach((ln, i) => fillWithHearts(c, ln, x + 32, top + fit.size * 0.9 + i * fit.lineHeight));
     if (m) {
-      c.font = font(F.hand(400), this.sigSize); c.fillStyle = rgba('sepia', 0.75); c.textAlign = 'right';
-      c.fillText(signature(m.name), x + s - 32, top + fit.height + fit.size * 0.2 + this.sigSize * 1.25); c.textAlign = 'left';
+      // 署名可能很長（新人自己的留言署兩人的全名）：放不進便利貼的寬度就縮字，不要寫出紙外
+      const sg = signature(m.name);
+      c.font = font(F.hand(400), fitPx(sg, F.hand(400), this.sigSize, s - 64)); c.fillStyle = rgba('sepia', 0.75); c.textAlign = 'right';
+      c.fillText(sg, x + s - 32, top + fit.height + fit.size * 0.2 + this.sigSize * 1.25); c.textAlign = 'left';
     }
     c.restore();
   }
@@ -332,8 +334,9 @@ export default class StickyNotes extends Scene {
     const top = y + 40 + (s - (name ? 110 : 70) - fit.height) / 2;
     fit.lines.forEach((ln, i) => fillWithHearts(c, ln, x + 28, top + fit.size * 0.9 + i * fit.lineHeight));
     if (name) {
-      c.font = font(F.hand(400), 24); c.fillStyle = rgba('sepia', 0.7); c.textAlign = 'right';
-      c.fillText(signature(name), x + s - 26, y + s - 30); c.textAlign = 'left';
+      const sg = signature(name);
+      c.font = font(F.hand(400), fitPx(sg, F.hand(400), 24, s - 52)); c.fillStyle = rgba('sepia', 0.7); c.textAlign = 'right';
+      c.fillText(sg, x + s - 26, y + s - 30); c.textAlign = 'left';
     }
     void k;
     c.restore();

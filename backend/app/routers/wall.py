@@ -7,6 +7,7 @@ wall_moderation 開著時新留言先是 pending，新人在後台按「通過�
 大螢幕的背景歌單也在這裡：音檔存主機的 uploads/wall/，節拍分析在瀏覽器算好後整包存回來。
 """
 import asyncio
+import hashlib
 import json
 import math
 import re
@@ -17,21 +18,23 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Response, UploadFile
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, StrictBool, StrictFloat, StrictInt, StrictStr
 from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from .. import guest_access, live
+from .. import guest_access, live, wall_scenes
 from ..config import settings
 from ..database import get_db
-from ..models import WallCommand, WallMessage, WallScreen, WallSong
+from ..models import FileAsset, WallCommand, WallMessage, WallScreen, WallSong
 from ..permissions import require_perm
 from ..security import optional_staff
-from ..stage import (WALL_DUCK_KEY, WALL_MODERATION_KEY, WALL_OPEN_KEY, WALL_PACE_KEY, WALL_PLATES_OFF_KEY, WALL_REMOTE_LOCK_KEY, clean_plates_off,
-                     get_setting, is_on, set_setting)
+from ..stage import (WALL_CONTENT_KEY, WALL_DUCK_KEY, WALL_MIXES, WALL_MODERATION_KEY, WALL_OPEN_KEY, WALL_PACE_KEY, WALL_PLATES_OFF_KEY,
+                     WALL_REMOTE_LOCK_KEY, album_flags, clean_plates_off, get_setting, is_on, set_album_flags, set_setting, wall_content)
 from ..storage import LocalStore
+from ..thumbs import image_info, is_image, make_thumb, wall_image_name
+from .photos import sort_photos
 
 router = APIRouter(tags=["wall"])
 
@@ -121,6 +124,8 @@ def _recent(db: Session, since: datetime, *conds) -> int:
 @router.post("/api/wall/messages", status_code=201)
 def post_wall_message(payload: GuestMessageIn, request: Request, db: Session = Depends(get_db), role: str | None = Depends(optional_staff)):
     """賓客寫一則留言。開關關著時只有登入者能寫（試用）；登入者也不受限流，方便現場測試。"""
+    if role is None and not wall_scenes.messages_on(db):
+        raise HTTPException(403, "大螢幕現在沒有開放留言")
     if not is_on(db, WALL_OPEN_KEY) and role is None:
         raise HTTPException(403, "現場留言尚未開放，婚禮當天再來喔")
     name, text = _clean_name(payload.name), _clean_text(payload.text)
@@ -224,6 +229,20 @@ def delete_wall_message(msg_id: int, db: Session = Depends(get_db)):
     return Response(status_code=204)
 
 
+# 新人不放賓客留言、自己也還沒寫話時，版面上原本放留言的地方輪流放這幾句。
+# 幾乎每個版面在「沒有留言」時都會畫「掃描右下角 QR code」的邀請——不放留言就沒有 QR，那句話不能出現，
+# 所以一定要有東西頂在留言的位置。id 用負數，不會跟真的留言撞號；大螢幕會把署名換成新人的名字。
+DEFAULT_COUPLE_LINES = (
+    "謝謝你們來，陪我們過這一天",
+    "今天能和你們在一起，是我們最好的日子",
+    "吃飽喝足，玩得開心！",
+)
+
+
+def _default_lines() -> list[dict]:
+    return [{"id": -(i + 1), "name": "", "text": t, "source": "couple", "created_at": ""} for i, t in enumerate(DEFAULT_COUPLE_LINES)]
+
+
 def _songs_rev(db: Session) -> str:
     """歌單版本號：新增、修改、刪除任何一首都會變（數量、最大 id、最後修改時間），大螢幕看到變了才重抓歌單。"""
     count, max_id, last = db.execute(select(func.count(WallSong.id), func.max(WallSong.id), func.max(WallSong.updated_at))).one()
@@ -232,21 +251,38 @@ def _songs_rev(db: Session) -> str:
 
 @router.get("/api/planner/wall/feed", dependencies=[Perm])
 def wall_feed(db: Session = Depends(get_db)):
-    """大螢幕每兩秒問一次：只回上螢幕的留言（舊到新）與幾個開關；歌單只給版本號，變了再去抓。"""
-    rows = db.execute(
-        select(WallMessage.id, WallMessage.name, WallMessage.text, WallMessage.created_at)
-        .where(WallMessage.status == "show").order_by(WallMessage.created_at.asc(), WallMessage.id.asc())
-    ).all()
+    """大螢幕每兩秒問一次：只回上螢幕的留言（舊到新）與幾個開關；歌單、照片只給版本號，變了再去抓。
+    內容、節奏是合併過現在的場合的（場合沒設的照「內容」「版面」分頁），大螢幕不用自己合併。"""
+    scene = wall_scenes.active(db)
+    st = wall_scenes.state(db)
+    content = wall_scenes.effective_content(db, scene)
+    stmt = (select(WallMessage.id, WallMessage.name, WallMessage.text, WallMessage.source, WallMessage.created_at)
+            .where(WallMessage.status == "show").order_by(WallMessage.created_at.asc(), WallMessage.id.asc()))
+    if not content["messages"]:
+        stmt = stmt.where(WallMessage.source == "couple")
+    rows = db.execute(stmt).all()
+    messages = [{"id": r.id, "name": r.name, "text": r.text, "source": r.source, "created_at": _iso(r.created_at)} for r in rows]
+    if not content["messages"] and not messages:
+        messages = _default_lines()
     return {
-        "messages": [{"id": r.id, "name": r.name, "text": r.text, "created_at": _iso(r.created_at)} for r in rows],
-        "count": len(rows),
+        "messages": messages,
+        "count": len(messages),
+        # 新人選的內容：歌詞、賓客留言（關掉時沒有 QR、沒有邀請卡）、照片
+        "content": content,
+        "photos_rev": _photos_rev(db, content) if content["photos"] else "",
         "open": is_on(db, WALL_OPEN_KEY),
         "moderation": is_on(db, WALL_MODERATION_KEY),
         "songs_rev": _songs_rev(db),
         # 後台關掉的版面：大螢幕的導演不會再排到它們
         "plates_off": [x for x in (get_setting(db, WALL_PLATES_OFF_KEY) or "").split(",") if x.strip()],
-        "pace": get_setting(db, WALL_PACE_KEY) or "normal",
+        "pace": wall_scenes.effective_pace(db, scene),
         "duck": _duck_level(db),
+        # 場合：現在的場合要播的歌、只用的版面、配色、講話模式、播完之後換到哪；scene_seq 變了就是有人切了場合，
+        # scene_next 是「這首播完再換」排好的。scenes 給大螢幕操作列的場合按鈕
+        "scene": wall_scenes.feed_out(db, scene) if scene else None,
+        "scene_seq": st["seq"],
+        "scene_next": st["next"],
+        "scenes": [{"id": s.id, "name": s.name} for s in wall_scenes.scenes(db)],
     }
 
 
@@ -630,7 +666,9 @@ def _remote_snapshot(db: Session, now: datetime, screens: list[WallScreen] | Non
         row = db.get(WallScreen, lock)  # 鎖定的那台斷線超過一小時，列會被清掉：照「沒有連線」顯示
     else:
         row = screens[0] if screens else db.scalars(select(WallScreen).order_by(WallScreen.seen_at.desc()).limit(1)).first()
-    base = {"screens": len(screens), "locked": bool(lock), "duck_level": _duck_level(db), "online_s": REMOTE_ONLINE}
+    # scene：現在的場合與排好的（手機遙控頁顯示），scenes_rev 變了手機才重抓場合清單
+    base = {"screens": len(screens), "locked": bool(lock), "duck_level": _duck_level(db), "online_s": REMOTE_ONLINE,
+            "scene": wall_scenes.state(db), "scenes_rev": wall_scenes.rev(db)}
     if row is None:
         return {"state": None, "age": None, "online": False, "client": lock, **base}
     age = max(0.0, (now - _aware(row.seen_at)).total_seconds())
@@ -793,3 +831,138 @@ def set_wall_plates(payload: PlatesIn, db: Session = Depends(get_db)):
     db.commit()
     _feed_changed()
     return _plates(db)
+
+
+# ---------------- 要放哪些內容（新人自己選） ----------------
+# 大螢幕要放什麼新人自己選（2026-10-03）：逐字歌詞的 MV、只要音樂和祝福、不要賓客留言、放照片和註解……
+# 不做成幾種固定的「模式」，而是幾樣可以各自開關的內容（stage.wall_content），後台再給幾個常見的組合一鍵套用。
+# 當天也會切（進場時只放照片、用餐時打開留言），所以兩把鑰匙都能改。
+class ContentIn(BaseModel):
+    lyrics: StrictBool | None = None
+    messages: StrictBool | None = None
+    photos: StrictBool | None = None
+    captions: StrictBool | None = None
+    albums: list[StrictStr] | None = None
+    mix: StrictStr | None = None
+
+
+@router.get("/api/planner/wall/content", dependencies=[Either])
+def get_wall_content(db: Session = Depends(get_db)):
+    return wall_content(db)
+
+
+@router.put("/api/planner/wall/content", dependencies=[Either])
+def set_wall_content(payload: ContentIn, db: Session = Depends(get_db)):
+    data = payload.model_dump(exclude_none=True)
+    if "mix" in data and data["mix"] not in WALL_MIXES:
+        raise HTTPException(400, "照片與留言的比例只能是全放照片、照片多、一樣多或留言多")
+    if "albums" in data:
+        if len(data["albums"]) > 200:
+            raise HTTPException(400, "相簿太多了")
+        data["albums"] = list(dict.fromkeys(a.strip()[:50] for a in data["albums"]))
+    content = {**wall_content(db), **data}
+    set_setting(db, WALL_CONTENT_KEY, json.dumps(content, ensure_ascii=False))
+    db.commit()
+    _feed_changed()
+    return content
+
+
+# ---------------- 照片（婚紗照頁上傳的照片，新人選哪幾本相簿上大螢幕） ----------------
+class WallAlbumIn(BaseModel):
+    album: StrictStr
+    wall: StrictBool
+
+
+@router.put("/api/planner/wall/albums", dependencies=[Either])
+def set_wall_album(payload: WallAlbumIn, db: Session = Depends(get_db)):
+    """大螢幕放不放某本相簿（跟婚紗照頁「這本相簿給誰看」同一份設定）。"""
+    names = sorted({f.album or "" for f in _all_photos(db)})
+    set_album_flags(db, payload.album.strip()[:50], names, wall=payload.wall)
+    db.commit()
+    _feed_changed()
+    return list_wall_photos(db)
+
+
+WALL_IMAGE_MAX = 2048  # 大螢幕是 1920×1080，慢推放大一點也夠清楚；原檔動輒 10 MB 以上，會場網路下載不完
+
+
+def _all_photos(db: Session) -> list[FileAsset]:
+    # 只拿圖片：婚紗照頁也收得到 PDF 之類的檔
+    return [f for f in sort_photos(db.scalars(select(FileAsset).where(FileAsset.kind == "photo")).all()) if is_image(f.filename)]
+
+
+def _wall_photos(db: Session, content: dict) -> list[FileAsset]:
+    """要放大螢幕的照片：每本相簿的「放大螢幕」開著的（stage.album_flags，跟婚紗照頁同一份設定）。"""
+    rows = _all_photos(db)
+    flags = album_flags(db, sorted({f.album or "" for f in rows}))
+    return [f for f in rows if flags[f.album or ""]["wall"]]
+
+
+def _photos_rev(db: Session, content: dict) -> str:
+    """照片版本號：張數、順序、相簿、註解、焦點任何一個變了都會變，大螢幕看到變了才重抓清單。"""
+    rows = _wall_photos(db, content)
+    sig = "|".join(f"{f.id}:{f.album}:{f.caption}:{f.focus_x}:{f.focus_y}" for f in rows) + f"|{content['captions']}"  # 相簿開關變了，rows 就不同
+    return f"{len(rows)}-{hashlib.sha1(sig.encode()).hexdigest()[:16]}"
+
+
+@router.get("/api/planner/wall/photos", dependencies=[Either])
+def list_wall_photos(db: Session = Depends(get_db)):
+    """大螢幕要播的照片（照婚紗照頁的順序：相簿 → 相簿內的排序），以及所有相簿（後台勾選用）。"""
+    content = wall_content(db)
+    every = _all_photos(db)
+    albums: dict[str, dict] = {}
+    for f in every:
+        a = albums.setdefault(f.album or "", {"album": f.album or "", "count": 0, "captioned": 0, "cover_id": f.id})
+        a["count"] += 1
+        a["captioned"] += 1 if (f.caption or "").strip() else 0
+    # guests：賓客在婚禮網站看不看得到（大螢幕這邊只顯示，讓新人知道哪幾本是只放大螢幕的生活照）
+    flags = album_flags(db, list(albums))
+    for k, a in albums.items():
+        a.update(flags[k])
+    rows = _wall_photos(db, content)
+    _fill_info(db, rows)
+    return {
+        # w、h、lum、tone：大螢幕還沒下載照片就能挑適合的版面；fx、fy：新人設的焦點（空的 = 用預設）
+        "items": [{"id": f.id, "caption": f.caption or "", "album": f.album or "", "w": f.img_w or 0, "h": f.img_h or 0,
+                   "fx": f.focus_x, "fy": f.focus_y, "lum": f.lum if f.lum is not None and f.lum >= 0 else None, "tone": f.tone or ""}
+                  for f in rows],
+        "albums": list(albums.values()),
+        "rev": _photos_rev(db, content),
+    }
+
+
+def _fill_info(db: Session, rows: list[FileAsset]) -> None:
+    """還沒算過長寬、亮度的照片（加這幾個欄位之前上傳的）：第一次要清單時補算並存起來。
+    讀不了的格式把亮度記成 -1，下次不再重算。"""
+    todo = [f for f in rows if f.lum is None]
+    for f in todo:
+        info = image_info(settings.upload_path / f.stored_name)
+        if info:
+            f.img_w, f.img_h, f.lum, f.tone = info["w"], info["h"], info["lum"], info["tone"]
+        else:
+            f.lum = -1.0
+    if todo:
+        db.commit()
+
+
+@router.get("/api/planner/wall/photos/{photo_id}/image", dependencies=[Either])
+def wall_photo_image(photo_id: int, db: Session = Depends(get_db)):
+    """大螢幕用的尺寸（長邊 2048 的 JPEG，方向照 EXIF 轉正）：第一次要時才做，存在原檔旁邊，之後直接給。"""
+    f = db.scalar(select(FileAsset).where(FileAsset.id == photo_id, FileAsset.kind == "photo"))
+    if not f:
+        raise HTTPException(404, "找不到這張照片")
+    root = settings.upload_path
+    src = root / f.stored_name
+    if not src.is_file():
+        raise HTTPException(404, "照片檔案不見了")
+    dst = root / wall_image_name(f.stored_name)
+    if not dst.is_file():
+        # 先寫到暫存檔再改名：大螢幕與預覽同時要同一張時，不會有人拿到寫到一半的檔
+        tmp = root / f"{dst.name}.{uuid.uuid4().hex[:8]}.tmp"
+        if make_thumb(src, tmp, WALL_IMAGE_MAX):
+            tmp.replace(dst)
+        else:
+            tmp.unlink(missing_ok=True)
+            # 讀不了的格式（伺服器沒裝 HEIC 外掛之類）：給原檔，瀏覽器解得開照樣能播
+            return FileResponse(src, media_type=f.mime)
+    return FileResponse(dst, media_type="image/jpeg", headers={"Cache-Control": "private, max-age=86400"})

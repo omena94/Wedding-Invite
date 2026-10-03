@@ -19,7 +19,7 @@ import { F, font, loadText } from '../engine/type';
 import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, pulse, hash, frameIdx, TAU } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
-import { lyricAt, layoutLyric, drawLyric, beatAfter, drawHeart, fillWithHearts, lyricSubOf, subStyleFor, subGap, COUPLE_ZH, COUPLE_EN, DATE_DOTS } from './_motifs';
+import { lyricAt, layoutLyric, drawLyric, beatAfter, drawHeart, fillWithHearts, lyricSubOf, subStyleFor, subGap, COUPLE_ZH, DATE_DOTS, INITIAL_A, INITIAL_B, fitPx } from './_motifs';
 import type { Line } from '../engine/lyrics';
 import { msgMaxFor, lyricV2, sigV2, fitClauses } from './_v2';
 import { darkInk } from './_t4';
@@ -235,7 +235,7 @@ export default class Puzzle extends Scene {
     this.sig = sigOf(m);
     // 韓文歌的原文副行：在第一個 await 之前拿（副行開關是引擎在 init 開始前替這個窗格設的）
     const subs = lyrics.linesIn(s - 2, e + 1).map((l) => [l, lyricSubOf(l)] as const).filter((p): p is readonly [Line, Line] => !!p[1]);
-    await loadText(`${m?.text ?? ''}${this.sig}${T17_TEXT}${T17_INVITE}${song.title}${song.artist}${COUPLE_ZH}${DATE_DOTS}♪${lyrics.linesIn(s - 2, e + 1).map((l) => l.text).join('')}${subs.map((p) => p[1].text).join('')}`);
+    await loadText(`${m?.text ?? ''}${this.sig}${T17_TEXT}${T17_INVITE}${song.title}${song.artist}♪${lyrics.linesIn(s - 2, e + 1).map((l) => l.text).join('')}${subs.map((p) => p[1].text).join('')}`);
     const B = (this.B = au.beatPeriod(s + 0.1));
 
     // ---- 海報（拼好的圖）：深色的底、藤蔓花紋框、正中間的留言與署名
@@ -274,16 +274,19 @@ export default class Puzzle extends Scene {
       c.textAlign = 'left';
       this.lyrSize = lyricV2(fit.size * PX);
     } else {
-      // 沒有留言：花環在正中間，新人的名字與日期在花環下面（配角）；歌詞在下面當主角
+      // 沒有留言：花環在正中間，新人的名字與日期在花環下面（配角）；歌詞在下面當主角。
+      // 名字長短不一：照海報內框的寬度縮字；還沒定日期就只有名字一行（往下挪到兩行的中間，不留空行）
       c.textAlign = 'center';
       c.fillStyle = rgba('bone', 0.85);
-      c.font = font(F.ming(700), 40);
-      c.fillText(COUPLE_ZH, BW / 2, BH - 108);
-      c.fillStyle = rgba('ash', 0.8);
-      c.font = font(F.mono(500), 18);
-      c.letterSpacing = '6px';
-      c.fillText(DATE_DOTS, BW / 2, BH - 76);
-      c.letterSpacing = '0px';
+      c.font = font(F.ming(700), fitPx(COUPLE_ZH, F.ming(700), 40, BW - 360));
+      c.fillText(COUPLE_ZH, BW / 2, DATE_DOTS ? BH - 108 : BH - 92);
+      if (DATE_DOTS) {
+        c.fillStyle = rgba('ash', 0.8);
+        c.font = font(F.mono(500), 18);
+        c.letterSpacing = '6px';
+        c.fillText(DATE_DOTS, BW / 2, BH - 76);
+        c.letterSpacing = '0px';
+      }
       c.textAlign = 'left';
       this.lyrSize = lyricV2(null);
     }
@@ -368,7 +371,7 @@ export default class Puzzle extends Scene {
     super.dispose();
   }
 
-  /** 花環：一圈手繪的藤（兩條交纏的細線）、交錯的葉子、幾朵五瓣小花，中間是縮寫 A & O 與一顆小愛心（quiet = 有留言，縮寫小而淡）。 */
+  /** 花環：一圈手繪的藤（兩條交纏的細線）、交錯的葉子、幾朵五瓣小花，中間是新人的縮寫與一顆小愛心（quiet = 有留言，縮寫小而淡）。 */
   private drawWreath(c: CanvasRenderingContext2D, cx: number, cy: number, R: number, quiet = false) {
     c.save();
     c.translate(cx, cy);
@@ -409,11 +412,12 @@ export default class Puzzle extends Scene {
       c.fillStyle = rgba('ember', 0.9); c.beginPath(); c.arc(x, y, 2.6, 0, TAU); c.fill();
     }
     // 縮寫：沒有留言時是海報的主圖（大）；有留言時縮小、調淡，不要比留言還搶眼（一格一個焦點）
-    const [a1, a2] = COUPLE_EN.split('&').map((x) => x.trim()[0] ?? '');
+    // 縮寫是 Canvas2D 的字（沒有英文名時是中文名的第一個字，襯線字族後面接了宋體備援），不超過花環的內圈
+    const ini = `${INITIAL_A} & ${INITIAL_B}`;
     c.textAlign = 'center';
     c.fillStyle = rgba('bone', quiet ? 0.6 : 0.92);
-    c.font = font(F.serif(600, true), R * (quiet ? 0.3 : 0.62));
-    c.fillText(`${a1} & ${a2}`, 0, R * (quiet ? 0.08 : 0.12));
+    c.font = font(F.serif(600, true), fitPx(ini, F.serif(600, true), R * (quiet ? 0.3 : 0.62), R * 1.4));
+    c.fillText(ini, 0, R * (quiet ? 0.08 : 0.12));
     drawHeart(c, 0, R * (quiet ? 0.28 : 0.42), R * (quiet ? 0.1 : 0.16), rgba('rose', 0.9));
     c.textAlign = 'left';
     c.restore();

@@ -6,7 +6,7 @@
 //  - 歌詞在左上（比留言小一級），照跟唱規則（亮版面：唱到的字是訊號色的暗部，底下一道螢光筆）。
 //  - 署名在方塊的右下；全部落定後，每一拍有一格的邊框亮一下，像有人拿筆一個字一個字指著讀。
 //  - 小字只有兩群：左上的刊頭一行、左下的冷面註腳（原子量 1314.520＝一生一世我愛你）。
-//  - 沒有留言：歌詞放大成焦點，方塊小小地拼出「宣文♥孟庭」、下面一行邀請。純音樂：左上寫這張表的配樂（歌名）。
+//  - 沒有留言：歌詞放大成焦點，方塊小小地拼出新人的名字「A♥B」、下面一行邀請。純音樂：左上寫這張表的配樂（歌名）。
 import * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
 import { Layer2D, W, H } from '../engine/gl';
@@ -16,7 +16,7 @@ import { clamp, ease, lerp, prog, pulse, hash } from '../engine/util';
 import { tokens } from '../engine/text';
 import { msgMaxFor, lyricV2, sigV2, V2 } from './_v2';
 import { Lyrics } from '../engine/lyrics';
-import { lyricAt, layoutLyric, beatAfter, drawHeart, signature, fillWithHearts, COUPLE_ZH, lyricSubOf, drawLyricSub } from './_motifs';
+import { lyricAt, layoutLyric, beatAfter, drawHeart, signature, fillWithHearts, NAME_A, NAME_B, lyricSubOf, drawLyricSub } from './_motifs';
 import { Paper, stagger, mono, tag } from './_t11';
 
 export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'science', paper: true, energy: [0.3, 0.9], bars: [4, 8], weight: 1 };
@@ -98,8 +98,8 @@ export default class Elements extends Scene {
   override async init() {
     const { audio: au, lyrics, song } = this.ctx;
     const s = this.ctx.start, e = this.ctx.end, m = this.msg;
-    const text = m ? m.text : COUPLE_ZH.replace(/\s*&\s*/, '♥');
-    this.sig = m ? (m.couple ? '—— 新郎新娘' : signature(m.name)) : '';
+    const text = m ? m.text : `${NAME_A}♥${NAME_B}`;
+    this.sig = m ? (m.couple ? '—— 新人' : signature(m.name)) : '';
     await loadText(`${text}${MAST}${FOOT}${INVITE}${this.sig}${song.title}${song.artist}本表配樂`);
     const box = m ? TILES_M : TILES_N;
 
@@ -130,8 +130,9 @@ export default class Elements extends Scene {
       const right = Math.max(...lines.map((l) => (l.length ? l[l.length - 1]!.x + l[l.length - 1]!.w : 0)));
       return { T, lh, lines, h, right, ok: h <= box.h && lines.length <= 5 && right <= box.w + 1 };
     };
-    // v2：方塊裡的字級（螢幕 px）上限依字數，下限 40；沒有留言時方塊小小的（歌詞是焦點）
-    let lo: number = V2.msgMin, hi = m ? msgMaxFor(text) : 44, best = place(lo);
+    // v2：方塊裡的字級（螢幕 px）上限依字數，下限 40；沒有留言時方塊小小的（歌詞是焦點），
+    // 新人的名字很長時可以再縮（只有一排的位置，名字不是焦點，放得進去比較重要）
+    let lo: number = m ? V2.msgMin : 24, hi = m ? msgMaxFor(text) : 44, best = place(lo);
     for (let k = 0; k < 12; k++) { const mid = (lo + hi) / 2, r = place(mid); if (r.ok) { best = r; lo = mid; } else hi = mid; }
     this.S = Math.floor(lo); best = place(this.S); this.T = best.T;
     // 元素：每個字挑一格（不重複）

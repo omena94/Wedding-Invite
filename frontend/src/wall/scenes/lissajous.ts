@@ -1,4 +1,4 @@
-// 李薩如圖形（機器 B，暗）：暗房間裡一台老示波器的映像管特寫，切在 X-Y 模式。CH1 接宣文、CH2 接孟庭。
+// 李薩如圖形（機器 B，暗）：暗房間裡一台老示波器的映像管特寫，切在 X-Y 模式。CH1、CH2 各接一位新人（讀數上寫著兩人的名字）。
 //  - 鏡頭：映像管在空間裡、稍微側一點，進場從更斜、更遠的地方在第一拍前後落定，之後慢慢推近，每兩小節輕輕搖一下；
 //    焦點轉移：開場對焦在圖形上，留言開始出現時焦點慢慢移到留言（v2 標準的「開場先看場景」）。
 //  - 主視覺是玻璃上的李薩如曲線（很大、在畫面左中）：整條一直亮著（電子束走得慢的轉角比較亮），一顆「寫字」的亮點一拍繞一圈、
@@ -17,7 +17,7 @@ import { F, font, loadText } from '../engine/type';
 import { LIN, rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, lerp, prog, TAU, hash, frameIdx } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
-import { sparkHead, sparkParticles, lyricAt, layoutLyric, drawLyric, signature, beatAfter, COUPLE_ZH, lyricSubOf } from './_motifs';
+import { sparkHead, sparkParticles, lyricAt, layoutLyric, drawLyric, signature, beatAfter, COUPLE_ZH, NAME_A, NAME_B, fitPx, lyricSubOf } from './_motifs';
 import { blit, winBars, label, INVITE, T8_TEXT, Stage, camMove, type StageCam } from './_t8';
 import { V2, msgMaxFor, lyricV2, sigV2, fitClauses } from './_v2';
 
@@ -39,8 +39,9 @@ const CAM: StageCam = {
 };
 /** 曲線取樣點數。 */
 const NS = 640;
-const [GROOM, BRIDE] = COUPLE_ZH.split(/\s*&\s*/) as [string, string];
-const TEXT = `${T8_TEXT}${COUPLE_ZH}相位鎖定＊，。·—♪`;
+/** 讀數第二行：兩個頻道各接一位新人。 */
+const CH_TXT = `CH1 ${NAME_A}  ·  CH2 ${NAME_B}`;
+const TEXT = `${T8_TEXT}${COUPLE_ZH}${CH_TXT}相位鎖定＊，。·—♪`;
 
 /** 每個小節線換的頻率比（CH1 : CH2）。 */
 const RATIOS: [number, number][] = [[1, 2], [2, 3], [3, 4], [1, 3], [3, 2], [2, 1], [3, 5], [4, 3]];
@@ -338,7 +339,9 @@ export default class Lissajous extends Scene {
       const L = this.readL, c = L.ctx;
       L.clear();
       label(c, cur.heart ? 'X-Y  ·  相位鎖定' : `X-Y  ·  ${cur.a} : ${cur.b}`, 0, 34, F.mono(500), 22, rgba('signal', 0.55), { tracking: 3 });
-      label(c, `CH1 ${GROOM}  ·  CH2 ${BRIDE}`, 0, 70, F.hei(500), 18, rgba('ash', 0.55), { tracking: 3 });
+      // 讀數右邊就是示波器的格線框：名字很長就縮字，不壓到格線（示範新人的長度剛好是原本的 18 px）
+      const chPx = fitPx(CH_TXT, F.hei(500), 18, 210, 3);
+      label(c, CH_TXT, 0, 70, F.hei(500), chPx, rgba('ash', 0.55), { tracking: (3 * chPx) / 18 });
       L.upload();
     }
     blit(this.ctx, this.readL.texture, 110, 80, 520, 90, out);

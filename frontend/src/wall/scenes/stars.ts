@@ -1,6 +1,6 @@
 // 星圖（照 pdoom 的 ascent 版畫、loom 的細線）：夜空裡，主打留言的每個字是一顆星，仙女棒在拍點上一顆顆點亮、連成星座。
 //
-// 2026-09-29 依新人「太亂、背景看不清楚、親友的話也不清楚、不知道該看哪一個」重做成一個電影畫面的星空：
+// 一個電影畫面的星空（滿版星圖會太亂、背景看不清楚、親友的話也不清楚、不知道該看哪一個）：
 //  - 一個焦點：留言用大大的宋體寫在天空的一側（最大、最亮），另一側是它的星座。星旁不再標字、不再有
 //    跟留言一樣大的「○○座」標題與拉丁學名、抬頭、星等圖例、圖框刻度帶——星座名只剩星座下方一行 22 px 的小字與座標。
 //  - 留言的每個字跟著「自己那顆星」一起亮（淡淡的字 → 訊號色 → 冷卻成紙白），不用標字也看得出對應。
@@ -8,10 +8,11 @@
 //  - 鏡頭：切進來時天空甩一下再落定（像鏡頭搖過來找到這片星），之後跟著轉儀鐘很慢地轉、慢慢推近，最後一拍加速帶走。
 //    山稜比星空跑得快（視差）；留言寫在天上，跟著天空一起很慢地漂。
 //  - 歌詞沿著黃道寫（逐字跟唱，唱到哪、黃道就亮到哪，仙女棒騎在線上），字級比留言小一級；純音樂時黃道上是小小的歌名。
-//  - 沒有主打留言：星座是新人（宣 文 ♥ 孟 庭），放在上方正中；黃道抬高、歌詞放大當主角；邀請是一行小字。
-//  - 命名（最後一顆星亮起後的重拍）：星座下方寫上「{名字}座」與座標（婚禮日期：3 月 13 日 → 赤經 03h13m、
-//    2027 年 → 赤緯 +20°27′，星座真的就畫在經緯網的那個位置）。之後每拍輪流閃一顆星，長窗格有流星、每四小節一道光重描星座。
-// v2（2026-09-28 新人：「留言板都太大太突兀」「可以再多補一些動畫」）：
+//  - 沒有主打留言：星座是新人的名字（一個字一顆星，兩個名字中間一顆愛心），放在上方正中；黃道抬高、歌詞放大當主角；邀請是一行小字。
+//  - 命名（最後一顆星亮起後的重拍）：星座下方寫上「{名字}座」與座標（婚禮日期的彩蛋：5 月 20 日 → 赤經 05h20m、
+//    2028 年 → 赤緯 +20°28′，星座真的就畫在經緯網的那個位置；還沒定日期就不寫座標）。之後每拍輪流閃一顆星，
+//    長窗格有流星、每四小節一道光重描星座。
+// v2（留言板太大會很突兀、畫面要一直有動畫）：
 //  - 留言縮成天上一側的一小段字（螢幕 40～60 px，整塊 ≤ 620×440，署名 26～32），歌詞 40～52 不比留言大；
 //    星座放大到畫面的另一大半，星空才是主角。
 //  - 多補的動畫：流星從第二小節起幾乎每小節一顆、銀河亮一點、地平線上方有薄雲慢慢飄過（遮住後面的星）、
@@ -25,20 +26,20 @@ import { LIN, rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, hash, pulse, polylineLengths, pointAtLength, TAU } from '../engine/util';
 import { fitText, badBreaks, wrap, type FitResult } from '../engine/text';
 import { Lyrics } from '../engine/lyrics';
-import { sparkHead, sparkParticles, drawHeart, lyricAt, layoutLyric, beatAfter, barAfter, signature, COUPLE_ZH, WEDDING_DATE, lyricSubOf, subGap, type LyricStyle } from './_motifs';
+import { sparkHead, sparkParticles, drawHeart, lyricAt, layoutLyric, beatAfter, barAfter, signature, COUPLE_ZH, NAME_A, NAME_B, DATE, lyricSubOf, subGap, type LyricStyle } from './_motifs';
 import { msgMaxFor, lyricV2, sigV2, V2 } from './_v2';
 import { Sky, makeSkyPass, eclY, type P2 } from './stars-sky';
 import { units, unitOfChar, buildConstellation, type Unit, type StarPt, type Zone } from './stars-chart';
-// 最早的版面：排程參數在 director.ts 的 PLATES；這裡只宣告雙語（2026-09-30 雙語普查通過：有翻譯＋主打留言時中文、原文、留言三樣都清楚）
+// 最早的版面：排程參數在 director.ts 的 PLATES；這裡只宣告雙語（雙語普查通過：有翻譯＋主打留言時中文、原文、留言三樣都清楚）
 export const spec: PlateSpecDecl = { bilingual: true };
 
 
-// 座標彩蛋：婚禮日期 2027-03-13 → 赤經 03h13m（月、日）、赤緯 +20°27′（年份拆兩半）
-const [DY, DM, DD] = String(WEDDING_DATE).split('-').map(Number) as [number, number, number];
-const RA_C = DM + Math.min(59, DD) / 60;
-const DEC_C = Math.floor(DY / 100) + Math.min(59, DY % 100) / 60;
+// 座標彩蛋：婚禮日期 2028-05-20 → 赤經 05h20m（月、日）、赤緯 +20°28′（年份拆兩半）。
+// 還沒定日期：星座擺在赤經 6h、赤緯 +20° 附近（經緯網照樣對得起來），不寫座標那一行
+const RA_C = DATE ? DATE.m + Math.min(59, DATE.d) / 60 : 6;
+const DEC_C = DATE ? Math.floor(DATE.y / 100) + Math.min(59, DATE.y % 100) / 60 : 20;
 const pad2 = (n: number) => String(n).padStart(2, '0');
-const COORD = `RA ${pad2(DM)}h${pad2(DD)}m · Dec +${Math.floor(DY / 100)}°${pad2(DY % 100)}′`;
+const COORD = DATE ? `RA ${pad2(DATE.m)}h${pad2(DATE.d)}m · Dec +${Math.floor(DATE.y / 100)}°${pad2(DATE.y % 100)}′` : '';
 
 /**
  * 有留言的兩種構圖（種子挑）：留言在左、星座在右，或反過來。留言的高度範圍兩種一樣。
@@ -128,10 +129,10 @@ export default class Stars extends Scene {
       this.eclOff = ECL_NOMSG;
     }
 
-    // ---- 星：留言拆字；沒有留言就用新人的名字（宣 文 ♥ 孟 庭）
-    const text = m ? m.text : COUPLE_ZH.replace(/\s*&\s*/, '♥');
+    // ---- 星：留言拆字；沒有留言就用新人的名字（一個字一顆星，中間一顆愛心）
+    const text = m ? m.text : `${NAME_A}♥${NAME_B}`;
     this.us = units(text);
-    const coupleName = COUPLE_ZH.replace(/\s*&\s*/, '');
+    const coupleName = `${NAME_A}${NAME_B}`;
     let who = m ? (m.couple ? coupleName : m.name || '祝福') : coupleName;
     if (Array.from(who).length > 8) who = Array.from(who).slice(0, 7).join('') + '…';
     this.name = `${who}座`;
@@ -702,14 +703,14 @@ export default class Stars extends Scene {
   }
 
   // ------------------------------------------------------------------ 留言
-  /** 署名：新人自己的留言署「宣文 & 孟庭」（比另外放一個 FROM THE COUPLE 標籤少一群小字）。 */
+  /** 署名：新人自己的留言署兩人的名字（比另外放一個 FROM THE COUPLE 標籤少一群小字）。 */
   private signature() { const m = this.msg; return signature(m ? (m.couple ? COUPLE_ZH : m.name) : ''); }
 
   /**
    * 排留言：挑「字大、又斷得好」的排法。候選有兩種：
    *  - fitText 在幾種框寬下的結果（它只會縮字級，框寬不變常常還是同一個斷點）；
    *  - 照子句排（clauseFit）：先在標點切成子句，放得下就整句一行，太長的子句才在句子裡面斷。
-   *    斷詞器不認得人名，fitText 會斷出「宣／文」，照子句排就不會。
+   *    斷詞器不認得人名，fitText 會斷出「承／恩」，照子句排就不會。
    * 分數：字級為主；拆開一個詞重扣分；留言裡有標點時，行尾不是標點小扣分；短句多一行也扣一點（一行讀完）。
    */
   private fitMessage(c: CanvasRenderingContext2D, text: string, h: number): FitResult {

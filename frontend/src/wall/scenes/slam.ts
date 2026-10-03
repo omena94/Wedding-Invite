@@ -1,7 +1,7 @@
 // 大字重擊（照 pdoom 的 hook：一個字一下，滿版 Archivo 900 正好打在唱到的那一刻）。副歌、快歌用。
 // 歌詞切成「一拍一組」的詞組（slam-type.ts），每組在它第一個字開始唱的那一刻打上來，組裡的字照跟唱規則逐字亮起，
 // 唱完的字從訊號色冷卻成紙白。字後面是很淡的字體樣張細線（基線、字面高度），像印刷廠的試印張。
-// MV 融合原則（2026-09-28 新人要求）：一格畫面只有一個焦點——
+// MV 融合原則：一格畫面只有一個焦點——
 //  - 有主打留言：舞台上重擊的是「留言」。第一個拍點起一拍一組打上來（最多兩小節），組成一整塊後一直留到窗格結束，
 //    署名在下面；定住之後鏡頭很慢地往前推、輕輕漂，每個小節線再輕輕打一下（保留重擊的節奏，但讀得下去）。
 //    歌詞退成上方的一條整句歌詞帶（照跟唱規則，明顯小一級）；純音樂就只有留言。
@@ -11,7 +11,7 @@
 //   1 更重：底色字在滿版訊號色上，一次只有一組、撐滿畫面；打完在下一拍組成一塊。退場時眼皮闔上成一條發光的縫。
 //   2 安靜：極細的字、很小、大量的黑；新的一組從下面升上來，舊的往上爬、變淡，整疊慢慢轉。
 //   3 最滿：一組撐滿畫面，打上來的那一下疊影往外擴散、字分裂、畫面震（都很快衰減）；定住的留言幾乎靜止，讀得清楚。
-// v2（2026-09-29「留言尺寸與版面比例標準 v2」）：大字只給歌詞（沒有留言的窗格）與很短的留言（≤ 6 字的那一下重擊）。
+// v2（「留言尺寸與版面比例標準 v2」）：大字只給歌詞（沒有留言的窗格）與很短的留言（≤ 6 字的那一下重擊）。
 //  - 留言打完組成一塊時照 v2 字級（40～60 px，依字數）、放在畫面左邊一塊 ≤ 800×430 的地方，署名 26～32；
 //    長留言的詞組直接打在最後的位置上（不再一組撐滿畫面）。上方的歌詞帶 40～52（不比留言大）。
 //  - 空出來的右半邊：正在唱的那個詞變成巨大的空心字（很細的描邊、很淡），每個詞在唱到的那一刻「砸」下來再淡掉，
@@ -25,12 +25,15 @@ import { LIN, rgba, mixRgba, type PaletteKey } from '../engine/palette';
 import { clamp, ease, lerp, noise1, prog, pulse } from '../engine/util';
 import { readSeconds } from '../engine/text';
 import type { Line } from '../engine/lyrics';
-import { sparkHead, sparkParticles, drawLyric, layoutLyric, lyricAt, signature, beatAfter, COUPLE_EN, lyricSubOf, subStyleFor, subGap, drawLyricSub, type LyricStyle } from './_motifs';
+import { sparkHead, sparkParticles, drawLyric, layoutLyric, lyricAt, signature, beatAfter, NAME_A, NAME_B, NAME_A_EN, NAME_B_EN, lyricSubOf, subStyleFor, subGap, drawLyricSub, type LyricStyle } from './_motifs';
 import { V2, msgMaxFor, msgLen, lyricV2, sigV2 } from './_v2';
 // （標點、符號不算字：「新婚快樂！！！」是四個字的短句，可以重擊）
 import { layoutSlab, linePieces, textPieces, drawCells, headAt, isEastern, type Piece, type Slab, type Tone } from './slam-type';
-// 最早的版面：排程參數在 director.ts 的 PLATES；這裡只宣告雙語（2026-09-30 雙語普查通過：有翻譯＋主打留言時中文、原文、留言三樣都清楚）
+// 最早的版面：排程參數在 director.ts 的 PLATES；這裡只宣告雙語（雙語普查通過：有翻譯＋主打留言時中文、原文、留言三樣都清楚）
 export const spec: PlateSpecDecl = { bilingual: true };
+
+/** 純音樂時右半邊輪流砸的字：兩位新人的名字（用 Canvas2D 畫，沒有英文名時中文也畫得出來）。 */
+const GHOST_NAMES = [NAME_A_EN || NAME_A, '&', NAME_B_EN || NAME_B];
 
 
 /** 舞台左右（離邊 120：規定 96，投影機裁邊再多留一點）。 */
@@ -840,9 +843,9 @@ export default class Slam extends Scene {
     if (ly) {
       for (const w of ly.line.words) { if (w.start <= t + 0.02 && w.w.trim()) { word = w.w; t0 = w.start; } }
     } else if (!this.hasStrip) {
-      // 純音樂：一拍一個（ALAN、&、OMENA 輪流）
-      const bi = Math.floor(au.beatAt(t) + 1e-4), names = COUPLE_EN.split(/\s+/).filter(Boolean);
-      word = names[((bi % names.length) + names.length) % names.length]!;
+      // 純音樂：一拍一個（一位新人、&、另一位輪流；有英文名用英文名，砸起來比較有海報的力道）
+      const bi = Math.floor(au.beatAt(t) + 1e-4);
+      word = GHOST_NAMES[((bi % GHOST_NAMES.length) + GHOST_NAMES.length) % GHOST_NAMES.length]!;
       t0 = au.timeOfBeat(bi);
     }
     if (!word) return;

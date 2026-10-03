@@ -19,7 +19,7 @@ import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, hash, lerp, prog, pulse } from '../engine/util';
 import { Lyrics, type Line } from '../engine/lyrics';
 import { wrap } from '../engine/text';
-import { signature, drawHeart, drawLyricSub, layoutLyric, lyricSubOf, subStyleFor, type LyricStyle } from './_motifs';
+import { signature, drawHeart, drawLyricSub, layoutLyric, lyricSubOf, subStyleFor, joinBits, DATE_DOT, DATE_MMDD, type LyricStyle } from './_motifs';
 import { grid, stagger, windowLines, mono, tag, pad3, DocCam, withMips, drawPencil, HUD, EDGE, type Grid, type Pose } from './_t3';
 import { msgMaxFor, lyricV2, sigV2, V2 } from './_v2';
 
@@ -33,11 +33,15 @@ const GX = 170, GY = 196; // 格子左上角
 const GRID_H = 760;
 /** 鏡頭的平均縮放（文件 px → 螢幕 px）：v2 的字級、留言區都是螢幕上的大小，排版時用它換算。 */
 const K = 1.03;
-/** 直的提示（2～5）的答案：平面圖畫完之後，每個小節線鉛筆去解一題（劃掉提示、寫上答案）。 */
-const ANSWERS = ['網球', '永久', '一家', '平手'];
+/**
+ * 直的提示（2～5）的題目與答案：平面圖畫完之後，每個小節線鉛筆去解一題（劃掉提示、寫上答案）。
+ * 題目是每一場婚禮都通用的小玩笑（不提任何一對新人自己的事），答案都是兩個字，跟提示後面的（2）對得上。
+ */
+const CLUES: [string, string][] = [['新娘手上的那一束（2）', '捧花'], ['本婚姻的保固期限（2）', '永久'], ['兩個人從今天起成了（2）', '一家'], ['搶棉被冠軍（2）', '平手']];
+const ANSWERS = CLUES.map((x) => x[1]);
 const MSG_FAM = F.hand(700);
 const LYR_FAM = F.archivo(100, 800);
-const FIXED = '愛的日報週末益智版年月日星期六第期填字遊戲主題一起提示此刻正在唱的一句芃芃最愛的圓形物體本婚姻的保固期限兩人加兩隻狗搶棉被冠軍解答網球永久一家平手想對新人說的話格掃描右下角的寫下你的祝福本曲曲名純音樂新人';
+const FIXED = `愛的日報週末益智版年月日星期六第期填字遊戲主題一起提示此刻正在唱的一句${CLUES.flat().join('')}解答想對新人大家說給的一句話格掃描右下角的寫下你的祝福本曲曲名純音樂新人`;
 const INVITE = '掃描右下角的ＱＲ寫下你的祝福';
 /**
  * 原文副行的基線在格子下緣往下幾個「副行字高」：中文寫在格子裡（基線離格子下緣約兩成格高），
@@ -273,7 +277,8 @@ export default class Crossword extends Scene {
     // 報頭（小、淡）
     c.font = font(F.ming(900), 24); c.fillStyle = ink(0.8);
     c.fillText('愛的日報', GX, 100);
-    mono(c, '週末益智版 · 2027.03.13 · 第 0313 期', GX + 1380, 98, { size: 15, color: ink(0.55), align: 'right', tracking: 2 });
+    // 期號用婚禮日期（月日）編；還沒定日期就只印「週末益智版」，不留空的「 · 」
+    mono(c, joinBits(' · ', '週末益智版', DATE_DOT, DATE_MMDD && `第 ${DATE_MMDD} 期`), GX + 1380, 98, { size: 15, color: ink(0.55), align: 'right', tracking: 2 });
     c.fillStyle = ink(0.75); c.fillRect(GX, 114, 1380, 2.5);
     c.fillStyle = ink(0.45); c.fillRect(GX, 120, 1380, 1);
     tag(c, '填字遊戲　·　主題：一起', GX, 160, { size: 21, color: ink(0.7), tracking: 3, weight: 700 });
@@ -322,18 +327,15 @@ export default class Crossword extends Scene {
     };
     const m = this.msg;
     head('橫', 'ACROSS');
-    clue('1', m ? `${m.couple ? '新人' : m.name || '一位賓客'}想對新人說的話（${this.msgCells.length} 格）` : '你想對新人說的話（掃描右下角 QR code 作答）');
+    clue('1', m ? `${m.couple ? '新人想對大家說的話' : `${m.name || '一位賓客'}給新人的話`}（${this.msgCells.length} 格）` : '你給新人的一句話（掃描右下角 QR code 作答）');
     clue('♪', this.instr ? '本曲曲名（純音樂）' : '此刻正在唱的一句');
     y += 8;
     head('直', 'DOWN');
-    clue('2', '芃芃最愛的圓形物體（2）');
-    clue('3', '本婚姻的保固期限（2）');
-    clue('4', '兩人加兩隻狗（2）');
-    clue('5', '搶棉被冠軍（2）');
+    CLUES.forEach(([q], i) => clue(String(i + 2), q));
     c.save();
     c.translate(x + cw, y + 30); c.rotate(Math.PI);
     c.font = font(F.hei(500), 16); c.fillStyle = ink(0.45);
-    c.fillText('解答：2 網球　3 永久　4 一家　5 平手', 0, 0);
+    c.fillText(`解答：${ANSWERS.map((a, i) => `${i + 2} ${a}`).join('　')}`, 0, 0);
     c.restore();
   }
 
@@ -389,7 +391,7 @@ export default class Crossword extends Scene {
         c.save(); c.globalAlpha *= a;
         // 署名永遠在整個格子下面（v2：26～32 px），不會跟留言重疊
         c.font = font(F.hand(400), this.sigSize); c.fillStyle = rgba('sepia', 0.82); c.textAlign = 'right';
-        // 雙語（2026-09-30）：有原文時原文抄在格子正下方，署名再往下一排（不跟原文擠在同一行、讀成一串）
+        // 雙語：有原文時原文抄在格子正下方，署名再往下一排（不跟原文擠在同一行、讀成一串）
         c.fillText(signature(m.name), GX + this.nc * cs, GY + (this.msgRows + 1 + this.lyrRows) * cs + this.subH + this.sigSize * 1.3);
         c.textAlign = 'left';
         c.restore();

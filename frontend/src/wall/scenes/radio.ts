@@ -2,12 +2,12 @@
 // MV 融合原則：一個焦點。
 //  - 焦點是那張點歌卡：第一拍從右邊滑進來、靠在收音機上（有影子），主打留言用霞鶩文楷一個詞組一拍「寫」上去（畫面最大的字），
 //    最後署名；窗格最後一個小節線蓋上「已播出」的章。
-//  - 收音機是配角：上面的調頻刻度窗印著電台名，指針在拍點上一台一台跳（彈簧落定），第三拍對準主打那一台（FM 103.13），
+//  - 收音機是配角：上面的調頻刻度窗印著電台名，指針在拍點上一台一台跳（彈簧落定），第三拍對準主打那一台（FM 102.5），
 //    「魔眼」對準時收成一條縫；喇叭網（織布）後面透出歌詞（逐字跟唱、唱到的字彈一下，比留言小一級），大鼓一打喇叭把布往外推。
 //  - 沒有留言：點歌卡縮成一張小便條（邀請大家掃 QR），歌詞放大成焦點。
 //  - 鏡頭整段慢慢推近。
 // 這個版面是紙：底色是主題的紙色，線與字是墨色（sepia），指針與正在唱的字是訊號色。
-// v2（2026-09-28 新人：「留言板都太大太突兀」「可以再多補一些動畫」）：
+// v2（留言板不能大到突兀、畫面要多一點會動的東西）：
 //  - 點歌卡縮成右邊一張小卡（寬 660、高 ≤ 430，跟著字的多寡長高），留言 40～60 px、署名 26～32；
 //    喇叭網後面的歌詞 40～52（不比留言大）。收音機（還有它周圍會動的東西）才是畫面的主體。
 //  - 多補的動畫：收音機右上角一根伸縮天線，在風裡輕輕晃、大鼓一打彈一下，每一拍天線尖端發出一圈圈電波（小節線那一圈是訊號色）；
@@ -21,7 +21,7 @@ import { LIN, rgba } from '../engine/palette';
 import { clamp, ease, lerp, prog, hash, springStep, TAU } from '../engine/util';
 import { fitText, phrases, type FitResult } from '../engine/text';
 import { Lyrics } from '../engine/lyrics';
-import { beatAfter, barAfter, signature, lyricAt, COUPLE_EN, COUPLE_ZH, lyricSubOf, subSizeFor, subGap } from './_motifs';
+import { beatAfter, barAfter, signature, lyricAt, COUPLE_EN, COUPLE_ZH, fitPx, lyricSubOf, subSizeFor, subGap } from './_motifs';
 import { msgMaxFor, lyricV2, sigV2, V2 } from './_v2';
 import { fillWithHearts } from '../engine/motifs';
 import { layoutWordRows } from './_t7';
@@ -48,7 +48,9 @@ const CARD_BIG = { x: 1120, y: 0, w: 660, h: 400 };
 const CARD_SMALL = { x: 1150, y: 330, w: 580, h: 210 };
 /** 點歌卡的垂直中心。 */
 const CARD_CY = 428;
-const FEAT = 103.13;
+/** 主打那一台的頻率（跟左右兩台各隔 4 MHz 以上，刻度窗上的台名才不會疊在一起）與表頭、喇叭網上印的字。 */
+const FEAT = 102.5;
+const FEAT_TXT = 'FM 102.5';
 /** 點歌卡上：表頭的高度、左右留白、署名那一列的高度。 */
 const CARD_TOP = 64, CARD_PAD = 36, CARD_SIG = 58;
 /** 天線：根部（收音機右上角）、長度、平常的角度（離垂直往右傾，弧度）。 */
@@ -59,7 +61,7 @@ const POT = { x: 1215, y: CAB.y + CAB.h + 12 };
 const F_LYR = F.archivo(100, 800);
 const F_MSG = F.hand(400);
 const INVITE = '這一台還在等你點歌：掃描右下角 QR code，把想說的話寄到節目裡。';
-const TEXT = `點歌卡已播出點歌台新人台現正播放《》伴郎台伴娘台芃芃台喜宴台同學台${INVITE}`;
+const TEXT = `點歌卡已播出點歌台新人台新人點歌現正播放《》伴郎台伴娘台喜宴台同學台${FEAT_TXT}${INVITE}`;
 
 const fx = (f: number) => SC.x0 + ((f - 88) / 20) * (SC.x1 - SC.x0);
 
@@ -137,11 +139,11 @@ export default class Radio extends Scene {
     this.ctx.renderer.initTexture(this.cab.upload());
   }
 
-  /** 電台：主打留言那一台在 103.13；其他台是別的賓客（名字＋「台」），不夠就用固定的台。 */
+  /** 電台：主打留言那一台在 FEAT；其他台是別的賓客（名字＋「台」），不夠就用固定的台。 */
   private makeStations(): Station[] {
     const m = this.msg;
     const others: Msg[] = (this.ctx.params.messages ?? []).filter((x: Msg) => x.name && (!m || x.id !== m.id));
-    const fixed = ['伴郎台', '芃芃台', '喜宴台', 'QQ台'];
+    const fixed = ['伴郎台', '伴娘台', '喜宴台', '同學台'];
     const freqs = [89.9, 93.7, 97.3, 107.1];
     const short = (n: string) => { const cs = Array.from(n.replace(/\s+/g, '')); return (cs.length > 3 ? cs.slice(0, 3).join('') : cs.join('')) + '台'; };
     const out: Station[] = freqs.map((f, i) => ({ f, name: others[i] ? (others[i]!.couple ? '新人台' : short(others[i]!.name)) : fixed[i]!, hot: false }));
@@ -232,12 +234,12 @@ export default class Radio extends Scene {
     c.fillRect(0, 0, CARD.w, CARD.h);
     c.strokeStyle = rgba('sepia', 0.25); c.lineWidth = 1;
     c.strokeRect(0.5, 0.5, CARD.w - 1, CARD.h - 1);
-    // 表頭：一條訊號色的細線、小小的「點歌卡 · FM 103.13」
+    // 表頭：一條訊號色的細線、小小的「點歌卡 · FM 102.5」
     c.fillStyle = rgba('signal', 0.85);
     c.fillRect(0, 46, CARD.w, 2);
     c.textBaseline = 'alphabetic';
     c.font = font(F.hei(500), 18); c.letterSpacing = '5px'; c.fillStyle = rgba('sepia', 0.55);
-    c.fillText(m?.couple ? '新人點歌  ·  FM 103.13' : '點歌卡  ·  FM 103.13', CARD_PAD, 32);
+    c.fillText(`${m?.couple ? '新人點歌' : '點歌卡'}  ·  ${FEAT_TXT}`, CARD_PAD, 32);
     c.letterSpacing = '0px';
     // 橫線（卡片的格線）
     const y0 = CARD_TOP + (m ? 0 : Math.max(0, (CARD.h - CARD_TOP - 16 - fit.height) / 2)) + fit.size * 0.92;
@@ -379,8 +381,10 @@ export default class Radio extends Scene {
     // 魔眼的框
     c.beginPath(); c.arc(EYE.x, EYE.y, EYE.r + 6, 0, TAU); c.strokeStyle = ink(0.9); c.lineWidth = 2; c.stroke();
     // 廠牌：刻度窗與喇叭之間，一行斜體
-    c.font = font(F.serif(600, true), 26); c.letterSpacing = '1px'; c.fillStyle = ink(0.75); c.textAlign = 'center';
-    c.fillText(`${COUPLE_EN}`, CAB.x + CAB.w / 2, 360 + DY);
+    // 廠牌是新人的名字（執行時才知道；沒有英文名時是中文，Canvas 的字族接了中文備援）：太長就縮到刻度窗的寬度以內
+    const brandPx = fitPx(COUPLE_EN, F.serif(600, true), 26, DIAL.w - 40, 1);
+    c.font = font(F.serif(600, true), brandPx); c.letterSpacing = `${brandPx / 26}px`; c.fillStyle = ink(0.75); c.textAlign = 'center';
+    c.fillText(COUPLE_EN, CAB.x + CAB.w / 2, 360 + DY);
     c.textAlign = 'left';
     c.letterSpacing = '0px';
     // 喇叭網的框：外一圈粗線、內一圈細線、上緣一點斜線陰影
@@ -404,7 +408,7 @@ export default class Radio extends Scene {
       this.txt.clear();
       c.textAlign = 'center'; c.textBaseline = 'alphabetic';
       c.font = font(F.archivo(100, 800), 44); c.fillStyle = rgba('bone', 0.36);
-      c.fillText('FM 103.13', GRILLE.w / 2, GRILLE.h / 2 - 10);
+      c.fillText(FEAT_TXT, GRILLE.w / 2, GRILLE.h / 2 - 10);
       c.font = font(F.hei(700), 24); c.fillStyle = rgba('bone', 0.3);
       c.fillText(`現正播放《${song.title || '今晚的歌'}》`, GRILLE.w / 2, GRILLE.h / 2 + 46);
       c.textAlign = 'left';

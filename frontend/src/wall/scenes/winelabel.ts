@@ -1,7 +1,7 @@
 // 酒標（亮）：棚拍的一支紅酒。暖色的紙背景、左邊一扇窗的光，酒瓶站在商品攝影的轉盤上。
 //  - 開場：酒標朝後（看得到深色玻璃、窗光在瓶身上的一條長反光、酒標的邊從左邊露出來），第一個拍點轉盤一轉，
 //    酒標轉到正面；鏡頭同時推近到酒標的特寫（酒標是包在圓柱上的紙：越靠兩邊越窄、上下緣彎成弧）。
-//  - 酒標：上方小小的酒莊名「DOMAINE ALAN & OMENA」、年份（婚禮那一年）；中間的「品飲筆記」就是主打留言
+//  - 酒標：上方小小的酒莊名「DOMAINE ETHAN & IVY」（新人的英文名；沒有英文名就是「承恩與以晴酒莊」）、年份（婚禮那一年，還沒定日期就不寫）；中間的「品飲筆記」就是主打留言
 //    （思源宋體、最大、置中），署名是手寫的；下緣一行冷面小字（愛情法定產區、恕不退還）。
 //  - 歌詞印在酒標上方的一條深色瓶頸標上（燙金的細線，唱到的字是訊號色，深底上讀得清楚）。
 //  - 之後每個小節線，紙面的光澤從左掃到右一次（窗光掃過）；轉盤很慢地來回轉一點點；鏡頭一直很慢地推近。
@@ -18,7 +18,7 @@ import { F, font } from '../engine/type';
 import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, pulse, noise1, lerp } from '../engine/util';
 import { fitText } from '../engine/text';
-import { lyricAt, drawLyric, layoutLyric, beatAfter, COUPLE_EN, WEDDING_DATE, lyricSubOf, subSizeFor, subStyleFor, subGap, type LyricStyle, type LyricLayout } from './_motifs';
+import { lyricAt, drawLyric, layoutLyric, beatAfter, COUPLE_EN, HAS_LATIN_NAMES, NAME_A, NAME_B, DATE, joinBits, fitPx, lyricSubOf, subSizeFor, subStyleFor, subGap, type LyricStyle, type LyricLayout } from './_motifs';
 import type { Line } from '../engine/lyrics';
 import { preloadText, INVITE_SMALL, paperSignal } from './_t19';
 import { ensureBake, barsIn, sigInk } from './_t1';
@@ -47,9 +47,14 @@ const NOTE = { v0: 392, v1: 742, w: 980 };
  * 瓶身寬約 1120 px、在畫面偏左（右緣 x ≈ 1350），右下角 HUD 的後面是牆，不是深色的玻璃。
  */
 const K1 = 0.78, AX = 770;
-const YEAR = String(WEDDING_DATE).slice(0, 4);
-const TOP1 = `DOMAINE ${COUPLE_EN.toUpperCase()}`;
-const TOP2 = `MILLÉSIME ${YEAR}  ·  宣文與孟庭酒莊`;
+/** 年份（婚禮那一年；還沒定日期是空字串，那一段連同分隔符號省掉）。 */
+const YEAR = DATE ? `MILLÉSIME ${DATE.yyyy}` : '';
+/** 酒莊名：有英文名用「DOMAINE 英文名」大寫、下面一行中文酒莊名；沒有英文名就把中文酒莊名放大到上面那一行。 */
+const ESTATE_ZH = `${NAME_A}與${NAME_B}酒莊`;
+const TOP1 = HAS_LATIN_NAMES ? `DOMAINE ${COUPLE_EN.toUpperCase()}` : ESTATE_ZH;
+const TOP2 = joinBits('  ·  ', YEAR, HAS_LATIN_NAMES ? ESTATE_ZH : 'GRAND CRU CLASSÉ');
+/** 酒莊名兩行最寬多寬（label px）：再寬，瓶身轉到側面的字會被壓得很扁。 */
+const TOP_MAXW = 760;
 const NOTE_T = '品飲筆記  ·  TASTING NOTES';
 const BOT1 = 'Appellation Amour Contrôlée';
 const BOT2 = '750 ml  ·  百分之百真心  ·  本品一經開瓶，恕不退還';
@@ -126,7 +131,7 @@ const PASS = () => new FSPass(/* glsl */ `
 });
 
 /**
- * 原文副行照「螢幕」字級重排（2026-09-30 雙語）：subSizeFor 的 32～56 是螢幕 px，酒標推近之後 1 label px = 螢幕 K1 px，
+ * 原文副行照「螢幕」字級重排（雙語）：subSizeFor 的 32～56 是螢幕 px，酒標推近之後 1 label px = 螢幕 K1 px，
  * 照 label px 排的原文上了螢幕只剩 26 px。中文不動，原文換成 max(34, subSizeFor(中文的螢幕字級)) ÷ K1，太長就折行、不再縮。
  */
 function labelSub(c: CanvasRenderingContext2D, line: Line, st: LyricStyle, lay: LyricLayout): LyricLayout {
@@ -203,8 +208,10 @@ export default class WineLabel extends Scene {
     this.vine(c, cx, 238);
     c.textAlign = 'center'; c.textBaseline = 'alphabetic';
     c.fillStyle = rgba('sepia', 0.9);
-    c.font = font(F.serif(600), 26); c.letterSpacing = '9px'; c.fillText(TOP1, cx + 4, 300);
-    c.font = font(F.mono(500), 15); c.letterSpacing = '4px'; c.fillStyle = rgba('sepia', 0.62); c.fillText(TOP2, cx + 2, 328);
+    // 名字很長（DOMAINE CHRISTOPHER & ALEXANDRA）就縮字、字距跟著縮
+    const t1 = fitPx(TOP1, F.serif(600), 26, TOP_MAXW, 9), t2 = fitPx(TOP2, F.mono(500), 15, TOP_MAXW, 4);
+    c.font = font(F.serif(600), t1); c.letterSpacing = `${(9 * t1) / 26}px`; c.fillText(TOP1, cx + 4, 300);
+    c.font = font(F.mono(500), t2); c.letterSpacing = `${(4 * t2) / 15}px`; c.fillStyle = rgba('sepia', 0.62); c.fillText(TOP2, cx + 2, 328);
     c.fillStyle = sigInk(0.95); c.font = font(F.mono(600), 15); c.letterSpacing = '5px'; c.fillText(NOTE_T, cx + 2, 368);
     c.letterSpacing = '0px';
     // ---- 品飲筆記：主打留言（宋體、置中），署名手寫
@@ -274,7 +281,7 @@ export default class WineLabel extends Scene {
         let st = this.stripLyr, lay = labelSub(c, ly.line, st, layoutLyric(c, ly.line, st));
         const mid = (STRIP.v0 + this.stripV1) / 2;
         if (lay.sub) {
-          // 雙語（2026-09-30）：中文＋原文整塊（中文字頂到原文字腳）在兩條燙金線中間置中；放不下就把中文縮小一點（不小於 40 螢幕 px）
+          // 雙語：中文＋原文整塊（中文字頂到原文字腳）在兩條燙金線中間置中；放不下就把中文縮小一點（不小於 40 螢幕 px）
           const room = this.stripV1 - STRIP.v0 - 34, minSize = st.minSize ?? st.size;
           const depth = (l: LyricLayout) => 0.86 * l.size + l.height - l.size + 0.22 * (l.sub?.lay.size ?? 0);
           for (let sz = st.size; depth(lay) > room && sz > minSize;) {

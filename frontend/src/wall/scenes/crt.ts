@@ -14,7 +14,7 @@ import { FSPass, Layer2D, W, H } from '../engine/gl';
 import { F, font, loadText } from '../engine/type';
 import { rgba, mixRgba, LIN } from '../engine/palette';
 import { clamp, ease, prog, pulse, hash, frameIdx, TAU } from '../engine/util';
-import { lyricAt, layoutLyric, drawLyric, layoutMessage, drawMessage, signature, beatAfter, DATE_DOTS, lyricSubOf } from './_motifs';
+import { lyricAt, layoutLyric, drawLyric, layoutMessage, drawMessage, signature, beatAfter, lyricSubOf } from './_motifs';
 import type { FitResult } from '../engine/text';
 import { FAST_GLSL, phraseSchedule, charsAt, fitChars, windowLines, type Rect } from './_t10';
 import { bbox } from './_t11';

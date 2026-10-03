@@ -506,7 +506,7 @@ export default class Guestbook extends Scene {
     const lay = layoutRows(c, l, st);
     const sl = lyricSubOf(l);
     if (!sl) return { lay, sub: null, dy: 0, blockH: lay.height };
-    // 雙語（2026-09-30）：原文至少 38 螢幕 px（書頁斜躺在桌上，字會被壓扁一成多）、不再縮，太長就折行（最多三排）；書眉跟著長高
+    // 雙語：原文至少 38 螢幕 px（書頁斜躺在桌上，字會被壓扁一成多）、不再縮，太長就折行（最多三排）；書眉跟著長高
     const S = this.sHead, ss = Math.max(38, subSizeFor(lay.size * S)) / S;
     const sub = layoutRows(c, sl, { ...st, size: ss, minSize: ss, maxRows: 3 });
     const dy = (lay.rows.length - 1) * lay.lineHeight + subGap(lay.size * S, sub.size * S) / S;

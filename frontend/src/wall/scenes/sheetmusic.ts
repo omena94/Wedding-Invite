@@ -4,7 +4,7 @@
 //    歌詞寫在音符正下方，照跟唱規則逐字亮（正在唱的是訊號色的暗部）。小節線畫在真的小節線的位置，一條游標跟著時間走，每一拍閃一下。
 //  - 下一句要來之前，整行譜往左滑走、新的一行從右邊滑進來（緩進、停住）。句子之間的間奏、整首純音樂：兩小節一行，每拍一個音。
 //  - 主打留言是作曲者用鉛筆寫在譜下面的附記（這一張的焦點：最大的字，手寫、微微歪），從第一拍起一個字一個字寫上去，最後署名。
-//  - 冷面的小字（小、淡）：Op. 313、♩ = 這首歌的速度、Allegro con amore、「為兩人、兩隻狗與全體賓客而作」、表情記號「（深情地）」。
+//  - 冷面的小字（小、淡）：Op.（婚禮的月日，像「Op. 520」）、♩ = 這首歌的速度、Allegro con amore、「為兩人與全體賓客而作」、表情記號「（深情地）」。
 //  - 鏡頭：譜微微往後倒（透視）、淺景深（譜頭與紙邊是虛的），整個窗格慢慢推近、跟著游標輕輕搖。
 // 畫法：紙、譜架、透視、景深是 _t3 的文件攝影機；譜、音符、字每格畫在一張文件圖層（高音譜號用程式畫，字型不一定有）。
 import * as THREE from 'three';
@@ -15,7 +15,7 @@ import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, hash, lerp, prog, pulse } from '../engine/util';
 import type { FitResult } from '../engine/text';
 import type { Line, Word } from '../engine/lyrics';
-import { drawLyric, drawLyricSub, drawMessage, lyricSubOf, subGap, subSizeFor, signature, COUPLE_ZH, type LyricLayout, type LyricStyle } from './_motifs';
+import { drawLyric, drawLyricSub, drawMessage, lyricSubOf, subGap, subSizeFor, signature, COUPLE_ZH, DATE, fitPx, type LyricLayout, type LyricStyle } from './_motifs';
 import { grid, stagger, windowLines, mono, pad3, paperLyric, DocCam, withMips, drawPencil, HUD, EDGE, type Grid, type Pose } from './_t3';
 import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 } from './_v2';
 import { fitText } from '../engine/text';
@@ -36,7 +36,10 @@ const MSG_FAM = F.hand(400);
 const MSG_BOX = { x: 176, y: 640, w: 900, h: 330 };
 /** 鏡頭的平均縮放（文件 px → 螢幕 px），v2 的字級換算用。 */
 const K = 0.96;
-const FIXED = '婚禮進行曲現場版為兩人兩隻狗與全體賓客而作作曲編曲全體賓客深情地附記作曲者的話新人空白處請賓客自由填寫祝福掃描右下角把你的一句寫進來';
+const FIXED = '婚禮進行曲現場版為兩人與全體賓客而作作曲編曲全體賓客深情地附記作曲者的話新人空白處請賓客自由填寫祝福掃描右下角把你的一句寫進來';
+
+/** 作品編號：婚禮的月日（5 月 20 日 → Op. 520），還沒定日期就是「Op. 1」（兩人的第一號作品）。 */
+const OPUS = DATE ? `${DATE.m}${DATE.dd}` : '1';
 
 const PAPER_GLSL = /* glsl */ `
 vec3 paperCol(vec2 d, vec4 fb) {
@@ -321,10 +324,12 @@ export default class SheetMusic extends Scene {
     c.font = font(F.ming(700), 22); c.fillStyle = ink(0.8);
     c.fillText('婚禮進行曲（現場版）', SX0, 142);
     c.font = font(F.serif(400, true), 21); c.fillStyle = ink(0.6);
-    c.fillText('為兩人、兩隻狗與全體賓客而作 · Op. 313', SX0 + 250, 142);
+    c.fillText(`為兩人與全體賓客而作 · Op. ${OPUS}`, SX0 + 250, 142);
     c.textAlign = 'right';
-    c.font = font(F.ming(400), 18); c.fillStyle = ink(0.6);
-    c.fillText(`作曲　${COUPLE_ZH}　／　編曲　全體賓客`, SX1, 142);
+    // 作曲署名是新人的名字，可能很長，放不下就縮字（左邊是標題與「為兩人…而作」，到 x 760 為止）
+    const credit = `作曲　${COUPLE_ZH}　／　編曲　全體賓客`;
+    c.font = font(F.ming(400), fitPx(credit, F.ming(400), 18, SX1 - 760)); c.fillStyle = ink(0.6);
+    c.fillText(credit, SX1, 142);
     c.textAlign = 'left';
     const bpm = Math.round(this.ctx.audio.bpm || 120);
     c.font = font(F.serif(600, true), 22); c.fillStyle = ink(0.72);

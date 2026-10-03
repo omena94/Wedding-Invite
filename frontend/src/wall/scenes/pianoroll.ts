@@ -15,7 +15,7 @@ import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, pulse, hash, lerp } from '../engine/util';
 import { Lyrics, type Line } from '../engine/lyrics';
 import type { FitResult } from '../engine/text';
-import { lyricAt, layoutLyric, layoutMessage, signature, beatAfter, drawHeart, DATE_DOTS, lyricSubOf, drawLyricSub, type LyricLayout, type LyricStyle } from './_motifs';
+import { lyricAt, layoutLyric, layoutMessage, signature, beatAfter, drawHeart, lyricSubOf, drawLyricSub, type LyricLayout, type LyricStyle } from './_motifs';
 import { drawReveal, phraseSchedule, revealAt, fitCharsF, windowLines, type Rect } from './_t10';
 import { pad3 } from './_t11';
 import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 } from './_v2';
@@ -40,7 +40,7 @@ interface Hole { col: number; t0: number; t1: number; kind: 'bass' | 'chord' | '
 interface Printed { line: Line; lay: LyricLayout }
 
 const INVITE = '這一卷還空著：掃描右下角 QR code，把你的祝福打成琴譜。';
-const TEXT = `祝福卷曲目演奏速度唱到這裡歌詞琴譜本卷由新郎新娘監製${INVITE}一位賓客新人`;
+const TEXT = `祝福卷曲目演奏速度唱到這裡歌詞琴譜本卷由新人監製${INVITE}一位賓客新人`;
 
 // ---------------------------------------------------------------- 紙、收紙軸、讀譜條
 const BG = () => new FSPass(/* glsl */ `
@@ -432,7 +432,7 @@ export default class Pianoroll extends Scene {
       c.save();
       c.globalAlpha *= prog(t, done, done + 0.3);
       c.textAlign = 'right';
-      const nm = m.couple ? '新郎新娘' : m.name || '一位賓客';
+      const nm = m.couple ? '新人' : m.name || '一位賓客';
       const sy = y + (fit.lines.length - 1) * fit.lineHeight + fit.size * 0.3 + this.sigSize + 8;
       c.font = font(F.hand(700), this.sigSize); c.fillStyle = rgba('sepia', 0.85);
       const nw = c.measureText(nm).width;

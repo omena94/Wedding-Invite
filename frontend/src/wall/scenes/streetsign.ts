@@ -17,7 +17,7 @@ import { F, font } from '../engine/type';
 import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, hash, lerp, pulse } from '../engine/util';
 import type { Line } from '../engine/lyrics';
-import { beatAfter, drawHeart, COUPLE_ZH, COUPLE_EN, DATE_DOTS } from './_motifs';
+import { beatAfter, drawHeart, COUPLE_EN, NAME_A, NAME_B, HAS_LATIN_NAMES, DATE_DOTS, fitPx } from './_motifs';
 import { V2, lyricV2 } from './_v2';
 import { loadB3, layoutBi, paintBi, msgBlock, drawMsgBlock, B3_INVITE, type BiLayout, type MsgBlock, type Rect } from './_b3';
 
@@ -26,6 +26,8 @@ export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'ci
 /** 指標柱的 x、路牌的範圍（牌子從柱子往右伸，右端是箭頭）。 */
 const POLE = { x: 322, w: 24 };
 const BLADE = { x: POLE.x + POLE.w / 2 + 6, w: 736, tip: 54, padX: 34, padY: 18 };
+/** 路牌上字區的寬（扣掉箭頭與左右留白）：純音樂時的路名照這個縮字。 */
+const STREET_W = BLADE.w - BLADE.tip - BLADE.padX * 2;
 /** 最新的那一片路牌的上緣（舊的往上疊）。 */
 const Y0 = 468;
 const GAP = 16;
@@ -34,9 +36,12 @@ const SHELTER = { x: 1124, y: 196, w: 740, ground: 820 };
 const BOX = { x: 1168, y: 252, w: 652, h: 400 };
 /** 燈箱裡留言的框（燈箱內緣再留一點邊）。 */
 const MSG_IN = { x: 40, y: 64, w: 580, h: 300 };
-/** 純音樂又沒有歌詞時的路名（中文、英文）。 */
+/**
+ * 純音樂又沒有歌詞時的路名（中文、英文）。第一條是新人的名字大道：沒有英文名時英文那行用通用的路名，
+ * 不要把中文名再印一次。名字很長時畫的時候縮字（STREET_W）。
+ */
 const STREETS: [string, string][] = [
-  [COUPLE_ZH.replace(/\s*&\s*/, '').replace(/\s/g, '') + '大道', `${COUPLE_EN} Ave.`], ['幸福路', 'Happiness Rd.'], ['永遠街', 'Forever St.'],
+  [`${NAME_A}${NAME_B}大道`, HAS_LATIN_NAMES ? `${COUPLE_EN} Ave.` : 'Newlywed Ave.'], ['幸福路', 'Happiness Rd.'], ['永遠街', 'Forever St.'],
   ['喜宴巷', 'Banquet Ln.'], ['白頭偕老路', 'Lifelong Rd.'], ['甜蜜街', 'Sweet St.'],
 ];
 
@@ -211,12 +216,17 @@ export default class StreetSign extends Scene {
       c.restore();
     } else {
       small('今晚限定 · 本站停靠', MSG_IN.x, 44, 18, rgba('blood', 0.85));
-      c.font = font(F.ming(900), 60); c.fillStyle = mixRgba('sepia', 'ink', 0.3);
-      const [a, b] = COUPLE_ZH.split(/\s*&\s*/) as [string, string];
-      c.fillText(a, MSG_IN.x, 160);
-      drawHeart(c, MSG_IN.x + c.measureText(a).width + 44, 140, 40);
-      c.fillText(b, MSG_IN.x + c.measureText(a).width + 88, 160);
-      small(DATE_DOTS, MSG_IN.x + 2, 214, 20, rgba('sepia', 0.7), F.mono(500), 6);
+      // 新人的名字，中間一顆愛心。名字是執行時才知道的：太長就整組照比例縮（愛心與間距一起縮），不超出燈箱；
+      // 還沒定日期就不印日期那一行，名字往下挪一點補位
+      const a = NAME_A, b = NAME_B;
+      c.font = font(F.ming(900), 60);
+      const k = Math.min(1, MSG_IN.w / (c.measureText(a).width + c.measureText(b).width + 88));
+      c.font = font(F.ming(900), Math.floor(60 * k * 2) / 2); c.fillStyle = mixRgba('sepia', 'ink', 0.3);
+      const wa = c.measureText(a).width, ny = DATE_DOTS ? 160 : 184;
+      c.fillText(a, MSG_IN.x, ny);
+      drawHeart(c, MSG_IN.x + wa + 44 * k, ny - 20 * k, 40 * k);
+      c.fillText(b, MSG_IN.x + wa + 88 * k, ny);
+      if (DATE_DOTS) small(DATE_DOTS, MSG_IN.x + 2, 214, 20, rgba('sepia', 0.7), F.mono(500), 6);
       c.fillStyle = rgba('sepia', 0.3); c.fillRect(MSG_IN.x, 252, 300, 2);
       small(B3_INVITE, MSG_IN.x, 312, 22, rgba('sepia', 0.85), F.hei(500), 2);
       this.boxH = 356;
@@ -356,8 +366,9 @@ export default class StreetSign extends Scene {
       paintBi(c, b.bl, t, ink, lit);
     } else if (b.street) {
       c.globalAlpha = lit;
-      c.font = font(F.hei(700), 48); c.fillStyle = rgba('bone', 0.97); c.fillText(b.street[0], 0, 0);
-      c.font = font(F.hei(500), 32); c.fillStyle = rgba('bone', 0.8); c.fillText(b.street[1], 0, 50);
+      // 路名可能是新人很長的名字：縮到牌子的字區（箭頭與左右留白之外）
+      c.font = font(F.hei(700), fitPx(b.street[0], F.hei(700), 48, STREET_W)); c.fillStyle = rgba('bone', 0.97); c.fillText(b.street[0], 0, 0);
+      c.font = font(F.hei(500), fitPx(b.street[1], F.hei(500), 32, STREET_W)); c.fillStyle = rgba('bone', 0.8); c.fillText(b.street[1], 0, 50);
     }
     c.restore();
     // 舊的路牌蒙上一層午後的空氣（淡一點、不透明，後面的樹不會透出來）

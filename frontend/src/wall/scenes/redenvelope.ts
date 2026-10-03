@@ -18,7 +18,7 @@ import { rgba } from '../engine/palette';
 import { clamp, ease, lerp, pulse, noise1, TAU } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
 import { Lyrics, type Line, type Word } from '../engine/lyrics';
-import { lyricAt, lyricSubOf, subGap, subSizeFor, signature, sparkHead, sparkParticles, COUPLE_EN, DATE_DOTS } from './_motifs';
+import { lyricAt, lyricSubOf, subGap, subSizeFor, signature, sparkHead, sparkParticles, COUPLE_EN, DATE_DOTS, joinBits, fitPx } from './_motifs';
 import { grid, drawFit, layoutRows, drawRows, Stage, docRT, camDist, FOIL_GLSL, type Grid, type RowsStyle, type V3, type P2 } from './_t4';
 import { msgMaxFor, lyricV2, sigV2, V2, fitClauses } from './_v2';
 
@@ -37,6 +37,8 @@ const ENV: V3 = [-330, 0, 2]; // 紅包在桌上的位置（中心）
 const LAND: V3 = [380, 70, 9]; // 紙條落下的位置
 // 符號（♪ ∞ ☑ → 之類）不在打包時掃的中文範圍裡，要跟中文一起預載，不然第一次畫會用備援字型（確定性也會不過）
 const TEXT = '♪∞☑☐→·—♥%＄$囍紅包裡的一句話這個紅包留給你掃描右下角把祝福包進紅包純音樂賀新人';
+/** 袋身下緣的燙金小字：新人的名字（大寫）＋日期；還沒定日期就只有名字（連同分隔符號一起省掉）。 */
+const FOOT = joinBits('  ·  ', COUPLE_EN.toUpperCase(), DATE_DOTS);
 
 // ---------------------------------------------------------------- 紅包的紙（袋身與舌蓋）
 const ENV_BG = () => new FSPass(/* glsl */ `
@@ -191,12 +193,16 @@ export default class RedEnvelope extends Scene {
   sigSize = 36;
   /** 囍字外圈的火花（每兩個小節一次的小事件）。 */
   runs: number[] = [];
+  /** 袋身下緣燙金小字的字級（init 照實際寬度算）。 */
+  footPx = 15;
   private noteDrawn = false;
 
   override async init() {
     const { audio: au, song, lyrics } = this.ctx;
     const s = this.ctx.start, e = this.ctx.end;
-    await loadText(TEXT + song.title + COUPLE_EN + (this.msg ? signature(this.msg.name) + this.msg.text : '') + lyrics.linesIn(s, e).map((l) => l.text).join(''));
+    await loadText(TEXT + song.title + FOOT + (this.msg ? signature(this.msg.name) + this.msg.text : '') + lyrics.linesIn(s, e).map((l) => l.text).join(''));
+    // 袋口下緣那一行燙金小字：名字很長（再加上日期）時縮到袋身的內框裡（左右各留 50）
+    this.footPx = fitPx(FOOT, F.mono(500), 15, EW - 100, 5);
     const g = (this.g = grid(au, s, e));
     // 火花畫框：第一拍起，長窗格畫一小節、短的一拍；畫完的下一個小節線（太晚就下一拍）掀舌蓋，
     // 再下一拍抽出紙條、下一拍落地
@@ -367,8 +373,9 @@ export default class RedEnvelope extends Scene {
     c.lineWidth = 1; c.beginPath(); c.arc(EMBLEM.x, EMBLEM.y, EMBLEM.r - 8, 0, TAU); c.stroke();
     c.font = font(F.ming(900), 70); c.textAlign = 'center'; c.textBaseline = 'alphabetic';
     c.fillText('囍', EMBLEM.x, EMBLEM.y + 25);
-    c.font = font(F.mono(500), 15); c.letterSpacing = '5px';
-    c.fillText(`${COUPLE_EN.toUpperCase()}  ·  ${DATE_DOTS}`, EW / 2, FH + EH - 50);
+    const fp = this.footPx;
+    c.font = font(F.mono(500), fp); c.letterSpacing = `${(5 * fp) / 15}px`;
+    c.fillText(FOOT, EW / 2, FH + EH - 50);
     c.letterSpacing = '0px'; c.textAlign = 'left';
     // 火花畫的框：畫到哪裡燙金就到哪裡
     let head: P2 | null = null;

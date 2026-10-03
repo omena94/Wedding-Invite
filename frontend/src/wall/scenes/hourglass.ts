@@ -5,7 +5,7 @@
 //    由下往上把字形填滿（像把沙倒進模子），剛落下的沙粒是熱的訊號色，一下子冷卻成沙色。
 //    字落在拍點上開始倒；兩小節內倒完，留給大家讀。
 //  - 歌詞在沙盤上方（逐字跟唱）；沙漏下面是一本正經的讀數與註腳。
-//  - 沒有留言：沙堆成「宣文♥孟庭」，下面一行邀請。純音樂：上方寫歌名。
+//  - 沒有留言：沙堆成兩位新人的名字（「承恩♥以晴」），下面一行邀請。純音樂：上方寫歌名。
 // 畫法：底（全螢幕 shader：墨色、淡淡的聚光）→ 沙漏裡的沙（Canvas2D，旋轉）→ 玻璃與木架（LineBatch 細線，自己投影的 3D 點）
 // → 沙盤的沙粒（LineBatch，一粒一段）→ 字（Canvas2D）。
 import * as THREE from 'three';
@@ -16,7 +16,7 @@ import { F, font, loadText } from '../engine/type';
 import { LIN, rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, lerp, hash, mulberry32, TAU } from '../engine/util';
 import type { FitResult } from '../engine/text';
-import { lyricAt, beatAfter, signature, fillWithHearts, COUPLE_ZH } from './_motifs';
+import { lyricAt, beatAfter, signature, fillWithHearts, NAME_A, NAME_B } from './_motifs';
 import { stagger, pad3, mono, tag, type Rect } from './_t11';
 import { lyricLine, lyricRows, glyphPoints, type GlyphPts } from './_t12';
 import { V2, msgMaxFor, lyricV2, sigV2, fitClauses } from './_v2';
@@ -87,8 +87,8 @@ export default class Hourglass extends Scene {
   override async init() {
     const { audio: au, lyrics, song } = this.ctx;
     const s = this.ctx.start, e = this.ctx.end, m = this.msg;
-    const text = m ? m.text : COUPLE_ZH.replace(/\s*&\s*/, '♥');
-    this.sig = m ? (m.couple ? '—— 新郎新娘' : signature(m.name)) : '';
+    const text = m ? m.text : `${NAME_A}♥${NAME_B}`;
+    this.sig = m ? (m.couple ? '—— 新人' : signature(m.name)) : '';
     await loadText(`${text}${this.sig}${INVITE}${FOOT}${song.title}${song.artist}次翻轉每小節沙漏♪ NOW POURING　本曲 No. · 第`);
     const beat = au.beatPeriod(s);
     this.tFirst = beatAfter(au, s + Math.min(0.2, beat * 0.4));

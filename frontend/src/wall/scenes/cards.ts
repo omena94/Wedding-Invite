@@ -7,7 +7,7 @@
 //  - 之後每個小節線，整道弧像骨牌一樣一張接一張翻過去（翻牌的花式），下一個小節再翻回來——窗格長的時候中段一直有事。
 //  - 歌詞印在毛氈上：大白卡上方一道弧線（像牌桌上印的字），唱到的字亮成訊號色（逐字跟唱），比留言小。
 //  - 鏡頭：切進來時從弧展開的那一端低低地看過來；抽牌的時候升起來、轉正，之後很慢地推近。右下角 QR 那一塊只有毛氈。
-//  - 沒有留言：大白卡寫「宣文 & 孟庭」（配角），弧線上的歌詞是主角，底下一行邀請。純音樂：弧線上印歌名。
+//  - 沒有留言：大白卡寫新人的名字（配角，太長就縮字放進卡裡），弧線上的歌詞是主角，底下一行邀請。純音樂：弧線上印歌名。
 // 手法：牌是 three.js 的四邊形（InstancedMesh，正面、背面各自取圖集，圓角在 shader 裡挖），翻面是真的 3D 轉動；
 // 影子是同一張牌沿光線投到桌面、依高度模糊；弧線上的字先畫成一條直的 Canvas，再在毛氈的 shader 裡用極座標彎成弧。
 import * as THREE from 'three';
@@ -18,7 +18,7 @@ import { F, font, loadText } from '../engine/type';
 import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, pulse, hash, frameIdx } from '../engine/util';
 import { fitText } from '../engine/text';
-import { lyricAt, layoutLyric, drawLyric, beatAfter, drawHeart, fillWithHearts, COUPLE_ZH, lyricSubOf, subSizeFor, subStyleFor, subGap, type LyricLayout, type LyricStyle } from './_motifs';
+import { lyricAt, layoutLyric, drawLyric, beatAfter, drawHeart, fillWithHearts, COUPLE_ZH, fitPx, lyricSubOf, subSizeFor, subStyleFor, subGap, type LyricLayout, type LyricStyle } from './_motifs';
 import type { Line } from '../engine/lyrics';
 import { msgMaxFor, lyricV2, sigV2, fitClauses } from './_v2';
 import { darkInk } from './_t4';
@@ -196,7 +196,7 @@ const SP_Y = 330;
 const FL = 0.26;
 
 /**
- * 原文副行照「螢幕」字級重排（2026-09-30 雙語）：subSizeFor 的 32～56 是螢幕 px，毛氈上的字在畫面上只有 pxLyr 倍大、又被透視壓扁，
+ * 原文副行照「螢幕」字級重排（雙語）：subSizeFor 的 32～56 是螢幕 px，毛氈上的字在畫面上只有 pxLyr 倍大、又被透視壓扁，
  * 照畫布 px 排的原文上了螢幕只剩 24 px。中文不動，原文換成 max(SUB_MIN, subSizeFor(中文的螢幕字級)) ÷ pxLyr，太長就折行、不再縮。
  */
 function feltSub(c: CanvasRenderingContext2D, line: Line, st: LyricStyle, lay: LyricLayout, px: number): LyricLayout {
@@ -335,7 +335,8 @@ export default class Cards extends Scene {
       c.textAlign = 'left';
     } else {
       // 沒有留言：大白卡寫新人的名字（配角，不大），歌詞是主角
-      c.font = font(FAM_MSG, 44 / k);
+      // 名字長短每一場不一樣（「歐陽承恩 & 司馬以晴」）：照字區寬度縮字，不能寫出卡外
+      c.font = font(FAM_MSG, fitPx(COUPLE_ZH, FAM_MSG, 44 / k, inner.w));
       c.fillStyle = rgba('sepia', 0.9);
       c.textAlign = 'center';
       c.fillText(COUPLE_ZH, CH / 2, CW / 2 + 6);

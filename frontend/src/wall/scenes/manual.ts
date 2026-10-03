@@ -15,7 +15,7 @@ import { F, font, loadText } from '../engine/type';
 import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, lerp, prog, pulse, TAU } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
-import { lyricAt, signature, lyricSubOf, layoutLyric, subStyleFor, subGap, drawLyricSub, type LyricStyle } from './_motifs';
+import { lyricAt, signature, lyricSubOf, layoutLyric, subStyleFor, subGap, drawLyricSub, DATE_MMDD, type LyricStyle } from './_motifs';
 import { grid, drawFit, layoutRows, drawRows, paperInk, lastIdx, Stage, docRT, camDist, type Grid, type RowsStyle, type V3 } from './_t4';
 import { msgMaxFor, lyricV2, sigV2, V2, fitClauses } from './_v2';
 
@@ -29,8 +29,10 @@ const COL = 820; // 左右欄的分隔線
 const NOTE = { x: 858, y: 250, w: 592, h: 640 }; // 注意事項（留言）
 const SIG_K = 1.45; // 署名佔的高度 = 署名字級 × SIG_K
 const STEP_NAMES = ['確認零件', '插入木榫', '對齊・鎖緊', '完成'];
+/** 型號：婚禮的月日（「HRT-0520」），還沒定日期時用 520（我愛你）。 */
+const MODEL = `組合式愛心　HRT-${DATE_MMDD || '520'}`;
 // 符號（♪ ∞ ☑ → 之類）不在打包時掃的中文範圍裡，要跟中文一起預載，不然第一次畫會用備援字型（確定性也會不過）
-const TEXT = '♪∞☑☐→·—♥%＄$組合式愛心組裝說明人組裝所需時間一輩子注意事項請勿單獨組裝本產品需兩人同時操作零件左半心右半心木榫六角扳手耐心確認插入對齊鎖緊完成喀頁這一格留給你的叮嚀掃描右下角寫下想對新人說的話純音樂間奏中';
+const TEXT = '♪∞☑☐→·—♥%＄$組合式愛心組裝說明人組裝所需時間一輩子注意事項請勿單獨組裝本產品需兩人同時操作零件左半心右半心木榫六角扳手耐心確認插入對齊鎖緊完成喀頁這一格留給你的叮嚀掃描右下角寫下給新人的話純音樂間奏中';
 
 // ---------------------------------------------------------------- 紙（shader）：很淡的纖維、左右欄之間的細線
 const PAPER = () => new FSPass(/* glsl */ `
@@ -268,7 +270,7 @@ export default class Manual extends Scene {
   override async init() {
     const { audio: au, song, lyrics } = this.ctx;
     const s = this.ctx.start, e = this.ctx.end;
-    await loadText(TEXT + song.title + (this.msg ? signature(this.msg.name) : '') + lyrics.linesIn(s, e).map((l) => l.text).join(''));
+    await loadText(TEXT + MODEL + song.title + (this.msg ? signature(this.msg.name) : '') + lyrics.linesIn(s, e).map((l) => l.text).join(''));
     const g = (this.g = grid(au, s, e));
     // 每一步幾拍：長窗格一步兩小節（或更長），四到七小節一步一小節，很短的窗格一步半小節
     const b0 = Math.round(au.beatAt(g.b0));
@@ -368,7 +370,7 @@ export default class Manual extends Scene {
     this.base.clear();
     c.textBaseline = 'alphabetic';
     c.font = font(F.hei(700), 22); c.fillStyle = rgba('sepia', 0.85);
-    c.fillText('組合式愛心　HRT-0313', 70, 96);
+    c.fillText(MODEL, 70, 96);
     c.font = font(F.mono(500), 15); c.letterSpacing = '3px'; c.fillStyle = rgba('sepia', 0.6);
     c.fillText('ASSEMBLY INSTRUCTIONS', 330, 94);
     c.letterSpacing = '0px';

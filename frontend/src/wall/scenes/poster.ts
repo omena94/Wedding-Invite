@@ -17,7 +17,7 @@ import { FSPass, Layer2D, makeRT } from '../engine/gl';
 import { F, font } from '../engine/type';
 import { clamp, ease, prog, hash, pulse, lerp } from '../engine/util';
 import { Lyrics } from '../engine/lyrics';
-import { lyricAt, COUPLE_ZH, DATE_DOTS, lyricSubOf, layoutLyric, subStyleFor, subGap, drawLyricSub, type LyricStyle } from './_motifs';
+import { lyricAt, COUPLE_ZH, NAME_A, NAME_B, DATE_DOTS, joinBits, fitPx, lyricSubOf, layoutLyric, subStyleFor, subGap, drawLyricSub, type LyricStyle } from './_motifs';
 import { grid, layoutRows, Stage, camDist, type Grid, type RowsLayout, type V3 } from './_t4';
 import { loadAll, t21Grain, GRAIN_GLSL, block, glyphPath, groupLine, T21_INVITE, type Block, type TGlyph, type TGroup, type Rect } from './_t21';
 import { V2, lyricV2 } from './_v2';
@@ -204,7 +204,8 @@ export default class Poster extends Scene {
       c.font = font(fam, size); c.letterSpacing = '6px'; c.textAlign = align; c.fillText(text, x, y); c.letterSpacing = '0px'; c.textAlign = 'left';
     };
     small(c2.c, m?.couple ? 'FROM THE COUPLE · 新人' : 'LIVE · 婚禮現場', HEAD.x, 92, 22);
-    small(c2.c, `${m ? `No.${String(m.n).padStart(3, '0')}   ` : ''}${DATE_DOTS}`, PW - HEAD.x, 92, 20, 'right', F.mono(500));
+    // 右上：留言編號＋日期（沒定日期就只有編號；兩個都沒有就空著）
+    small(c2.c, joinBits('   ', m ? `No.${String(m.n).padStart(3, '0')}` : '', DATE_DOTS), PW - HEAD.x, 92, 20, 'right', F.mono(500));
     c2.c.fillRect(HEAD.x, 112, PW - HEAD.x * 2, 3);
     const heads: TGlyph[] = [];
     if (m) {
@@ -216,12 +217,12 @@ export default class Poster extends Scene {
       // 歌詞印在海報下緣、粗線上面（下緣對齊，兩行時往上長）
       this.lyrY = 772;
     } else if (!this.hasLyrics) {
-      // 純音樂又沒有留言：印新人的名字（60 px，兩行），下面一行邀請
-      const [a, bb] = this.names.split(/\s*&\s*/);
+      // 純音樂又沒有留言：印新人的名字（60 px，兩行），下面一行邀請。名字很長就兩行一起縮，不超出留言框
       const groups: TGroup[] = [];
-      const sz = V2.msgMax / K;
-      groupLine(a ?? this.names, HEAD.x, 330, FAM, sz, 99, 0, heads, groups);
-      groupLine(`& ${bb ?? ''}`, HEAD.x, 330 + sz * 1.25, FAM, sz, 99, 0, heads, groups);
+      const second = `& ${NAME_B}`;
+      const sz = Math.min(fitPx(NAME_A, FAM, V2.msgMax / K, HEAD.w), fitPx(second, FAM, V2.msgMax / K, HEAD.w));
+      groupLine(NAME_A, HEAD.x, 330, FAM, sz, 99, 0, heads, groups);
+      groupLine(second, HEAD.x, 330 + sz * 1.25, FAM, sz, 99, 0, heads, groups);
       small(c2.c, T21_INVITE, LYR.x, 560, 22);
     }
     for (const gl of heads) glyphPath(gl.ch === '♥' ? c3.c : c2.c, gl);

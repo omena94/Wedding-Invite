@@ -79,6 +79,13 @@ def init_db() -> None:
                 "ALTER TABLE wall_songs ADD COLUMN IF NOT EXISTS lyrics_done BOOLEAN NOT NULL DEFAULT FALSE",
                 # 2026-09-30 大螢幕歌詞的中文翻譯（韓文歌：中文大字、原文在下面）
                 "ALTER TABLE wall_songs ADD COLUMN IF NOT EXISTS lyrics_trans TEXT NOT NULL DEFAULT ''",
+                # 2026-10-03 照片上大螢幕：長寬、焦點、亮度、色調（挑版面、裁切、慢推用）
+                "ALTER TABLE files ADD COLUMN IF NOT EXISTS img_w INTEGER NOT NULL DEFAULT 0",
+                "ALTER TABLE files ADD COLUMN IF NOT EXISTS img_h INTEGER NOT NULL DEFAULT 0",
+                "ALTER TABLE files ADD COLUMN IF NOT EXISTS focus_x DOUBLE PRECISION",
+                "ALTER TABLE files ADD COLUMN IF NOT EXISTS focus_y DOUBLE PRECISION",
+                "ALTER TABLE files ADD COLUMN IF NOT EXISTS lum DOUBLE PRECISION",
+                "ALTER TABLE files ADD COLUMN IF NOT EXISTS tone VARCHAR(7) NOT NULL DEFAULT ''",
                 # 2026-10-02 排位規則：賓客的圈子與座位需求（規則本身是新表 seat_rules，create_all 會建）
                 "ALTER TABLE rsvps ADD COLUMN IF NOT EXISTS circle VARCHAR(30) NOT NULL DEFAULT ''",
                 "ALTER TABLE rsvps ADD COLUMN IF NOT EXISTS seat_need VARCHAR(10) NOT NULL DEFAULT ''",

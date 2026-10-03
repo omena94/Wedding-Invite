@@ -18,7 +18,7 @@ import { F, font, loadText } from '../engine/type';
 import { rgba } from '../engine/palette';
 import { clamp, ease, prog, hash, pulse, lerp } from '../engine/util';
 import { type Line } from '../engine/lyrics';
-import { lyricAt, lyricSubOf, subGap, subSizeFor, COUPLE_ZH } from './_motifs';
+import { lyricAt, lyricSubOf, subGap, subSizeFor, NAME_A, NAME_B } from './_motifs';
 import { V2, lyricV2 } from './_v2';
 import {
   T25_TEXT, T25_INVITE, sigOf, winBars, winBeats, stagger, layMsgV2, glyphMask, glyphStates, MASK_GLSL,
@@ -248,7 +248,7 @@ function waxRows(units: { ch: string; gap: number }[][], fam: string, size0: num
     if (rows.length <= maxRows || size <= V2.lyrMin) break;
     size = Math.max(V2.lyrMin, size * 0.9);
   }
-  // balance（雙語 2026-09-30）：排數不變、每排盡量一樣長——不要最後一排只剩一個字（「我們兩個人的／歌」）。
+  // balance（雙語）：排數不變、每排盡量一樣長——不要最後一排只剩一個字（「我們兩個人的／歌」）。
   // 找「還是這麼多排」的最窄寬度（二分），用那個寬度重排
   if (balance && rows.length > 1) {
     const n = rows.length;
@@ -371,8 +371,10 @@ export default class LavaLamp extends Scene {
       this.masks.set(ln, { m: this.track(glyphMask(items.slice(0, MAXG), rect, 1, 2)), rect, n: sub ? items.filter((g) => g.tag !== SUB_TAG).length : MAXG });
     }
     if (!lyrics.linesIn(s, e).length) {
-      // 純音樂：蠟裡浮出新人的名字
-      const units = Array.from(COUPLE_ZH.replace(/\s*&\s*/, '&')).map((ch) => [{ ch, gap: 0.04 }]);
+      // 純音樂：蠟裡浮出新人的名字。一個名字是一段（段尾留 0.2 字寬的空），放不下一排時斷在兩個名字之間，
+      // 不會斷成「歐陽承恩&司／馬以晴」；名字本身比瓶子還寬才一個字一個字拆
+      const nameUnits = (s: string, last: number) => [Array.from(s).map((ch, i, a) => ({ ch, gap: i === a.length - 1 ? last : 0.04 }))];
+      const units = [...nameUnits(NAME_A, 0.2), [{ ch: '&', gap: 0.2 }], ...nameUnits(NAME_B, 0.04)];
       const { items, rect } = waxRows(units, FAM_LYR, m ? lyricV2(msgSize) : V2.lyrMax, L.cx, cy, maxW, 3);
       this.names = { m: this.track(glyphMask(items, rect, 1, 2)), rect };
     }

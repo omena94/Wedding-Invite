@@ -25,7 +25,7 @@ export const T23_INVITE = '掃描右下角 QR code，把你的祝福傳上大螢
 /** 這批固定會出現的字（init 時一次載好：數字、符號也要，沒載好第一格會用系統字頂替）。 */
 export const T23_TEXT = `${T23_INVITE}一位賓客${COUPLE_ZH}新人0123456789·—…：:%♪♩=()（）＊`;
 
-/** 署名：新人自己的留言署「宣文 & 孟庭」。 */
+/** 署名：新人自己的留言署新人的名字（COUPLE_ZH）。 */
 export const sigOf = (m: Msg) => (m.couple ? `—— ${COUPLE_ZH}` : signature(m.name));
 
 // ---------------------------------------------------------------- 節拍

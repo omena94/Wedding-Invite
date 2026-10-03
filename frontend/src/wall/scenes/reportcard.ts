@@ -1,10 +1,10 @@
 // 成績單（亮）：鏡頭貼著桌上一張「愛情學校　成績通知單」。
-//  - 第一拍起，成績一格一格「蓋」上去：宣文、孟庭兩欄，體貼、做家事、遛狗（芃芃、QQ）、分享最後一口、決定晚餐吃什麼
+//  - 第一拍起，成績一格一格「蓋」上去：兩欄是兩位新人（欄名印他們的名字），體貼、做家事、記得紀念日、分享最後一口、決定晚餐吃什麼
 //    （最後一科兩個人都是「丙：仍在努力」——溫柔的冷面笑話）。印章一拍兩三個、砸下去的那一下畫面輕輕一震，印泥有缺墨的顆粒。
 //  - 同時導師拿紅筆在「導師評語」欄寫評語——主打留言就是評語（這一張的焦點：最大、手寫的紅字），簽名欄寫「導師：留言的名字」
 //    （每一位賓客都是他們的導師）。鏡頭一開始對著成績、景深在上面；紅筆開始寫的時候，焦點與鏡頭一起慢慢移到評語（拉焦）。
 //  - 歌詞是「校歌（現場）」那一欄，照跟唱規則逐字亮，在成績與評語中間，兩個鏡位都看得到。
-//  - 時間夠長的窗格：最後一個小節線，校長（芃芃）的圓章「准予升級」砸在右下角。
+//  - 時間夠長的窗格：最後一個小節線，校長（月下老人）的圓章「准予升級」砸在右下角。
 //  - 沒有留言：評語欄寫邀請；新人的留言：評語欄的標題改成「新人的話」、簽名是新人。純音樂：校歌欄寫歌名。
 // 畫法：紙、桌面、透視、景深是 _t3 的文件攝影機；表格等不會變的字開場畫在一張離屏畫布，每格貼進文件圖層再畫會變的
 // （印章、評語、歌詞）。印章的圖案（含缺墨的顆粒）在 init 先畫好，每格只 drawImage。
@@ -15,7 +15,7 @@ import { F, font, loadText } from '../engine/type';
 import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, hash, lerp, prog, pulse } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
-import { drawLyric, drawMessage, lyricAt, signature, COUPLE_ZH, type LyricStyle } from './_motifs';
+import { drawLyric, drawMessage, lyricAt, signature, COUPLE_ZH, NAME_A, NAME_B, DATE, DATE_MMDD, joinBits, fitPx, type LyricStyle } from './_motifs';
 import { grid, stagger, windowLines, boxLyric, mono, tag, pad3, paperLyric, DocCam, withMips, inkStamp, drawPencil, HUD, EDGE, type Grid, type Pose } from './_t3';
 import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 } from './_v2';
 
@@ -26,7 +26,7 @@ const DW = 1500, DH = 1260;
 const TS = SCALE * 1.4;
 const CARD: [number, number, number, number] = [210, 40, 1080, 1180];
 const X0 = 270, X1 = 1230; // 內容左右
-const TABLE = { y: 250, rowH: 60, cols: [X0, 580, 760, 940, X1] }; // 科目｜宣文｜孟庭｜備註
+const TABLE = { y: 250, rowH: 60, cols: [X0, 580, 760, 940, X1] }; // 科目｜新郎｜新娘｜備註
 const LYR = { x: X0, y: 628, w: X1 - X0, h: 118 };
 const CMT = { x: X0, y: 782, w: X1 - X0, h: 300 };
 /** 看評語時，文件 1 px 在螢幕上約 K px（v2 的字級、留言區都是螢幕上的大小，排版時用它換算）。 */
@@ -35,16 +35,24 @@ const K = 1.15;
 const CMT_W = Math.min(X1 - X0, 820 / K);
 const MSG_FAM = F.hand(400);
 const LYR_FAM = F.archivo(100, 700);
-const [GROOM, BRIDE] = COUPLE_ZH.split(/\s*&\s*/) as [string, string];
 /** 科目、兩個人的成績、備註（冷面，溫柔）。 */
 const SUBJECTS: [string, string, string, string][] = [
   ['體貼', '甲上', '甲上', '彼此彼此'],
   ['做家事', '甲', '甲上', '洗碗、摺衣服分工良好'],
-  ['遛狗（芃芃、QQ）', '優', '優', '風雨無阻'],
+  ['記得紀念日', '優', '優', '一次都沒忘'],
   ['分享最後一口', '甲上', '甲上', ''],
   ['決定晚餐吃什麼', '丙', '丙', '仍在努力'],
 ];
-const FIXED = `愛情學校成績通知單學年度學期班級永遠班座號姓名科目備註導師評語新人的話導師校長芃芃訓導主任校歌現場准予升級${SUBJECTS.flat().join('')}${GROOM}${BRIDE}本欄留給你寫掃描右下角把給新人的評語寫在這裡純音樂`;
+/** 頁尾的校長、訓導主任：婚姻的「校方」是月老與邱比特（冷面笑話，跟任何真人無關）。 */
+const FOOT = '校長　月下老人　　訓導主任　邱比特';
+/**
+ * 右上角的學年度：照婚禮日期換算（民國年、八月開學；一月算上學期、二到七月算下學期）。
+ * 還沒定日期就只寫「第 1 學期」——婚姻的第一個學期。
+ */
+const TERM = DATE
+  ? DATE.m >= 8 ? `${DATE.y - 1911} 學年度　第 1 學期` : `${DATE.y - 1912} 學年度　第 ${DATE.m === 1 ? 1 : 2} 學期`
+  : '第 1 學期';
+const FIXED = `愛情學校成績通知單學年度學期班級永遠班座號姓名科目備註導師評語新人的話導師${FOOT}校歌現場准予升級${SUBJECTS.flat().join('')}本欄留給你寫掃描右下角把給新人的評語寫在這裡純音樂`;
 
 const PAPER_GLSL = /* glsl */ `
 vec3 paperCol(vec2 d, vec4 fb) {
@@ -114,7 +122,7 @@ export default class ReportCard extends Scene {
       this.msgTimes = stagger(au, this.tWrite, n, clamp(tot * 0.35, g.beat * 2, g.bar * 1.25));
       this.tDone = (this.msgTimes[n - 1] ?? this.tWrite) + g.beat * 0.5;
     } else { this.tDone = this.tWrite + g.bar; this.lyrMax = lyricV2(null) / K; }
-    // 校長的圓章：最後一個小節線（至少在評語寫完一小節之後），蓋在頁尾「校長　芃芃」旁邊
+    // 校長的圓章：最後一個小節線（至少在評語寫完一小節之後），蓋在頁尾「校長」旁邊
     const last = g.bars.filter((b) => b >= this.tDone + g.bar * 0.9 && b < e - g.beat * 1.5).pop();
     if (last !== undefined) this.seal = { cv: inkStamp('准予升級', 190, true, 7, '愛情學校校長'), w: 206, h: 206, x: X0 + 470, y: CMT.y + CMT.h + 44, rot: -0.12, t: last };
     // 紅筆加註：評語寫完的下一個小節線起，每個小節線一筆（校長章那一個小節線讓給章）
@@ -217,8 +225,10 @@ export default class ReportCard extends Scene {
     c.textBaseline = 'alphabetic';
     c.font = font(F.ming(900), 30); c.fillStyle = ink(0.88);
     c.fillText('愛情學校　成績通知單', X0, 118);
-    mono(c, '116 學年度　第 2 學期', X1, 116, { size: 15, color: ink(0.6), align: 'right', tracking: 2 });
-    tag(c, `班級：永遠班　　座號：0313　　姓名：${COUPLE_ZH}`, X0, 170, { size: 19, color: ink(0.7), tracking: 2 });
+    mono(c, TERM, X1, 116, { size: 15, color: ink(0.6), align: 'right', tracking: 2 });
+    // 座號是婚禮的月日（還沒定日期就不寫座號）；姓名是兩位新人，名字長就縮字，不超出表格的寬
+    const who = joinBits('　　', '班級：永遠班', DATE_MMDD && `座號：${DATE_MMDD}`, `姓名：${COUPLE_ZH}`);
+    tag(c, who, X0, 170, { size: fitPx(who, F.hei(500), 19, X1 - X0, 2), color: ink(0.7), tracking: 2 });
     c.fillStyle = ink(0.7); c.fillRect(X0, 196, X1 - X0, 2);
     // 表格
     const { y: ty, rowH, cols } = TABLE;
@@ -227,8 +237,9 @@ export default class ReportCard extends Scene {
     c.fillStyle = ink(0.4);
     for (let r = 0; r <= rows; r++) c.fillRect(X0, ty + r * rowH - 0.6, X1 - X0, r === 0 || r === rows ? 1.8 : 1.1);
     for (const x of cols) c.fillRect(x - 0.6, ty, 1.2, rows * rowH);
-    const head = ['科目', GROOM, BRIDE, '備註'];
-    head.forEach((h, i) => tag(c, h, cols[i]! + 18, ty + rowH / 2 + 7, { size: 19, color: ink(0.75), tracking: 3, weight: 700 }));
+    // 欄名：兩位新人的名字（一格寬 180，名字長就縮字）
+    const head = ['科目', NAME_A, NAME_B, '備註'];
+    head.forEach((h, i) => tag(c, h, cols[i]! + 18, ty + rowH / 2 + 7, { size: fitPx(h, F.hei(700), 19, cols[i + 1]! - cols[i]! - 36, 3), color: ink(0.75), tracking: 3, weight: 700 }));
     SUBJECTS.forEach((sub, i) => {
       const y = ty + (i + 1) * rowH + rowH / 2 + 7;
       tag(c, sub[0], cols[0]! + 18, y, { size: 20, color: ink(0.8), tracking: 1 });
@@ -238,11 +249,11 @@ export default class ReportCard extends Scene {
     tag(c, '校歌（現場）', LYR.x, LYR.y + 16, { size: 16, color: ink(0.5), tracking: 4 });
     c.fillStyle = ink(0.35); c.fillRect(X0, LYR.y - 14, X1 - X0, 1.2); c.fillRect(X0, CMT.y - 14, X1 - X0, 1.2);
     // 頁尾：校長、訓導主任（小字）
-    tag(c, '校長　芃芃　　訓導主任　QQ', X0, CMT.y + CMT.h + 76, { size: 16, color: ink(0.5), tracking: 3 });
+    tag(c, FOOT, X0, CMT.y + CMT.h + 76, { size: 16, color: ink(0.5), tracking: 3 });
   }
 
   // ------------------------------------------------------------ 紅筆加註（小節線上的小事件）
-  /** 四種加註：圈起「丙」、備註欄寫「加油！」、遛狗那一列打勾、「分享最後一口」畫底線。回傳筆尖（沒在寫回傳 null）。 */
+  /** 四種加註：圈起「丙」、備註欄寫「加油！」、紀念日那一列打勾、「分享最後一口」畫底線。回傳筆尖（沒在寫回傳 null）。 */
   private drawNotes(c: CanvasRenderingContext2D, t: number): { x: number; y: number } | null {
     const { y: ty, rowH, cols } = TABLE;
     const rowC = (i: number) => ty + (i + 1) * rowH + rowH / 2;
@@ -254,11 +265,11 @@ export default class ReportCard extends Scene {
       const u = prog(t, n.t, n.t + this.g.beat * 0.6, ease.inOutCubic);
       let pts: { x: number; y: number }[] = [];
       if (n.kind === 0) {
-        // 圈起宣文的「丙」（手畫的圈：收尾超過起點一點）
+        // 圈起新郎那一欄的「丙」（手畫的圈：收尾超過起點一點）
         const cx = (cols[1]! + cols[2]!) / 2, cy = rowC(4);
         pts = Array.from({ length: 33 }, (_, i) => { const a = -2.4 + (i / 32) * Math.PI * 2.15; const r = 1 + 0.06 * Math.sin(i * 0.5); return { x: cx + Math.cos(a) * 58 * r, y: cy + Math.sin(a) * 36 * r }; });
       } else if (n.kind === 1) {
-        // 遛狗那一列：備註欄後面打一個勾
+        // 記得紀念日那一列：備註欄後面打一個勾
         const x = cols[3]! + 150, y = rowC(2);
         pts = [{ x: x - 14, y: y - 4 }, { x, y: y + 12 }, { x: x + 28, y: y - 22 }];
       } else if (n.kind === 2) {

@@ -17,7 +17,7 @@ import { LIN, rgba } from '../engine/palette';
 import { clamp, ease, hash, lerp, prog } from '../engine/util';
 import type { FitResult } from '../engine/text';
 import type { Line, Lyrics } from '../engine/lyrics';
-import { lyricAt, drawLyric, layoutLyric, drawMessage, signature, sparkHead, sparkParticles, beatAfter, COUPLE_ZH, lyricSubOf, subSizeFor, subGap, type LyricStyle, type LyricLayout } from './_motifs';
+import { lyricAt, drawLyric, layoutLyric, drawMessage, signature, sparkHead, sparkParticles, beatAfter, NAME_A, NAME_B, fitPx, lyricSubOf, subSizeFor, subGap, type LyricStyle, type LyricLayout } from './_motifs';
 import { fitText } from '../engine/text';
 import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 } from './_v2';
 import { beatsIn, inOut, ScreenRig, mipRT, blitToRT, loadPlateText } from './_t6';
@@ -46,15 +46,14 @@ const CHART = { x: 690, y: rowY(10) + 8, w: GRID_R - 710, h: SH - rowY(10) - 40 
 const SLOTS = 20;
 const TOTAL_ROW = 6;
 
-const [GROOM, BRIDE] = COUPLE_ZH.split(/\s*&\s*/) as [string, string];
 interface Row { label: string; b: string; c: string; d: string; fd: string }
 const ROWS = (bpm: number): Row[] => [
   { label: '心跳（下／分）', b: String(bpm), c: String(bpm), d: '同步', fd: '=IF(B2=C2,"同步")' },
   { label: '牽手（次／日）', b: '12', c: '12', d: '24', fd: '=B3+C3' },
-  { label: '遛芃芃與 QQ', b: '1', c: '1', d: '2', fd: '=B4+C4' },
+  { label: '說晚安（次／日）', b: '1', c: '1', d: '2', fd: '=B4+C4' },
   { label: '搶棉被（次）', b: '1', c: '3', d: '4', fd: '=B5+C5' },
 ];
-const TEXT = `項目合計總計這一格留給你的祝福掃描右下角寫下想對新人說的話心跳下分牽手次日遛搶棉被同步${GROOM}${BRIDE}`;
+const TEXT = `項目合計總計這一格留給你的祝福掃描右下角寫下想對新人說的話心跳下分牽手次日說晚安搶棉被同步`;
 
 // 房間：淺色的牆（紙色，比螢幕暗一點，才不會刺眼）、螢幕下緣投在桌上的影子、一道斜斜的窗光
 const BG = () => new FSPass(/* glsl */ `
@@ -238,7 +237,12 @@ export default class Spreadsheet extends Scene {
     c.font = font(F.hei(700), 24); c.fillStyle = rgba('sepia', 0.7);
     c.fillText('項目', COLS[0]!.x + 14, rowY(1) + 40);
     c.textAlign = 'right';
-    [GROOM, BRIDE, '合計'].forEach((s, i) => c.fillText(s, COLS[i + 1]!.x + COLS[i + 1]!.w - 12, rowY(1) + 40));
+    // B、C 兩欄的欄名是兩位新人的名字：一格只有 116 寬，名字長就縮字（不要蓋到隔壁那一格）
+    [NAME_A, NAME_B, '合計'].forEach((s, i) => {
+      const cl = COLS[i + 1]!;
+      c.font = font(F.hei(700), fitPx(s, F.hei(700), 24, cl.w - 24));
+      c.fillText(s, cl.x + cl.w - 12, rowY(1) + 40);
+    });
     c.textAlign = 'left';
     c.font = font(F.hei(500), 23); c.fillStyle = rgba('sepia', 0.7);
     this.rows.forEach((r, i) => c.fillText(r.label, COLS[0]!.x + 14, rowY(i + 2) + 40));

@@ -6,7 +6,7 @@
 //    歌詞在看板下面的燈箱橫條（逐字跟唱，不比留言大）。
 //  - 沒有留言：每換一句歌詞看板就翻一次，歌詞印在看板上（焦點，逐字跟唱），燈箱橫條放邀請。
 //  - 純音樂又沒有留言：廣告 → 邀請。
-// v2（2026-09-28 新人：「留言板都太大太突兀」「可以再多補一些動畫」）：
+// v2（留言板太大會顯得突兀，看板縮小、空出來的地方多補一些動畫）：
 //  - 看板縮到畫面右上角（螢幕上約 810×360，1 世界單位 ≈ 0.52 px）：留言在螢幕上 40～60 px、署名 26～32、歌詞 40～52。
 //  - 看板立在一條夜裡的街邊（trivision-street.ts）：遠方的建築窗戶每兩拍有幾扇換亮暗、兩盞路燈、濕的路面映著光；
 //    車子一台台開過（遠車道往左、近車道往右），車頭燈往前照一片、在濕路面上拉出倒影，經過畫面中央的那一刻落在小節線或第三拍。
@@ -23,7 +23,7 @@ import { LIN, rgba } from '../engine/palette';
 import { clamp, ease, prog, hash, pulse } from '../engine/util';
 import { fitText } from '../engine/text';
 import type { Line } from '../engine/lyrics';
-import { drawHeart, fillWithHearts, COUPLE_ZH, COUPLE_EN, DATE_DOTS, lyricSubOf, layoutLyric, subStyleFor, subGap, drawLyricSub, type LyricStyle } from './_motifs';
+import { drawHeart, fillWithHearts, COUPLE_ZH, COUPLE_EN, HAS_LATIN_NAMES, DATE_DOTS, fitPx, lyricSubOf, layoutLyric, subStyleFor, subGap, drawLyricSub, type LyricStyle } from './_motifs';
 import { grid, layoutRows, drawRows, paperInk, darkInk } from './_t4';
 import { msgBlock, INVITE, type MsgBlock } from './_t14';
 import { shownLyric, sigOf } from './_t24';
@@ -59,6 +59,10 @@ const FLIP = 0.4, WAVE = 0.28;
 const FAM_MSG = F.hand(700), FAM_SIG = F.hand(400);
 const FAM_LYR = F.archivo(100, 800);
 const AD_LINE = '今晚，本看板只刊登祝福。';
+/** 廣告上名字下面那一行：英文名；沒有英文名時 COUPLE_EN 是中文、跟上一行重複，改印通用的「Just Married」。 */
+const AD_EN = HAS_LATIN_NAMES ? COUPLE_EN : 'Just Married';
+/** 廣告上名字最寬多少（看板座標）：從 x 120 到右邊那顆大愛心之前。 */
+const AD_W = 880;
 const FOOT = '＊本版面由親友熱情贊助刊登';
 const PRE = 'precision highp float;\nprecision highp int;\n';
 
@@ -289,7 +293,7 @@ export default class Trivision extends Scene {
     const { audio: au, lyrics, song } = this.ctx;
     const s = this.ctx.start, e = this.ctx.end, m = this.msg;
     const gr = grid(au, s, e);
-    await loadText(`${m?.text ?? ''}${m ? sigOf(m) : ''}${COUPLE_ZH}${COUPLE_EN}${DATE_DOTS}${AD_LINE}${FOOT}${INVITE}${song.title}${song.artist}FROM THE COUPLE · 新人♪`);
+    await loadText(`${m?.text ?? ''}${m ? sigOf(m) : ''}${COUPLE_ZH}${AD_EN}${DATE_DOTS}${AD_LINE}${FOOT}${INVITE}${song.title}${song.artist}FROM THE COUPLE · 新人♪`);
     const c = this.faces[1]!.ctx;
     // 翻牌：中間那根落定的時間 = 目標時間（整波由左到右）
     const flipAt = (land: number) => land - WAVE / 2 - FLIP;
@@ -477,20 +481,26 @@ export default class Trivision extends Scene {
 
   /** 看板本來的廣告：新人的名字、日期、一句冷面的話、一顆愛心（螢幕上名字約 50 px，只停一小節）。 */
   private drawAd(c: CanvasRenderingContext2D) {
+    // 名字可能很長：字的右邊是那顆大愛心（x ≈ 1040 起），放不下就縮字。
+    // 還沒定日期就少一行：整塊往下挪半行，在看板上還是置中，不留一個空的日期位置。
+    const dy = DATE_DOTS ? 0 : 42;
     c.fillStyle = rgba('sepia');
-    c.font = font(F.ming(900), 100);
-    c.fillText(COUPLE_ZH, 120, 270);
-    c.font = font(F.serif(400, true), 48);
+    c.font = font(F.ming(900), fitPx(COUPLE_ZH, F.ming(900), 100, AD_W));
+    c.fillText(COUPLE_ZH, 120, 270 + dy);
+    c.font = font(F.serif(400, true), fitPx(AD_EN, F.serif(400, true), 48, AD_W));
     c.fillStyle = rgba('sepia', 0.75);
-    c.fillText(COUPLE_EN, 126, 346);
-    c.font = font(F.mono(500), 34); c.letterSpacing = '10px';
-    c.fillStyle = rgba('blood');
-    c.fillText(DATE_DOTS, 128, 430);
-    c.letterSpacing = '0px';
+    c.fillText(AD_EN, 126, 346 + dy);
+    if (DATE_DOTS) {
+      c.font = font(F.mono(500), 34); c.letterSpacing = '10px';
+      c.fillStyle = rgba('blood');
+      c.fillText(DATE_DOTS, 128, 430);
+      c.letterSpacing = '0px';
+    }
+    const ry = DATE_DOTS ? 470 : 428; // 紅線接在最後一行字下面 40 px
     c.fillStyle = rgba('blood', 0.85);
-    c.fillRect(128, 470, 110, 7);
+    c.fillRect(128, ry, 110, 7);
     c.font = font(F.hei(500), 40); c.fillStyle = rgba('sepia', 0.7);
-    c.fillText(AD_LINE, 128, 548);
+    c.fillText(AD_LINE, 128, ry + 78);
     drawHeart(c, 1170, 318, 250, rgba('rose'));
   }
 

@@ -4,7 +4,7 @@
 // 之後每個小節線再來一陣風：蒲公英再掉幾顆空的種子飄走、字跟著風輕輕起伏（一道波從左傳到右）。
 // 沒有留言：每一句歌詞由種子送來（句子要開始前飛到），唱到的字亮起；下一句來的時候上一句被吹走。
 // 有留言時歌詞是畫面下緣、草地上的一行字幕。
-// 2026-09-29 照「留言尺寸與版面比例標準 v2」：天上的字縮到 40～60 px、排在右上方 ≤ 840×420 的範圍，
+// 照「留言尺寸與版面比例標準 v2」：天上的字縮到 40～60 px、排在右上方 ≤ 840×420 的範圍，
 // 草地遠處多了幾朵小蒲公英，每個小節線輪到一朵被風吹散一小撮種子（空出來的天空有東西在飄）。
 // 手法：天空與月暈是 shader；蒲公英、飛行的冠毛、草是 LineBatch（冠毛用加亮，逆光的絨毛會發一點光）；字是每格重畫的 Canvas。
 import * as THREE from 'three';
@@ -16,7 +16,7 @@ import { LIN, rgba } from '../engine/palette';
 import { clamp, ease, prog, hash, lerp, TAU } from '../engine/util';
 import { Lyrics, type Word } from '../engine/lyrics';
 import { fillWithHearts } from '../engine/motifs';
-import { lyricAt, beatAfter, COUPLE_ZH, lyricSubOf, subSizeFor, subGap } from './_motifs';
+import { lyricAt, beatAfter, fitPx, COUPLE_ZH, NAME_A, NAME_B, lyricSubOf, subSizeFor, subGap } from './_motifs';
 import { lyricV2, V2 } from './_v2';
 import { layoutRows, drawRows, darkInk } from './_t4';
 import { winBars } from './_t8';
@@ -89,7 +89,7 @@ export default class Dandelion extends Scene {
     const lines = lyrics.linesIn(s - 1.5, e);
     // 每一句的原文（韓文歌才有；有主打留言的窗格，引擎給的歌詞本來就沒有原文）
     const subs = lines.map((l) => lyricSubOf(l));
-    await loadAll(this.msg, lines.map((l) => l.text).join(''), COUPLE_ZH);
+    await loadAll(this.msg, lines.map((l) => l.text).join(''), `${COUPLE_ZH}${NAME_A}${NAME_B}`);
     this.beat = au.beatPeriod(s);
     this.tG = beatAfter(au, s + 0.1);
     this.bars = winBars(au, s, e).filter((b) => b > this.tG + 0.3);
@@ -140,7 +140,9 @@ export default class Dandelion extends Scene {
         }
       });
     } else {
-      this.placeRow(c, COUPLE_ZH.replace(/\s*&\s*/, ' ♥ '), 64, F.ming(900), MSG.x + 160, 400, [], 'left');
+      // 純音樂又沒有留言：種子送來新人的名字。名字長短每一場不一樣，放不進天上那一塊就縮字
+      const names = `${NAME_A} ♥ ${NAME_B}`;
+      this.placeRow(c, names, fitPx(names, F.ming(900), 64, MSG.w - 160), F.ming(900), MSG.x + 160, 400, [], 'left');
       this.schedule(0, this.tG, 1.8);
     }
     // 小節線：每陣風吹走幾顆空的種子

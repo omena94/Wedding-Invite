@@ -1,5 +1,5 @@
-// 文氏圖（亮）：一張一本正經的集合論插圖。左圓 A = 宣文、右圓 B = 孟庭。
-//  - 開場兩個圓像用圓規畫出來（筆尖繞一圈，一拍畫完），隔得遠遠的；兩個圓只標名字（宣文、孟庭）。
+// 文氏圖（亮）：一張一本正經的集合論插圖。左圓 A、右圓 B 是兩位新人。
+//  - 開場兩個圓像用圓規畫出來（筆尖繞一圈，一拍畫完），隔得遠遠的；兩個圓只標新人的名字（NAME_A、NAME_B）。
 //  - 兩個集合裡各有十幾個「元素」（小點）在自己的地盤裡輕輕晃；交集出現之後，每個小節線兩邊各有一個元素
 //    跳進交集（拋物線、落在小節線後半拍）——冷面註腳「交集會隨時間變大」就是字面上的意思。
 //  - 接著在拍點上兩個圓「喀、喀」兩下靠過去重疊（outExpo），交集 A ∩ B 用訊號色的螢光筆塗滿——主打留言就寫在交集裡，
@@ -15,7 +15,7 @@ import { F, font, loadText } from '../engine/type';
 import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, lerp, hash, noise1, TAU } from '../engine/util';
 import type { FitResult } from '../engine/text';
-import { lyricAt, beatAfter, signature, fillWithHearts } from './_motifs';
+import { lyricAt, beatAfter, signature, fillWithHearts, NAME_A, NAME_B, fitPx } from './_motifs';
 import { Paper, stagger, pad3, mono, tag, type Rect } from './_t11';
 import { paperLyric, lyricLine, lyricRows, subLift } from './_t12';
 import { V2, msgMaxFor, lyricV2, sigV2 } from './_v2';
@@ -31,6 +31,8 @@ const LYR = { x: 124, base: 212, w: 1200, size: 64 };
 const FAM_MSG = F.hand(700);
 const INVITE = '掃描右下角 QR code，把你的祝福放進交集裡。';
 const FOOT = '＊交集會隨時間變大。';
+/** 圓上標的名字最寬多少。 */
+const NAME_W = 260;
 
 const VENN = () => {
   const p = new FSPass(/* glsl */ `
@@ -104,9 +106,9 @@ export default class Venn extends Scene {
   override async init() {
     const { audio: au, lyrics, song } = this.ctx;
     const s = this.ctx.start, e = this.ctx.end, m = this.msg;
-    this.sig = m ? (m.couple ? '—— 新郎新娘' : signature(m.name)) : '';
+    this.sig = m ? (m.couple ? '—— 新人' : signature(m.name)) : '';
     const text = m ? m.text : '我們';
-    await loadText(`${text}${this.sig}${INVITE}${FOOT}${song.title}${song.artist}宣文孟庭本圖配樂文氏圖集合A ∩ B`);
+    await loadText(`${text}${this.sig}${INVITE}${FOOT}${song.title}${song.artist}本圖配樂文氏圖集合A ∩ B`);
     const beat = au.beatPeriod(s);
     this.tFirst = beatAfter(au, s + Math.min(0.2, beat * 0.4));
     // 窗格短（不到三小節）就用半拍當單位，一樣的事情擠在前面做完，留時間讀
@@ -226,8 +228,13 @@ export default class Venn extends Scene {
     // 配角的字都小、淡（MV 融合原則：焦點只有交集裡的留言）
     c.font = font(F.serif(600, true), 34); c.fillStyle = rgba('sepia', 0.8); c.textAlign = 'center';
     c.fillText('A', ax - R * 0.72, CY - R * 0.72); c.fillText('B', bx + R * 0.72, CY - R * 0.72);
-    c.font = font(F.hei(500), 22); c.fillStyle = rgba('sepia', 0.7); c.letterSpacing = '3px';
-    c.fillText('宣文', ax - R * 0.72, CY - R * 0.72 + 34); c.fillText('孟庭', bx + R * 0.72, CY - R * 0.72 + 34);
+    // 名字是執行時的值：長的名字縮到 NAME_W 寬（置中在 A、B 底下，不跑出紙的版心）
+    c.fillStyle = rgba('sepia', 0.7);
+    ([[NAME_A, ax - R * 0.72], [NAME_B, bx + R * 0.72]] as const).forEach(([name, x]) => {
+      const z = fitPx(name, F.hei(500), 22, NAME_W, 3);
+      c.font = font(F.hei(500), z); c.letterSpacing = `${(3 * z) / 22}px`;
+      c.fillText(name, x, CY - R * 0.72 + 34);
+    });
     c.letterSpacing = '0px';
     c.restore();
     this.drawElements(c, t, ax, bx);

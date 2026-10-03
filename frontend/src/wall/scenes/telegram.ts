@@ -6,9 +6,9 @@
 //  - 最後一個小節線：訊號色的圓形收件戳「收」砸在電報紙右上角（畫面震一下）。
 // 歌詞是電報紙表頭的「附言」欄（逐字跟唱）。
 // 沒有留言：紙帶打邀請；新人的留言：發報人是新人、收報人是全體賓客（反過來）。純音樂：附言寫「本曲為純音樂」。
-// MV 化（2026-09-28）：焦點是貼在電報紙上的一條條紙帶（留言，整張最大的字）；附言（歌詞）小一級；表頭、欄位砍到只剩收報人、發報人。
+// MV 化：焦點是貼在電報紙上的一條條紙帶（留言，整張最大的字）；附言（歌詞）小一級；表頭、欄位砍到只剩收報人、發報人。
 // 鏡頭從斜上方看著桌上的電報紙與收報機（透視、景深、一盞燈），整個窗格慢慢推近。
-// v2（2026-09-29 留言尺寸與版面比例標準 v2＋場景多元化）：夜裡的電報局，綠色毛氈的桌面、一盞暖燈；
+// v2（留言尺寸與版面比例標準 v2＋場景多元化）：夜裡的電報局，綠色毛氈的桌面、一盞暖燈；
 // 主角是一台大大的黃銅收報機（玻璃罩裡的字輪每打一個字轉一格、按鍵跟著拍子起落、頂上的紙帶捲筒跟著轉、小鈴每個小節線敲一下），
 // 紙帶從機器側面吐出來、剪下、貼到電報紙上。紙帶的字 40～60 px、發報人署名（手寫 26～32 px）在最後一條紙帶下面；
 // 一支鋼筆在紙旁邊：簽名的時候拿起來寫、寫完放回去。
@@ -20,7 +20,7 @@ import { F, font, layout, loadText, measure } from '../engine/type';
 import { mixRgba, rgba } from '../engine/palette';
 import { clamp, ease, hash, lerp, prog, pulse, frameIdx, TAU } from '../engine/util';
 import { wrap } from '../engine/text';
-import { lyricAt, drawLyric, layoutLyric, beatAfter, signature, COUPLE_ZH, DATE_DOTS, lyricSubOf, subSizeFor, subStyleFor, subGap, type LyricLayout, type LyricStyle } from './_motifs';
+import { lyricAt, drawLyric, layoutLyric, beatAfter, signature, COUPLE_ZH, DATE_DOT, fitPx, lyricSubOf, subSizeFor, subStyleFor, subGap, type LyricLayout, type LyricStyle } from './_motifs';
 import type { Line } from '../engine/lyrics';
 import { msgMaxFor, lyricV2, sigV2, V2 } from './_v2';
 import { drawPen, PEN_WRITE_A } from './certificate-props';
@@ -53,7 +53,7 @@ const NOTE = { x: 40, label: 120, base: 178, maxW: 900 };
 /** 附言欄最低的基線（原文副行的最後一排）：再下面是「收報人」欄。 */
 const NOTE_SUB_MAX = 274;
 
-const TEXT = '電報愛情電報局收報人發報人字數等級急電附言發報時播放之歌曲本曲為純音樂請自行哼唱間奏中收報時間全體賓客一位賓客大螢幕新郎新娘掃描右下角把祝福寫上大螢幕收已收到本電報以愛心計費每字零元字';
+const TEXT = '電報愛情電報局收報人發報人字數等級急電附言發報時播放之歌曲本曲為純音樂請自行哼唱間奏中收報時間全體賓客一位賓客大螢幕新人掃描右下角把祝福寫上大螢幕收已收到本電報以愛心計費每字零元字';
 
 interface Strip { text: string; cv: ReturnType<typeof makeCanvas>; w: number; t0: number; t1: number; cut: number; row: number; rot: number; dx: number; chars: { at: number; x: number }[] }
 
@@ -290,9 +290,11 @@ export default class Telegram extends Scene {
       c.fillStyle = ink(0.5);
       c.font = font(F.hei(500), 16); c.letterSpacing = '4px'; c.fillText(zh, x, fy + 2); c.letterSpacing = '0px';
       c.fillStyle = ink(0.8);
-      c.font = font(F.hei(700), 22);
+      // 收報人是新人的名字（長短每一場不一樣）：先縮字（到 16 px），還放不下才截短加「…」
+      const fs = Math.max(16, fitPx(v, F.hei(700), 22, 260));
+      c.font = font(F.hei(700), fs);
       let vv = v;
-      while (Array.from(vv).length > 3 && measure(vv, F.hei(700), 22) > 260) vv = Array.from(vv).slice(0, -2).join('') + '…';
+      while (Array.from(vv).length > 3 && measure(vv, F.hei(700), fs) > 260) vv = Array.from(vv).slice(0, -2).join('') + '…';
       c.fillText(vv, x + 84, fy + 3);
     }
     c.fillStyle = ink(0.6); c.fillRect(40, 338, FORM.w - 80, 1.4);
@@ -311,7 +313,8 @@ export default class Telegram extends Scene {
       arcText(sc, 'TELEGRAPH · 收', 82, Math.PI / 2, F.mono(600), 17, 4, false);
       sc.fillRect(-78, -24, 156, 2); sc.fillRect(-78, 24, 156, 2);
       sc.textAlign = 'center';
-      sc.font = font(F.mono(600), 24); sc.fillText(DATE_DOTS.split(' · ').join('.'), 0, 10);
+      // 日戳中間的日期是婚禮那天；還沒定日期就蓋「FOREVER」（日戳不留空白的一格）
+      sc.font = font(F.mono(600), 24); sc.fillText(DATE_DOT || 'FOREVER', 0, 10);
       sc.font = font(F.hei(900), 22); sc.fillText('已收到', 0, 56);
       sc.font = font(F.hei(900), 22); sc.fillText('收', 0, -38);
     }, 1.25, 0.5);
@@ -600,7 +603,7 @@ export default class Telegram extends Scene {
     if (ly) {
       // 有原文的句子用到跟下面紙帶一樣寬（BODY.maxW）：兩段都少折一行，才放得進「收報人」上面那一條
       let st = paperLyric(F.archivo(100, 800), this.lyrPx, lyricSubOf(ly.line) ? BODY.maxW : NOTE.maxW, { lineHeight: 1.16, minSize: V2.lyrMin / this.S });
-      // 雙語（2026-09-30）：原文的字級照一開始的中文字級換成螢幕 px 算好就固定（≥ 36 螢幕 px），中文縮的時候原文不跟著縮
+      // 雙語：原文的字級照一開始的中文字級換成螢幕 px 算好就固定（≥ 36 螢幕 px），中文縮的時候原文不跟著縮
       const subPx = Math.max(36, subSizeFor(st.size * this.S)) / this.S;
       let lay = paperSub(c, ly.line, st, layoutLyric(c, ly.line, st), subPx);
       // 韓文歌：原文副行接在中文下面，最後一排要跟下面的「收報人」欄（字頂約在 y 300）隔開一點：放不下就把中文縮一點

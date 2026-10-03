@@ -15,7 +15,7 @@ import { F, font } from '../engine/type';
 import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, hash, mulberry32, lerp, pulse } from '../engine/util';
 import { Lyrics, type Line, type Word } from '../engine/lyrics';
-import { lyricAt, COUPLE_ZH, lyricSubOf, layoutLyric, subStyleFor, subGap, drawLyricSub } from './_motifs';
+import { lyricAt, NAME_A, NAME_B, fitPx, lyricSubOf, layoutLyric, subStyleFor, subGap, drawLyricSub } from './_motifs';
 import { grid, stagger, layoutRows, drawRows, type Grid, type KaraokeInk } from './_t4';
 import { PlaneCam, camUniforms, CAM_GLSL } from './_t14';
 import { loadAll, sigOf, t21Grain, GRAIN_GLSL, glyphMask, groupLine, block, T21_INVITE, type Block, type TGlyph, type TGroup, type GlyphMask, type Rect } from './_t21';
@@ -225,7 +225,7 @@ export default class Watercolor extends Scene {
   lyrSize = 44;
   lyrY = 860;
   hasLyrics = false;
-  names = COUPLE_ZH.replace(/\s*&\s*/, ' ♥ ');
+  names = `${NAME_A} ♥ ${NAME_B}`;
   avoid: Rect[] = [];
 
   override async init() {
@@ -291,8 +291,8 @@ export default class Watercolor extends Scene {
       this.lyrY = 800;
       this.avoid = [hasSub ? [MSG_BOX.x - 20, 340, MSG_BOX.w + 40, 410] : [MSG_BOX.x - 20, 380, MSG_BOX.w + 40, 360]];
     } else {
-      // 純音樂又沒有留言：一筆刷出新人的名字（60 px）
-      const size = V2.msgMax / K;
+      // 純音樂又沒有留言：一筆刷出新人的名字（60 px）；名字是執行時才知道的，太長就縮到留言區的寬，不會刷進右邊的花束
+      const size = fitPx(this.names, FAM, V2.msgMax / K, MSG_BOX.w);
       c.font = font(FAM, size);
       const w = c.measureText(this.names).width, x = MSG_BOX.x, y = 540;
       const glyphs: TGlyph[] = [], groups: TGroup[] = [];

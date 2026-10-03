@@ -18,7 +18,7 @@ import { F, font, layout } from '../engine/type';
 import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, hash, mulberry32, pulse, lerp } from '../engine/util';
 import { Lyrics, type Line } from '../engine/lyrics';
-import { lyricAt, drawHeart, COUPLE_ZH, DATE_DOTS, lyricSubOf, subSizeFor } from './_motifs';
+import { lyricAt, drawHeart, NAME_A, NAME_B, fitPx, lyricSubOf, subSizeFor } from './_motifs';
 import { grid, layoutRows, Stage, camDist, type Grid, type V3 } from './_t4';
 import { loadAll, t21Grain, GRAIN_GLSL, block, glyphPath, type Block, type Rect } from './_t21';
 import { V2, lyricV2 } from './_v2';
@@ -265,7 +265,7 @@ export default class Polaroid extends Scene {
   override async init() {
     const { audio: au, lyrics } = this.ctx;
     const s = this.ctx.start, e = this.ctx.end, m = this.msg;
-    await loadAll(this.ctx, `${INVITE_BORDER}${INVITE_SIG}${COUPLE_ZH}${DATE_DOTS}`);
+    await loadAll(this.ctx, `${INVITE_BORDER}${INVITE_SIG}`);
     const g = (this.g = grid(au, s, e));
     this.hasLyrics = lyrics.linesIn(s, e).length > 0;
     this.fall = clamp(g.beat * 0.8, 0.3, 0.42);
@@ -511,8 +511,9 @@ export default class Polaroid extends Scene {
     if (!ly) {
       if (this.hasLyrics) return 0;
       const L = this.tapeL[0]!; L.clear(); const c = L.ctx; paint(c);
-      const text = this.msg ? `♪ ${song.title}` : COUPLE_ZH.replace(/\s*&\s*/, ' ♥ ');
-      const size = this.msg ? 30 / this.K : V2.lyrMax / this.K;
+      const text = this.msg ? `♪ ${song.title}` : `${NAME_A} ♥ ${NAME_B}`;
+      // 名字（或歌名）長短不一：照標籤帶的寬度縮字，凸字不會壓出帶子
+      const size = fitPx(text, FAM_TAPE, this.msg ? 30 / this.K : V2.lyrMax / this.K, TW - 44);
       c.font = font(FAM_TAPE, size); c.textBaseline = 'alphabetic';
       // 字裡的 ♥ 用我們自己的愛心（玫瑰），其他照樣凸字
       let x = 22;

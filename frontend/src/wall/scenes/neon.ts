@@ -6,11 +6,11 @@
 //    （「啪、啪」閃兩下，剛亮是訊號色、半秒後變白色燈管），留言裡的愛心是一圈玫瑰色的愛心燈管；署名是下面小一號的一排。
 //  - 歌詞＝左上一排細細的黑體燈管（比留言小）：還沒唱的是沒通電的玻璃管，唱到的那一刻通電點亮成訊號色，唱完轉成白色燈管；
 //    偶爾有一個字「滋」地暗一下（每小節最多一次，確定性）。沒有留言：歌詞改掛在箭頭指的地方，下面一行漆在牆上的小字邀請。
-//    韓文歌有中文翻譯時（2026-09-30）：中文燈管下面再掛一排細一號的原文燈管（原文自己的逐字時間通電，只亮白色、暗兩成，不用訊號色）。
+//    韓文歌有中文翻譯時：中文燈管下面再掛一排細一號的原文燈管（原文自己的逐字時間通電，只亮白色、暗兩成，不用訊號色）。
 //    純音樂：左上是歌名。
 // 手法：燈管用 Canvas2D 畫（玻璃管一層、通電發光的一層加亮疊上去才會發光）；另外把「亮著的燈管」畫在一張 1/4 大小的光圖上，
 // 磚牆的 shader 用不同的 mip 層取樣這張光圖，算出燈管旁邊的光暈、打在磚牆上的大片色光與被照亮的煙。鏡頭慢慢推近。
-// 2026-09-29「留言尺寸與版面比例標準 v2」：留言縮到 40～60 px、放在左下；空出來的牆補上會動的箭頭招牌與煙。
+// 「留言尺寸與版面比例標準 v2」：留言縮到 40～60 px、放在左下；空出來的牆補上會動的箭頭招牌與煙。
 import * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
 import { FSPass, Layer2D, W, H } from '../engine/gl';
@@ -121,7 +121,7 @@ export default class Neon extends Scene {
   override async init() {
     const { audio: au, song, lyrics } = this.ctx;
     const s = this.ctx.start, e = this.ctx.end, m = this.msg;
-    this.sig = m ? (m.couple ? '—— 新郎新娘' : signature(m.name)) : '';
+    this.sig = m ? (m.couple ? '—— 新人' : signature(m.name)) : '';
     await loadText(`${m?.text ?? ''}${this.sig}${INVITE}${song.title}${song.artist}營業時間永遠新人的話`);
     const c = this.glass.ctx;
     const beat = au.beatPeriod(s);

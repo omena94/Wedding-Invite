@@ -20,7 +20,7 @@ export type P2 = { x: number; y: number };
 /** 右下角 HUD（QR）：字不要進到 x ≥ 1360 且 y ≥ 830。 */
 export const HUD = { x: 1360, y: 830 };
 
-/** 署名：新人的留言署「宣文 & 孟庭」，其他照 signature()（沒填名字是「一位賓客」）。 */
+/** 署名：新人的留言署新人的名字（COUPLE_ZH），其他照 signature()（沒填名字是「一位賓客」）。 */
 export const sigOf = (m: Msg) => (m.couple ? `—— ${COUPLE_ZH}` : signature(m.name));
 
 export interface DrawnBlock {

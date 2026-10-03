@@ -9,6 +9,7 @@
   wall_moderation  現場留言先審核：開著時新留言是 pending，新人按「通過」才會上大螢幕
   info_*         婚禮資訊頁的文案（見 INFO_KEYS）
 """
+import json
 import re
 from datetime import datetime, timedelta, timezone
 
@@ -71,6 +72,19 @@ WALL_DUCK_KEY = "wall_duck"
 # 2026-10-01 手機遙控鎖定在哪一台大螢幕（那個分頁的代號；空字串 = 沒鎖）。新人怕婚禮當天遙控被別台搶走：
 # 鎖了之後別台按「開始播放」或「改由這台接收遙控」都沒用，只有鎖定的那台自己解除、或後台「強制解除鎖定」
 WALL_REMOTE_LOCK_KEY = "wall_remote_lock"
+# 2026-10-03 大螢幕要放哪些內容（JSON，見 wall_content()）：逐字歌詞的 MV、只要音樂和祝福、不要賓客留言、放照片和註解，
+# 幾樣可以各自開關。不放進 ALL_KEYS：走 wall 自己的 API，幫手有「大螢幕」鑰匙就能在手機遙控切（例如進場時只放照片、用餐時打開留言）
+WALL_CONTENT_KEY = "wall_content"
+# 全放照片（每一格都是照片，歌詞與祝福放在照片上）／照片多／一樣多／留言多
+WALL_MIXES = ("all", "photos", "even", "messages")
+WALL_CONTENT_DEFAULT = {"lyrics": True, "messages": True, "photos": False, "captions": True, "albums": [], "mix": "even"}
+# 大螢幕現在是哪個場合（JSON，見 wall_scenes.state()）：{"id": 場合或 null, "seq": 切換編號, "next": 這首播完要換的 {"id": …} 或 null}。
+# 不放進 ALL_KEYS：當天幫手用手機遙控切，走 wall 自己的 API
+WALL_SCENE_KEY = "wall_scene"
+# 每本相簿給誰看（JSON {相簿名: {"guests": bool, "wall": bool}}）：婚紗照給賓客看、生活照可以只放大螢幕。
+# 沒設定過的相簿兩個都是 true（原本的行為：賓客看單張的「公開」、大螢幕全部都放）。
+# 大螢幕原本把要放的相簿記在 wall_content.albums（空的 = 全部）；改用這裡之後，第一次寫入時把舊清單轉成每本的 wall
+PHOTO_ALBUMS_KEY = "photo_albums"
 MENU_KEYS = ("menu_version", "menu_note")  # 2026-09-29 婚宴菜單：目前版本、討論備忘
 PERMISSION_KEY = "role_permissions"  # 2026-09-27 各角色能用的功能（JSON），見 permissions.py
 ALL_KEYS = (PHASE2_KEY, SEAT_KEY, PHOTOS_KEY, GUEST_UPLOAD_KEY, WALL_OPEN_KEY, WALL_MODERATION_KEY, WALL_PLATES_OFF_KEY, WALL_PACE_KEY, *INFO_KEYS, *BANQUET_KEYS, *SEATING_KEYS, *BROADCAST_KEYS, *MENU_KEYS, PERMISSION_KEY)
@@ -240,6 +254,8 @@ def public_stage(db: Session, preview: bool = False) -> dict:
     """給賓客端首頁 / 各頁面判斷要顯示什麼。
     preview=True 表示這個請求帶著後台登入：頁面照樣拿到真實的開放狀態，
     但前端會讓登入者在未開放時也能進去看（畫面上標示預覽模式）。"""
+    from . import wall_scenes  # wall_scenes 要用這裡的設定函式，放在函式裡 import 免得循環
+
     dt = phase2_open_at(db)
     bp = banquet_params(db)
     return {
@@ -249,7 +265,8 @@ def public_stage(db: Session, preview: bool = False) -> dict:
         "seat_open": is_on(db, SEAT_KEY),
         "photos_open": is_on(db, PHOTOS_KEY),
         "guest_upload_open": is_on(db, GUEST_UPLOAD_KEY),
-        "wall_open": is_on(db, WALL_OPEN_KEY),
+        # 「內容」分頁或現在的場合有一邊放賓客留言，/wish 才收（見 wall_scenes.messages_on）
+        "wall_open": is_on(db, WALL_OPEN_KEY) and wall_scenes.messages_on(db),
         # 第二階段表單提示用：飯店依身高計費的門檻
         "child_free_below": bp["child_free_below"],
         "child_half_below": bp["child_half_below"],
@@ -262,3 +279,60 @@ def clean_plates_off(value: str) -> str:
     if len(names) > 300 or any(not re.fullmatch(r"[a-z0-9]{1,40}", n) for n in names):
         raise HTTPException(400, "版面名稱格式不正確")
     return ",".join(dict.fromkeys(names))
+
+
+def wall_content(db: Session) -> dict:
+    """大螢幕的內容設定：沒設定過就是原本的樣子（歌詞＋留言，不放照片）；壞掉或缺的欄位用預設值補。
+
+    albums 是要上大螢幕的相簿名稱，空的表示全部（之後新增的相簿也會自動上）。
+    """
+    out = {**WALL_CONTENT_DEFAULT, "albums": []}
+    try:
+        data = json.loads(get_setting(db, WALL_CONTENT_KEY) or "{}")
+    except ValueError:
+        data = {}
+    if not isinstance(data, dict):
+        return out
+    for k in ("lyrics", "messages", "photos", "captions"):
+        if isinstance(data.get(k), bool):
+            out[k] = data[k]
+    if isinstance(data.get("albums"), list):
+        out["albums"] = [a[:50] for a in data["albums"] if isinstance(a, str)][:200]
+    if data.get("mix") in WALL_MIXES:
+        out["mix"] = data["mix"]
+    return out
+
+
+def album_flags(db: Session, names: list[str] | None = None) -> dict[str, dict]:
+    """每本相簿的 guests（賓客看得到）、wall（放大螢幕）。names 給了就保證每本都有（沒設定的用預設值）。"""
+    try:
+        data = json.loads(get_setting(db, PHOTO_ALBUMS_KEY) or "{}")
+    except ValueError:
+        data = {}
+    raw = {k[:50]: v for k, v in data.items() if isinstance(k, str) and isinstance(v, dict)} if isinstance(data, dict) else {}
+    legacy = wall_content(db)["albums"]  # 舊的「大螢幕只放這幾本」（空的 = 全部）
+    out: dict[str, dict] = {}
+    for name in set(raw) | set(names or []):
+        v = raw.get(name, {})
+        wall = v["wall"] if isinstance(v.get("wall"), bool) else (not legacy or name in legacy)
+        out[name] = {"guests": v["guests"] if isinstance(v.get("guests"), bool) else True, "wall": wall}
+    return out
+
+
+def set_album_flags(db: Session, album: str, all_names: list[str], guests: bool | None = None, wall: bool | None = None) -> None:
+    """改一本相簿給誰看。第一次寫入時把舊的 wall_content.albums 轉成每本的 wall，之後只看這裡。"""
+    album = album[:50]
+    flags = album_flags(db, all_names + [album])
+    if guests is not None:
+        flags[album]["guests"] = guests
+    if wall is not None:
+        flags[album]["wall"] = wall
+    set_setting(db, PHOTO_ALBUMS_KEY, json.dumps(flags, ensure_ascii=False))
+    content = wall_content(db)
+    if content["albums"]:
+        set_setting(db, WALL_CONTENT_KEY, json.dumps({**content, "albums": []}, ensure_ascii=False))
+
+
+def guest_hidden_albums(db: Session) -> set[str]:
+    """賓客看不到的相簿（婚禮網站的照片頁不列、照片網址也打不開）。"""
+    return {a for a, v in album_flags(db).items() if not v["guests"]}

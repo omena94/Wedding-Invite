@@ -18,7 +18,7 @@ import { LIN, rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, hash } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
 import type { Line } from '../engine/lyrics';
-import { layoutLyric, drawLyric, fillWithHearts, signature, WEDDING_DATE, lyricAt, lyricSubOf, subSizeFor, subGap, type LyricStyle, type LyricLayout } from './_motifs';
+import { layoutLyric, drawLyric, fillWithHearts, signature, fitPx, DATE, lyricAt, lyricSubOf, subSizeFor, subGap, type LyricStyle, type LyricLayout } from './_motifs';
 import { grid, windowLines, rrect, pad, settle, renderStage, bodyMaterial, screenMaterial, tableMaterial, slab, setV3, mixV, projScale, fitMsgV2, type Grid } from './_t5';
 import { V2, lyricV2, sigV2 } from './_v2';
 
@@ -78,9 +78,8 @@ export default class Phone extends Scene {
     const s = this.ctx.start, e = this.ctx.end;
     const g = this.g = grid(au, s, e);
     const c = this.ui.ctx;
-    const [yy, mm, dd] = String(WEDDING_DATE).split('-').map(Number) as [number, number, number];
-    const dow = new Date(Date.UTC(yy, mm - 1, dd)).getUTCDay();
-    this.date = `${mm}月${dd}日 星期${'日一二三四五六'[dow]}`;
+    // 鎖定畫面的日期就是婚禮那天；還沒定日期就不印（時鐘上面空著，不會出現 NaN）
+    this.date = DATE ? `${DATE.m}月${DATE.d}日 星期${'日一二三四五六'[new Date(Date.UTC(DATE.y, DATE.m - 1, DATE.d)).getUTCDay()]}` : '';
     const lines = windowLines(lyrics, s, e);
     this.instr = lines.length === 0;
     const m = this.msg;
@@ -107,7 +106,7 @@ export default class Phone extends Scene {
     let need = 0;
     for (const l of lines) { const d = this.subLay(c, l); if (d) need = Math.max(need, 110 + d.blockH + 90); }
     if (need > WID_H && m) {
-      // 雙語（2026-09-30）：有留言時音樂小卡在時鐘下面，往上長會蓋到時鐘；改成往下長，通知卡整張往下讓（螢幕下半本來就有空）。
+      // 雙語：有留言時音樂小卡在時鐘下面，往上長會蓋到時鐘；改成往下長，通知卡整張往下讓（螢幕下半本來就有空）。
       // 通知卡放不下就用少掉的高度重排留言（字級還是照 v2），歌詞字級跟著留言變，所以再量一次小卡要多高
       this.widH = Math.ceil(need);
       this.cardY += this.widH - WID_H;
@@ -266,8 +265,10 @@ export default class Phone extends Scene {
       fit.lines.forEach((ln, i) => fillWithHearts(c, ln, MX + 40, y + HEAD_H + fit.size * 0.95 + i * fit.lineHeight));
       if (m) {
         // 署名：緊接在最後一行下面（v2 的署名字級）
-        c.font = font(F.hand(400), this.sigSize); c.fillStyle = rgba('bone', 0.62); c.textAlign = 'right';
-        c.fillText(signature(m.name), MX + MW - 50, y + HEAD_H + fit.height + fit.size * 0.3 + this.sigSize * 1.2);
+        // 新人的留言署名是兩個人的名字，可能很長：比通知卡寬就縮字
+        const sig = signature(m.name);
+        c.font = font(F.hand(400), fitPx(sig, F.hand(400), this.sigSize, MW - 90)); c.fillStyle = rgba('bone', 0.62); c.textAlign = 'right';
+        c.fillText(sig, MX + MW - 50, y + HEAD_H + fit.height + fit.size * 0.3 + this.sigSize * 1.2);
         c.textAlign = 'left';
       }
       c.restore();

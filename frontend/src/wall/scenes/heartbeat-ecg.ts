@@ -55,12 +55,12 @@ const G = (x: number, s: number) => Math.exp(-0.5 * (x / s) * (x / s));
 export function complexAt(dt: number, q: number, ch: number): number {
   if (dt < -0.3 || dt > 0.48) return 0;
   const p = (0.11 + 0.02 * ch) * G(dt + 0.165 * q, 0.026 * q);
-  const qq = -0.12 * G(dt + 0.03, 0.0085);
+  const qw = -0.12 * G(dt + 0.03, 0.0085); // Q 波
   const r = G(dt, 0.0105);
   const s = -(0.24 - 0.05 * ch) * G(dt - 0.026, 0.0095);
   const tc = 0.235 * q;
   const tw = (0.26 + 0.05 * ch) * G(dt - tc, (dt < tc ? 0.06 : 0.042) * q);
-  return p + qq + r + s + tw;
+  return p + qw + r + s + tw;
 }
 
 /** 心電圖的電壓（R 波 = 1 的單位）：附近的心跳加總，再加一點基線飄移與肌電雜訊（跟著歌的高頻走）。 */

@@ -2,7 +2,7 @@
 // 鏡頭微微俯視（上緣往後倒、遠處有一點景深）、一盞桌燈的光；左邊是請求項（主打留言），右邊是一張線稿圖（FIG. 1），
 // 由繪圖機的筆（仙女棒的火花當筆尖）在拍點上一部分一部分畫出來：
 //  - 切進來：鏡頭從稍遠、稍斜的地方落定在第一拍；中心線（一點鏈線）先淡淡畫出來。
-//  - 第一拍起，一拍畫一個零件（窗格短就半拍一個）：齒輪 10（宣文）、齒輪 12（孟庭，兩個輪轂都是心形的軸孔 14）、
+//  - 第一拍起，一拍畫一個零件（窗格短就半拍一個）：齒輪 10、12（引線標著兩位新人的名字，兩個輪轂都是心形的軸孔 14）、
 //    止回爪 18 與彈簧 20、連桿 22 與心形活塞 24、底座 26、最後是引線與符號。
 //  - 畫完以後，兩個齒輪每一拍咬合轉一齒（outBack，停住），止回爪被齒頂起來再「喀」地落下——這個裝置只能前進、不能倒退；
 //    齒輪帶著連桿，心形活塞在滑軌裡一拍一拍地上下（大鼓時再鼓一下）。
@@ -25,7 +25,7 @@ import { F, font, layout, loadText } from '../engine/type';
 import { LIN, rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, lerp, prog, pulse, TAU } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
-import { lyricAt, drawLyric, layoutLyric, sparkHead, sparkParticles, drawHeart, heartPoints, fillWithHearts, COUPLE_ZH, DATE_DOTS, type LyricStyle } from './_motifs';
+import { lyricAt, drawLyric, layoutLyric, sparkHead, sparkParticles, drawHeart, heartPoints, fillWithHearts, COUPLE_ZH, DATE_DOTS, DATE_MMDD, NAME_A, NAME_B, INITIAL_A, INITIAL_B, isLatin, joinBits, fitPx, type LyricStyle } from './_motifs';
 import { Paper, homography } from './_t11';
 import { paperLyric, stagger, pad3, grid, windowLines, type Grid, type Rect } from './_t2';
 import { V2, msgMaxFor, lyricV2, sigV2, fitClauses } from './_v2';
@@ -68,7 +68,7 @@ const BASE = { x0: GA.x - 187, x1: GB.x + 194, y0: GA.y + 361, y1: GA.y + 381 };
 const HEART_W = 77;
 
 const INVITE = '本項請求尚待補充：掃描右下角 QR code，寫下你的祝福，即可列為共同發明人。';
-const FIXED = '中心距剛剛好愛情專利局發明專利說明書發明名稱一種使兩人永遠在一起的裝置請求項其特徵在於本裝置之發明人謹此聲明的話提案人徵求中一位賓客圖純音樂照常運轉核准永久有效宣文孟庭止回爪只進不退';
+const FIXED = '中心距剛剛好愛情專利局發明專利說明書發明名稱一種使兩人永遠在一起的裝置請求項其特徵在於本裝置之發明人謹此聲明的話提案人徵求中一位賓客圖純音樂照常運轉核准永久有效止回爪只進不退';
 
 // ---------------------------------------------------------------- 幾何小工具
 const circle = (c: P, r: number, n = 40, a0 = 0): P[] => Array.from({ length: n + 1 }, (_, i) => ({ x: c.x + Math.cos(a0 + (i / n) * TAU) * r, y: c.y + Math.sin(a0 + (i / n) * TAU) * r }));
@@ -299,8 +299,13 @@ export default class Patent extends Scene {
     c.letterSpacing = '0px';
     c.font = font(F.ming(700), 22); c.fillStyle = ink(0.72);
     c.fillText('發明名稱　一種使兩人永遠在一起的裝置', 560, HEAD_Y + 1);
-    c.font = font(F.mono(500), 15); c.letterSpacing = '3px'; c.fillStyle = ink(0.48);
-    c.fillText(`AO-0313-${m ? pad3(m.n) : '000'}  ·  ${DATE_DOTS}`, 1102, HEAD_Y);
+    // 案號：新人的英文縮寫（中文名的縮寫用等寬字排起來很擠，就不放）－婚禮月日－留言編號；沒有日期的那段整段省掉。
+    // 右邊是封緘貼紙（SEAL），縮寫、日期每一場長短不同，放不下就縮字
+    const ini = isLatin(INITIAL_A + INITIAL_B) ? `${INITIAL_A}${INITIAL_B}`.toUpperCase() : '';
+    const caseNo = joinBits('  ·  ', joinBits('-', ini, DATE_MMDD, m ? pad3(m.n) : '000'), DATE_DOTS);
+    const cz = fitPx(caseNo, F.mono(500), 15, SEAL.x - SEAL.r - 24 - 1102, 3);
+    c.font = font(F.mono(500), cz); c.letterSpacing = `${(3 * cz) / 15}px`; c.fillStyle = ink(0.48);
+    c.fillText(caseNo, 1102, HEAD_Y);
     c.letterSpacing = '0px';
     c.fillStyle = ink(0.55); c.fillRect(X0, RULE_Y, X1 - X0, 1.5);
     c.fillStyle = ink(0.3); c.fillRect(X0, RULE_Y + 5, X1 - X0, 0.8);
@@ -365,7 +370,7 @@ export default class Patent extends Scene {
     const ink = (pts: P[], w = 2.4): Stroke => ({ pts, w, ink: 'ink' });
     const thin = (pts: P[], w = 1.1): Stroke => ({ pts, w, ink: 'thin' });
 
-    // 1、2. 齒輪（宣文、孟庭）：齒形、輪轂、心形軸孔、減重孔、齒根圓（細線）；孟庭那顆多一個曲柄銷
+    // 1、2. 齒輪（兩位新人）：齒形、輪轂、心形軸孔、減重孔、齒根圓（細線）；右邊那顆多一個曲柄銷
     const gearParts = (c: P, a: number, crank: boolean): Stroke[] => {
       const out: Stroke[] = [ink(gear(c, a)), ink(circle(c, 31, 36, a), 1.8), ink(heart({ x: c.x, y: c.y + 1 }, 30, a), 1.9)];
       for (let k = 0; k < 4; k++) {
@@ -432,8 +437,8 @@ export default class Patent extends Scene {
     // 6. 引線（連到會動的零件的，跟著零件走）。只有三個有名字：兩個齒輪是誰、止回爪（這個裝置的笑點）
     const mid = (a: P, b: P, k = 0.5) => ({ x: lerp(a.x, b.x, k), y: lerp(a.y, b.y, k) });
     const leads: Lead[] = [
-      { num: '10', s: polar(GA, -1.75, R - 8), e: { x: GA.x - 40, y: GA.y - 172 }, label: '宣文', left: true },
-      { num: '12', s: polar(GB, -1.4, R - 8), e: { x: GB.x + 96, y: GA.y - 172 }, label: '孟庭' },
+      { num: '10', s: polar(GA, -1.75, R - 8), e: { x: GA.x - 40, y: GA.y - 172 }, label: NAME_A, left: true },
+      { num: '12', s: polar(GB, -1.4, R - 8), e: { x: GB.x + 96, y: GA.y - 172 }, label: NAME_B },
       { num: '14', s: { x: GA.x + 9, y: GA.y + 12 }, e: { x: GA.x + 52, y: GA.y + 232 } },
       { num: '16', s: polar(GC, -0.9, RC - 6), e: { x: GC.x + 80, y: GC.y - 124 } },
       { num: '18', s: mid(PIVOT, tip, 0.35), e: { x: PIVOT.x - 57, y: PIVOT.y + 119 }, label: '止回爪（只進不退）', below: true },
@@ -575,7 +580,9 @@ export default class Patent extends Scene {
       const nw = c.measureText(l.num).width;
       c.fillText(l.num, l.e.x, l.e.y);
       if (!l.label) return;
-      c.font = font(F.hei(500), 17); c.letterSpacing = '2px';
+      // 兩個齒輪的引線標的是新人的名字（執行時的值）：再長也只佔 120 px，右邊那個才不會碰到右上角的封緘貼紙與緞帶
+      const lz = fitPx(l.label, F.hei(500), 17, l.below ? 220 : 120, 2);
+      c.font = font(F.hei(500), lz); c.letterSpacing = `${(2 * lz) / 17}px`;
       c.fillStyle = rgba('sepia', 0.55 * a);
       // 名字放在符號旁邊（left：左邊；below：底下靠右對齊，避開旁邊的線）
       if (l.below) { c.textAlign = 'right'; c.fillText(l.label, l.e.x + nw, l.e.y + 27); c.textAlign = 'left'; }

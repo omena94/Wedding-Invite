@@ -8,7 +8,7 @@
 //  - 一格只有一個焦點（MV 融合原則）：留言最大最亮、歌詞小一級、標籤與註腳只剩兩小行低對比的 mono；鏡頭整個窗格慢慢往火推近。
 //  - 冷面註記：「＊本營火為程式模擬，會場內請勿生火。」
 //  - 沒有主打留言：火星組成「今晚的營火，缺你一句祝福。」＋邀請；純音樂：圓木上刻歌名。
-// v2（2026-09-29「留言尺寸與版面比例標準 v2」）：火星組成的留言照 v2 字級（40～60 px，依字數）、左邊一塊 ≤ 820×430，
+// v2（「留言尺寸與版面比例標準 v2」）：火星組成的留言照 v2 字級（40～60 px，依字數）、左邊一塊 ≤ 820×430，
 // 署名 26～32；圓木上的歌詞 40～52（不比留言大）。營火才是畫面的主體，多補的動畫都是營火自己的：
 // 火上方的熱氣讓後面的樹影與星星扭動（熱浪）；每兩小節柴「啪」地爆一下，一把大火星往兩側拋出去、畫弧落下。
 import * as THREE from 'three';
@@ -85,7 +85,7 @@ export default class Campfire extends Scene {
     const text = m ? m.text : NO_MSG.join('');
     const sigText = m ? signature(m.name) : INVITE_SMALL;
     this.label = `營火 CAMPFIRE${m ? '  ·  ' + no3(m.n) : ''}${m?.couple ? '  ·  FROM THE COUPLE' : ''}`;
-    await preloadText(this.ctx, `${text}${sigText}${this.label}${NOTE}${song.title}${song.artist}♪—A+O${m?.couple ? 'FROM THE COUPLE' : ''}`);
+    await preloadText(this.ctx, `${text}${sigText}${this.label}${NOTE}${song.title}${song.artist}♪—${m?.couple ? 'FROM THE COUPLE' : ''}`);
 
     // ---- 留言排版：字級依「框高扣掉署名那一列」找，署名一定在最後一行下面（fitWithSig）
     const c = this.layer.ctx;

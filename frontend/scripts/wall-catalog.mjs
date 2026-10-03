@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// 產生大螢幕的版面清單（src/wall/plateCatalog.ts），給後台「大螢幕版面」頁用：中文名稱、系列、亮暗、有沒有人物、一句話點子。
+// 產生大螢幕的版面清單（src/wall/plateCatalog.ts），給後台「大螢幕版面」頁用：中文名稱、系列、亮暗、有沒有人物、是不是雙語版面、是不是照片版面、一句話點子。
 // 來源是 docs/wall/CATALOG.md 的表格＋最早的 11 個版面；只列 scenes/ 裡真的有的檔（沒做或被拿掉的不列）。
 // 新增或刪除版面後跑一次：node scripts/wall-catalog.mjs（主導者 commit 時加 --tracked，只列已經進 git 的版面）
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
@@ -52,8 +52,17 @@ const source = (name) => tracked
   ? execSync(`git show :./src/wall/scenes/${name}.ts`, { cwd: ROOT, encoding: 'utf8', maxBuffer: 1 << 26 })
   : readFileSync(path.join(scenes, `${name}.ts`), 'utf8');
 for (const r of built) r.bilingual = /\bbilingual\s*:\s*true\b/.test(source(r.name));
+// 照片版面（spec.photo）：只排在新人打開了照片的「照片窗格」，後台版面分頁有「照片」篩選
+for (const r of built) r.photo = /\bphoto\s*:\s*true\b/.test(source(r.name));
+// 照片版面一次放幾張（spec.photos）、最適合哪種照片（spec.prefers）：後台卡片上標「放 3 張照片」「適合直的」
+for (const r of built) {
+  if (!r.photo) { r.photos = 0; r.prefers = []; continue; }
+  const src = source(r.name);
+  r.photos = Number(/\bphotos\s*:\s*(\d+)/.exec(src)?.[1] ?? 1);
+  r.prefers = [...(/\bprefers\s*:\s*\[([^\]]*)\]/.exec(src)?.[1] ?? '').matchAll(/'(landscape|portrait|square|small)'/g)].map((m) => m[1]);
+}
 const out = `// 自動產生（node scripts/wall-catalog.mjs），不要手改：大螢幕版面清單，後台「大螢幕版面」頁用。
-export interface PlateInfo { name: string; title: string; family: string; light: boolean; couple: boolean; bilingual: boolean; idea: string }
+export interface PlateInfo { name: string; title: string; family: string; light: boolean; couple: boolean; bilingual: boolean; photo: boolean; photos: number; prefers: string[]; idea: string }
 export const PLATE_CATALOG: PlateInfo[] = ${JSON.stringify(built, null, 1)};
 `;
 writeFileSync(path.join(ROOT, 'src', 'wall', 'plateCatalog.ts'), out);

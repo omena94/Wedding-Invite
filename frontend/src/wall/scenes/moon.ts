@@ -7,7 +7,7 @@
 //  - 冷面註記：「觀測地點：婚宴會場 · 天氣：晴」「＊本月相僅供參考，今晚一律以滿月計。」
 //  - 沒有主打留言：滿月上寫「今晚月色真美。」（有名的告白梗）＋新人名字與日期、邀請掃 QR；長窗格時月相改成一小節前進一相。
 //  - 純音樂：軌道上寫歌名。
-// v2（2026-09-29「留言尺寸與版面比例標準 v2」）：月亮照樣是大大的場景（留言寫在月面上，是場景物件），
+// v2（「留言尺寸與版面比例標準 v2」）：月亮照樣是大大的場景（留言寫在月面上，是場景物件），
 // 只把月面上的留言縮到 v2 字級（40～60 px，依字數）、署名 26～32，軌道上的歌詞 40～52（不比留言大）。
 // 多補的動畫是夜空自己的：兩條薄雲帶慢慢往左飄過月亮（擋一點光、下緣鑲銀邊，留言那一塊雲是透明的）；
 // 每四小節一對喜鵲從月亮前面飛過去（鵲橋），翅膀一拍一拍。
@@ -20,7 +20,7 @@ import { HEX, LIN, rgba } from '../engine/palette';
 import { clamp, ease, prog, lerp, smoothstep, polylineLengths, pointAtLength, TAU, type V2 } from '../engine/util';
 import { fitText, charCount } from '../engine/text';
 import type { Line } from '../engine/lyrics';
-import { sparkHead, sparkParticles, lyricAt, beatAfter, signature, drawHeart, COUPLE_ZH, DATE_DOTS, lyricSubOf, subSizeFor, subGap } from './_motifs';
+import { sparkHead, sparkParticles, lyricAt, beatAfter, signature, drawHeart, COUPLE_ZH, DATE_DOTS, fitPx, lyricSubOf, subSizeFor, subGap } from './_motifs';
 import { glyphStates, glyphColor, alongPath, no3, INVITE_SMALL, preloadText, fitWithSig, type PathGlyph } from './_t19';
 import { V2 as STD, msgMaxFor, lyricV2, sigV2, fitClauses } from './_v2';
 import { FRAG_MOON } from './moon-glsl';
@@ -199,7 +199,8 @@ export default class Moon extends Scene {
       const R = this.R;
       // 沒有留言時焦點是軌道上的歌詞：月面上的字小一級
       const big = Math.min(STD.lyrMax, Math.floor((R * 1.42) / Array.from(EMPTY).length));
-      const nameSize = 40, dateSize = 20, invSize = 22;
+      // 名字是執行時的值：長的名字縮到跟「今晚月色真美。」同寬的範圍（月面中間那一段），不碰到月緣
+      const nameSize = fitPx(COUPLE_ZH, MSG_FAM, 40, R * 1.42), dateSize = 20, invSize = 22;
       const yBig = C.y - R * 0.12, yName = yBig + big * 1.05, yDate = yName + 46, yInv = C.y + R * 0.66;
       const put = (text: string, fam: string, size: number, y: number, a: number, order: number, spacing = 0) => {
         c.font = font(fam, size); c.letterSpacing = `${spacing}px`;
@@ -209,7 +210,7 @@ export default class Moon extends Scene {
       };
       const wBig = put(EMPTY, MSG_FAM, big, yBig, 0.94, 0);
       put(COUPLE_ZH, MSG_FAM, nameSize, yName, 0.9, 3);
-      put(DATE_DOTS, F.mono(500), dateSize, yDate, 0.7, 4, 3);
+      if (DATE_DOTS) put(DATE_DOTS, F.mono(500), dateSize, yDate, 0.7, 4, 3);
       put(INVITE_SMALL, F.hei(500), invSize, yInv, 0.78, 6, 1);
       c.font = font(F.hei(500), invSize); c.letterSpacing = '1px';
       const wInv = c.measureText(INVITE_SMALL).width; c.letterSpacing = '0px';

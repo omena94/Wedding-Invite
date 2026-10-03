@@ -1,7 +1,9 @@
 // 農民曆（亮）：牆上掛著一本撕頁日曆（three.js 3D），鏡頭斜斜地看著它。
-//  - 窗格開始時日曆還停在婚禮的前一兩天（3/11、3/12：宜試穿禮服、忌偷吃喜餅之類的冷面宜忌與運勢），
+//  - 窗格開始時日曆還停在婚禮的前一兩天（宜試穿禮服、忌偷吃喜餅之類的冷面宜忌與運勢），
 //    在小節線上一頁一頁被「撕」下來：紙從下緣掀起、繞著一條看不見的滾筒往上捲、翻過頂端的撕線、甩出畫面（真的 3D 彎曲的紙，有打光）。
-//  - 撕到 3/13（星期六、紅字、宜：嫁娶・祝福・乾杯）那一頁：「今日運勢」就是主打留言（手寫，這一張的焦點），鏡頭同時慢慢推近到運勢那一塊。
+//  - 撕到婚禮當天（紅字、宜：嫁娶・祝福・乾杯）那一頁：「今日運勢」就是主打留言（手寫，這一張的焦點），鏡頭同時慢慢推近到運勢那一塊。
+//  - 日期、星期、民國年、干支都從這一場的婚禮日期（DATE）算；新人還沒定日期時，日曆不印日期：
+//    大字改成倒數的天數（2、1），當天是一個「囍」，星期那一格寫「倒數兩天／良辰吉日」，抬頭寫「黃道吉日」，不會出現 NaN 或空格子。
 //    下一個小節線，紅色麥克筆在日期外面圈一圈；再下一個小節線，圈圈旁邊畫一顆愛心。
 //  - 歌詞是每一頁的「今日一句」，照跟唱規則逐字亮（撕掉的那一頁上的歌詞停在它被撕的那一刻）。
 //  - 大大的日期數字用細的字重、訊號色的淡墨，是圖形不是標題；推近之後它一半在畫面外。
@@ -17,7 +19,7 @@ import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, hash, lerp, prog, pulse } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
 import type { Line } from '../engine/lyrics';
-import { drawLyric, drawMessage, drawHeart, lyricAt, lyricSubOf, signature, WEDDING_DATE } from './_motifs';
+import { drawLyric, drawMessage, drawHeart, lyricAt, lyricSubOf, signature, joinBits, DATE } from './_motifs';
 import { grid, boxLyric, mono, tag, pad3, paperLyric, fiberBake, fiberTex, withMips, windowLines, type Grid } from './_t3';
 import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 } from './_v2';
 
@@ -41,7 +43,16 @@ const BEFORE: Record<number, { yi: string; ji: string; fortune: string[] }> = {
   2: { yi: '試穿禮服・排座位', ji: '熬夜', fortune: ['中吉。', '座位表改到第十七版，', '一切都會好的。'] },
   1: { yi: '彩排・早睡', ji: '偷吃喜餅', fortune: ['大吉。', '明天會是很好的一天。'] },
 };
-const FIXED = '民國一一六年丁未年三月星期日一二三四五六宜忌今日一句今日運勢新人的話試穿禮服排座位熬夜中吉座位表改到第十七版一切都會好的彩排早睡偷吃喜餅大吉明天會是很好的一天嫁娶祝福乾杯早退掃描右下角把你的祝福寫進今天純音樂日日是好日';
+const FIXED = '民國年月星期日一二三四五六七八九十〇宜忌今日一句今日運勢新人的話試穿禮服排座位熬夜中吉座位表改到第十七版一切都會好的彩排早睡偷吃喜餅大吉明天會是很好的一天嫁娶祝福乾杯早退掃描右下角把你的祝福寫進今天純音樂日日是好日黃道吉日良辰倒數兩天囍喜';
+const ZH_D = '〇一二三四五六七八九';
+const MONTH_ZH = ['一', '二', '三', '四', '五', '六', '七', '八', '九', '十', '十一', '十二'];
+/** 抬頭的「民國一一六年　丁未年」。干支照國曆年算，一、二月可能還沒過農曆年（會差一年），那兩個月只印民國年。 */
+function rocLabel(d: Date): string {
+  const y = d.getUTCFullYear(), roc = y - 1911;
+  if (roc <= 0) return '';
+  const ganzhi = d.getUTCMonth() >= 2 ? `　${'甲乙丙丁戊己庚辛壬癸'[(((y - 4) % 10) + 10) % 10]}${'子丑寅卯辰巳午未申酉戌亥'[(((y - 4) % 12) + 12) % 12]}年` : '';
+  return `民國${Array.from(String(roc), (ch) => ZH_D[Number(ch)]).join('')}年${ganzhi}`;
+}
 
 // ---------------------------------------------------------------- 牆
 const WALL = () => new FSPass(/* glsl */ `
@@ -153,8 +164,8 @@ void main() {
   fragColor = vec4(col * lam * uAlpha, uAlpha);
 }`;
 
-/** 一頁日曆的內容（第幾天）。 */
-interface Day { date: Date; offset: number }
+/** 一頁日曆的內容：日期（新人還沒定日期是 null）、離婚禮幾天。 */
+interface Day { date: Date | null; offset: number }
 
 export default class Almanac extends Scene {
   wall = shared('almanac.wall', WALL);
@@ -221,14 +232,15 @@ export default class Almanac extends Scene {
     // 原文副行要多一排。
     // 有副行一定沒有主打留言（留言的窗格副行收起來），今日運勢下面本來就空著，往下挪不會擠到東西
     this.subRoom = this.lines.some((l) => lyricSubOf(l)) ? 64 : 0;
-    await loadText(`${FIXED}${song.title}${m ? m.text + signature(m.name) : ''}${this.lines.map((l) => l.text).join('')}`);
-    // 撕幾頁：窗格有四小節以上撕兩頁（3/11 → 3/12 → 3/13），短的撕一頁；第一撕在第一個小節線，第二撕在下一個小節線
+    // 撕幾頁：窗格有四小節以上撕兩頁（前兩天 → 前一天 → 當天），短的撕一頁；第一撕在第一個小節線，第二撕在下一個小節線
     const bars = (e - g.bar0) / g.bar;
     const k = bars >= 3.5 ? 2 : 1;
     this.tearDur = clamp(g.beat * 1.35, 0.45, 0.72);
     this.tears = Array.from({ length: k }, (_, i) => g.bar0 + i * g.bar);
-    const [yy, mm, dd] = String(WEDDING_DATE).split('-').map(Number) as [number, number, number];
-    this.days = Array.from({ length: k + 1 }, (_, i) => ({ date: new Date(Date.UTC(yy, mm - 1, dd - (k - i))), offset: k - i }));
+    this.days = Array.from({ length: k + 1 }, (_, i) => ({ date: DATE ? new Date(Date.UTC(DATE.y, DATE.m - 1, DATE.d - (k - i))) : null, offset: k - i }));
+    // 民國年、干支是組出來的字（年份每一場不一樣），跟其他字一起先載好
+    const roc = this.days.map((d) => (d.date ? rocLabel(d.date) : '')).join('');
+    await loadText(`${FIXED}${roc}${song.title}${m ? m.text + signature(m.name) : ''}${this.lines.map((l) => l.text).join('')}`);
     this.arrive = this.tears[k - 1]! + this.tearDur * 0.5;
     // 到了婚禮那一頁之後：下一個小節線圈日期、再下一個畫愛心（窗格不夠長就不畫）
     const nb = au.timeOfBar(Math.ceil(au.barAt(this.arrive + 0.2) - 1e-6));
@@ -257,26 +269,35 @@ export default class Almanac extends Scene {
   /** 畫第 i 頁（t：歌詞的時間；撕掉的那一頁停在它被撕的那一刻）。 */
   private drawPage(c: CanvasRenderingContext2D, i: number, t: number) {
     const day = this.days[i]!, wed = day.offset === 0;
-    const d = day.date, wd = d.getUTCDay();
+    const d = day.date, wd = d ? d.getUTCDay() : -1;
     const ink = (a: number) => rgba('sepia', a);
     const red = wed || wd === 0;
     c.setTransform(1, 0, 0, 1, 0, 0);
     c.fillStyle = rgba('paper'); c.fillRect(0, 0, PW, PH);
     c.textBaseline = 'alphabetic';
-    // 抬頭：年、月（小）
-    mono(c, `${d.getUTCFullYear()}`, 30, 50, { size: 22, color: ink(0.75), tracking: 3, weight: 600 });
-    tag(c, '民國一一六年　丁未年', 104, 49, { size: 16, color: ink(0.55), tracking: 2 });
-    tag(c, `${['一', '二', '三', '四', '五', '六', '七', '八', '九', '十', '十一', '十二'][d.getUTCMonth()]}月`, PW - 30, 50, { size: 22, color: ink(0.8), tracking: 4, align: 'right', weight: 700 });
+    // 抬頭：年、月（小）。沒定日期：不印年月，只寫「黃道吉日」
+    if (d) {
+      mono(c, `${d.getUTCFullYear()}`, 30, 50, { size: 22, color: ink(0.75), tracking: 3, weight: 600 });
+      tag(c, rocLabel(d), 104, 49, { size: 16, color: ink(0.55), tracking: 2 });
+      tag(c, `${MONTH_ZH[d.getUTCMonth()]}月`, PW - 30, 50, { size: 22, color: ink(0.8), tracking: 4, align: 'right', weight: 700 });
+    } else {
+      tag(c, '黃道吉日', 30, 50, { size: 20, color: ink(0.7), tracking: 6, weight: 700 });
+    }
     c.fillStyle = ink(0.35); c.fillRect(30, 64, PW - 60, 1.2);
-    // 日期：細的字重、淡墨（圖形，不是標題）
-    c.font = font(F.archivo(62, 300), 300);
+    // 日期：細的字重、淡墨（圖形，不是標題）。沒定日期：前幾天印倒數的天數，當天印一個細明體的「囍」（一樣是淡墨的圖形）
     c.fillStyle = red ? mixRgba('paper', 'signal', 0.7) : mixRgba('paper', 'sepia', 0.55);
-    c.fillText(String(d.getUTCDate()), 22, 330);
-    // 星期、宜忌
+    if (d || !wed) {
+      c.font = font(F.archivo(62, 300), 300);
+      c.fillText(String(d ? d.getUTCDate() : day.offset), 22, 330);
+    } else {
+      c.font = font(F.ming(400), 250);
+      c.fillText('囍', 55, 312);
+    }
+    // 星期、宜忌（沒定日期：星期那一格寫倒數或「良辰吉日」）
     const rx = 400;
     c.font = font(F.ming(700), 34); c.fillStyle = red ? rgba('blood', 0.9) : ink(0.85);
-    c.fillText(`星期${WD[wd]}`, rx, 128);
-    mono(c, WD_EN[wd]!, rx, 156, { size: 13, color: ink(0.5), tracking: 4 });
+    c.fillText(d ? `星期${WD[wd]}` : wed ? '良辰吉日' : `倒數${day.offset === 2 ? '兩' : '一'}天`, rx, 128);
+    mono(c, d ? WD_EN[wd]! : wed ? 'THE BIG DAY' : `${day.offset} ${day.offset === 1 ? 'DAY' : 'DAYS'} TO GO`, rx, 156, { size: 13, color: ink(0.5), tracking: 4 });
     const yi = wed ? '嫁娶・祝福・乾杯' : BEFORE[day.offset]?.yi ?? '祝福', ji = wed ? '早退' : BEFORE[day.offset]?.ji ?? '—';
     const badge = (ch: string, y: number, col: string) => {
       c.fillStyle = col; c.beginPath(); c.arc(rx + 16, y - 8, 17, 0, Math.PI * 2); c.fill();
@@ -354,7 +375,7 @@ export default class Almanac extends Scene {
     c.font = font(F.ming(900), 34); c.textAlign = 'center';
     c.fillText('日 日 是 好 日', bw / 2, 128);
     c.font = font(F.mono(500), 16); c.letterSpacing = '6px';
-    c.fillText('2027 · 喜', bw / 2, 158);
+    c.fillText(joinBits(' · ', DATE?.yyyy, '喜'), bw / 2, 158);
     c.letterSpacing = '0px'; c.textAlign = 'left';
     c.fillStyle = mixRgba('sepia', 'ink', 0.4); c.beginPath(); c.arc(bw / 2, 44, 11, 0, Math.PI * 2); c.fill();
     c.fillStyle = rgba('paper', 0.5); c.beginPath(); c.arc(bw / 2 - 3, 41, 4, 0, Math.PI * 2); c.fill();

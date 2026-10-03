@@ -20,7 +20,7 @@ import { F, font, loadText } from '../engine/type';
 import { rgba } from '../engine/palette';
 import { clamp, ease, prog, hash, pulse } from '../engine/util';
 import { type Line } from '../engine/lyrics';
-import { lyricAt, layoutLyric, drawLyric, COUPLE_ZH, type LyricStyle } from './_motifs';
+import { lyricAt, layoutLyric, drawLyric, type LyricStyle } from './_motifs';
 import { V2, lyricV2 } from './_v2';
 import {
   T25_TEXT, T25_INVITE, sigOf, winBars, winBeats, stagger, layMsgV2, msgGlyphs, glyphMask, MASK_GLSL,

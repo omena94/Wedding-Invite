@@ -2,7 +2,7 @@
 // 照「留言尺寸與版面比例標準 v2」：整面看板（一直在翻的航班）是主視覺，留言翻在右上一塊字牌上（字級 40～60）。
 //  - 左邊十班航班（小字牌、暗一點）：時間、班次、目的地（四字祝福）、旅客、狀態。第一班是主打留言的航班（登機中，燈跟著拍子閃；
 //    窗格最後一個小節線「已起飛」），其他九班每兩小節整排往上捲一班（嘩啦啦）——這是一直在動的場景。
-//    旅客是其他賓客的名字（沒有就用伴郎團、芃芃、QQ…）。
+//    旅客是其他賓客的名字（沒有就用伴郎團、親友團、同學會…）。
 //  - 右上一塊字牌（≤ 830 × 430）：主打留言（思源宋體），第一拍之後一個詞組一拍翻上來；最後一列下面一排小一號的牌是署名。
 //    沒有留言：這塊翻上邀請（小一點）。
 //  - 下面兩列中字牌是現正播放的歌詞（40～52，比留言小）：一句在第一個字要唱之前翻上來（三成亮），唱到的字再翻一下亮成訊號色、
@@ -14,7 +14,7 @@ import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpec
 import { FSPass, Layer2D } from '../engine/gl';
 import { F, font, loadText } from '../engine/type';
 import { ease, lerp, prog, hash, fract } from '../engine/util';
-import { beatAfter, barAfter, signature, COUPLE_EN, DATE_DOTS, lyricSubOf, subSizeFor } from './_motifs';
+import { beatAfter, barAfter, signature, COUPLE_EN, NAME_A, NAME_B, INITIAL_A, INITIAL_B, DATE_DOTS, joinBits, fitPx, lyricSubOf, subSizeFor } from './_motifs';
 import { GlyphAtlas, cuePages, windowLines, wrapCells, flipAt, settle, bestCellWrap, COL, cueCol, cueState, type Flip, type GlyphReq, type CuePage } from './_t7';
 import { msgMaxFor, lyricV2, sigV2, V2 } from './_v2';
 import { FRAG_BOARD, NG } from './departures-glsl';
@@ -51,8 +51,16 @@ const F_NUM = F.mono(500);
 const F_MS = F.ming(700);
 
 const DESTS = ['百年好合', '永浴愛河', '白頭偕老', '永結同心', '花好月圓', '天作之合', '相親相愛', '心心相印', '佳偶天成', '甜甜蜜蜜', '幸福美滿', '一生一世'];
-/** 沒有別的留言可以排班時的旅客（伴郎伴娘、狗狗也要搭飛機）。 */
-const EXTRA = ['全體賓客', '伴郎團', '伴娘團', '芃芃', 'QQ', '親友團', '同學會', '同事們', '表弟妹'];
+/** 沒有別的留言可以排班時的旅客（伴郎伴娘、親友也要搭飛機）。 */
+const EXTRA = ['全體賓客', '伴郎團', '伴娘團', '親友團', '花童', '同學會', '同事們', '表弟妹', '主婚人'];
+/**
+ * 班次代號的兩個字母：新人名字的縮寫（Ethan & Ivy → EI042）。縮寫要是兩個大寫拉丁字母才用
+ * （中文縮寫放進「班次」那幾格會像亂碼，數字牌的字模也只有拉丁字母），不然用中性的 XO（親親抱抱）。
+ */
+const CODE = /^[A-Z]$/.test(INITIAL_A) && /^[A-Z]$/.test(INITIAL_B) ? `${INITIAL_A}${INITIAL_B}` : 'XO';
+const code = (n: number) => `${CODE}${String(n % 1000).padStart(3, '0')}`;
+/** 新人自己的留言，旅客欄（5 格）寫兩個名字；放不下（名字長、英文名）就寫「新人」。 */
+const COUPLE_PAX = Array.from(`${NAME_A}&${NAME_B}`.replace(/\s+/g, '')).length <= 5 ? `${NAME_A}&${NAME_B}`.replace(/\s+/g, '') : '新人';
 const STATUS = ['準時', '準時', '直飛', '滿座'];
 const INVITE = '掃描右下角 QR code，把祝福寫上看板';
 const LABELS = `《》出發距離起飛拍登機中已起飛${DESTS.join('')}${EXTRA.join('')}${STATUS.join('')}${INVITE}`;
@@ -150,7 +158,7 @@ export default class Departures extends Scene {
     // 字模：A（小）＝航班、歌詞；B（大）＝留言字牌
     const reqA: GlyphReq[] = [];
     const addA = (family: string, str: string) => { for (const ch of Array.from(str)) reqA.push({ ch, family }); };
-    addA(F_LY, lines.map((l) => l.text).join('') + subLines.map((l) => l.text).join('') + title + 'AO');
+    addA(F_LY, lines.map((l) => l.text).join('') + subLines.map((l) => l.text).join('') + title + CODE);
     addA(F_NUM, '0123456789:');
     addA(F_BD, flights.map((f) => f.dest + f.name + f.status).join('') + '登機中已起飛');
     const reqB: GlyphReq[] = [];
@@ -222,11 +230,11 @@ export default class Departures extends Scene {
     const clock = (n: number) => { const mm = 12 * 60 + 5 + ((n * 7) % 300); return `${String(Math.floor(mm / 60)).padStart(2, '0')}:${String(mm % 60).padStart(2, '0')}`; };
     const dest = (n: number) => DESTS[Math.floor(hash(n, this.seed) * DESTS.length)]!;
     const out: Flight[] = [];
-    if (m) out.push({ time: clock(m.n), code: `AO${String(m.n % 1000).padStart(3, '0')}`, dest: dest(m.n), name: fitName(m.couple ? '宣文&孟庭' : m.name || '一位賓客', FC.name[1]), status: '登機中' });
-    else out.push({ time: '12:00', code: 'AO000', dest: '一生一世', name: '全體賓客', status: '登機中' });
+    if (m) out.push({ time: clock(m.n), code: code(m.n), dest: dest(m.n), name: fitName(m.couple ? COUPLE_PAX : m.name || '一位賓客', FC.name[1]), status: '登機中' });
+    else out.push({ time: '12:00', code: code(0), dest: '一生一世', name: '全體賓客', status: '登機中' });
     const others: Msg[] = ((this.ctx.params.messages ?? []) as Msg[]).filter((x) => !m || x.id !== m.id).sort((a, b) => a.n - b.n);
-    for (const o of others.slice(0, 24)) out.push({ time: clock(o.n), code: `AO${String(o.n % 1000).padStart(3, '0')}`, dest: dest(o.n), name: fitName(o.couple ? '宣文&孟庭' : o.name || '一位賓客', FC.name[1]), status: STATUS[Math.floor(hash(o.n, 3) * STATUS.length)]! });
-    for (let k = 0; out.length < 16; k++) out.push({ time: clock(900 + k * 5), code: `AO${String(900 + k).padStart(3, '0')}`, dest: dest(900 + k), name: EXTRA[k % EXTRA.length]!, status: STATUS[k % STATUS.length]! });
+    for (const o of others.slice(0, 24)) out.push({ time: clock(o.n), code: code(o.n), dest: dest(o.n), name: fitName(o.couple ? COUPLE_PAX : o.name || '一位賓客', FC.name[1]), status: STATUS[Math.floor(hash(o.n, 3) * STATUS.length)]! });
+    for (let k = 0; out.length < 16; k++) out.push({ time: clock(900 + k * 5), code: code(900 + k), dest: dest(900 + k), name: EXTRA[k % EXTRA.length]!, status: STATUS[k % STATUS.length]! });
     return out;
   }
 
@@ -257,7 +265,7 @@ export default class Departures extends Scene {
           for (let k = 0; k < n; k++) {
             const x = this.cell(FL, r, a + k);
             x.fill = fam === F_NUM ? numFill : bdFill;
-            // 班次的英文字母用 Archivo（圓的 O），數字用 Plex Mono：AO042 才不會讀成 A0042
+            // 班次的英文字母用 Archivo（圓的 O），數字用 Plex Mono：XO042 才不會讀成 X0042
             const ff = fam === F_NUM && k < cs.length && /[A-Z]/.test(cs[k]!) ? F_LY : fam;
             x.evs.push({ tl: tc + 0.016 * (a + k) + 0.04 * r + (ci === 0 ? 0.06 : 0), g: k < cs.length ? A.get(ff, cs[k]!) : -1, c: colr, k: ci === 0 ? 6 : 4, d: 0.042 });
           }
@@ -397,8 +405,11 @@ export default class Departures extends Scene {
     c.font = font(F.hei(500), 20); c.letterSpacing = '6px';
     c.fillText('出發', X0 + ox, 150 + oy);
     const w = c.measureText('出發').width;
-    c.font = font(F.mono(500), 14); c.letterSpacing = '5px';
-    c.fillText(`DEPARTURES   ·   ${COUPLE_EN.toUpperCase()}   ·   ${DATE_DOTS}`, X0 + w + 18 + ox, 149 + oy);
+    // 刊頭：新人與日期是每一場不一樣的字，名字長就縮字（到留言字牌之前為止），沒日期就連分隔點一起省掉
+    const head = joinBits('   ·   ', 'DEPARTURES', COUPLE_EN.toUpperCase(), DATE_DOTS);
+    const hs = fitPx(head, F.mono(500), 14, MB.x - 40 - (X0 + w + 18), 5);
+    c.font = font(F.mono(500), hs); c.letterSpacing = `${(5 * hs) / 14}px`;
+    c.fillText(head, X0 + w + 18 + ox, 149 + oy);
     // 距離起飛的標籤（倒數大字牌的左邊）
     c.font = font(F.hei(500), 18); c.letterSpacing = '5px'; c.textAlign = 'right';
     c.fillText('距離起飛', CD.x - 18 + ox, CD.y + 44 + oy);

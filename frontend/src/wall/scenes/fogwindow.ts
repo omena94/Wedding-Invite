@@ -3,7 +3,7 @@
 //    燈光在那裡是清楚的光斑（鏡頭對焦在玻璃上）；霧上其他地方只剩一片暖暖的糊光。剛擦開的那一小段帶一點訊號色
 //    （像窗外的招牌光正好照進來），很快冷掉。字的邊緣有一圈被手指推開的水氣。署名也用手指寫在最後一行下面。
 //  - 歌詞（比留言小一級）在窗的右半邊，照跟唱規則逐字亮。
-//  - 2026-09-29 留言標準 v2：手指寫的字 40～60 px，寫在窗的左下一塊（≤ 860 × 430）；窗的上半部霧比較薄，
+//  - 留言標準 v2：手指寫的字 40～60 px，寫在窗的左下一塊（≤ 860 × 430）；窗的上半部霧比較薄，
 //    看得到窗外的城市燈光與斜斜的雨絲（場景是主視覺）；每兩小節一道車燈從霧上掃過去，水珠更常滑。
 //  - 沒有主打留言：歌詞本身用手指寫在霧上（焦點是歌詞），一句寫在上面、下一句寫在下面輪流；
 //    還沒唱的字是「霧重新起來時浮出來的舊指痕」（三成淡），唱到的那一刻才擦開；上一句會慢慢被霧蓋回去。
@@ -22,7 +22,7 @@ import { rgba } from '../engine/palette';
 import { clamp, ease, prog, hash } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
 import { Lyrics, type Line } from '../engine/lyrics';
-import { lyricAt, layoutLyric, drawLyric, beatAfter, heartPoints, COUPLE_ZH, lyricSubOf, subSizeFor, subGap, type LyricStyle } from './_motifs';
+import { lyricAt, layoutLyric, drawLyric, beatAfter, heartPoints, COUPLE_ZH, NAME_A, NAME_B, lyricSubOf, subSizeFor, subGap, type LyricStyle } from './_motifs';
 import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 } from './_v2';
 import { T16_INVITE, T16_TEXT, sigOf, winBeats, winBars, rowsOf, glyphCount, charClock, rowFront, type Row } from './_t16';
 
@@ -322,8 +322,8 @@ export default class FogWindow extends Scene {
     this.tWrite = beatAfter(au, s + Math.min(0.2, beat * 0.4));
     this.bars = winBars(au, s, e);
 
-    // ---- 霧上寫的字：留言，或（沒有留言也沒有歌詞時）新人的名字
-    const fogText = m ? m.text : this.hasLyrics ? '' : `${COUPLE_ZH.replace(/\s*&\s*/, ' ♥ ')}`;
+    // ---- 霧上寫的字：留言，或（沒有留言也沒有歌詞時）新人的名字（跟留言一樣用 fitText 排，很長的名字會縮字或折行）
+    const fogText = m ? m.text : this.hasLyrics ? '' : `${NAME_A} ♥ ${NAME_B}`;
     if (fogText) {
       const c = this.mask.ctx;
       // 字級上限依字數（v2），照標點斷行；扣掉署名那一排的高度（署名永遠在最後一行下面）

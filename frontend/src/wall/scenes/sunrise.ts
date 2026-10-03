@@ -5,9 +5,9 @@
 //    斜的但讀得到）。換行時新的一條射出來、舊的一條縮回太陽後面。
 //  - 主打留言寫在天空的雲上：雲的形狀照留言排好的外框長出來，第一個拍點從右邊滑進來停住，字在一小節內一個個「印」上去
 //    （剛印上的字帶一點訊號色，像還沒乾的印泥）。
-//  - 冷面註記：「日出時刻 06:13」「本日天氣：晴，喜氣指數 100%」「日出時間以新人起床為準」。
+//  - 冷面註記：「日出時刻 05:47」「本日天氣：晴，喜氣指數 100%」「日出時間以新人起床為準」。
 //  - 畫法：整張風景（含每層紙的影子）在 sunrise-glsl.ts 的一個 shader 裡畫；字用一張 Canvas2D 疊上去。
-// v2（2026-09-29「留言尺寸與版面比例標準 v2」）：寫留言的那朵雲縮到 ≤ 820×370、移到右上（太陽在左下，對角線構圖），
+// v2（「留言尺寸與版面比例標準 v2」）：寫留言的那朵雲縮到 ≤ 820×370、移到右上（太陽在左下，對角線構圖），
 // 雲邊只比字多一點；留言照 v2 字級（40～60 px，依字數、照標點斷行），署名 26～32，光芒上的歌詞 40～52（不比留言大）。
 // 空出來的天空讓給光芒；多補的動畫是這片海自己的：一艘小小的剪紙帆船在第一層浪後面往右開（船底被浪擋住、
 // 跟著每拍推一下的浪起伏點頭），太陽在海上的倒影紙條每拍左右錯動一下（波光）。
@@ -121,7 +121,7 @@ export default class Sunrise extends Scene {
     this.beat = au.beatPeriod(this.b0);
     const bar = Math.max(this.beat * 2, au.timeOfBar(au.barAt(this.b0) + 1) - this.b0);
     this.title = `♪  ${song.title}${song.artist ? '  —  ' + song.artist : ''}`;
-    this.head = `日出 SUNRISE  ·  ${m ? no3(m.n) + '  ·  ' : ''}日出時刻 06:13`;
+    this.head = `日出 SUNRISE  ·  ${m ? no3(m.n) + '  ·  ' : ''}日出時刻 05:47`;
     const text = m ? m.text : NO_MSG;
     await preloadText(this.ctx, `${text}${signature(m?.name ?? '')}${NO_MSG}${INVITE_SMALL}${FOOT}${this.head}${this.title}FROM THE COUPLE · 新人`);
 

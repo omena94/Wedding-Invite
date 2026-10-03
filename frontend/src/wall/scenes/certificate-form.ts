@@ -1,11 +1,11 @@
 // 祝福登記表（certificate）的「印好的表格」：版面座標、文案、畫表格本身（表頭、欄位、勾選框、註腳）。
-// 座標是「紙面座標」（1 單位 = 鏡頭 z = 1 時螢幕上的 1 px）。v2（2026-09-28）起鏡頭拉遠到整張桌面都看得到
+// 座標是「紙面座標」（1 單位 = 鏡頭 z = 1 時螢幕上的 1 px）。v2 起鏡頭拉遠到整張桌面都看得到
 // （讀字的時候 z ≈ Z_READ），所以這裡的字級都是「螢幕字級 ÷ Z_READ」：標準是螢幕上的 px。
 // 所有墨都用分色編碼畫（見 certificate-glsl.ts）：這裡只用 PRINT()（G 色版 = 印刷的墨），手寫、打字與印章在主檔畫。
 // MV 融合原則：印刷的部分是配角——細線、淡墨、小字（螢幕上 ≤ 22 px），讓寫上去的祝福成為整張紙上最黑的字。
 import { F, font, measure } from '../engine/type';
 import { hash, TAU } from '../engine/util';
-import { COUPLE_ZH, DATE_DOTS } from './_motifs';
+import { COUPLE_ZH, DATE_MMDD } from './_motifs';
 
 type Ctx2 = CanvasRenderingContext2D;
 
@@ -68,7 +68,7 @@ const NOTES = [
 ];
 
 export interface FormCopy {
-  /** 表格編號（表頭的 FORM 0313：用婚禮的月日）。 */
+  /** 表格編號（表頭的「FORM 0520」：用婚禮的月日；還沒定日期用 520）。 */
   form: string;
   /** 編號：No.042／SONG 03（號碼機蓋上去）。 */
   no: string;
@@ -81,9 +81,9 @@ export interface FormCopy {
 }
 
 export function makeCopy(seed: number, o: { no: string; field2: string; couple: boolean }): FormCopy {
-  const [, mm = '03', dd = '13'] = DATE_DOTS.split(' · ');
   return {
-    form: `FORM ${mm}${dd}`,
+    // 表號用婚禮的月日，像這場婚禮專用的表格；還沒定日期時用「520」（我愛你的諧音），表頭不會只剩一個 FORM
+    form: `FORM ${DATE_MMDD || '520'}`,
     no: o.no,
     field2: o.field2,
     checks: o.couple ? COUPLE_CHECKS : CHECK_SETS[Math.floor(hash(seed, 2) * CHECK_SETS.length)]!,

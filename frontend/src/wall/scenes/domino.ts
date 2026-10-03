@@ -7,7 +7,7 @@
 //  - 鏡頭（電影感）：切進來時是貼著桌面的低角度特寫（從右前方看著站好的骨牌、淺景深），第一拍推倒之後
 //    一路升起來（crane），在留言倒完時停在斜上方的閱讀角度，之後很慢地推近。景深用每個像素真正的深度（寫在 alpha）。
 //  - 歌詞：骨牌後面桌上的一張記分卡（紙）上，逐字跟唱，比留言小一級；署名是最後一行下面的一張小名牌。
-//  - 沒有留言：骨牌排「宣文 ♥ 孟庭」，記分卡放大、歌詞當主角，卡片底下一行小小的邀請。純音樂：記分卡寫歌名。
+//  - 沒有留言：骨牌排新人的名字「A ♥ B」，記分卡放大、歌詞當主角，卡片底下一行小小的邀請。純音樂：記分卡寫歌名。
 // v2（留言尺寸標準）：排成留言的那一片骨牌縮到畫面左下（≤ 860×430、字 40～60 px），右上是主視覺：
 // 起點那一張同時分岔出一條長長的骨牌路，繞過桌面、排成一顆大愛心，整個窗格一直在倒（排在 1/k 拍上），
 // 愛心在窗格快結束時剛好倒完。
@@ -20,7 +20,7 @@ import { GLSL_COMMON, THEME_UNIFORMS } from '../engine/glsl/common';
 import { F, font, loadText } from '../engine/type';
 import { LIN, rgba } from '../engine/palette';
 import { clamp, ease, prog, pulse, hash, frameIdx } from '../engine/util';
-import { lyricAt, layoutLyric, drawLyric, beatAfter, drawHeart, COUPLE_ZH } from './_motifs';
+import { lyricAt, layoutLyric, drawLyric, beatAfter, drawHeart, NAME_A, NAME_B } from './_motifs';
 import { msgMaxFor, lyricV2, sigV2 } from './_v2';
 import { paperInk } from './_t4';
 import {
@@ -49,7 +49,8 @@ const MAX_DOM = 260;
 const CHAIN_MAX = 150, CH_MIN = 62, CH_MAX = 100;
 /** 記分卡右緣到愛心最左邊至少要留的距離（世界單位）：骨牌路在這一段裡往上彎。 */
 const CARD_GAP = 240;
-const NO_MSG_TEXT = `宣文♥孟庭`;
+/** 沒有留言時骨牌排的字：新人的名字（英文名裡的空白是一格空位，也是可以換行的地方）。 */
+const NO_MSG_TEXT = `${NAME_A}♥${NAME_B}`;
 
 // ---------------------------------------------------------------- 共用的 GPU 資源（一晚只建一次）
 const PRE = /* glsl */ `precision highp float;\nprecision highp int;\n`;

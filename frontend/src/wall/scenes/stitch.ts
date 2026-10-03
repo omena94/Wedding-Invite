@@ -1,6 +1,6 @@
 // 十字繡（亮）：鏡頭貼近一個大繡框，框裡繃著一塊 Aida 十字繡布——一幅正在繡的「紀念繡」（sampler）。
-// 2026-09-29 依「留言尺寸與版面比例標準 v2」重做構圖：
-//  - 場景是主視覺：右半邊是一幅十字繡圖（一間小房子、兩棵樹、屋頂上一顆愛心、地上一排草、下面繡著 2027，外面一圈點點的邊框），
+// 依「留言尺寸與版面比例標準 v2」重做構圖：
+//  - 場景是主視覺：右半邊是一幅十字繡圖（一間小房子、兩棵樹、屋頂上一顆愛心、地上一排草、下面繡著婚禮的年份（還沒定日期就繡三顆小愛心），外面一圈點點的邊框），
 //    布上先印著淡淡的彩色圖稿（材料包的樣子），拍點上一塊一塊繡出來（每一格先「/」再「\」，剛繡好的線偏亮、半秒沉回線色）；
 //    主圖繡完之後每一小節針會去地上多繡一朵小花（窗格長時中段也一直有事件）。
 //  - 留言在左邊，用「緞面繡」繡字（霞鶩文楷，40～60 px，照 _v2），拍點上一個字一個字繡出來（還沒繡的字是布上淡淡的印稿），
@@ -19,7 +19,7 @@ import { LineBatch } from '../engine/lines';
 import { F, font, layout, loadText, type TextLayout } from '../engine/type';
 import { LIN, rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, lerp, hash } from '../engine/util';
-import { lyricAt, lyricSubOf, subGap, subSizeFor, COUPLE_ZH, WEDDING_DATE, drawHeart } from './_motifs';
+import { lyricAt, lyricSubOf, subGap, subSizeFor, fitPx, NAME_A, NAME_B, DATE, drawHeart } from './_motifs';
 import { grid, stagger, layoutRows, drawRows, paperInk } from './_t4';
 import { PlaneCam, camUniforms, CAM_GLSL, msgBlockV2, INVITE, type MsgBlock, type Rect } from './_t14';
 import { lyricV2 } from './_v2';
@@ -46,10 +46,15 @@ const PARK = { x: 1010, y: 760 };
 type Cell = { c: number; r: number; col: number };
 interface Motif { data: Uint8Array; els: { cells: Cell[] }[] }
 
+/** 3 × 5 的點陣數字：年份每一場不一樣，十個數字都要有。 */
 const DIGITS: Record<string, string[]> = {
-  '0': ['111', '101', '101', '101', '111'], '2': ['111', '001', '111', '100', '111'], '7': ['111', '001', '010', '010', '010'],
-  '1': ['010', '110', '010', '010', '111'], '3': ['111', '001', '111', '001', '111'],
+  '0': ['111', '101', '101', '101', '111'], '1': ['010', '110', '010', '010', '111'], '2': ['111', '001', '111', '100', '111'],
+  '3': ['111', '001', '111', '001', '111'], '4': ['101', '101', '111', '001', '001'], '5': ['111', '100', '111', '001', '111'],
+  '6': ['111', '100', '111', '101', '111'], '7': ['111', '001', '010', '010', '010'], '8': ['111', '101', '111', '101', '111'],
+  '9': ['111', '101', '111', '001', '111'],
 };
+/** 還沒定日期時，年份那一排改繡三顆小愛心（5 × 5）。 */
+const MINI_HEART = ['.X.X.', 'XXXXX', 'XXXXX', '.XXX.', '..X..'];
 const HEART = ['.XX.XX.', 'XXXXXXX', 'XXXXXXX', '.XXXXX.', '..XXX..', '...X...'];
 
 /**
@@ -98,7 +103,8 @@ function buildMotif(seed: number, year: string): { els: Cell[][] } {
   HEART.forEach((row, r) => Array.from(row).forEach((ch, c) => { if (ch === 'X') heart.push({ c: 22 + c, r: 7 + r, col: 4 }); }));
   add(heart);
   const date: Cell[] = [];
-  Array.from(year).forEach((d, k) => (DIGITS[d] ?? DIGITS['0']!).forEach((row, r) => Array.from(row).forEach((ch, c) => { if (ch === '1') date.push({ c: 18 + k * 4 + c, r: 43 + r, col: 1 }); })));
+  if (year) Array.from(year).forEach((d, k) => (DIGITS[d] ?? DIGITS['0']!).forEach((row, r) => Array.from(row).forEach((ch, c) => { if (ch === '1') date.push({ c: 18 + k * 4 + c, r: 43 + r, col: 1 }); })));
+  else [19, 25, 31].forEach((c0) => MINI_HEART.forEach((row, r) => Array.from(row).forEach((ch, c) => { if (ch === 'X') date.push({ c: c0 + c, r: 43 + r, col: 1 }); })));
   add(date);
   // 邊框：沿著外圈每隔一格一針，照繞圈的順序繡（add 會照排列排序，所以自己推進去）
   const ring: Cell[] = [];
@@ -294,14 +300,14 @@ export default class Stitch extends Scene {
     const gr = grid(au, s, e);
     this.t0 = gr.b0;
     this.hasLyrics = lyrics.linesIn(s - 0.5, e + 0.4).length > 0;
-    const names = COUPLE_ZH.replace(/\s*&\s*/, ' ♥ ');
-    await loadText(`${m?.text ?? ''}${m ? (m.couple ? '—— 新郎新娘' : m.name) : ''}${names}${INVITE}${song.title}${song.artist}——一位賓客`);
+    const names = `${NAME_A} ♥ ${NAME_B}`;
+    await loadText(`${m?.text ?? ''}${m ? (m.couple ? '—— 新人' : m.name) : ''}${names}${INVITE}${song.title}${song.artist}——一位賓客`);
     // 鏡頭在留言那一塊的縮放（窗格中間的姿勢）：畫在布上的字級要除以它，畫面上才是標準的大小
     this.cam.set(this.pose((s + e) / 2));
     const k = (this.k = this.cam.toScreen(MSG_BOX.x + MSG_BOX.w / 2, MSG_BOX.y + MSG_BOX.h / 2).scale);
 
     // ---- 十字繡圖：主圖一拍一塊（最多兩小節半、窗格的六成），之後每一小節一朵花
-    const year = String(WEDDING_DATE).slice(0, 4);
+    const year = DATE?.yyyy ?? '';
     const { els } = buildMotif(this.seed, year);
     const main = els.slice(0, els.length - 4), flowers = els.slice(els.length - 4);
     const ts = stagger(au, gr.b0, main.length, Math.min(gr.bar * 2.5, Math.max(gr.beat * 2, (e - gr.b0) * 0.6)));
@@ -340,8 +346,8 @@ export default class Stitch extends Scene {
     } else {
       this.lyrSize = lyricV2(null) / k;
       if (!this.hasLyrics) {
-        // 純音樂又沒有留言：繡新人的名字（60 px），一拍一個字
-        const size = 60 / k;
+        // 純音樂又沒有留言：繡新人的名字（60 px），一拍一個字；名字很長就縮到放得進留言那一塊的寬度
+        const size = fitPx(names, FAM_MSG, 60 / k, MSG_BOX.w);
         const lay = layout(names, FAM_MSG, size);
         const nt = stagger(au, gr.b0, lay.glyphs.length, gr.bar * 1.5);
         this.names = lay.glyphs.map((g, i) => ({ ch: g.ch, x: MSG_BOX.x + g.x, y: 520, w: g.w, size, s: nt[i]!, d: clamp(gr.beat * 0.8, 0.15, 0.4) }));

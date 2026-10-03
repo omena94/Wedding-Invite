@@ -17,7 +17,7 @@ from ..models import FileAsset, Rsvp
 from ..schemas import SeatLookupIn, SeatLookupOut
 from ..seating import guest_seat_view
 from ..security import optional_staff
-from ..stage import INFO_KEYS, PHOTOS_KEY, SEAT_KEY, get_all, is_on, public_stage
+from ..stage import INFO_KEYS, PHOTOS_KEY, SEAT_KEY, get_all, guest_hidden_albums, is_on, public_stage
 
 router = APIRouter(prefix="/api", tags=["public"])
 
@@ -78,9 +78,12 @@ def list_photos(db: Session = Depends(get_db), role: str | None = Depends(option
         return []
     from .photos import sort_photos  # 與後台相簿同樣的順序
 
-    rows = sort_photos(
-        db.scalars(select(FileAsset).where(FileAsset.is_public.is_(True), FileAsset.kind == "photo")).all()
-    )
+    # 只放大螢幕的相簿（生活照之類）賓客看不到，就算裡面某張標了公開
+    hidden = guest_hidden_albums(db)
+    rows = sort_photos([
+        f for f in db.scalars(select(FileAsset).where(FileAsset.is_public.is_(True), FileAsset.kind == "photo")).all()
+        if (f.album or "") not in hidden
+    ])
     return [
         {"id": f.id, "caption": f.caption or "", "album": f.album or "", "has_thumb": bool(f.thumb_name)}
         for f in rows
@@ -91,7 +94,7 @@ def _public_photo(db: Session, file_id: int, role: str | None = None) -> FileAss
     if not is_on(db, PHOTOS_KEY) and role is None:
         raise HTTPException(404, "Not Found")
     f = db.get(FileAsset, file_id)
-    if not f or not f.is_public or f.kind != "photo":
+    if not f or not f.is_public or f.kind != "photo" or (f.album or "") in guest_hidden_albums(db):
         raise HTTPException(404, "Not Found")
     return f
 

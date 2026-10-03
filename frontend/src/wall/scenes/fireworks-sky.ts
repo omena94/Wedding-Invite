@@ -30,7 +30,7 @@ interface Skyline {
 let SKY: Skyline | null = null;
 
 function buildSkyline(): Skyline {
-  const rnd = mulberry32(20270313);
+  const rnd = mulberry32(5201314); // 固定種子：城市輪廓每一場都一樣（確定性）
   const edges: number[] = [], wins: number[] = [], deck: number[] = [];
   const seg = (x0: number, y0: number, x1: number, y1: number, a = 1) => edges.push(x0, y0, x1, y1, a);
   // 高度輪廓：市中心（x≈900）比較高，兩側低；摩天輪那一段（x 470～680）是低矮的碼頭，橋那一段（1180～1760）是水

@@ -509,7 +509,7 @@ export default class Chess extends Scene {
   /** 左下角：一行小小的棋譜（走一步記一步），下面是跟唱的歌詞（沒有留言時歌詞在後方，這裡只剩邀請）。 */
   private drawBottom(c: CanvasRenderingContext2D, t: number) {
     const { lyrics, song } = this.ctx;
-    // 雙語（2026-09-30）：有原文的窗格整組（棋譜、歌詞）往上挪 SUB_LIFT，原文最後一排的字腳離畫面下緣 ≥ 96 px
+    // 雙語：有原文的窗格整組（棋譜、歌詞）往上挪 SUB_LIFT，原文最後一排的字腳離畫面下緣 ≥ 96 px
     const lift = this.msg && this.ctx.lyrics.linesIn(this.ctx.start - 1, this.ctx.end + 1).some((l) => lyricSubOf(l)) ? SUB_LIFT : 0;
     const x = 150, base = 968 - lift;
     const moves = this.moveT.filter((tt) => t >= tt + 0.2).length + this.danceT.filter((tt) => t >= tt + 0.2).length;

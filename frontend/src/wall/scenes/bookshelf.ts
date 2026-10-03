@@ -23,7 +23,7 @@ import { F, font } from '../engine/type';
 import { LIN, rgba } from '../engine/palette';
 import { clamp, ease, prog, hash, mulberry32, lerp, pulse } from '../engine/util';
 import { Lyrics, type Line } from '../engine/lyrics';
-import { lyricAt, lyricSubOf, subSizeFor, COUPLE_ZH } from './_motifs';
+import { lyricAt, lyricSubOf, subSizeFor, fitPx, COUPLE_ZH } from './_motifs';
 import { grid, layoutRows, drawRows, paperInk, type Grid, type RowsLayout } from './_t4';
 import { loadAll, block, glyphPath, T21_INVITE, type Block, type Rect } from './_t21';
 import { V2, lyricV2 } from './_v2';
@@ -237,7 +237,7 @@ export default class Bookshelf extends Scene {
   override async init() {
     const { audio: au, lyrics } = this.ctx;
     const s = this.ctx.start, e = this.ctx.end, m = this.msg;
-    await loadAll(this.ctx, `祝福第則扉頁現場歌詞賓客留言集今天我們結婚了愛的練習曲早餐研究遛狗日誌羽球入門兩人份食譜晚安故事集我們的旅行${COUPLE_ZH}`);
+    await loadAll(this.ctx, `祝福第則扉頁現場歌詞賓客留言集今天我們結婚了愛的練習曲早餐研究散步日誌週末計畫兩人份食譜晚安故事集我們的旅行${COUPLE_ZH}`);
     const g = (this.g = grid(au, s, e));
     this.hasLyrics = lyrics.linesIn(s, e).length > 0;
     this.buildShelf();
@@ -286,7 +286,8 @@ export default class Bookshelf extends Scene {
     // 圖集：一格一本書背（遮罩 R = 燙金線、G = 書名、B = 皮標）
     const AW = 2048, AH = 2400;
     const cv = [0, 1, 2].map(() => { const c = document.createElement('canvas'); c.width = AW; c.height = AH; const x = c.getContext('2d', { willReadFrequently: true })!; x.fillStyle = '#fff'; x.strokeStyle = '#fff'; x.textBaseline = 'alphabetic'; return x; });
-    const TITLES = ['愛的練習曲', '早餐研究', '遛狗日誌', '羽球入門', '兩人份食譜', '晚安故事集', '我們的旅行'];
+    // 書名是任何一對新人都說得通的生活小事（不要寫某一對新人的興趣、寵物、工作）
+    const TITLES = ['愛的練習曲', '早餐研究', '散步日誌', '週末計畫', '兩人份食譜', '晚安故事集', '我們的旅行'];
     let ti = Math.floor(rnd() * TITLES.length);
     let ax = 0, ay = 0, x = -2450;
     for (let i = 0; i < N; i++) {
@@ -410,7 +411,8 @@ export default class Bookshelf extends Scene {
     T.c.fillText(`第 ${m.n} 則祝福`, PGW / 2, PGH * 0.42);
     T.c.strokeStyle = rgba('sepia', 0.5); T.c.lineWidth = 1.2;
     T.c.beginPath(); T.c.moveTo(PGW / 2 - 40, PGH * 0.42 + 40); T.c.lineTo(PGW / 2 + 40, PGH * 0.42 + 40); T.c.stroke();
-    T.c.font = font(F.hei(500), 18); T.c.fillStyle = rgba('sepia', 0.55); T.c.fillText(COUPLE_ZH, PGW / 2, PGH * 0.42 + 90); T.c.textAlign = 'left';
+    // 新人名字長短不一（「歐陽承恩 & 司馬以晴」）：照扉頁的寬度縮字，不要碰到書頁的邊
+    T.c.font = font(F.hei(500), fitPx(COUPLE_ZH, F.hei(500), 18, PGW - 120)); T.c.fillStyle = rgba('sepia', 0.55); T.c.fillText(COUPLE_ZH, PGW / 2, PGH * 0.42 + 90); T.c.textAlign = 'left';
     const P0 = mk();
     head(P0.c, '祝 福 · 賓 客 留 言 集');
     const tR = tex(R.cv), tL = tex(Lp.cv), tT = tex(T.cv), tP = tex(P0.cv);
@@ -664,7 +666,8 @@ export default class Bookshelf extends Scene {
       let size = V2.lyrMax / SHELF_K;
       c.font = font(fam, size);
       const full = c.measureText(text).width;
-      if (full > DYN_H - 120) size = Math.max(V2.lyrMin / SHELF_K, (size * (DYN_H - 120)) / full);
+      // 歌詞不小於 v2 的下限；新人的名字（用拉丁字母填的很長的名字）一定要躺進書背，可以再小
+      if (full > DYN_H - 120) size = Math.max(line ? V2.lyrMin / SHELF_K : 1, (size * (DYN_H - 120)) / full);
       c.font = font(fam, size);
       // 橫躺的字：基線在 0.35 字高，字身從中線往右約 0.37、往左約 0.55 字高
       place(size * 0.92);

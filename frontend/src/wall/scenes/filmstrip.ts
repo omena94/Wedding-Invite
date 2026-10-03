@@ -6,9 +6,9 @@
 //    鏡頭同時推進，留言那一格填滿畫面：像默片的字幕卡（雙線框、宋體），歌詞是燒在片子下緣的字幕（逐字跟唱）。
 //    停住的時候片子有一點點「片門晃動」與燈的閃爍（每秒 24 格）；窗格最後一拍再拉一格走。
 //  - 沒有留言：每一格是一小段歌詞，唱到那一段的時候拉到那一格（跟著歌聲拉片），唱過的在左邊、還沒唱的在右邊。
-//  - 純音樂又沒有留言：倒數之後是新人的名字、日期、邀請，一小節一格。
+//  - 純音樂又沒有留言：倒數之後是新人的名字（還沒定日期就不印日期那一行）、邀請，一小節一格；名字很長時縮字，不會超出格子。
 // 格子的內容畫在各自的 Canvas（一次最多六格，照格號輪流用）：不變的格子只畫一次，正在唱、正在倒數的那一格每格重畫。
-// 2026-09-29 照「留言尺寸與版面比例標準 v2」：不再推成滿版特寫——鏡頭停在中景，膠卷斜斜地橫過畫面、往右後方退進暗處，
+// 照「留言尺寸與版面比例標準 v2」：不再推成滿版特寫——鏡頭停在中景，膠卷斜斜地橫過畫面、往右後方退進暗處，
 // 主打格停在畫面左三分之一（燈在它後面），字在螢幕上 40～60 px；右上方多了一個失焦的收片捲盤，拉片時跟著轉、
 // 每個小節線被片子扯一下；右下角 HUD 那一段膠卷燈照不到。
 import * as THREE from 'three';
@@ -20,7 +20,7 @@ import { rgba } from '../engine/palette';
 import { clamp, ease, prog, hash, lerp, frameIdx, TAU } from '../engine/util';
 import type { Line, Word } from '../engine/lyrics';
 import { fillWithHearts } from '../engine/motifs';
-import { lyricAt, beatAfter, barAfter, COUPLE_ZH, DATE_DOTS, lyricSubOf, subSizeFor, subGap } from './_motifs';
+import { lyricAt, beatAfter, barAfter, COUPLE_ZH, DATE_DOTS, INITIALS, joinBits, fitPx, lyricSubOf, subSizeFor, subGap } from './_motifs';
 import { lyricV2, V2 } from './_v2';
 import { layoutRows, drawRows, darkInk, type RowsLayout } from './_t4';
 import { winBeats, winBars, no3 } from './_t8';
@@ -44,8 +44,13 @@ const FAM_MSG = F.ming(700);
 const FAM_LYR = F.archivo(100, 800);
 
 type Kind = 'blank' | 'leader' | 'msg' | 'lyric' | 'title' | 'tail';
-/** subLine：這一格歌詞對應的原文（韓文歌；照時間切，跟這一格同一段唱的原文字）。 */
-interface FrameDef { kind: Kind; n?: number; line?: Line; text?: string; sub?: string; sub2?: string; t0?: number; t1?: number; subLine?: Line }
+/**
+ * subLine：這一格歌詞對應的原文（韓文歌；照時間切，跟這一格同一段唱的原文字）。
+ * big：標題格是大字（新人的名字）還是小字（邀請）；不能用「有沒有 sub」判斷，還沒定日期的新人名字格沒有 sub。
+ */
+interface FrameDef { kind: Kind; n?: number; line?: Line; text?: string; sub?: string; sub2?: string; big?: boolean; t0?: number; t1?: number; subLine?: Line }
+/** 片邊印字：新人的縮寫＋日期（沒定日期就只有縮寫）。 */
+const EDGE = joinBits(' · ', INITIALS, DATE_DOTS.replace(/ /g, ''));
 interface Move { t: number; to: number; dur: number }
 
 const VERT = /* glsl */ `
@@ -180,7 +185,7 @@ function drawEdge(c: CanvasRenderingContext2D, k: number) {
   const num = 10 + k;
   c.fillText(`▸ ${num}`, 40, IY - 26);
   c.fillText(`${num}A`, PITCH * 0.55, IY - 26);
-  c.fillText(`A&O · ${DATE_DOTS.replace(/ /g, '')}`, 60, IY + IH + 28);
+  c.fillText(EDGE, 60, IY + IH + 28);
   c.restore();
 }
 
@@ -209,7 +214,7 @@ export default class Filmstrip extends Scene {
     const { audio: au, lyrics, start: s, end: e } = this.ctx;
     this.beat = au.beatPeriod(s);
     const lines = lyrics.linesIn(s - 0.5, e);
-    await loadAll(this.msg, lines.map((l) => l.text + (lyricSubOf(l)?.text ?? '')).join(''), `${COUPLE_ZH}${DATE_DOTS}${INVITE}A&O▸新人留言`);
+    await loadAll(this.msg, lines.map((l) => l.text + (lyricSubOf(l)?.text ?? '')).join(''), `${COUPLE_ZH}${DATE_DOTS}${INVITE}${EDGE}▸新人留言`);
     this.mode = this.msg ? 'msg' : lines.length ? 'lyric' : 'title';
     this.bars = winBars(au, s, e).filter((b) => b > s + 0.05);
     // 落定的機位下，主打格（原點）附近 100 單位在螢幕上多長
@@ -260,7 +265,7 @@ export default class Filmstrip extends Scene {
       const t1 = beats[0] ?? s + 0.3, t2 = beats[1] ?? s + 0.8;
       this.moves.push({ t: t1, to: 1, dur: pull }, { t: t2, to: 2, dur: pull });
       this.hero = 3;
-      this.frames.push({ kind: 'title', text: COUPLE_ZH, sub: DATE_DOTS }, { kind: 'title', text: INVITE.split('，')[0] + '，', sub2: INVITE.split('，')[1] }, { kind: 'tail' }, { kind: 'blank' });
+      this.frames.push({ kind: 'title', text: COUPLE_ZH, sub: DATE_DOTS, big: true }, { kind: 'title', text: INVITE.split('，')[0] + '，', sub2: INVITE.split('，')[1] }, { kind: 'tail' }, { kind: 'blank' });
       const tb = bars.find((b) => b > t2 + this.beat * 0.9) ?? t2 + this.beat;
       this.moves.push({ t: tb, to: 3, dur: pull });
       const tb2 = bars.find((b) => b > tb + 0.1 && b < e - 1.5);
@@ -438,11 +443,13 @@ export default class Filmstrip extends Scene {
           drawRows(c, sl, FAM_LYR, t, { active: rgba('bone', 0.96 * 0.8), sung: rgba('bone', 0.96 * 0.8), unsung: rgba('bone', 0.3) }, 1);
         }
       } else if (fd.kind === 'title' && fd.text) {
-        const big = !!fd.sub;
+        const big = !!fd.big;
         c.textAlign = 'center'; c.fillStyle = rgba('bone', 0.95);
         const kk = this.k;
-        c.font = font(big ? F.ming(900) : F.hei(500), (big ? 60 : 40) / kk);
-        c.fillText(fd.text, IX + IW / 2, IY + IH / 2 + (big ? 20 : -10 / kk));
+        // 名字是執行時才知道的，很長的話縮到格子裡（雙線框內緣再留一點邊）；沒有日期時名字往下移到格子正中
+        const fam = big ? F.ming(900) : F.hei(500);
+        c.font = font(fam, fitPx(fd.text, fam, (big ? 60 : 40) / kk, IW - 200));
+        c.fillText(fd.text, IX + IW / 2, IY + IH / 2 + (big ? (fd.sub ? 20 : 20 / kk) : -10 / kk));
         if (fd.sub2) c.fillText(fd.sub2, IX + IW / 2, IY + IH / 2 + 46 / kk);
         if (fd.sub) {
           c.font = font(F.mono(500), 24 / kk); c.letterSpacing = '10px'; c.fillStyle = rgba('signal', 0.8);

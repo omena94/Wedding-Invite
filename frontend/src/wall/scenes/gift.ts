@@ -17,7 +17,7 @@ import { F, font } from '../engine/type';
 import { rgba } from '../engine/palette';
 import { clamp, ease, prog, pulse, hash, lerp, noise2, frameIdx } from '../engine/util';
 import { fitText } from '../engine/text';
-import { lyricAt, lyricSubOf, drawLyric, layoutLyric, beatAfter, COUPLE_ZH, type LyricStyle } from './_motifs';
+import { lyricAt, lyricSubOf, drawLyric, layoutLyric, beatAfter, COUPLE_ZH, fitPx, type LyricStyle } from './_motifs';
 import { preloadText, INVITE_SMALL, paperSignal } from './_t19';
 import { barsIn, sigInk } from './_t1';
 import { Stage, camDist, type V3 } from './_t4';
@@ -300,8 +300,10 @@ export default class Gift extends Scene {
     const c = this.cardL.ctx;
     this.cardL.clear();
     c.textBaseline = 'alphabetic';
-    c.font = font(F.hand(400), 20); c.fillStyle = rgba('sepia', 0.62);
-    c.fillText(m?.couple ? '給大家：' : `給 ${COUPLE_ZH}：`, CM.x, 50);
+    // 抬頭：新人在後台填的名字可能很長，縮字讓它留在卡片的寫字範圍裡
+    const head = m?.couple ? '給大家：' : `給 ${COUPLE_ZH}：`;
+    c.font = font(F.hand(400), fitPx(head, F.hand(400), 20, CM.w)); c.fillStyle = rgba('sepia', 0.62);
+    c.fillText(head, CM.x, 50);
     if (m?.couple) {
       c.textAlign = 'right'; c.font = font(F.mono(500), 12); c.letterSpacing = '4px'; c.fillStyle = sigInk(0.9);
       c.fillText('FROM THE COUPLE · 新人', CW - CM.x, 48); c.letterSpacing = '0px'; c.textAlign = 'left';

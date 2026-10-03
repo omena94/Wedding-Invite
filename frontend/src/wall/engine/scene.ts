@@ -47,6 +47,8 @@ export interface LiveInfo {
   readonly shortUrl: string;
   /** 現在時間「7:30 PM」（右下角小小的時鐘，12 小時制；截圖／驗收時固定，畫面才可重現）。 */
   readonly clock?: string;
+  /** 商業版的業者署名「由 晴光婚攝 提供」（右下角最底下一行）；新人自己買的婚禮沒有。見 wedding.ts 的 CREDIT。 */
+  readonly credit?: string;
 }
 
 export interface SceneCtx {
@@ -143,6 +145,9 @@ export abstract class Scene {
 
 export type SceneClass = new (ctx: SceneCtx) => Scene;
 
+/** 照片的種類（PlateSpecDecl.prefers）：照長寬比與解析度分。 */
+export type PhotoKind = 'landscape' | 'portrait' | 'square' | 'small';
+
 /**
  * 版面自己宣告的排程參數：在版面檔裡 `export const spec: PlateSpecDecl = {...}`，導演（director.ts）會讀，
  * 加新版面不用改導演。沒寫的欄位用預設值（任何能量、4～8 小節、有沒有留言都能排、權重 1、類別 type）。
@@ -164,12 +169,35 @@ export interface PlateSpecDecl {
   variants?: number;
   /** 類別：couple = 手繪新人互動動畫（點綴，導演不會讓它連續出現），type = 文字／圖像版面。 */
   group?: 'couple' | 'type';
-  /** 系列（sport、dog、doc、ins…）：同一系列不要連著出現。 */
+  /**
+   * 照片版面：只排在「照片窗格」（新人在後台打開了照片，`params.photo` 一定有、沒有主打留言），一般窗格不會排到。
+   * 照片是新人自己選的（婚紗照、成長照、手機照），可能很大也可能很小、橫的直的都有，版面要都撐得住。見 ENGINE.md「照片版面」。
+   */
+  photo?: boolean;
+  /**
+   * 照片版面一次放幾張（預設 1）。大於 1 時 `params.photos` 一定剛好是這麼多張（照片池準備好的不夠就不排這個版面），
+   * `params.photo` 是第一張（主角）：這一格的字只放第一張的註解，其他張是畫面的一部分。
+   */
+  photos?: number;
+  /** 照片版面的小系列（底片、相框、相簿…）：同系列不要連著出現。 */
+  series?: string;
+  /**
+   * 照片版面最適合放哪種照片（沒寫 = 什麼照片都一樣好看）：landscape 橫的、portrait 直的（含手機直拍）、
+   * square 方的、small 很小的舊照片（長邊不到 1200）。導演會先看接下來的照片是哪種，優先挑適合的版面
+   * （不適合的版面還是可能排到，所以每個版面仍然要撐得住任何照片）。一次放好幾張的版面看的是那幾張。
+   */
+  prefers?: PhotoKind[];
+  /**
+   * 後台「版面」分頁的縮圖在窗格的哪裡拍（0..1，預設約 0.67）。縮圖工具用 20～36.4 秒的窗格拍一張：
+   * 收尾的畫面看不出這個版面在做什麼時（例如照片疊被抽到只剩一張），指定一個最有代表性的時間點。
+   */
+  thumbAt?: number;
+  /** 系列（doc、machine、city…）：同一系列不要連著出現。 */
   family?: string;
   /**
    * 雙語版面：有翻譯的歌（韓文歌）中文與原文兩行**一定都畫得清楚**，有主打留言的窗格也照樣畫原文副行
-   * （一般版面有留言時會收起原文，只剩中文）。新人 2026-09-30：「有翻譯的時候只用可以有翻譯的模板，不然有時候都只會有一種」，
-   * 所以有翻譯的歌導演只排 bilingual 的版面。
+   * （一般版面有留言時會收起原文，只剩中文）。有翻譯的歌如果排到一般版面，有留言的窗格就只剩一種文字，
+   * 看起來像翻譯不見了，所以有翻譯的歌導演只排 bilingual 的版面。
    */
   bilingual?: boolean;
 }

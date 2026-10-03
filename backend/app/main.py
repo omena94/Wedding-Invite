@@ -13,7 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from . import live
 from .config import FRONTEND_DIST, settings
 from .database import init_db
-from .routers import admin, gifts, photos, planner, public, rsvp, seating, guest_photos, wall
+from .routers import admin, gifts, photos, planner, public, rsvp, seating, guest_photos, wall, wall_scenes
 
 logging.basicConfig(level=logging.INFO)
 
@@ -39,6 +39,7 @@ app.include_router(photos.router)
 app.include_router(gifts.router)
 app.include_router(guest_photos.router)
 app.include_router(wall.router)
+app.include_router(wall_scenes.router)
 
 
 @app.get("/api/health")

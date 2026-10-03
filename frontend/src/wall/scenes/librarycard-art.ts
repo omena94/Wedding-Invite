@@ -10,7 +10,7 @@ import { FSPass, makeRT, scaleContext2D, W, H, SCALE } from '../engine/gl';
 import { F, font, measure } from '../engine/type';
 import { rgba, mixRgba } from '../engine/palette';
 import { mulberry32, TAU } from '../engine/util';
-import { COUPLE_ZH } from './_motifs';
+import { COUPLE_ZH, fitPx } from './_motifs';
 
 /** 卡片停好時在頁面上的位置。卡片很長，下半截一直插在袋子裡。 */
 export const CARD = { x: 330, y: 100, w: 1000, h: 1000 };
@@ -396,8 +396,10 @@ export function drawPocket(c: CanvasRenderingContext2D, seed: number) {
   const inkC = mixRgba('blood', 'sepia', 0.3, 0.6);
   sc.strokeStyle = inkC; sc.fillStyle = inkC; sc.lineWidth = 2.4;
   sc.strokeRect(3, 3, 234, 52); sc.lineWidth = 1; sc.strokeRect(8, 8, 224, 42);
-  sc.font = font(F.hei(700), 17); sc.letterSpacing = '4px'; sc.textBaseline = 'alphabetic';
-  sc.fillText(`${COUPLE_ZH} 圖書館`, 18, 34);
+  // 名字長短每一場不一樣：章框裡（約 210 px）放不下就縮字，字距跟著縮
+  const libName = `${COUPLE_ZH} 圖書館`, ls = fitPx(libName, F.hei(700), 17, 210, 4);
+  sc.font = font(F.hei(700), ls); sc.letterSpacing = `${(4 * ls) / 17}px`; sc.textBaseline = 'alphabetic';
+  sc.fillText(libName, 18, 34);
   sc.font = font(F.mono(500), 9); sc.letterSpacing = '3px';
   sc.fillText('LOVE LIBRARY · 藏書', 18, 46);
   mottle(sc, 240, 58, seed + 5, 0.8);
@@ -410,7 +412,7 @@ export function drawPocket(c: CanvasRenderingContext2D, seed: number) {
 }
 
 // ---------------------------------------------------------------- 印章
-/** 日期章：mono 大寫「MAR 13 2027」，每一格一張（排成一張直的圖），缺墨各不一樣。小、淡（配角）。 */
+/** 日期章：mono 大寫「JUN 01 2019」（沒定日期的婚禮那一格是「TODAY」），每一格一張（排成一張直的圖），缺墨各不一樣。小、淡（配角）。 */
 export const DATE_CELL = { w: 150, h: 30 };
 export function drawDateSheet(c: CanvasRenderingContext2D, dates: string[], ink: string, seed: number) {
   c.save();

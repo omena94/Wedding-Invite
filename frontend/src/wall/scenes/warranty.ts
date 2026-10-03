@@ -1,10 +1,11 @@
 // 保固卡（亮）：一張「婚姻」的產品保固卡斜放在桌上，鏡頭貼著它。
-//  - 第一拍起，購買日期的打孔格在拍點上「喀、喀、喀」被打穿：2027、03、13——打孔機的影子先壓下來，洞才出現（真的洞，看得到底下的桌面），
-//    打下來的小圓紙片彈出去。
+//  - 第一拍起，購買日期（婚禮日期）的打孔格在拍點上「喀、喀、喀」被打穿：年、月、日——打孔機的影子先壓下來，洞才出現
+//    （真的洞，看得到底下的桌面），打下來的小圓紙片彈出去。還沒定日期：三排改成「保固方案」（期限、範圍、維修），打穿「永久」「全包」「抱一下就好」。
 //  - 同時「消費者意見」欄被原子筆寫上主打留言（這一張的焦點：最大的手寫字），最後署名。
 //  - 寄回聯上貼著一張燙金的防偽貼紙「GENUINE · 永久保固」：每個小節線卡片在光下輕輕轉一下（緩進、停住），金箔的反光跟著掃過去。
 //  - 時間夠長的窗格：最後一個小節線，「品質保證」的章蓋在寄回聯上（畫面輕輕一震）。
-//  - 歌詞在卡片下緣的「使用說明（現場）」，照跟唱規則逐字亮。冷面的小字：品名「婚姻」、型號 AO-2027、保固期限：永久、序號（留言編號）。
+//  - 歌詞在卡片下緣的「使用說明（現場）」，照跟唱規則逐字亮。冷面的小字：品名「婚姻」、型號（新人縮寫＋年份）、保固期限：永久、
+//    序號（縮寫＋日期＋留言編號）。
 //  - 沒有留言：意見欄寫邀請；新人的留言：欄名改成「原廠的話」。純音樂：使用說明欄寫歌名。
 // 畫法：_t3 的文件攝影機（透視、景深、桌面）＋這張卡自己的紙：圓角、齒孔、打穿的洞（cut）、燙金貼紙的反光（跟著卡片的角度）都在 shader 裡；
 // 字、打孔格、章畫在文件圖層（不會變的先畫在離屏畫布）。
@@ -15,7 +16,7 @@ import { F, font, loadText } from '../engine/type';
 import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, hash, lerp, prog, pulse } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
-import { drawLyric, drawMessage, lyricAt, signature, type LyricStyle } from './_motifs';
+import { drawLyric, drawMessage, lyricAt, signature, joinBits, DATE, DATE_MMDD, INITIAL_A, INITIAL_B, type LyricStyle } from './_motifs';
 import { grid, stagger, windowLines, boxLyric, mono, tag, pad3, paperLyric, DocCam, withMips, inkStamp, HUD, EDGE, type Grid, type Pose } from './_t3';
 import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 } from './_v2';
 
@@ -35,10 +36,26 @@ const LYR = { x: X0, y: 782, w: X1 - X0, h: 118 };
 const SEAL = { x: 1328, y: 318, r: 108 };
 const MSG_FAM = F.hand(400);
 const LYR_FAM = F.archivo(100, 700);
-/** 打孔格：年、月、日三排。 */
+/** 打孔格：三排，每排一格被打穿。 */
 const PUNCH = { y: 262, h: 30 };
-const YEARS = [2025, 2026, 2027, 2028, 2029];
-const FIXED = '保固卡品名婚姻型號保固期限永久購買日期年月日消費者意見原廠的話使用說明現場寄回聯永久保固品質保證防偽請寫下你對新人的祝福掃描右下角讓這張卡生效純音樂';
+interface PunchRow { label: string; items: string[]; w: number; pick: number; size: number }
+/** 有婚禮日期：年（前後各兩年）、月、日三排，打穿婚禮那一天。 */
+const dateRows = (d: NonNullable<typeof DATE>): PunchRow[] => [
+  { label: '年', items: [-2, -1, 0, 1, 2].map((k) => String(d.y + k)), w: 72, pick: 2, size: 14 },
+  { label: '月', items: Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, '0')), w: 52, pick: d.m - 1, size: 14 },
+  { label: '日', items: Array.from({ length: 31 }, (_, i) => String(i + 1).padStart(2, '0')), w: 28.5, pick: d.d - 1, size: 12 },
+];
+/** 還沒定日期：不印一排空的日期格，改成「保固方案」三排（一樣三下「喀、喀、喀」）。 */
+const PLAN_ROWS: PunchRow[] = [
+  { label: '期限', items: ['一年', '五年', '十年', '百年', '永久'], w: 72, pick: 4, size: 14 },
+  { label: '範圍', items: ['新郎', '新娘', '兩家人', '全包'], w: 72, pick: 3, size: 14 },
+  { label: '維修', items: ['自己修', '一起修', '抱一下就好'], w: 110, pick: 2, size: 14 },
+];
+const ROWS = DATE ? dateRows(DATE) : PLAN_ROWS;
+const PUNCH_TITLE = DATE ? '購買日期' : '保固方案';
+/** 型號、序號、防偽貼紙上的縮寫（新人的縮寫，例如 EI）。 */
+const INI = `${INITIAL_A}${INITIAL_B}`;
+const FIXED = '保固卡品名婚姻型號保固期限永久購買日期年月日消費者意見原廠的話使用說明現場寄回聯永久保固品質保證防偽請寫下你對新人的祝福掃描右下角讓這張卡生效純音樂保固方案期限範圍維修一年五年十年百年新人兩家人全包自己修一起修抱一下就好';
 
 const PAPER_GLSL = /* glsl */ `
 uniform vec4 holes[3]; // 打孔：x, y, 半徑, 出現的程度
@@ -113,19 +130,11 @@ export default class Warranty extends Scene {
     const m = this.msg;
     const wl = windowLines(lyrics, s, e);
     await loadText(`${FIXED}${song.title}${m ? m.text + signature(m.name) : ''}${wl.map((l) => l.text).join('')}`);
-    // 打孔：2027、03、13，第一拍起一拍一個（窗格短就半拍）
+    // 打孔：每排打穿一格（年、月、日，或保固方案），第一拍起一拍一個（窗格短就半拍）
     const pt = stagger(au, g.b0, 3, clamp((e - g.b0) * 0.25, g.beat, g.beat * 2));
-    const cellX = (row: number, i: number) => {
-      const n = row === 0 ? YEARS.length : row === 1 ? 12 : 31;
-      const w = row === 0 ? 72 : row === 1 ? 52 : 28.5;
-      return { x: X0 + 90 + i * w + w / 2, w, n };
-    };
-    const [yy, mm, dd] = [2027, 3, 13];
-    this.punches = [
-      { ...cellX(0, YEARS.indexOf(yy)), y: PUNCH.y + PUNCH.h / 2, r: 12, t: pt[0]!, label: String(yy) },
-      { ...cellX(1, mm - 1), y: PUNCH.y + 40 + PUNCH.h / 2, r: 12, t: pt[1]!, label: '03' },
-      { ...cellX(2, dd - 1), y: PUNCH.y + 80 + PUNCH.h / 2, r: 11, t: pt[2]!, label: '13' },
-    ];
+    this.punches = ROWS.map((r, ri) => ({
+      x: X0 + 90 + r.pick * r.w + r.w / 2, y: PUNCH.y + ri * 40 + PUNCH.h / 2, r: ri === 2 && r.w < 40 ? 11 : 12, t: pt[ri]!, label: r.items[r.pick]!,
+    }));
     // 留言：第二個打孔的時候開始寫，一小節半內寫完
     const tWrite = pt[1]!;
     if (m) {
@@ -237,23 +246,19 @@ export default class Warranty extends Scene {
     c.textBaseline = 'alphabetic';
     tag(c, '保固卡', X0, 128, { size: 26, color: ink(0.88), tracking: 6, weight: 900 });
     mono(c, 'WARRANTY CARD', X0 + 116, 126, { size: 14, color: ink(0.55), tracking: 4 });
-    mono(c, `SN AO2027-0313-${pad3(m?.n ?? 0)}`, X1, 126, { size: 15, color: ink(0.6), align: 'right', tracking: 2 });
+    // 序號：縮寫＋年份、月日、留言編號（還沒定日期就只有縮寫與編號）
+    mono(c, `SN ${joinBits('-', `${INI}${DATE?.yyyy ?? ''}`, DATE_MMDD, pad3(m?.n ?? 0))}`, X1, 126, { size: 15, color: ink(0.6), align: 'right', tracking: 2 });
     c.fillStyle = ink(0.55); c.fillRect(X0, 146, X1 - X0, 1.5);
-    tag(c, '品名：婚姻　　型號：AO-2027　　保固期限：永久', X0, 190, { size: 19, color: ink(0.68), tracking: 2 });
+    tag(c, `品名：婚姻　　型號：${INI}-${DATE?.yyyy ?? 'LOVE'}　　保固期限：永久`, X0, 190, { size: 19, color: ink(0.68), tracking: 2 });
     // 打孔格
-    tag(c, '購買日期', X0, 240, { size: 15, color: ink(0.5), tracking: 4 });
-    const rows: { label: string; items: string[]; w: number }[] = [
-      { label: '年', items: YEARS.map(String), w: 72 },
-      { label: '月', items: Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, '0')), w: 52 },
-      { label: '日', items: Array.from({ length: 31 }, (_, i) => String(i + 1).padStart(2, '0')), w: 28.5 },
-    ];
-    rows.forEach((r, ri) => {
+    tag(c, PUNCH_TITLE, X0, 240, { size: 15, color: ink(0.5), tracking: 4 });
+    ROWS.forEach((r, ri) => {
       const y = PUNCH.y + ri * 40;
       tag(c, r.label, X0 + 30, y + 22, { size: 16, color: ink(0.6), tracking: 0 });
       r.items.forEach((it, i) => {
         const x = X0 + 90 + i * r.w;
         c.strokeStyle = ink(0.35); c.lineWidth = 1.1; c.strokeRect(x + 2, y, r.w - 4, PUNCH.h);
-        mono(c, it, x + r.w / 2, y + 20, { size: ri === 2 ? 12 : 14, color: ink(0.55), align: 'center', tracking: 0 });
+        mono(c, it, x + r.w / 2, y + 20, { size: r.size, color: ink(0.55), align: 'center', tracking: 0 });
       });
     });
     c.fillStyle = ink(0.35); c.fillRect(X0, MSG_BOX.y - 44, X1 - X0, 1.2); c.fillRect(X0, LYR.y - 12, X1 - X0, 1.2);
@@ -267,7 +272,7 @@ export default class Warranty extends Scene {
     c.fillText('永久保固', SEAL.x, SEAL.y + 14);
     c.font = font(F.mono(600), 14); c.letterSpacing = '5px';
     c.fillText('GENUINE', SEAL.x, SEAL.y - 34);
-    c.fillText('防偽 · AO', SEAL.x, SEAL.y + 52);
+    c.fillText(`防偽 · ${INI}`, SEAL.x, SEAL.y + 52);
     c.letterSpacing = '0px'; c.textAlign = 'left';
     c.restore();
   }

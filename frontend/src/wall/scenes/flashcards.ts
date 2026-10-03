@@ -15,7 +15,7 @@ import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, lerp, TAU } from '../engine/util';
 import type { FitResult } from '../engine/text';
 import { lyricSubOf, type Line } from '../engine/lyrics';
-import { layoutLyric, drawLyric, drawLyricSub, beatAfter, barAfter, subGap, subSizeFor, COUPLE_ZH, type LyricStyle } from './_motifs';
+import { layoutLyric, drawLyric, drawLyricSub, beatAfter, barAfter, subGap, subSizeFor, fitPx, COUPLE_ZH, type LyricStyle } from './_motifs';
 import { lyricV2, sigV2, msgMaxFor, V2 } from './_v2';
 import { fitMsgB2, sigOf, windowLines, linesText, inkSignal, PAPER_SING, mainOnly, lastRowY, INVITE, B2_SYMBOLS, no3, offCanvas, type Rect } from './_b2';
 
@@ -309,7 +309,8 @@ export default class Flashcards extends Scene {
     } else if (card.kind === 'inst' && QUIZ[card.j % QUIZ.length]![1] !== null) {
       const a = QUIZ[card.j % QUIZ.length]![1]!;
       const ans = a === 'couple' ? COUPLE_ZH : a;
-      c.font = font(ZH_FAM, 48); c.fillStyle = rgba('sepia', 0.92);
+      // 答案可能是新人的名字（長短每一場不一樣）：放不進卡片就縮字
+      c.font = font(ZH_FAM, fitPx(ans, ZH_FAM, 48, TW)); c.fillStyle = rgba('sepia', 0.92);
       c.fillText(ans, PAD, CH / 2 + 10);
     } else if (card.kind === 'inst') {
       const title = this.ctx.song.title;

@@ -4,7 +4,7 @@
 //    換句時光圈滑到下一排。中文 46～52、原文約中文的 0.65 倍，兩行各照自己的逐字時間亮（原文比較安靜，不用訊號色）。
 //    一頁唱完就翻頁（右頁翻過去、露出下一頁）。
 //  - 沒翻譯的歌：左頁是專輯的封面插畫（版畫的放射線與同心圓）＋小小的歌名，右頁印歌詞。純音樂：右頁是演奏者名單，光一排一排掃過。
-//  - 左上一張 CD 在轉（一小節一圈），印著「ALAN & OMENA · SIDE A」；每個小節線光在碟面上閃一下。
+//  - 左上一張 CD 在轉（一小節一圈），外圈印著新人的英文名（沒有就中文）、「SIDE A」與日期；每個小節線光在碟面上閃一下。
 //  - 主打留言印在封底內頁的「THANKS TO」上（思源宋體，像專輯的致謝），署名在最後一行下面；一行一行浮出來。
 // 畫法：桌面與燈光是一個 shader，畫一次存起來；歌詞本的紙、CD 盒、封底內頁畫一次在一張 Canvas2D；
 // CD（旋轉）、光圈、歌詞、留言每格畫在另一張；翻頁用每頁畫一次就好的小畫布。
@@ -16,7 +16,7 @@ import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, lerp, TAU } from '../engine/util';
 import type { FitResult } from '../engine/text';
 import { lyricSubOf, type Line } from '../engine/lyrics';
-import { lyricAt, layoutLyric, drawLyric, drawMessage, beatAfter, barAfter, subSizeFor, drawHeart, COUPLE_EN, DATE_DOTS, type LyricStyle, type LyricLayout } from './_motifs';
+import { lyricAt, layoutLyric, drawLyric, drawMessage, beatAfter, barAfter, subSizeFor, drawHeart, COUPLE_EN, DATE_DOTS, joinBits, type LyricStyle, type LyricLayout } from './_motifs';
 import { lyricV2, sigV2, msgMaxFor, V2 } from './_v2';
 import { fitMsgB2, sigOf, windowLines, linesText, mainOnly, INVITE, B2_SYMBOLS, no3, offCanvas, type Rect } from './_b2';
 
@@ -242,11 +242,23 @@ export default class Lyricbook extends Scene {
     c.strokeStyle = rgba('signal', 0.75); c.lineWidth = 5;
     c.beginPath(); c.arc(0, 0, R - 44, -0.4, 1.3); c.stroke();
     c.fillStyle = rgba('bone', 0.85);
-    const ring = `${COUPLE_EN.toUpperCase()} · SIDE A · ${DATE_DOTS} · `;
+    // 外圈的字：名字、日期每一場不一樣（可能很長、可能沒日期、可能是中文名），所以照每個字實際的寬度排角度，
+    // 放得下兩圈就印兩圈、放不下就一圈，平均撐滿一整圈（中文字比等寬的拉丁字寬，用固定角度會擠在一起）
+    const ring = `${joinBits(' · ', COUPLE_EN.toUpperCase(), 'SIDE A', DATE_DOTS)} · `;
     c.font = font(F.mono(500), 15);
-    const chars = Array.from(ring + ring);
-    const step = TAU / chars.length;
-    chars.forEach((ch, i) => { c.save(); c.rotate(i * step); c.translate(0, -(R - 20)); c.fillText(ch, -4, 0); c.restore(); });
+    const unit = Array.from(ring).map((ch) => ({ ch, w: c.measureText(ch).width }));
+    const unitW = unit.reduce((a, g) => a + g.w, 0);
+    const circ = TAU * (R - 20);
+    const reps = unitW * 2 <= circ * 0.9 ? 2 : 1;
+    const k = circ / (unitW * reps);
+    c.textAlign = 'center';
+    let acc = 0;
+    for (let r = 0; r < reps; r++) for (const g of unit) {
+      const a = ((acc + g.w / 2) * k) / (R - 20);
+      c.save(); c.rotate(a); c.translate(0, -(R - 20)); c.fillText(g.ch, 0, 0); c.restore();
+      acc += g.w;
+    }
+    c.textAlign = 'left';
     drawHeart(c, 0, -(R - 80), 22, rgba('rose', 0.95));
     // 中心：透明的圈（看得到底下的托盤）、孔
     c.globalCompositeOperation = 'destination-out';

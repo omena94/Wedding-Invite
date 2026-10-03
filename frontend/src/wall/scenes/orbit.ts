@@ -1,4 +1,4 @@
-// 雙星軌道（暗）：夜空裡兩顆星（α 宣文、β 孟庭）繞著共同質心轉，一小節一圈，
+// 雙星軌道（暗）：夜空裡兩顆星（α、β 是兩位新人，星旁小小地標著名字）繞著共同質心轉，一小節一圈，
 // 軌道是真的克卜勒軌道（偏心率 0.55）：遠心點慢、近心點快——近心點（兩星最靠近的那一刻）永遠落在小節的第一拍，
 // 所以每個重拍兩顆星「擦身而過」、質心發出一圈波紋，強烈的緩動是物理本身給的。軌道每小節進動一點，拖出來的軌跡是一朵花。
 // MV 版：鏡頭整個窗格慢慢從斜上方往下看、再往前推一點（軌道面的傾角跟著變）；小字只剩三群（星名、「觀測紀錄」、一行結論）。
@@ -17,7 +17,7 @@ import { LIN, rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, lerp, prog, pulse, hash, TAU } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
 import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 } from './_v2';
-import { lyricAt, drawLyric, layoutLyric, beatAfter, signature, fillWithHearts } from './_motifs';
+import { lyricAt, drawLyric, layoutLyric, beatAfter, signature, fillWithHearts, NAME_A, NAME_B, fitPx } from './_motifs';
 import { stagger, mono, tag } from './_t11';
 
 export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'science', paper: false, energy: [0.2, 0.85], bars: [4, 12], weight: 1 };
@@ -26,7 +26,7 @@ export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'sc
 /** 質心在螢幕上的位置；軌道面傾角（鏡頭）從 INC0 慢慢變到 INC1。 */
 const CEN = { x: 1200, y: 400 };
 const INC0 = (66 * Math.PI) / 180, INC1 = (50 * Math.PI) / 180;
-/** 兩星的質量（α 宣文、β 孟庭）、相對軌道的半長軸（px）、偏心率、每小節進動。 */
+/** 兩星的質量（α 是 NAME_A、β 是 NAME_B）、相對軌道的半長軸（px）、偏心率、每小節進動。 */
 const M1 = 1, M2 = 0.8, MT = M1 + M2;
 const A = 340, ECC = 0.55, PREC = (11 * Math.PI) / 180, OMEGA0 = (200 * Math.PI) / 180;
 
@@ -49,6 +49,14 @@ const LYR_N = { x: 124, y: 790, w: 860, size: lyricV2(null) };
 /** 留言後面等位線要壓暗的範圍（x0, y0, x1, y1）。 */
 const CALM: [number, number, number, number] = [96, 600, 1010, 960];
 const FAM_MSG = F.hand(700);
+/** 星名：兩位新人的名字。 */
+const STAR_A = `α  ${NAME_A}`, STAR_B = `β  ${NAME_B}`;
+/**
+ * 星名最寬多少：β 甩到最右邊時約在 x 1500，標籤從星的右邊 22 px 開始，要停在離右緣 96 px 以內。
+ * 名字很長（或是英文全名）時縮字，不出畫面。
+ */
+const STAR_W = 280;
+
 const CONCL = '結論：兩星軌道穩定，預計永遠互繞。';
 const INVITE = '掃描右下角 QR code，發送你的祝福訊號。';
 /** 鏡頭推近的最大倍率（最下面一行小字的位置照這個算）。 */
@@ -116,6 +124,8 @@ export default class Orbit extends Scene {
   tFirst = 0;
   lyrSize = 52;
   sigSize = 30;
+  /** 星名的字級（兩個一樣大）：init 時量，字型已經載好。 */
+  starPx = 15;
   lyricsInWindow = false;
   /** 這一格軌道面的 cos／sin 傾角（鏡頭）。 */
   ci = Math.cos(INC0); si = Math.sin(INC0);
@@ -123,8 +133,9 @@ export default class Orbit extends Scene {
   override async init() {
     const { audio: au, lyrics, song } = this.ctx;
     const s = this.ctx.start, e = this.ctx.end, m = this.msg;
-    this.sig = m ? (m.couple ? '—— 新郎新娘' : signature(m.name)) : '';
-    await loadText(`${m?.text ?? ''}${this.sig}${CONCL}${INVITE}${song.title}${song.artist}觀測紀錄宣文孟庭αβ`);
+    this.sig = m ? (m.couple ? '—— 新人' : signature(m.name)) : '';
+    await loadText(`${m?.text ?? ''}${this.sig}${CONCL}${INVITE}${song.title}${song.artist}觀測紀錄${STAR_A}${STAR_B}`);
+    this.starPx = Math.min(fitPx(STAR_A, F.mono(500), 15, STAR_W, 2), fitPx(STAR_B, F.mono(500), 15, STAR_W, 2));
     const c = this.layer.ctx;
     const beat = au.beatPeriod(s);
     this.tFirst = beatAfter(au, s + Math.min(0.2, beat * 0.4));
@@ -262,8 +273,8 @@ export default class Orbit extends Scene {
     lb.seg2(S2.x, S2.y, S2.x + 0.01, S2.y, 32, [sig[0] * 0.3 * glowB * vis, sig[1] * 0.3 * glowB * vis, sig[2] * 0.3 * glowB * vis], 0.5);
     lb.seg2(S2.x, S2.y, S2.x + 0.01, S2.y, 14, [LIN.ember[0] * 2.2 * vis, LIN.ember[1] * 2.2 * vis, LIN.ember[2] * 2.2 * vis], 0.9);
     lb.seg2(S2.x, S2.y, S2.x + 0.01, S2.y, 6, [5 * vis, 4.4 * vis, 3.6 * vis], 1);
-    mono(c, 'α  宣文', S1.x + 22, S1.y - 14, { size: 15, tracking: 2, color: rgba('bone', 0.6) });
-    mono(c, 'β  孟庭', S2.x + 22, S2.y - 14, { size: 15, tracking: 2, color: rgba('signal', 0.7) });
+    mono(c, STAR_A, S1.x + 22, S1.y - 14, { size: this.starPx, tracking: 2, color: rgba('bone', 0.6) });
+    mono(c, STAR_B, S2.x + 22, S2.y - 14, { size: this.starPx, tracking: 2, color: rgba('signal', 0.7) });
 
     this.meteor(lb, t, vis);
     this.caption(c, t, S1, S2);

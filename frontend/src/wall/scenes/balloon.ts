@@ -14,7 +14,7 @@ import { FSPass, Layer2D, H } from '../engine/gl';
 import { F, font, loadText } from '../engine/type';
 import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, frameIdx } from '../engine/util';
-import { lyricAt, lyricSubOf, subSizeFor, subGap, beatAfter, drawHeart, COUPLE_ZH, DATE_DOTS } from './_motifs';
+import { lyricAt, lyricSubOf, subSizeFor, subGap, beatAfter, drawHeart, COUPLE_ZH, DATE_DOTS, joinBits, fitPx } from './_motifs';
 import { layoutRows, drawRows, paperInk } from './_t4';
 import { T23_INVITE, T23_TEXT, sigOf, layMsgV2, stagger, winBars, lastBefore, type MsgLay, type Rect } from './_t23';
 import { V2, lyricV2 } from './_v2';
@@ -319,7 +319,8 @@ export default class Balloon extends Scene {
         c.restore();
       }
     } else {
-      c.font = font(F.hand(700), 60); c.fillStyle = rgba('sepia', 0.9); c.textAlign = 'center';
+      // 名字長短每一場不一樣：只用球皮正面中間那 640 px（再寬會被球面壓扁），放不下就縮字
+      c.font = font(F.hand(700), fitPx(COUPLE_ZH, F.hand(700), 60, 640)); c.fillStyle = rgba('sepia', 0.9); c.textAlign = 'center';
       c.fillText(COUPLE_ZH, MW / 2, MH / 2 + 30); c.textAlign = 'left';
     }
     L.upload();
@@ -341,11 +342,17 @@ export default class Balloon extends Scene {
         c.fillText(`♪ ${song.title}`, BAN.w / 2, BAN.h / 2 + 14); c.textAlign = 'left';
       }
     } else {
+      // 布條左邊有燕尾缺口、兩端會跟著風起伏：字只用中間 BAN.w - 90 寬。名字與日期是執行時的值，放不下就縮字（字距照比例縮）；
+      // 還沒定日期時第二行只剩邀請，不留「 · 」
+      const maxW = BAN.w - 90;
+      const nz = fitPx(COUPLE_ZH, F.ming(700), 50, maxW, 6);
       c.textAlign = 'center';
-      c.font = font(F.ming(700), 50); c.fillStyle = rgba('sepia', 0.9); c.letterSpacing = '6px';
+      c.font = font(F.ming(700), nz); c.fillStyle = rgba('sepia', 0.9); c.letterSpacing = `${(6 * nz) / 50}px`;
       c.fillText(COUPLE_ZH, BAN.w / 2, 70);
-      c.font = font(F.hei(500), 21); c.fillStyle = rgba('sepia', 0.6); c.letterSpacing = '2px';
-      c.fillText(`${DATE_DOTS}　·　${T23_INVITE}`, BAN.w / 2, 118);
+      const sub = joinBits('　·　', DATE_DOTS, T23_INVITE);
+      const sz = fitPx(sub, F.hei(500), 21, maxW, 2);
+      c.font = font(F.hei(500), sz); c.fillStyle = rgba('sepia', 0.6); c.letterSpacing = `${(2 * sz) / 21}px`;
+      c.fillText(sub, BAN.w / 2, 118);
       c.letterSpacing = '0px'; c.textAlign = 'left';
     }
     L.upload();

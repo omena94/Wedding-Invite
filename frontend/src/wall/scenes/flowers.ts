@@ -4,7 +4,7 @@
 // 手法：花是一個全螢幕 shader（SDF 花瓣兩層、花心的點刻，版畫的兩色套印：紙、墨、一個特別色＝主題的訊號色），
 // 莖與葉是 LineBatch，花箱與標籤是一張只畫一次的 Canvas，花心的字是每格重畫的小 Canvas 層。
 // 沒有留言時標籤寫新人的名字（小一點），花（歌詞）當主角、字大一級；純音樂時花在拍點上一朵一朵開（沒有字）。
-// 2026-09-29 照「留言尺寸與版面比例標準 v2」：標籤縮成只比字多一點邊（留言 40～60 px），花箱只到畫面右邊 HUD 之前；
+// 照「留言尺寸與版面比例標準 v2」：標籤縮成只比字多一點邊（留言 40～60 px），花箱只到畫面右邊 HUD 之前；
 // 花的大小跟字級脫鉤（字照 v2 變小，花還是一樣大）；右上方多一顆木刻的太陽——光芒每一拍脹一下、每個小節線轉一格，
 // 花在陽光下點頭。
 import * as THREE from 'three';
@@ -16,7 +16,7 @@ import { LIN, rgba } from '../engine/palette';
 import { clamp, ease, prog, hash, lerp, TAU } from '../engine/util';
 import { Lyrics, type Line, type Word } from '../engine/lyrics';
 import { fillWithHearts } from '../engine/motifs';
-import { beatAfter, COUPLE_ZH, DATE_DOTS, lyricSubOf, drawLyricSub, type LyricStyle } from './_motifs';
+import { beatAfter, COUPLE_ZH, DATE_DOTS, joinBits, fitPx, lyricSubOf, drawLyricSub, type LyricStyle } from './_motifs';
 import { lyricV2 } from './_v2';
 import { winBeats, winBars, no3, blit } from './_t8';
 import { Paper } from './_t11';
@@ -280,7 +280,7 @@ export default class Flowers extends Scene {
       lb.w = 600; lb.h = 230;
     }
     lb.y = Math.round(top + (bot - top - lb.h) / 2);
-    // 雙語（2026-09-30）：有留言又有原文時，原文寫在花箱上緣（SUB_Y_MSG），標籤往下讓出那一排，不要貼著原文
+    // 雙語：有留言又有原文時，原文寫在花箱上緣（SUB_Y_MSG），標籤往下讓出那一排，不要貼著原文
     if (m && this.hasSub) lb.y = Math.round(Math.min(Math.max(lb.y, top + SUB_Y_MSG + 26), bot - lb.h - 6));
     c.save();
     c.translate(lb.x + lb.w / 2, lb.y + lb.h / 2);
@@ -307,18 +307,21 @@ export default class Flowers extends Scene {
       if (m.couple) { c.font = font(F.hei(500), 18); c.letterSpacing = '6px'; c.fillStyle = rgba('blood', 0.8); c.fillText('新人', lb.w - 40, 44); c.letterSpacing = '0px'; }
     } else {
       c.textAlign = 'left';
-      c.font = font(F.ming(900), 56); c.fillStyle = rgba('sepia', 0.95);
-      c.fillText(COUPLE_ZH, 56, 100);
-      c.font = font(F.mono(500), 22); c.letterSpacing = '6px'; c.fillStyle = rgba('blood', 0.85);
-      c.fillText(DATE_DOTS, 60, 146);
-      c.letterSpacing = '0px';
+      // 新人的名字：長的名字縮字放進標籤（左右各留 56）；還沒定日期就不印日期那行，名字與邀請往中間靠
+      c.font = font(F.ming(900), fitPx(COUPLE_ZH, F.ming(900), 56, lb.w - 112)); c.fillStyle = rgba('sepia', 0.95);
+      c.fillText(COUPLE_ZH, 56, DATE_DOTS ? 100 : 116);
+      if (DATE_DOTS) {
+        c.font = font(F.mono(500), 22); c.letterSpacing = '6px'; c.fillStyle = rgba('blood', 0.85);
+        c.fillText(DATE_DOTS, 60, 146);
+        c.letterSpacing = '0px';
+      }
       c.font = font(F.hei(500), 20); c.fillStyle = rgba('sepia', 0.6);
-      c.fillText(INVITE, 60, 192);
+      c.fillText(INVITE, 60, DATE_DOTS ? 192 : 176);
     }
     c.restore();
     // 花箱右邊的小字（編號）；上緣要寫韓文原文時移到下面那塊木板
     c.font = font(F.mono(500), 17); c.letterSpacing = '4px'; c.fillStyle = rgba('sepia', 0.45); c.textAlign = 'left';
-    c.fillText(`${m ? no3(m.n) : 'No.000'} · ${DATE_DOTS}`, lb.x + lb.w + 36, this.hasSub ? mid + 44 : top + 44);
+    c.fillText(joinBits(' · ', m ? no3(m.n) : 'No.000', DATE_DOTS), lb.x + lb.w + 36, this.hasSub ? mid + 44 : top + 44);
     c.letterSpacing = '0px';
     L.upload();
   }

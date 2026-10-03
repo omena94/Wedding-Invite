@@ -4,7 +4,7 @@
 //  - 左邊的低音區：粗的簧片，每一拍、每個小節線各有凸點，撥下去就是那一拍。
 //  - 被撥到的簧片尖端亮一下（訊號色），右邊的調速風扇一直轉。
 //  - 最上面是「正在演奏」：這一行歌詞（逐字跟唱）。最下面是曲目卡：完整的主打留言（一個詞組一拍印上去）與署名；
-//    沒有留言：滾筒上是「宣文♥孟庭」，曲目卡寫邀請。純音樂：正在演奏寫歌名。
+//    沒有留言：滾筒上是新人的名字「A ♥ B」，曲目卡寫邀請。純音樂：正在演奏寫歌名。
 // 手法：滾筒、凸點、底板、襯紙是一個 shader——留言先畫成一張點陣圖（每個像素一顆凸點），shader 用 texelFetch 讀（不會有 mip 的問題）；
 // 音梳與風扇是 LineBatch；字在兩張 Canvas（不會變的一張、每格重畫的一張）。
 import * as THREE from 'three';
@@ -16,7 +16,7 @@ import { rgba, mixRgba, LIN } from '../engine/palette';
 import { clamp, ease, prog, lerp, TAU } from '../engine/util';
 import { wrap, type FitResult } from '../engine/text';
 import { Lyrics } from '../engine/lyrics';
-import { lyricAt, layoutLyric, layoutMessage, signature, beatAfter, drawHeart, COUPLE_ZH, DATE_DOTS, lyricSubOf, drawLyricSub } from './_motifs';
+import { lyricAt, layoutLyric, layoutMessage, signature, beatAfter, drawHeart, COUPLE_ZH, NAME_A, NAME_B, INITIALS, DATE_DOTS, joinBits, lyricSubOf, drawLyricSub } from './_motifs';
 import { drawReveal, phraseSchedule, revealAt, fitCharsF, windowLines, type Rect } from './_t10';
 import { pad3 } from './_t11';
 import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 } from './_v2';
@@ -47,7 +47,7 @@ const cardXform = (c: CanvasRenderingContext2D, w: number, h: number) => { const
 const FAN = { x: 1748, y: 520 }; // 調速風扇
 
 const INVITE = '這一盒還沒有曲子：掃描右下角 QR code，把你的祝福做成音樂盒。';
-const TEXT = `正在演奏曲目本盒演奏純音樂${INVITE}${COUPLE_ZH}一位賓客新郎新娘`;
+const TEXT = `正在演奏曲目本盒演奏純音樂${INVITE}${COUPLE_ZH}一位賓客新人`;
 
 // ---------------------------------------------------------------- 襯紙、底板、滾筒、凸點（一個 shader）
 const BOX = () => new FSPass(/* glsl */ `
@@ -166,7 +166,7 @@ export default class Musicbox extends Scene {
     const { audio: au, lyrics, song } = this.ctx;
     const s = this.ctx.start, e = this.ctx.end, m = this.msg;
     this.body = m ? m.text : INVITE;
-    const pinText = m ? m.text : COUPLE_ZH.replace(/\s*&\s*/, ' ♥ ');
+    const pinText = m ? m.text : `${NAME_A} ♥ ${NAME_B}`;
     // 這個窗格有沒有原文（有主打留言的窗格，引擎給的歌詞本來就沒有原文）
     this.subWin = windowLines(lyrics, s, e).some((l) => lyricSubOf(l));
     await loadText(`${TEXT}${this.body}${pinText}${m ? m.name : ''}${song.title}${song.artist}`);
@@ -184,7 +184,7 @@ export default class Musicbox extends Scene {
     this.sigSize = sigV2(this.fit.size);
     this.lyrSize = lyricV2(m ? this.fit.size : null);
     c.font = font(fam, this.sigSize);
-    const sigW = m ? c.measureText(m.couple ? '—— 新郎新娘' : signature(m.name)).width : 0;
+    const sigW = m ? c.measureText(m.couple ? '—— 新人' : signature(m.name)).width : 0;
     this.card = { w: Math.min(CARD.maxW, Math.max(this.fit.width, sigW) + 2 * CARD.padX), h: CARD.padT + this.fit.height + (m ? this.sigSize + 12 : 0) + CARD.padB + 6 };
     this.tFirst = beatAfter(au, s + 0.2);
     this.sched = phraseSchedule(au, this.body, this.tFirst, Math.min(8 * this.beat, 0.45 * (e - s)), 4);
@@ -262,7 +262,10 @@ export default class Musicbox extends Scene {
     if (!this.subWin) this.playLabel(c);
     // 底板上的刻字與螺絲
     c.font = font(F.serif(600), 15); c.letterSpacing = '5px'; c.fillStyle = rgba('sepia', 0.45);
-    c.fillText(`AO · ${DATE_DOTS} · 313 NOTES`, PLATE.x0 + 30, PLATE.y1 - 16);
+    // 刻字：新人縮寫 · 日期（還沒定就省掉）· 這支滾筒上真的有幾顆凸點
+    let notes = 0;
+    for (const b of this.bitmap) notes += b;
+    c.fillText(joinBits(' · ', INITIALS, DATE_DOTS, `${notes} NOTES`), PLATE.x0 + 30, PLATE.y1 - 16);
     c.letterSpacing = '0px';
     for (const [x, y] of [[PLATE.x0 + 16, PLATE.y0 + 16], [PLATE.x1 - 16, PLATE.y0 + 16], [PLATE.x0 + 16, PLATE.y1 - 16], [PLATE.x1 - 16, PLATE.y1 - 16]] as const) {
       c.fillStyle = rgba('sepia', 0.55); c.beginPath(); c.arc(x, y, 6, 0, TAU); c.fill();
@@ -422,7 +425,7 @@ export default class Musicbox extends Scene {
       // 署名：留言最後一行的下面、靠右
       const sy = y + (fit.lines.length - 1) * fit.lineHeight + fit.size * 0.3 + this.sigSize + 8;
       c.font = font(F.hand(700), this.sigSize); c.fillStyle = rgba('sepia', 0.75); c.textAlign = 'right';
-      c.fillText(m.couple ? '—— 新郎新娘' : signature(m.name), CARD.x + this.card.w - CARD.padX, sy);
+      c.fillText(m.couple ? '—— 新人' : signature(m.name), CARD.x + this.card.w - CARD.padX, sy);
       c.restore();
     }
     c.restore();

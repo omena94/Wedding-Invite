@@ -3,7 +3,7 @@
 //    在拍點照閱讀順序一張張翻開（翻的時候會浮起來、影子拉開，落下輕輕一彈）。「福、喜、愛、心」這種吉祥字刻紅色。
 //  - 全部翻完的下一拍「推倒」：整副牌一起喀一聲，右上角一顆木頭的「胡了」牌子落下來（比留言小，是配角的笑點）。
 //  - 歌詞在計分的籌碼上：桌子下方一排籌碼，一個字（英文一個單字）一枚，唱到的那枚跳起來、字變成訊號色，唱完是墨色。
-//  - 沒有留言：牌是「宣文♥孟庭」，籌碼放大（歌詞是主角），底下一行邀請。純音樂：籌碼排歌名。
+//  - 沒有留言：牌是新人的名字「A♥B」，籌碼放大（歌詞是主角），底下一行邀請。純音樂：籌碼排歌名。
 // v2（留言尺寸標準）：留言那副牌移到左邊、整副 ≤ 860×430，牌上的字 40～60 px；右邊是牌桌的主視覺——
 // 一圈兩層的牌牆（牌背朝上）、中間兩顆骰子：第一拍擲骰，之後每兩個小節擲一次（翻滾、落在拍點、點數變）；
 // 沒擲骰的那個小節，牌牆被推出一墩（「開門」）；每兩拍有人打出一張牌，滑進牌牆中間排成「河」（筒子、條子的圖案，
@@ -17,7 +17,7 @@ import { F, font, loadText } from '../engine/type';
 import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, pulse, hash, frameIdx } from '../engine/util';
 import { Lyrics, type Line, type Word } from '../engine/lyrics';
-import { beatAfter, drawHeart, lyricSubOf, subSizeFor } from './_motifs';
+import { beatAfter, drawHeart, lyricSubOf, subSizeFor, NAME_A, NAME_B } from './_motifs';
 import { msgMaxFor, lyricV2, sigV2 } from './_v2';
 import { sigInk, makeCanvas, freeCanvas, shadowSprite } from './_t1';
 import { bestCellRows, onGrid, sigOf, T17_INVITE, T17_TEXT } from './_t17';
@@ -27,7 +27,8 @@ export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'ga
 const FAM_TILE = F.ming(900);
 const FAM_CHIP = F.hei(700);
 const FAM_SIG = F.hand(700);
-const NO_MSG_TEXT = '宣文♥孟庭';
+/** 沒有留言時排的牌：新人的名字（一個字一張；英文名一個字母一張，太長會折成兩排）。 */
+const NO_MSG_TEXT = `${NAME_A}♥${NAME_B}`;
 /** 刻紅字的吉祥字。 */
 const RED = new Set(Array.from('福喜囍愛心幸永樂福壽合好美甜'));
 /** 留言那副牌的區域（鏡頭落定時的螢幕座標，v2：≤ 860×430）、籌碼那一排、牌牆（中心、半邊長）。 */

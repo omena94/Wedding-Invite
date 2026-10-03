@@ -38,7 +38,7 @@ const LYR_Y = 790; // 歌詞基線
 /** 韓文歌：原文最後一排的基線最低到這裡（螢幕貼圖的下緣還留一點邊，不會貼到外框）。 */
 const SUB_LOW = 862;
 /** 純音樂時「正在寫入」輪流寫這些（一小節換一個）。 */
-const LOG = ['解壓縮　默契.pkg', '安裝　早餐輪流做.dll', '設定　兩人份的鑰匙', '更新　芃芃與 QQ 驅動程式', '套用　吵架後先道歉.patch', '最佳化　一起散步的路線', '清除　單身暫存檔', '註冊　永久授權'];
+const LOG = ['解壓縮　默契.pkg', '安裝　早餐輪流做.dll', '設定　兩人份的鑰匙', '同步　兩人的行事曆.ics', '套用　吵架後先道歉.patch', '最佳化　一起散步的路線', '清除　單身暫存檔', '註冊　永久授權'];
 const TEXT = `正在安裝婚姻完成剩餘時間一輩子約拍還沒有留言掃描右下角把你的祝福加進下一版${LOG.join('')}`;
 
 // 房間：很暗；螢幕的光灑在它前面的桌面（下方一片）與後面的牆（一圈），遠處左上一團很淡的暖光（失焦的燈）
@@ -59,7 +59,7 @@ const BG = () => new FSPass(/* glsl */ `
 interface Prog { v: number; shown: number; prev: number; u: number; tj: number }
 
 /**
- * 原文副行照「螢幕」字級重排（2026-09-30 雙語）：subSizeFor 的 32～56 是螢幕 px，安裝畫面是貼圖（1 貼圖 px = 螢幕約 LS px），
+ * 原文副行照「螢幕」字級重排（雙語版面）：subSizeFor 的 32～56 是螢幕 px，安裝畫面是貼圖（1 貼圖 px = 螢幕約 LS px），
  * 照貼圖 px 排的原文上了螢幕只剩 23 px。中文不動，原文換成 max(34, subSizeFor(中文的螢幕字級)) ÷ LS，太長就折行、不再縮。
  */
 function screenSub(c: CanvasRenderingContext2D, line: Line, st: LyricStyle, lay: LyricLayout): LyricLayout {
@@ -272,7 +272,7 @@ export default class Loading extends Scene {
       let lay = screenSub(c, ly.line, st, layoutLyric(c, ly.line, st));
       let y0 = LYR_Y - (lay.height - lay.size);
       if (lay.sub) {
-        // 雙語（2026-09-30）：原文放大之後，長句（中文折兩行）整塊放不下就把中文縮小一點（不小於 40 螢幕 px）
+        // 雙語：原文放大之後，長句（中文折兩行）整塊放不下就把中文縮小一點（不小於 40 螢幕 px）
         const room = (l: LyricLayout) => SUB_LOW - (BAR.y + BAR.h + 56 + l.size * 0.88) - (l.height - l.size);
         for (let sz = st.size, minSize = st.minSize ?? st.size; room(lay) < 0 && sz > minSize;) {
           sz = Math.max(minSize, sz * 0.95);

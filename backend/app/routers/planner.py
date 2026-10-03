@@ -50,7 +50,7 @@ from ..schemas import (
     VendorPatch,
 )
 from ..security import CoupleRequired
-from ..thumbs import is_image, make_thumb
+from ..thumbs import image_info, is_image, make_thumb, wall_image_name
 from ..stage import (
     ALL_KEYS,
     BANQUET_EXPENSE_KEY,
@@ -156,6 +156,11 @@ def _file_out(f: FileAsset) -> dict:
         "album": f.album or "",
         "sort_order": f.sort_order or 0,
         "has_thumb": bool(f.thumb_name),
+        # 照片的長寬與焦點：婚紗照頁設定大螢幕的焦點用
+        "img_w": f.img_w or 0,
+        "img_h": f.img_h or 0,
+        "focus_x": f.focus_x,
+        "focus_y": f.focus_y,
         "created_at": f.created_at.isoformat() if f.created_at else None,
     }
 
@@ -1245,11 +1250,14 @@ async def upload_file(
     # 照片：產生縮圖，並排在同一本相簿的最後
     thumb_name = ""
     sort_order = 0
+    info = None
     if kind == "photo":
         if is_image(original):
             thumb_name = f"thumb_{stored.rsplit('.', 1)[0]}.jpg"
             if not make_thumb(settings.upload_path / stored, settings.upload_path / thumb_name):
                 thumb_name = ""
+            # 大螢幕挑版面用的長寬、亮度與色調（上傳時算一次）
+            info = image_info(settings.upload_path / stored)
         last = db.scalar(
             select(func.max(FileAsset.sort_order)).where(FileAsset.kind == "photo", FileAsset.album == album.strip()[:50])
         )
@@ -1269,6 +1277,10 @@ async def upload_file(
         album=album.strip()[:50] if kind == "photo" else "",
         sort_order=sort_order,
         thumb_name=thumb_name,
+        img_w=info["w"] if info else 0,
+        img_h=info["h"] if info else 0,
+        lum=info["lum"] if info else None,
+        tone=info["tone"] if info else "",
     )
     db.add(row)
     db.commit()
@@ -1321,6 +1333,8 @@ def delete_file(file_id: int, db: Session = Depends(get_db)):
     paths = [settings.upload_path / f.stored_name]
     if f.thumb_name:
         paths.append(settings.upload_path / f.thumb_name)
+    if f.kind == "photo":
+        paths.append(settings.upload_path / wall_image_name(f.stored_name))
     db.delete(f)
     db.commit()
     for p in paths:

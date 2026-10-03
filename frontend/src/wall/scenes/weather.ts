@@ -4,7 +4,7 @@
 //  - 雲的影子一片一片慢慢飄過紙面（環境的動態），一群候鳥（幾個小小的 V）每兩小節從右往左飛過地圖。
 //  - 歌詞：紙的上緣印著「今日預報」那一行（逐字跟唱，小一級）；純音樂時是「晴時多雲　偶陣愛」。
 //  - 右半邊的天氣圖：等壓線（GLSL 算氣壓場、畫等值線），台灣東邊一團「愛情高氣壓」，最裡面幾圈是愛心形的，
-//    大鼓一打就像心跳一樣往外鼓一下；「愛情暖鋒」每個小節線往台灣推進一段；台北上空的太陽光芒一拍轉一格；幾支風標。
+//    大鼓一打就像心跳一樣往外鼓一下；「愛情暖鋒」每個小節線往台灣推進一段；北台灣上空的太陽光芒一拍轉一格；幾支風標。
 //  - 小字只有三小群：「今日預報」「今日天氣小語」兩個標籤，與右上角的「降愛機率 100%」（拍點上一格一格跳到 100）。
 // 手法：紙＝一個 GLSL pass（紙紋＋等壓線）＋一張不會變的 Canvas 層（台灣）＋一張每格重畫的 Canvas 層，全部畫進一張 render target；
 // 桌面是另一個 GLSL pass。
@@ -110,7 +110,7 @@ const TABLE = () => new FSPass(/* glsl */ `
 interface Barb { x: number; y: number; ph: number }
 
 /**
- * 原文副行照「螢幕」字級重排（2026-09-30 雙語）：subSizeFor 的 32～56 是螢幕 px，天氣圖在畫面上約 LS 倍大、又斜斜地躺在桌上，
+ * 原文副行照「螢幕」字級重排（雙語）：subSizeFor 的 32～56 是螢幕 px，天氣圖在畫面上約 LS 倍大、又斜斜地躺在桌上，
  * 照紙面 px 排的原文上了螢幕只剩 22 px。中文不動，原文換成 max(38, subSizeFor(中文的螢幕字級)) ÷ LS（斜放會壓扁一成多），太長就折行、不再縮。
  */
 function sheetSub(c: CanvasRenderingContext2D, line: Line, st: LyricStyle, lay: LyricLayout): LyricLayout {
@@ -312,7 +312,7 @@ export default class Weather extends Scene {
       }
       c.lineCap = 'butt';
     }
-    // 台北上空的太陽：光芒一拍轉一格（outBack，停住）
+    // 北台灣上空的太陽（裝飾，不代表婚禮在哪裡）：光芒一拍轉一格（outBack，停住）
     const tw = taiwanIn(TW_BOX.x, TW_BOX.y, TW_BOX.h);
     const v = tw.proj(VENUE[0], VENUE[1]);
     const sx = v.x + 90, sy = v.y - 26;
@@ -355,7 +355,7 @@ export default class Weather extends Scene {
       let lay = sheetSub(c, ly.line, st, layoutLyric(c, ly.line, st));
       let y = LYR_Y - (lay.height - lay.size) * 0.5;
       if (lay.sub) {
-        // 雙語（2026-09-30）：中文字頂在「今日預報」標籤下面、原文字腳在「今日天氣小語」標籤上面，中間置中；放不下就把中文縮小一點（不小於 40 螢幕 px）
+        // 雙語：中文字頂在「今日預報」標籤下面、原文字腳在「今日天氣小語」標籤上面，中間置中；放不下就把中文縮小一點（不小於 40 螢幕 px）
         const top = LYR_Y - 78 + 18, bot = this.msgTop - this.fit!.size * 0.95 - 26 - 22 - 12, minSize = st.minSize ?? st.size;
         const depth = (l: LyricLayout) => 0.9 * l.size + l.height - l.size + 0.25 * (l.sub?.lay.size ?? 0);
         for (let sz = st.size; depth(lay) > bot - top && sz > minSize;) {

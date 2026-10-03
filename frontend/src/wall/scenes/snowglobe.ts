@@ -6,7 +6,8 @@
 //    雪花的位置是「每一次搖晃的反應」疊加起來的純函數（確定性，不用逐格累積狀態）。
 //  - 球裡是一個小小的雪景：小屋（窗裡亮著燈，大鼓時亮一下）、兩棵並排的松樹、一盞路燈。不畫人。
 //  - 歌詞（比留言小一級）寫在右上方房間的暗處，照跟唱規則逐字亮。
-//  - 沒有主打留言：銘牌刻新人的名字與日期（小一點），歌詞放大當主角，下面一行小字邀請。純音樂：右上方是小小的歌名。
+//  - 沒有主打留言：銘牌刻新人的名字與日期（小一點；還沒定日期就只刻名字，銘牌跟著變矮），歌詞放大當主角，
+//    下面一行小字邀請。純音樂：右上方是小小的歌名。
 //  - 鏡頭：切進來時從稍遠處推進、在第一拍落定，之後整個窗格很慢地推近。
 // 手法：房間、桌子、底座、銘牌（刻字的凹凸光影從字模取樣算）、玻璃球（球體折射球裡的雪景貼圖、菲涅耳邊緣、燈的反光）
 // 全在一個 shader；球裡的雪景在 init() 畫一次成貼圖；雪花與火花是 LineBatch；歌詞是一張 Canvas2D。
@@ -259,7 +260,7 @@ export default class SnowGlobe extends Scene {
       fit = fitClauses(c, m.text, FAM_MSG, TXT.w, TXT.h - 46, o) ?? fitText(c, m.text, FAM_MSG, TXT.w, TXT.h - 46, o);
     } else fit = fitText(c, plateText, FAM_MSG, TXT.w, 90, { min: 44, max: 56, lineHeight: 1.2, maxLines: 1 });
     const sigSize = sigV2(fit.size);
-    const extra = m ? sigSize * 1.5 : 46;
+    const extra = m ? sigSize * 1.5 : DATE_DOTS ? 46 : 0;
     const blockH = fit.size * 1.02 + (fit.lines.length - 1) * fit.lineHeight + extra;
     const top = TXT.y + Math.max(0, (TXT.h - blockH) / 2);
     this.rows = rowsOf(fit, FAM_MSG, TXT.x + TXT.w / 2, top, 'center');
@@ -273,7 +274,7 @@ export default class SnowGlobe extends Scene {
       const lay = rowsOf({ size: sigSize, lines: [sig], lineHeight: sigSize, width: sw, height: sigSize }, F.ming(400), right - sw, 0)[0]!;
       this.rows.push({ ...lay, y: last.y + fit.size * 0.3 + sigSize * 1.2, glyphs: lay.glyphs.map((g, k) => ({ ...g, i: n0 + k })) });
       this.sizes.push(sigSize);
-    } else {
+    } else if (DATE_DOTS) {
       const dl = rowsOf({ size: 26, lines: [DATE_DOTS], lineHeight: 26, width: 0, height: 26 }, F.mono(500), TXT.x + TXT.w / 2, 0, 'center')[0]!;
       this.rows.push({ ...dl, y: last.y + 48, glyphs: dl.glyphs.map((g, k) => ({ ...g, i: n0 + k })) });
       this.sizes.push(26);
@@ -294,7 +295,7 @@ export default class SnowGlobe extends Scene {
       const size = this.sizes[ri]!;
       const fam = ri < fit.lines.length ? FAM_MSG : m ? F.ming(400) : F.mono(500);
       c.font = font(fam, size);
-      if (!m && ri === this.rows.length - 1) c.letterSpacing = '6px';
+      if (!m && DATE_DOTS && ri === this.rows.length - 1) c.letterSpacing = '6px';
       for (const g of r.glyphs) {
         if (g.ch === '♥') { drawHeart(c, r.x + g.x + g.w / 2, r.y - size * 0.36, Math.min(g.w, size) * 0.8, 'rgb(255,0,0)'); continue; }
         c.fillText(g.ch, r.x + g.x, r.y);

@@ -91,6 +91,23 @@ export async function confirmAsk({ title, text, confirmText = "確定" }) {
   return r.isConfirmed;
 }
 
+/** 兩種做法擇一（例如「馬上換」或「這首播完換」）：回傳 "confirm"、"deny"，按取消是 null。 */
+export async function chooseAsk({ title, text, confirmText, denyText }) {
+  const r = await Swal.fire({
+    icon: "question",
+    title,
+    text,
+    showCancelButton: true,
+    showDenyButton: !!denyText,
+    confirmButtonText: confirmText,
+    denyButtonText: denyText,
+    cancelButtonText: "取消",
+    confirmButtonColor: SWAL_COLOR,
+    denyButtonColor: "#8a7a6a",
+  });
+  return r.isConfirmed ? "confirm" : r.isDenied ? "deny" : null;
+}
+
 export function toastOk(title) {
   return Swal.fire({ icon: "success", title, timer: 1400, showConfirmButton: false });
 }

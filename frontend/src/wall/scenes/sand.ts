@@ -1,5 +1,5 @@
 // 沙畫（暗）：從上往下看一個燈箱，玻璃上鋪了一層沙，燈從下面透上來——沙厚的地方是暗的，手指撥開的地方透出暖暖的光。
-// 2026-09-29 依「留言尺寸與版面比例標準 v2」重做構圖：
+// 依「留言尺寸與版面比例標準 v2」的構圖：
 //  - 場景是主視覺：右邊一幅沙畫在拍點上一筆一筆畫出來——一彎月亮、兩道山稜、山上一棵樹、一條彎彎的小路、一顆一顆的星星；
 //    畫完之後每一小節手指再彈出一顆流星（窗格長時中段也一直有事件）。右下角 HUD 底下是堆高的沙（暗），不擋時間與 QR。
 //  - 留言在左邊，是被手指撥開的字（霞鶩文楷，40～60 px，照 _v2），拍點上一個字一個字撥出來：剛撥開的地方最亮，
@@ -16,7 +16,7 @@ import { FSPass, Layer2D, W, H } from '../engine/gl';
 import { F, font, loadText } from '../engine/type';
 import { rgba } from '../engine/palette';
 import { clamp, ease, prog, hash } from '../engine/util';
-import { lyricAt, COUPLE_ZH, lyricSubOf, layoutLyric, subStyleFor, subGap, drawLyricSub, type LyricStyle } from './_motifs';
+import { lyricAt, NAME_A, NAME_B, fitPx, lyricSubOf, layoutLyric, subStyleFor, subGap, drawLyricSub, type LyricStyle } from './_motifs';
 import { grid, stagger, layoutRows, drawRows, type KaraokeInk } from './_t4';
 import { PlaneCam, camUniforms, CAM_GLSL, orderMask, lineItems, msgBlockV2, INVITE, type OrderMask, type MsgBlock, type MaskItem, type Rect } from './_t14';
 import { lyricV2 } from './_v2';
@@ -155,8 +155,8 @@ export default class Sand extends Scene {
     const c = this.lyr.ctx;
     const gr = grid(au, s, e);
     this.hasLyrics = lyrics.linesIn(s, e).length > 0;
-    const names = COUPLE_ZH.replace(/\s*&\s*/, ' ♥ ');
-    await loadText(`${m?.text ?? ''}${m ? (m.couple ? '—— 新郎新娘' : m.name) : ''}${names}${INVITE}${song.title}${song.artist}——一位賓客`);
+    const names = `${NAME_A} ♥ ${NAME_B}`;
+    await loadText(`${m?.text ?? ''}${m ? (m.couple ? '—— 新人' : m.name) : ''}${names}${INVITE}${song.title}${song.artist}——一位賓客`);
     // 鏡頭在留言那一塊的縮放（窗格中間的姿勢）：畫在燈箱上的字級要除以它，畫面上才是標準的大小
     this.cam.set(this.pose((s + e) / 2));
     const k = (this.k = this.cam.toScreen(MSG_BOX.x + MSG_BOX.w / 2, MSG_BOX.y + MSG_BOX.h / 2).scale);
@@ -171,7 +171,8 @@ export default class Sand extends Scene {
     } else {
       this.lyr0 = { ...LYR_B, size: lyricV2(null) / k };
       if (!this.hasLyrics) {
-        const size = 60 / k;
+        // 名字長短不一：照左邊那一塊的寬度縮字（撥開的字一樣要在燈箱的左半邊）
+        const size = fitPx(names, FAM_MSG, 60 / k, LYR_B.w);
         items = lineItems([{ text: names, x: LYR_B.x, y: 470 }], FAM_MSG, size);
       }
       this.avoid = [this.cam.screenRect([LYR_B.x, 320, LYR_B.w, 260], 10)];

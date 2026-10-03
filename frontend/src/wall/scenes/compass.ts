@@ -16,7 +16,7 @@ import { F, font } from '../engine/type';
 import { rgba } from '../engine/palette';
 import { clamp, ease, hash, lerp, prog, springStep, TAU } from '../engine/util';
 import { Lyrics, type Line } from '../engine/lyrics';
-import { lyricAt, fillWithHearts, drawHeart, COUPLE_ZH, DATE_DOTS, lyricSubOf, subSizeFor } from './_motifs';
+import { lyricAt, fillWithHearts, drawHeart, COUPLE_ZH, DATE_DOTS, NAME_A, NAME_B, fitPx, lyricSubOf, subSizeFor } from './_motifs';
 import { grid, paperInk, type Grid } from './_t4';
 import { PlaneCam, camUniforms, CAM_GLSL, type MsgBlock } from './_t14';
 import { loadWindow, revealAt, beatsBetween, v2Block } from './_t18';
@@ -321,17 +321,20 @@ export default class Compass extends Scene {
       this.lyrSize = lyricV2(b.screen);
     } else {
       c.fillStyle = '#fff';
-      c.font = font(FAM_MSG, 58);
+      // 名字是執行時的值：長的名字縮到蓋子內側寫字的範圍（MBOX.w）裡
+      const names = `${NAME_A} ♥ ${NAME_B}`;
+      c.font = font(FAM_MSG, fitPx(names, FAM_MSG, 58, MBOX.w));
+      // 還沒定日期：少一行，名字與邀請往中間靠，不留一個空行
+      const dy = DATE_DOTS ? 0 : 26;
       // fillWithHearts 照左對齊量位置：自己算置中
-      const names = COUPLE_ZH.replace(/\s*&\s*/, ' ♥ ');
-      fillWithHearts(c, names, LC.x - c.measureText(names).width / 2, LC.y - 10, '#f00');
+      fillWithHearts(c, names, LC.x - c.measureText(names).width / 2, LC.y - 10 + dy, '#f00');
       c.textAlign = 'center';
       c.font = font(F.serif(600), 32);
       c.letterSpacing = '6px';
-      c.fillText(DATE_DOTS, LC.x, LC.y + 58);
+      if (DATE_DOTS) c.fillText(DATE_DOTS, LC.x, LC.y + 58);
       c.letterSpacing = '2px';
       c.font = font(F.hei(500), 24);
-      c.fillText(INVITE, LC.x, LC.y + 130);
+      c.fillText(INVITE, LC.x, LC.y + 130 - dy * 1.4);
       c.letterSpacing = '0px';
       c.textAlign = 'left';
       this.lyrSize = lyricV2(null);

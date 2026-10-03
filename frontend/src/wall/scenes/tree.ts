@@ -3,8 +3,8 @@
 // 許願樹：主打留言寫在一張掛在橫枝上的許願牌（整個畫面唯一有顏色的一塊紙），在第二拍掉下來、晃幾下停住，
 // 之後每個小節線被風推一下。樹冠裡還掛著幾張很小的空白許願牌（別人的祝福，不搶戲）。
 // 歌詞刻在橫枝上：唱到的字被刀刻出來（訊號色的暗部），刻好變成深墨色，字跟著樹枝的弧度上下起伏。
-// 樹幹上刻著一顆小小的「A ♥ O」。
-// 2026-09-29 照「留言尺寸與版面比例標準 v2」：許願牌縮成只比字多一點邊、掛到畫面右半邊（樹是主角），
+// 樹幹上刻著一顆小小的愛心，裡面是兩位新人名字的第一個字（「E+I」）。
+// 照「留言尺寸與版面比例標準 v2」：許願牌縮成只比字多一點邊、掛到畫面右半邊（樹是主角），
 // 留言 40～60 px、歌詞 40～52 px。
 // 手法：樹、葉、牌子的繩子都是 LineBatch（GPU 細線，版畫的外框＋樹皮線＋暗面的交叉排線）；
 // 地面與遠山是一張只畫一次的 Canvas；許願牌是 init 畫好的圖，每格只是旋轉貼上。
@@ -17,7 +17,7 @@ import { LIN, rgba } from '../engine/palette';
 import { clamp, ease, prog, hash, lerp, mulberry32, TAU } from '../engine/util';
 import { Lyrics, type Line } from '../engine/lyrics';
 import { fillWithHearts } from '../engine/motifs';
-import { lyricAt, beatAfter, COUPLE_ZH, DATE_DOTS, drawHeart, lyricSubOf, subSizeFor, subGap } from './_motifs';
+import { lyricAt, beatAfter, COUPLE_ZH, DATE_DOTS, INITIAL_A, INITIAL_B, fitPx, drawHeart, lyricSubOf, subSizeFor, subGap } from './_motifs';
 import { lyricV2, V2 } from './_v2';
 import { winBeats, winBars } from './_t8';
 import { Paper } from './_t11';
@@ -36,6 +36,10 @@ const ANCHOR = { x: 1180, y: 378 };
 /** 許願牌上寫字的範圍（v2：牌子連字 ≤ 860×430；牌子掛在畫面右半邊，下緣不碰右下角 HUD）。 */
 const TAG_W = 740, TAG_TXT = { w: 630, h: 262 };
 const INK_W = 2.1;
+/** 樹幹上愛心裡刻的字：兩位新人名字的第一個字（英文名取字母、沒有英文名取中文的第一個字）。 */
+const TRUNK_MARK = `${INITIAL_A}+${INITIAL_B}`;
+/** 沒有留言時許願牌上的名字最大字級、牌子左右留的邊（名字很長時牌子跟著變寬，最寬 TAG_W，再放不下就縮字）。 */
+const NAME_PX = 52, NAME_PAD = 60;
 
 type Br = { pts: P2[]; w: number[]; cum: number[]; len: number; t0: number; t1: number; depth: number; bark: boolean };
 type Leaf = { x: number; y: number; a: number; s: number; t: number; accent: boolean; br: number; at: number };
@@ -99,6 +103,8 @@ export default class Tree extends Scene {
   /** 許願牌：init 畫好的圖（含字）、大小、掉下來的時間、晃動的衝量。 */
   tag: HTMLCanvasElement | null = null;
   tagH = 300; tagW = TAG_W; tDrop = 0;
+  /** 沒有留言時許願牌上名字的字級（buildTag 照牌子寬算）。 */
+  namePx = NAME_PX;
   pushes: { t: number; a: number }[] = [];
   small: { x: number; y: number; s: number; t: number; ph: number }[] = [];
   block: MsgBlock | null = null;
@@ -111,7 +117,7 @@ export default class Tree extends Scene {
   override async init() {
     const { audio: au, lyrics, start: s, end: e } = this.ctx;
     const lines = lyrics.linesIn(s - 1, e + 1);
-    await loadAll(this.msg, lines.map((l) => l.text).join(''), `${COUPLE_ZH}${DATE_DOTS}A♥O+`);
+    await loadAll(this.msg, lines.map((l) => l.text).join(''), `${COUPLE_ZH}${DATE_DOTS}${TRUNK_MARK}♥`);
     this.beat = au.beatPeriod(s);
     const subs = lines.map((l) => lyricSubOf(l)).filter((x): x is Line => !!x);
     if (subs.length) {
@@ -231,7 +237,12 @@ export default class Tree extends Scene {
       this.tagH = Math.round(b.height + 118);
       this.lyrSize = lyricV2(b.fit.size);
     } else {
-      this.tagW = 420; this.tagH = 200;
+      // 名字是執行時才知道的：牌子照名字的寬變寬（最寬 TAG_W），還放不下才縮字
+      const fam = F.ming(900);
+      c0.font = font(fam, NAME_PX);
+      this.tagW = Math.round(Math.min(TAG_W, Math.max(420, c0.measureText(COUPLE_ZH).width + NAME_PAD * 2)));
+      this.namePx = fitPx(COUPLE_ZH, fam, NAME_PX, this.tagW - NAME_PAD * 2);
+      this.tagH = 200;
       this.lyrSize = lyricV2(null);
     }
     const w = this.tagW, h = this.tagH;
@@ -279,10 +290,13 @@ export default class Tree extends Scene {
       }
     } else {
       c.textAlign = 'center';
-      c.font = font(F.ming(900), 52); c.fillStyle = rgba('sepia', 0.9);
-      c.fillText(COUPLE_ZH, w / 2, 124);
-      c.font = font(F.mono(500), 20); c.letterSpacing = '5px'; c.fillStyle = rgba('blood', 0.8);
-      c.fillText(DATE_DOTS, w / 2, 164); c.letterSpacing = '0px';
+      c.font = font(F.ming(900), this.namePx); c.fillStyle = rgba('sepia', 0.9);
+      // 還沒定日期：只有名字一行，放在牌子（穿繩孔下面那一塊）的正中
+      c.fillText(COUPLE_ZH, w / 2, DATE_DOTS ? 124 : 146);
+      if (DATE_DOTS) {
+        c.font = font(F.mono(500), 20); c.letterSpacing = '5px'; c.fillStyle = rgba('blood', 0.8);
+        c.fillText(DATE_DOTS, w / 2, 164); c.letterSpacing = '0px';
+      }
     }
     this.tag = cv;
   }
@@ -475,14 +489,14 @@ export default class Tree extends Scene {
       for (let i = 0; i < 3; i++) { c.beginPath(); c.moveTo(-9, 16 + i * 8); c.lineTo(-9 + 18 * (0.5 + 0.5 * hash(sm.ph, i)), 16 + i * 8); c.stroke(); }
       c.restore();
     }
-    // 樹幹上的刻痕「A ♥ O」（樹幹長好之後）
+    // 樹幹上的刻痕：愛心裡兩位新人的縮寫（樹幹長好之後）；縮寫可能是中文字，縮到愛心裡放得下
     const tk = prog(t, this.trunk.t1, this.trunk.t1 + 0.4);
     if (tk > 0) {
       c.save(); c.globalAlpha = tk;
       const hx = 452, hy = 800;
       drawHeart(c, hx, hy, 64, rgba('blood', 0.3));
-      c.font = font(F.hei(700), 17); c.fillStyle = rgba('sepia', 0.8); c.textAlign = 'center'; c.textBaseline = 'middle';
-      c.fillText('A+O', hx, hy - 3);
+      c.font = font(F.hei(700), fitPx(TRUNK_MARK, F.hei(700), 17, 40)); c.fillStyle = rgba('sepia', 0.8); c.textAlign = 'center'; c.textBaseline = 'middle';
+      c.fillText(TRUNK_MARK, hx, hy - 3);
       c.restore();
     }
 

@@ -16,11 +16,11 @@
 import * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
 import { FSPass, Layer2D, W, H } from '../engine/gl';
-import { F, font } from '../engine/type';
+import { F, font, measure } from '../engine/type';
 import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, hash, lerp, pulse } from '../engine/util';
 import { Lyrics, type Line, type Word } from '../engine/lyrics';
-import { beatAfter, lyricSubOf, drawHeart, COUPLE_ZH, COUPLE_EN, DATE_DOTS } from './_motifs';
+import { beatAfter, lyricSubOf, drawHeart, COUPLE_EN, DATE_DOTS, NAME_A, NAME_B, HAS_LATIN_NAMES } from './_motifs';
 import { V2, lyricV2 } from './_v2';
 import { loadB3, msgBlock, drawMsgBlock, mainOnly, layoutBi, paintLay, B3_INVITE, SUB_RATIO, SUB_MIN, type BiLayout, type MsgBlock, type Rect } from './_b3';
 
@@ -46,6 +46,8 @@ const SIGNS: { side: -1 | 1; z: number; y0: number; y1: number; w: number; text:
   { side: 1, z: 5.6, y0: 120, y1: 380, w: 130, text: '書', col: 'signal' },
 ];
 const SIGN_TEXT = SIGNS.map((s) => s.text).join('');
+/** 純音樂時窄招牌上的字：新人有英文名就是英文名，沒有就是這句（不要把中文名在旁邊再印一次）。 */
+const NAMES_SUB = HAS_LATIN_NAMES ? COUPLE_EN : 'JUST MARRIED';
 /** 還沒通電的歌詞燈管：看得到的玻璃管（米白偏灰、約 0.45），賓客先讀到整句，唱到才亮成霓虹。 */
 const GLASS = () => mixRgba('bone', 'ash', 0.35, 0.45);
 /** 橫式招牌（英文為主的句子）：寬、左右與上下的留白。 */
@@ -272,7 +274,7 @@ export default class NeonAlley extends Scene {
   override async init() {
     const { audio: au, lyrics } = this.ctx;
     const s = this.ctx.start, e = this.ctx.end, m = this.msg;
-    await loadB3(this.ctx, `${SIGN_TEXT}${COUPLE_EN}`);
+    await loadB3(this.ctx, `${SIGN_TEXT}${NAMES_SUB}`);
     this.tOn = beatAfter(au, s + 0.08);
     this.buildBox();
     this.buildSigns();
@@ -298,14 +300,15 @@ export default class NeonAlley extends Scene {
         if (sub) { sH = Math.max(sH, sub.height); sW = Math.max(sW, sub.cols * sub.colW); }
       }
     } else {
-      // 純音樂：中文招牌是新人的名字，窄招牌是英文名字
+      // 純音樂：中文招牌是新人的名字，窄招牌是英文名字（沒有英文名就是 NAMES_SUB 的通用句）；
+      // 名字長的話 vLayout 自己會分欄、縮字
       const fake = (text: string): Line => {
         const words = Array.from(text).map((ch, i) => ({ w: ch, start: -1, end: -1, line: 0, index: i, gi: 0, o: i }));
         return { i: 0, text, start: -1, end: -1, words };
       };
-      const en = COUPLE_EN.split(' ').map((w, i, arr) => ({ w, start: -1, end: -1, line: 0, index: i, gi: 0, o: arr.slice(0, i).join(' ').length + (i ? 1 : 0) }));
-      const main = vLayout(c, fake(COUPLE_ZH.replace(/\s*&\s*/, '♥').replace(/\s/g, '')), F.hei(500), V2.lyrMax, V2.lyrMin, inner);
-      const sub = vLayout(c, { i: 0, text: COUPLE_EN, start: -1, end: -1, words: en }, F.hei(500), 34, SUB_MIN, inner);
+      const en = NAMES_SUB.split(' ').map((w, i, arr) => ({ w, start: -1, end: -1, line: 0, index: i, gi: 0, o: arr.slice(0, i).join(' ').length + (i ? 1 : 0) }));
+      const main = vLayout(c, fake(`${NAME_A}♥${NAME_B}`.replace(/\s/g, '')), F.hei(500), V2.lyrMax, V2.lyrMin, inner);
+      const sub = vLayout(c, { i: 0, text: NAMES_SUB, start: -1, end: -1, words: en }, F.hei(500), 34, SUB_MIN, inner);
       this.namesLay = { main, sub, horiz: null };
       hMax = main.height; wMax = main.cols * main.colW; sH = sub.height; sW = sub.cols * sub.colW;
     }
@@ -333,11 +336,15 @@ export default class NeonAlley extends Scene {
       drawMsgBlock(c, mb, { color: mixRgba('ink', 'sepia', 0.3), sigColor: rgba('blood', 0.95) });
       c.restore();
     } else {
-      const [a, b] = COUPLE_ZH.split(/\s*&\s*/) as [string, string];
-      c.font = font(F.hand(700), 64); c.fillStyle = mixRgba('ink', 'sepia', 0.3);
+      // 「名字 ♥ 名字」：名字是執行時的值，整排（含中間的愛心）放不下燈箱就整組縮小
+      const a = NAME_A, b = NAME_B, fam = F.hand(700);
+      const k = Math.min(1, (BOX.w - 120) / (measure(a, fam, 64) + 92 + measure(b, fam, 64)));
+      c.font = font(fam, Math.floor(64 * k * 2) / 2); c.fillStyle = mixRgba('ink', 'sepia', 0.3);
       const wa = c.measureText(a).width;
-      c.fillText(a, 60, 150); drawHeart(c, 60 + wa + 46, 128, 44); c.fillText(b, 60 + wa + 92, 150);
-      c.font = font(F.mono(500), 20); c.letterSpacing = '6px'; c.fillStyle = rgba('sepia', 0.7); c.fillText(DATE_DOTS, 62, 204); c.letterSpacing = '0px';
+      // 還沒定日期：少一行，名字往下挪一點，名字與邀請之間不空一大塊
+      const yN = DATE_DOTS ? 150 : 180;
+      c.fillText(a, 60, yN); drawHeart(c, 60 + wa + 46 * k, yN - 22 * k, 44 * k); c.fillText(b, 60 + wa + 92 * k, yN);
+      if (DATE_DOTS) { c.font = font(F.mono(500), 20); c.letterSpacing = '6px'; c.fillStyle = rgba('sepia', 0.7); c.fillText(DATE_DOTS, 62, 204); c.letterSpacing = '0px'; }
       c.font = font(F.hei(500), 24); c.fillStyle = rgba('ink', 0.75); c.fillText(B3_INVITE, 60, 300);
     }
     // 壓克力的邊緣暗一點

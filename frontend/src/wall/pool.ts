@@ -4,8 +4,12 @@
 import type { Msg } from './engine/scene';
 import { cleanMessage, cleanName } from './engine/text';
 import { loadText } from './engine/type';
+import { COUPLE_ZH } from './wedding';
 
 export interface RawMessage { id: number; name: string; text: string; created_at?: string; source?: string }
+
+/** 署名：新人自己寫的話沒填名字時署新人的名字（版面的 signature('') 會寫成「一位賓客」）。 */
+const nameOf = (r: RawMessage) => cleanName(r.name) || (r.source === 'couple' ? COUPLE_ZH : '');
 
 export class MessagePool {
   /** 已經準備好（字型載好）可以上螢幕的留言，依 id 排序。 */
@@ -38,12 +42,12 @@ export class MessagePool {
     // 內容被新人改過的，也更新
     for (const r of rows) {
       const m = this.byId.get(r.id);
-      if (m && (m.text !== cleanMessage(r.text) || m.name !== cleanName(r.name))) { m.text = cleanMessage(r.text); m.name = cleanName(r.name); }
+      if (m && (m.text !== cleanMessage(r.text) || m.name !== nameOf(r))) { m.text = cleanMessage(r.text); m.name = nameOf(r); }
     }
     const incoming = rows.filter((r) => !this.byId.has(r.id) && !this.pending.has(r.id));
     if (!incoming.length) return;
     incoming.forEach((r) => this.pending.add(r.id));
-    const msgs = incoming.map((r) => ({ id: r.id, name: cleanName(r.name), text: cleanMessage(r.text), n: 0, couple: r.source === 'couple' }));
+    const msgs = incoming.map((r) => ({ id: r.id, name: nameOf(r), text: cleanMessage(r.text), n: 0, couple: r.source === 'couple' }));
     // 字型分片先下載好，第一次畫出來才不會是系統字
     await loadText(msgs.map((m) => m.text + m.name).join(''));
     for (const m of msgs) {

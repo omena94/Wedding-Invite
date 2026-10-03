@@ -4,8 +4,8 @@
 //    （白色鉛筆的手寫字，這一張的焦點：最大、最亮），署名；然後筆回到圖上，把內牆、門、窗、尺寸線、家具一組一組補完。
 //  - 房間名稱是歌詞：每一句歌詞「住進」一個房間（客廳 → 主臥 → 廚房輪流），房間在那一句開始時斜線打底，字照跟唱規則逐字亮，
 //    字比留言小一號；唱完就淡出（畫面上的大字只有留言與正在唱的這一句），房間只留小小的房名。圖畫完之後，每換一句，筆就沿著那個房間描一圈。
-//  - 冷面的細節都很小、很淡：尺寸 3,130／2,027（婚禮日期）、5,200、1,314，總長「∞」；狗狗房的兩個狗窩（芃芃、QQ）；
-//    左下角一行圖說「我們的家　平面圖　A-0313　比例 1 : 1（實際大小）」。
+//  - 冷面的細節都很小、很淡：尺寸 3,600／婚禮那一年（沒定日期時 2,400）、5,200、1,314，總長「∞」；起居角的一張懶骨頭與一盆盆栽；
+//    左下角一行圖說「我們的家　平面圖　A-01　婚禮日期　比例 1 : 1（實際大小）」（沒定日期就整段省掉）。
 //  - 鏡頭：整個窗格很慢地推近，第一拍輕輕一震；曬圖紙上有一塊比較亮的光（留言那一帶）。
 //  - 純音樂：房間只有小小的房名；沒有留言：歌詞是焦點（房間裡的字大一點），右邊淡淡寫一句邀請；新人的留言：標註旁寫「設計者附註」。
 // 畫法：曬圖紙（不均勻的曝光、格線、摺痕、圖框、正在唱的房間的斜線）是全螢幕 shader；平面圖所有的線是一個 LineBatch
@@ -19,7 +19,7 @@ import { LIN, rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, hash, lerp, prog, pulse } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
 import type { Line } from '../engine/lyrics';
-import { drawLyric, signature, sparkHead, sparkParticles, drawHeart, DATE_DOTS, lyricSubOf, layoutLyric, subGap, type LyricStyle, type LyricLayout } from './_motifs';
+import { drawLyric, signature, sparkHead, sparkParticles, drawHeart, DATE, DATE_DOTS, joinBits, lyricSubOf, layoutLyric, subGap, type LyricStyle, type LyricLayout } from './_motifs';
 import { grid, stagger, windowLines, boxLyric, mono, tag, pad3, fiberBake, fiberTex, inOut, type Grid, type P2, type Rect } from './_t3';
 import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 } from './_v2';
 
@@ -29,8 +29,8 @@ export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'do
 const X0 = 168, X1 = 938, Y0 = 208, Y1 = 896;
 const XA = 548; // 主臥｜廚房
 const YB = 548; // 上排｜下排
-const XC = 668; // 客廳｜狗狗房、玄關
-const YD = 752; // 狗狗房｜玄關
+const XC = 668; // 客廳｜起居角、玄關
+const YD = 752; // 起居角｜玄關
 const WX = 11, WI = 6; // 外牆、內牆粗細
 /** 右邊的標註（留言）。 */
 const NOTE = { x: 1030, y: 176, w: 690, h: 560 };
@@ -50,7 +50,11 @@ const ROOMS: Room[] = [
 ];
 const LYR_FAM = F.archivo(75, 700);
 const MSG_FAM = F.hand(400);
-const FIXED = '我們的家平面圖比例實際大小附註設計者本案尚缺一則祝福請掃描右下角把想對新人說的話標註在這裡芃芃客廳主臥廚房';
+const FIXED = '我們的家平面圖比例實際大小附註設計者本案尚缺一則祝福請掃描右下角把給新人的話標註在這裡懶骨頭盆栽客廳主臥廚房';
+/** 上排右邊那段尺寸：有日期就寫婚禮那一年（寫成「2,0xx」這種尺寸的樣子，冷面的彩蛋），沒有就是一個普通的尺寸。 */
+const DIM_YEAR = DATE ? `${DATE.yyyy.slice(0, 1)},${DATE.yyyy.slice(1)}` : '2,400';
+/** 左下角的圖說：沒定日期時日期那一段連同分隔一起省掉。 */
+const CAPTION = joinBits('　', '我們的家', '平面圖', 'A-01', DATE_DOTS.replace(/ /g, ''), '比例 1 : 1（實際大小）');
 
 // ---------------------------------------------------------------- 曬圖紙
 const PAPER = () => new FSPass(/* glsl */ `
@@ -204,7 +208,7 @@ interface Glyph { ch: string; x: number; y: number; t: number; w: number }
 const SUB_MIN = 34;
 const roomCache = new WeakMap<Line, Map<string, LyricLayout>>();
 /**
- * 房間裡的歌詞（2026-09-30 雙語）：boxLyric 會讓原文跟著主行縮，廚房那一格窄，原文一路縮到 26 px。
+ * 房間裡的歌詞（雙語）：boxLyric 會讓原文跟著主行縮，廚房那一格窄，原文一路縮到 26 px。
  * 原文比 SUB_MIN 小的時候改成：原文固定 SUB_MIN（太長就折行），先扣掉它佔的高度，再用剩下的高度排中文。
  */
 function roomLyric(c: CanvasRenderingContext2D, line: Line, w: number, h: number, o: { min: number; max: number; lineHeight: number }): LyricLayout {
@@ -246,7 +250,7 @@ export default class Blueprint extends Scene {
   lyrMax = 64;
   sigSize = 30;
   instr = false;
-  /** 平面圖畫完之後，每個小節線筆回來「複查」一個地方（描一條線、一個門、一個狗窩），窗格長時中段也有事發生。 */
+  /** 平面圖畫完之後，每個小節線筆回來「複查」一個地方（描一條線、一個門、一張懶骨頭），窗格長時中段也有事發生。 */
   inspect: { pts: P2[]; t0: number; dur: number }[] = [];
   sweeps: number[] = [];
   /** 鏡頭（世界 → 螢幕：s = w · z + o）。 */
@@ -259,7 +263,7 @@ export default class Blueprint extends Scene {
     const m = this.msg;
     const wl = windowLines(lyrics, s, e);
     this.instr = wl.length === 0;
-    await loadText(`${FIXED}${song.title}${m ? m.text + signature(m.name) : ''}${wl.map((l) => l.text).join('')}`);
+    await loadText(`${FIXED}${CAPTION}${DIM_YEAR}${song.title}${m ? m.text + signature(m.name) : ''}${wl.map((l) => l.text).join('')}`);
     const c = this.live.ctx;
     // 標註（留言）：白色鉛筆的手寫字，寫在平面圖右邊。v2 標準：字級是螢幕 px（40～60，依字數），
     // 這裡的世界座標 ≈ 螢幕 px，鏡頭最多推到 1.045 倍，所以排版時除以 ZK；留言區 ≤ 690 × 430、署名永遠在最後一行下面
@@ -468,13 +472,13 @@ export default class Blueprint extends Scene {
     return prog(t, gr.t0 + (gr.t1 - gr.t0) * 0.6, gr.t1 + 0.1);
   }
 
-  // ------------------------------------------------------------ 小字：尺寸、狗窩、正在唱的房間、圖說（都很小、很淡）
+  // ------------------------------------------------------------ 小字：尺寸、家具、正在唱的房間、圖說（都很小、很淡）
   private drawLabels(c: CanvasRenderingContext2D, t: number) {
     const dim = this.groupOn(t, 'DIM');
     if (dim > 0) {
       const col = rgba('bone', 0.5 * dim);
-      mono(c, '3,130', (X0 + XA) / 2, 152, { size: 16, color: col, align: 'center', tracking: 1 });
-      mono(c, '2,027', (XA + X1) / 2, 152, { size: 16, color: col, align: 'center', tracking: 1 });
+      mono(c, '3,600', (X0 + XA) / 2, 152, { size: 16, color: col, align: 'center', tracking: 1 });
+      mono(c, DIM_YEAR, (XA + X1) / 2, 152, { size: 16, color: col, align: 'center', tracking: 1 });
       c.save(); c.globalAlpha *= dim;
       c.font = font(F.serif(600), 26); c.fillStyle = rgba('bone', 0.6); c.textAlign = 'center';
       c.fillText('∞', (X0 + X1) / 2, 122);
@@ -488,8 +492,9 @@ export default class Blueprint extends Scene {
     }
     const furn = this.groupOn(t, 'FURN2');
     if (furn > 0) {
-      tag(c, '芃芃', 784, 678, { size: 16, color: rgba('bone', 0.55 * furn), align: 'center', tracking: 1 });
-      tag(c, 'QQ', 880, 696, { size: 15, color: rgba('bone', 0.55 * furn), align: 'center', tracking: 1 });
+      // 起居角：大的圓是懶骨頭、小一點的是盆栽，旁邊兩個小圓是茶几上的兩個馬克杯；標籤很淡，冷面的生活感
+      tag(c, '懶骨頭', 784, 678, { size: 15, color: rgba('bone', 0.55 * furn), align: 'center', tracking: 1 });
+      tag(c, '盆栽', 880, 696, { size: 15, color: rgba('bone', 0.55 * furn), align: 'center', tracking: 1 });
     }
     // 房名：平面圖上的小字（淡）；正在唱的那個房間變訊號色。唱過的句子不留在房間裡——畫面上只有一句歌詞是大字
     const walls = this.groupOn(t, 'ACD');
@@ -504,7 +509,7 @@ export default class Blueprint extends Scene {
     });
     // 圖說（左下角一行）
     const a = prog(t, this.groups[0]!.t0, this.groups[3]!.t1);
-    tag(c, `我們的家　平面圖　A-0313　${DATE_DOTS.replace(/ /g, '')}　比例 1 : 1（實際大小）`, X0, 950, { size: 16, color: rgba('bone', 0.42 * a), tracking: 3 });
+    tag(c, CAPTION, X0, 950, { size: 16, color: rgba('bone', 0.42 * a), tracking: 3 });
     const note = this.groupOn(t, 'NOTE');
     if (note > 0) {
       c.save(); c.globalAlpha *= note;
@@ -572,7 +577,7 @@ export default class Blueprint extends Scene {
       c.save(); c.globalAlpha *= a;
       tag(c, '① 附註', NOTE.x, NOTE.y - 6, { size: 16, color: rgba('bone', 0.45), tracking: 4 });
       c.font = font(MSG_FAM, 40); c.fillStyle = rgba('bone', 0.62);
-      ['本案尚缺一則祝福。', '請掃描右下角 QR code，', '把想對新人說的話標註在這裡。'].forEach((s, i) => c.fillText(s, NOTE.x, NOTE.y + 70 + i * 58));
+      ['本案尚缺一則祝福。', '請掃描右下角 QR code，', '把給新人的話標註在這裡。'].forEach((s, i) => c.fillText(s, NOTE.x, NOTE.y + 70 + i * 58));
       c.restore();
     }
     return pen;

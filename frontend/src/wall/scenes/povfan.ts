@@ -4,7 +4,7 @@
 //    「旋轉的微光」裡閃（相機拍 POV 扇的樣子）；每一拍閃光燈一樣照出三片扇葉的殘影。唱到的字是訊號色，唱完是暖白，還沒唱的三成；
 //    原文比較安靜（唱到、唱完都是暖白）。換句時扇子「重畫」：新的一句從正上方順時針掃一圈刷出來。
 //    大鼓時整片亮一下，每個小節線外圈的一圈燈跑一圈。沒有翻譯的歌：馬達下面只剩一排跟著拍子跳的小燈（不留空的第二行）。
-//    純音樂：扇上是新人的名字與日期。
+//    純音樂：扇上是新人的名字與日期（還沒定日期：有英文名就放英文名，都沒有就跟沒翻譯的歌一樣只剩一排小燈）。
 //  - 左上遠一點還有一台吊著的小 LED 扇，轉著一顆愛心（點綴色，跟著大鼓跳），每兩小節換成一圈一圈往外擴的光環。
 //  - 主打留言：左下地上一只黑色航空箱（扇子的電源箱，一條電線拖到扇子腳），箱子正面貼著一張大貼紙，留言是用麥克筆寫在貼紙上，
 //    第一拍起一個字一個字寫上去。照「留言尺寸與版面比例標準 v2」：字 40～60、署名 26～32、貼紙 ≤ 860 × 430。
@@ -18,7 +18,7 @@ import { F, font, loadText } from '../engine/type';
 import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, hash, TAU } from '../engine/util';
 import { lyricSubOf, type Line } from '../engine/lyrics';
-import { lyricAt, beatAfter, drawHeart, COUPLE_ZH, DATE_DOTS } from './_motifs';
+import { lyricAt, beatAfter, drawHeart, COUPLE_ZH, COUPLE_EN, HAS_LATIN_NAMES, DATE_DOTS, fitPx } from './_motifs';
 import { sigOf, layMsgV2, stagger, winBars, lastBefore, type MsgLay, type Rect } from './_t23';
 import { lyricV2 } from './_v2';
 import { B5_TEXT, B5_INVITE, subPx, layBilingual, glyphProgress, type BGlyph, type BLayout } from './_b5';
@@ -212,10 +212,12 @@ export default class PovFan extends Scene {
       this.pages.push({ main: mn, sub: sb ? laySub(sb, mn.mainSize) : null, t0: ln.start - 0.35, t1: nx ? Math.min(ln.end + 1.2, nx.start - 0.35) : ln.end + 1.2, fake: false });
     });
     if (!lines.length) {
-      // 純音樂：新人的名字（中文大字）＋日期（小一號），半拍亮一個字
-      const fake = fakeLine(COUPLE_ZH, DATE_DOTS, this.tOn, beat);
+      // 純音樂：新人的名字（中文大字）＋日期（小一號），半拍亮一個字；
+      // 還沒定日期就換成英文名（跟中文名不一樣時），都沒有就不畫第二行（馬達下面是一排小燈，不留空的一行）
+      const second = DATE_DOTS || (HAS_LATIN_NAMES && COUPLE_EN !== COUPLE_ZH ? COUPLE_EN : '');
+      const fake = fakeLine(COUPLE_ZH, second, this.tOn, beat);
       const mn = layMain(fake);
-      this.pages.push({ main: mn, sub: laySub(fake.sub!, mn.mainSize), t0: this.tOn - 0.3, t1: Infinity, fake: true });
+      this.pages.push({ main: mn, sub: fake.sub ? laySub(fake.sub, mn.mainSize) : null, t0: this.tOn - 0.3, t1: Infinity, fake: true });
     }
 
     // ---- 小扇子的愛心
@@ -371,8 +373,10 @@ export default class PovFan extends Scene {
       c.globalAlpha = 1;
     } else {
       const o = this.textAt;
-      c.font = font(FAM_MSG, 44); c.fillStyle = rgba('sepia', 0.92);
-      c.fillText(`給 ${COUPLE_ZH}`, o.x, o.y + 36);
+      // 「給 新人」：名字長就縮字，不超出貼紙（貼紙寬 580、左右各留 50）
+      const to = `給 ${COUPLE_ZH}`;
+      c.font = font(FAM_MSG, fitPx(to, FAM_MSG, 44, this.sticker.w - 100)); c.fillStyle = rgba('sepia', 0.92);
+      c.fillText(to, o.x, o.y + 36);
       c.font = font(F.hei(500), 20); c.fillStyle = rgba('sepia', 0.6); c.letterSpacing = '2px';
       c.fillText(B5_INVITE, o.x, o.y + 84); c.letterSpacing = '0px';
     }
@@ -409,6 +413,6 @@ function fakeLine(main: string, sub: string, t0: number, beat: number): Line {
     return { i: 0, text, start: t0, end: t0 + k * beat * 0.5, words };
   };
   const line = mk(main);
-  line.sub = mk(sub);
+  if (sub) line.sub = mk(sub);
   return line;
 }

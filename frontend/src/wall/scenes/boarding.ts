@@ -1,5 +1,5 @@
-// 登機證（亮版面）：「FLIGHT AO0313 → 永遠」。一張登機證被遞過櫃檯、滑到桌上，像感熱印表機一樣把祝福印上去。
-// MV 化（2026-09-28）：畫面只有一個焦點——登機證上印出來的主打留言；歌詞是登機證下緣的「登機廣播」一行（小一級）；
+// 登機證（亮版面）：航班編號是新人的縮寫＋婚禮日期（「EI0520」），目的地「永遠」。一張登機證被遞過櫃檯、滑到桌上，像感熱印表機一樣把祝福印上去。
+// MV 化：畫面只有一個焦點——登機證上印出來的主打留言；歌詞是登機證下緣的「登機廣播」一行（小一級）；
 // 其他（航程 TPE → ∞、乘客、座位、條碼）都是低對比的配角。鏡頭從斜上方看著桌上的登機證（透視、景深、一盞燈），整個窗格慢慢推近。
 //  - 切進來：登機證從右邊滑進來、在第一個拍點停住（一點回彈）。
 //  - 第一個拍點起：乘客姓名十六分音符一個字印上去；主打留言一拍一行印出來：列印頭由左往右掃過，
@@ -7,11 +7,11 @@
 //  - 留言印好的下一拍：掃描的光掃過票根上的條碼，再下一拍「已登機」章砸下去（畫面震一下）。
 //  - 之後的小節線：票根沿著齒孔撕下來、歪歪地落到桌上，這一下是整個窗格的重拍。
 // 歌詞：登機證下緣「登機廣播」那一行，照跟唱規則（感熱紙本來就是加熱才顯色：唱到的字才「印」深）。
-// 韓文歌有中文翻譯時（2026-09-30）：原文小一號印在中文下面；登機廣播那一段（小標、分隔線）整段往上挪 SUB_UP 讓出位置，
+// 韓文歌有中文翻譯時：原文小一號印在中文下面；登機廣播那一段（小標、分隔線）整段往上挪 SUB_UP 讓出位置，
 // 中文＋原文在小標與登機證下緣之間置中，放不下就把中文縮小一點（不小於 40 螢幕 px）。
-// 雙語（2026-09-30）：有主打留言也畫原文；原文照螢幕字級排（≥ 32 螢幕 px，screenSub），祝福欄下緣收 SUB_MSG 讓登機廣播再往上一點。
+// 雙語：有主打留言也畫原文；原文照螢幕字級排（≥ 32 螢幕 px，screenSub），祝福欄下緣收 SUB_MSG 讓登機廣播再往上一點。
 // 沒有留言：乘客是「全體賓客」、祝福欄印邀請，章改蓋「候補」。新人的留言：乘客是新人。
-// v2（2026-09-29「留言尺寸與版面比例標準 v2」＋場景多元化）：機場候機室窗邊的長桌，午後的暖光從大片玻璃窗照進來。
+// v2（「留言尺寸與版面比例標準 v2」＋場景多元化）：機場候機室窗邊的長桌，午後的暖光從大片玻璃窗照進來。
 // 登機證大大地擺在桌上（它就是場景），但寫留言的那一塊照 v2：留言 40～60 px、署名印在留言下面、歌詞比留言小。
 // 窗外是停機坪：一架飛機慢慢滑行經過、每兩小節一架在小節線上從跑道起飛，跑道燈跟著拍子閃。
 // 畫法：登機證不會變的部分開場畫在一張 1.5 倍的離屏畫布上，每格 drawImage 兩次（主票、票根，用鋸齒的剪裁路徑分開）；
@@ -23,7 +23,7 @@ import { F, font, layout, loadText, measure, type TextLayout } from '../engine/t
 import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, hash, lerp, prog, pulse, frameIdx } from '../engine/util';
 import type { FitResult } from '../engine/text';
-import { lyricAt, drawLyric, layoutLyric, lyricSubOf, subSizeFor, subStyleFor, subGap, beatAfter, signature, COUPLE_ZH, DATE_DOTS, type LyricLayout, type LyricStyle } from './_motifs';
+import { lyricAt, drawLyric, layoutLyric, lyricSubOf, subSizeFor, subStyleFor, subGap, beatAfter, signature, COUPLE_ZH, INITIAL_A, INITIAL_B, DATE_MMDD, DATE_DOT, joinBits, type LyricLayout, type LyricStyle } from './_motifs';
 import type { Line } from '../engine/lyrics';
 import { msgMaxFor, lyricV2, sigV2, V2 } from './_v2';
 import {
@@ -55,6 +55,11 @@ const SUB_UP = 100;
 const SUB_MSG = 40;
 
 const PASS_TEXT = '登機證愛情航空旅客相遇永遠座位登機廣播已登機候補全體賓客一位賓客間奏中請旅客耐心等候本班機全程播放純音樂掃描右下角把祝福寫上大螢幕新人';
+/**
+ * 表頭右邊的航班編號與日期：編號是兩位新人名字的第一個字＋月日（「EI0520」），沒定日期時編號用 520（我愛你），
+ * 日期那一段連同分隔一起省掉。縮寫可能是中文（沒有英文名的新人），mono 字族後面接了中文備援，照樣畫得出來。
+ */
+const FLIGHT = joinBits(' · ', `${INITIAL_A}${INITIAL_B}${DATE_MMDD || '520'}`, DATE_DOT);
 
 interface PChar { ch: string; x: number; y: number; w: number; row: number }
 
@@ -95,7 +100,7 @@ export default class Boarding extends Scene {
   msgFam = F.hand(700);
   chars: PChar[] = [];
   isInvite = false;
-  seat = '13A';
+  seat = '1A';
 
   // 時間（秒）
   B = 0.5;
@@ -125,7 +130,7 @@ export default class Boarding extends Scene {
     // 韓文歌的原文副行：在第一個 await 之前拿（副行開關是引擎在 init 開始前替這個窗格設的）
     const subs = lyrics.linesIn(s - 2, e + 1).map((l) => lyricSubOf(l)?.text ?? '').join('');
     if (subs) this.msgBoxH = MSG.h - SUB_MSG;
-    await loadText(PASS_TEXT + this.name + body + COUPLE_ZH + lyrics.linesIn(s - 2, e + 1).map((l) => l.text).join('') + subs);
+    await loadText(PASS_TEXT + FLIGHT + this.name + body + COUPLE_ZH + lyrics.linesIn(s - 2, e + 1).map((l) => l.text).join('') + subs);
 
     await yieldFrame();
     const c = this.layer.ctx;
@@ -235,7 +240,7 @@ export default class Boarding extends Scene {
     c.font = font(F.hei(700), 18); c.letterSpacing = '8px'; c.fillText('登機證', 40 + measure('BOARDING PASS', F.archivo(125, 800), 20, 3) + 22, 31);
     c.textAlign = 'right';
     c.font = font(F.mono(500), 14); c.letterSpacing = '4px'; c.fillStyle = paper(0.7);
-    c.fillText(`AO0313 · ${DATE_DOTS.split(' · ').join('.')}`, PASS.w - 30, 30);
+    c.fillText(FLIGHT, PASS.w - 30, 30);
     c.textAlign = 'left'; c.letterSpacing = '0px';
 
     const label = (txt: string, x: number, y: number) => {
@@ -559,7 +564,7 @@ export default class Boarding extends Scene {
 }
 
 /**
- * 原文副行照「螢幕」字級重排（2026-09-30 雙語普查）：subSizeFor 的 32～56 是螢幕 px，登機證在畫面上只有 S 倍大，
+ * 原文副行照「螢幕」字級重排（雙語普查時發現的）：subSizeFor 的 32～56 是螢幕 px，登機證在畫面上只有 S 倍大，
  * 照紙面座標排的原文上了螢幕只剩 26 px。中文不動，原文換成 subSizeFor(中文的螢幕字級) ÷ S，drawLyric 照這個排版畫。
  * 鏡頭斜斜地看著桌面，字在畫面上會被壓扁一成左右，所以原文至少排 35 螢幕 px（量起來約 31），太長就折行、不再縮。
  */

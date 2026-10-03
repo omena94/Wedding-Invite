@@ -18,7 +18,7 @@ import { LineBatch } from '../engine/lines';
 import { F, font, loadText } from '../engine/type';
 import { LIN, rgba } from '../engine/palette';
 import { clamp, ease, prog, hash, lerp, TAU } from '../engine/util';
-import { lyricAt, lyricSubOf, subGap, subSizeFor, beatAfter, drawHeart, heartPoints, COUPLE_ZH } from './_motifs';
+import { lyricAt, lyricSubOf, subGap, subSizeFor, beatAfter, drawHeart, heartPoints, COUPLE_ZH, fitPx } from './_motifs';
 import { layoutRows, drawRows, darkInk } from './_t4';
 import { T23_INVITE, T23_TEXT, sigOf, layMsgV2, stagger, lastBefore, type MsgLay, type Rect } from './_t23';
 import { V2, lyricV2 } from './_v2';
@@ -373,10 +373,11 @@ export default class MirrorBall extends Scene {
           c.save(); c.translate(SOLO_LYR.x, SOLO_LYR.y - (lay.rows.length - 1) * lay.lineHeight * 0.5); drawRows(c, lay, FAM_LYR, t, ink, ly.k); c.restore();
         }
       } else if (!this.hasLyr) {
-        c.font = font(F.ming(700), 52); c.fillStyle = rgba('bone', 0.9 * prog(t, this.tOn, this.tOn + 0.6));
+        // 名字是執行時才知道的：很長就縮到牆上那一塊的寬（SOLO_LYR.w）、地板上方那一行的寬（LYR.w），不會伸進右下角
+        c.font = font(F.ming(700), fitPx(COUPLE_ZH, F.ming(700), 52, SOLO_LYR.w)); c.fillStyle = rgba('bone', 0.9 * prog(t, this.tOn, this.tOn + 0.6));
         c.fillText(COUPLE_ZH, SOLO_LYR.x, SOLO_LYR.y);
       }
-      c.font = font(F.ming(700), 30); c.fillStyle = rgba('bone', 0.7);
+      c.font = font(F.ming(700), fitPx(COUPLE_ZH, F.ming(700), 30, LYR.w)); c.fillStyle = rgba('bone', 0.7);
       c.fillText(COUPLE_ZH, LYR.x, LYR.y - 26);
       c.font = font(F.hei(500), 20); c.fillStyle = rgba('ash', 0.7); c.letterSpacing = '3px';
       c.fillText(T23_INVITE, LYR.x, LYR.y + 14);

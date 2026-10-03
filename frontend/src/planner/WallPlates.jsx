@@ -9,11 +9,13 @@ import Toggle from "../components/Toggle.jsx";
 import { ErrorBox, Loading, toastErr, toastOk, useLoader } from "./ui.jsx";
 import { PLATE_CATALOG } from "../wall/plateCatalog";
 
-const FAMILY = {
+export const FAMILY = {
   title: "片頭", type: "文字", light: "燈光", doc: "紙本", machine: "機器", screen: "螢幕", science: "科學", craft: "手作", nature: "自然",
   city: "城市", game: "遊戲", water: "水與天空", print: "印刷", keepsake: "信物", instrument: "樂器與遊樂", local: "台灣味", journey: "旅途",
-  sport: "運動", dance: "跳舞", dog: "狗狗", date: "約會", home: "居家", music: "音樂", wedding: "婚禮", cartoon: "漫畫", work: "工程師×護理師", hoops: "籃球賽", live: "演唱會", lingo: "語言", trip: "旅行", kculture: "韓流",
+  photo: "照片", sport: "運動", dance: "跳舞", dog: "狗狗", date: "約會", home: "居家", music: "音樂", wedding: "婚禮", cartoon: "漫畫", work: "工程師×護理師", hoops: "籃球賽", live: "演唱會", lingo: "語言", trip: "旅行", kculture: "韓流",
 };
+// 照片版面最適合哪種照片（版面檔的 spec.prefers）
+const KIND = { landscape: "橫的", portrait: "直的", square: "方的", small: "舊照片" };
 const PACE = [
   ["fast", "快", "約 4～7 秒換一個版面（每 1～2 句歌詞）"],
   ["normal", "中（建議）", "約 6～10 秒換一個（每 2 句歌詞左右）"],
@@ -21,7 +23,7 @@ const PACE = [
 ];
 // 搜尋：中文名稱、系列、點子、英文代號都算；名稱開頭符合的排最前面，其次名稱裡有、系列、點子
 const norm = (s) => (s || "").toLowerCase();
-function searchPlates(plates, q) {
+export function searchPlates(plates, q) {
   const k = norm(q.trim());
   if (!k) return plates;
   const rank = (p) => {
@@ -156,6 +158,8 @@ export default function WallPlates() {
                   <span className="pill pill-groom">{FAMILY[p.family] || p.family}</span>
                   <span className="pill">{p.light ? "亮" : "暗"}</span>
                   {p.bilingual && <span className="pill pill-yes" title="有翻譯的歌會播：中文與原文兩行都畫">雙語</span>}
+                  {p.photo && <span className="pill pill-yes" title="在「內容」分頁打開照片時，用來放你們的照片">{p.photos > 1 ? `放 ${p.photos} 張照片` : "放照片"}</span>}
+                  {p.photo && p.prefers?.length > 0 && <span className="pill" title="大螢幕會先看接下來是什麼照片，優先挑適合的版面">適合{p.prefers.map((k) => KIND[k]).join("、")}</span>}
                   <label className="wall-msg-toggle wp-toggle"><Toggle checked={on} disabled={saving} onChange={(v) => toggle(p.name, v)} label="要播" /> 要播</label>
                 </div>
               </div>

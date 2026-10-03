@@ -1,8 +1,8 @@
 // 圖書館借書卡（亮）：一本書攤開到封底，鏡頭斜斜地看著內頁——很淡、失焦的大理石紋蝴蝶頁，上面黏著牛皮紙借書袋，
 // 借書卡插在袋子裡只露出書名那一截；左邊前景是攤開的另一頁（很近、糊的），左上方一盞桌燈。
 //  - 第一拍：卡片被「抽」上來（很快、一點回彈、抽的時候歪一下），鏡頭跟著往上搖、拉開一點。
-//  - 接著每一拍一格：橡皮日期章「碰」地蓋一個日期，旁邊手寫借閱人（今晚其他留言的賓客，不夠就是芃芃、QQ、新郎、新娘），
-//    最後一格是婚禮那天、借閱人是主打留言的人。表格是配角：小字、淡墨。窗格短就先有幾格是「以前的紀錄」。
+//  - 接著每一拍一格：橡皮日期章「碰」地蓋一個日期，旁邊手寫借閱人（今晚其他留言的賓客，不夠就是伴娘、伴郎、花童…），
+//    最後一格是婚禮那天（還沒定日期就蓋「TODAY」）、借閱人是主打留言的人。表格是配角：小字、淡墨。窗格短就先有幾格是「以前的紀錄」。
 //  - 同時「讀後心得」裡一個字一個字寫出主打留言（一兩小節內寫完）——整張卡最大、最清楚的字——寫完簽名。
 //  - 之後每個小節線：鏡頭在小節線前緩緩推近一格、停住；大理石紋被梳子梳一下。
 //  - 最後一個小節線：訊號色的圓章「永久續借」砸下去（畫面輕震），「借閱次數」翻成 ∞。
@@ -21,7 +21,7 @@ import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, lerp, prog, pulse, mulberry32 } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
 import type { Line } from '../engine/lyrics';
-import { lyricAt, drawLyric, layoutLyric, signature, COUPLE_EN, COUPLE_ZH, WEDDING_DATE, type LyricStyle } from './_motifs';
+import { lyricAt, drawLyric, layoutLyric, signature, COUPLE_EN, COUPLE_ZH, HAS_LATIN_NAMES, INITIAL_A, INITIAL_B, DATE, type LyricStyle } from './_motifs';
 import { grid, stagger, settle, paperLyric, pad3, type Grid } from './_t2';
 import { V2, msgMaxFor, lyricV2, sigV2, fitClauses } from './_v2';
 import {
@@ -32,6 +32,16 @@ import {
 export const spec: PlateSpecDecl = { group: 'type', family: 'doc', paper: true, energy: [0.05, 0.7], bars: [4, 8] };
 
 const HAND = F.hand(700);
+/**
+ * 圓章下半圈的字：新人的名字（英文名大寫，沒有英文名用中文名）；下半圈只放得下約 2.3 弧度（再長會壓到兩邊的星星），
+ * 名字太長就改用縮寫「C & A」。字級、半徑跟 drawRoundStamp 算法一樣（size = SEAL）。
+ */
+function sealName(): string {
+  const k = SEAL / 300, r = SEAL / 2 - 6 - 24 * k;
+  const full = HAS_LATIN_NAMES ? COUPLE_EN.toUpperCase() : COUPLE_ZH;
+  const w = measure(full, F.mono(600), 22 * k) + Array.from(full).length * 3.5 * k;
+  return w <= r * 2.3 ? full : `${INITIAL_A} & ${INITIAL_B}`.toUpperCase();
+}
 const MON = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
 /** 格子數（左右兩半各四列）。 */
 const SLOTS = 8;
@@ -105,19 +115,19 @@ export default class LibraryCard extends Scene {
     const names = pool.slice(0, SLOTS - 1);
     if (names.length < SLOTS - 1 && all.some((x) => !(x.name ?? '').trim() && (!m || x.id !== m.id))) names.push('一位賓客');
     // 留言很少時（婚禮剛開始只有新人那一則）備用名字也湊不滿 SLOTS - 1 格：重複用備用名字補滿，
-    // 不然空的那格 measure(undefined) 會讓整個窗格初始化失敗、畫面變黑（2026-09-30 本機預覽只有一則留言時踩到）
-    // 元元（第三隻狗）排最後：一般情況用不到它（畫面照舊），完全沒有其他賓客名字時剛好湊滿 7 格、不重複
-    const spare = ['芃芃', 'QQ', '新郎', '新娘', '花童', '一位賓客', '元元'];
+    // 不然空的那格 measure(undefined) 會讓整個窗格初始化失敗、畫面變黑（婚禮剛開始只有一則留言時就會遇到）。
+    // 備用名字是婚禮上一定有的角色（跟哪一對新人都無關），七個剛好湊滿 7 格、不重複
+    const spare = ['伴娘', '伴郎', '花童', '新郎', '新娘', '一位賓客', '主婚人'];
     for (let i = 0; names.length < SLOTS - 1; i++) names.push(spare[i % spare.length]!);
     shuffle(names, rnd);
     const mainName = m ? (m.couple ? '新人' : (m.name || '一位賓客')) : '下一位：你？';
 
-    // ---- 到期日：從種子排一串遞增的日期，最後一格是婚禮那天
-    const [wy, wm, wd] = String(WEDDING_DATE).split('-').map(Number) as [number, number, number];
-    const d0 = Date.UTC(2016, 8, 1), d1 = Date.UTC(wy, wm - 1, wd) - 40 * 864e5;
+    // ---- 到期日：從種子排一串遞增的日期，最後一格是婚禮那天。
+    // 還沒定日期：以前的紀錄排到一個固定的過去日期為止（不能用今天的日期：畫面要確定性），最後一格蓋「TODAY」
+    const d0 = Date.UTC(2016, 8, 1), d1 = DATE ? Date.UTC(DATE.y, DATE.m - 1, DATE.d) - 40 * 864e5 : Date.UTC(2025, 11, 1);
     const ts = Array.from({ length: SLOTS - 1 }, () => d0 + rnd() * (d1 - d0)).sort((a, b) => a - b);
     const fmt = (ms: number) => { const d = new Date(ms); return `${MON[d.getUTCMonth()]} ${String(d.getUTCDate()).padStart(2, '0')} ${d.getUTCFullYear()}`; };
-    const dates = [...ts.map(fmt), `${MON[wm - 1]} ${String(wd).padStart(2, '0')} ${wy}`];
+    const dates = [...ts.map(fmt), DATE ? `${MON[DATE.m - 1]} ${DATE.dd} ${DATE.y}` : 'TODAY'];
 
     const reviewLabel = m?.couple ? '作者的話' : m ? '讀後心得' : '讀後心得（徵求中）';
     const text = m ? m.text : INVITE_LINES.join('');
@@ -204,7 +214,7 @@ export default class LibraryCard extends Scene {
     }, seed);
     drawPocket(this.pocket.c, seed);
     drawDateSheet(this.dates.c, dates, mixRgba('blood', 'sepia', 0.4, 0.58), seed);
-    drawRoundStamp(this.seal.c, SEAL, mixRgba('signal', 'blood', 0.4), 'RENEWED FOREVER', COUPLE_EN.toUpperCase(), ['永久', '續借'], seed);
+    drawRoundStamp(this.seal.c, SEAL, mixRgba('signal', 'blood', 0.4), 'RENEWED FOREVER', sealName(), ['永久', '續借'], seed);
     this.checkFrame();
   }
 

@@ -1,10 +1,12 @@
 // 喜帖（批次 T4・紙本 D，亮）：一張對摺的喜帖躺在禮盒裡（淺色絨布內襯、盒壁、一段打了結的緞帶），
-// 封面是燙金（訊號色）的花押「A & O」與細框。
+// 封面是燙金（訊號色）的花押（新人名字的縮寫，例如「E & I」）與細框。
 //  - 開場：鏡頭貼著封面、斜斜地看，燙金的反光在每個小節線掃過去一次。
 //  - 第一個小節線（短窗格是第一拍）：封面沿著書脊翻開——真的 3D 的紙卡：翻起來、在半空中時封面的影子落在內頁上，
 //    躺平在左邊；鏡頭同時往後拉、移到整張攤開的喜帖上。
 //  - 內頁左邊：「本日主題曲」——現在唱的那句歌詞（中等大小，逐字跟唱），上下兩條燙金的細線。
-//    內頁右邊：一行一行浮現的喜帖文字（小字）：謹訂於二〇二七年三月十三日…宣文 & 孟庭（燙金）…席設：您現在坐的位置。
+//    內頁右邊：一行一行浮現的喜帖文字（小字）：謹訂於（婚禮的日期與時間）…新人的名字（燙金）…席設：您現在坐的位置。
+//    日期、時間、名字、縮寫都是這一場婚禮的資料（../wedding.ts）：還沒定日期時寫「良辰吉日」、沒填時間就不寫時間，
+//    封面的日期那一行收起來、名字往下挪到中間；沒有英文名時封面只印中文名（不重複印兩次），花押改用中文字族。
 //  - 下一個拍點：一張「賓客回函」從畫面右下方飛進來、落在內頁上（在拍點上落地、彈一下，影子收緊）——主打留言寫在回函上，
 //    手寫字、畫面上最大的字，是焦點。鏡頭焦點跟著拉到回函上。
 //  - 沒有留言：回函寫「這一張留給你」＋一句邀請。純音樂：左頁寫歌名。
@@ -19,8 +21,11 @@ import { F, font, loadText } from '../engine/type';
 import { rgba } from '../engine/palette';
 import { clamp, ease, lerp, prog, pulse, TAU } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
-import { lyricAt, signature, sparkHead, sparkParticles, COUPLE_EN, COUPLE_ZH, WEDDING_DATE, lyricSubOf, subSizeFor, subGap } from './_motifs';
-import { WEDDING_TIME_FROM } from '../../constants.js';
+import {
+  lyricAt, signature, sparkHead, sparkParticles, lyricSubOf, subSizeFor, subGap, fitPx, joinBits, isLatin,
+  COUPLE_EN, COUPLE_ZH, HAS_LATIN_NAMES, INITIAL_A, INITIAL_B, DATE, DATE_DOTS,
+} from './_motifs';
+import { TIME_FROM } from '../wedding';
 import { grid, drawFit, layoutRows, drawRows, paperInk, lastIdx, Stage, docRT, camDist, FOIL_GLSL, type Grid, type RowsStyle, type V3, type P2 } from './_t4';
 import { msgMaxFor, lyricV2, sigV2, V2, fitClauses } from './_v2';
 
@@ -32,17 +37,26 @@ const RW = 680, RH = 468; // 回函（v2：畫面上約 650×420，只比字多�
 const RTOP = 104; // 回函上面的小標題列
 const SIG_K = 1.5; // 署名佔的高度 = 署名字級 × SIG_K
 // 符號（♪ ∞ ☑ → 之類）不在打包時掃的中文範圍裡，要跟中文一起預載，不然第一次畫會用備援字型（確定性也會不過）
-const TEXT = '♪∞☑☐→·—♥%＄$謹訂於年月日星期中午上午下午時舉行結婚典禮敬備喜筵恭請闔第光臨席設您現在坐的位置本日主題曲賓客回函一定到帶著祝福這一張留給你掃描右下角把祝福寄回給新人純音樂間奏中〇一二三四五六七八九十日';
+const TEXT = '♪∞☑☐→·—♥%＄$謹訂於年月日星期中午上午下午時分舉行結婚典禮敬備喜筵恭請闔第光臨席設您現在坐的位置本日主題曲賓客回函一定到帶著祝福這一張留給你掃描右下角把祝福寄回給新人純音樂間奏中〇一二三四五六七八九十日良辰吉';
 
-// 喜帖上的日期時間：用網站設定的婚禮日期（改日期不用改這裡）
+// 喜帖上的日期時間：用這一場婚禮的日期與開始時間（沒填的那一段是空字串，排版時整段省掉）
 const ZH_D = '〇一二三四五六七八九';
 const zhNum = (n: number) => (n <= 10 ? (n === 10 ? '十' : ZH_D[n]!) : n < 20 ? `十${n % 10 ? ZH_D[n % 10] : ''}` : `${ZH_D[Math.floor(n / 10)]}十${n % 10 ? ZH_D[n % 10] : ''}`);
-const [YY, MM, DD] = WEDDING_DATE.split('-').map(Number) as [number, number, number];
-const WEEK = '日一二三四五六'[new Date(YY, MM - 1, DD).getDay()]!;
-const HOUR = Number(String(WEDDING_TIME_FROM).split(':')[0]);
-const DATE_ZH = `${Array.from(String(YY), (d) => ZH_D[Number(d)]).join('')}年${zhNum(MM)}月${zhNum(DD)}日（星期${WEEK}）`;
-const TIME_ZH = `${HOUR < 12 ? '上午' : HOUR === 12 ? '中午' : '下午'}${zhNum(HOUR > 12 ? HOUR - 12 : HOUR)}時`;
-const INITIALS = COUPLE_EN.split(/\s*&\s*/).map((s) => s.trim()[0] ?? '').join(' & ');
+/** 「二〇二七年五月二十日（星期四）」，沒定日期是空字串。 */
+const INV_DATE = DATE
+  ? `${Array.from(DATE.yyyy, (d) => ZH_D[Number(d)]).join('')}年${zhNum(DATE.m)}月${zhNum(DATE.d)}日（星期${'日一二三四五六'[new Date(Date.UTC(DATE.y, DATE.m - 1, DATE.d)).getUTCDay()]}）`
+  : '';
+/** 「下午六時」「下午六時三十分」，沒填時間是空字串。 */
+const INV_TIME = (() => {
+  if (!TIME_FROM) return '';
+  const [h = 0, mi = 0] = TIME_FROM.split(':').map(Number);
+  return `${h < 12 ? '上午' : h === 12 ? '中午' : '下午'}${zhNum(h > 12 ? h - 12 : h)}時${mi ? `${zhNum(mi)}分` : ''}`;
+})();
+/** 謹訂於後面那一行：日期＋時間；還沒定日期就寫「良辰吉日」（喜帖上不會空一行）。 */
+const INV_WHEN = joinBits('　', INV_DATE || '良辰吉日', INV_TIME);
+/** 封面的花押：「E & I」；縮寫不是拉丁字母（只有中文名）時改用明體，斜體襯線字族沒有中文。 */
+const MONO_TEXT = `${INITIAL_A} & ${INITIAL_B}`;
+const MONO_FAM = isLatin(MONO_TEXT) ? F.serif(600, true) : F.ming(900);
 
 // ---------------------------------------------------------------- 紙（卡紙：很細的壓紋）
 const PAPER = () => new FSPass(/* glsl */ `
@@ -179,7 +193,7 @@ export default class Invitation extends Scene {
   override async init() {
     const { audio: au, song, lyrics } = this.ctx;
     const s = this.ctx.start, e = this.ctx.end;
-    await loadText(TEXT + DATE_ZH + TIME_ZH + COUPLE_ZH + song.title + song.artist + (this.msg ? signature(this.msg.name) + this.msg.text : '') + lyrics.linesIn(s, e).map((l) => l.text).join(''));
+    await loadText(TEXT + INV_WHEN + COUPLE_ZH + MONO_TEXT + song.title + song.artist + (this.msg ? signature(this.msg.name) + this.msg.text : '') + lyrics.linesIn(s, e).map((l) => l.text).join(''));
     const g = (this.g = grid(au, s, e));
     // 長窗格：封面至少停將近一個小節，再在小節線翻開；短的第一拍就翻
     this.tOpen = g.nBars >= 5 ? g.bars.find((b) => b >= s + g.bar * 0.5) ?? g.b0 : g.b0;
@@ -367,16 +381,26 @@ export default class Invitation extends Scene {
     }
     c.stroke();
     c.lineWidth = 2.5; c.beginPath(); c.arc(cx, cy, 128, 0, TAU); c.stroke();
-    c.font = font(F.serif(600, true), 118);
-    c.fillText(INITIALS, cx, cy + 38);
+    // 花押要在圈圈裡（圈的內徑 256）：縮寫比較寬（「W & M」、中文字）就縮字
+    c.font = font(MONO_FAM, fitPx(MONO_TEXT, MONO_FAM, 118, 220));
+    c.fillText(MONO_TEXT, cx, cy + 38);
+    // 名字、日期這一組：沒有日期時整組往下挪，在花押圈與下框之間置中
+    const dy = DATE_DOTS ? 0 : 36, NW = CW - 150;
     c.font = font(F.mono(500), 16); c.letterSpacing = '6px';
-    c.fillText('THE WEDDING OF', cx, 610);
+    c.fillText('THE WEDDING OF', cx, 610 + dy);
     c.letterSpacing = '0px';
-    c.font = font(F.serif(600), 44); c.fillText(COUPLE_EN, cx, 668);
-    c.font = font(F.ming(700), 30); c.fillText(COUPLE_ZH, cx, 716);
-    c.font = font(F.mono(500), 18); c.letterSpacing = '5px';
-    c.fillText(WEDDING_DATE.split('-').join(' · '), cx, 790);
-    c.letterSpacing = '0px';
+    if (HAS_LATIN_NAMES) {
+      c.font = font(F.serif(600), fitPx(COUPLE_EN, F.serif(600), 44, NW)); c.fillText(COUPLE_EN, cx, 668 + dy);
+      c.font = font(F.ming(700), fitPx(COUPLE_ZH, F.ming(700), 30, NW)); c.fillText(COUPLE_ZH, cx, 716 + dy);
+    } else {
+      // 沒有英文名：COUPLE_EN 跟中文名一樣，只印一次、大一點
+      c.font = font(F.ming(700), fitPx(COUPLE_ZH, F.ming(700), 40, NW)); c.fillText(COUPLE_ZH, cx, 684 + dy);
+    }
+    if (DATE_DOTS) {
+      c.font = font(F.mono(500), 18); c.letterSpacing = '5px';
+      c.fillText(DATE_DOTS, cx, 790);
+      c.letterSpacing = '0px';
+    }
     // 內頁左：歌詞上下兩條細線、中間一顆小菱形
     const L0 = CW;
     for (const y of [210, 690]) {
@@ -385,7 +409,7 @@ export default class Invitation extends Scene {
     }
     // 內頁右：新人的名字、上面一條細線
     const R0 = CW * 2;
-    c.font = font(F.ming(900), 34); c.fillText(COUPLE_ZH, R0 + CW / 2, 222);
+    c.font = font(F.ming(900), fitPx(COUPLE_ZH, F.ming(900), 34, CW - 140)); c.fillText(COUPLE_ZH, R0 + CW / 2, 222);
     c.fillRect(R0 + CW / 2 - 60, 96, 120, 1.5);
     c.textAlign = 'left';
   }
@@ -433,7 +457,7 @@ export default class Invitation extends Scene {
     if (ly) {
       const lay = layoutRows(c, ly.line, LY);
       // 原文副行（韓文歌）：同一頁、同樣置中，小一號印在中文正下方；兩組一起在兩條燙金線中間置中。
-      // 字級是照螢幕上的大小算的（頁面座標要除掉 sLyric）。雙語（2026-09-30）：內頁斜斜地躺在盒子裡，字在畫面上會被壓扁一點，
+      // 字級是照螢幕上的大小算的（頁面座標要除掉 sLyric）。雙語：內頁斜斜地躺在盒子裡，字在畫面上會被壓扁一點，
       // 原文至少排 38 螢幕 px（斜放的內頁會把字壓扁一成）、不再縮（左頁窄，長句就折成三行）
       const sub = lyricSubOf(ly.line), S = this.sLyric, subPx = Math.max(38, subSizeFor(lay.size * S)) / S;
       // 原文跟中文差不多大（看得清楚比較重要），主次靠字重分：原文用細一級的 500（韓文備援字型就是一般字重）
@@ -452,14 +476,15 @@ export default class Invitation extends Scene {
       }
       c.restore();
     } else {
-      c.font = font(F.archivo(100, 800), Math.round(V2.lyrMin / this.sLyric)); c.fillStyle = rgba('sepia', lyrics.has ? 0.28 : 0.8);
-      c.fillText(song.title || COUPLE_EN, CW / 2, 470);
+      const title = song.title || COUPLE_EN;
+      c.font = font(F.archivo(100, 800), fitPx(title, F.archivo(100, 800), Math.round(V2.lyrMin / this.sLyric), CW - 130)); c.fillStyle = rgba('sepia', lyrics.has ? 0.28 : 0.8);
+      c.fillText(title, CW / 2, 470);
       if (!lyrics.has) { c.font = font(F.hei(500), 18); c.fillStyle = rgba('sepia', 0.5); c.fillText('（純音樂）', CW / 2, 520); }
     }
     c.textAlign = 'center';
     // 右頁：喜帖文字（小字），翻開後一行一行浮上來
     // （回函落在 y ≈ 334 以下，字都排在它上面）
-    const lines: [string, number, number][] = [['謹訂於', 128, 20], [`${DATE_ZH}　${TIME_ZH}`, 162, 20], ['', 222, 0], ['舉行結婚典禮', 262, 20], ['敬備喜筵　恭請　闔第光臨', 294, 20], ['席設：您現在坐的位置', 322, 16]];
+    const lines: [string, number, number][] = [['謹訂於', 128, 20], [INV_WHEN, 162, fitPx(INV_WHEN, F.ming(700), 20, CW - 120)], ['', 222, 0], ['舉行結婚典禮', 262, 20], ['敬備喜筵　恭請　闔第光臨', 294, 20], ['席設：您現在坐的位置', 322, 16]];
     lines.forEach(([s, y, size], i) => {
       if (!s) return;
       const a = this.tOpen + this.openDur * 0.7 + i * 0.09;

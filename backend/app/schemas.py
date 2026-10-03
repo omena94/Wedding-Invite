@@ -736,6 +736,9 @@ class FilePatch(BaseModel):
     caption: str | None = Field(default=None, max_length=200)
     album: str | None = Field(default=None, max_length=50)
     sort_order: int | None = None
+    # 大螢幕的焦點（0..1，左上原點）：兩個都給 null 是清掉、回到預設
+    focus_x: float | None = Field(default=None, ge=0, le=1)
+    focus_y: float | None = Field(default=None, ge=0, le=1)
 
 
 class PhotoReorderIn(BaseModel):

@@ -1,4 +1,4 @@
-// 波的干涉（暗）：兩個點波源（S₁ 宣文、S₂ 孟庭）同頻同相，在左邊一圈圈發出波；兩家的波疊起來，
+// 波的干涉（暗）：兩個點波源（S₁、S₂ 標著兩位新人的名字）同頻同相，在左邊一圈圈發出波；兩家的波疊起來，
 // 往右張開一條條亮紋（像光從兩道縫照出來的扇形光束）——亮紋就是兩個人的波「同步」的地方。
 // MV 版：波峰的細圈只在波源附近清楚，越遠越淡，右邊只剩柔和的亮紋光帶；留言後面的波峰壓暗。鏡頭整個窗格慢慢往前推。
 //  - 波一拍往外推一個波長：拍點上「推」出去（outExpo），拍子之間停住。
@@ -14,7 +14,7 @@ import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
 import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 } from './_v2';
-import { lyricAt, drawLyric, layoutLyric, beatAfter, signature, fillWithHearts } from './_motifs';
+import { lyricAt, drawLyric, layoutLyric, beatAfter, signature, fillWithHearts, NAME_A, NAME_B, fitPx } from './_motifs';
 import { mono, tag, type Rect } from './_t11';
 
 export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'science', paper: false, energy: [0.25, 0.85], bars: [4, 10], weight: 1 };
@@ -27,6 +27,8 @@ const BOX = { x: 880, y: 330, w: 860, h: 430 };
 const LYR_M = { x: 124, y: 214, w: 1560 };
 const LYR_N = { x: 880, w: 860, size: lyricV2(null) };
 const FAM_MSG = F.ming(700);
+/** 兩個波源旁的小字：新人的名字（執行時才知道；字級在 init() 字型載好之後才量，見 srcPx）。 */
+const SRC_A = `S₁  ${NAME_A}`, SRC_B = `S₂  ${NAME_B}`;
 /** 想要的波長（px）：太密會閃、太疏不像干涉圖。 */
 const LAMBDA = 36;
 const INVITE = '掃描右下角 QR code，讓你的祝福也發亮。';
@@ -96,6 +98,8 @@ export default class Interference extends Scene {
   yc = 560;
   lyrSize = 52;
   sigSize = 30;
+  /** 波源名字的字級（init 量）。 */
+  srcPx = 15;
   lyricsInWindow = false;
   /** 留言的範圍（波峰線在這裡淡掉）。 */
   calm: Rect = [0, 0, 0, 0];
@@ -103,8 +107,10 @@ export default class Interference extends Scene {
   override async init() {
     const { audio: au, lyrics, song } = this.ctx;
     const s = this.ctx.start, e = this.ctx.end, m = this.msg;
-    this.sig = m ? (m.couple ? '—— 新郎新娘' : signature(m.name)) : '';
-    await loadText(`${m?.text ?? ''}${this.sig}${INVITE}${FOOT}${song.title}${song.artist}宣文孟庭疊加中S₁S₂♪`);
+    this.sig = m ? (m.couple ? '—— 新人' : signature(m.name)) : '';
+    await loadText(`${m?.text ?? ''}${this.sig}${INVITE}${FOOT}${song.title}${song.artist}${SRC_A}${SRC_B}疊加中♪`);
+    // 名字很長就兩個一起縮小（最寬 300 px，不會伸進亮紋的留言區）；字型載好才量，量到的寬度才準
+    this.srcPx = Math.min(fitPx(SRC_A, F.mono(500), 15, 300, 2), fitPx(SRC_B, F.mono(500), 15, 300, 2));
     const c = this.layer.ctx;
     const beat = au.beatPeriod(s);
     this.tFirst = beatAfter(au, s + Math.min(0.2, beat * 0.4));
@@ -197,8 +203,9 @@ export default class Interference extends Scene {
     Lc.clear(); HL.clear();
     c.globalAlpha = hc.globalAlpha = vis;
     // ---- 波源的名字（小字第一群）
-    mono(c, 'S₁  宣文', this.s1.x + 26, this.s1.y + 5, { size: 15, tracking: 2, color: rgba('bone', 0.6) });
-    mono(c, 'S₂  孟庭', this.s2.x + 26, this.s2.y + 5, { size: 15, tracking: 2, color: rgba('signal', 0.65) });
+    const sp = this.srcPx;
+    mono(c, SRC_A, this.s1.x + 26, this.s1.y + 5, { size: sp, tracking: (2 * sp) / 15, color: rgba('bone', 0.6) });
+    mono(c, SRC_B, this.s2.x + 26, this.s2.y + 5, { size: sp, tracking: (2 * sp) / 15, color: rgba('signal', 0.65) });
     const m = this.msg;
     if (m) {
       // ---- 留言：脈衝掃到就亮（燒紅、0.5 秒冷卻），每小節的淡脈衝經過時閃一下

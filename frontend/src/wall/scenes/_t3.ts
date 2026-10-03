@@ -233,7 +233,7 @@ class FiberBake {
 let fiber: FiberBake | null = null;
 /**
  * 紙纖維的烤爐（還沒烤）：用到紙纖維的版面把它存在自己的欄位裡，引擎在版面上場前就會找到它的著色器、在背景先編好
- * （engine/warm.ts），第一次烤的時候才不會停一下（2026-10-01）。
+ * （engine/warm.ts），第一次烤的時候才不會停一下。
  */
 export function fiberBake(): FiberBake {
   if (!fiber) fiber = new FiberBake();

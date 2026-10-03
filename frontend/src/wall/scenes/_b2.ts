@@ -41,7 +41,7 @@ export function charProgress(line: Line, t: number): number[] {
   return out;
 }
 
-/** 署名：新人的留言署「—— 宣文 & 孟庭」，其他「—— 名字」（沒填名字是「一位賓客」）。 */
+/** 署名：新人的留言署「—— 新人的名字」（COUPLE_ZH），其他「—— 名字」（沒填名字是「一位賓客」）。 */
 export const sigOf = (m: Msg) => (m.couple ? `—— ${COUPLE_ZH}` : signature(m.name));
 
 /** 留言編號：No.042。 */
@@ -108,7 +108,7 @@ export function lyricBlock(x: number, y: number, lay: LyricLayout, sub?: { lay: 
 }
 
 /**
- * 筆放在哪（2026-09-30 主導者：筆在任何時候都不能蓋到任何一行歌詞）。dictionary 的紅筆、phrasebook 的螢光筆共用這一條：
+ * 筆放在哪（規則：筆在任何時候都不能蓋到任何一行歌詞）。dictionary 的紅筆、phrasebook 的螢光筆共用這一條：
  * 筆尖貼著「這一句歌詞整塊」（lyricBlock：中文＋原文）的上緣或下緣，x 跟著正在寫／劃的字；筆身從那裡往字塊外面伸——
  * 貼下緣的往右下（PEN_DOWN）、貼上緣的往右上（PEN_UP）。整支筆永遠在字塊外面，字上只留畫好的線或螢光。
  * 筆的圖形沿著 +x 畫（筆尖在原點），用回傳的 ang 旋轉。

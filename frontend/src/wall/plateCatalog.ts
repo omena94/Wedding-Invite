@@ -1,5 +1,5 @@
 // 自動產生（node scripts/wall-catalog.mjs），不要手改：大螢幕版面清單，後台「大螢幕版面」頁用。
-export interface PlateInfo { name: string; title: string; family: string; light: boolean; couple: boolean; bilingual: boolean; idea: string }
+export interface PlateInfo { name: string; title: string; family: string; light: boolean; couple: boolean; bilingual: boolean; photo: boolean; photos: number; prefers: string[]; idea: string }
 export const PLATE_CATALOG: PlateInfo[] = [
  {
   "name": "title",
@@ -8,7 +8,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "每首歌開頭的歌名卡；每隔幾分鐘出現一次放大 QR 的邀請卡",
-  "bilingual": false
+  "bilingual": false,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "karaoke",
@@ -17,7 +20,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "最單純的版面：留言與逐字跟唱的歌詞",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "sparkler",
@@ -26,7 +32,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "仙女棒的火花在暗色信紙上一個字一個字寫出留言",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "slam",
@@ -35,7 +44,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "副歌用：歌詞或留言一拍一組大字打上來",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "certificate",
@@ -44,7 +56,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "桌上的祝福登記表，留言是祝福內容，最後蓋章",
-  "bilingual": false
+  "bilingual": false,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "heartbeat",
@@ -53,7 +68,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "暗房裡的監護儀，心跳跟著大鼓；留言是前面的醫囑紙條",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "stars",
@@ -62,7 +80,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "電影感夜空：留言是天上的大字，每個字跟著一顆星亮起",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "banknote",
@@ -71,7 +92,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "桌上一張鈔票，雕刻紋與交扣的戒指，留言印在鈔票上",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "mosaic",
@@ -80,7 +104,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "很多則留言排成牆，主打那則放大、其他退成背景",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "fireworks",
@@ -89,7 +116,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "火花升空炸開，夜空裡的留言被煙火照亮",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "vinyl",
@@ -98,7 +128,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "唱片在轉，歌詞沿溝紋；留言是桌上的紙卡",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "badminton",
@@ -107,7 +140,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": true,
   "idea": "側面看兩人隔網對打，羽球在拍點上來回（擊球落在鼓點），球飛過的拋物線留下訊號色細線，歌詞沿著弧線逐字亮；主打留言寫在場邊記分板。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "fetch",
@@ -116,7 +152,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": true,
   "idea": "紅磚公園步道，宣文把網球丟出去，芃芃與 QQ 在拍點上起跳、追、叼回來；留言寫在公園的木牌上，歌詞沿著球的軌跡。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "waltz",
@@ -125,7 +164,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": true,
   "idea": "婚禮服，兩人在聚光燈下跳三拍子（慢歌也適用），每小節一個大轉身，裙擺與頭紗的線條跟著甩；歌詞在地板上成圓弧。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "cooking",
@@ -134,7 +176,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": true,
   "idea": "廚房側面，孟庭甩鍋（在大鼓上翻），宣文遞盤子，QQ 在腳邊等掉下來的；留言寫在冰箱上的便條，歌詞像食譜步驟。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "tennis",
@@ -143,7 +188,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": true,
   "idea": "俯視或斜俯視的球場，兩人對打，出界球被芃芃撿走；球是 `ball` 色，擊球在鼓點。留言在計分牌。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "pingpong",
@@ -152,7 +200,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": true,
   "idea": "桌球桌側面特寫，乒乓在每一拍彈一下（快歌很快、慢歌很慢），歌詞一拍一個詞組跟著球跳。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "frisbee",
@@ -161,7 +212,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": true,
   "idea": "草地，飛盤飛過畫面、芃芃飛身接住（慢動作一拍），飛盤底面寫著留言。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "skating",
@@ -170,7 +224,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": true,
   "idea": "冰面俯視或側面，兩人牽手溜冰，冰刀在冰上畫出的線就是歌詞的筆畫（或字沿著軌跡）。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "tandem",
@@ -179,7 +236,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": true,
   "idea": "側面，雙人腳踏車騎過街景（景往後捲），踏板一拍一圈，後面的籃子坐著兩隻狗；留言是車後拖的布條。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "archery",
@@ -188,7 +248,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": true,
   "idea": "孟庭拉弓（預備一小節）、放箭在小節線，箭飛過畫面正中靶心變成一顆愛心，靶上的環寫著留言。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "firstdance",
@@ -197,7 +260,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": true,
   "idea": "婚禮服，空蕩的舞池、一盞聚光燈、慢慢轉；賓客的留言像周圍桌上的小燭光一則一則亮起。慢歌專用。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "swing",
@@ -206,7 +272,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": true,
   "idea": "快歌用：40 年代搖擺舞，甩出去、拉回來、拋起來，全在拍點；地板的舞步腳印排成字。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "dogwalk",
@@ -215,7 +284,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": true,
   "idea": "紅磚步道、藍色牽繩，兩人各牽一隻狗散步（橫向捲動），狗狗在每棵樹停一下；留言寫在路邊的告示牌。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "dogbath",
@@ -224,7 +296,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": true,
   "idea": "浴缸裡的芃芃與 QQ，泡泡在拍點冒出來，每個泡泡裡一個字（留言），狗狗甩水在小鼓。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "dognap",
@@ -233,7 +308,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": true,
   "idea": "慢歌：沙發上兩人和兩隻狗睡成一團，呼吸起伏跟著節拍，夢泡泡裡是留言。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "zoomies",
@@ -242,7 +320,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": true,
   "idea": "快歌：兩隻狗在客廳繞圈暴衝，速度線、殘影，歌詞被牠們撞得跳起來；人在沙發上看。",
-  "bilingual": false
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "dogportrait",
@@ -251,7 +332,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": true,
   "idea": "美術館的畫框裡是芃芃（或 QQ）的正式肖像（版畫線條），畫框下的銘牌寫著留言與「No.042 館藏」。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "ringbearer",
@@ -260,7 +344,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": true,
   "idea": "婚禮服的兩人在走道盡頭等，QQ 叼著戒枕走紅毯，一拍一步；兩側座位的賓客舉著留言。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "picnic",
@@ -269,7 +356,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": true,
   "idea": "格紋野餐墊、籃子、三明治，狗狗偷吃；風吹起的餐巾紙上寫著留言。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "kite",
@@ -278,7 +368,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": true,
   "idea": "兩人放一只風箏，風箏尾巴的飄帶就是歌詞（逐字亮），線在拍點抖動；留言寫在風箏上。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "umbrella",
@@ -287,7 +380,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": true,
   "idea": "雨線（斜的細線，在 hi-hat 上閃），兩人擠在一把傘下走，傘下是乾的、寫著留言；水坑倒影是歌詞。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "stargaze",
@@ -296,7 +392,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": true,
   "idea": "兩人躺在草地上指著天空，指到的星星連成留言的字（呼應 `stars`，但這裡是人的視角）。慢歌。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "beach",
@@ -305,7 +404,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": true,
   "idea": "海浪一拍一拍打上沙灘，兩人牽手走、狗狗追浪；浪退後沙上留下留言的字，下一道浪沖掉換歌詞。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "scooter",
@@ -314,7 +416,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": true,
   "idea": "台灣街景（騎樓、招牌、紅綠燈），宣文騎機車載孟庭、踏板站著狗；招牌字是歌詞，路口的看板是留言。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "nightmarket",
@@ -323,7 +428,12 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": true,
   "idea": "攤位燈泡、招牌，兩人撈金魚／射氣球，射中的氣球破掉露出留言；攤位招牌寫歌詞。",
-  "bilingual": true
+  "bilingual": false,
+  "photo": true,
+  "photos": 1,
+  "prefers": [
+   "landscape"
+  ]
  },
  {
   "name": "lantern",
@@ -332,7 +442,13 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": true,
   "idea": "平溪天燈：兩人在天燈上寫字（留言），點火、放手在小節線，天燈升空，遠處已經有一片寫著其他留言的天燈。",
-  "bilingual": true
+  "bilingual": false,
+  "photo": true,
+  "photos": 1,
+  "prefers": [
+   "landscape",
+   "square"
+  ]
  },
  {
   "name": "ferriswheel",
@@ -341,7 +457,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": true,
   "idea": "巨大的摩天輪慢轉（細線結構、燈泡在拍點閃），兩人在其中一個車廂裡，其他車廂裝著留言與歌詞。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "coffee",
@@ -350,7 +469,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": true,
   "idea": "俯視兩杯咖啡，拉花在拍點畫出愛心與葉子，旁邊的咖啡店黑板菜單寫著歌詞與留言。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "movie",
@@ -359,7 +481,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": true,
   "idea": "從後排看兩人的背影和狗狗的頭，大銀幕上放的是歌詞（跟唱），爆米花在小鼓跳；片頭字卡是留言。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "laundry",
@@ -368,7 +493,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": true,
   "idea": "陽台晾衣繩，兩人一件一件夾上去，衣服與床單上寫著留言與歌詞（一拍一件），風吹起來。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "paperplane",
@@ -377,7 +505,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": true,
   "idea": "摺紙飛機（摺的步驟在拍點上），射出去飛過畫面，機翼上寫著留言；飛過的軌跡是歌詞。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "duet",
@@ -386,7 +517,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": true,
   "idea": "包廂：兩人各拿一支麥克風，螢幕上跑歌詞（跟唱，換人唱用不同顏色），桌上的點歌單是留言。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "guitar",
@@ -395,7 +529,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": true,
   "idea": "宣文彈吉他、孟庭唱，狗狗跟著搖頭；刷弦在拍點，音符飄出去組成歌詞，譜架上是留言。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "proposal",
@@ -404,7 +541,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": true,
   "idea": "日常服：宣文單膝跪下（預備）、在小節線打開戒指盒（訊號色的光），背後的城市夜景窗戶亮成留言的字。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "cake",
@@ -413,7 +553,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": true,
   "idea": "三層蛋糕，兩人握同一把刀切下去（小節線），每一層蛋糕的側面寫著留言／歌詞。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "toast",
@@ -422,7 +565,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": true,
   "idea": "兩只香檳杯在拍點碰杯，氣泡往上冒，冒到頂端組成留言的字。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "bouquet",
@@ -431,7 +577,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": true,
   "idea": "孟庭背對賓客往後丟捧花（預備一小節），捧花飛過畫面，接住的人舉起留言。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "comic",
@@ -440,7 +589,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": true,
   "idea": "四格漫畫：兩人的小劇情，對話框裡是留言與歌詞，一格一格在小節線出現；網點與框線。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "photobooth",
@@ -449,7 +601,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": true,
   "idea": "四格拍貼條，每小節拍一格（倒數、閃光），四個不同姿勢的線稿，下面手寫留言。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "debug",
@@ -458,7 +613,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": true,
   "idea": "宣文在雙螢幕前敲鍵盤（一拍一下），螢幕上的建置從紅燈在小節線變綠燈；孟庭下班穿著護理服回來，從後面抱住他。留言是螢幕上一則程式碼審查的留言。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "nightshift",
@@ -467,7 +625,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": true,
   "idea": "孟庭在護理站寫紀錄、推工作車，牆上時鐘和呼叫燈照拍子閃；宣文穿連帽衫提著宵夜（便當、珍奶）來探班。留言寫在交班白板上。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "stethoscope",
@@ -476,7 +637,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": true,
   "idea": "孟庭用聽診器聽宣文的胸口，旁邊的心電圖跟著歌的 BPM 跳，聽著聽著心跳越來越快、跳出愛心。留言寫在病歷夾上。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "whiteboard",
@@ -485,7 +649,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": true,
   "idea": "宣文在白板畫系統架構圖，方塊和箭頭照拍子一個一個畫上，最後整張圖連成一顆愛心；孟庭拿紅筆在旁邊打勾。留言寫在白板上的便利貼。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "bandaid",
@@ -494,7 +661,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": true,
   "idea": "宣文被紙割到手指，孟庭熟練地消毒、貼上 OK 繃、再在上面畫一顆愛心；芃芃和 QQ 在旁邊歪頭看。留言印在 OK 繃盒上。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "servers",
@@ -503,7 +673,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": true,
   "idea": "伺服器機櫃的燈號照拍子閃成波浪；宣文插網路線，孟庭拿著「上線檢查表」一項一項打勾。留言寫在檢查表最後一欄。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "courtside",
@@ -512,7 +685,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": true,
   "idea": "兩人穿球衣坐在看台吃爆米花，場上球員剪影跑位；進球時兩人跳起來歡呼，爆米花飛起來。留言在場館的大螢幕上。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "kisscam",
@@ -521,7 +697,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": true,
   "idea": "場館大螢幕出現「KISS CAM」愛心框，框到兩人：孟庭害羞捂臉、宣文比愛心，全場觀眾剪影歡呼。留言在大螢幕下方的跑馬燈。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "buzzer",
@@ -530,7 +709,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": true,
   "idea": "最後三秒，球在空中慢動作飛，兩人抓著彼此的手緊張；小節線上球進、紅燈亮，兩人跳起來擁抱。留言在計分板上。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "halftime",
@@ -539,7 +721,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": true,
   "idea": "中場休息，宣文上場參加投籃挑戰，一拍投一球，最後一球空心進；孟庭在場邊揮加油棒。留言寫在大支票（獎品看板）上。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "basketball",
@@ -548,7 +733,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": true,
   "idea": "公園籃球場，兩人一對一：宣文運球（每拍一下）、孟庭蓋火鍋；芃芃和 QQ 在場邊當裁判。留言塗鴉在球場後面的牆上。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "concert",
@@ -557,7 +745,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": true,
   "idea": "舞台燈照拍子掃過觀眾，兩人在前排舉手跟唱，舞台大螢幕是歌詞（逐字跟唱）。留言寫在兩人舉的應援手幅上。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "lightsticks",
@@ -566,7 +757,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": true,
   "idea": "看台一整片手燈照拍子變色，排成波浪；兩人在中間一起揮手燈。留言寫在孟庭舉的應援板上。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "phonelights",
@@ -575,7 +769,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": true,
   "idea": "慢歌時全場亮起手機燈，左右搖擺像星海，兩人靠在一起。留言在宣文的手機螢幕上。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "encore",
@@ -584,7 +781,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": true,
   "idea": "散場後的場館外面，人潮和路燈；兩人的發光手環一閃一閃，牽手走向捷運站。留言寫在兩人手上的票根。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "merch",
@@ -593,7 +793,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": true,
   "idea": "長長的排隊隊伍一格一格往前，終於輪到兩人，買到一樣的應援毛巾，一起展開，毛巾上寫著留言。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "boarding",
@@ -602,7 +805,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "「FLIGHT AO0313 → 永遠」登機證，乘客姓名 = 留言署名，登機門、座位、條碼；留言印在登機證上，歌詞像廣播字幕。票根在小節線撕下。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "passport",
@@ -611,7 +817,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "護照內頁滿是各國入境章，拍點上「碰」地蓋新章，章裡是留言；（不是任何國家真的護照樣式）。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "invoice",
@@ -620,7 +829,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "台灣統一發票：品名是留言、金額「∞」，對獎號碼在小節線開出；歌詞是發票上的明細。",
-  "bilingual": false
+  "bilingual": false,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "telegram",
@@ -629,7 +841,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "老電報紙條從機器吐出，逐字打出留言（STOP 分句），蓋上收件戳；歌詞是電報表頭。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "newspaper",
@@ -638,7 +853,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "報紙號外：頭條是留言、副標是歌詞，報紙旋轉飛進畫面停在小節線（老電影的手法）。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "envelope",
@@ -647,7 +865,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "信封在拍點打開，信紙抽出來是留言，郵票與郵戳（日期是婚禮日期），封蠟是愛心。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "postcard",
@@ -656,7 +877,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "明信片背面：左邊手寫留言、右邊地址欄與郵票，翻面在小節線，正面是線條版畫風景＋歌詞。",
-  "bilingual": false
+  "bilingual": false,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "ticket",
@@ -665,7 +889,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "票券：演出名稱 = 歌名、座位 = 留言編號，票根虛線在拍點撕開；歌詞印在票面上。",
-  "bilingual": false
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "menu",
@@ -674,7 +901,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "辦桌／喜宴菜單卡：一道一道菜名在拍點出現（冷盤、佛跳牆…），其中一道「主廚推薦」是留言。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "librarycard",
@@ -683,7 +913,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "圖書館借書卡的格子：借閱人一格一格蓋日期章，最後一格是留言與署名；歌詞是書名。",
-  "bilingual": false
+  "bilingual": false,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "recipe",
@@ -692,7 +925,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "手寫食譜卡：材料清單（一拍一項）、步驟，留言是「秘方」；有醬汁的污漬。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "patent",
@@ -701,7 +937,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "老專利圖：「一種使兩人永遠在一起的裝置」，編號與線稿機構圖（齒輪、兩個愛心），圖說是歌詞與留言。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "blueprint",
@@ -710,7 +949,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "施工藍圖（主題色的藍圖紙）：「我們的家」平面圖在拍點一條線一條線畫出，房間名稱是歌詞、標註是留言。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "crossword",
@@ -719,7 +961,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "報紙填字格，字一格一格在拍點填入（歌詞與留言交錯），提示欄是冷面笑話。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "sheetmusic",
@@ -728,7 +973,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "五線譜：音符在拍點出現（用真的節拍位置），歌詞寫在譜下逐字跟唱；留言是作曲者的旁註。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "almanac",
@@ -737,7 +985,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "撕頁日曆／農民曆：大大的日期、「宜：嫁娶、祝福」，撕下一頁在小節線，留言是當日運勢。",
-  "bilingual": false
+  "bilingual": false,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "reportcard",
@@ -746,7 +997,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "愛情學校成績單：科目（體貼、做家事、遛狗）與分數在拍點蓋上，導師評語是留言。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "warranty",
@@ -755,7 +1009,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "產品保固卡：「保固期限：永久」、序號、打孔，留言是「消費者意見」；保證章在小節線蓋下。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "invitation",
@@ -764,7 +1021,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "燙金（訊號色）喜帖打開，內頁的字一行一行浮現：新人名字、日期、留言是「賓客回函」。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "guestbook",
@@ -773,7 +1033,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "攤開的簽名簿，一支筆（火花）在拍點寫下名字與留言，前面幾頁已經寫滿別人的留言（真的留言）。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "manual",
@@ -782,7 +1045,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "無字說明書風格：步驟 1 2 3 的線稿圖（零件組成一顆愛心），步驟說明是歌詞，「注意事項」是留言。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "nutrition",
@@ -791,7 +1057,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "營養標示表：甜度 200%、心動 ∞，每一列在拍點填上，成分是留言。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "redenvelope",
@@ -800,7 +1069,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "紅包袋（訊號色、燙金字）在小節線打開，抽出來的紙是留言；歌詞是紅包袋上的吉祥話位置。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "scratchcard",
@@ -809,7 +1081,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "刮刮卡的銀漆在拍點被刮掉（硬幣刮痕），刮出來是留言與「恭喜中獎：一輩子」。",
-  "bilingual": false
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "notebook",
@@ -818,7 +1093,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "橫線筆記本，原子筆字跡逐字寫出歌詞（跟唱），留言用另一種筆跡、貼上的便條。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "stickynotes",
@@ -827,7 +1105,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "一面牆的便利貼，一拍一張貼上去（真的留言），主打那張最大、歌詞寫在最上面的一排。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "chat",
@@ -836,7 +1117,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "聊天視窗（不像任何特定 App）：留言以對話泡泡冒出（打字中…的三點），歌詞是另一方回覆的泡泡。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "desktop",
@@ -845,7 +1129,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "復古電腦桌面：對話框「確定要永遠在一起嗎？ [是] [是]」，視窗在拍點彈出，留言是通知視窗。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "search",
@@ -854,7 +1141,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "一個簡潔的搜尋框：打字（歌詞），下拉的自動完成建議是留言。不要像任何特定搜尋引擎。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "phone",
@@ -863,7 +1153,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "手機鎖定畫面：大時鐘（歌曲時間）、通知一則一則滑下來（留言），歌詞是音樂播放器的小卡。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "spreadsheet",
@@ -872,7 +1165,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "試算表格線，儲存格在拍點填入（公式 =SUM(愛)），圖表長出來，留言在一個被框起來的儲存格。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "code",
@@ -881,7 +1177,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "程式編輯器：`while (true) { love(); }`，逐字打出，歌詞是註解、留言是字串；執行時終端機印出來。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "loading",
@@ -890,7 +1189,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "「正在安裝：婚姻 v1.0」進度條在拍點跳，99% 卡住再衝到 100%；安裝日誌是歌詞，完成畫面是留言。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "news",
@@ -899,7 +1201,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "電視新聞畫面：主播台（簡單線條）、下方的跑馬燈是歌詞、快報標題是留言，「LIVE」在拍點閃。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "weather",
@@ -908,7 +1213,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "氣象圖：台灣地圖輪廓、降愛機率 100%、心形的高氣壓，數字在拍點翻；留言是「今日天氣小語」。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "credits",
@@ -917,7 +1225,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "電影片尾名單往上捲：職稱「祝福」後面是留言的署名與內容，捲動速度跟著節拍微微頓一下。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "flipclock",
@@ -926,7 +1237,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "大翻頁鐘，每一拍翻一片（歌詞的字），翻頁的機械感與陰影；留言在下方的小翻頁列。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "departures",
@@ -935,7 +1249,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "機場航班看板（翻牌字）：目的地都是祝福，班次是留言編號，字牌在拍點嘩啦啦翻。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "odometer",
@@ -944,7 +1261,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "滾輪數字表：數字與字一起滾動停在拍點，顯示留言數、BPM、歌詞。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "radio",
@@ -953,7 +1273,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "老收音機的調頻刻度，指針在拍點移動對到一個頻道，頻道名是留言，喇叭網後面跳歌詞。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "cassette",
@@ -962,7 +1285,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "錄音帶特寫，捲軸在轉（速度跟 BPM），標籤手寫著留言；歌詞在錄音機的小螢幕。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "equalizer",
@@ -971,7 +1297,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "大型等化器的光柱（真的頻譜），光柱上排列的字就是歌詞；留言像顯示屏上的跑馬。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "lissajous",
@@ -980,7 +1309,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "示波器 XY 模式：兩個頻率（兩個人）畫出的李薩如曲線慢慢變成愛心，讀數是留言，歌詞在螢幕下方。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "seismograph",
@@ -989,7 +1321,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "捲動的紙與筆針，在大鼓時大震，「心動震度 7 級」；筆針畫出的曲線上標註歌詞與留言。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "radar",
@@ -998,7 +1333,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "雷達掃描線轉一圈一小節，掃到的光點是留言（顯示在旁邊的目標清單），歌詞是座標讀數。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "terminal",
@@ -1007,7 +1345,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "綠螢幕（主題訊號色）終端機，`> cat wishes.txt` 逐字印出留言，歌詞是系統日誌。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "arcade",
@@ -1016,7 +1357,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "街機的 HIGH SCORE 名單：名字是留言署名、分數在拍點跳，主打留言大字；點陣字（精緻，不俗）。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "pinball",
@@ -1025,7 +1369,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "彈珠台俯視，鋼珠在拍點撞擊彈柱（亮起），撞到的燈板亮出留言，分數板是歌詞。",
-  "bilingual": false
+  "bilingual": false,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "jukebox",
@@ -1034,7 +1381,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "點唱機的選曲卡片（這首歌的歌名在其中），機械手臂在拍點夾起唱片，選曲卡的空白是留言。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "clawmachine",
@@ -1043,7 +1393,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "夾娃娃機：爪子在拍點移動、下降，夾起一顆寫著留言的球（或愛心），出口掉出來。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "marquee",
@@ -1052,7 +1405,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "店家的 LED 點陣跑馬燈（台灣招牌那種），歌詞在點陣上逐字跑、留言用第二條。",
-  "bilingual": false
+  "bilingual": false,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "neon",
@@ -1061,7 +1417,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "磚牆上的霓虹招牌，一個字一個字亮起（歌詞），偶爾閃爍，留言是小一號的霓虹字。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "dashboard",
@@ -1070,7 +1429,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "儀表板：轉速表跟著能量、速度表是 BPM，中控螢幕跑歌詞，導航的目的地是留言。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "metronome",
@@ -1079,7 +1441,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "大節拍器，擺錘精準打在每一拍，擺錘上的砝碼寫著 BPM，歌詞在擺動弧線上，留言在底座。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "mixer",
@@ -1088,7 +1453,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "混音台的推桿與旋鈕跟著頻段動（low/mid/high/vocal），每一軌的標籤是字，留言寫在膠帶標籤上。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "pianoroll",
@@ -1097,7 +1465,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "自動鋼琴的打孔紙卷往下捲，孔洞在拍點經過讀取頭時發亮，紙卷邊緣印著歌詞，留言是紙卷的標題。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "musicbox",
@@ -1106,7 +1477,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "音樂盒的滾筒與簧片（俯視），凸點在拍點撥響簧片，滾筒上的凸點排列成留言的字。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "typewriter",
@@ -1115,7 +1489,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "打字機特寫：字鎚在拍點打上紙，逐字打出留言，換行時「叮」＋紙往上捲；歌詞是紙上的第一行。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "morse",
@@ -1124,7 +1501,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "電報鍵在拍點按下，紙帶上打出點與劃，下面翻譯成留言；歌詞是電報局的收訊紀錄。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "crt",
@@ -1133,7 +1513,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "映像管電視（弧形畫面、掃描線），轉台在小節線（雜訊一下），每台播的是歌詞或留言。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "scoreboard",
@@ -1142,7 +1525,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "球場大記分板：HOME 宣文 vs AWAY 孟庭，比分永遠平手，跑馬燈是歌詞，「本場最佳」是留言。",
-  "bilingual": false
+  "bilingual": false,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "elements",
@@ -1151,7 +1537,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "週期表格子在拍點亮起，拼出留言的字（像 Lo-Ve 的元素符號），每格下面有原子序（留言編號）。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "dna",
@@ -1160,7 +1549,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "兩條螺旋（兩個人）旋轉，鹼基對的橫桿是字，歌詞沿著一條、留言沿著另一條。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "orbit",
@@ -1169,7 +1561,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "兩顆星互繞（版畫軌道線），一小節一圈，軌道上的標註是歌詞，留言是觀測紀錄。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "pendulum",
@@ -1178,7 +1573,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "雙擺／傅科擺的軌跡（確定性模擬）畫出花樣，軌跡上的點是字，留言是實驗紀錄。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "interference",
@@ -1187,7 +1585,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "兩個波源（兩個人）在拍點發出同心圓，干涉條紋亮的地方浮出留言的字。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "magnet",
@@ -1196,7 +1597,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "兩塊磁鐵（正負 = 兩個人）的磁力線（鐵粉的細線）在拍點重新排列，鐵粉聚成留言。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "prism",
@@ -1205,7 +1609,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "一道白光進三稜鏡分成光譜（主題色系），光譜的每條色帶上是一個字，留言是出射的光。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "microscope",
@@ -1214,7 +1621,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "顯微鏡視野（圓形、刻度），細胞在拍點分裂成愛心，標本標籤是留言。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "venn",
@@ -1223,7 +1633,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "兩個圓（宣文、孟庭）慢慢靠近重疊，交集裡是留言，兩邊各自的特點是歌詞（可以是冷面笑話）。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "piechart",
@@ -1232,7 +1645,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "圓餅圖與長條圖在拍點長出來：「今晚的祝福組成」，數字用真的留言數，主打留言是圖說。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "hourglass",
@@ -1241,7 +1657,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "沙漏在小節線翻轉，沙粒流下來堆成字（留言），慢歌適合。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "kaleidoscope",
@@ -1250,7 +1669,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "萬花筒對稱圖案跟著節拍轉動變化（shader），中央透明處出現留言，歌詞在外框。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "spirograph",
@@ -1259,7 +1681,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "萬花尺齒輪在紙上轉，筆畫出繁複的花樣（一小節一圈），花樣中央寫留言。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "origami",
@@ -1268,7 +1693,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "一張方紙在拍點一摺一摺摺成紙鶴（2D 摺線動畫），攤開的紙上寫著留言。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "xi",
@@ -1277,7 +1705,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "紅紙（訊號色）上剪刀剪出「囍」與花紋，剪下的紙片落下，窗花裡露出留言。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "brush",
@@ -1286,7 +1717,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "宣紙上毛筆逐字寫出留言（筆畫有飛白、落筆在拍點），落款是署名，蓋上紅色印章。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "seal",
@@ -1295,7 +1729,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "一方印章的印面特寫、刻刀在拍點刻出（邊款是歌詞），最後蓋在紙上，旁邊是留言。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "stitch",
@@ -1304,7 +1741,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "麻布格子上一針一針繡出留言（十字針在拍點），繡框、線頭。",
-  "bilingual": false
+  "bilingual": false,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "loom",
@@ -1313,7 +1753,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "織布機的經緯線，梭子在拍點穿過，織出的布紋逐列出現留言的字。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "stainedglass",
@@ -1322,7 +1765,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "教堂彩繪玻璃窗（鉛條線），光從後面透過來一片片亮起，中央的玻璃片寫著留言。",
-  "bilingual": false
+  "bilingual": false,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "letterpress",
@@ -1331,7 +1777,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "鉛字排版在字盤（反字），壓印在小節線，紙上印出留言（壓痕、油墨不均）。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "sand",
@@ -1340,7 +1789,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "燈箱上的沙畫：手撥沙在拍點畫出線條與字，一抹就變下一幅，留言與歌詞交替。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "chalkboard",
@@ -1349,7 +1801,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "教室黑板，粉筆逐字寫出歌詞（粉筆質感），留言寫在角落「值日生」的位置，板擦在小節線擦掉。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "darkroom",
@@ -1358,7 +1813,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "紅色安全燈下，相紙泡在顯影液裡，影像慢慢浮現——浮現的是手繪線稿與留言（不是照片）。",
-  "bilingual": false
+  "bilingual": false,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "filmstrip",
@@ -1367,7 +1825,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "一條底片橫向捲過（齒孔、格號），每一格是一個字或一句歌詞，主打格子停下來放大是留言。",
-  "bilingual": false
+  "bilingual": false,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "tree",
@@ -1376,7 +1837,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "一棵樹從地面長出來（分枝在拍點），葉子是留言（許願樹），歌詞刻在樹幹上。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "flowers",
@@ -1385,7 +1849,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "一排花在拍點綻放（版畫線條），每朵花心一個字，留言在花盆的標籤上。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "dandelion",
@@ -1394,7 +1861,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "一朵蒲公英被吹散（小節線），種子帶著字飄過畫面，組成留言。",
-  "bilingual": false
+  "bilingual": false,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "vines",
@@ -1403,7 +1873,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "藤蔓沿著看不見的字形長出來，長成留言的字，葉子在拍點展開。",
-  "bilingual": false
+  "bilingual": false,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "fogwindow",
@@ -1412,7 +1885,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "雨夜起霧的玻璃窗，手指在霧上寫出留言，水珠在拍點滑落，窗外的城市燈光模糊。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "snowglobe",
@@ -1421,7 +1897,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "雪花球在小節線被搖一下，雪花落下來，球裡的小場景（兩人的線稿）與底座的銘牌（留言）。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "aquarium",
@@ -1430,7 +1909,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "水族箱，魚群游動排成字（歌詞），氣泡在拍點冒，主打留言是水族箱的解說牌。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "skyline",
@@ -1439,7 +1921,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "城市天際線，大樓的窗戶在拍點一格格亮燈，拼出留言的字（窗戶當像素）。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "roadsign",
@@ -1448,7 +1933,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "綠色路牌從遠方迎面而來（在拍點掠過）：「幸福 2 km」「永遠 出口」，留言是一面大路牌。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "metro",
@@ -1457,7 +1945,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "捷運路線圖：兩條線（兩人）在一站交會，列車點在拍點前進一站，站名是歌詞，轉乘站是留言。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "domino",
@@ -1466,7 +1957,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "一長串骨牌在拍點一張張倒下，倒下的骨牌背面是字，最後排成留言。",
-  "bilingual": false
+  "bilingual": false,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "maze",
@@ -1475,7 +1969,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "迷宮裡兩個點（兩人）在拍點各走一步，最後在中央相遇，路徑上標著歌詞，中央是留言。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "puzzle",
@@ -1484,7 +1981,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "拼圖片在拍點一片片飛進來拼好，拼好的圖案是留言（與手繪花紋）。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "chess",
@@ -1493,7 +1993,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "棋盤俯視，國王與皇后兩顆棋子一拍一步走到一起，被吃掉的棋子旁邊寫著留言；棋譜是歌詞。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "mahjong",
@@ -1502,7 +2005,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "麻將桌：牌在拍點翻開，牌面是字（留言），最後「胡了」大字；歌詞在計分的籌碼上。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "cards",
@@ -1511,7 +2017,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "紅心 K 與紅心 Q 從牌堆翻出來，洗牌、發牌在拍點，牌面上寫留言。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "fortune",
@@ -1520,7 +2029,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "籤筒搖一搖（拍點），掉出一支籤，籤詩紙展開：「上上籤」、籤詩是留言、解曰是歌詞。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "firecracker",
@@ -1529,7 +2041,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "一長串鞭炮從上往下在拍點一顆顆炸開（紅紙屑、火光），炸完露出掛在後面的留言。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "countdown",
@@ -1538,7 +2053,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "巨大的倒數數字（到下一個段落），每拍一個，歸零時爆出留言；歌詞在數字之間。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "compass",
@@ -1547,7 +2065,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "航海羅盤（版畫刻度），指針在拍點擺動、最後穩穩指向「幸福」方位，方位字是歌詞，羅盤蓋內側刻著留言。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "thermometer",
@@ -1556,7 +2077,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "老式水銀溫度計，紅柱（訊號色）跟著能量升降，刻度旁的標註是歌詞，爆表時頂端彈出留言。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "campfire",
@@ -1565,7 +2089,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "一堆營火（沒有人），火舌跟著能量、火星在小鼓往上噴，飄到半空組成留言的字；木頭的年輪刻著歌詞。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "candles",
@@ -1574,7 +2101,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "一排蠟燭在拍點一根根點亮（仙女棒點火），燭光照亮的桌布上是留言，燭焰在 hi-hat 搖。慢歌。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "chandelier",
@@ -1583,7 +2113,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "由下往上看的水晶吊燈，水晶在拍點互撞閃光（折射的小光斑），每串水晶墜著一個字。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "lighthouse",
@@ -1592,7 +2125,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "夜海燈塔，光束一小節掃一圈，掃過霧時霧裡浮出留言；遠方的船燈是歌詞。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "moon",
@@ -1601,7 +2137,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "一排月相（新月到滿月）每小節前進一相，滿月時月面浮出留言；歌詞沿著月亮的軌道弧線。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "sunrise",
@@ -1610,7 +2149,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "地平線、太陽緩緩升起，光芒一條條在拍點射出，每條光芒上是一段歌詞，天空的雲寫著留言。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "ocean",
@@ -1619,7 +2161,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "木刻版畫風的層層海浪（原創，不抄名畫），浪頭在大鼓捲起，浪花的泡沫排成留言，海平線寫歌詞。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "puddle",
@@ -1628,7 +2173,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "俯視的水窪，雨滴在拍點落下激起同心漣漪，漣漪擴散處浮出字；倒影裡是城市燈光與留言。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "sailboat",
@@ -1637,7 +2185,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "一艘帆船在海上（線條、捲動的浪），帆被風吹鼓在小節線，帆面上是留言，旗子是歌詞。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "bridge",
@@ -1646,7 +2197,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "銀河兩岸的兩顆星（牛郎織女的意象），喜鵲在拍點一隻隻飛來搭成橋，橋上寫著留言。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "bubbles",
@@ -1655,7 +2209,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "肥皂泡泡從左下吹出（小鼓一串），每個泡泡的薄膜彩虹反光裡有一個字，破掉時字落下排成留言。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "ink",
@@ -1664,7 +2221,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "墨滴落進水（宣紙）在拍點暈開，暈開的墨形成字（留言），淡墨寫歌詞。",
-  "bilingual": false
+  "bilingual": false,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "watercolor",
@@ -1673,7 +2233,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "水彩筆刷在紙上刷過（顏料暈染、邊緣積色），刷過的地方顯出留言；歌詞是鉛筆字。",
-  "bilingual": false
+  "bilingual": false,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "poster",
@@ -1682,7 +2245,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "演唱會網版印刷海報：兩三色套印、網點、套色偏移在拍點跳一下，大標是歌詞、小字是留言。",
-  "bilingual": false
+  "bilingual": false,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "magazine",
@@ -1691,7 +2257,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "雜誌封面排版：刊名、大標題（留言）、側欄標題（歌詞）、條碼、期號；在小節線換一期。",
-  "bilingual": false
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "bookshelf",
@@ -1700,7 +2269,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "一整排書的書背，書在拍點被抽出來一點，書背上印的是留言與歌詞，主打那本被抽出來翻開。",
-  "bilingual": false
+  "bilingual": false,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "polaroid",
@@ -1709,7 +2281,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "拍立得相片從相機吐出、慢慢顯影——顯影出的是手繪線條小插畫（不是照片），白邊上手寫留言。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "rings",
@@ -1718,7 +2293,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "兩只戒指的版畫特寫慢慢轉、在小節線扣在一起，戒圈內側刻著留言（沿著圓弧），反光掃過。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "vows",
@@ -1727,7 +2305,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "典雅的誓詞排版（Cormorant／思源宋體），歌詞像誓詞逐句浮現，賓客留言是「見證人」欄。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "gift",
@@ -1736,7 +2317,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "禮物盒的緞帶在拍點一圈圈解開、盒蓋在小節線掀開，裡面的卡片是留言。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "ribbon",
@@ -1745,7 +2329,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "一條長緞帶在畫面中飄、翻面（正反面色差），緞帶上印著歌詞，打成蝴蝶結時結上的吊牌是留言。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "matches",
@@ -1754,7 +2341,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "火柴盒、一根火柴在小節線擦亮（火光會發光），火光照亮的黑暗裡看得到留言，燒完換下一根。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "winelabel",
@@ -1763,7 +2353,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "葡萄酒酒標：酒莊名、年份（婚禮年份）、產區，品飲筆記是留言，歌詞是酒標下緣的小字。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "piano",
@@ -1772,7 +2365,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "俯視鋼琴鍵盤（沒有人），琴鍵在拍點按下亮起（用真的節拍與音高近似），譜架上是歌詞與留言。",
-  "bilingual": false
+  "bilingual": false,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "drumkit",
@@ -1781,7 +2377,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "正面的鼓組，大鼓／小鼓／銅鈸真的在鼓點被敲（皮面震動、銅鈸晃），大鼓皮上印著留言。",
-  "bilingual": false
+  "bilingual": false,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "mirrorball",
@@ -1790,7 +2389,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "鏡球（細線多面體）在轉，反射的光點掃過牆面，光點停下時拼出留言。副歌、快歌。",
-  "bilingual": false
+  "bilingual": false,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "carousel",
@@ -1799,7 +2401,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "旋轉木馬（沒有人）跟著拍點上下、轉動，頂棚邊緣的燈泡字是歌詞，木馬的名牌是留言。",
-  "bilingual": false
+  "bilingual": false,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "balloon",
@@ -1808,7 +2413,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "一群熱氣球緩緩升空（捲動），主打那顆的球皮條紋上寫著留言，其他的寫歌詞。",
-  "bilingual": false
+  "bilingual": false,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "confetti",
@@ -1817,7 +2425,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "花瓣（點綴色）在拍點從上方灑下，落地時排成留言的字，下一陣風吹散換歌詞。",
-  "bilingual": false
+  "bilingual": false,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "tea",
@@ -1826,7 +2437,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "茶杯與茶壺（線條），倒茶在小節線，茶葉在杯中旋轉沉底排成字；杯墊上是留言。",
-  "bilingual": false
+  "bilingual": false,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "bubbletea",
@@ -1835,7 +2449,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "一杯珍奶的特寫，珍珠在拍點沉浮，吸管吸上來的珍珠一顆顆變成留言的字，杯套印著歌詞。",
-  "bilingual": false
+  "bilingual": false,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "baking",
@@ -1844,7 +2461,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "烤箱窗裡的蛋糕慢慢膨起，計時器在拍點跳，出爐後擠花袋在蛋糕上寫出留言。",
-  "bilingual": false
+  "bilingual": false,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "festival",
@@ -1853,7 +2473,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "一串串紅燈籠（訊號色）在拍點依序亮起，燈籠上是一個個字（留言），下面的攤位招牌是歌詞。",
-  "bilingual": false
+  "bilingual": false,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "trivision",
@@ -1862,7 +2485,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "路邊的三面翻廣告看板，三角柱在拍點一起翻轉，翻出歌詞、再翻出留言。",
-  "bilingual": false
+  "bilingual": false,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "vending",
@@ -1871,7 +2497,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "販賣機的一格格商品，按鈕在拍點亮起，掉出來的飲料罐上是留言，價格標籤是歌詞。",
-  "bilingual": false
+  "bilingual": false,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "train",
@@ -1880,7 +2509,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "車窗框住的夜景往後流（電線桿在拍點經過），窗上的霧氣寫著留言，窗外遠方的招牌是歌詞。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "topo",
@@ -1889,7 +2521,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "等高線地形圖，一條路線在拍點往山頂延伸，沿途的地名是歌詞，山頂的旗子是留言。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "bowling",
@@ -1898,7 +2533,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "球道透視，球滾向球瓶（沒有人），全倒在小節線，倒下的球瓶露出留言；計分螢幕寫歌詞。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "lavalamp",
@@ -1907,7 +2545,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "熔岩燈裡的蠟塊（metaball shader）跟著低音浮沉，融合時浮出字，底座貼著留言。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "stamp",
@@ -1916,7 +2557,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "一大張郵票（齒孔、面值、版畫圖案），郵戳在拍點蓋下，郵票上的文字是留言，邊紙是歌詞。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "clocktower",
@@ -1925,7 +2569,1497 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "古老的鐘面特寫，指針在拍點跳一格，整點（小節線）鐘聲的圓環擴散，鐘面數字換成歌詞的字，鐘下的銘板是留言。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
+ },
+ {
+  "name": "still",
+  "title": "電影劇照",
+  "family": "photo",
+  "light": false,
+  "couple": false,
+  "idea": "橫的照片滿版、繞著焦點慢推慢搖；直的、舊的照片完整放在中間，同一張照片模糊壓暗當底；註解像電影字幕，相簿第一張在左上角印相簿名。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 1,
+  "prefers": [
+   "landscape"
+  ]
+ },
+ {
+  "name": "print",
+  "title": "相片",
+  "family": "photo",
+  "light": true,
+  "couple": false,
+  "idea": "一張有白邊的實體相片放在紙上（相簿頁的相角貼，或散放斜一點），像剛放下來；註解手寫在旁邊，一個字一個字寫出來。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 1,
+  "prefers": [
+   "portrait",
+   "square",
+   "small"
+  ]
+ },
+ {
+  "name": "gallery",
+  "title": "畫廊",
+  "family": "photo",
+  "light": false,
+  "couple": false,
+  "idea": "照片裱框掛在深色牆上，聚光燈從上面打下來、鏡頭慢慢推近；註解像畫廊的牆上說明寫在畫框旁邊。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 1,
+  "prefers": [
+   "portrait",
+   "square"
+  ]
+ },
+ {
+  "name": "devtray",
+  "title": "暗房顯影",
+  "family": "photo",
+  "light": false,
+  "couple": false,
+  "idea": "紅色安全燈下斜看顯影盤：照片從最暗處浮現，先單色再上色，顯好後房間燈亮；小節線搖盤起浪、液面反射安全燈；註解手寫在盤緣的紙膠帶上。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 1,
+  "prefers": [
+   "landscape",
+   "square",
+   "small"
+  ]
+ },
+ {
+  "name": "negative",
+  "title": "負片翻正",
+  "family": "photo",
+  "light": false,
+  "couple": false,
+  "idea": "燈箱閃兩下才亮，上面是橘底反色的負片；放大鏡跟著拍子挪，鏡片裡是正片，小節線上從放大鏡一圈擴開整格翻正，鏡頭推近。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 1,
+  "prefers": [
+   "landscape"
+  ]
+ },
+ {
+  "name": "slideshow",
+  "title": "幻燈機",
+  "family": "photo",
+  "light": false,
+  "couple": false,
+  "idea": "斜看客廳的立架銀幕、前景失焦的鏡頭口、光束裡的灰塵；喀嚓黑一下、片子落進來再對焦；直的照片就是直的幻燈片，註解上有 SLIDE 編號。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 1,
+  "prefers": [
+   "landscape",
+   "small"
+  ]
+ },
+ {
+  "name": "instant",
+  "title": "拍立得顯影",
+  "family": "photo",
+  "light": true,
+  "couple": false,
+  "idea": "拍點上相片一段一段吐出、落在亞麻桌布上；藥膜由灰綠顯影回暖，馬克筆把註解一字一字寫在下方白邊。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 1,
+  "prefers": [
+   "square",
+   "portrait",
+   "small"
+  ]
+ },
+ {
+  "name": "homemovie",
+  "title": "8mm 家庭電影",
+  "family": "photo",
+  "light": false,
+  "couple": false,
+  "idea": "投在被風吹動的床單上：每秒 18 格的片門晃動、閃爍、刮痕、灰塵與透光齒孔，開頭片尾燒白；註解像燒在片上的老字幕。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 1,
+  "prefers": [
+   "landscape",
+   "small"
+  ]
+ },
+ {
+  "name": "contactsheet",
+  "title": "接觸印樣",
+  "family": "photo",
+  "light": true,
+  "couple": false,
+  "idea": "兩條黑片條共六格是同一張照片繞焦點的不同裁切；紅蠟筆圈起一格，浮起轉正放大成有白邊的照片；註解用鉛筆寫在樣張左下。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 1,
+  "prefers": [
+   "landscape"
+  ]
+ },
+ {
+  "name": "viewfinder",
+  "title": "觀景窗",
+  "family": "photo",
+  "light": false,
+  "couple": false,
+  "idea": "單眼觀景窗：裂像對焦、對焦點在拍點亮起，按快門黑一下後展開成完整照片；下方一排 LCD 讀數，註解在右邊。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 1,
+  "prefers": []
+ },
+ {
+  "name": "enlarger",
+  "title": "放大機",
+  "family": "photo",
+  "light": false,
+  "couple": false,
+  "idea": "琥珀色安全燈下的放大機底板：投影由糊轉清、L 形遮光尺框出白邊、計時器倒數曝光，燈亮後留下印好的照片；註解寫在索引卡上。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 1,
+  "prefers": []
+ },
+ {
+  "name": "filmroll",
+  "title": "底片條",
+  "family": "photo",
+  "light": false,
+  "couple": false,
+  "idea": "三張照片在一條微彎的 35mm 正片上（3 張），拍點上一格一格拉進來，主角停在中間推近（直的會轉正）；反光掃過片基。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 3,
+  "prefers": [
+   "landscape"
+  ]
+ },
+ {
+  "name": "photolab",
+  "title": "沖印店信封",
+  "family": "photo",
+  "light": true,
+  "couple": false,
+  "idea": "木桌上的牛皮紙沖印袋（3 張）：紙蓋翻開、一疊照片滑出散開，主角浮起放大落在左邊；註解用原子筆寫在「備註」橫線上。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 3,
+  "prefers": []
+ },
+ {
+  "name": "woodframe",
+  "title": "木框擺桌",
+  "family": "photo",
+  "light": true,
+  "couple": false,
+  "idea": "午後木桌上微微側轉的原木相框，旁邊一張手寫桌卡寫註解；窗光裡有葉影，小節線被風吹晃；切進來先失焦再對焦，鏡頭繞過來推近。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 1,
+  "prefers": [
+   "landscape",
+   "small"
+  ]
+ },
+ {
+  "name": "ornate",
+  "title": "古典金框",
+  "family": "photo",
+  "light": false,
+  "couple": false,
+  "idea": "月桂葉環與扇形雕飾的金框掛在絲絨布簾前，燭光從左下閃爍、反光在雕花上游走；註解刻在畫框下的黃銅小牌上。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 1,
+  "prefers": [
+   "portrait",
+   "small"
+  ]
+ },
+ {
+  "name": "pegboard",
+  "title": "軟木板",
+  "family": "photo",
+  "light": true,
+  "couple": false,
+  "idea": "軟木板上用紅圖釘釘著白邊相片，索引卡滑進來寫註解，紅毛線從照片的釘子拉到卡片的釘子；鏡頭像手持一樣微微漂。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 1,
+  "prefers": [
+   "landscape",
+   "small"
+  ]
+ },
+ {
+  "name": "clothesline",
+  "title": "晾照片",
+  "family": "photo",
+  "light": true,
+  "couple": false,
+  "idea": "焦外的戶外背景，下垂的麻繩隨風起伏，三張相片（3 張）用木夾夾著像鐘擺晃；鏡頭沿繩子滑到中間的主角、跟焦，註解手寫在下方。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 3,
+  "prefers": [
+   "portrait",
+   "square"
+  ]
+ },
+ {
+  "name": "fridge",
+  "title": "冰箱門",
+  "family": "photo",
+  "light": true,
+  "couple": false,
+  "idea": "髮絲紋不鏽鋼門板與視差反光帶；相片「啪」地貼上門，磁鐵吸上、便利貼貼上寫註解，小節線反光掃過門。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 1,
+  "prefers": [
+   "portrait",
+   "small"
+  ]
+ },
+ {
+  "name": "stairwall",
+  "title": "照片牆",
+  "family": "photo",
+  "light": true,
+  "couple": false,
+  "idea": "樓梯旁的照片牆，五個不同的相框（5 張）沿著扶手往上排；鏡頭從樓梯下搖上來、樓梯有視差，到主角停下推近，註解寫在旁邊空牆。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 5,
+  "prefers": [
+   "landscape"
+  ]
+ },
+ {
+  "name": "digitalframe",
+  "title": "電子相框",
+  "family": "photo",
+  "light": false,
+  "couple": false,
+  "idea": "夜裡深色木桌上的數位相框，開機背光亮起再淡入照片；直的、小的照片兩側用同一張模糊補滿，有淡淡的像素格與玻璃反光。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 1,
+  "prefers": [
+   "landscape"
+  ]
+ },
+ {
+  "name": "windowsill",
+  "title": "窗台",
+  "family": "photo",
+  "light": true,
+  "couple": false,
+  "idea": "白漆窗台上靠著玻璃的白邊相片，逆光亮邊、窗格光影隨太陽斜過去，紗簾隨風飄；註解寫在窗戶旁的牆上。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 1,
+  "prefers": [
+   "portrait",
+   "square"
+  ]
+ },
+ {
+  "name": "mirror",
+  "title": "梳妝鏡",
+  "family": "photo",
+  "light": true,
+  "couple": false,
+  "idea": "一圈燈泡的化妝鏡一顆顆亮起，鏡中是糊掉的房間、橫移有視差；白邊相片斜插在鏡框邊，註解像口紅寫在鏡面上。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 1,
+  "prefers": [
+   "portrait",
+   "square",
+   "small"
+  ]
+ },
+ {
+  "name": "shadowbox",
+  "title": "立體框",
+  "family": "photo",
+  "light": false,
+  "couple": false,
+  "idea": "深胡桃木盒子框，真的 3D 光影：上緣木框在背板落影、玻璃淡反光；盒裡是相片與緞帶綁的乾燥花，註解寫在牛皮紙吊牌上。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 1,
+  "prefers": [
+   "small",
+   "square"
+  ]
+ },
+ {
+  "name": "flipalbum",
+  "title": "翻頁相簿",
+  "family": "photo",
+  "light": true,
+  "couple": false,
+  "idea": "木桌上攤開的相簿，右頁立體地翻過去（紙有弧度、影子掃過頁面），背面貼著照片的那頁在拍點落到左頁，露出的右頁是手寫註解。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 1,
+  "prefers": [
+   "landscape",
+   "square",
+   "small"
+  ]
+ },
+ {
+  "name": "scrapbook",
+  "title": "剪貼簿",
+  "family": "photo",
+  "light": true,
+  "couple": false,
+  "idea": "牛皮紙內頁上波浪毛邊的相片落下，兩條紙膠帶在拍點貼住對角，白色牛奶筆塗鴉一筆一筆畫出來，註解用深色筆手寫。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 1,
+  "prefers": [
+   "portrait",
+   "square",
+   "small"
+  ]
+ },
+ {
+  "name": "stickyalbum",
+  "title": "自黏相簿",
+  "family": "photo",
+  "light": true,
+  "couple": false,
+  "idea": "老式自黏相簿：格紋膠線底紙、圓角白邊的老相片壓在透明膜下，膜在拍點從下緣掀起往裡捲、曲面一道反光，再蓋回去。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 1,
+  "prefers": [
+   "small",
+   "landscape",
+   "square"
+  ]
+ },
+ {
+  "name": "yearbook",
+  "title": "紀念冊",
+  "family": "photo",
+  "light": true,
+  "couple": false,
+  "idea": "亮面印刷的紀念冊內頁，鏡頭低低地橫移進來、淺景深；註解像同學用彩色筆斜斜寫的留言，補上底線、箭頭和星星。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 1,
+  "prefers": [
+   "landscape",
+   "square"
+  ]
+ },
+ {
+  "name": "journal",
+  "title": "旅行手帳",
+  "family": "photo",
+  "light": true,
+  "couple": false,
+  "idea": "正上方拍的點陣手帳，照片、紙膠帶、迴紋針、票根照節拍一樣一樣放上來，最後印章蓋下去（婚禮日期，沒定日期就是愛心）。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 1,
+  "prefers": [
+   "portrait",
+   "square",
+   "small"
+  ]
+ },
+ {
+  "name": "diary",
+  "title": "日記本",
+  "family": "photo",
+  "light": true,
+  "couple": false,
+  "idea": "檯燈下的橫線日記本，照片夾在頁裡露出一截，拍點被抽出來翻落到頁面上；註解用鋼筆寫在橫線上。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 1,
+  "prefers": [
+   "landscape",
+   "small"
+  ]
+ },
+ {
+  "name": "cardback",
+  "title": "明信片",
+  "family": "photo",
+  "light": true,
+  "couple": false,
+  "idea": "照片洗成明信片落在大理石桌上，在拍點立體翻面：背面有郵票、郵戳、手寫註解，收件人是新人的名字。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 1,
+  "prefers": [
+   "landscape",
+   "square"
+  ]
+ },
+ {
+  "name": "photobook",
+  "title": "寫真書",
+  "family": "photo",
+  "light": false,
+  "couple": false,
+  "idea": "檯燈照著精裝寫真書，布面書背燙金的相簿名閃一下，鏡頭繞到前面時封面打開，右頁是整頁照片、左邊蝴蝶頁印著註解。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 1,
+  "prefers": [
+   "landscape",
+   "portrait"
+  ]
+ },
+ {
+  "name": "bookmark",
+  "title": "書頁夾照片",
+  "family": "photo",
+  "light": true,
+  "couple": false,
+  "idea": "攤開的小說（字是看不清的灰線）快速往左翻了幾頁，停在夾著照片的那頁：照片斜躺著當書籤，左頁空白處有鉛筆寫的註解。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 1,
+  "prefers": [
+   "portrait",
+   "small"
+  ]
+ },
+ {
+  "name": "collagecard",
+  "title": "拼貼卡",
+  "family": "photo",
+  "light": true,
+  "couple": false,
+  "idea": "厚卡紙上撕邊牛皮紙、條紋紙、描圖紙，三張照片（3 張）照節拍斜斜落下，主角最後落在最上面，點點紙膠帶貼住，註解手寫在右邊。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 3,
+  "prefers": []
+ },
+ {
+  "name": "cinema",
+  "title": "電影院",
+  "family": "photo",
+  "light": false,
+  "couple": false,
+  "idea": "從後排看空的電影院：銀幕有透視、左右絲絨布幕跟主題色，影像先投在合著的布幕上再拉開；光束裡有灰塵，空椅背剪影被銀幕光勾邊；註解像電影字幕。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 1,
+  "prefers": [
+   "landscape"
+  ]
+ },
+ {
+  "name": "drivein",
+  "title": "露天電影院",
+  "family": "photo",
+  "light": false,
+  "couple": false,
+  "idea": "從車裡隔著擋風玻璃看星空下的大銀幕，光柱裡有小蟲飛；註解排在左下背光的換字招牌上，四周燈泡在拍點跑馬。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 1,
+  "prefers": [
+   "landscape"
+  ]
+ },
+ {
+  "name": "widescreen",
+  "title": "寬銀幕開場",
+  "family": "photo",
+  "light": false,
+  "couple": false,
+  "idea": "第一個拍點上下黑邊收進來變寬銀幕，照片很慢地橫移推近；相簿第一張把相簿名當片名淡入，註解像片頭字幕靠左下。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 1,
+  "prefers": [
+   "landscape"
+  ]
+ },
+ {
+  "name": "crttv",
+  "title": "老電視",
+  "family": "photo",
+  "light": false,
+  "couple": false,
+  "idea": "客廳一角蕾絲墊上的木紋映像管電視：凸玻璃變形、掃描線、往上爬的亮帶、檯燈反光，開機亮點拉成線再展開；註解像電視字幕跟著弧面變形。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 1,
+  "prefers": [
+   "landscape",
+   "square",
+   "small"
+  ]
+ },
+ {
+  "name": "phonealbum",
+  "title": "手機相簿",
+  "family": "photo",
+  "light": false,
+  "couple": false,
+  "idea": "木桌上一支無品牌手機：螢幕亮起、相簿格子滑上來，其中一格放大成全螢幕（橫的照片手機橫放）；註解寫在手機旁。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 1,
+  "prefers": [
+   "portrait"
+  ]
+ },
+ {
+  "name": "vhs",
+  "title": "錄影帶",
+  "family": "photo",
+  "light": false,
+  "couple": false,
+  "idea": "4:3 的 VHS 回放：掃描線抖動、色偏、雜訊與追蹤雜訊帶，「▶ PLAY」與婚禮日期戳（沒日期不印）；註解像字幕機打的字跟著抖。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 1,
+  "prefers": [
+   "landscape",
+   "square",
+   "small"
+  ]
+ },
+ {
+  "name": "intertitle",
+  "title": "默片",
+  "family": "photo",
+  "light": false,
+  "couple": false,
+  "idea": "黑白默片：銀鹽色調、顆粒、閃爍、刮痕、圓形光圈打開；註解是雙線框的默片字卡，照片與字卡在拍點硬切。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 1,
+  "prefers": [
+   "landscape",
+   "square",
+   "small"
+  ]
+ },
+ {
+  "name": "splitscreen",
+  "title": "分割畫面",
+  "family": "photo",
+  "light": false,
+  "couple": false,
+  "idea": "兩張照片（2 張）左右分割，微斜的分割線每兩拍滑到新位置、閃一下；進場左上右下滑入，之後反向慢漂。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 2,
+  "prefers": [
+   "portrait"
+  ]
+ },
+ {
+  "name": "monitor",
+  "title": "監看螢幕",
+  "family": "photo",
+  "light": false,
+  "couple": false,
+  "idea": "片場燈架上的監看螢幕：取景線、安全框、REC 紅點、跑動的時間碼與跟音樂跳的音量條；手持微晃，註解手寫在螢幕下的紙膠帶上。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 1,
+  "prefers": [
+   "landscape"
+  ]
+ },
+ {
+  "name": "tvwall",
+  "title": "電視牆",
+  "family": "photo",
+  "light": false,
+  "couple": false,
+  "idea": "隔著電器行櫥窗看五台映像管電視（4 張），中間最大那台播主角，其他台每兩小節換台；玻璃上有街燈倒影與掃過的車燈，註解用白色櫥窗漆手寫。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 4,
+  "prefers": [
+   "landscape",
+   "square",
+   "small"
+  ]
+ },
+ {
+  "name": "blinds",
+  "title": "百葉窗光",
+  "family": "photo",
+  "light": false,
+  "couple": false,
+  "idea": "午後暗房牆上的木框相片，百葉窗的斜光條落在牆上、照片上只淡淡明暗，慢慢移動；切進來時百葉窗被拉開，小節線一陣風讓葉片晃一下，光帶裡有灰塵。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 1,
+  "prefers": [
+   "portrait",
+   "small"
+  ]
+ },
+ {
+  "name": "reflection",
+  "title": "水面倒影",
+  "family": "photo",
+  "light": false,
+  "couple": false,
+  "idea": "入夜的湖，白邊相片立在水面上、下面是倒影，遠處山影與燈火；每一拍起一圈漣漪，切進來時照片落到水面盪開第一圈；註解的倒影也淡淡映在水裡。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 1,
+  "prefers": [
+   "landscape",
+   "square"
+  ]
+ },
+ {
+  "name": "clouds",
+  "title": "雲端",
+  "family": "photo",
+  "light": true,
+  "couple": false,
+  "idea": "飛在雲海上，白邊相片浮在雲上慢慢上下浮；切進來時從雲裡浮上來，前景雲絲從下緣與角落飄過（不蓋焦點）；註解是深咖啡色宋體。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 1,
+  "prefers": []
+ },
+ {
+  "name": "starfield",
+  "title": "星空浮現",
+  "family": "photo",
+  "light": false,
+  "couple": false,
+  "idea": "夜空的星星捲成漩渦，先排成照片外框，再由焦點往外一顆一顆填滿（星點顏色取自照片），照片像星塵一樣化出來；每兩小節一顆流星。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 1,
+  "prefers": [
+   "landscape",
+   "square"
+  ]
+ },
+ {
+  "name": "candle",
+  "title": "燭光",
+  "family": "photo",
+  "light": false,
+  "couple": false,
+  "idea": "夜裡桌上的木框相框、旁邊與前景的蠟燭：燭火搖、暖光在照片上微微閃、相框的大影子在牆上晃；切進來時蠟燭剛點著，註解手寫在牆上。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 1,
+  "prefers": [
+   "landscape",
+   "square",
+   "small"
+  ]
+ },
+ {
+  "name": "fog",
+  "title": "霧中浮現",
+  "family": "photo",
+  "light": false,
+  "couple": false,
+  "idea": "照片在三層流動的霧後面，霧從焦點往外散開、照片慢慢清楚，之後邊緣留一縷一縷的霧；霧後一盞遠光透出光束，註解像電影字幕逐字浮出。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 1,
+  "prefers": [
+   "landscape"
+  ]
+ },
+ {
+  "name": "petals",
+  "title": "花瓣飄落",
+  "family": "photo",
+  "light": true,
+  "couple": false,
+  "idea": "亮亮的午後、淡淡樹影，一張微斜的白邊相片；花瓣（跟著配色）分遠、中、近三層飄落翻轉，近的大而糊滑過鏡頭前；註解手寫在左邊。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 1,
+  "prefers": [
+   "portrait",
+   "square",
+   "small"
+  ]
+ },
+ {
+  "name": "rainwindow",
+  "title": "雨窗",
+  "family": "photo",
+  "light": false,
+  "couple": false,
+  "idea": "隔著起霧、掛滿雨滴的玻璃看照片：雨滴像透鏡、大雨滴走走停停滑下；切進來時在焦點擦出一道清楚的，之後每小節再擦一道，擦過的地方慢慢又起霧。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 1,
+  "prefers": [
+   "landscape"
+  ]
+ },
+ {
+  "name": "snowdome",
+  "title": "雪花球",
+  "family": "photo",
+  "light": false,
+  "couple": false,
+  "idea": "大雪花球裡雪堆上立著小相片，球面透鏡變形、玻璃反光、背後暖色光斑；切進來時球被搖一下，雪越轉越慢地飄落；註解手寫在球的右邊。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 1,
+  "prefers": [
+   "square",
+   "landscape",
+   "small"
+  ]
+ },
+ {
+  "name": "sunset",
+  "title": "逆光",
+  "family": "photo",
+  "light": false,
+  "couple": false,
+  "idea": "黃昏草原，白邊相片舉在快落下的太陽前再滑開，相片描一道金邊；近處草的剪影隨風搖，空氣裡有光塵，小節線鏡頭光斑掃過（經過照片時很淡）。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 1,
+  "prefers": [
+   "landscape"
+  ]
+ },
+ {
+  "name": "letteropen",
+  "title": "拆信",
+  "family": "photo",
+  "light": true,
+  "couple": false,
+  "idea": "亞麻桌布上背面朝上的牛皮紙信封，拍點上封口翻開露出斜紋內襯，照片從開口抽出來；註解一字一字手寫在信封背面。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 1,
+  "prefers": [
+   "landscape",
+   "small"
+  ]
+ },
+ {
+  "name": "papercut",
+  "title": "紙雕",
+  "family": "photo",
+  "light": true,
+  "couple": false,
+  "idea": "四層紙雕燈箱剪出山、樹、雲，顏色由紙白往後漸深，照片在最裡層像山谷裡的一扇窗；鏡頭從紙雕裡往後退，有視差。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 1,
+  "prefers": [
+   "landscape"
+  ]
+ },
+ {
+  "name": "popup",
+  "title": "立體卡片",
+  "family": "photo",
+  "light": true,
+  "couple": false,
+  "idea": "木桌上的卡片在拍點彈開，照片照平行摺的機構立起來，四片紙各自打光、互相投影；註解手寫在背頁。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 1,
+  "prefers": [
+   "landscape",
+   "square"
+  ]
+ },
+ {
+  "name": "embroidery",
+  "title": "刺繡框",
+  "family": "photo",
+  "light": true,
+  "couple": false,
+  "idea": "照片印在亞麻布上繃在竹繡框裡，兩枝藤蔓一針一針繡上來、長葉開花，一根針跟著走；註解用緞面繡繡在布上。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 1,
+  "prefers": [
+   "square",
+   "portrait",
+   "small"
+  ]
+ },
+ {
+  "name": "jianzhi",
+  "title": "紅色窗花",
+  "family": "photo",
+  "light": true,
+  "couple": false,
+  "idea": "木窗上貼著正紅剪紙窗花，背光從鏤空透進來，窗花在拍點一摺一摺翻開，照片完整在開口裡；註解寫在紅紙卡上。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 1,
+  "prefers": [
+   "square",
+   "portrait"
+  ]
+ },
+ {
+  "name": "jigsaw",
+  "title": "拼圖",
+  "family": "photo",
+  "light": true,
+  "couple": false,
+  "idea": "快拼好的拼圖，缺的幾片在拍點一片片飛過去「喀」一聲落進位置（前半就拼完、焦點那格不會缺），之後一道光掃過。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 1,
+  "prefers": [
+   "landscape"
+  ]
+ },
+ {
+  "name": "washpaint",
+  "title": "水彩暈染",
+  "family": "photo",
+  "light": true,
+  "couple": false,
+  "idea": "水彩紙上一拍一滴顏料從焦點不規則地擴開、濕邊積色，蓋滿後「乾」成清楚的照片、只留外圈水彩邊；註解用水彩筆寫。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 1,
+  "prefers": [
+   "small",
+   "square"
+  ]
+ },
+ {
+  "name": "sketch",
+  "title": "素描上色",
+  "family": "photo",
+  "light": true,
+  "couple": false,
+  "idea": "素描本上先用鉛筆畫出照片的輪廓與排線，再用色鉛筆從左上斜掃上色，最後變回清楚的照片；註解寫在右頁。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 1,
+  "prefers": [
+   "landscape"
+  ]
+ },
+ {
+  "name": "pressedflower",
+  "title": "押花",
+  "family": "photo",
+  "light": true,
+  "couple": false,
+  "idea": "標本台紙上的照片角落押著乾燥花，整張壓在玻璃下，玻璃落下時一道亮光掃過；註解寫在標本標籤上。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 1,
+  "prefers": [
+   "portrait",
+   "small"
+  ]
+ },
+ {
+  "name": "unfold",
+  "title": "摺紙攤開",
+  "family": "photo",
+  "light": true,
+  "couple": false,
+  "idea": "印著照片的紙摺成四分之一放在石桌上，拍點上一摺一摺翻開、紙尖有透視，攤平後留著淡淡的摺痕。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 1,
+  "prefers": []
+ },
+ {
+  "name": "mappin",
+  "title": "地圖圖釘",
+  "family": "photo",
+  "light": true,
+  "couple": false,
+  "idea": "泛黃的虛構老地圖（沒有地名），鏡頭跟著紅色虛線路線的筆尖走、經過的小鎮一個個點亮，停在用圖釘釘著的照片上；註解像旅行筆記寫在地圖上。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 1,
+  "prefers": [
+   "landscape",
+   "small"
+  ]
+ },
+ {
+  "name": "luggage",
+  "title": "行李箱",
+  "family": "photo",
+  "light": true,
+  "couple": false,
+  "idea": "從上往下看打開的復古行李箱，照片落在摺好的衣服上，窗框影子慢慢移過；註解手寫在牛皮紙行李吊牌上，吊牌每小節被棉繩帶一下。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 1,
+  "prefers": [
+   "portrait",
+   "square",
+   "small"
+  ]
+ },
+ {
+  "name": "trainwindow",
+  "title": "火車窗邊",
+  "family": "photo",
+  "light": true,
+  "couple": false,
+  "idea": "火車衝出隧道、窗外亮開，照片靠著車窗立在小桌上、旁邊一杯咖啡；遠山樹林依遠近往後流，每小節一根電線桿刷過；註解印在車窗旁的牆板上。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 1,
+  "prefers": [
+   "portrait",
+   "square",
+   "small"
+  ]
+ },
+ {
+  "name": "roadtrip",
+  "title": "公路旅行",
+  "family": "photo",
+  "light": true,
+  "couple": false,
+  "idea": "車裡看擋風玻璃外的公路，照片用木夾子掛在遮陽板下跟著車晃；中線虛線每拍迎面而過，後照鏡裡是往後退的路。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 1,
+  "prefers": [
+   "portrait",
+   "square"
+  ]
+ },
+ {
+  "name": "ferry",
+  "title": "渡輪甲板",
+  "family": "photo",
+  "light": true,
+  "couple": false,
+  "idea": "照片用長尾夾立在渡輪木扶手上被海風吹晃，海平線跟著船身搖、海面閃著光路，海鷗在拍點拍翅；註解手寫在天空上。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 1,
+  "prefers": [
+   "portrait",
+   "square"
+  ]
+ },
+ {
+  "name": "stampbook",
+  "title": "郵票",
+  "family": "photo",
+  "light": true,
+  "couple": false,
+  "idea": "照片做成齒孔邊的大郵票裝在集郵冊護郵袋裡；拍點蓋郵戳，郵戳是新人名字加婚禮日期（沒日期就印小愛心）；註解像集郵目錄的說明。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 1,
+  "prefers": [
+   "portrait",
+   "square",
+   "small"
+  ]
+ },
+ {
+  "name": "hotair",
+  "title": "熱氣球",
+  "family": "photo",
+  "light": true,
+  "couple": false,
+  "idea": "照片像小旗子掛在熱氣球吊籃下，整組從雲層升上來，每小節燃燒器噴一下火、球皮透光往上提；註解寫在天空上。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 1,
+  "prefers": [
+   "landscape",
+   "square"
+  ]
+ },
+ {
+  "name": "campnight",
+  "title": "露營夜",
+  "family": "photo",
+  "light": false,
+  "couple": false,
+  "idea": "星空與銀河下的營地，照片靠著石頭立在營火旁被火光照著，拍點噴火星、前景有糊的草；註解手寫在夜空裡。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 1,
+  "prefers": [
+   "landscape",
+   "small"
+  ]
+ },
+ {
+  "name": "seaside",
+  "title": "海邊",
+  "family": "photo",
+  "light": true,
+  "couple": false,
+  "idea": "照片插在沙灘上，每小節一道浪漫到照片腳邊再退回、留下濕沙與倒影；註解是手指寫在乾沙上的凹痕字。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 1,
+  "prefers": [
+   "landscape",
+   "square"
+  ]
+ },
+ {
+  "name": "cablecar",
+  "title": "纜車",
+  "family": "photo",
+  "light": true,
+  "couple": false,
+  "idea": "紅色纜車車廂的大窗就是照片，沿鋼索往山上爬、四層山與薄霧往後退，經過鐵塔時車廂咚地晃一下。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 1,
+  "prefers": [
+   "landscape",
+   "square"
+  ]
+ },
+ {
+  "name": "covershot",
+  "title": "雜誌封面",
+  "family": "photo",
+  "light": true,
+  "couple": false,
+  "idea": "窗邊桌上一本雜誌，封面是照片全幅，刊頭只有新人縮寫與期數，註解是左下的封面標題；雜誌滑進來放下，窗光每小節掃過亮面封面。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 1,
+  "prefers": [
+   "portrait"
+  ]
+ },
+ {
+  "name": "presspage",
+  "title": "報紙圖片頁",
+  "family": "photo",
+  "light": true,
+  "couple": false,
+  "idea": "鏡頭貼近一張斜躺的報紙：照片印成新聞紙的網點，註解是照片下的圖說，四周是焦外的灰色鉛字欄，焦點從內文拉到照片。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 1,
+  "prefers": [
+   "landscape",
+   "small"
+  ]
+ },
+ {
+  "name": "gigposter",
+  "title": "演唱會海報",
+  "family": "photo",
+  "light": false,
+  "couple": false,
+  "idea": "夜裡路燈下的水泥牆貼著雙色網版海報，照片印成兩色連續調、每個大鼓兩版套準跳一下；右下角翹起被風掀動，車燈掃過。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 1,
+  "prefers": [
+   "landscape"
+  ]
+ },
+ {
+  "name": "calendar",
+  "title": "月曆",
+  "family": "photo",
+  "light": true,
+  "couple": false,
+  "idea": "鐵圈月曆掛在白牆上，左邊照片與註解，右邊婚禮那個月的日期格，婚禮那天在拍點被筆圈起來（沒定日期就只有照片與註解）。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 1,
+  "prefers": [
+   "landscape"
+  ]
+ },
+ {
+  "name": "bookpage",
+  "title": "書的內頁",
+  "family": "photo",
+  "light": true,
+  "couple": false,
+  "idea": "檯燈下攤開的精裝書，一頁翻過書溝、背面就是滿版照片，右頁有書眉、註解與頁碼；書溝彎下去、有景深。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 1,
+  "prefers": [
+   "portrait"
+  ]
+ },
+ {
+  "name": "invitecard",
+  "title": "喜帖",
+  "family": "photo",
+  "light": true,
+  "couple": false,
+  "idea": "亞麻桌布上一張燙金框的米白喜帖壓在信封上，照片外一圈金線、緞帶光澤流動，照片下印註解與新人名字、日期。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 1,
+  "prefers": []
+ },
+ {
+  "name": "tradingcard",
+  "title": "閃卡",
+  "family": "photo",
+  "light": false,
+  "couple": false,
+  "idea": "黑色亮面檯子上一張雷射全像收藏卡，翻一圈轉過來，之後慢慢左右轉、全像顏色跟著變；名牌印相簿名與編號。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 1,
+  "prefers": [
+   "landscape",
+   "square"
+  ]
+ },
+ {
+  "name": "lpcover",
+  "title": "唱片封套",
+  "family": "photo",
+  "light": false,
+  "couple": false,
+  "idea": "深色絨布上的 12 吋黑膠封套，照片旁是字帶；唱片從封套滑出一半，以 33⅓ 轉、溝紋反光跟著燈。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 1,
+  "prefers": [
+   "square",
+   "landscape"
+  ]
+ },
+ {
+  "name": "citysign",
+  "title": "街頭看板",
+  "family": "photo",
+  "light": false,
+  "couple": false,
+  "idea": "剛入夜的街角，對面樓頂的大看板是照片，投光燈閃一下亮起、街燈從近到遠一拍亮一盞，鏡頭從街上往上搖。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 1,
+  "prefers": [
+   "landscape"
+  ]
+ },
+ {
+  "name": "halftone",
+  "title": "網點印刷",
+  "family": "photo",
+  "light": true,
+  "couple": false,
+  "idea": "普普風網點版畫：照片印成大網點、每個大鼓點點脹一下，網點慢慢變細，後段淡回連續的照片；鏡頭從網點特寫往後拉。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 1,
+  "prefers": [
+   "small",
+   "landscape"
+  ]
+ },
+ {
+  "name": "cookiebox",
+  "title": "喜餅禮盒",
+  "family": "photo",
+  "light": true,
+  "couple": false,
+  "idea": "俯拍桌布上的紅色喜餅禮盒，盒蓋燙金框裡嵌著照片、香檳色緞帶打結；拍點上盒蓋被拿起，露出底下失焦的壓花喜餅，註解一字一字燙上金字。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 1,
+  "prefers": [
+   "landscape",
+   "square"
+  ]
+ },
+ {
+  "name": "hongbao",
+  "title": "紅包袋",
+  "family": "photo",
+  "light": true,
+  "couple": false,
+  "idea": "直式紅包袋開著封口，照片一拍抽一下、飛向鏡頭轉正浮在右邊；鏡頭從袋口特寫拉開，註解用金色手寫在紅包的燙金框裡。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 1,
+  "prefers": [
+   "portrait",
+   "square"
+  ]
+ },
+ {
+  "name": "purikura",
+  "title": "大頭貼",
+  "family": "photo",
+  "light": true,
+  "couple": false,
+  "idea": "大頭貼貼紙滑下來落在圓點桌面上，同一張照片印四格、一拍蓋一種花樣（閃光框、圓點框、復古花邊、星星），最後推近一格，印婚禮日期（沒日期不印）。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 1,
+  "prefers": [
+   "portrait",
+   "square"
+  ]
+ },
+ {
+  "name": "ironwindow",
+  "title": "鐵窗花",
+  "family": "photo",
+  "light": true,
+  "couple": false,
+  "idea": "老公寓白牆上釘著照片，窗簾拉開，夕陽把鐵窗花的影子斜斜拉長投在牆上和照片上，影子慢慢滑動、葉影晃；註解是鉛筆字寫在牆上。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 1,
+  "prefers": [
+   "landscape",
+   "small"
+  ]
+ },
+ {
+  "name": "photostudio",
+  "title": "老照相館",
+  "family": "photo",
+  "light": false,
+  "couple": false,
+  "idea": "夜裡從騎樓看老照相館的櫥窗：暗紅絨布背幕、金框照片立在畫架上；燈閃兩下亮起，焦點從玻璃上的路燈倒影拉進照片，機車車燈掃過玻璃。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 1,
+  "prefers": [
+   "portrait",
+   "small"
+  ]
+ },
+ {
+  "name": "tiles",
+  "title": "花磚牆",
+  "family": "photo",
+  "light": true,
+  "couple": false,
+  "idea": "鏡頭貼著老花磚牆斜看再轉正拉開，照片用紙膠帶貼在牆上，註解一行一條紙膠帶一拍貼一條；照片下緣被風掀起，釉面反光滑動。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 1,
+  "prefers": [
+   "square",
+   "small"
+  ]
+ },
+ {
+  "name": "tearcal",
+  "title": "撕日曆",
+  "family": "photo",
+  "light": true,
+  "couple": false,
+  "idea": "牆上的撕日曆印著婚禮那天（沒定日期改成「吉日」），拍點上這頁翻起撕開旋轉飛走，露出印著照片的下一頁，註解印在照片下面。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 1,
+  "prefers": [
+   "landscape",
+   "square"
+  ]
+ },
+ {
+  "name": "courtyard",
+  "title": "三合院",
+  "family": "photo",
+  "light": true,
+  "couple": false,
+  "idea": "鏡頭從稻埕往上搖到紅磚牆前的竹篩，照片放在竹篩上、一角壓著小石頭被風掀起，樹葉影子晃動；註解是白色粉筆字寫在紅磚牆上。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 1,
+  "prefers": [
+   "square",
+   "small"
+  ]
+ },
+ {
+  "name": "diptych",
+  "title": "雙聯",
+  "family": "photo",
+  "light": false,
+  "couple": false,
+  "idea": "兩張照片（2 張）裝在細黑框裡掛在深色牆前，主角在左邊比較大；兩片從合起來的樣子打開，焦點從第二張拉到主角，中間的縫透出暖光。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 2,
+  "prefers": [
+   "portrait"
+  ]
+ },
+ {
+  "name": "triptych",
+  "title": "三聯屏",
+  "family": "photo",
+  "light": false,
+  "couple": false,
+  "idea": "胡桃木框、米白卡紙的三片鉸鏈相框（3 張）立在亮漆桌上，兩翼在兩拍內打開露出中間的主角，桌面映出倒影。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 3,
+  "prefers": [
+   "portrait"
+  ]
+ },
+ {
+  "name": "photogrid",
+  "title": "照片格",
+  "family": "photo",
+  "light": false,
+  "couple": false,
+  "idea": "3×2 的燈箱格子（6 張）斜浮在暗處，配角在拍點依序亮起、在牆上染出自己的顏色；主角最後亮、浮出來放大，其他格退到暗處失焦。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 6,
+  "prefers": [
+   "landscape",
+   "small"
+  ]
+ },
+ {
+  "name": "scatter",
+  "title": "散落桌面",
+  "family": "photo",
+  "light": true,
+  "couple": false,
+  "idea": "洗好的相片（4 張）一張張落在灑著窗光的原木桌上、滑一下才停，主角最後落在最上面，索引卡落在旁邊寫註解。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 4,
+  "prefers": [
+   "portrait",
+   "square",
+   "small"
+  ]
+ },
+ {
+  "name": "timeline",
+  "title": "時間軸",
+  "family": "photo",
+  "light": true,
+  "couple": false,
+  "idea": "牛皮紙上一條墨水線由左往右畫出來，筆尖走到哪張相片（4 張）就用紙膠帶貼上，鏡頭沿線跟到主角，註解寫在線上方。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 4,
+  "prefers": [
+   "small",
+   "landscape"
+  ]
+ },
+ {
+  "name": "stack",
+  "title": "照片疊",
+  "family": "photo",
+  "light": true,
+  "couple": false,
+  "idea": "亞麻桌巾上一小疊相片（3 張），上面兩張在拍點被抽走轉著滑出畫面，露出最下面的主角，描圖紙條滑進來印著註解。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 3,
+  "prefers": [
+   "portrait",
+   "square",
+   "small"
+  ]
+ },
+ {
+  "name": "photoring",
+  "title": "旋轉環",
+  "family": "photo",
+  "light": false,
+  "couple": false,
+  "idea": "五張相片（5 張）立成一圈在聚光燈下越轉越慢，停下時主角在正前方往前站出來，其他張沒入暗處；光柱裡有灰塵。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 5,
+  "prefers": [
+   "portrait"
+  ]
+ },
+ {
+  "name": "storyboard",
+  "title": "分鏡",
+  "family": "photo",
+  "light": true,
+  "couple": false,
+  "idea": "2×2 的分鏡腳本紙（4 張），照片一格一格貼進去、鉛筆寫格號與箭頭，最後推進主角那格，註解寫在備註線上。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 4,
+  "prefers": [
+   "landscape"
+  ]
+ },
+ {
+  "name": "fan",
+  "title": "扇形展開",
+  "family": "photo",
+  "light": true,
+  "couple": false,
+  "idea": "喜宴緹花桌巾上一疊相片卡（5 張）在拍點攤成扇形，主角被抽出來轉正放大，旁邊滑進一張細框桌卡印著註解。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 5,
+  "prefers": [
+   "portrait"
+  ]
+ },
+ {
+  "name": "cube",
+  "title": "立方體",
+  "family": "photo",
+  "light": false,
+  "couple": false,
+  "idea": "攝影棚裡浮著霧黑方盒，四面嵌著照片（4 張），每拍快速轉 90 度、稍微過頭再回來，主角最後轉到正面停最久。",
+  "bilingual": false,
+  "photo": true,
+  "photos": 4,
+  "prefers": [
+   "square",
+   "landscape"
+  ]
  },
  {
   "name": "subtitles",
@@ -1934,7 +4068,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "老電影院的銀幕在放黑白愛情片（剪影、底片刮痕、放映機光束），銀幕下緣是雙語字幕：中文大、原文小，照歌聲逐字亮；留言是片頭的標題卡，每小節畫面換一個鏡頭。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "kvariety",
@@ -1943,7 +4080,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "綜藝節目畫面：彩色大花字（中文）配小字原文，在拍點「砰」地彈出、晃動、加效果線與音效字；留言是節目角落的觀眾來信字卡。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "webtoon",
@@ -1952,7 +4092,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "直向捲動的條漫，一格一格往上捲（一拍一格），對話框裡中文大、原文小；留言是最新一話的作者的話。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "teleprompter",
@@ -1961,7 +4104,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "攝影機前的提詞機玻璃，反射出兩行字幕往上捲（中文、原文），唱到的那行亮；留言是講台上的講稿。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "dubbing",
@@ -1970,7 +4116,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "錄音室的配音螢幕：畫面上跑雙語字幕與提示條（倒數條在拍點滑到字），下面兩條聲音波形（原文一條、中文一條）；留言貼在麥克風旁的劇本上。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "projector",
@@ -1979,7 +4128,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "老式轉盤幻燈機在牆上投影，每小節「喀」一聲換一張幻燈片（畫面是抽象的風景插畫），片上印雙語字幕；留言寫在幻燈片盒的標籤上。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "dictionary",
@@ -1988,7 +4140,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "翻開的厚字典，詞條排版（詞頭、音標、釋義）：歌詞就是例句，原文例句＋中文翻譯；紅筆在唱到的字下畫線；留言是頁邊的手寫註記。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "flashcards",
@@ -1997,7 +4152,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "一疊用鐵環串起來的單字卡：正面原文、在拍點翻面露出中文（兩面輪流），翻過的卡片疊在一旁；留言寫在最上面一張大卡。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "phrasebook",
@@ -2006,7 +4164,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "攤開的旅遊會話小冊子（插圖、分類色塊、便利貼），每句歌詞是一條「原文／中文」會話，用螢光筆在拍點劃過；留言是夾在書裡的車票背面。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "lyricbook",
@@ -2015,7 +4176,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "CD 內頁的歌詞本攤在桌上，左頁原文、右頁中文，唱到的那行被燈照亮；留言寫在「Thanks to」那一頁。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "twoletters",
@@ -2024,7 +4188,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "兩封信並排：左邊原文信、右邊中文譯本，鋼筆同時在兩張紙上寫（一拍一字），譯本上有鉛筆的修改痕跡；留言是信封上的附言。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "couplets",
@@ -2033,7 +4200,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "紅紙對聯（燙金字）掛在門兩邊，上聯中文、下聯原文，橫批是留言；燈籠在拍點晃，墨一字一字寫上去。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "streetsign",
@@ -2042,7 +4212,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "街角的雙語路牌與指標柱（中文大、原文小），每小節一塊新的路牌翻下來；遠處車流與行道樹視差；留言是公車站的燈箱廣告。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "neonalley",
@@ -2051,7 +4224,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "夜晚小巷一整排直式霓虹招牌（中文招牌、旁邊原文小招牌），唱到的字點亮、閃一下；濕地面倒影；留言是最亮的那塊招牌。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "busstop",
@@ -2060,7 +4236,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "公車站的 LED 到站看板：中文一行、原文一行輪流跑馬（兩行同時在），公車在小節線進站、車燈掃過；留言貼在站牌的時刻表上。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "trainlcd",
@@ -2069,7 +4248,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "列車車門上方的寬螢幕：左邊路線圖（站點照拍子一站站亮）、右邊雙語「下一站」大字是歌詞；窗外景色往後捲；留言在車廂廣告框。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "menuwall",
@@ -2078,7 +4260,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "小餐館牆上一整排木牌菜單（中文大、原文小），唱到一句就「喀」地掛上一塊新木牌；湯鍋冒煙；留言寫在點菜單上。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "billboard",
@@ -2087,7 +4272,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "夜晚十字路口大樓的 LED 廣告牆（曲面、像素格），雙語歌詞是牆上的大字，路人剪影抬頭看；留言是旁邊較小的直式看板。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "interpreter",
@@ -2096,7 +4284,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "口譯廂的玻璃窗與耳機、麥克風燈（唱時亮紅），桌上螢幕上面原文、下面中文同步出現，兩條音量表跳動；留言寫在廂外的會議名牌。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "translator",
@@ -2105,7 +4296,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "手持翻譯機特寫：上半原文、下半中文，說話時聲波跳動、拍點時轉換箭頭轉一圈；留言存在翻譯機的「收藏句子」清單。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "keyboard",
@@ -2114,7 +4308,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "背光機械鍵盤（鍵帽印兩種字母），唱一個字就按下一顆鍵、背光一閃，上方螢幕同時打出中文與原文；留言在螢幕邊的便利貼。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "rosetta",
@@ -2123,7 +4320,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "博物館裡的石碑，刻著兩種文字（上中文下原文），聚光燈一行一行掃過、刻痕亮起；留言是展櫃的說明牌。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "hangulblocks",
@@ -2132,7 +4332,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "木頭字母積木一塊一塊在拍點疊上去，拼出原文，旁邊一排中文積木；積木倒下再重疊；留言寫在積木盒蓋上。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "wordtiles",
@@ -2141,7 +4344,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "拼字遊戲盤（格子、分數格），字母方塊在拍點滑進格子拼出原文，下一排拼中文；計分板是留言。不仿任何品牌的樣式。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "stringlights",
@@ -2150,7 +4356,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "兩串燈泡拼成的字：上串中文、下串原文，照拍子一顆顆點亮、唱到的字閃一下；留言是掛在燈串中間的木牌。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "povfan",
@@ -2159,7 +4368,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "旋轉的 LED 扇葉（視覺暫留）在空中畫出兩行字，扇葉的殘影與光點跟著拍子；留言是扇座下的貼紙。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "skywriting",
@@ -2168,7 +4380,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": false,
   "idea": "藍天裡兩架小飛機拉白煙寫字：大飛機寫中文、小飛機在下面寫原文，煙慢慢被風吹散；留言是地面上的布條。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "fireflies",
@@ -2177,7 +4392,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "夏夜草地的螢火蟲飛成字（中文大、原文小），在拍點一起閃，唱過的字散開飛走；留言寫在涼亭的木牌。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "riverlanterns",
@@ -2186,7 +4404,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "夜晚河面上一盞盞紙河燈順流漂過，每盞燈上寫一個字（中文一排、原文一排），倒影搖晃；留言寫在最大的那盞燈上。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "lasershow",
@@ -2195,7 +4416,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": false,
   "idea": "煙霧裡的雷射光束在牆上畫出兩行字（像雷射投影），光束在拍點掃動、換顏色；留言是舞台邊的 LED 條。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "seoultrip",
@@ -2204,7 +4428,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": true,
   "idea": "兩人在石牆老屋的小巷散步拍照（孟庭拿相機、宣文比 YA），兩旁是雙語路牌與店招（歌詞）；拍照閃光在小節線；留言寫在明信片上。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "hanriver",
@@ -2213,7 +4440,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": true,
   "idea": "河濱公園夜晚，兩人坐在野餐墊吃炸雞、看對岸的橋燈（燈在拍點換色），三隻狗在旁邊搶炸雞；歌詞是橋上的燈字；留言是外送單。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "subwayride",
@@ -2222,7 +4452,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": true,
   "idea": "地鐵車廂裡兩人拉著吊環搖晃（照拍子），孟庭靠在宣文肩上；車廂螢幕是雙語到站資訊（歌詞）；留言是車廂廣告框。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "lovelocks",
@@ -2231,7 +4464,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": true,
   "idea": "山頂觀景台的欄杆掛滿愛情鎖，兩人一起把寫著兩人名字的鎖扣上（小節線「喀」），遠處城市夜景；鎖上的吊牌是歌詞；留言是新掛上的那把鎖。不畫真實地標。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "kdrama",
@@ -2240,7 +4476,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": true,
   "idea": "兩人和三隻狗窩在沙發上看劇，電視上是雙語字幕（歌詞），劇情高潮時孟庭抓著宣文、狗一起歪頭；留言是電視上的彈幕／來電字幕條。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "kpopdance",
@@ -2249,7 +4488,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": true,
   "idea": "鏡牆練舞室，兩人跟著節奏跳（每拍一個動作，照鏡子有鏡像），鏡子上貼著雙語歌詞紙；三隻狗在角落跟著點頭；留言是鏡子上的便利貼。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "kbbq",
@@ -2258,7 +4500,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": true,
   "idea": "烤肉店，網子上的肉在拍點翻面（冒煙、滋滋），宣文用剪刀剪肉、孟庭包生菜餵他；牆上的木牌菜單是雙語歌詞；留言寫在點菜單。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "nightsnack",
@@ -2267,7 +4512,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": true,
   "idea": "深夜便利商店窗邊座位，兩人吃泡麵（吹涼、捲麵在拍點），窗外下雨；窗戶上的雙語貼紙廣告是歌詞；留言是收據。不畫真實品牌。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "hanbok",
@@ -2276,7 +4524,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": true,
   "idea": "兩人穿韓服在古宮殿的迴廊前拍照（不畫真實地標），孟庭轉圈讓裙擺飛起、宣文替她撐傘；屋簷下的木匾是雙語歌詞；留言寫在紙扇上。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "langcards",
@@ -2285,7 +4536,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": true,
   "idea": "咖啡廳裡兩人用單字卡互考：孟庭舉卡（原文），宣文搶答（中文），答對擊掌、答錯被彈額頭；卡片上的字是歌詞；留言寫在桌上的筆記本。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "videocall",
@@ -2294,7 +4548,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": false,
   "couple": true,
   "idea": "分割畫面：左邊宣文在家、右邊孟庭在醫院值班休息室（護理服），兩人隔著螢幕比愛心，通話畫面下方是雙語即時字幕（歌詞）；留言是聊天室的訊息。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "bookstore",
@@ -2303,7 +4560,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": true,
   "idea": "書店的外文書區，兩人各拿一本書靠在一起看，書架上的書背是雙語歌詞；宣文偷偷把一張紙條夾進孟庭的書裡（留言）。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "departuregate",
@@ -2312,7 +4572,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": true,
   "idea": "機場登機口，兩人拖著行李、拿著護照與登機證，三隻狗坐在寵物提籃裡探頭；登機口螢幕是雙語航班資訊（歌詞）；留言是行李吊牌。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "studydate",
@@ -2321,7 +4584,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": true,
   "idea": "圖書館長桌，兩人一起讀語言課本，孟庭在宣文的課本上畫愛心、宣文打瞌睡被戳醒（照拍子）；課本上的例句是雙語歌詞；留言是借書卡。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "dogcafe",
@@ -2330,7 +4596,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": true,
   "idea": "狗狗咖啡廳，三隻狗在桌上等狗狗蛋糕，兩人幫牠們拍照；店裡的雙語小黑板是歌詞；留言寫在狗狗蛋糕的插牌上。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "dogtraining",
@@ -2339,7 +4608,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": true,
   "idea": "草地上兩人訓練三隻狗：宣文說中文口令、孟庭說原文口令（對話框是歌詞），三隻狗在拍點坐下、握手、趴下（元元最標準，芃芃慢半拍）；留言寫在訓練手冊。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "dogbirthday",
@@ -2348,7 +4620,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": true,
   "idea": "元元的生日派對：三隻狗戴派對帽圍著狗狗蛋糕，兩人拉拉炮、唱生日歌；牆上的彩旗字是雙語歌詞；留言寫在生日卡。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "stroller",
@@ -2357,7 +4632,10 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": true,
   "idea": "公園步道，孟庭推著狗狗推車（元元坐在裡面探頭，兩隻博美在旁邊走），宣文牽著博美；路旁的雙語指示牌是歌詞；留言寫在推車掛的小吊牌。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  },
  {
   "name": "dogswim",
@@ -2366,6 +4644,9 @@ export const PLATE_CATALOG: PlateInfo[] = [
   "light": true,
   "couple": true,
   "idea": "狗狗游泳池，三隻狗在水裡划水（元元游最快、芃芃套著游泳圈），兩人在池邊丟玩具、拿毛巾等；泳池邊的雙語告示牌是歌詞；留言寫在救生圈上。",
-  "bilingual": true
+  "bilingual": true,
+  "photo": false,
+  "photos": 0,
+  "prefers": []
  }
 ];

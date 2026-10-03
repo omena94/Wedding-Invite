@@ -17,7 +17,7 @@ import { LIN, rgba } from '../engine/palette';
 import { clamp, ease, lerp, prog, mulberry32 } from '../engine/util';
 import { Lyrics, type Line } from '../engine/lyrics';
 import type { FitResult } from '../engine/text';
-import { sparkHead, sparkParticles, beatAfter, barAfter, signature, drawMessage, COUPLE_ZH, lyricSubOf, subSizeFor, subGap } from './_motifs';
+import { sparkHead, sparkParticles, beatAfter, barAfter, signature, drawMessage, NAME_A, NAME_B, lyricSubOf, subSizeFor, subGap } from './_motifs';
 import { TAIWAN, VENUE, beatsIn, inOut, ScreenRig, loadPlateText } from './_t6';
 import { fitText } from '../engine/text';
 import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 } from './_v2';
@@ -35,9 +35,8 @@ const TK = { y: 846, h: 108, labelW: 108 }; // 跑馬燈
 const TV_MIN = 0.66, TV_MAX = 0.7;
 const HEAD_X = 600; // 跑馬燈的讀頭（正在唱的字停在這裡）
 const SEP = '　◆　';
-const TICKER_IDLE = ['現場天氣：降愛機率百分之百', '交通：往幸福的路上一路順暢', '掃描右下角 QR code，你的祝福就是下一則頭條', '芃芃與 QQ 已就位', '喜宴菜色：一道比一道更甜'];
-const [GROOM, BRIDE] = COUPLE_ZH.split(/\s*&\s*/) as [string, string];
-const TEXT = `喜訊台快訊現場直播報導婚禮新人發言現正播放中掃描右下角你的祝福就是下一則頭條歌詞緯度經度台灣${TICKER_IDLE.join('')}${GROOM}${BRIDE}`;
+const TICKER_IDLE = ['現場天氣：降愛機率百分之百', '交通：往幸福的路上一路順暢', '掃描右下角 QR code，你的祝福就是下一則頭條', '伴郎伴娘已就位', '喜宴菜色：一道比一道更甜'];
+const TEXT = `喜訊台快訊現場直播報導婚禮新人發言現正播放中掃描右下角你的祝福就是下一則頭條歌詞緯度經度台灣${TICKER_IDLE.join('')}${NAME_A}${NAME_B}`;
 const D2R = Math.PI / 180;
 const TW_C: [number, number] = [120.97, 23.65]; // 台灣本島的中心
 

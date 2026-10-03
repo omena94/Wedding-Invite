@@ -12,7 +12,7 @@
 //  - 窗格很短（2 小節）：卡片落下時就在空中翻個身、背面朝上落定，一落定就開始寫，留言才讀得完。
 //  - 沒有留言：不翻面，正面的歌詞就是焦點，角落一行小字邀請大家掃 QR。新人的留言：收件人是全體賓客、寄件人是新人。
 //    純音樂：圖說是歌名（小字），P.S. 寫一句小小的冷面話。
-// v2（2026-09-28 新人：「留言板都太大太突兀」「空出來的地方可以再多補一些動畫」）：
+// v2（留言板不要太大太突兀、空出來的地方多補一些動畫）：
 //  - 鏡頭拉遠，卡片在螢幕上約 640×417（卡片就是留言的容器，≤ 860×430），放在畫面左邊偏下；留言 40～60 px、署名 26～32、
 //    P.S. 的歌詞 40～52（不比留言大）。桌面與桌上的東西才是畫面的主體。
 //  - 多補的動畫：一支鋼筆（跟祝福登記表同一支）從桌上拿起來，一個字一個字把留言寫在卡片背面（筆尖跟著正在寫的字走），
@@ -26,7 +26,7 @@ import { F, font, layout, loadText } from '../engine/type';
 import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, lerp, prog, pulse, hash, noise1 } from '../engine/util';
 import { fitText, readSeconds, type FitResult } from '../engine/text';
-import { lyricAt, drawLyric, layoutLyric, beatAfter, barAfter, signature, COUPLE_ZH, DATE_DOTS, lyricSubOf, subStyleFor, subGap, drawLyricSub, type LyricStyle, type LyricLayout } from './_motifs';
+import { lyricAt, drawLyric, layoutLyric, beatAfter, barAfter, signature, COUPLE_ZH, DATE_DOTS, joinBits, lyricSubOf, subStyleFor, subGap, drawLyricSub, type LyricStyle, type LyricLayout } from './_motifs';
 import { paperLyric, windowLines, pad3 } from './_t2';
 import { msgMaxFor, lyricV2, sigV2, V2, fitClauses } from './_v2';
 import {
@@ -105,7 +105,7 @@ export default class Postcard extends Scene {
     const lines = windowLines(lyrics, s, e);
     this.instr = !lyrics.has;
     if (lines.some((l) => lyricSubOf(l))) this.subRoom = 84;
-    await loadText(`POSTCARD明信片永久郵資喜宴郵局待寄幸福里永遠路號收寄件人全體賓客寫一張給新人掃描右下角寄自永遠這首沒有歌詞請自由發揮${COUPLE_ZH}${m ? m.text + signature(m.name) : ''}${song.title}${song.artist}${lines.map((l) => l.text).join('')}０１２３４５６７８９`);
+    await loadText(`POSTCARD明信片永久郵資喜宴郵局待寄囍幸福里永遠路號收寄件人全體賓客寫一張給新人掃描右下角寄自永遠這首沒有歌詞請自由發揮${COUPLE_ZH}${m ? m.text + signature(m.name) : ''}${song.title}${song.artist}${lines.map((l) => l.text).join('')}０１２３４５６７８９`);
 
     // ---- 時間表：第一拍落定；有留言才翻面（第一個小節線，太遠就第二拍後）；翻好的下一拍開始寫
     const T = this.T;
@@ -423,7 +423,8 @@ export default class Postcard extends Scene {
     c.font = font(m ? F.mono(500) : F.hei(500), m ? 20 : 26); c.letterSpacing = m ? '4px' : '2px';
     c.fillStyle = rgba('sepia', m ? 0.4 : 0.55); c.textAlign = 'right';
     const picB = PIC.y1 - this.subRoom;
-    c.fillText(m ? `No.${pad3(m.n)}  ·  ${DATE_DOTS}` : `寫一張給新人：掃描右下角 QR code  ·  ${DATE_DOTS}`, CW - 44, picB + 30);
+    // 還沒定日期：只有編號／邀請，不留多的「 · 」
+    c.fillText(joinBits('  ·  ', m ? `No.${pad3(m.n)}` : '寫一張給新人：掃描右下角 QR code', DATE_DOTS), CW - 44, picB + 30);
     c.textAlign = 'left'; c.letterSpacing = '0px';
     // 圖說：正在唱的歌詞（印刷字，大）
     const band = { y0: picB + 44, y1: CH - 34 };

@@ -4,7 +4,7 @@
 //    （跟著八分音符跳），下一拍泡泡彈出來，之後一直停在那裡讀。
 //  - 歌詞：「今晚的歌」在下面的輸入框裡打字——唱到哪打到哪（還沒唱的三成、正在唱訊號色、唱完紙白），換下一句時
 //    整句往上飄走、淡掉，新的一句再打進來。純音樂時輸入框是「錄音中」的波形（真的音量）。
-//  - 上面一兩則很淡的舊訊息（前幾則留言，或狗狗加入群組），只是讓它像一個真的對話。
+//  - 上面一兩則很淡的舊訊息（前幾則留言，或一則「新人建立了群組」的系統訊息），只是讓它像一個真的對話。
 // 鏡頭：窗格一開始焦點在後面的房間，0.3 秒內「拉焦」到手機上；之後慢慢推近，每個小節線緩一下。
 // v2（留言尺寸標準）：鏡頭拉遠，手機在畫面左半邊，桌上多一根蠟燭（火焰一直晃、每個小節線被風吹歪一下，光在桌上跟著閃）；
 // 每一個新泡泡彈出來（主打、每一句歌詞），手機螢幕灑在桌上的光就亮一下——「有新訊息」。螢幕上的字級照 v2（畫面上的 px）：量螢幕投影到畫面上的寬度，換算成畫布上的字級。
@@ -12,12 +12,12 @@
 import * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
 import { Layer2D } from '../engine/gl';
-import { F, font, loadText } from '../engine/type';
+import { F, font, loadText, measure } from '../engine/type';
 import { LIN, rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, hash } from '../engine/util';
 import { type FitResult } from '../engine/text';
 import type { Line } from '../engine/lyrics';
-import { layoutLyric, drawLyric, fillWithHearts, COUPLE_ZH, lyricSubOf, subSizeFor, subGap, type LyricStyle, type LyricLayout } from './_motifs';
+import { layoutLyric, drawLyric, fillWithHearts, COUPLE_ZH, NAME_A, NAME_B, fitPx, lyricSubOf, subSizeFor, subGap, type LyricStyle, type LyricLayout } from './_motifs';
 import { grid, windowLines, rrect, pad, pop, renderStage, bodyMaterial, screenMaterial, tableMaterial, backdropMaterial, slab, setV3, mixV, projScale, fitMsgV2, flame, type Grid } from './_t5';
 import { V2, lyricV2, sigV2 } from './_v2';
 import { LineBatch } from '../engine/lines';
@@ -94,8 +94,11 @@ export default class Chat extends Scene {
     const m = this.msg;
     this.lines = windowLines(lyrics, s, e);
     const others = ((params.messages ?? []) as Msg[]).filter((x) => x.id !== m?.id && Array.from(x.text).length <= 14);
-    this.olds = others.length >= 2 ? others.slice(0, 2).map((x) => ({ text: x.text, name: x.name || '一位賓客' })) : [{ text: '芃芃、QQ 加入了群組', name: '' }];
-    await loadText(`今晚的賓客群組正在輸入錄音中掃描右下角加入聊天你的話會出現在這裡一位賓客芃芃加入了群組${COUPLE_ZH}${song.title}${m ? m.text + m.name : ''}${this.olds.map((o) => o.text + o.name).join('')}${this.lines.map((l) => l.text).join('')}`);
+    // 留言還不夠兩則時，上面放一則系統訊息「A 和 B 建立了群組」（名字太長、一行放不下就只寫「新人」）
+    const made = `${NAME_A} 和 ${NAME_B} 建立了群組`;
+    const sys = measure(made, F.hei(500), 38) <= CW - 2 * PX - 40 ? made : '新人建立了群組';
+    this.olds = others.length >= 2 ? others.slice(0, 2).map((x) => ({ text: x.text, name: x.name || '一位賓客' })) : [{ text: sys, name: '' }];
+    await loadText(`今晚的賓客群組正在輸入錄音中掃描右下角加入聊天你的話會出現在這裡一位賓客新人和建立了群組${COUPLE_ZH}${song.title}${m ? m.text + m.name : ''}${this.olds.map((o) => o.text + o.name).join('')}${this.lines.map((l) => l.text).join('')}`);
     this.tHero = g.b0 + g.beat;
     // v2 字級：量窗格中段的鏡位下，螢幕上 1 畫布 px 是畫面上幾 px
     this.pose((s + e) / 2);
@@ -107,15 +110,17 @@ export default class Chat extends Scene {
       this.heroW = this.fit.width + 84;
       this.heroH = this.fit.height + this.fit.size * 0.3 + 60;
       // 署名放在泡泡裡、最後一行下面（v2：署名永遠在留言最後一行下面）；先算好字級，泡泡跟著長高、夠寬
-      const sz = sigV2(this.fit.size * k) / k;
+      // 新人自己的留言署名是兩個名字，可能很長：泡泡最寬到螢幕邊，署名再長就縮字（不要撐破泡泡）
+      const sz = fitPx(sigText(m), F.hand(400), sigV2(this.fit.size * k) / k, CW - 2 * PX - 110);
       c.font = font(F.hand(400), sz);
-      this.heroW = Math.max(this.heroW, c.measureText(sigText(m)).width + 110);
+      this.heroW = Math.min(CW - 2 * PX, Math.max(this.heroW, c.measureText(sigText(m)).width + 110));
       this.heroH += sz * 1.5;
+      this.nameSize = sz;
     }
     const ms = this.fit ? this.fit.size * k : null;
     this.lyr = { ...LYRIC_BASE, size: lyricV2(ms) / k, minSize: V2.lyrMin / k };
     this.lyrBig = { ...LYRIC_BASE, size: lyricV2(null) / k, minSize: V2.lyrMin / k };
-    this.nameSize = sigV2(ms ?? 44) / k;
+    if (!m) this.nameSize = sigV2(ms ?? 44) / k;
     this.oldSize = 30 / k;
     // 原文副行：量這個窗格每一句（大字或小字那一套）中文＋原文要多高，輸入框不夠就往上長（下緣不動）
     let need = 0;

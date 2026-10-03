@@ -12,14 +12,15 @@ import { font } from '../engine/type';
 import { rgba } from '../engine/palette';
 import { fitText, type FitResult } from '../engine/text';
 import { clamp } from '../engine/util';
-import { COUPLE_EN, COUPLE_ZH, WEDDING_DATE } from '../../constants.js';
 
 export { sparkParticles, sparkHead, sparkHead2D, drawHeart, heartPoints, fillWithHearts } from '../engine/motifs';
 import { fillWithHearts } from '../engine/motifs';
 export { drawQR } from '../engine/qr';
-export { COUPLE_EN, COUPLE_ZH, WEDDING_DATE };
-/** 2027 · 03 · 13 */
-export const DATE_DOTS = String(WEDDING_DATE).split('-').join(' · ');
+// 新人名字、日期（每一場婚禮不一樣：可能很長、可能沒有英文名、可能還沒定日期），規則見 ../wedding.ts
+export {
+  COUPLE_EN, COUPLE_ZH, NAME_A, NAME_B, NAME_A_EN, NAME_B_EN, HAS_LATIN_NAMES, isLatin,
+  INITIAL_A, INITIAL_B, INITIALS, DATE, WEDDING_DATE, DATE_DOTS, DATE_DOT, DATE_MMDD, DATE_ZH, joinBits, fitPx,
+} from '../wedding';
 
 // ---------------------------------------------------------------- 節拍
 /**
@@ -56,7 +57,7 @@ export interface LyricLayout {
   sub?: { lay: LyricLayout; dy: number };
 }
 
-// ---- 原文副行（韓文歌的原文，2026-09-30 新人要求：中文大字、原文小一號放在正下方）
+// ---- 原文副行（韓文歌的原文：中文是主角、大字，原文小一號放在正下方，賓客兩種都看得到）
 /** 副行字級：主行的 0.6 倍，32～56 px（會場後排也要認得出來，也不能大到搶中文）。 */
 export const subSizeFor = (size: number) => Math.round(clamp(size * 0.6, 32, 56));
 /** 主行最後一排基線到副行第一排基線的距離：主行下緣留約四分之一字高的空，再加副行的字高。 */

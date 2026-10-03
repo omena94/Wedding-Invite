@@ -4,8 +4,9 @@
 //  - 副標是歌詞：「現場連線」欄照跟唱規則逐字亮（正在唱的是訊號色）。
 //  - 右欄是一張網點印刷的「新聞照片」——不是照片，是 shader 畫的兩只交扣的戒指，印成網點；它是會動的報紙（像魔法報紙），
 //    戒指每一拍轉一格，網點大小跟著低音呼吸。
-//  - 其他都是冷面的內文（「據現場目擊者指出，兩人多次被發現一起吃早餐、遛狗、打羽球，且狀況穩定」）、天氣欄「降愛機率 100%」。
-// v2（2026-09-29 留言尺寸與版面比例標準 v2＋場景多元化）：早晨咖啡廳的戶外座位，馬賽克磁磚的小桌、陽光、遮陽棚的條紋影子。
+//  - 其他都是冷面的內文（「據現場目擊者指出，兩人多次被發現一起吃早餐、散步、分食最後一塊蛋糕，且狀況穩定」）、天氣欄「降愛機率 100%」。
+//    內文只用新人的名字（執行時才知道），梗是任何一對新人都說得通的；還沒定日期時，日期列改成「喜宴特刊」。
+// v2（留言尺寸與版面比例標準 v2＋場景多元化）：早晨咖啡廳的戶外座位，馬賽克磁磚的小桌、陽光、遮陽棚的條紋影子。
 // 報紙很大地攤在桌上（它就是場景），頭條（留言）40～60 px、署名（本報記者）26～32 px 緊接在頭條下面、副標（歌詞）比頭條小。
 // 風一直吹：遮陽棚的影子晃、報紙右半邊被風掀起一道波（每個小節線吹一陣）；桌角一杯冒煙的咖啡（整批紙本版面裡唯一有杯子的），
 // 右上角每兩小節有一份新的號外被丟到報紙堆上（送報的來了）。
@@ -19,7 +20,7 @@ import { F, font, loadText } from '../engine/type';
 import { mixRgba, rgba } from '../engine/palette';
 import { clamp, ease, hash, lerp, prog, pulse, frameIdx } from '../engine/util';
 import { wrap } from '../engine/text';
-import { lyricAt, drawLyric, layoutLyric, beatAfter, fillWithHearts, COUPLE_ZH, DATE_DOTS, lyricSubOf, subSizeFor, subStyleFor, subGap, type LyricLayout, type LyricStyle } from './_motifs';
+import { lyricAt, drawLyric, layoutLyric, beatAfter, fillWithHearts, COUPLE_ZH, NAME_A, NAME_B, DATE, lyricSubOf, subSizeFor, subStyleFor, subGap, type LyricLayout, type LyricStyle } from './_motifs';
 import type { Line } from '../engine/lyrics';
 import { sigInk, paperLyric, makeCanvas, freeCanvas, ensureBake, themeKey, yieldFrame, drawShadow, shadowSprite, barsIn, fitV2 } from './_t1';
 import { msgMaxFor, lyricV2, sigV2, V2 } from './_v2';
@@ -44,8 +45,9 @@ const BAND = { y: 590, h: 232 };
 const SUB = { x: 40, label: 616, maxW: 1000 };
 const PHOTO = { x: 1214, y: 176, w: 252, h: 400 };
 
-const COPY = '【本報訊】宣文與孟庭今日正式結為連理。據現場目擊者指出，兩人過去數年間多次被發現一起吃早餐、遛狗、打羽球，且狀況穩定。對此，雙方家長表示「早就知道了」。記者在喜宴會場訪問多位賓客，受訪者一致表示菜很好吃、新娘很美、新郎笑得合不攏嘴。氣象單位預測，今晚降愛機率百分之百，請民眾隨身攜帶面紙。另據了解，兩隻博美犬芃芃與 QQ 亦已到場祝賀，精神良好。本報將持續追蹤報導。';
-const TEXT = '號外愛的日報中華民國年月日星期第號每份元本報記者現場報導現場連線正在播放今日天氣晴時多雲偶陣愛降愛機率快訊兩枚戒指今日正式扣在一起示意圖攝影本報資料室新人發表談話獨家大螢幕開放留言掃描右下角把祝福寫上大螢幕間奏中本曲為純音樂請自行哼唱一位賓客全體賓客' + COPY;
+/** 內文（景深外的背景紋理，冷面的新聞稿）。 */
+const COPY = `【本報訊】${NAME_A}與${NAME_B}今日正式結為連理。據現場目擊者指出，兩人過去數年間多次被發現一起吃早餐、散步、分食最後一塊蛋糕，且狀況穩定。對此，雙方家長表示「早就知道了」。記者在喜宴會場訪問多位賓客，受訪者一致表示菜很好吃、新娘很美、新郎笑得合不攏嘴。氣象單位預測，今晚降愛機率百分之百，請民眾隨身攜帶面紙。另據了解，現場喜糖供應充足，賓客情緒穩定。本報將持續追蹤報導。`;
+const TEXT = '號外愛的日報中華民國年月日星期喜宴特刊良辰吉日出第號每份元本報記者現場報導現場連線正在播放今日天氣晴時多雲偶陣愛降愛機率快訊兩枚戒指今日正式扣在一起示意圖攝影本報資料室新人發表談話獨家大螢幕開放留言掃描右下角把祝福寫上大螢幕間奏中本曲為純音樂請自行哼唱一位賓客全體賓客' + COPY;
 
 const NEWS_FRAG = /* glsl */ `
 uniform sampler2D pageTex; uniform sampler2D bandTex; uniform sampler2D bake; uniform sampler2D propTex; uniform float tsun; uniform float wind;
@@ -175,7 +177,7 @@ const PASS = () => new FSPass(NEWS_FRAG, {
 });
 
 /**
- * 原文副行照「螢幕」字級重排（2026-09-30 雙語）：subSizeFor 的 32～56 是螢幕 px，報紙在畫面上只有 PK 倍大，
+ * 原文副行照「螢幕」字級重排（雙語）：subSizeFor 的 32～56 是螢幕 px，報紙在畫面上只有 PK 倍大，
  * 照紙面座標排的原文上了螢幕只剩 24 px。中文不動，原文換成 max(34, subSizeFor(中文的螢幕字級)) ÷ PK，太長就折行、不再縮。
  */
 function paperSub(c: Ctx2, line: Line, st: LyricStyle, lay: LyricLayout): LyricLayout {
@@ -258,13 +260,17 @@ export default class Newspaper extends Scene {
     c.font = font(F.ming(900), 62); c.letterSpacing = '22px'; c.fillText('愛的日報', PG.w / 2 + 11, 90);
     c.letterSpacing = '0px';
     // 日期列（上粗下細的雙線）
-    const [yy = '2027', mm = '03', dd = '13'] = DATE_DOTS.split(' · ');
-    const wk = '日一二三四五六'[new Date(Date.UTC(Number(yy), Number(mm) - 1, Number(dd))).getUTCDay()]!;
-    const roc = String(Number(yy) - 1911).split('').map((d) => '〇一二三四五六七八九'[Number(d)]).join('');
+    // 婚禮那天（民國年；星期幾用 UTC 算，每台電腦都一樣）。還沒定日期就印「喜宴特刊」，不會出現空的年月日
+    let dateLine = '喜宴特刊　良辰吉日出刊';
+    if (DATE) {
+      const wk = '日一二三四五六'[new Date(Date.UTC(DATE.y, DATE.m - 1, DATE.d)).getUTCDay()]!;
+      const roc = String(DATE.y - 1911).split('').map((d) => '〇一二三四五六七八九'[Number(d)]).join('');
+      dateLine = `中華民國${roc}年${DATE.m}月${DATE.d}日　星期${wk}`;
+    }
     c.fillStyle = ink(0.7); c.fillRect(40, 112, PG.w - 80, 3); c.fillRect(40, 146, PG.w - 80, 1.2);
     c.fillStyle = ink(0.55);
     c.font = font(F.hei(500), 16); c.letterSpacing = '3px';
-    c.textAlign = 'left'; c.fillText(`中華民國${roc}年${Number(mm)}月${Number(dd)}日　星期${wk}`, 46, 136);
+    c.textAlign = 'left'; c.fillText(dateLine, 46, 136);
     c.textAlign = 'right'; c.fillText('每份 ∞ 元', PG.w - 46, 136);
     c.textAlign = 'left'; c.letterSpacing = '0px';
 

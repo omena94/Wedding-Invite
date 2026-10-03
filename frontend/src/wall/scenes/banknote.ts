@@ -12,11 +12,11 @@
 // 歌詞：寫在鈔票下方的桌面上（跟桌面同一個平面、一樣吃光），照跟唱規則逐字亮。
 // 沒有主打留言：鈔票是一張「樣張」——祝福欄寫著邀請，花飾描完那一拍蓋上訊號色的「樣張 SPECIMEN」。
 //
-// MV 融合原則（2026-09-28 檢修）：鈔票是擺在桌上的一張真的紙——鏡頭斜斜地看（上緣遠、左邊近）、暖色主光從左上來、
+// MV 融合原則：鈔票是擺在桌上的一張真的紙——鏡頭斜斜地看（上緣遠、左邊近）、暖色主光從左上來、
 // 影子落在右下；切進來時鏡頭從遠一點、斜一點的位置一下子推到定位，之後整個窗格很慢地繞、慢慢推近。
 // 配角砍掉一半以上：只留行名（小）、一行冷面小字與序號、簽名欄，徽章外圈只留一行弧形字；總裁簽名、英文副標、微縮字、放大鏡圖解都拿掉，
 // 留言是整張紙上唯一的大字。
-// v2（2026-09-29「留言尺寸與版面比例標準 v2」）：鈔票照樣撐滿畫面（鈔票是場景，不是留言區），只把留言縮到
+// v2（「留言尺寸與版面比例標準 v2」）：鈔票照樣撐滿畫面（鈔票是場景，不是留言區），只把留言縮到
 // 畫面上 40～60 px（依字數）、署名 26～32、桌上的歌詞 40～52（不比留言大），字都照鏡頭的縮放換算成平面字級。
 // 多補的動畫是鈔票自己的防偽特徵：每幾個小節一道驗鈔燈（紫外線）的光帶從左掃到右，照出紙裡的螢光纖維與隱藏的愛心浮水印；
 // 鈔票底下斜斜壓著一張舊的鈔票（整疊的感覺）。
@@ -28,10 +28,10 @@ import { F, font, layout, loadText } from '../engine/type';
 import { rgba } from '../engine/palette';
 import { clamp, ease, lerp, prog, pulse, TAU } from '../engine/util';
 import { fitText, type FitResult } from '../engine/text';
-import { sparkHead, sparkParticles, lyricAt, drawLyric, layoutLyric, beatAfter, COUPLE_EN, COUPLE_ZH, DATE_DOTS } from './_motifs';
+import { sparkHead, sparkParticles, lyricAt, drawLyric, layoutLyric, beatAfter, COUPLE_EN, COUPLE_ZH, DATE_DOTS, DATE, INITIAL_A, INITIAL_B, joinBits, fitPx } from './_motifs';
 import { V2, msgMaxFor, lyricV2, sigV2, fitClauses } from './_v2';
 import { INNER, MED, ARC_R, rosettePoint, makeBakePass, makeMainPass } from './banknote-art';
-// 最早的版面：排程參數在 director.ts 的 PLATES；這裡只宣告雙語（2026-09-30 雙語普查通過：有翻譯＋主打留言時中文、原文、留言三樣都清楚）
+// 最早的版面：排程參數在 director.ts 的 PLATES；這裡只宣告雙語（雙語普查通過：有翻譯＋主打留言時中文、原文、留言三樣都清楚）
 export const spec: PlateSpecDecl = { bilingual: true };
 
 
@@ -61,6 +61,15 @@ const yieldFrame = () => new Promise<void>((r) => setTimeout(r, 0));
 const bakeStore = () => ({ rt: makeRT(W, H, { depthBuffer: false }), pass: makeBakePass(), done: false });
 
 type Cls = 'eng' | 'plain' | 'acc' | 'rose' | 'sig';
+
+/**
+ * 序號的冠字：兩位新人的縮寫（「EI」）＋婚禮日期（「年月日」八碼），後面接留言編號。
+ * 真的鈔票冠字是字母，所以縮寫不是拉丁字（只有中文名）時也照樣用兩個字，等寬字型會用黑體備援畫得出來；
+ * 還沒定日期就只留縮寫，序號一樣完整（不會出現空一格或多一個空白）。
+ */
+const SERIAL_PREFIX = joinBits(' ', `${INITIAL_A}${INITIAL_B}`, DATE ? `${DATE.yyyy}${DATE.mm}${DATE.dd}` : '');
+/** 間奏時桌上的一行：英文名（沒有英文名時是中文）＋日期。 */
+const FOOT = joinBits('  ·  ', COUPLE_EN.toUpperCase(), DATE_DOTS);
 
 export default class Banknote extends Scene {
   main = shared('banknote.main', makeMainPass);
@@ -196,7 +205,7 @@ export default class Banknote extends Scene {
     // 照每個字的實際寬度排（★ 比數字寬，用固定字寬會壓到下一個數字）
     const cw = Array.from(num).map((ch) => c.measureText(ch).width);
     const serX = HERO.x + HERO.w - cw.reduce((x, w) => x + w, 0);
-    text('AO 20270313', serX - 12, 224, F.mono(500), 20, 'acc', q(2), { align: 'right' });
+    text(SERIAL_PREFIX, serX - 12, 224, F.mono(500), 20, 'acc', q(2), { align: 'right' });
     c.font = font(F.mono(500), 20);
     let sx = serX;
     Array.from(num).forEach((ch, i) => {
@@ -507,10 +516,12 @@ export default class Banknote extends Scene {
     if (fbA > 0.001) {
       c.save();
       c.globalAlpha *= fbA;
-      c.font = font(F.serif(600), 36);
-      c.letterSpacing = '10px';
+      // 名字可能很長、日期可能還沒定：沒日期就只寫名字（不留「 · 」），放不下就縮字（字距跟著縮）
+      const px = fitPx(FOOT, F.serif(600), 36, LYR.maxW, 10);
+      c.font = font(F.serif(600), px);
+      c.letterSpacing = `${(10 * px) / 36}px`;
       c.fillStyle = rgba('sepia', 0.6);
-      c.fillText(`${COUPLE_EN.toUpperCase()}  ·  ${DATE_DOTS}`, LYR.x, LYR.base - 6);
+      c.fillText(FOOT, LYR.x, LYR.base - 6);
       c.restore();
     }
     c.restore();

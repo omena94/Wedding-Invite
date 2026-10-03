@@ -18,7 +18,7 @@ import { F, font } from '../engine/type';
 import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, hash, lerp, pulse } from '../engine/util';
 import type { Line } from '../engine/lyrics';
-import { beatAfter, drawHeart, fillWithHearts, COUPLE_ZH, COUPLE_EN, DATE_DOTS } from './_motifs';
+import { beatAfter, drawHeart, fillWithHearts, COUPLE_ZH, COUPLE_EN, DATE_DOTS, NAME_A, NAME_B, HAS_LATIN_NAMES, joinBits, fitPx } from './_motifs';
 import { V2, lyricV2 } from './_v2';
 import { loadB3, layoutBi, paintBi, msgBlock, type BiLayout, type MsgBlock, type Rect } from './_b3';
 
@@ -27,6 +27,10 @@ export const spec: PlateSpecDecl = { bilingual: true, group: 'type', family: 'ci
 /** LED 牆（畫面上的範圍，中間凸出 BULGE px）與它的內容畫布。 */
 const WALL = { x0: 170, x1: 1170, y0: 110, y1: 500, bulge: 20 };
 const LW = WALL.x1 - WALL.x0, LH = WALL.y1 - WALL.y0;
+/** 看板底下那一條：平常印日期，還沒定日期時印這句。 */
+const SIGN_FOOT = 'WEDDING DAY';
+/** 純音樂時 LED 牆第二行（沒有英文名又沒有日期時）。 */
+const JUST_MARRIED = 'JUST MARRIED';
 /** 直式看板（右邊的樓）與裡面留言的框。 */
 const SIGN = { x: 1404, y: 96, w: 436, h: 680 };
 const SMSG = { x: 26, y: 118, w: 384, h: 430 };
@@ -176,7 +180,7 @@ export default class Billboard extends Scene {
   override async init() {
     const { audio: au, lyrics } = this.ctx;
     const s = this.ctx.start, e = this.ctx.end;
-    await loadB3(this.ctx, `${COUPLE_EN}LIVE 祝福現場直播今晚的主角`);
+    await loadB3(this.ctx, `${COUPLE_EN}LIVE 祝福現場直播今晚的主角${SIGN_FOOT}${JUST_MARRIED}`);
     this.hasLyrics = lyrics.linesIn(s, e).length > 0;
     this.tOn = beatAfter(au, s + 0.05);
     this.buildSign();
@@ -200,9 +204,9 @@ export default class Billboard extends Scene {
     c.font = font(F.hei(900), 28); c.fillStyle = rgba('ink', 0.92); c.letterSpacing = '6px';
     c.fillText(m?.couple ? '新人留言' : 'LIVE 祝福', 26, 46); c.letterSpacing = '0px';
     c.textAlign = 'right'; c.font = font(F.mono(700), 18); c.fillText(m ? `No.${String(m.n).padStart(3, '0')}` : 'LIVE', SIGN.w - 24, 44); c.textAlign = 'left';
-    // 下面：日期
+    // 下面：日期（還沒定日期的新人換成一行通用的字，這一條才不會空著）
     c.fillStyle = rgba('bone', 0.1); c.fillRect(0, SIGN.h - 64, SIGN.w, 64);
-    c.font = font(F.mono(500), 18); c.fillStyle = rgba('bone', 0.6); c.letterSpacing = '5px'; c.fillText(DATE_DOTS, 26, SIGN.h - 26); c.letterSpacing = '0px';
+    c.font = font(F.mono(500), 18); c.fillStyle = rgba('bone', 0.6); c.letterSpacing = '5px'; c.fillText(DATE_DOTS || SIGN_FOOT, 26, SIGN.h - 26); c.letterSpacing = '0px';
     drawHeart(c, SIGN.w - 40, SIGN.h - 32, 22, mixRgba('rose', 'bone', 0.1));
     this.signBase = cv;
     if (m) {
@@ -313,8 +317,11 @@ export default class Billboard extends Scene {
     c.textAlign = 'left';
     if (!this.hasLyrics) {
       c.textAlign = 'center';
-      c.font = font(F.hei(900), V2.lyrMax); c.fillStyle = rgba('bone', 0.97); c.fillText(COUPLE_ZH, LW / 2, LH / 2 + 4);
-      c.font = font(F.hei(700), 34); c.fillStyle = rgba('bone', 0.75); c.fillText(`${COUPLE_EN}  ·  ${DATE_DOTS}`, LW / 2, LH / 2 + 56);
+      // 名字是執行時的值（可能很長）：放不下牆面就縮字。第二行是英文名與日期；沒有英文名時 COUPLE_EN 跟第一行一樣是中文，
+      // 不重複印，只留日期；兩樣都沒有就換成通用的一句
+      c.font = font(F.hei(900), fitPx(COUPLE_ZH, F.hei(900), V2.lyrMax, LW - 180)); c.fillStyle = rgba('bone', 0.97); c.fillText(COUPLE_ZH, LW / 2, LH / 2 + 4);
+      const sub = joinBits('  ·  ', HAS_LATIN_NAMES ? COUPLE_EN : '', DATE_DOTS) || JUST_MARRIED;
+      c.font = font(F.hei(700), fitPx(sub, F.hei(700), 34, LW - 180)); c.fillStyle = rgba('bone', 0.75); c.fillText(sub, LW / 2, LH / 2 + 56);
       if (song.title) { c.font = font(F.mono(500), 20); c.fillStyle = rgba('bone', 0.55); c.fillText(`♪ ${song.title}`, LW / 2, LH / 2 - 70); }
       c.textAlign = 'left';
       L.upload();
@@ -380,8 +387,10 @@ export default class Billboard extends Scene {
       }
     } else {
       c.textBaseline = 'alphabetic';
-      c.font = font(F.hei(900), 52); c.fillStyle = rgba('bone', 0.97);
-      fillWithHearts(c, COUPLE_ZH.replace(/\s*&\s*/, ' ♥ '), SMSG.x, 280);
+      // 看板只有 SMSG.w 寬（右邊再留一點，不貼著外框的跑馬燈）：名字長的新人縮字
+      const names = `${NAME_A} ♥ ${NAME_B}`;
+      c.font = font(F.hei(900), fitPx(names, F.hei(900), 52, SMSG.w - 16)); c.fillStyle = rgba('bone', 0.97);
+      fillWithHearts(c, names, SMSG.x, 280);
       c.font = font(F.hei(700), 28); c.fillStyle = rgba('bone', 0.8);
       c.fillText('今晚的主角', SMSG.x, 346);
       c.font = font(F.hei(500), 22); c.fillStyle = mixRgba('signal', 'ember', 0.3);

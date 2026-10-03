@@ -4,7 +4,7 @@
 // 七根都點著時整則讀得到。燭焰在 hi-hat 上被吹歪一下、大鼓時長高一點。歌詞在燭焰上方的暗處（逐字跟唱）。
 // 這是整晚唯一用 three.js 真的 3D mesh 畫的版面（candles-rig.ts）：蠟燭透光、黃銅高光、布褶都跟著燭光變。
 // 鏡頭整個窗格很慢地往前推一點點。
-// v2（2026-09-29「留言尺寸與版面比例標準 v2」）：繡在前擺上的留言照 v2 字級（40～60 px，依字數），繡字的那一塊
+// v2（「留言尺寸與版面比例標準 v2」）：繡在前擺上的留言照 v2 字級（40～60 px，依字數），繡字的那一塊
 // 只佔前擺左邊 ≤ 820 寬（桌布、蠟燭照樣是整個場景）；署名 26～32；燭焰上方的歌詞 40～52（不比留言大）。
 // 多補的動畫是蠟燭自己的：點著一陣子之後，每個小節有一根蠟燭的蠟淚從蠟頂慢慢流下來、在燭台上凝住；
 // 燭焰被 hi-hat 吹歪的那一下，會冒出一縷細細的煙（只往上飄一小段，不進歌詞）。
@@ -12,11 +12,11 @@ import * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
 import { FSPass, Layer2D, W, H, SCALE, makeRT, sharedMSAA } from '../engine/gl';
 import { LineBatch } from '../engine/lines';
-import { F, font } from '../engine/type';
+import { F, font, measure } from '../engine/type';
 import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, hash, noise1, springStep, lerp } from '../engine/util';
 import { fitText } from '../engine/text';
-import { sparkHead, sparkParticles, lyricAt, drawLyric, layoutLyric, beatAfter, signature, drawMessage, lyricSubOf, type LyricStyle, type LyricLayout } from './_motifs';
+import { sparkHead, sparkParticles, lyricAt, drawLyric, layoutLyric, beatAfter, signature, drawMessage, lyricSubOf, fitPx, type LyricStyle, type LyricLayout } from './_motifs';
 import { no3, INVITE_SMALL, preloadText, fitWithSig } from './_t19';
 import { V2, msgMaxFor, lyricV2, sigV2, fitClauses } from './_v2';
 import { makeRig, U, N, EDGE_Z, CANDLE_Z, candleX, wickTop, waxTop, HOLDER_H } from './candles-rig';
@@ -143,22 +143,30 @@ export default class Candles extends Scene {
       const fit = blk.fit;
       this.lyr = { ...LYR, size: lyricV2(fit.size) };
       const sig = signature(m.name);
-      const sigSize = blk.sigSize;
+      // 署名（新人的留言是兩個名字，可能很長）不超過前擺上繡字那一塊的寬
+      const sigSize = fitPx(sig, fam, blk.sigSize, MSG_W);
       top = 18 + Math.max(0, (360 - blk.height) * 0.32);
       const base = top + fit.size;
       drawMessage(c, fit, fam, x0, base, { color: rgba('bone') });
       c.font = font(fam, sigSize);
       const sw = c.measureText(sig).width;
-      const sx = Math.min(x0 + MSG_W, Math.max(x0 + fit.width, x0 + sw)) - sw;
+      let sx = Math.min(x0 + MSG_W, Math.max(x0 + fit.width, x0 + sw)) - sw;
       const sy = base + (fit.lines.length - 1) * fit.lineHeight + blk.sigDy;
+      // 新人的留言：署名左邊放「FROM THE COUPLE · 新人」。署名是兩個名字、可能很長（或留言很短），
+      // 同一行放不下就把署名往右推；推到前擺的寬還放不下，標籤改放在署名下面一行，不要疊在一起
+      const TAG = 'FROM THE COUPLE · 新人';
+      const tagW = m.couple ? measure(TAG, F.mono(500), 18, 3) + 28 : 0;
+      const tagBelow = m.couple && sx < x0 + tagW && x0 + tagW + sw > x0 + MSG_W;
+      if (m.couple && !tagBelow) sx = Math.max(sx, x0 + tagW);
       c.fillStyle = mixRgba('bone', 'ash', 0.35);
       c.fillText(sig, sx, sy);
+      const tagY = tagBelow ? sy + sigSize * 0.25 + 30 : sy - 6;
       if (m.couple) {
         c.font = font(F.mono(500), 18); c.letterSpacing = '3px'; c.fillStyle = rgba('signal');
-        c.fillText('FROM THE COUPLE · 新人', x0, sy - 6);
+        c.fillText(TAG, x0, tagY);
         c.letterSpacing = '0px';
       }
-      bottom = sy + sigSize * 0.25;
+      bottom = Math.max(sy + sigSize * 0.25, tagBelow ? tagY + 6 : 0);
       right = x0 + Math.max(fit.width, sx + sw - x0);
     } else {
       const fam = F.hand(700);

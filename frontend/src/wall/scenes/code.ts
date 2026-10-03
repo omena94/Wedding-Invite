@@ -22,7 +22,7 @@ import { F, font } from '../engine/type';
 import { LIN, rgba } from '../engine/palette';
 import { clamp, ease, hash, lerp, prog } from '../engine/util';
 import type { FitResult } from '../engine/text';
-import { lyricAt, sparkHead, sparkParticles, beatAfter, barAfter, drawMessage, COUPLE_ZH, lyricSubOf, subSizeFor, subGap } from './_motifs';
+import { lyricAt, sparkHead, sparkParticles, beatAfter, barAfter, drawMessage, lyricSubOf, subSizeFor, subGap } from './_motifs';
 import { fitText } from '../engine/text';
 import { msgMaxFor, lyricV2, fitClauses, V2 } from './_v2';
 import { typedLayout, drawTyped, inOut, ScreenRig, mipRT, blitToRT, loadPlateText } from './_t6';
@@ -39,8 +39,8 @@ const GUT = 112; // 程式從這裡開始（左邊是行號）
 const LS = 0.7;
 const MSG_X = GUT + CH * 4; // 留言（字串內容）的左緣
 const PAD_R = 90;
-const [GROOM, BRIDE] = COUPLE_ZH.split(/\s*&\s*/) as [string, string];
-const TEXT = `婚禮祝福署名一位賓客還沒有人寫掃描右下角寫一句給新人間奏今晚的歌${GROOM}${BRIDE}`;
+// 新人的名字引擎開機時已經載好（wedding.ts 的 WEDDING_GLYPHS），這裡只載版面自己的字
+const TEXT = '婚禮祝福署名一位賓客還沒有人寫掃描右下角寫一句給新人間奏今晚的歌';
 
 // 房間：很暗，螢幕的光灑在附近（光的中心與大小每格跟著螢幕在畫面上的位置）
 const BG = () => new FSPass(/* glsl */ `

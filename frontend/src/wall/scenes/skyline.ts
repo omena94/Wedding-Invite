@@ -6,7 +6,7 @@
 //  - 歌詞（比留言小一級）寫在大樓上方的夜空，照跟唱規則逐字亮。
 //  - 河面倒映整排大樓與亮著的字（波紋把倒影拉長、搖晃）。遠處還有一排更暗的樓（視差）。
 //  - 冷面註記（一小行）：「＊本訊息由 1,024 扇窗戶聯合播出」（窗戶數是真的算出來的）。
-//  - 沒有主打留言：窗戶拼新人的名字（宣文 ♥ 孟庭），歌詞放大；純音樂：夜空是小小的歌名。
+//  - 沒有主打留言：窗戶拼新人的名字（「承恩 ♥ 以晴」；名字長就照窗格的大小縮字、折成兩排），歌詞放大；純音樂：夜空是小小的歌名。
 //  - 鏡頭：很慢地往右橫移（遠樓比近樓慢，有視差），整個窗格慢慢推近。
 // 手法：天空、兩排大樓、窗格、河面倒影全在一個 shader；留言先畫進一張「一扇窗一個像素」的小畫布（反鋸齒的灰階＝那扇窗亮幾分），
 // 每扇窗什麼時候亮由 shader 用前緣與雜湊算（確定性）；歌詞與小字是一張 Canvas2D。
@@ -17,7 +17,7 @@ import { F, font, loadText } from '../engine/type';
 import { rgba } from '../engine/palette';
 import { clamp, ease, prog, hash, pulse } from '../engine/util';
 import { fitText } from '../engine/text';
-import { lyricAt, layoutLyric, drawLyric, beatAfter, drawHeart, COUPLE_ZH, type LyricStyle } from './_motifs';
+import { lyricAt, layoutLyric, drawLyric, beatAfter, drawHeart, NAME_A, NAME_B, type LyricStyle } from './_motifs';
 import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 } from './_v2';
 import { T16_INVITE, T16_TEXT, sigOf, winBars } from './_t16';
 
@@ -231,7 +231,7 @@ export default class Skyline extends Scene {
     const s = this.ctx.start, e = this.ctx.end, m = this.msg;
     this.hasLyrics = lyrics.linesIn(s, e).length > 0;
     const sig = m ? sigOf(m) : '';
-    const text = m ? m.text : COUPLE_ZH.replace(/\s*&\s*/, ' ♥ ');
+    const text = m ? m.text : `${NAME_A} ♥ ${NAME_B}`;
     await loadText(`${T16_TEXT}${text}${sig}${song.title}${song.artist}${lyrics.linesIn(s - 1, e).map((l) => l.text).join('')}本訊息由扇窗戶聯合播出,`);
     const beat = au.beatPeriod(s);
     this.bp = beat;

@@ -171,7 +171,7 @@ const BG = () => new FSPass(FRAG, {
 interface Drop { x: number; y: number; t: number; a: number; v: number }
 
 /**
- * 原文副行（2026-09-30 雙語）：水面上的字邊緣被漣漪與倒影打散，32 px 的原文在水窪裡讀起來偏小，
+ * 原文副行（雙語）：水面上的字邊緣被漣漪與倒影打散，32 px 的原文在水窪裡讀起來偏小，
  * 改成至少 36 px、不再縮（太長就折行）；中文不動。
  */
 function rainSub(c: CanvasRenderingContext2D, line: Line, st: LyricStyle, lay: LyricLayout): LyricLayout {

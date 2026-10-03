@@ -14,7 +14,7 @@ import { FSPass, Layer2D, W, H } from '../engine/gl';
 import { F, font, loadText } from '../engine/type';
 import { clamp, ease, lerp, prog, hash, springStep } from '../engine/util';
 import { fitText, phrases, type FitResult } from '../engine/text';
-import { beatAfter, barAfter, signature, lyricAt, lyricSubOf, drawLyricSub, layoutLyric, subStyleFor, COUPLE_ZH, DATE_DOTS, type LyricStyle } from './_motifs';
+import { beatAfter, barAfter, signature, lyricAt, lyricSubOf, drawLyricSub, layoutLyric, subStyleFor, COUPLE_ZH, INITIALS, type LyricStyle } from './_motifs';
 import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 } from './_v2';
 import { fillWithHearts } from '../engine/motifs';
 import { GlyphAtlas, cuePages, windowLines, COL, type GlyphReq, type CuePage } from './_t7';
@@ -146,7 +146,7 @@ export default class Odometer extends Scene {
     const anySub = lines.some((l) => lyricSubOf(l));
     const body = m ? m.text : INVITE;
     this.sigText = m ? signature(m.name) : '';
-    await loadText(TEXT + lines.map((l) => l.text).join('') + body + this.sigText + COUPLE_ZH + (song.title ?? ''));
+    await loadText(TEXT + lines.map((l) => l.text).join('') + body + this.sigText + COUPLE_ZH + INITIALS + (song.title ?? ''));
     this.count = Math.min(9999, Math.max(0, this.ctx.live.count));
     let bpm = au.bpm || 100;
     while (bpm > 180) bpm /= 2;
@@ -166,7 +166,7 @@ export default class Odometer extends Scene {
     }
 
     const reqs: GlyphReq[] = [];
-    for (const ch of Array.from(lines.map((l) => l.text).join('') + (song.title ?? '') + COUPLE_ZH)) reqs.push({ ch, family: F_LYR });
+    for (const ch of Array.from(lines.map((l) => l.text).join('') + (song.title ?? '') + COUPLE_ZH + INITIALS)) reqs.push({ ch, family: F_LYR });
     for (const ch of '0123456789') reqs.push({ ch, family: F_DIG });
     this.atlas = this.track(new GlyphAtlas(reqs, 112, 160, { size: 104, fill: 0.9, mip: true }));
     this.ctx.renderer.initTexture(this.atlas.tex);
@@ -180,7 +180,10 @@ export default class Odometer extends Scene {
     this.pages = cuePages(lines, this.LYR.n, 1, true).filter((p) => p.t1 > s - 0.3 && p.t0 < e - 0.2);
     // 滾輪只放用得到的數量（多出來的空滾輪很吵）
     const L = this.LYR;
-    const title = song.title && Array.from(song.title).length <= L.n ? song.title : COUPLE_ZH;
+    // 純音樂時滾輪上的字：歌名 → 新人的名字 → 縮寫，挑第一個放得進滾輪數（最多 20 個）的；
+    // 名字是執行時的值，特別長的也不會被截掉一半
+    const cap = Math.min(20, SW - L.si);
+    const title = [song.title ?? '', COUPLE_ZH, INITIALS].find((x) => x && Array.from(x).length <= cap) ?? INITIALS;
     const need = this.pages.length ? Math.max(...this.pages.map((p) => p.rows[0]!.length)) : Array.from(title).length;
     // （最多 20 個：右上角要留給指針表）
     L.n = Math.max(6, Math.min(20, need, SW - L.si));

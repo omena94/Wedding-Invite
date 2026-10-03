@@ -3,16 +3,16 @@
 // 座標：卡片上的東西一律用「卡面座標」（左上角 (0,0)、y 向下、1 單位 = 鏡頭在基準距離時螢幕上的 1 px）。
 // 世界座標：桌面是 z = 0 的平面、y 向上，卡片靜止時中心在原點。
 // MV 融合原則：畫面上只有一個焦點（留言；沒有留言時是歌詞），其他字一律小（≤ 22 px）、淡，集中成兩小群（表頭、右邊的郵務欄）。
-// v2（2026-09-28「留言板太大」「多補動畫」）：鏡頭拉遠，卡片在螢幕上只有約 0.49 倍（≈ 640×417，卡片本身就是留言的容器）；
+// v2（留言板不要太大、空出來的地方多補動畫）：鏡頭拉遠，卡片在螢幕上只有約 0.49 倍（≈ 640×417，卡片本身就是留言的容器）；
 // 背面的留言區加寬（郵務欄縮成右邊窄窄一條）；桌上多了道具（茶杯、散落的郵票、一個信封：畫在桌面 shader 取樣的一張圖上）、
 // 窗外樹影在桌布上晃；前景是一叢失焦的葉子（取代原本失焦的鋼筆：真的鋼筆現在會在卡片上寫字）。
 import * as THREE from 'three';
 import { FSPass, makeRT, W, H } from '../engine/gl';
 import { GLSL_COMMON, THEME_UNIFORMS } from '../engine/glsl/common';
-import { F, font } from '../engine/type';
+import { F, font, measure } from '../engine/type';
 import { rgba, mixRgba } from '../engine/palette';
 import { mulberry32, TAU } from '../engine/util';
-import { DATE_DOTS } from './_motifs';
+import { DATE_DOT } from './_motifs';
 
 /** 卡片大小（約 148×100 mm 的比例）。 */
 export const CW = 1300, CH = 846;
@@ -417,26 +417,30 @@ export function drawBackStatic(c: Ctx2, cp: BackCopy) {
     c.fillRect(R.x0, y + 10, R.x1 - R.x0, 1);
     if (labels[i]) { c.font = font(F.mono(500), 14); c.letterSpacing = '3px'; c.fillStyle = rgba('sepia', 0.34); c.fillText(labels[i]!, R.x0, y - 34); c.letterSpacing = '0px'; }
     c.fillStyle = rgba('sepia', i === 0 ? 0.62 : 0.5);
-    fitHand(c, texts[i]!, R.x0 + 2, y, R.x1 - R.x0 - 4, 28);
+    // 收件人、寄件人是名字（可能很長）、地址也不短：郵務欄很窄，多縮一點也要寫完整，不要截成「…」。
+    // 寄件人縮到一半還放不下（新人的名字很長）就拿掉「寄件人：」，上面已經有 FROM 的小標
+    let txt = texts[i]!;
+    if (i === 2 && measure(txt, F.hand(700), 14) > R.x1 - R.x0 - 4) txt = txt.replace(/^寄件人：/, '');
+    fitHand(c, txt, R.x0 + 2, y, R.x1 - R.x0 - 4, 28, 0.5);
   });
   // P.S. 那一條的線
   c.fillStyle = rgba('sepia', 0.16);
   c.fillRect(BACK.ps.x, BACK.psRule, BACK.right.x1 - BACK.ps.x, 1);
 }
 
-/** 手寫一行：放不下就縮字級（最小 70%），再放不下就截斷加「…」。 */
-function fitHand(c: Ctx2, s: string, x: number, y: number, maxW: number, size: number) {
+/** 手寫一行：放不下就縮字級（最小 minK 倍），再放不下就截斷加「…」。 */
+function fitHand(c: Ctx2, s: string, x: number, y: number, maxW: number, size: number, minK = 0.7) {
   const fam = F.hand(700);
   c.font = font(fam, size);
   let w = c.measureText(s).width;
-  if (w > maxW) { c.font = font(fam, Math.max(size * 0.7, (size * maxW) / w)); w = c.measureText(s).width; }
+  if (w > maxW) { c.font = font(fam, Math.max(size * minK, (size * maxW) / w)); w = c.measureText(s).width; }
   let str = s;
   while (w > maxW && Array.from(str).length > 2) { str = Array.from(str).slice(0, -2).join('') + '…'; w = c.measureText(str).width; }
   c.fillText(str, x, y);
 }
 
 /**
- * 郵戳：雙圈、弧形的「喜宴郵局」「WEDDING POST」、中間是日期（沒有留言：「待寄」），右邊四條波浪的消印線。
+ * 郵戳：雙圈、弧形的「喜宴郵局」「WEDDING POST」、中間是日期（沒有留言：「待寄」；還沒定日期：一個「囍」），右邊四條波浪的消印線。
  * 印泥斑駁（缺墨的小洞）一次做好：畫在一張自己的畫布上，蓋章時整張貼上去。回傳畫布與圓心在畫布上的位置。
  */
 export function makePostmark(center: string, seed: number): { cv: HTMLCanvasElement; cx: number; cy: number; w: number; h: number } {
@@ -464,6 +468,8 @@ export function makePostmark(center: string, seed: number): { cv: HTMLCanvasElem
   c.textAlign = 'center';
   if (center === '待寄') {
     c.font = font(F.hei(900), 18); c.fillText('待 寄', cx, cy + 6);
+  } else if (!center) {
+    c.font = font(F.hei(900), 24); c.fillText('囍', cx, cy + 8);
   } else {
     c.font = font(F.mono(600), 11); c.fillText(center, cx, cy + 4);
   }
@@ -497,8 +503,8 @@ export function makePostmark(center: string, seed: number): { cv: HTMLCanvasElem
   return { cv, cx, cy, w, h };
 }
 
-/** 郵戳中間的日期：2027.03.13。 */
-export const MARK_DATE = DATE_DOTS.replace(/ · /g, '.');
+/** 郵戳中間的日期：「YYYY.MM.DD」；還沒定日期是空字串（郵戳中間改蓋「囍」）。 */
+export const MARK_DATE = DATE_DOT;
 
 /**
  * 前景虛化：畫面左下角一叢離鏡頭很近的葉子（失焦的深色剪影），在風裡輕輕晃（主檔每格給一點位移與轉動）。

@@ -8,7 +8,7 @@
 //      招牌的高度看留言有幾行；署名印在招牌下緣的小牌子上（LED 太小的字讀不到，署名用印的）。沒有留言：兩行邀請，第二行跟著拍子閃。
 // 手法：每一格把招牌內容畫在「一顆燈一個像素」的小畫布上（R = 白燈、G = 訊號色燈、B = 愛心的燈），
 // 全螢幕 shader 把它放大成一顆一顆圓燈（旁邊的燈會互相照亮一點點），順便算燈光、車燈打在牆上的光與雨絲。
-// 2026-09-29「留言尺寸與版面比例標準 v2」：燈距縮到 3 px、留言 42～60 px、招牌 ≤ 840 × 380 放在左邊；
+// 「留言尺寸與版面比例標準 v2」：燈距縮到 3 px、留言 42～60 px、招牌 ≤ 840 × 380 放在左邊；
 // 空出來的畫面補成會動的街景（雨、冷氣、旋轉燈、窗戶、過路的車燈）。
 import * as THREE from 'three';
 import { Scene, shared, type Frame, type Msg, type PostOverrides, type PlateSpecDecl } from '../engine/scene';
@@ -209,7 +209,7 @@ export default class Marquee extends Scene {
     const { audio: au, lyrics, song } = this.ctx;
     const s = this.ctx.start, e = this.ctx.end, m = this.msg;
     this.idleText = `♪ ${song.title}${song.artist ? ' — ' + song.artist : ''}　　`;
-    this.sig = m ? (m.couple ? '—— 新郎新娘' : signature(m.name)) : '';
+    this.sig = m ? (m.couple ? '—— 新人' : signature(m.name)) : '';
     await loadText(`${m?.text ?? ''}${this.sig}${this.idleText}${INVITE.join('')}本店祝福一律免費保固一輩子`);
     const mc = document.createElement('canvas').getContext('2d')!;
 

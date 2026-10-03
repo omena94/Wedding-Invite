@@ -161,7 +161,7 @@ const PASS = () => new FSPass(/* glsl */ `
 });
 
 /**
- * 原文副行（2026-09-30 雙語）：誓詞欄窄（VOW.w），自動排的原文會一路縮到 26 px；襯線字的韓文（系統字）又比中文小一號。
+ * 原文副行（雙語）：誓詞欄窄（VOW.w），自動排的原文會一路縮到 26 px；襯線字的韓文（系統字）又比中文小一號。
  * 改成至少 36 px、不再縮，太長就折成兩行（往下長，下面是空的紙）。
  */
 function vowSub(c: CanvasRenderingContext2D, line: Line, st: LyricStyle, lay: LyricLayout): LyricLayout {

@@ -5,7 +5,9 @@
 //    停到讀得完再繼續往下捲；放映機的光裡有灰塵慢慢飄；
 //    停住的時候名單其他部分暗下去，只剩留言那一段亮著（MV 檢修：一個焦點），整個窗格鏡頭很慢地推近一點。
 //    其他賓客的署名（「共同演出」）、本片歌曲、工作人員（攝影：在場每一支手機；燈光：仙女棒……）、冷面的聲明，
-//    最後停在「宣文 & 孟庭（未完，待續）」。
+//    最後停在新人的名字（英文名、日期有才印）與「（未完，待續）」。
+//  - 名字、日期是每一場婚禮執行時才知道的（../wedding.ts）：主演那兩行與最後一張卡都照實際寬度縮字，
+//    很長的名字也不會超出銀幕；沒有英文名、還沒定日期時那一行整個省掉，下面的往上補，不留空行。
 //  - 歌詞是銀幕下緣的字幕（逐字跟唱，置中在脊線上）。
 //  - 片子的質感：上下黑邊（寬銀幕）、放映機的亮斑、每格一點點的閃爍與片門抖動（大鼓一打抖大一點）、灰塵與偶爾的刮痕。
 // 手法：整條名單在 init 排好、畫在一張很長的 Canvas 圖層上只上傳一次；每一格用一個 GLSL pass 去取樣（捲動、片門抖動、
@@ -17,7 +19,7 @@ import { F, font } from '../engine/type';
 import { rgba } from '../engine/palette';
 import { clamp, ease, hash, lerp, prog, frameIdx } from '../engine/util';
 import { readSeconds, fitText, type FitResult } from '../engine/text';
-import { lyricAt, drawLyric, layoutLyric, beatAfter, drawMessage, COUPLE_ZH, COUPLE_EN, DATE_DOTS } from './_motifs';
+import { lyricAt, drawLyric, layoutLyric, beatAfter, drawMessage, COUPLE_ZH, COUPLE_EN, NAME_A, NAME_B, DATE_DOTS, fitPx } from './_motifs';
 import { inOut, subRect, type Rect, loadPlateText } from './_t6';
 import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 } from './_v2';
 
@@ -31,13 +33,18 @@ const BAR_T = 96, BAR_B = 984; // 上下黑邊（寬銀幕）
 const VIEW = { t: 116, b: 820 }; // 名單看得到的範圍（上下各一段漸隱）
 const VIEW_C = 452; // 主打留言停在這裡（名單可見範圍的中間）
 const SUB = { x: 96, y: 850, w: 1248, h: 130 }; // 字幕的小圖層
-const [GROOM, BRIDE] = COUPLE_ZH.split(/\s*&\s*/) as [string, string];
+/** 名單圖層裡名字欄能用的寬（脊線右邊 30 px 起、圖層右緣留 40 px）：很長的名字照這個縮字。 */
+const NAME_W = RW - (SP + 30) - 40;
+/** 最後一張卡（置中在脊線上）能用的寬。 */
+const CARD_W = RW - 160;
 const CREW: [string, string][] = [
   ['攝影', '在場每一支手機'], ['燈光', '仙女棒'], ['餐飲', '主廚與外場的大家'], ['音樂', '今晚的歌單'],
   ['伴郎伴娘', '一路陪伴的好朋友們'], ['特別感謝', '雙方家長'], ['', '今天到場的每一位'],
 ];
-const NOTES = ['本片純屬真實，如有雷同，實屬緣分。', '片中動物皆為本色演出，拍攝期間只有被摸頭。'];
-const TEXT = `演出新郎新娘特別演出博美祝福共同演出本片歌曲演唱工作人員未完待續你的名字也可以出現在這裡掃描右下角寫一則給新人${CREW.flat().join('')}${NOTES.join('')}${GROOM}${BRIDE}`;
+const NOTES = ['本片純屬真實，如有雷同，實屬緣分。', '本片無替身，所有心動皆由本人親自演出。'];
+/** 演出名單裡跟在新人後面的一行（冷面：最重要的配角）。 */
+const SPECIAL: [string, string] = ['特別演出', '命中注定的緣分'];
+const TEXT = `演出主演特別演出祝福共同演出本片歌曲演唱工作人員未完待續你的名字也可以出現在這裡掃描右下角寫一則給新人${SPECIAL.join('')}${CREW.flat().join('')}${NOTES.join('')}${NAME_A}${NAME_B}`;
 
 // 背景：暗場、放映機的亮斑，逐格一點點閃爍
 const BG = () => new FSPass(/* glsl */ `
@@ -167,13 +174,14 @@ export default class Credits extends Scene {
       c.font = font(F.hei(500), 27); c.letterSpacing = '5px'; c.fillStyle = rgba('ash', 0.9); c.textAlign = 'right';
       c.fillText(job, SP - 34, yy + 42);
       c.letterSpacing = '0px'; c.textAlign = 'left';
-      c.font = font(F.ming(700), big ? 46 : 38); c.fillStyle = rgba('bone', 0.96);
+      const fam = F.ming(700);
+      c.font = font(fam, fitPx(name, fam, big ? 46 : 38, NAME_W)); c.fillStyle = rgba('bone', 0.96);
       c.fillText(name, SP + 30, yy + 46);
     });
-    // 演出
+    // 演出：兩位新人並列主演（不分新郎新娘：每一對新人的稱呼不一樣），接著一行冷面的特別演出
     this.castTop = y;
     header('演出', 'Starring');
-    row('新郎', GROOM); row('新娘', BRIDE); row('特別演出', '芃芃（博美）'); row('特別演出', 'QQ（博美）');
+    row('主演', NAME_A); row('', NAME_B); row(...SPECIAL);
     y += 110;
     // 主打留言
     const m = this.msg;
@@ -246,22 +254,33 @@ export default class Credits extends Scene {
       c.textAlign = 'left';
     });
     y += 200;
-    // 最後一張卡
+    // 最後一張卡：名字（縮到卡寬以內）→ 英文名（沒有英文名時 COUPLE_EN 就是中文，不重複印）→ 日期（有才印）→（未完，待續）。
+    // 每一行的基線依序往下排，缺的那一行不佔位置；卡的中心照實際高度算，捲動停下來時整張卡在畫面正中
     const endTop = y;
-    push(300, (c, yy) => {
+    const zhPx = fitPx(COUPLE_ZH, F.ming(900), 76, CARD_W);
+    const showEn = COUPLE_EN !== COUPLE_ZH;
+    const enPx = fitPx(COUPLE_EN, F.serif(400, true), 42, CARD_W);
+    let off = zhPx;
+    const yEn = showEn ? (off += 62) : 0;
+    const yDate = DATE_DOTS ? (off += 48) : 0;
+    const yTail = (off += 76);
+    const cardH = yTail + 38;
+    push(cardH, (c, yy) => {
       c.textAlign = 'center';
-      c.font = font(F.ming(900), 76); c.fillStyle = rgba('bone', 0.97);
-      c.fillText(COUPLE_ZH, SP, yy + 76);
-      c.font = font(F.serif(400, true), 42); c.fillStyle = rgba('ash', 0.95);
-      c.fillText(COUPLE_EN, SP, yy + 138);
-      c.font = font(F.mono(500), 20); c.letterSpacing = '6px';
-      c.fillText(DATE_DOTS, SP + 3, yy + 186);
-      c.letterSpacing = '0px';
+      c.font = font(F.ming(900), zhPx); c.fillStyle = rgba('bone', 0.97);
+      c.fillText(COUPLE_ZH, SP, yy + zhPx);
+      c.fillStyle = rgba('ash', 0.95);
+      if (showEn) { c.font = font(F.serif(400, true), enPx); c.fillText(COUPLE_EN, SP, yy + yEn); }
+      if (DATE_DOTS) {
+        c.font = font(F.mono(500), 20); c.letterSpacing = '6px';
+        c.fillText(DATE_DOTS, SP + 3, yy + yDate);
+        c.letterSpacing = '0px';
+      }
       c.font = font(F.ming(700), 40); c.fillStyle = rgba('signal', 0.95);
-      c.fillText('（未完，待續）', SP, yy + 262);
+      c.fillText('（未完，待續）', SP, yy + yTail);
       c.textAlign = 'left';
     });
-    this.endC = endTop + 150;
+    this.endC = endTop + cardH / 2;
     this.rollH = Math.ceil(y + 400);
   }
 

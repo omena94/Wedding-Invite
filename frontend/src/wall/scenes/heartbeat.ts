@@ -11,7 +11,7 @@
 // 座標：監護儀畫面的東西都畫在「螢幕座標」（一張 1920×1080 的 render target），再以透視貼到畫面上；紙條在畫面座標。
 // 效能：Canvas 上傳貼圖是最貴的，所以沒有全螢幕的 Canvas 層——歌詞一條小帶子每格上傳（fast）、判讀與紙條只在內容變的時候上傳，
 // 會閃的小東西都用 LineBatch 在 GPU 畫。
-// v2（2026-09-29「留言尺寸與版面比例標準 v2」）：醫囑紙條縮成左下角一張 ≤ 860 寬的收據（留言 40～60 px、署名 26～32，
+// v2（「留言尺寸與版面比例標準 v2」）：醫囑紙條縮成左下角一張 ≤ 860 寬的收據（留言 40～60 px、署名 26～32，
 // 露出來的紙 ≤ 430 高）；監護儀的歌詞在畫面上 40～52 px（不比留言大）。監護儀才是畫面的主體：
 // 下半多了第三條波形「呼吸」——跟著這首歌的音量起伏的平滑曲線，同一條掃描線寫過去，每個小節線在曲線上亮一顆小點。
 import * as THREE from 'three';
@@ -27,7 +27,7 @@ import { V2, msgMaxFor, lyricV2 } from './_v2';
 import { pickPulses, ecgAt, Sweep, heartPaths, partial, scanRows, type Pulse, type HeartPaths, type Row } from './heartbeat-ecg';
 import { buildStrip, msgStrip, INVITE_STRIP, STRIP_TEXT, STRIP_FIXED, type Strip } from './heartbeat-strip';
 import { MONITOR, monitorPose, setPose } from './heartbeat-screen';
-// 最早的版面：排程參數在 director.ts 的 PLATES；這裡只宣告雙語（2026-09-30 雙語普查通過：有翻譯＋主打留言時中文、原文、留言三樣都清楚）
+// 最早的版面：排程參數在 director.ts 的 PLATES；這裡只宣告雙語（雙語普查通過：有翻譯＋主打留言時中文、原文、留言三樣都清楚）
 export const spec: PlateSpecDecl = { bilingual: true };
 
 

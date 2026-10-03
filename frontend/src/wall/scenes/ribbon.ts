@@ -4,7 +4,8 @@
 //  - 第一個小節線（窗格短就第一拍）：緞帶的另一頭「咻」地往右上捲起、打成一個蝴蝶結；結上掛著一張牛皮紙的吊牌
 //    從上面掉下來、彈兩下、輕輕晃——吊牌上手寫的就是主打留言（最大、最清楚），署名在下面。
 //  - 之後每個小節線，一道翻轉從緞帶上升的那一段往結的方向滾過去（正反面一閃）；吊牌被帶得晃一下。
-//  - 沒有留言：吊牌上寫歌詞（大字、跟唱）與一行邀請；緞帶上印一整排「ALAN & OMENA · 日期」。純音樂時緞帶也印這一排。
+//  - 沒有留言：吊牌上寫歌詞（大字、跟唱）與一行邀請；緞帶上印一整排「新人的英文名 · 日期」（沒有英文名印中文名、沒定日期只印名字）。
+//    純音樂時緞帶也印這一排。
 // 畫法：three.js 真 3D（shared 的 MSAA 目標，像 candles）：緞帶是每格重算的扁帶子（_t22 的 stripGeometry，
 // 中心線是 Catmull-Rom、每一點有自己的翻轉角），正反面用 gl_FrontFacing 分開上色（緞面的高光）；
 // 印在緞帶上的字是一張照弧長對應的圖層；蝴蝶結、吊牌也是網格。
@@ -18,7 +19,7 @@ import { LIN, rgba } from '../engine/palette';
 import { clamp, ease, prog, pulse, lerp, springStep, noise1, smoothstep } from '../engine/util';
 import { fitText } from '../engine/text';
 import type { Line } from '../engine/lyrics';
-import { lyricAt, drawLyric, layoutLyric, beatAfter, COUPLE_EN, COUPLE_ZH, DATE_DOTS, lyricSubOf, subSizeFor, subStyleFor, subGap, type LyricStyle, type LyricLayout } from './_motifs';
+import { lyricAt, drawLyric, layoutLyric, beatAfter, COUPLE_EN, COUPLE_ZH, DATE_DOTS, joinBits, fitPx, lyricSubOf, subSizeFor, subStyleFor, subGap, type LyricStyle, type LyricLayout } from './_motifs';
 import { preloadText, INVITE_SMALL, paperSignal } from './_t19';
 import { barsIn } from './_t1';
 import { camDist } from './_t4';
@@ -299,13 +300,13 @@ export default class Ribbon extends Scene {
     this.avoid = [[880, 280, 850, 520], [TXT.s0 - 300, 790, TXT.s1 - TXT.s0 + 60, 150]];
   }
 
-  /** 緞帶上一整排「ALAN & OMENA · 日期」（畫一次）。 */
+  /** 緞帶上一整排「新人的英文名 · 日期」（畫一次；沒定日期就只有名字，不留多的「 · 」）。 */
   private drawMotif() {
     const L = this.txt, c = L.ctx;
     L.clear();
     c.textBaseline = 'middle'; c.fillStyle = rgba('sepia', 0.55);
     c.font = font(F.serif(600), 34); c.letterSpacing = '6px';
-    const unit = `${COUPLE_EN.toUpperCase()}   ·   ${DATE_DOTS}   ·   `;
+    const unit = `${joinBits('   ·   ', COUPLE_EN.toUpperCase(), DATE_DOTS)}   ·   `;
     const w = c.measureText(unit).width;
     for (let x = 40; x < TEXW; x += w) c.fillText(unit, x, TEXH / 2 + 2);
     c.letterSpacing = '0px';
@@ -329,8 +330,10 @@ export default class Ribbon extends Scene {
     c.fillStyle = rgba('signal', 0.9); c.beginPath(); c.arc(TAG.hx, TAG.hy, 22, 0, Math.PI * 2); c.fill();
     c.save(); c.globalCompositeOperation = 'destination-out'; c.beginPath(); c.arc(TAG.hx, TAG.hy, 11, 0, Math.PI * 2); c.fill(); c.restore();
     c.textBaseline = 'alphabetic';
-    c.font = font(F.hand(400), 22); c.fillStyle = rgba('sepia', 0.6);
-    c.fillText(m?.couple ? 'To 大家' : `To ${COUPLE_ZH}`, TAGM.x, 74);
+    // 「To 新人」：名字長的話縮字，不碰到中間的繩孔（補強圈左緣約 x = TAG.hx - 22）
+    const to = m?.couple ? 'To 大家' : `To ${COUPLE_ZH}`;
+    c.font = font(F.hand(400), fitPx(to, F.hand(400), 22, TAG.hx - 22 - 16 - TAGM.x)); c.fillStyle = rgba('sepia', 0.6);
+    c.fillText(to, TAGM.x, 74);
     if (m) {
       if (m.couple) {
         c.textAlign = 'right'; c.font = font(F.mono(500), 14); c.letterSpacing = '4px'; c.fillStyle = rgba('blood', 0.9);
@@ -369,7 +372,7 @@ export default class Ribbon extends Scene {
     L.clear();
     const ly = lyricAt(this.ctx.lyrics, t);
     if (ly && lyricSubOf(ly.line)) {
-      // 雙語（2026-09-30）：緞帶只有 TEXH 高，中文折兩排再加原文會被緞帶邊切掉。有原文的句子用寬一點的一段（弧長往右挪 SUB_DX、寬 SUB_W：
+      // 雙語：緞帶只有 TEXH 高，中文折兩排再加原文會被緞帶邊切掉。有原文的句子用寬一點的一段（弧長往右挪 SUB_DX、寬 SUB_W：
       // 左邊不出畫面、右邊到緞帶開始捲之前），
       // 中文盡量一排；原文至少 34 px、不再縮；整塊（中文字頂到原文字腳）放不進緞帶就把中文縮小一點（不小於 40），上下置中
       let st: LyricStyle = { ...this.ribSt, maxWidth: SUB_W };

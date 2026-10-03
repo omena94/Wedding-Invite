@@ -1,4 +1,4 @@
-// 火柴（暗）：一個暗房間的牆角。桌上躺著一盒婚禮小物的火柴（盒面印著 ALAN & OMENA 與日期），牆上有人用白漆寫了一句話——
+// 火柴（暗）：一個暗房間的牆角。桌上躺著一盒婚禮小物的火柴（盒面印著新人的名字與日期），牆上有人用白漆寫了一句話——
 // 可是房間太暗，只有火柴點著的時候讀得到。
 //  - 開場一片黑，只看得到火柴盒的輪廓。第一個拍點：一根火柴自己沿著盒側的磷面「刷」地擦過去（定格動畫的手法，不畫手），
 //    火星噴出來、火焰先爆亮一下再穩住，火柴一甩立起來；火光照亮的那一大片牆上就是主打留言（手寫、最大、最亮）。
@@ -18,7 +18,7 @@ import { LineBatch } from '../engine/lines';
 import { F, font } from '../engine/type';
 import { LIN, rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, hash, noise1, lerp, pulse, frameIdx } from '../engine/util';
-import { sparkParticles, sparkHead, lyricAt, drawLyric, layoutLyric, beatAfter, COUPLE_EN, DATE_DOTS, type LyricStyle } from './_motifs';
+import { sparkParticles, sparkHead, lyricAt, drawLyric, layoutLyric, beatAfter, COUPLE_EN, DATE_DOTS, fitPx, type LyricStyle } from './_motifs';
 import { preloadText, INVITE_SMALL, type MsgBlock } from './_t19';
 import { makeCanvas, freeCanvas, barsIn, beatsIn } from './_t1';
 import { lyricV2, V2 } from './_v2';
@@ -248,7 +248,7 @@ export default class Matches extends Scene {
 
   override dispose() { freeCanvas(this.box); super.dispose(); }
 
-  /** 火柴盒（離屏畫布，畫一次）：盒面（ALAN & OMENA）、盒側的磷面、拉出來的內盒裡一排火柴頭。 */
+  /** 火柴盒（離屏畫布，畫一次）：盒面（新人的名字）、盒側的磷面、拉出來的內盒裡一排火柴頭。 */
   private buildBox() {
     const b = (this.box = makeCanvas(560, 220, 2));
     const c = b.c;
@@ -287,15 +287,17 @@ export default class Matches extends Scene {
     }
     c.strokeStyle = mixRgba('blood', 'bone', 0.4, 0.35); c.lineWidth = 1.2;
     for (let i = 0; i < 6; i++) { const y = 919 + hash(i, 9) * 18; c.beginPath(); c.moveTo(175 + hash(i, 7) * 60, y); c.lineTo(420 + hash(i, 8) * 100, y + (hash(i, 6) - 0.5) * 6); c.stroke(); }
-    // 盒面的印刷：細框、ALAN & OMENA、日期、一行小字（婚禮小物的火柴盒）
+    // 盒面的印刷：細框、新人的名字（英文大寫；沒有英文名就是中文）、日期、一行小字（婚禮小物的火柴盒）
     c.save();
     c.beginPath(); c.moveTo(176, 800); c.lineTo(516, 800); c.lineTo(540, 906); c.lineTo(150, 906); c.closePath(); c.clip();
     c.strokeStyle = rgba('sepia', 0.55); c.lineWidth = 1.2;
     c.beginPath(); c.moveTo(192, 811); c.lineTo(500, 811); c.lineTo(520, 895); c.lineTo(170, 895); c.closePath(); c.stroke();
     c.fillStyle = rgba('sepia', 0.85); c.textAlign = 'center';
     c.save(); c.translate(345, 858); c.scale(1, 0.82);
-    c.font = font(F.serif(600), 30); c.fillText(COUPLE_EN.toUpperCase(), 0, 0);
-    c.font = font(F.mono(500), 13); c.letterSpacing = '4px'; c.fillText(DATE_DOTS, 0, 28);
+    // 名字很長（CHRISTOPHER & ALEXANDRA）就縮字，留在細框裡；還沒定日期時名字往下一點，盒面不會上重下輕
+    const name = COUPLE_EN.toUpperCase();
+    c.font = font(F.serif(600), fitPx(name, F.serif(600), 30, 290)); c.fillText(name, 0, DATE_DOTS ? 0 : 8);
+    if (DATE_DOTS) { c.font = font(F.mono(500), 13); c.letterSpacing = '4px'; c.fillText(DATE_DOTS, 0, 28); }
     c.font = font(F.mono(500), 10); c.letterSpacing = '3px'; c.fillText('SAFETY MATCHES · 祝福專用', 0, -36);
     c.letterSpacing = '0px';
     c.restore();

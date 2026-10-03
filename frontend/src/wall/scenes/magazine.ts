@@ -3,7 +3,7 @@
 //    （思源宋體特粗、最深的墨），署名是撰稿人；左上的「現場連線」欄是歌詞（逐字跟唱）。
 //  - 沒有留言：每一句歌詞各是一期，在那一句開始前的小節線落下，封面故事就是那一句（逐字跟唱）；純音樂又沒有留言：
 //    這一期的封面故事是新人的名字與「今天，我們結婚了」，左上一行邀請。
-//  - 封面：刊名是細的斜體（淡、不搶封面故事）、一張手繪線條插畫（花束／蛋糕／網球拍，每一期不一樣）墊一個訊號色的圓、
+//  - 封面：刊名是細的斜體（淡、不搶封面故事）、一張手繪線條插畫（花束／蛋糕／對戒，每一期不一樣）墊一個訊號色的圓、
 //    上緣一行小字（期號、日期）、右下條碼與「NT$ ∞」。
 // v2（留言尺寸標準 v2）：這一疊放在畫面左邊（封面在螢幕上約 0.8 倍），封面故事在封面下半部、畫面左下
 //（40～60 px，留言區約 590 × 330）；右上是散開的過期特刊（一期一期斜斜地疊著、出血到畫面外、在焦外），
@@ -19,7 +19,7 @@ import { F, font } from '../engine/type';
 import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, hash, mulberry32, pulse, lerp } from '../engine/util';
 import type { Line } from '../engine/lyrics';
-import { lyricAt, drawHeart, COUPLE_ZH, DATE_DOTS, signature, lyricSubOf, layoutLyric, drawLyric, subStyleFor, subSizeFor, subGap, type LyricStyle } from './_motifs';
+import { lyricAt, drawHeart, NAME_A, NAME_B, DATE_DOTS, joinBits, fitPx, signature, lyricSubOf, layoutLyric, drawLyric, subStyleFor, subSizeFor, subGap, type LyricStyle } from './_motifs';
 import { grid, layoutRows, drawRows, paperInk, Stage, camDist, type Grid, type V3, type RowsLayout, type KaraokeInk } from './_t4';
 import { drawBarcode } from './_t1';
 import { loadAll, sigOf, block, T21_INVITE, type Block, type Rect } from './_t21';
@@ -33,7 +33,7 @@ const CW = 800, CH = 1040, RES = 1.3, RES_FAN = 0.8;
 const STORY = { x: 56, y: 572, w: 688, h: 392 };
 const SIDE = { x: 56, y: 318, w: 330 };
 /**
- * 雙語（2026-09-30）：有留言又有原文的窗格，「現場連線」欄往上 28、加寬到 500（中文＋原文兩段），
+ * 雙語：有留言又有原文的窗格，「現場連線」欄往上 28、加寬到 500（中文＋原文兩段），
  * 右邊的插畫縮小、移到右上角（ILL_B：中心與半徑）。
  */
 const SIDE_B = { x: 56, y: 290, w: 500 };
@@ -47,7 +47,7 @@ const FAN = [
   { x: 800, y: 600, rot: 3.3 }, { x: 330, y: 470, rot: -1.42 }, { x: 640, y: 300, rot: 3.08 },
 ];
 /** 過期特刊的封面故事（小小的冷面標題，在焦外只看得出是一期一期的雜誌）。 */
-const FAN_HEADS = ['兩人份的早餐', '遛狗日誌', '羽球雙打入門', '一起去旅行', '晚安故事集', '今天，我們結婚了'];
+const FAN_HEADS = ['兩人份的早餐', '陽台上的小盆栽', '第一支舞練習中', '一起去旅行', '晚安故事集', '今天，我們結婚了'];
 const FAM = F.ming(900);
 const FAM_SIG = F.ming(700);
 const FAM_SIDE = F.hei(700);
@@ -178,35 +178,42 @@ function cake(c: Ctx, cx: number, cy: number, s: number, seed: number, line: str
   drawHeart(c, cx, y - s * 0.07, s * 0.1);
 }
 
-function racket(c: Ctx, cx: number, cy: number, s: number, seed: number, line: string, wash: string) {
+/** 一對戒指（兩個斜斜套在一起的圈，左邊那只頂著一顆鑽）：每一場婚禮都有，不講任何一對新人自己的故事。 */
+function rings(c: Ctx, cx: number, cy: number, s: number, seed: number, line: string, wash: string) {
   const rnd = mulberry32(seed);
-  c.strokeStyle = line; c.lineWidth = 2.6; c.lineCap = 'round'; c.lineJoin = 'round';
-  const rot = -0.5, hx = cx - s * 0.08, hy = cy - s * 0.12;
-  // 拍面：橢圓＋網線
-  c.save(); c.translate(hx, hy); c.rotate(rot);
-  const rx = s * 0.24, ry = s * 0.31;
-  c.fillStyle = wash; c.beginPath(); c.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2); c.fill();
-  c.save(); c.beginPath(); c.ellipse(0, 0, rx - 5, ry - 5, 0, 0, Math.PI * 2); c.clip();
-  c.lineWidth = 1.1;
-  for (let x = -rx; x <= rx; x += s * 0.035) { wob(c, [[x, -ry], [x, ry]], rnd, 0.6); c.stroke(); }
-  for (let y = -ry; y <= ry; y += s * 0.035) { wob(c, [[-rx, y], [rx, y]], rnd, 0.6); c.stroke(); }
-  c.restore();
-  c.lineWidth = 3.2;
-  wob(c, arcPts(0, 0, rx, ry, 0, Math.PI * 2, 40), rnd, 1.2, true); c.stroke();
-  // 握把
-  wob(c, [[-s * 0.03, ry], [-s * 0.035, ry + s * 0.34], [s * 0.035, ry + s * 0.34], [s * 0.03, ry]], rnd, 1); c.stroke();
-  wob(c, [[-rx * 0.35, ry * 0.93], [0, ry + s * 0.08], [rx * 0.35, ry * 0.93]], rnd, 1); c.stroke();
-  c.restore();
-  // 網球（黃綠色，全片的小彩蛋）
-  const bx = cx + s * 0.28, by = cy + s * 0.3, br = s * 0.085;
-  c.fillStyle = rgba('ball'); c.beginPath(); c.arc(bx, by, br, 0, Math.PI * 2); c.fill();
-  c.lineWidth = 2.4; wob(c, arcPts(bx, by, br, br, 0, Math.PI * 2, 30), rnd, 0.8, true); c.stroke();
-  c.lineWidth = 1.8;
-  wob(c, arcPts(bx - br * 1.25, by, br * 0.75, br * 0.9, -0.9, 0.9, 12), rnd, 0.5); c.stroke();
-  wob(c, arcPts(bx + br * 1.25, by, br * 0.75, br * 0.9, Math.PI - 0.9, Math.PI + 0.9, 12), rnd, 0.5); c.stroke();
+  c.strokeStyle = line; c.lineCap = 'round'; c.lineJoin = 'round';
+  const r = s * 0.25, band = s * 0.036;
+  const at: [number, number, number][] = [[cx - r * 0.58, cy + s * 0.1, -0.12], [cx + r * 0.58, cy + s * 0.04, 0.16]];
+  for (const [x, y, rot] of at) {
+    // 戒圈：一圈淡淡的底色（環），內外兩條手繪的線
+    c.save(); c.translate(x, y); c.rotate(rot);
+    c.fillStyle = wash;
+    c.beginPath(); c.ellipse(0, 0, r + band, (r + band) * 0.9, 0, 0, Math.PI * 2); c.ellipse(0, 0, r - band, (r - band) * 0.9, 0, 0, Math.PI * 2); c.fill('evenodd');
+    c.lineWidth = 2.8; wob(c, arcPts(0, 0, r + band, (r + band) * 0.9, 0, Math.PI * 2, 40), rnd, 1.1, true); c.stroke();
+    c.lineWidth = 2; wob(c, arcPts(0, 0, r - band, (r - band) * 0.9, 0, Math.PI * 2, 36), rnd, 0.8, true); c.stroke();
+    // 戒圈上的反光：一小段短弧
+    c.lineWidth = 1.6; wob(c, arcPts(0, 0, r, r * 0.9, -2.5, -1.9, 6), rnd, 0.4); c.stroke();
+    c.restore();
+  }
+  // 鑽：左邊那只的頂上，一個切面的多邊形
+  const dx = at[0][0], dy = at[0][1] - (r + band) * 0.9 - s * 0.01, d = s * 0.075;
+  const gem: [number, number][] = [[dx - d, dy - d * 0.55], [dx - d * 0.55, dy - d * 1.05], [dx + d * 0.55, dy - d * 1.05], [dx + d, dy - d * 0.55], [dx, dy + d * 0.5]];
+  c.fillStyle = wash; wob(c, gem, rnd, 0.8, true); c.fill();
+  c.lineWidth = 2.4; c.stroke();
+  c.lineWidth = 1.4;
+  wob(c, [[dx - d, dy - d * 0.55], [dx + d, dy - d * 0.55]], rnd, 0.5); c.stroke();
+  wob(c, [[dx - d * 0.3, dy - d * 0.55], [dx, dy + d * 0.5], [dx + d * 0.3, dy - d * 0.55]], rnd, 0.5); c.stroke();
+  // 閃一下：鑽旁邊三條短線
+  c.lineWidth = 2;
+  for (const a of [-2.4, -1.57, -0.74]) {
+    const x0 = dx + Math.cos(a) * d * 1.45, y0 = dy - d * 0.5 + Math.sin(a) * d * 1.45;
+    wob(c, [[x0, y0], [x0 + Math.cos(a) * d * 0.6, y0 + Math.sin(a) * d * 0.6]], rnd, 0.4); c.stroke();
+  }
+  // 右上一顆小愛心
+  drawHeart(c, cx + r * 1.15, cy - r * 1.05, s * 0.07);
 }
 
-const ILLUS = [bouquet, cake, racket];
+const ILLUS = [bouquet, cake, rings];
 
 export default class Magazine extends Scene {
   rig = shared('magazine.rig', makeRig);
@@ -312,8 +319,9 @@ export default class Magazine extends Scene {
     // 刊名（細、斜、淡：是封面的一部分，不搶封面故事）
     c.font = font(MAST, 132); c.fillStyle = rgba('blood', 0.42); c.fillText('Our Day', 46, 196);
     this.small(c, '婚禮特刊 · SPECIAL ISSUE', 52, 60, F.hei(500), 17, 4, soft);
-    const no = this.msg && kind === 'main' ? `No.${String(this.msg.n).padStart(3, '0')}  ·  ` : `VOL.${1 + (seed % 40)}  ·  `;
-    c.textAlign = 'right'; this.small(c, `${no}${DATE_DOTS}`, CW - 52, 60, F.mono(500), 16, 3, soft); c.textAlign = 'left';
+    const no = this.msg && kind === 'main' ? `No.${String(this.msg.n).padStart(3, '0')}` : `VOL.${1 + (seed % 40)}`;
+    // 還沒定日期就只印期號（不留多餘的「 · 」）
+    c.textAlign = 'right'; this.small(c, joinBits('  ·  ', no, DATE_DOTS), CW - 52, 60, F.mono(500), 16, 3, soft); c.textAlign = 'left';
     c.fillStyle = rgba('sepia', 0.5); c.fillRect(52, 76, CW - 104, 1.5);
     // 右下：條碼與價格（冷面：無價）
     drawBarcode(c, CW - 170, CH - 58, 120, 30, seed, rgba('sepia', 0.9));
@@ -324,7 +332,7 @@ export default class Magazine extends Scene {
       const mm = kind === 'main' ? this.msg! : other!;
       kick(kind === 'main' && mm.couple ? 'FROM THE COUPLE  ·  新人' : kind === 'main' ? '本期封面故事' : '上一期', STORY.y - 12);
       // 封面故事：照 v2 的字級（封面 px × K = 螢幕 px），靠上排，署名在最後一行下面
-      blk = block(c, mm, FAM, STORY, { align: 'left', sigFamily: FAM_SIG, lineHeight: 1.24, maxLines: 5, valign: 0.12, v2: K, sigText: mm.couple ? '—— 新郎新娘' : sigOf(mm) });
+      blk = block(c, mm, FAM, STORY, { align: 'left', sigFamily: FAM_SIG, lineHeight: 1.24, maxLines: 5, valign: 0.12, v2: K, sigText: mm.couple ? '—— 新人' : sigOf(mm) });
       c.font = font(FAM, blk.fit.size); c.fillStyle = kind === 'main' ? ink : rgba('sepia', 0.92);
       for (const ln of blk.lines) this.fillHearts(c, ln.text, ln.x, ln.y);
       c.font = font(FAM_SIG, blk.sig.size); c.fillStyle = soft; c.fillText(blk.sig.text, blk.sig.x, blk.sig.y);
@@ -335,8 +343,10 @@ export default class Magazine extends Scene {
       c.fillText(kind === 'fan' ? FAN_HEADS[k % FAN_HEADS.length]! : '今天，我們結婚了', STORY.x, STORY.y + 90);
     } else if (kind === 'names') {
       kick('本期封面故事', STORY.y - 12);
-      const sz = V2.msgMax / K;
-      c.font = font(FAM, sz); c.fillStyle = ink; this.fillHearts(c, COUPLE_ZH.replace(/\s*&\s*/, ' ♥ '), STORY.x, STORY.y + 30 + sz);
+      // 名字長短每一場不一樣：照封面故事的寬度縮字（字級最大是 v2 的留言上限）
+      const names = `${NAME_A} ♥ ${NAME_B}`;
+      const sz = fitPx(names, FAM, V2.msgMax / K, STORY.w);
+      c.font = font(FAM, sz); c.fillStyle = ink; this.fillHearts(c, names, STORY.x, STORY.y + 30 + sz);
       c.font = font(FAM_SIG, V2.sigMax / K); c.fillStyle = soft; c.fillText('今天，我們結婚了', STORY.x, STORY.y + 30 + sz * 2.1);
     } else {
       kick('本期封面故事  ·  現場連線', STORY.y - 12);
@@ -356,7 +366,7 @@ export default class Magazine extends Scene {
   }
 
   /**
-   * 原文副行（韓文歌，2026-09-30）：已經 translate 到主行第一排基線的對齊點，在主行最後一排下面印原文——同一張封面、同字族、
+   * 原文副行（韓文歌）：已經 translate 到主行第一排基線的對齊點，在主行最後一排下面印原文——同一張封面、同字族、
    * 同墨色（唱到、唱完都是唱完的墨色、淡一點）。字級與間距照螢幕 px 的規則（封面 px × K = 螢幕 px），所以先縮成螢幕 px 再畫。
    * maxY：原文最後一排基線最多可以到哪（相對主行第一排基線，封面 px）；放不下就不印。
    */

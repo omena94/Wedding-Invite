@@ -1,6 +1,6 @@
 // 織布機（暗）：夜裡的工作室，一台織布機的經線從畫面上方的布一路垂到鏡頭前，梭子在拍點上「咻」地穿過去、
 // 筘（打緯的那根橫木）在拍點「啪」地往上一打，布就多織了一段。
-// 2026-09-29 依「留言尺寸與版面比例標準 v2」重做構圖：
+// 依「留言尺寸與版面比例標準 v2」重做構圖：
 //  - 場景是主視覺：整塊布都在織——左邊是用金線（這首歌的訊號色）織進深色布裡的主打留言（40～60 px，照 _v2），
 //    右邊同一排緯線織出一大片菱形花紋（金、深紅、骨白三色），每一梭花紋跟著字一起長出來。
 //    留言織完之後織布機不停：每一小節再織一條裝飾帶（梭子穿過、筘打一下），畫面一直有事件。
@@ -17,7 +17,7 @@ import { FSPass, Layer2D, W, H } from '../engine/gl';
 import { F, font, loadText } from '../engine/type';
 import { rgba } from '../engine/palette';
 import { clamp, ease, prog, hash, lerp } from '../engine/util';
-import { lyricAt, COUPLE_ZH, lyricSubOf, layoutLyric, subStyleFor, subGap, drawLyricSub, type LyricStyle } from './_motifs';
+import { lyricAt, NAME_A, NAME_B, fitPx, lyricSubOf, layoutLyric, subStyleFor, subGap, drawLyricSub, type LyricStyle } from './_motifs';
 import { grid, stagger, layoutRows, drawRows, darkInk } from './_t4';
 import { PlaneCam, camUniforms, CAM_GLSL, orderMask, lineItems, msgBlockV2, INVITE, type OrderMask, type MsgBlock, type Rect } from './_t14';
 import { lyricV2 } from './_v2';
@@ -236,8 +236,8 @@ export default class Loom extends Scene {
     const c = this.layer.ctx;
     const gr = grid(au, s, e);
     this.hasLyrics = lyrics.linesIn(s, e).length > 0;
-    const names = COUPLE_ZH.replace(/\s*&\s*/, ' ♥ ');
-    await loadText(`${m?.text ?? ''}${m ? (m.couple ? '—— 新郎新娘' : m.name) : ''}${names}${INVITE}${song.title}${song.artist}——一位賓客`);
+    const names = `${NAME_A} ♥ ${NAME_B}`;
+    await loadText(`${m?.text ?? ''}${m ? (m.couple ? '—— 新人' : m.name) : ''}${names}${INVITE}${song.title}${song.artist}——一位賓客`);
 
     // 鏡頭在留言那一塊的縮放（織完、停下來的姿勢）：畫在布上的字級要除以它，畫面上才是標準的大小
     this.top = MSG_BOX.y - 16; this.bottom = MSG_BOX.y + MSG_BOX.h;
@@ -259,8 +259,8 @@ export default class Loom extends Scene {
       this.lyr = { ...LYR_S, size: lyricV2(b.fit.size * k) };
       this.avoid = [b.box];
     } else {
-      // 沒有留言：織新人的名字（灰白線、56 px），歌詞在前景當焦點
-      const size = 56 / k;
+      // 沒有留言：織新人的名字（灰白線、56 px；名字長就縮到一行放得進名字那一塊），歌詞在前景當焦點
+      const size = fitPx(names, FAM_W, 56 / k, NAME_BOX.w);
       c.font = font(FAM_W, size);
       const w = c.measureText(names).width;
       items = lineItems([{ text: names, x: NAME_BOX.x, y: NAME_BOX.y + (NAME_BOX.h + size * 0.8) / 2 }], FAM_W, size).map((it) => ({ ...it, tag: 128 }));

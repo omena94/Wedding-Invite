@@ -3,7 +3,7 @@
 //    唱到哪個字，那一軌的電動推桿就「刷」地推到頂（0 dB）、推頭亮成訊號色；唱完停在頂上變紙白。唱完的字在上排排成一行、
 //    沒唱的在下排等著。一行唱完，推桿一起落回底下（電動推桿的場景記憶），換下一行。
 //  - 沒有用到的軌、兩句之間、純音樂：推桿與電平表跟著這首歌的頻段自己動（大鼓、小鼓、貝斯、人聲…各一軌，心跳那一軌打在大鼓上）。
-//  - 最底下是一條貼滿整排的紙膠帶，用麥克筆寫著每一軌的名字（大鼓、小鼓…宣文、孟庭、芃芃、QQ、掌聲、心跳）。
+//  - 最底下是一條貼滿整排的紙膠帶，用麥克筆寫著每一軌的名字（大鼓、小鼓…兩位新人的名字、笑聲、歡呼、掌聲、心跳）。
 //  - 主打留言也寫在紙膠帶上：窗格一開始，一段膠帶從左拉到右貼在混音台上面的空白處，一個詞組一拍用麥克筆寫上去，最後署名。
 //    沒有留言：膠帶上寫邀請。
 //  - 右邊主控區：兩個打著背光的指針錶（跟著音量甩）、主推桿。
@@ -18,7 +18,7 @@ import { rgba, mixRgba, LIN } from '../engine/palette';
 import { clamp, ease, prog, pulse, hash, lerp, mulberry32 } from '../engine/util';
 import { Lyrics, type Line, type Word } from '../engine/lyrics';
 import type { FitResult } from '../engine/text';
-import { layoutMessage, signature, beatAfter, lyricSubOf, drawLyricSub } from './_motifs';
+import { layoutMessage, signature, beatAfter, lyricSubOf, drawLyricSub, NAME_A, NAME_B, fitPx } from './_motifs';
 import { drawReveal, phraseSchedule, revealAt, fitCharsF, windowLines, type Rect } from './_t10';
 import { msgMaxFor, lyricV2, sigV2, fitClauses, V2 } from './_v2';
 
@@ -39,18 +39,21 @@ const NAMES_Y = 940; // 名字膠帶的中線
 const SUB_TAPE = { y: 906, h: 76, names: 928, base: 966 };
 const MASTER = { x0: 1392, x1: 1832 }; // 主控區
 const VU = [{ x: 1404, y: 112, w: 202, h: 168, band: 'low' }, { x: 1622, y: 112, w: 202, h: 168, band: 'high' },
-  // 膠帶右邊的兩個小錶：宣文、孟庭兩軌人聲（標準 v2：膠帶變窄，空出來的地方要有東西在動）
+  // 膠帶右邊的兩個小錶：兩位新人的人聲（標準 v2：膠帶變窄，空出來的地方要有東西在動）
   { x: 1012, y: 118, w: 150, h: 124, band: 'vocal' }, { x: 1180, y: 118, w: 150, h: 124, band: 'mid' }];
 const MF = [{ x: 1470, label: 'MAIN' }, { x: 1570, label: 'LOVE' }]; // 主控推桿（槽的中心 x）
 const MF_Y = { y0: 400, y1: 800 };
 const F_LYR = F.archivo(100, 800);
 
-/** 每一軌的名字（麥克筆寫在膠帶上）與閒置時跟著哪個頻段。 */
+/**
+ * 每一軌的名字（麥克筆寫在膠帶上）與閒置時跟著哪個頻段。兩軌人聲是這一場新人的名字（執行時才知道、長短不一，
+ * 寫在膠帶上時照一軌的寬度縮字）。
+ */
 const CHANNELS: { name: string; band: string; hit?: string }[] = [
   { name: '大鼓', band: 'low', hit: 'kick' }, { name: '小鼓', band: 'drums', hit: 'snare' }, { name: '腳踏鈸', band: 'high', hit: 'hat' },
   { name: '貝斯', band: 'bass' }, { name: '吉他', band: 'other' }, { name: '鋼琴', band: 'mid' }, { name: '弦樂', band: 'other' },
-  { name: '人聲', band: 'vocal' }, { name: '和聲', band: 'vocal' }, { name: '宣文', band: 'vocal' }, { name: '孟庭', band: 'vocal' },
-  { name: '芃芃', band: 'high', hit: 'hat' }, { name: 'QQ', band: 'drums', hit: 'snare' }, { name: '掌聲', band: 'high' },
+  { name: '人聲', band: 'vocal' }, { name: '和聲', band: 'vocal' }, { name: NAME_A, band: 'vocal' }, { name: NAME_B, band: 'vocal' },
+  { name: '笑聲', band: 'high', hit: 'hat' }, { name: '歡呼', band: 'drums', hit: 'snare' }, { name: '掌聲', band: 'high' },
   { name: '乾杯', band: 'mid', hit: 'snare' }, { name: '心跳', band: 'low', hit: 'kick' },
 ];
 const INVITE = '掃描右下角 QR code，你的祝福也貼上混音台。';
@@ -273,9 +276,11 @@ export default class Mixer extends Scene {
     // 名字膠帶（整排一條）；有原文副行時加高，軌名縮小寫在上半截
     const sub = this.subTape;
     this.tapeStrip(c, X0 - 6, sub ? SUB_TAPE.y : NAMES_Y - 22, N * PITCH + 12, sub ? SUB_TAPE.h : 44, 7);
-    c.font = font(F.hand(700), sub ? 19 : 22); c.fillStyle = rgba('ink', 0.62); c.textAlign = 'center';
+    c.fillStyle = rgba('ink', 0.62); c.textAlign = 'center';
     CHANNELS.forEach((cd, i) => {
       const r = mulberry32(this.seed + i * 13);
+      // 軌名不能寫到隔壁軌：長的（新人的名字）照一軌的寬度縮
+      c.font = font(F.hand(700), fitPx(cd.name, F.hand(700), sub ? 19 : 22, PITCH - 10));
       c.save(); c.translate(chX(i) + PITCH / 2, sub ? SUB_TAPE.names : NAMES_Y + 8); c.rotate((r() - 0.5) * 0.08);
       c.fillText(cd.name, 0, 0);
       c.restore();

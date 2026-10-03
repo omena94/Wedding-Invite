@@ -4,7 +4,7 @@
 //    一行打到頭：鈴「叮」一聲、滑車整個滑回來、滾筒轉一格把紙往上推一行。打完署名，最後再歸位一次，整段停在畫面上讀。
 //    字是明體（中文打字機用的就是明體字模），每個字的墨色、位置、角度都有一點點不一樣，像真的打出來的。
 //  - 上面是「現場歌詞」：這一行歌詞（逐字跟唱；亮版面：正在唱是訊號色的暗部＋螢光筆，唱完墨色）。純音樂：寫歌名。
-//  - 沒有留言：打一段邀請。新人的留言：署名「新郎新娘」。
+//  - 沒有留言：打一段邀請。新人的留言：署名「新人」。
 // 手法：打字機的機身、滾筒、字籃的洞是一個 shader（滾筒跟著滑車左右動、跟著換行轉）；紙與字、鈴、字桿每格重畫
 // （紙上的字不到七十個，很便宜）；字桿用 LineBatch。
 import * as THREE from 'three';
@@ -16,7 +16,7 @@ import { rgba, mixRgba, LIN } from '../engine/palette';
 import { clamp, ease, prog, pulse, hash, lerp, TAU } from '../engine/util';
 import { wrap } from '../engine/text';
 import { Lyrics } from '../engine/lyrics';
-import { lyricAt, layoutLyric, signature, beatAfter, drawHeart, DATE_DOTS, lyricSubOf, drawLyricSub } from './_motifs';
+import { lyricAt, layoutLyric, signature, beatAfter, drawHeart, DATE_DOTS, DATE_MMDD, INITIALS, INITIAL_A, INITIAL_B, isLatin, joinBits, lyricSubOf, drawLyricSub } from './_motifs';
 import { stagger, pad3 } from './_t11';
 import { windowLines, type Rect } from './_t10';
 import { msgMaxFor, lyricV2, sigV2, V2 } from './_v2';
@@ -45,8 +45,13 @@ const F_TYPE = F.ming(700);
 
 interface Key { ch: string; line: number; x: number; adv: number; t: number; sig: boolean }
 
-const INVITE = '親愛的新人：這一頁還空著，掃描右下角 QR code，把祝福打給你們。';
-const TEXT = `現場歌詞純音樂叮${INVITE}新郎新娘一位賓客`;
+const INVITE = '給新人的一封信：這一頁還空著，掃描右下角 QR code，把祝福打上來。';
+const TEXT = `現場歌詞純音樂叮${INVITE}新人一位賓客`;
+/**
+ * 廠牌底下的型號：新人英文名的縮寫＋婚禮的月日（「EI-0520」）。縮寫不是拉丁字母（沒有英文名）時用 LV（love），
+ * 還沒定日期時用 520：這行是 mono 小字，只放拉丁字母與數字。
+ */
+const DECAL_MODEL = `MODEL ${isLatin(INITIALS) ? `${INITIAL_A}${INITIAL_B}` : 'LV'}-${DATE_MMDD || '520'}`;
 
 // ---------------------------------------------------------------- 機身、滾筒、字籃（一個 shader）
 const BODY = () => new FSPass(/* glsl */ `
@@ -108,7 +113,7 @@ export default class Typewriter extends Scene {
     const { audio: au, lyrics, song } = this.ctx;
     const s = this.ctx.start, e = this.ctx.end, m = this.msg;
     const body = m ? m.text : INVITE;
-    const sig = m ? (m.couple ? '—— 新郎新娘' : signature(m.name)) : '';
+    const sig = m ? (m.couple ? '—— 新人' : signature(m.name)) : '';
     await loadText(`${TEXT}${body}${sig}${song.title}${song.artist}`);
     this.beat = au.beatPeriod(s + 0.1);
     this.hasLyrics = windowLines(lyrics, s, e).length > 0;
@@ -251,7 +256,8 @@ export default class Typewriter extends Scene {
     c.fillStyle = mixRgba('paper', 'bone', 0.55); c.fillRect(x0, top, SHEET_W, PLATEN.y0 + 6 - top);
     // 左上角印好的小字（信紙的抬頭）
     c.font = font(F.mono(500), 13); c.letterSpacing = '3px'; c.fillStyle = rgba('blood', 0.55);
-    c.fillText(`No.${this.msg ? pad3(this.msg.n) : '000'}  ·  ${DATE_DOTS}`, x0 + 26, top + 30);
+    // 信紙抬頭：編號＋婚禮日期（還沒定日期就只有編號，不留多餘的分隔符號）
+    c.fillText(joinBits('  ·  ', `No.${this.msg ? pad3(this.msg.n) : '000'}`, DATE_DOTS), x0 + 26, top + 30);
     c.letterSpacing = '0px';
     // 打出來的字
     c.font = font(F_TYPE, S);
@@ -289,7 +295,7 @@ export default class Typewriter extends Scene {
     c.font = font(F.serif(600, true), 60); c.fillStyle = rgba('blood', 0.2);
     c.fillText('Love Letter', x, y);
     c.font = font(F.mono(500), 13); c.letterSpacing = '6px'; c.fillStyle = rgba('blood', 0.25);
-    c.fillText('MODEL AO-313', x, y + 32);
+    c.fillText(DECAL_MODEL, x, y + 32);
     c.letterSpacing = '0px';
     c.restore();
   }

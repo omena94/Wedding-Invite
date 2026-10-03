@@ -17,7 +17,7 @@ import { F, font } from '../engine/type';
 import { rgba, mixRgba } from '../engine/palette';
 import { clamp, ease, prog, hash, mulberry32, fbm1, lerp, pulse } from '../engine/util';
 import type { Line } from '../engine/lyrics';
-import { lyricAt, COUPLE_ZH, lyricSubOf, layoutLyric, subStyleFor, subGap, drawLyricSub, type LyricStyle } from './_motifs';
+import { lyricAt, NAME_A, NAME_B, fitPx, lyricSubOf, layoutLyric, subStyleFor, subGap, drawLyricSub, type LyricStyle } from './_motifs';
 import { grid, stagger, layoutRows, drawRows, type Grid, type KaraokeInk } from './_t4';
 import { PlaneCam, camUniforms, CAM_GLSL } from './_t14';
 import { inkStamp, freeCanvas } from './_t1';
@@ -300,7 +300,7 @@ export default class Ink extends Scene {
   override async init() {
     const { audio: au, lyrics } = this.ctx;
     const s = this.ctx.start, e = this.ctx.end, m = this.msg;
-    const names = COUPLE_ZH.replace(/\s*&\s*/, ' ♥ ');
+    const names = `${NAME_A} ♥ ${NAME_B}`;
     // 原文副行在 await 之前先拿：引擎只在呼叫 init 前設好這一格的開關，等字型的時候別的窗格可能改掉
     const subOf = new Map(lyrics.linesIn(s - 1, e).map((l) => [l, lyricSubOf(l)] as const));
     const hasSub = [...subOf.values()].some(Boolean);
@@ -361,8 +361,8 @@ export default class Ink extends Scene {
       }
       this.avoid = [[MSG_BOX.x - 20, 200, MSG_BOX.w + 40, hasSub ? 390 : 360]];
     } else {
-      // 純音樂又沒有留言：一拍一滴寫新人的名字（60 px），蓋印
-      const size = V2.msgMax / K;
+      // 純音樂又沒有留言：一拍一滴寫新人的名字（60 px；名字長就縮到一行放得進題字框），蓋印
+      const size = fitPx(names, FAM, V2.msgMax / K, MSG_BOX.w);
       const gl: TGlyph[] = [], groups: TGroup[] = [];
       groupLine(names, MSG_BOX.x, 360, FAM, size, 1, 0, gl, groups);
       const ts = groups.map((_, i) => au.timeOfBeat(au.beatAt(g.b0) + i));

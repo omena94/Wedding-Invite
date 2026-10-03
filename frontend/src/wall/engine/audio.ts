@@ -148,7 +148,7 @@ export class AudioData {
   /**
    * 網格外（第一拍之前、最後一拍之後）外插用的一拍長度：靠近那一端的 8 個間隔的平均（跟著當地的速度，又不會被單一個抖動的間隔帶歪）。
    * beatAt 與 timeOfBeat **一定要用同一個值**：以前一邊用平均週期、一邊用頭尾的單一間隔，網格外 beatAt(timeOfBeat(b)) ≠ b，
-   * beatAfter 在拍點上會多算（或少算）一拍（2026-09-29，歌的前奏與結尾的窗格）。
+   * beatAfter 在拍點上會多算（或少算）一拍（歌的前奏與結尾的窗格）。
    */
   private edgePeriod(end: 'head' | 'tail'): number {
     const b = this.beats, n = b.length;

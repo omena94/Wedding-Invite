@@ -267,10 +267,25 @@ export const deleteWallMessage = (id) => request(`${WALL}/messages/${id}`, { met
 // 大螢幕每兩秒問一次：{messages, count, open, moderation, songs_rev}
 export const fetchWallOptions = () => request(`${WALL}/options`, { auth: true });
 export const saveWallOptions = (data) => request(`${WALL}/options`, { method: "PUT", body: data, auth: true });
+// 大螢幕要放什麼（歌詞、賓客留言、照片＋註解）：新人選，當天幫手也能切
+export const fetchWallContent = () => request(`${WALL}/content`, { auth: true });
+export const saveWallContent = (data) => request(`${WALL}/content`, { method: "PUT", body: data, auth: true });
+export const fetchWallPhotos = () => request(`${WALL}/photos`, { auth: true });
+export const saveWallAlbum = (album, wall) => request(`${WALL}/albums`, { method: "PUT", body: { album, wall }, auth: true });
 export const fetchWallPlates = () => request(`${WALL}/plates`, { auth: true });
 export const saveWallPlates = (data) => request(`${WALL}/plates`, { method: "PUT", body: data, auth: true });
 export const fetchWallFeed = () => request(`${WALL}/feed`, { auth: true });
 export const fetchWallSongs = () => request(`${WALL}/songs`, { auth: true });
+// 場合（迎賓、進場、用餐…）：每個場合自己的歌與畫面，當天在遙控切。都回 {items, active, rev}
+export const fetchWallScenes = () => request(`${WALL}/scenes`, { auth: true });
+export const createWallScene = (data) => request(`${WALL}/scenes`, { method: "POST", body: data, auth: true });
+export const addWallSceneTemplate = () => request(`${WALL}/scenes/template`, { method: "POST", auth: true });
+export const updateWallScene = (id, data) => request(`${WALL}/scenes/${id}`, { method: "PATCH", body: data, auth: true });
+export const saveWallSceneContent = (id, content) => request(`${WALL}/scenes/${id}/content`, { method: "PUT", body: { content }, auth: true });
+export const reorderWallScenes = (ids) => request(`${WALL}/scenes/reorder`, { method: "POST", body: { ids }, auth: true });
+export const deleteWallScene = (id) => request(`${WALL}/scenes/${id}`, { method: "DELETE", auth: true });
+// when：now 馬上換／end 這首播完再換／cancel 取消排好的；id = null 是「不指定場合」（照整份歌單播）
+export const switchWallScene = (id, when = "now") => request(`${WALL}/scenes/switch`, { method: "POST", body: { id, when }, auth: true });
 // 大螢幕遙控（2026-09-30）：手機看大螢幕回報的狀態 {state, age, online}、送指令（大螢幕每秒來拿）
 export const fetchWallRemote = () => request(`${WALL}/remote/state`, { auth: true });
 export const sendWallRemote = (action, args = {}) => request(`${WALL}/remote/command`, { method: "POST", body: { action, args }, auth: true });
@@ -356,6 +371,8 @@ export const setGuestPin = (rsvp_id, object_id, hall = null) => request(`${SE}/g
 
 // ===== 照片相簿 =====
 export const fetchPlannerPhotos = () => request(`${P}/photos`, { auth: true });
+// 一本相簿給誰看：guests 賓客在婚禮網站看得到、wall 放會場大螢幕（還沒有照片的新相簿也可以先設）
+export const savePhotoAlbum = (album, data) => request(`${P}/photos/albums`, { method: "PUT", body: { album, ...data }, auth: true });
 export const reorderPhotos = (ids) => request(`${P}/photos/reorder`, { method: "POST", body: { ids }, auth: true });
 export const publishPhotos = (ids, is_public) =>
   request(`${P}/photos/publish`, { method: "POST", body: { ids, is_public }, auth: true });

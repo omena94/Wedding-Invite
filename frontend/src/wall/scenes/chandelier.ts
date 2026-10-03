@@ -9,7 +9,7 @@
 //  - 進場：線稿由上往下描出來、燈泡依序亮；退場最後一拍所有墜子一起閃一下、整盞燈稍微暗下。
 //  - 一格只有一個焦點（MV 融合原則）：鏡頭往下看一點、吊燈的上半截出畫（像仰拍），把下半部整片留給留言；
 //    留言是最大的字、歌詞墜子小一級；線稿與天花板的藻井都調淡，只留左上一小群低對比的標籤。
-// v2（2026-09-29「留言尺寸與版面比例標準 v2」）：吊燈放回畫面正中、鏡頭近一點、少切掉一點（吊燈才是主角），
+// v2（「留言尺寸與版面比例標準 v2」）：吊燈放回畫面正中、鏡頭近一點、少切掉一點（吊燈才是主角），
 // 留言縮到 v2 字級（40～60 px，依字數）放在吊燈正下方的下三分之一（≤ 830×300），署名 26～32，歌詞墜子 40～52。
 // 多補的動畫是吊燈自己的：每個小節線，燈泡由前往後繞一圈依序亮一下（像調光器的追光），落在拍點上。
 import * as THREE from 'three';
@@ -333,6 +333,8 @@ export default class Chandelier extends Scene {
       }
     } else {
       // 純音樂：墜子掛新人名字的字母，是配角（小、淡），焦點留給留言
+      // 名字是執行時才知道的（可能很長、可能是中文）：下面跟歌詞一樣先縮字距、再縮字級；名字本來就是配角，
+      // 可以縮到比歌詞的下限更小，整排一定擠得進吊燈的弧線
       family = NAME_FAM; size = 42;
       chars.forEach((ch, i) => { if (ch.trim()) groups.push({ ci0: i, ci1: i + 1, words: [] }); });
     }
@@ -345,7 +347,8 @@ export default class Chandelier extends Scene {
     const total = (a: number[][], sz: number, gk: number) => a.reduce((s2, x) => s2 + x.reduce((p, q) => p + q, 0), 0) + (a.length - 1) * sz * gk;
     // 墜子會盪：字距不能擠到比 0.32 個字寬還小（盪的時候相鄰兩串會疊在一起），寧可字小一點
     while (total(adv, size, gapK) > LYR.maxW && gapK > 0.32) gapK -= 0.04;
-    while (total(adv, size, gapK) > LYR.maxW && size > LYR.min) { size = Math.max(LYR.min, size - 2); adv = measureAt(size); }
+    const floor = line ? LYR.min : 24;
+    while (total(adv, size, gapK) > LYR.maxW && size > floor) { size = Math.max(floor, size - 2); adv = measureAt(size); }
     const tw = total(adv, size, gapK);
     const left = clamp(CX - tw / 2, LYR.x0, LYR.x1 - tw);
     let x = left;
