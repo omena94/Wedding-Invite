@@ -1,4 +1,4 @@
-// 批次 D1（雙語・一起去旅行：seoultrip、hanriver、subwayride、firstsnow、lovelocks）共用的小工具。
+// 批次 D1（雙語・一起去旅行：seoultrip、hanriver、subwayride、lovelocks；初雪 firstsnow 2026-10-03 拿掉了）共用的小工具。
 import { layoutLyric, drawLyric, lyricSubOf, type LyricStyle, type LyricLayout } from './_motifs';
 import type { Line } from '../engine/lyrics';
 
