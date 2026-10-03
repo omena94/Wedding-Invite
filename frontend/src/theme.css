@@ -827,7 +827,7 @@ tbody tr:last-child td { border-bottom: none; }
 .seat-halo { fill: rgba(255, 196, 42, 0.22); stroke: #F0A500; stroke-width: 3; pointer-events: none; animation: seatPulse 1.8s ease-in-out infinite; }
 @keyframes seatPulse { 0%, 100% { stroke-opacity: 0.9; stroke-width: 3; fill-opacity: 0.9; } 50% { stroke-opacity: 0.35; stroke-width: 7; fill-opacity: 0.35; } }
 
-/* ============ 查桌次結果（長輩也看得懂）：大字桌名座號、怎麼走、入口到桌子的虛線 ============ */
+/* ============ 查桌次結果（長輩也看得懂）：大字桌名座號、怎麼走 ============ */
 .seat-big { border: 1px solid var(--border-soft); border-radius: 18px; padding: 16px 14px 14px; margin: 12px 0; background: var(--bg-card-subtle); }
 .seat-big-label { font-size: 15px; color: var(--text-muted); letter-spacing: 2px; }
 .seat-big-table { font-family: "Noto Serif TC", serif; font-size: 64px; font-weight: 700; line-height: 1.15; color: var(--milk-tea-900); margin: 2px 0 10px; }
@@ -838,9 +838,6 @@ tbody tr:last-child td { border-bottom: none; }
 .seat-result-hint { font-size: 15px !important; line-height: 1.8; text-align: left; margin: 14px 0 6px; }
 .seat-result-hint strong { color: var(--milk-tea-900); }
 .seatviewer-ctl button.primary { background: var(--milk-tea-700); color: #fff; border-color: var(--milk-tea-700); }
-.seat-route { stroke: #d9482b; stroke-width: 4; stroke-linecap: round; stroke-dasharray: 12 9; fill: none; pointer-events: none; animation: routeDash 1.2s linear infinite; }
-.seat-route-arrow { fill: #d9482b; }
-@keyframes routeDash { to { stroke-dashoffset: -21; } }
 .seat-entrance-mark circle { fill: #d9482b; stroke: #fff; stroke-width: 2.5; }
 .seat-entrance-mark text { fill: #d9482b; font-weight: 700; }
 
@@ -951,16 +948,39 @@ tbody tr:last-child td { border-bottom: none; }
 .seat-mine-pin { fill: #755640; filter: drop-shadow(0 2px 3px #54372c33); }
 .seat-mine-pin circle { fill: #a66b39; stroke: #fffaf5; stroke-width: 3; }
 .seat-mine-pin text { fill: #fffaf5; font: 600 13px system-ui,sans-serif; }
-.seat-route-reveal { animation: route-reveal .7s ease-out both; }
-@keyframes route-reveal { from { opacity: 0; } to { opacity: 1; } }
-@media (prefers-reduced-motion: reduce) { .seat-route-reveal { animation: none; } }
+/* 帶路動畫（seating/RouteShow.jsx）：紅線是月老的紅線，跟介紹影片、入口標示同一個紅；會動的屬性由 JS 改，這裡只放顏色 */
+.route-wave path { fill: none; stroke: #e0603c; stroke-linecap: round; }
+.route-halo, .route-core, .route-shine, .route-flow, .route-trail { fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.route-halo { stroke: #e2553a; stroke-opacity: .16; animation: routeBreath 2.4s ease-in-out infinite; }
+.route-core { stroke: #d9482b; }
+.route-shine { stroke: #fff; stroke-opacity: .55; }
+.route-flow { stroke: #fffaf3; }
+.route-trail.t0 { stroke: #ff7a45; stroke-opacity: .28; }
+.route-trail.t1 { stroke: #ff6a3d; stroke-opacity: .5; }
+.route-trail.t2 { stroke: #fff4e6; stroke-opacity: .95; }
+.route-head-core { fill: #fff; stroke: #d9482b; }
+.route-spark { fill: #ffb347; }
+.route-spark.hot { fill: #ff6a3d; }
+.route-pass { fill: none; stroke: #b5533f; transform-box: fill-box; transform-origin: center; }
+.route-ent-ring { fill: none; stroke: #d9482b; opacity: 0; transform-box: fill-box; transform-origin: center; animation: routeEnt 2.4s ease-out infinite; }
+.route-ent-ring.late { animation-delay: 1.2s; }
+.route-burst circle { fill: none; stroke: #e0483a; }
+.route-burst line { stroke: #e0483a; stroke-linecap: round; }
+.route-burst.mine circle, .route-burst.mine line { stroke: #f0a500; }
+@keyframes routeEnt { from { transform: scale(.7); opacity: .85; } to { transform: scale(3.6); opacity: 0; } }
+@keyframes routeBreath { 0%, 100% { stroke-opacity: .12; } 50% { stroke-opacity: .26; } }
+.seatviewer-wrap .seatmap { transform-origin: 50% 60%; transition: transform .95s cubic-bezier(.45, 0, .2, 1); }
+.seatviewer-wrap[data-tilt] .seatmap { transform: perspective(1100px) rotateX(24deg) scale(.97); }
+.seat-mine-pin-drop { transform-box: fill-box; transform-origin: 50% 100%; animation: pinDrop .7s cubic-bezier(.34, 1.56, .64, 1) both; }
+@keyframes pinDrop { from { transform: translateY(-14px) scale(.4); opacity: 0; } to { transform: none; opacity: 1; } }
+.seatviewer-intro { animation: introIn .35s ease-out both; }
+.seatviewer-intro.arrived { border-color: #f0c96a; background: #fffbeff2; }
+@keyframes introIn { from { opacity: 0; transform: translate(-50%, -6px); } to { opacity: 1; transform: translate(-50%, 0); } }
 .seatviewer-drawer-content[hidden] { display: none; }
 .seatviewer-drawer-content { padding-top: 12px; }
 .seatviewer-entrance-select { display: block; margin-bottom: 14px; font-size: 14px; }
 .seatviewer-steps { padding-left: 22px; font-size: 14px; margin: 12px 0; }
 .seatviewer-pill { min-height: 44px; }
-.seat-route { stroke: #9a435f; stroke-width: 5; stroke-dasharray: 10 7; }
-.seat-route-arrow { fill: #9a435f; }
 .seat-obstacle { fill: #b4a797 !important; stroke: #756659 !important; stroke-dasharray: 5 3; }
 @media (max-width: 420px) { .seatviewer-ctl { gap: 5px; } .seatviewer-ctl button.wide { padding: 0 8px; font-size: 13px; } .guest-home .hero-arch-card { padding-left: 16px; padding-right: 16px; } }
 @media (prefers-reduced-motion: reduce) { *,*::before,*::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; } .hero-swap-back { opacity: 0 !important; } }
@@ -2043,11 +2063,11 @@ body:has(.guest-page)::after { display: none; }
 @media (min-width: 900px) {
   body:has(.guest-page.guest-details)::after { position: absolute; }
 }
-/* 婚禮當天的座位地圖：入口、路線同一個玫瑰色（路線從入口長出來），不可通行區改成淡淡的紙色；下方抽屜用卡紙 */
-.seatviewer .seat-entrance-body { fill: rgba(154, 67, 95, .07); stroke: #9a435f; }
-.seatviewer .seat-entrance-door { stroke: #9a435f; }
-.seatviewer .seat-entrance-knob, .seatviewer .seat-entrance-mark circle { fill: #9a435f; }
-.seatviewer .seat-text-entrance, .seatviewer .seat-entrance-mark text { fill: #9a435f; }
+/* 婚禮當天的座位地圖：入口跟紅線同一個紅（紅線從入口長出來，見 RouteShow），不可通行區改成淡淡的紙色；下方抽屜用卡紙 */
+.seatviewer .seat-entrance-body { fill: rgba(217, 72, 43, .07); stroke: #d9482b; }
+.seatviewer .seat-entrance-door { stroke: #d9482b; }
+.seatviewer .seat-entrance-knob, .seatviewer .seat-entrance-mark circle { fill: #d9482b; }
+.seatviewer .seat-text-entrance, .seatviewer .seat-entrance-mark text { fill: #d9482b; }
 .seatviewer .seat-obstacle { fill: #ece3d7 !important; stroke: #b7a593 !important; }
 .seatviewer .seat-text-zone { fill: #5f7563; }
 .seatviewer-full .seatviewer-top { background: rgba(255, 252, 247, .94); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); }

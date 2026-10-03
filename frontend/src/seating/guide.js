@@ -85,7 +85,7 @@ export function describeRoute(objects, table) {
     else if (k === inRow.length) parts.push("最右手邊那一桌");
     else parts.push(`從左手邊數來第 ${k} 桌`);
   }
-  const text = `${parts.join("，")}，就是您的「${label}」桌。桌上有「${label}」的桌牌，地圖上的紅色虛線就是走的方向。`;
+  const text = `${parts.join("，")}，就是您的「${label}」桌。桌上有「${label}」的桌牌，地圖上的紅線就是走的方向。`;
 
   // 線從入口框的邊緣出發（不要壓到「入口」兩個字），畫到桌邊（不要畫進桌子裡）
   const dx = t.cx - e.cx;

@@ -1,7 +1,7 @@
 // 賓客查桌次的結果。現場沒有人帶位、也有長輩在用，所以：
 //   1. 卡片只放最重要的：桌名與座號大字、一句白話的「怎麼走」、一顆大按鈕「打開地圖」
 //   2. 查到後自動開啟全螢幕：先標記我的位置，再平滑放大至入口與座位之間的路線，
-//      紅色虛線指路、點椅子看旁邊坐誰；關掉就回到這張卡
+//      紅線從入口沿走道畫到座位（RouteShow 的帶路動畫）、點椅子看旁邊坐誰；關掉就回到這張卡
 // 賓客頁 /seat 與後台「預覽賓客畫面」共用；後台的手機框用 embedded（地圖直接嵌在卡片裡，不全螢幕）。
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Map as MapIcon, ChevronDown, Download } from "lucide-react";

@@ -2,7 +2,7 @@
 // 兩種用法：
 //   fullscreen  全螢幕：上面「關閉」列、中間整張地圖、下面一個抽屜（我的位子／整個場地／放大縮小 + 點到的椅子是誰）
 //   inline      嵌在頁面裡（後台「預覽賓客畫面」的手機框用）
-// 開場先標記我的位置，再平滑放大至入口與座位之間的路線。
+// 開場先標記我的位置，再平滑放大至入口與座位之間的路線，同時播帶路動畫（RouteShow：探索波、紅線、抵達爆光）。
 // 名字只畫自己那桌與點到的那桌（放大到夠近時才全部畫），手機上才不會擠成一團。
 // props:
 //   layout    {canvas, objects}（public_map）
@@ -17,6 +17,7 @@ import { planLabels } from "./labels.js";
 import { seatLookup } from "../api.js";
 import { bounds, seatPositions } from "./geometry.js";
 import { entrancesOf, navigationGrid, routeToSeat } from './navigation.js';
+import RouteShow from './RouteShow.jsx';
 
 const PAD = 40;
 const MIN_ZOOM_OUT = 1.6; // 最多再縮到整張圖的 1/1.6
@@ -54,6 +55,8 @@ export default function SeatViewer({ layout, names, mineIds, fullscreen = false,
   const guideText = preview && route.status === "unassigned" ? "點任何一桌或椅子，就會顯示同桌的人與從入口過去的路線。" : route.message;
   const [query, setQuery] = useState(""); // 找人：姓名模糊比對
   const [dragging, setDragging] = useState(false);
+  const [replay, setReplay] = useState(0); // 按「查看路線」重播帶路動畫
+  const [box, setBox] = useState({ w: 390, h: 600 }); // 地圖在螢幕上的大小：線條粗細要用螢幕像素換算
   const svgRef = useRef(null);
   const dialogRef=useRef(null);
   useEffect(()=>{
@@ -189,11 +192,14 @@ export default function SeatViewer({ layout, names, mineIds, fullscreen = false,
   const minePosition = firstMine && byId[firstMine.oid] ? seatPositions(byId[firstMine.oid])[firstMine.idx] : null;
   const routeView = useCallback((planned) => {
     if (!planned.points.length) return null;
-    const xs=planned.points.map(p=>p.x), ys=planned.points.map(p=>p.y);
-    // 路線停在椅子邊，桌子常被切掉一半：把自己那一桌也框進來（2026-10-01）
+    const pts=planned.from?[planned.from,...planned.points]:planned.points;
+    const xs=pts.map(p=>p.x), ys=pts.map(p=>p.y);
+    // 路線停在椅子邊，桌子常被切掉一半：把自己那一桌也框進來
     const mine=objects.filter(o=>mineIds&&mineIds.has(o.id));
     if(mine.length){const b=bounds(mine);xs.push(b.minX,b.maxX);ys.push(b.minY,b.maxY);}
-    return matchRatio({x:Math.min(...xs)-90,y:Math.min(...ys)-90,w:Math.max(240,Math.max(...xs)-Math.min(...xs)+180),h:Math.max(240,Math.max(...ys)-Math.min(...ys)+180)},containerRatio());
+    // 上面多留兩成：開場的橫幅（找路中、到了）蓋在地圖上緣，座位常常就在路線的最上面
+    const h=Math.max(240,Math.max(...ys)-Math.min(...ys)+180), top=h*.2;
+    return matchRatio({x:Math.min(...xs)-90,y:Math.min(...ys)-90-top,w:Math.max(240,Math.max(...xs)-Math.min(...xs)+180),h:h+top},containerRatio());
   }, [containerRatio, objects, mineIds]);
 
   // ---------- 先看我的位置 → 放大到完整路線；手勢與按鍵立即接手 ----------
@@ -209,13 +215,29 @@ export default function SeatViewer({ layout, names, mineIds, fullscreen = false,
     if(window.matchMedia('(prefers-reduced-motion: reduce)').matches){setView(clampView(target));setIntro('ready');return undefined;}
     setView(fullView());
     setIntro('mine');
+    // 1.1 秒後鏡頭滑向整條路線，RouteShow 同一刻開始畫（delay 1.1）；線頭落進椅子時 onArrive 把橫幅換成「到了」
     introTimer.current=setTimeout(()=>{
       setIntro('route');
-      animateTo(target,1100);
-      finishTimer.current=setTimeout(()=>setIntro('ready'),1100);
+      animateTo(target,1200);
     },1100);
     return cancelIntro;
   }, [objects, mineIds, names]);
+  const onArrive = useCallback(() => setIntro((v) => (v === 'route' ? 'arrive' : v)), []);
+  useEffect(() => {
+    if (intro !== 'arrive') return undefined;
+    finishTimer.current = setTimeout(() => setIntro('ready'), 2400);
+    return () => clearTimeout(finishTimer.current);
+  }, [intro]);
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg || typeof ResizeObserver === 'undefined') return undefined;
+    const ro = new ResizeObserver(([entry]) => {
+      const r = entry.contentRect;
+      if (r.width > 0 && r.height > 0) setBox({ w: r.width, h: r.height });
+    });
+    ro.observe(svg);
+    return () => ro.disconnect();
+  }, [layout]);
 
   // 以某個圖上點為中心縮放
   const zoomAt = useCallback((factor, px, py) => {
@@ -232,6 +254,7 @@ export default function SeatViewer({ layout, names, mineIds, fullscreen = false,
   const fitRoute = () => {
     const target=routeView(route);
     if(target)animateTo(target,900);
+    setReplay((n) => n + 1);
   };
   const fitMine = () => {
     const mb = mineBox(60);
@@ -378,6 +401,14 @@ export default function SeatViewer({ layout, names, mineIds, fullscreen = false,
 
   if (!layout) return null;
   const vb = `${view.x} ${view.y} ${view.w} ${view.h}`;
+  // 一個螢幕像素等於幾個圖上單位（meet 置中：取兩邊比較大的那個）
+  const upp = Math.max(view.w / box.w, view.h / box.h);
+  const focusMine = !!(focus && focus.idx !== undefined && names?.[String(focus.oid)]?.[String(focus.idx)]?.mine);
+  const banner = {
+    mine: ['已找到我的位置', `${byId[firstMine?.oid]?.label || ''} · ${(firstMine?.idx ?? 0) + 1} 號，稍後為您帶路`],
+    route: ['正在為您找路…', '從入口出發，繞過桌椅走到您的座位'],
+    arrive: ['跟著紅線走就到了', `${byId[firstMine?.oid]?.label || ''} · ${(firstMine?.idx ?? 0) + 1} 號${route.meters ? `・約 ${route.meters} 公尺` : ''}`],
+  }[intro];
   const pill = (idx, p, keyPrefix = "s") => (
     <button type="button" key={`${keyPrefix}${idx}`} className={`seatviewer-pill${p?.mine ? " mine" : ""}${p ? "" : " empty"}${focusInfo && focusInfo.idx === idx ? " current" : ""}`}
       onClick={() => setFocus({ oid: focusInfo.o.id, idx })}>
@@ -471,24 +502,21 @@ export default function SeatViewer({ layout, names, mineIds, fullscreen = false,
       )}
       {!fullscreen && searchBox}
       {controls}
-      <div className={`seatviewer-wrap${dragging ? " dragging" : ""}`}>
-        {intro!=='ready'&&<div className="seatviewer-intro" role="status"><strong>{intro==='mine'?'已找到我的位置':'查看前往座位的路線'}</strong><span>{byId[firstMine?.oid]?.label} · {(firstMine?.idx??0)+1} 號{intro==='mine'?'，稍後為您帶路':''}</span></div>}
+      {/* 找路的那幾秒地圖往後傾、像影片裡斜斜看進宴會廳；到了就放平，手一碰也馬上放平（takeControl） */}
+      <div className={`seatviewer-wrap${dragging ? " dragging" : ""}`} data-tilt={intro === 'route' || undefined}>
+        {banner&&<div className={`seatviewer-intro${intro==='arrive'?' arrived':''}`} role="status" key={intro}><strong>{banner[0]}</strong><span>{banner[1]}</span></div>}
         <svg ref={svgRef} viewBox={vb} preserveAspectRatio="xMidYMid meet" className="seatmap" role="img" aria-label="座位平面圖"
           style={ready ? undefined : { visibility: "hidden" }}
           onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={e=>{pointers.current.delete(e.pointerId);if(!pointers.current.size)setDragging(false);gesture.current.moved=0;}}>
-          <defs>
-            <marker id="seat-route-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
-              <path d="M 0 0 L 10 5 L 0 10 z" className="seat-route-arrow" />
-            </marker>
-          </defs>
           <rect x={full.x - full.w * 2} y={full.y - full.h * 2} width={full.w * 5} height={full.h * 5} className="seatmap-floor" />
-          {/* 路線先畫、桌椅後畫：箭頭與起點不會壓住名字和入口字樣（2026-10-01） */}
-          {route.points.length>0&&intro!=='mine'&&<g pointerEvents="none" className="seat-route-reveal"><polyline points={route.points.map(p=>`${p.x},${p.y}`).join(' ')} className="seat-route" fill="none" strokeLinejoin="round" markerEnd="url(#seat-route-arrow)"/><circle cx={route.points[0].x} cy={route.points[0].y} r="8" fill="#9a435f"/></g>}
-          {objects.map((o) => (
-            <ObjectShape key={o.id} o={o} highlighted={hiIds.has(o.id)} showNames={showNamesFor(o)} labelPlan={labelPlan}
-              seatNames={names ? names[String(o.id)] || {} : undefined} seatClass={seatClass} />
-          ))}
-          {minePosition&&<g pointerEvents="none" transform={`translate(${minePosition.x} ${minePosition.y}) scale(${view.w/(svgRef.current?.getBoundingClientRect().width||390)})`} className="seat-mine-pin"><circle r="8"/><path d="M -5 -14 L 0 -7 L 5 -14"/><rect x="-40" y="-43" width="80" height="29" rx="14"/><text x="0" y="-24" textAnchor="middle">我的位置</text></g>}
+          {/* 紅線與探索波畫在桌椅底下（不壓住名字和入口字樣），線頭、火花、爆光畫在上面 */}
+          <RouteShow route={route} grid={grid} objects={objects} upp={upp} delay={intro === 'mine' ? 1.1 : 0} replay={replay} mine={focusMine} onArrive={onArrive}>
+            {objects.map((o) => (
+              <ObjectShape key={o.id} o={o} highlighted={hiIds.has(o.id)} showNames={showNamesFor(o)} labelPlan={labelPlan}
+                seatNames={names ? names[String(o.id)] || {} : undefined} seatClass={seatClass} />
+            ))}
+          </RouteShow>
+          {minePosition&&<g pointerEvents="none" transform={`translate(${minePosition.x} ${minePosition.y}) scale(${upp})`} className="seat-mine-pin"><g className="seat-mine-pin-drop"><circle r="8"/><path d="M -5 -14 L 0 -7 L 5 -14"/><rect x="-40" y="-43" width="80" height="29" rx="14"/><text x="0" y="-24" textAnchor="middle">我的位置</text></g></g>}
         </svg>
       </div>
       {info}
