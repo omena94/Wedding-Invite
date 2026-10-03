@@ -61,8 +61,9 @@ def main():
     changed = []
     run('systemctl', 'stop', 'wedding')
     try:
-        # 固定部署前的資料表集合，新功能建表不應被誤判為既有資料異動。
-        fingerprint = "from app.database import engine; from sqlalchemy import MetaData,select; import hashlib,json,sys; m=MetaData(); m.reflect(engine); names=json.loads(sys.argv[1]) if len(sys.argv)>1 else sorted(t.name for t in m.sorted_tables if t.name!='guest_verifications'); c=engine.connect(); data={name:[dict(r) for r in c.execute(select(m.tables[name]).order_by(*m.tables[name].primary_key.columns)).mappings()] for name in names}; print(json.dumps({'tables':names,'hash':hashlib.sha256(json.dumps(data,default=str,sort_keys=True).encode()).hexdigest()}))"
+        # 固定部署前的資料表與欄位集合：新功能建表、既有的表加欄位（init_db 的 ADD COLUMN），都不應被誤判為既有資料異動；
+        # 部署前就有的欄位只要有一格被改到就擋下來還原。欄位被刪掉或改名時 select 會失敗，一樣還原。
+        fingerprint = "from app.database import engine; from sqlalchemy import MetaData,select; import hashlib,json,sys; m=MetaData(); m.reflect(engine); spec=json.loads(sys.argv[1]) if len(sys.argv)>1 else {t.name:sorted(col.name for col in t.columns) for t in m.sorted_tables if t.name!='guest_verifications'}; c=engine.connect(); data={name:[dict(r) for r in c.execute(select(*[m.tables[name].c[col] for col in cols]).order_by(*m.tables[name].primary_key.columns)).mappings()] for name,cols in sorted(spec.items())}; print(json.dumps({'tables':spec,'hash':hashlib.sha256(json.dumps(data,default=str,sort_keys=True).encode()).hexdigest()}))"
         before = json.loads(run(str(python), '-c', fingerprint, cwd=root/'backend', capture_output=True, text=True).stdout)
         for target in targets:
             previous = release/('previous-'+target.name)
