@@ -27,3 +27,6 @@ preview-form.png
 
 # 大螢幕截圖工具的輸出（frontend/scripts/wall-render.mjs）
 wall-out/
+
+# 測試快取
+.pytest_cache/
